@@ -76,6 +76,10 @@ jobs:
       - run: pnpm test
         env:
           DATABASE_URL: postgresql://postgres:test@localhost:5432/test
+          PII_ENCRYPTION_KEY: dGVzdC1lbmNyeXB0aW9uLWtleS1mb3ItY2ktb25seS0x
+          PII_HASH_KEY: dGVzdC1oYXNoLWtleS1mb3ItY2ktb25seS10ZXN0aW5nMQ==
+          BETTER_AUTH_SECRET: ci-test-better-auth-secret-min-32-characters
+          JWT_SECRET: ci-test-jwt-secret-at-least-44-characters-long-ok
 
   build:
     needs: setup

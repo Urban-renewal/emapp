@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { isValidIsraeliId } from './israeli-id';
 
 describe('isValidIsraeliId', () => {

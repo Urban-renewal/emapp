@@ -1,5 +1,5 @@
-import { Controller, Get } from '@nestjs/common';
 import { getDb, sql } from '@emapp/db';
+import { Controller, Get } from '@nestjs/common';
 
 @Controller('health')
 export class HealthController {

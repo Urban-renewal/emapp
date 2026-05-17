@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import { Heebo } from 'next/font/google';
+import { notFound } from 'next/navigation';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
-import { notFound } from 'next/navigation';
+
 import { routing } from '@/i18n/routing';
 import '../globals.css';
 
@@ -37,9 +38,7 @@ export default async function LocaleLayout({
   return (
     <html lang={locale} dir={dir} className={heebo.variable}>
       <body className="font-sans antialiased">
-        <NextIntlClientProvider messages={messages}>
-          {children}
-        </NextIntlClientProvider>
+        <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
       </body>
     </html>
   );

@@ -1,0 +1,7 @@
+pnpm exec lint-staged
+
+if command -v gitleaks > /dev/null 2>&1; then
+  gitleaks protect --staged --redact --config .gitleaks.toml
+else
+  echo "ℹ️  gitleaks not installed — skipping secret scan. Install: https://github.com/gitleaks/gitleaks"
+fi

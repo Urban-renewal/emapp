@@ -1,23 +1,17 @@
 import './instrument';
+import { serverEnv as env } from '@emapp/config';
+import helmet from '@fastify/helmet';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
-import helmet from '@fastify/helmet';
-import { AppModule } from './app.module';
 import { Logger } from 'nestjs-pino';
-import { serverEnv as env } from '@emapp/config';
+
+import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 
 const CORS_ORIGINS = {
-  production: [
-    'https://app.emapp.io',
-  ],
-  preview: [
-    /^https:\/\/[\w-]+\.emapp\.pages\.dev$/,
-  ],
-  development: [
-    'http://localhost:3001',
-    'http://127.0.0.1:3001',
-  ],
+  production: ['https://app.emapp.io'],
+  preview: [/^https:\/\/[\w-]+\.emapp\.pages\.dev$/],
+  development: ['http://localhost:3001', 'http://127.0.0.1:3001'],
   test: [] as string[],
 } as const;
 

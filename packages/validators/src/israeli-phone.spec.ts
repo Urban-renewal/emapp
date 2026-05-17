@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { normalizeIsraeliPhone, isValidIsraeliPhone } from './israeli-phone';
 
 describe('normalizeIsraeliPhone', () => {

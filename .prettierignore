@@ -1,0 +1,9 @@
+dist/
+build/
+.next/
+node_modules/
+pnpm-lock.yaml
+*.lock
+packages/db/migrations/
+*.min.js
+next-env.d.ts

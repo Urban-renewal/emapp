@@ -1,0 +1,12 @@
+title = "EMAPP Gitleaks Config"
+
+[allowlist]
+description = "Placeholders and example values are intentional"
+paths = [
+  '''^\.env\.example$''',
+  '''^\.gitleaks\.toml$''',
+]
+regexes = [
+  '''xxxxx''',
+  '''placeholder''',
+]

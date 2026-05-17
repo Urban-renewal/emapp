@@ -1,9 +1,15 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
-const connectionString = process.env['DATABASE_URL'];
-if (!connectionString) throw new Error('DATABASE_URL is required');
+type DrizzleInstance = ReturnType<typeof drizzle>;
 
-const client = postgres(connectionString, { max: 10 });
+let _db: DrizzleInstance | undefined;
 
-export const db = drizzle(client);
+export function getDb(): DrizzleInstance {
+  if (!_db) {
+    const url = process.env['DATABASE_URL'];
+    if (!url) throw new Error('DATABASE_URL is required — add it to Infisical and run via infisical run');
+    _db = drizzle(postgres(url, { max: 10 }));
+  }
+  return _db;
+}

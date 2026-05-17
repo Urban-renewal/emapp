@@ -1,0 +1,37 @@
+{
+  "name": "@emapp/api",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "nest build",
+    "start": "node dist/main",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@emapp/config": "workspace:*",
+    "@emapp/db": "workspace:*",
+    "@fastify/helmet": "^12.0.0",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-fastify": "^11.0.0",
+    "@nestjs/throttler": "^6.0.0",
+    "@sentry/node": "^8.0.0",
+    "drizzle-orm": "^0.36.0",
+    "nestjs-pino": "^4.1.0",
+    "pino-http": "^10.0.0",
+    "reflect-metadata": "^0.2.0",
+    "rxjs": "^7.8.0"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@nestjs/testing": "^11.0.0",
+    "@types/node": "^20.0.0",
+    "fastify": "^5.0.0",
+    "ts-node": "^10.9.0",
+    "vitest": "^2.0.0"
+  }
+}

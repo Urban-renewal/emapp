@@ -12,8 +12,11 @@
   "dependencies": {
     "@emapp/shared-types": "workspace:*",
     "@emapp/validators": "workspace:*",
+    "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-slot": "^1.1.0",
     "@sentry/nextjs": "^8.0.0",
+    "@tanstack/react-query": "^5.100.10",
+    "better-auth": "^1.6.11",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "lucide-react": "^0.400.0",
@@ -21,8 +24,10 @@
     "next-intl": "^3.26.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-hook-form": "^7.76.0",
     "tailwind-merge": "^2.5.0",
-    "tailwindcss-rtl": "^0.9.0"
+    "tailwindcss-rtl": "^0.9.0",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

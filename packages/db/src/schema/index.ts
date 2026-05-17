@@ -6,3 +6,4 @@ export * from './provider';
 export * from './projects';
 export * from './collaboration';
 export * from './artifacts';
+export * from './auth';

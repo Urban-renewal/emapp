@@ -3,6 +3,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 
 import { HealthController } from './app.controller';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { HealthController } from './app.controller';
         level: process.env['NODE_ENV'] !== 'production' ? 'debug' : 'info',
       },
     }),
+    AuthModule,
   ],
   controllers: [HealthController],
 })

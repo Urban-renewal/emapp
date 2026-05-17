@@ -1,6 +1,7 @@
 import './instrument';
 import { serverEnv as env } from '@emapp/config';
 import { verifyEncryptionStartup } from '@emapp/db';
+import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -28,6 +29,8 @@ async function bootstrap() {
 
   // D.10: every endpoint under /api/v1/
   app.setGlobalPrefix('api/v1');
+
+  await app.register(cookie, { secret: env.BETTER_AUTH_SECRET });
 
   await app.register(helmet, {
     contentSecurityPolicy: {

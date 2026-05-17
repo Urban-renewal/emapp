@@ -6,25 +6,25 @@
 
 ## Current Position
 
-- **Phase:** 1 (Database)
+- **Phase:** 2 (Auth + Multi-tenant + Tenant SMS OTP)
 
-- **Next task:** Phase 1 complete — open PR from phase-1 → main, then confirm to start Phase 2
+- **Next task:** Gate 4 — review rate-limit config + OTP expiry + Israeli SMS provider config BEFORE implementing Tenant SMS OTP; then P2 Tenant OTP flow
 
-- **Status:** awaiting_approval
+- **Status:** in_progress — core auth done (Org user tier complete); Gate 4 stop required before SMS OTP
 
-- **Last completed:** P1.14
+- **Last completed:** P2 Org-user auth (Better Auth + JWT + refresh tokens + guards + frontend login/signup)
 
-- **Blocked:** no
+- **Blocked:** Gate 4 (per GATES.md) — must show user rate-limit config + OTP expiry + Israeli SMS provider selection before proceeding
 
-- **Branch:** phase-1
+- **Branch:** phase-2
 
 ## Phase Completion Log
 
 - [x] Phase 0 — Foundation (docs/04b) — 9/10 tasks done (P0.2 awaiting Infisical accounts; all others complete)
 
-- [x] Phase 1 — Database (docs/04c) — 14/14 tasks complete — PR open, awaiting merge
+- [x] Phase 1 — Database (docs/04c) — 14/14 tasks complete — merged
 
-- [ ] Phase 2 — Auth + Multi-tenant + Tenant SMS OTP (docs/03 §6)
+- [~] Phase 2 — Auth + Multi-tenant + Tenant SMS OTP (docs/03 §6) — Org-user tier complete; Gate 4 before SMS OTP
 
 - [ ] Phase 3 — Domain API (docs/03 §7)
 
@@ -45,6 +45,8 @@
 ## Task Log (newest first)
 
 <!-- Claude appends: [YYYY-MM-DD HH:MM] P0.1 ✓ — note — commit <sha> -->
+
+[2026-05-18] P2 Org-user auth ✓ — Better Auth + JWT (15m access / 30d refresh) + cookie-based auth + AuthGuard/TenantGuard + AuthController (signup/login/refresh/logout/switch-org) + MeController + AuthModule + @fastify/cookie in main.ts + providerDb BYPASSRLS signup bootstrap (fixes users RLS chicken-and-egg) + Next.js login+signup pages + protected dashboard layout + i18n strings + 12 T2.x tests green. Gate 4 stop: must confirm Tenant SMS OTP rate-limit/OTP-expiry/provider config.
 
 [2026-05-17] P1 spec-alignment ✓ — Reverted an unauthorized Gate-2/Gate-6 deviation (0010 buildings/apartments org_id denormalization) back to spec Template B (0011); closed pre-existing spec gaps: cache/env/withTenant to spec, verifyEncryptionStartup (P1.10), 0012 project_status→D.18, 0013 he_il_icu collation (D.11), 0014 audit_log→spec §12.4, 0015 signatures+documents→spec §4/P1.8/D.12. 52/52 T1.x green. — commit 9f27b25
 

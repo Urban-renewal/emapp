@@ -1,13 +1,12 @@
-@'
 node_modules/
 dist/
+build/
 .turbo/
+.next/
+coverage/
 *.log
 .DS_Store
 .env
 .env.local
 .env.*.local
 .infisical.json
-coverage/
-.next/
-'@ | Out-File -FilePath .gitignore -Encoding utf8

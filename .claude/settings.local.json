@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm -v)",
+      "Bash(pnpm install *)",
+      "Bash(chmod +x .husky/commit-msg)",
+      "Bash(pnpm typecheck *)",
+      "Bash(git rm *)",
+      "Bash(git add *)",
+      "Bash(git -c core.hooksPath=.husky commit -m \"broken message no type\")",
+      "Bash(echo \"EXIT=$?\")"
+    ]
+  }
+}

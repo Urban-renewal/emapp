@@ -2,49 +2,51 @@ import type { Database } from '../client';
 import { auditLog } from '../schema/artifacts';
 import type { NewAuditLog } from '../schema/artifacts';
 
+export type ActorType = 'user' | 'system' | 'provider';
+
 export interface AuditEntry {
   orgId: string;
-  actorUserId?: string;
-  actorContractorId?: string;
+  actorId?: string; // null/undefined = system action
+  actorType: ActorType;
+  actorEmail?: string;
   action: string;
-  entityType: string;
-  entityId?: string;
-  before?: Record<string, unknown>;
-  after?: Record<string, unknown>;
+  targetTable?: string;
+  targetId?: string;
+  beforeState?: Record<string, unknown>;
+  afterState?: Record<string, unknown>;
+  ip?: string;
+  userAgent?: string;
+  sessionId?: string;
   metadata?: Record<string, unknown>;
+}
+
+function toRow(entry: AuditEntry): NewAuditLog {
+  return {
+    orgId: entry.orgId,
+    actorId: entry.actorId ?? null,
+    actorType: entry.actorType,
+    actorEmail: entry.actorEmail ?? null,
+    action: entry.action,
+    targetTable: entry.targetTable ?? null,
+    targetId: entry.targetId ?? null,
+    beforeState: entry.beforeState ?? null,
+    afterState: entry.afterState ?? null,
+    ip: entry.ip ?? null,
+    userAgent: entry.userAgent ?? null,
+    sessionId: entry.sessionId ?? null,
+    metadata: entry.metadata ?? {},
+  };
 }
 
 export class AuditService {
   constructor(private readonly db: Database) {}
 
   async log(entry: AuditEntry): Promise<void> {
-    const row: NewAuditLog = {
-      orgId: entry.orgId,
-      actorUserId: entry.actorUserId ?? null,
-      actorContractorId: entry.actorContractorId ?? null,
-      action: entry.action,
-      entityType: entry.entityType,
-      entityId: entry.entityId ?? null,
-      before: entry.before ?? null,
-      after: entry.after ?? null,
-      metadata: entry.metadata ?? {},
-    };
-    await this.db.insert(auditLog).values(row);
+    await this.db.insert(auditLog).values(toRow(entry));
   }
 
   async logMany(entries: AuditEntry[]): Promise<void> {
     if (entries.length === 0) return;
-    const rows: NewAuditLog[] = entries.map((entry) => ({
-      orgId: entry.orgId,
-      actorUserId: entry.actorUserId ?? null,
-      actorContractorId: entry.actorContractorId ?? null,
-      action: entry.action,
-      entityType: entry.entityType,
-      entityId: entry.entityId ?? null,
-      before: entry.before ?? null,
-      after: entry.after ?? null,
-      metadata: entry.metadata ?? {},
-    }));
-    await this.db.insert(auditLog).values(rows);
+    await this.db.insert(auditLog).values(entries.map(toRow));
   }
 }

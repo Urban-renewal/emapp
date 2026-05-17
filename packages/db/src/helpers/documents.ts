@@ -5,9 +5,11 @@ export interface DocumentUploadPayload {
   projectId?: string;
   apartmentId?: string;
   name: string;
+  type: string;
   mimeType: string;
   sizeBytes: number;
-  storageKey: string;
+  r2Key: string;
+  contentHash: string;
   uploadedBy: string;
 }
 
@@ -17,9 +19,11 @@ export function buildDocument(payload: DocumentUploadPayload): NewDocument {
     projectId: payload.projectId ?? null,
     apartmentId: payload.apartmentId ?? null,
     name: payload.name,
+    type: payload.type,
     mimeType: payload.mimeType,
     sizeBytes: payload.sizeBytes,
-    storageKey: payload.storageKey,
+    r2Key: payload.r2Key,
+    contentHash: payload.contentHash,
     uploadedBy: payload.uploadedBy,
   };
 }

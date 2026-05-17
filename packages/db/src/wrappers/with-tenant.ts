@@ -46,16 +46,12 @@ export async function withTenant<T>(
       values: ['app.organization_id', orgId],
     });
 
-    if (env.PII_ENCRYPTION_KEY) {
-      await client.query({
-        text: 'SELECT set_config($1, $2, true)',
-        values: ['app.encryption_key', env.PII_ENCRYPTION_KEY],
-      });
-    } else if (env.NODE_ENV === 'production') {
-      throw new Error(
-        'PII_ENCRYPTION_KEY is required in production — configure it in your secrets manager',
-      );
-    }
+    // Encryption key is guaranteed present by T3-env (z.string().length(44)) and
+    // verified at boot by verifyEncryptionStartup() — set unconditionally per spec §10.3.
+    await client.query({
+      text: 'SELECT set_config($1, $2, true)',
+      values: ['app.encryption_key', env.PII_ENCRYPTION_KEY],
+    });
 
     if (options?.userId) {
       await client.query({

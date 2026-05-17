@@ -2,13 +2,14 @@ import { pgEnum } from 'drizzle-orm/pg-core';
 
 export const projectTypeEnum = pgEnum('project_type', ['tama38_1', 'tama38_2', 'pinui_binui']);
 
+// D.18 (LAW): locked status set.
 export const projectStatusEnum = pgEnum('project_status', [
   'planning',
   'gathering_signatures',
-  'permits',
-  'construction',
+  'approved',
+  'in_construction',
   'completed',
-  'archived',
+  'cancelled',
 ]);
 
 export const apartmentStatusEnum = pgEnum('apartment_status', [

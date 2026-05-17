@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { pool } from '../src/client';
 
-import { createTestOrg } from './factories';
 import { setupTestDatabase } from './setup';
 
 const FAKE_UUID = '00000000-0000-0000-0000-000000000099';
@@ -19,14 +18,8 @@ async function expectFkViolation(query: string, values: unknown[]): Promise<void
 }
 
 describe('T1.3 — Foreign key constraints enforced', () => {
-  let validOrgId: string;
-
   beforeAll(async () => {
     await setupTestDatabase();
-    // A real org is needed for tests that require valid org_id but fake project/building IDs.
-    // Without a valid org_id, the org FK fires before the intended FK, masking the test.
-    const org = await createTestOrg(`T13-Org-${Date.now()}`, `t13-org-${Date.now()}`);
-    validOrgId = org.id;
   });
 
   afterAll(async () => {
@@ -42,10 +35,9 @@ describe('T1.3 — Foreign key constraints enforced', () => {
   });
 
   it('building with non-existent project_id is rejected', async () => {
-    // org_id is valid so only the project_id FK fires (code 23503).
     await expectFkViolation(
-      `INSERT INTO buildings (org_id, project_id, address, city) VALUES ($1, $2, $3, $4)`,
-      [validOrgId, FAKE_UUID, 'Test St 1', 'Tel Aviv'],
+      `INSERT INTO buildings (project_id, address, city) VALUES ($1, $2, $3)`,
+      [FAKE_UUID, 'Test St 1', 'Tel Aviv'],
     );
   });
 

@@ -77,9 +77,9 @@ describe('T1.4 — CHECK constraints and immutable triggers', () => {
     const client = await pool.connect();
     try {
       const ins = await client.query<{ id: string }>(
-        `INSERT INTO audit_log (org_id, action, entity_type)
-         VALUES ($1, $2, $3) RETURNING id`,
-        [taskOrgId, 'test_action', 'project'],
+        `INSERT INTO audit_log (org_id, action, target_table, actor_type)
+         VALUES ($1, $2, $3, $4) RETURNING id`,
+        [taskOrgId, 'test_action', 'project', 'system'],
       );
       const id = ins.rows[0]?.id;
       await client.query('BEGIN');
@@ -96,9 +96,9 @@ describe('T1.4 — CHECK constraints and immutable triggers', () => {
     const client = await pool.connect();
     try {
       const ins = await client.query<{ id: string }>(
-        `INSERT INTO audit_log (org_id, action, entity_type)
-         VALUES ($1, $2, $3) RETURNING id`,
-        [taskOrgId, 'test_action', 'project'],
+        `INSERT INTO audit_log (org_id, action, target_table, actor_type)
+         VALUES ($1, $2, $3, $4) RETURNING id`,
+        [taskOrgId, 'test_action', 'project', 'system'],
       );
       const id = ins.rows[0]?.id;
       await client.query('BEGIN');
@@ -114,26 +114,37 @@ describe('T1.4 — CHECK constraints and immutable triggers', () => {
   // ─── signatures immutable trigger ──────────────────────────────────────────
 
   it('signatures UPDATE is rejected by immutable trigger', async () => {
-    const projectId = org.projects[0]!.id;
     const client = await pool.connect();
     try {
-      // Create building → apartment → signature chain
-      const bldg = await client.query<{ id: string }>(
-        `INSERT INTO buildings (org_id, project_id, address, city) VALUES ($1, $2, $3, $4) RETURNING id`,
-        [taskOrgId, projectId, 'Test St 1', 'Tel Aviv'],
+      // Spec model: signature → document + owner (+ forensic fields).
+      const owner = await client.query<{ id: string }>(
+        `INSERT INTO owners (org_id, name, national_id_encrypted, national_id_hash)
+         VALUES ($1, $2, pgp_sym_encrypt($3, $4), $5) RETURNING id`,
+        [taskOrgId, 'T14 Owner', '123456789', 'test-key', `t14-natid-${Date.now()}`],
       );
-      const buildingId = bldg.rows[0]!.id;
+      const ownerId = owner.rows[0]!.id;
 
-      const apt = await client.query<{ id: string }>(
-        `INSERT INTO apartments (org_id, building_id, number) VALUES ($1, $2, $3) RETURNING id`,
-        [taskOrgId, buildingId, '1'],
+      const doc = await client.query<{ id: string }>(
+        `INSERT INTO documents (org_id, name, type, mime_type, size_bytes, r2_key, content_hash, uploaded_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+        [
+          taskOrgId,
+          'Signed Doc',
+          'contract',
+          'application/pdf',
+          1024,
+          `r2/t14/${Date.now()}`,
+          'sha256-placeholder',
+          taskCreatedBy,
+        ],
       );
-      const apartmentId = apt.rows[0]!.id;
+      const documentId = doc.rows[0]!.id;
 
       const sig = await client.query<{ id: string }>(
-        `INSERT INTO signatures (org_id, project_id, apartment_id, signed_at, signature_blob, recorded_by)
-         VALUES ($1, $2, $3, now(), $4, $5) RETURNING id`,
-        [taskOrgId, projectId, apartmentId, Buffer.from('fake-sig'), taskCreatedBy],
+        `INSERT INTO signatures
+           (org_id, document_id, owner_id, document_hash, signature_blob, auth_method, signed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, now()) RETURNING id`,
+        [taskOrgId, documentId, ownerId, 'doc-hash', Buffer.from('fake-sig'), 'password'],
       );
       const sigId = sig.rows[0]!.id;
 

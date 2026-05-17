@@ -6,8 +6,8 @@ export const env = createEnv({
   server: {
     DATABASE_URL: z.string().url(),
     PROVIDER_DATABASE_URL: z.string().url().optional(),
-    PII_ENCRYPTION_KEY: z.string().min(20).optional(),
-    PII_HASH_KEY: z.string().min(20).optional(),
+    PII_ENCRYPTION_KEY: z.string().length(44),
+    PII_HASH_KEY: z.string().length(44),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   },
   runtimeEnv: process.env,

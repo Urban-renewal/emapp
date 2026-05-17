@@ -1,5 +1,6 @@
 import './instrument';
 import { serverEnv as env } from '@emapp/config';
+import { verifyEncryptionStartup } from '@emapp/db';
 import helmet from '@fastify/helmet';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -72,6 +73,12 @@ async function bootstrap() {
   });
 
   app.enableShutdownHooks();
+
+  // P1.10: fail fast if PII encryption/HMAC keys are missing or invalid,
+  // BEFORE serving any request. Skipped only in the no-accounts local path.
+  if (!process.env['SKIP_ENV_VALIDATION']) {
+    await verifyEncryptionStartup();
+  }
 
   const port = env.PORT_API ?? 3000;
   await app.listen(port, '0.0.0.0');

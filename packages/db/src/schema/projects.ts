@@ -1,2 +1,176 @@
-// Project hierarchy: projects, buildings, apartments, owners, ownerships — implemented in P1.4 + P1.5
-export {};
+import { sql } from 'drizzle-orm';
+import {
+  pgTable,
+  uuid,
+  text,
+  timestamp,
+  integer,
+  numeric,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
+
+import { projectTypeEnum, projectStatusEnum, apartmentStatusEnum } from './_enums';
+import { bytea, citext } from './_types';
+import { organizations, users } from './tenancy';
+
+export const projects = pgTable(
+  'projects',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    name: text('name').notNull(),
+    type: projectTypeEnum('type').notNull(),
+    status: projectStatusEnum('status').notNull().default('planning'),
+    description: text('description'),
+    targetSignaturePct: numeric('target_signature_pct', { precision: 5, scale: 2 }),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+  },
+  (table) => ({
+    orgStatusIdx: index('idx_projects_org_status')
+      .on(table.orgId, table.status)
+      .where(sql`archived_at IS NULL`),
+    orgTypeIdx: index('idx_projects_org_type').on(table.orgId, table.type),
+  }),
+);
+
+export type Project = typeof projects.$inferSelect;
+export type NewProject = typeof projects.$inferInsert;
+
+export const buildings = pgTable(
+  'buildings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    address: text('address').notNull(),
+    city: text('city').notNull(),
+    block: text('block'),
+    parcel: text('parcel'),
+    subparcel: text('subparcel'),
+    aptCount: integer('apt_count').notNull().default(0),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+  },
+  (table) => ({
+    projectIdx: index('idx_buildings_project')
+      .on(table.projectId)
+      .where(sql`archived_at IS NULL`),
+  }),
+);
+
+export type Building = typeof buildings.$inferSelect;
+export type NewBuilding = typeof buildings.$inferInsert;
+
+export const apartments = pgTable(
+  'apartments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    buildingId: uuid('building_id')
+      .notNull()
+      .references(() => buildings.id, { onDelete: 'cascade' }),
+    number: text('number').notNull(),
+    floor: integer('floor'),
+    sizeSqm: numeric('size_sqm', { precision: 7, scale: 2 }),
+    rooms: numeric('rooms', { precision: 3, scale: 1 }),
+    status: apartmentStatusEnum('status').notNull().default('pending'),
+    statusChangedAt: timestamp('status_changed_at', { withTimezone: true }).notNull().defaultNow(),
+    lastContactAt: timestamp('last_contact_at', { withTimezone: true }),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+  },
+  (table) => ({
+    uniqueNumberPerBuilding: uniqueIndex('apartments_building_number_active')
+      .on(table.buildingId, table.number)
+      .where(sql`archived_at IS NULL`),
+    buildingIdx: index('idx_apartments_building')
+      .on(table.buildingId)
+      .where(sql`archived_at IS NULL`),
+    statusIdx: index('idx_apartments_status')
+      .on(table.status)
+      .where(sql`archived_at IS NULL`),
+  }),
+);
+
+export type Apartment = typeof apartments.$inferSelect;
+export type NewApartment = typeof apartments.$inferInsert;
+
+// owners and ownerships — added in P1.5 (depends on pgcrypto from P1.10)
+
+export const owners = pgTable(
+  'owners',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    name: text('name').notNull(),
+    email: citext('email'),
+    nationalIdEncrypted: bytea('national_id_encrypted').notNull(),
+    nationalIdHash: text('national_id_hash').notNull(),
+    phoneEncrypted: bytea('phone_encrypted'),
+    phoneHash: text('phone_hash'),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+  },
+  (table) => ({
+    orgNationalIdHashIdx: index('idx_owners_org_natid_hash').on(table.orgId, table.nationalIdHash),
+    orgPhoneHashIdx: index('idx_owners_org_phone_hash')
+      .on(table.orgId, table.phoneHash)
+      .where(sql`phone_hash IS NOT NULL`),
+    uniqueNationalIdPerOrg: uniqueIndex('owners_org_natid_unique_active')
+      .on(table.orgId, table.nationalIdHash)
+      .where(sql`archived_at IS NULL`),
+  }),
+);
+
+export type Owner = typeof owners.$inferSelect;
+export type NewOwner = typeof owners.$inferInsert;
+
+export const ownerships = pgTable(
+  'ownerships',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    apartmentId: uuid('apartment_id')
+      .notNull()
+      .references(() => apartments.id, { onDelete: 'cascade' }),
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => owners.id, { onDelete: 'restrict' }),
+    ownershipPct: numeric('ownership_pct', { precision: 5, scale: 2 }).notNull(),
+    role: text('role'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueActive: uniqueIndex('ownerships_apt_owner_active')
+      .on(table.apartmentId, table.ownerId)
+      .where(sql`ended_at IS NULL`),
+    apartmentActiveIdx: index('idx_ownerships_apartment_active')
+      .on(table.apartmentId)
+      .where(sql`ended_at IS NULL`),
+    ownerActiveIdx: index('idx_ownerships_owner_active')
+      .on(table.ownerId)
+      .where(sql`ended_at IS NULL`),
+  }),
+);
+
+export type Ownership = typeof ownerships.$inferSelect;
+export type NewOwnership = typeof ownerships.$inferInsert;

@@ -40,7 +40,7 @@ export const providerAuditLog = pgTable(
     targetTable: text('target_table'),
     targetRecordId: uuid('target_record_id'),
     affectedOrgs: uuid('affected_orgs').array(),
-    ip: inet('ip').notNull(),
+    ip: inet('ip'),
     userAgent: text('user_agent'),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
     endedAt: timestamp('ended_at', { withTimezone: true }),

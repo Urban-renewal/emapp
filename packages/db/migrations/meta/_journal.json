@@ -15,6 +15,62 @@
       "when": 1779029147356,
       "tag": "0001_fast_old_lace",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779029349636,
+      "tag": "0002_minor_gateway",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779029968882,
+      "tag": "0003_overjoyed_sentinels",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1779030600000,
+      "tag": "0004_rls_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779031200000,
+      "tag": "0005_composite_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779030536556,
+      "tag": "0006_cool_roulette",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779031022226,
+      "tag": "0007_warm_owl",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779031800000,
+      "tag": "0008_app_user_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779032400000,
+      "tag": "0009_app_user_table_grants",
+      "breakpoints": true
     }
   ]
 }

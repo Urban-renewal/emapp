@@ -3,4 +3,6 @@ export * from './_types';
 export * from './_common';
 export * from './tenancy';
 export * from './provider';
-// projects, collaboration, artifacts — added in P1.4–P1.9
+export * from './projects';
+export * from './collaboration';
+export * from './artifacts';

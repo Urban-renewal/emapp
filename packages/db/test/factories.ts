@@ -1,4 +1,4 @@
-import { db } from '../src/client';
+import { db, providerPool } from '../src/client';
 import { projects } from '../src/schema/projects';
 import { memberships, organizations, users } from '../src/schema/tenancy';
 import { withTenant } from '../src/wrappers/with-tenant';
@@ -8,6 +8,11 @@ export interface TestOrg {
   name: string;
   projects: Array<{ id: string; name: string }>;
   users: Array<{ id: string; role: 'manager' | 'agent' }>;
+}
+
+export interface TestProviderUser {
+  id: string;
+  email: string;
 }
 
 export async function createTestOrg(name: string, slug?: string): Promise<TestOrg> {
@@ -67,4 +72,26 @@ export async function createTestOrg(name: string, slug?: string): Promise<TestOr
     projects: testProjects.map((p) => ({ id: p.id, name: p.name })),
     users: [{ id: manager.id, role: 'manager' }],
   };
+}
+
+export async function createTestProviderUser(): Promise<TestProviderUser> {
+  const client = await providerPool.connect();
+  try {
+    const result = await client.query<{ id: string; email: string }>(
+      `INSERT INTO provider_users
+         (email, name, password_hash, mfa_secret_encrypted, recovery_codes_hash)
+       VALUES ($1, $2, $3, $4, $5::jsonb)
+       RETURNING id, email`,
+      [
+        `provider-${Date.now()}@test.local`,
+        'Test Provider Admin',
+        '$2b$12$placeholder',
+        Buffer.from('test-mfa-placeholder'),
+        '[]',
+      ],
+    );
+    return result.rows[0]!;
+  } finally {
+    client.release();
+  }
 }

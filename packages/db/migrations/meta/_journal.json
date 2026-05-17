@@ -113,6 +113,13 @@
       "when": 1779036000000,
       "tag": "0015_signatures_documents_to_spec",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1779036600000,
+      "tag": "0016_better_auth_tables",
+      "breakpoints": true
     }
   ]
 }

@@ -1,30 +1,24 @@
 \# EMAPP — Progress Tracker
 
-
-
 > Claude Code: READ THIS FIRST every session. Single source of truth
 
 > for "where are we." Update after every task.
-
-
 
 \## Current Position
 
 \- \*\*Phase:\*\* 0 (Foundation)
 
-\- \*\*Next task:\*\* P0.6
+\- \*\*Next task:\*\* P0.8
 
-\- \*\*Status:\*\* in\_progress
+\- \*\*Status:\*\* in_progress
 
-\- \*\*Last completed:\*\* P0.5
+\- \*\*Last completed:\*\* P0.7
 
 \- \*\*Blocked:\*\* no
 
-
-
 \## Phase Completion Log
 
-\- \[ ] Phase 0 — Foundation (docs/04b) — 4/10 tasks (P0.2 awaiting accounts)
+\- \[ ] Phase 0 — Foundation (docs/04b) — 6/10 tasks (P0.2 awaiting accounts)
 
 \- \[ ] Phase 1 — Database (docs/04c) — 0/14 tasks
 
@@ -46,11 +40,13 @@
 
 \- \[ ] Phase 9 — Quality + Launch (docs/03 §13)
 
-
-
 \## Task Log (newest first)
 
 <!-- Claude appends: \[YYYY-MM-DD HH:MM] P0.1 ✓ — note — commit <sha> -->
+
+\[2026-05-17] P0.7 ✓ — Root vitest.config.ts + per-package configs (mergeConfig). V8 coverage (70% thresholds). @vitest/coverage-v8 + @vitest/ui at root. 23 tests green. vite-tsconfig-paths NOT used (ESM-only, incompatible with vite 5 CJS config loader). — commit 81872f5
+
+\[2026-05-17] P0.6 ✓ — ESLint (@typescript-eslint/import/security/unicorn), Prettier, lint-staged, pre-commit hook (gitleaks). pnpm lint + typecheck green across all 6 packages. — commit 2dd0d39
 
 \[2026-05-17] P0.1 ✓ — Turborepo + pnpm monorepo skeleton, Husky + commitlint verified (bad rejected / good accepted), pushed — commit 9a25e4d
 
@@ -62,11 +58,11 @@
 
 \[2026-05-17] P0.4 ✓ — NestJS 11+Fastify scaffold: health endpoint, Helmet CSP+HSTS, CORS allow-list, throttler, Sentry, pino. 2 smoke tests green. tsconfig uses module:preserve+moduleResolution:bundler for webpack compat. Full DoD (db:connected) deferred to P0.2 account setup. — commit 57075b8
 
-
-
 \## Notes / Surprises
 
 <!-- Claude writes anything the next session must know -->
+
+\- P0.7: vite-tsconfig-paths v6 is ESM-only; vite 5 config loader uses CJS require(). Do NOT add it to vitest.config.ts — it causes a startup error. If path aliasing is needed in tests, use vitest's `resolve.alias` instead.
 
 \- P0.1: env is Node v24 / pnpm 11 (doc recommends Node 20; .nvmrc pinned to 20, engines >=20 — Node 24 satisfies). `packageManager` left at pnpm@9.0.0 per doc; install worked fine on pnpm 11.
 
@@ -75,6 +71,3 @@
 \- P0.1: added .gitattributes (eol=lf) — not in the doc checklist but required so the Husky shell hook doesn't break with CRLF on Windows.
 
 \- P0.1 MANUAL FOLLOW-UP for user: "Branch protection enabled on main" (Done-When item) is a GitHub repo setting requiring admin — not done by Claude. Enable at github.com/Urban-renewal/emapp → Settings → Branches.
-
-
-

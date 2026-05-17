@@ -12,11 +12,11 @@
 
 \- \*\*Phase:\*\* 0 (Foundation)
 
-\- \*\*Next task:\*\* P0.1
+\- \*\*Next task:\*\* P0.2
 
-\- \*\*Status:\*\* not\_started
+\- \*\*Status:\*\* in\_progress
 
-\- \*\*Last completed:\*\* (none)
+\- \*\*Last completed:\*\* P0.1
 
 \- \*\*Blocked:\*\* no
 
@@ -24,7 +24,7 @@
 
 \## Phase Completion Log
 
-\- \[ ] Phase 0 — Foundation (docs/04b) — 0/10 tasks
+\- \[ ] Phase 0 — Foundation (docs/04b) — 1/10 tasks
 
 \- \[ ] Phase 1 — Database (docs/04c) — 0/14 tasks
 
@@ -52,11 +52,21 @@
 
 <!-- Claude appends: \[YYYY-MM-DD HH:MM] P0.1 ✓ — note — commit <sha> -->
 
+\[2026-05-17] P0.1 ✓ — Turborepo + pnpm monorepo skeleton, Husky + commitlint verified (bad rejected / good accepted), pushed — commit 9a25e4d
+
 
 
 \## Notes / Surprises
 
 <!-- Claude writes anything the next session must know -->
+
+\- P0.1: env is Node v24 / pnpm 11 (doc recommends Node 20; .nvmrc pinned to 20, engines >=20 — Node 24 satisfies). `packageManager` left at pnpm@9.0.0 per doc; install worked fine on pnpm 11.
+
+\- P0.1: fixed a corrupted .gitignore (it contained a literal PowerShell here-string command, not ignore rules).
+
+\- P0.1: added .gitattributes (eol=lf) — not in the doc checklist but required so the Husky shell hook doesn't break with CRLF on Windows.
+
+\- P0.1 MANUAL FOLLOW-UP for user: "Branch protection enabled on main" (Done-When item) is a GitHub repo setting requiring admin — not done by Claude. Enable at github.com/Urban-renewal/emapp → Settings → Branches.
 
 
 

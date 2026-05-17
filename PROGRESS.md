@@ -8,17 +8,17 @@
 
 \- \*\*Phase:\*\* 0 (Foundation)
 
-\- \*\*Next task:\*\* P0.8
+\- \*\*Next task:\*\* Phase 0 complete — awaiting PR review
 
-\- \*\*Status:\*\* in_progress
+\- \*\*Status:\*\* awaiting_approval
 
-\- \*\*Last completed:\*\* P0.7
+\- \*\*Last completed:\*\* P0.10
 
 \- \*\*Blocked:\*\* no
 
 \## Phase Completion Log
 
-\- \[ ] Phase 0 — Foundation (docs/04b) — 6/10 tasks (P0.2 awaiting accounts)
+\- \[x] Phase 0 — Foundation (docs/04b) — 9/10 tasks done (P0.2 awaiting Infisical accounts; all others complete)
 
 \- \[ ] Phase 1 — Database (docs/04c) — 0/14 tasks
 
@@ -44,19 +44,25 @@
 
 <!-- Claude appends: \[YYYY-MM-DD HH:MM] P0.1 ✓ — note — commit <sha> -->
 
-\[2026-05-17] P0.7 ✓ — Root vitest.config.ts + per-package configs (mergeConfig). V8 coverage (70% thresholds). @vitest/coverage-v8 + @vitest/ui at root. 23 tests green. vite-tsconfig-paths NOT used (ESM-only, incompatible with vite 5 CJS config loader). — commit 81872f5
+\[2026-05-17] P0.10 ✓ — README.md (Quick Start + structure + commands), MIGRATION.md (4-stage growth playbook), CHANGELOG.md (v0.0.1 per Keep a Changelog). Tag v0.0.1-phase0 pushed. — commit TBD
+
+\[2026-05-17] P0.9 ✓ — docker-compose.yml (postgres/redis/minio/mailhog) + .dockerignore + SKIP_ENV_VALIDATION in api builder stage. Dockerfiles pre-existed from P0.4/P0.5. — commit c6d2c3d
+
+\[2026-05-17] P0.8 ✓ — GitHub Actions CI (6 parallel jobs), CODEOWNERS, PR template, Dependabot (npm + actions weekly). — commit df893de
+
+\[2026-05-17] P0.7 ✓ — Root vitest.config.ts + per-package configs (mergeConfig). V8 coverage (70% thresholds). @vitest/coverage-v8 + @vitest/ui at root. 23 tests green. — commit 81872f5
 
 \[2026-05-17] P0.6 ✓ — ESLint (@typescript-eslint/import/security/unicorn), Prettier, lint-staged, pre-commit hook (gitleaks). pnpm lint + typecheck green across all 6 packages. — commit 2dd0d39
 
-\[2026-05-17] P0.1 ✓ — Turborepo + pnpm monorepo skeleton, Husky + commitlint verified (bad rejected / good accepted), pushed — commit 9a25e4d
+\[2026-05-17] P0.1 ✓ — Turborepo + pnpm monorepo skeleton, Husky + commitlint verified. — commit 9a25e4d
 
 \[2026-05-17] P0.2 ⏳ — .env.example committed, waiting for user to create accounts (Neon/Railway/Cloudflare/Resend/Sentry) and add secrets to Infisical.
 
-\[2026-05-17] P0.3 ✓ — 4 packages scaffolded: shared-types/db/config/validators. 21 validator tests green. typecheck clean across all. — commit on phase-0
+\[2026-05-17] P0.3 ✓ — 4 packages scaffolded: shared-types/db/config/validators. 21 validator tests green. — commit on phase-0
 
-\[2026-05-17] P0.5 ✓ — Next.js 15 App Router: RTL+Heebo, next-intl (he/en), shadcn Button, Sentry instrumentation. build ✓ (102kB). standalone gated to NEXT_OUTPUT=standalone (Docker only). — commit 3ca4894
+\[2026-05-17] P0.5 ✓ — Next.js 15 App Router: RTL+Heebo, next-intl (he/en), shadcn Button, Sentry. — commit 3ca4894
 
-\[2026-05-17] P0.4 ✓ — NestJS 11+Fastify scaffold: health endpoint, Helmet CSP+HSTS, CORS allow-list, throttler, Sentry, pino. 2 smoke tests green. tsconfig uses module:preserve+moduleResolution:bundler for webpack compat. Full DoD (db:connected) deferred to P0.2 account setup. — commit 57075b8
+\[2026-05-17] P0.4 ✓ — NestJS 11+Fastify scaffold: health endpoint, Helmet CSP+HSTS, CORS, throttler, Sentry, pino. 2 smoke tests green. — commit 57075b8
 
 \## Notes / Surprises
 
@@ -64,10 +70,14 @@
 
 \- P0.7: vite-tsconfig-paths v6 is ESM-only; vite 5 config loader uses CJS require(). Do NOT add it to vitest.config.ts — it causes a startup error. If path aliasing is needed in tests, use vitest's `resolve.alias` instead.
 
+\- P0.2 MANUAL FOLLOW-UP: User must create cloud accounts (Railway, Neon, Cloudflare R2, Resend, Sentry) and add secrets to Infisical. Until then, use SKIP_ENV_VALIDATION=true for local dev.
+
 \- P0.1: env is Node v24 / pnpm 11 (doc recommends Node 20; .nvmrc pinned to 20, engines >=20 — Node 24 satisfies). `packageManager` left at pnpm@9.0.0 per doc; install worked fine on pnpm 11.
 
 \- P0.1: fixed a corrupted .gitignore (it contained a literal PowerShell here-string command, not ignore rules).
 
 \- P0.1: added .gitattributes (eol=lf) — not in the doc checklist but required so the Husky shell hook doesn't break with CRLF on Windows.
 
-\- P0.1 MANUAL FOLLOW-UP for user: "Branch protection enabled on main" (Done-When item) is a GitHub repo setting requiring admin — not done by Claude. Enable at github.com/Urban-renewal/emapp → Settings → Branches.
+\- P0.1 MANUAL FOLLOW-UP for user: "Branch protection enabled on main" — GitHub Settings → Branches. Enable required status checks: typecheck, lint, test, build, secrets-scan, audit.
+
+\- P0.8 MANUAL FOLLOW-UP for user: CODEOWNERS uses @Urban-renewal/dev team. Create this GitHub team and add members, OR replace with individual GitHub usernames.

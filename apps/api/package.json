@@ -32,12 +32,12 @@
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.0",
-    "@types/node": "^20.0.0",
+    "@types/node": "^25.8.0",
     "@types/webpack-node-externals": "^3.0.4",
     "fastify": "^5.0.0",
     "ts-loader": "^9.5.7",
     "ts-node": "^10.9.0",
-    "vitest": "^2.1.9",
+    "vitest": "^4.1.6",
     "webpack-node-externals": "^3.0.0"
   }
 }

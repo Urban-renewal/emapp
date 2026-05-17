@@ -46,6 +46,8 @@
 
 <!-- Claude appends: [YYYY-MM-DD HH:MM] P0.1 ✓ — note — commit <sha> -->
 
+[2026-05-17] P1 spec-alignment ✓ — Reverted an unauthorized Gate-2/Gate-6 deviation (0010 buildings/apartments org_id denormalization) back to spec Template B (0011); closed pre-existing spec gaps: cache/env/withTenant to spec, verifyEncryptionStartup (P1.10), 0012 project_status→D.18, 0013 he_il_icu collation (D.11), 0014 audit_log→spec §12.4, 0015 signatures+documents→spec §4/P1.8/D.12. 52/52 T1.x green. — commit 9f27b25
+
 [2026-05-17] P1.3-P1.14 ✓ — Full Phase 1: schema (collaboration/artifacts/share-permissions), migrations 0002-0009 (RLS policies, composite indexes, app_user grants), withTenant (SET LOCAL ROLE app_user), withProvider (provider_audit_log), 6 provider interfaces + impls, PII helpers, T1.5 (7 RLS tests) + T1.9 (3 rollback tests) all green. — commit a911ef8
 
 [2026-05-17] P1.1 ✓ — Drizzle setup: pg client, T3-env, 6 pgEnums, bytea/citext/inet types, commonColumns/tenantColumns, full scaffold (schema/wrappers/audit/providers), placeholder T1.5-T1.9 tests. Removed connection.ts, updated API health controller. — commit 697b827
@@ -74,7 +76,15 @@
 
 <!-- Claude writes anything the next session must know -->
 
-- P1.1: PROVIDER_DATABASE_URL and PII_ENCRYPTION_KEY/PII_HASH_KEY are optional in db/src/env.ts for now. They become required when implementing P1.13 (withProvider) and P1.5 (PII encryption). Must add to Infisical before those tasks.
+- P1 spec-alignment: PII_ENCRYPTION_KEY/PII_HASH_KEY are now REQUIRED `z.string().length(44)` in db/src/env.ts (spec §4). Added to Infisical **dev** 2026-05-17. STILL TO DO (§15.5): add distinct keys to Infisical **staging** and **production** before those envs run; keys must differ per environment and never be the dev value.
+
+- DOC BUG (for the user to fix in docs/04c + docs/DECISIONS): doc 04c text and `_enums.ts` originally used project_status `permits/construction/archived`, which contradicts D.18 (LAW) `approved/in_construction/cancelled`. Code is now D.18-correct (migration 0012). The HTML doc text still says permits/construction/archived — update the doc so it matches D.18.
+
+- TEST-INFRA DEBT (Phase 1 follow-up): vitest runs the 9 T1.x spec files in parallel; each calls `setupTestDatabase()` → concurrent drizzle `migrate()`. New migrations race (TOCTOU on catalog/DDL even with IF EXISTS guards). Current workaround: apply new migrations once serially via `scripts/apply-migration-00NN.ts` (which also inserts drizzle tracking rows so the migrator no-ops). Proper fix: a vitest `globalSetup` that runs migrations once before workers; then delete the one-off apply scripts. Until then, every NEW migration needs a serial apply script run before `pnpm test`.
+
+- Drizzle migrator tracks "applied" by journal `when` vs max `created_at` in `drizzle.__drizzle_migrations`. The one-off apply scripts insert `(hash=<tag>, created_at=<when>)`; this is enough to make the migrator skip them (it compares created_at, not the SHA256 content hash for the skip decision).
+
+- P1.1: PROVIDER_DATABASE_URL is optional in db/src/env.ts (falls back to DATABASE_URL when unset).
 
 - P1.1: connection.ts removed; replaced by client.ts (pg Pool + drizzle/node-postgres). API health controller updated accordingly. Both use the `db` singleton directly; withTenant/withProvider wrappers in P1.13 will be the only external access path.
 

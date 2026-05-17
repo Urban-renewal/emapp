@@ -2,7 +2,7 @@ import { createEnv } from '@t3-oss/env-core';
 import { z } from 'zod';
 
 export const env = createEnv({
-  skipValidation: !!process.env['SKIP_ENV_VALIDATION'],
+  skipValidation: !!process.env['SKIP_ENV_VALIDATION'] || process.env['NODE_ENV'] === 'test',
   server: {
     DATABASE_URL: z.string().url(),
     PROVIDER_DATABASE_URL: z.string().url().optional(),

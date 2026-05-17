@@ -27,6 +27,7 @@ COPY tsconfig.json ./
 COPY packages/ ./packages/
 COPY apps/api/ ./apps/api/
 
+ENV SKIP_ENV_VALIDATION=true
 RUN pnpm --filter @emapp/api build
 
 # ── runner stage ──────────────────────────────────────────────────────────────

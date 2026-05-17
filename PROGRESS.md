@@ -12,11 +12,11 @@
 
 \- \*\*Phase:\*\* 0 (Foundation)
 
-\- \*\*Next task:\*\* P0.2
+\- \*\*Next task:\*\* P0.4
 
 \- \*\*Status:\*\* in\_progress
 
-\- \*\*Last completed:\*\* P0.1
+\- \*\*Last completed:\*\* P0.3 (P0.2 blocked — awaiting user account setup)
 
 \- \*\*Blocked:\*\* no
 
@@ -24,7 +24,7 @@
 
 \## Phase Completion Log
 
-\- \[ ] Phase 0 — Foundation (docs/04b) — 1/10 tasks
+\- \[ ] Phase 0 — Foundation (docs/04b) — 2/10 tasks (P0.2 code done, awaiting accounts)
 
 \- \[ ] Phase 1 — Database (docs/04c) — 0/14 tasks
 
@@ -53,6 +53,10 @@
 <!-- Claude appends: \[YYYY-MM-DD HH:MM] P0.1 ✓ — note — commit <sha> -->
 
 \[2026-05-17] P0.1 ✓ — Turborepo + pnpm monorepo skeleton, Husky + commitlint verified (bad rejected / good accepted), pushed — commit 9a25e4d
+
+\[2026-05-17] P0.2 ⏳ — .env.example committed, waiting for user to create accounts (Neon/Railway/Cloudflare/Resend/Sentry) and add secrets to Infisical.
+
+\[2026-05-17] P0.3 ✓ — 4 packages scaffolded: shared-types/db/config/validators. 21 validator tests green. typecheck clean across all. — commit on phase-0
 
 
 

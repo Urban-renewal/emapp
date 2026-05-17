@@ -1,4 +1,5 @@
-export * from './_enums.js';
-export * from './_types.js';
-export * from './_common.js';
-// tenancy, provider, projects, collaboration, artifacts — added in P1.2–P1.9
+export * from './_enums';
+export * from './_types';
+export * from './_common';
+export * from './tenancy';
+// provider, projects, collaboration, artifacts — added in P1.3–P1.9

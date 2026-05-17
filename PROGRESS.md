@@ -1,0 +1,62 @@
+\# EMAPP — Progress Tracker
+
+
+
+> Claude Code: READ THIS FIRST every session. Single source of truth
+
+> for "where are we." Update after every task.
+
+
+
+\## Current Position
+
+\- \*\*Phase:\*\* 0 (Foundation)
+
+\- \*\*Next task:\*\* P0.1
+
+\- \*\*Status:\*\* not\_started
+
+\- \*\*Last completed:\*\* (none)
+
+\- \*\*Blocked:\*\* no
+
+
+
+\## Phase Completion Log
+
+\- \[ ] Phase 0 — Foundation (docs/04b) — 0/10 tasks
+
+\- \[ ] Phase 1 — Database (docs/04c) — 0/14 tasks
+
+\- \[ ] Phase 2 — Auth + Multi-tenant + Tenant SMS OTP (docs/03 §6)
+
+\- \[ ] Phase 3 — Domain API (docs/03 §7)
+
+\- \[ ] Phase 4 — Documents (docs/03 §8)
+
+\- \[ ] Phase 5 — Signatures (docs/03 §9)
+
+\- \[ ] Phase 6 — Import (docs/03 §10)
+
+\- \[ ] Phase 6.5 — Provider Admin tool (docs/03 §10.5)
+
+\- \[ ] Phase 7 — Export (docs/03 §11)
+
+\- \[ ] Phase 8 — Frontend polish + Tenant portal (docs/03 §12)
+
+\- \[ ] Phase 9 — Quality + Launch (docs/03 §13)
+
+
+
+\## Task Log (newest first)
+
+<!-- Claude appends: \[YYYY-MM-DD HH:MM] P0.1 ✓ — note — commit <sha> -->
+
+
+
+\## Notes / Surprises
+
+<!-- Claude writes anything the next session must know -->
+
+
+

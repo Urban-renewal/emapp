@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DECISIONS · EMAPP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #fafaf9;
+  --bg-card: #ffffff;
+  --bg-subtle: #f5f5f4;
+  --bg-dark: #0c0a09;
+  --text: #0c0a09;
+  --text-subtle: #44403c;
+  --text-muted: #78716c;
+  --primary: #0f766e;
+  --primary-hover: #0d5e57;
+  --primary-light: #ccfbf1;
+  --primary-border: #5eead4;
+  --accent: #b45309;
+  --accent-light: #fef3c7;
+  --success: #15803d;
+  --success-light: #f0fdf4;
+  --success-border: #bbf7d0;
+  --warning: #b45309;
+  --warning-light: #fffbeb;
+  --warning-border: #fde68a;
+  --danger: #b91c1c;
+  --danger-light: #fef2f2;
+  --danger-border: #fecaca;
+  --gold: #ca8a04;
+  --gold-light: #fef9c3;
+  --border: #e7e5e4;
+  --border-strong: #d6d3d1;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.04);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.06), 0 4px 6px -4px rgb(0 0 0 / 0.04);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.04);
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+
+body {
+  font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.75;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  min-height: 100vh;
+}
+
+/* === Sidebar === */
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  background: white;
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 32px 0;
+}
+
+.sidebar-header {
+  padding: 0 28px 24px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+}
+
+.sidebar-doc-num {
+  display: inline-block;
+  background: var(--primary);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  letter-spacing: 0.05em;
+}
+
+.sidebar-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.3;
+  margin-bottom: 6px;
+}
+
+.sidebar-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.toc { list-style: none; padding: 0 14px; }
+.toc-item { margin-bottom: 2px; }
+
+.toc-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  color: var(--text-subtle);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+.toc-link:hover { background: var(--bg-subtle); color: var(--text); }
+.toc-link.active { background: var(--primary-light); color: var(--primary); font-weight: 700; }
+
+.toc-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  background: var(--bg-subtle);
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-subtle);
+  flex-shrink: 0;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.toc-link.active .toc-num { background: var(--primary); color: white; }
+
+.toc-divider {
+  margin: 16px 14px;
+  padding: 8px 14px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+/* === Main === */
+.main { padding: 64px 80px 120px; max-width: 1100px; width: 100%; }
+
+/* === Hero === */
+.hero {
+  margin-bottom: 80px;
+  position: relative;
+}
+
+.hero-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.hero-doc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: var(--bg-dark);
+  color: white;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.hero-doc-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: var(--primary);
+  border-radius: 50%;
+}
+
+.hero-tag {
+  display: inline-block;
+  padding: 6px 14px;
+  background: var(--primary-light);
+  color: var(--primary);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.hero-title {
+  font-size: 56px;
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  margin-bottom: 20px;
+  background: linear-gradient(135deg, #0c0a09 0%, #0f766e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-lede {
+  font-size: 22px;
+  color: var(--text-subtle);
+  font-weight: 400;
+  line-height: 1.5;
+  max-width: 780px;
+  margin-bottom: 40px;
+}
+
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  border-top: 2px solid var(--border);
+  border-bottom: 2px solid var(--border);
+  padding: 24px 0;
+}
+
+.hero-stat {
+  border-left: 1px solid var(--border);
+  padding: 0 24px;
+}
+
+.hero-stat:last-child { border-left: none; padding-left: 0; }
+.hero-stat:first-child { padding-right: 0; }
+
+.hero-stat-num {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--primary);
+  line-height: 1;
+  margin-bottom: 6px;
+  letter-spacing: -0.02em;
+}
+
+.hero-stat-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* === Sections === */
+section {
+  margin-bottom: 96px;
+  scroll-margin-top: 32px;
+}
+
+.section-header {
+  margin-bottom: 40px;
+}
+
+.section-num {
+  display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+}
+
+.section-title {
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin-bottom: 12px;
+}
+
+.section-lede {
+  font-size: 17px;
+  color: var(--text-subtle);
+  max-width: 720px;
+  line-height: 1.6;
+}
+
+h3 {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 56px 0 20px;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+h4 {
+  font-size: 19px;
+  font-weight: 700;
+  margin: 32px 0 14px;
+  color: var(--text);
+}
+
+p {
+  margin-bottom: 16px;
+  color: var(--text-subtle);
+  line-height: 1.8;
+  font-size: 16px;
+}
+
+p strong, li strong { color: var(--text); font-weight: 700; }
+
+/* === Lead Paragraph === */
+.lead {
+  font-size: 19px;
+  line-height: 1.7;
+  color: var(--text-subtle);
+  margin-bottom: 24px;
+  font-weight: 400;
+}
+
+.lead strong { color: var(--text); font-weight: 600; }
+
+/* === Cards === */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.card-elevated {
+  box-shadow: var(--shadow);
+}
+
+.card-dark {
+  background: var(--bg-dark);
+  color: white;
+  border: none;
+}
+
+.card-dark p { color: rgba(255,255,255,0.85); }
+.card-dark strong { color: white; }
+.card-dark .card-eyebrow { color: var(--primary-border); }
+.card-dark h4 { color: white; }
+
+.card-eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+/* === Pillar Cards === */
+.pillars {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin: 32px 0;
+}
+
+.pillar {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.pillar:hover {
+  border-color: var(--primary-border);
+  box-shadow: var(--shadow);
+  transform: translateY(-2px);
+}
+
+.pillar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--primary), var(--primary-hover));
+}
+
+.pillar-icon {
+  width: 48px;
+  height: 48px;
+  background: var(--primary-light);
+  color: var(--primary);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin-bottom: 16px;
+}
+
+.pillar-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  letter-spacing: -0.01em;
+}
+
+.pillar-desc {
+  font-size: 15px;
+  color: var(--text-subtle);
+  line-height: 1.7;
+}
+
+/* === Number List === */
+.num-list {
+  list-style: none;
+  padding: 0;
+  counter-reset: num;
+}
+
+.num-list li {
+  counter-increment: num;
+  padding-right: 60px;
+  position: relative;
+  margin-bottom: 24px;
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--text-subtle);
+}
+
+.num-list li::before {
+  content: counter(num, decimal-leading-zero);
+  position: absolute;
+  right: 0;
+  top: -2px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--primary);
+  background: var(--primary-light);
+  padding: 4px 10px;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+/* === Lists === */
+ul, ol { margin-right: 0; padding-right: 22px; }
+li { margin-bottom: 10px; color: var(--text-subtle); line-height: 1.75; }
+
+ul.clean { list-style: none; padding-right: 0; }
+ul.clean li { padding-right: 28px; position: relative; }
+ul.clean li::before {
+  content: "›";
+  position: absolute;
+  right: 0;
+  top: -2px;
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 18px;
+}
+
+ul.checks { list-style: none; padding-right: 0; }
+ul.checks li { padding-right: 32px; position: relative; }
+ul.checks li::before {
+  content: "✓";
+  position: absolute;
+  right: 4px;
+  top: 2px;
+  color: var(--success);
+  font-weight: 800;
+  font-size: 16px;
+}
+
+ul.crosses { list-style: none; padding-right: 0; }
+ul.crosses li { padding-right: 32px; position: relative; }
+ul.crosses li::before {
+  content: "✕";
+  position: absolute;
+  right: 4px;
+  top: 2px;
+  color: var(--danger);
+  font-weight: 800;
+}
+
+/* === Comparison Grid === */
+.comparison-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 24px 0;
+}
+
+.comparison-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  background: white;
+}
+
+.comparison-item.bad {
+  background: var(--danger-light);
+  border-color: var(--danger-border);
+}
+
+.comparison-item.good {
+  background: var(--success-light);
+  border-color: var(--success-border);
+}
+
+.comparison-item h5 {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.comparison-item.bad h5 { color: var(--danger); }
+.comparison-item.good h5 { color: var(--success); }
+
+/* === Tables === */
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 24px 0;
+  background: white;
+  box-shadow: var(--shadow-sm);
+}
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+
+th {
+  background: var(--bg-subtle);
+  text-align: right;
+  padding: 14px 18px;
+  font-weight: 700;
+  color: var(--text);
+  border-bottom: 2px solid var(--border);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+td {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-subtle);
+  vertical-align: top;
+}
+
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--bg-subtle); }
+
+td code { font-size: 12px; }
+
+td.highlight { color: var(--primary); font-weight: 600; }
+
+/* === Code === */
+code {
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg-subtle);
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+  border: 1px solid var(--border);
+}
+
+/* === Callouts === */
+.callout {
+  padding: 20px 24px;
+  border-radius: var(--radius);
+  margin: 24px 0;
+  border-right: 4px solid;
+  background: white;
+  border: 1px solid var(--border);
+  position: relative;
+}
+
+.callout-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.callout-body { font-size: 15px; color: var(--text-subtle); line-height: 1.75; }
+
+.callout.danger { background: var(--danger-light); border-right-color: var(--danger); border-color: var(--danger-border); }
+.callout.danger .callout-title { color: var(--danger); }
+.callout.warning { background: var(--warning-light); border-right-color: var(--warning); border-color: var(--warning-border); }
+.callout.warning .callout-title { color: var(--warning); }
+.callout.success { background: var(--success-light); border-right-color: var(--success); border-color: var(--success-border); }
+.callout.success .callout-title { color: var(--success); }
+.callout.info { background: var(--primary-light); border-right-color: var(--primary); border-color: var(--primary-border); }
+.callout.info .callout-title { color: var(--primary); }
+.callout.gold { background: var(--gold-light); border-right-color: var(--gold); border-color: var(--gold); }
+.callout.gold .callout-title { color: var(--gold); }
+
+/* === Quote === */
+.pullquote {
+  font-size: 26px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--text);
+  padding: 32px 40px;
+  border-right: 4px solid var(--primary);
+  margin: 40px 0;
+  background: var(--bg-card);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  letter-spacing: -0.01em;
+}
+
+.pullquote::before {
+  content: "”";
+  font-size: 80px;
+  color: var(--primary);
+  font-weight: 900;
+  line-height: 0;
+  vertical-align: -32px;
+  margin-left: 8px;
+}
+
+/* === Stats === */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin: 32px 0;
+}
+
+.stat-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  text-align: center;
+}
+
+.stat-card-num {
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--primary);
+  line-height: 1;
+  margin-bottom: 8px;
+  letter-spacing: -0.02em;
+}
+
+.stat-card-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* === Persona === */
+.persona-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 24px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  margin-bottom: 16px;
+  align-items: start;
+}
+
+.persona-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.persona-name {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.persona-role {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.persona-content {
+  font-size: 15px;
+  color: var(--text-subtle);
+  line-height: 1.7;
+}
+
+.persona-pains {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+}
+
+.persona-pains-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--danger);
+  margin-bottom: 8px;
+  letter-spacing: 0.05em;
+}
+
+.persona-pains ul {
+  list-style: none;
+  padding: 0;
+  font-size: 14px;
+}
+
+.persona-pains ul li {
+  padding-right: 22px;
+  position: relative;
+  margin-bottom: 6px;
+}
+
+.persona-pains ul li::before {
+  content: "·";
+  position: absolute;
+  right: 8px;
+  color: var(--danger);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* === Roadmap === */
+.roadmap {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  margin: 32px 0;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.roadmap-phase {
+  padding: 24px;
+  border-left: 1px solid var(--border);
+  position: relative;
+}
+
+.roadmap-phase:last-child { border-left: none; }
+
+.roadmap-phase-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.roadmap-phase-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  letter-spacing: -0.01em;
+}
+
+.roadmap-phase-time {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.roadmap-phase-desc {
+  font-size: 13px;
+  color: var(--text-subtle);
+  line-height: 1.6;
+}
+
+.roadmap-phase.active {
+  background: var(--primary-light);
+}
+
+.roadmap-phase.active .roadmap-phase-num {
+  color: var(--primary-hover);
+}
+
+/* === Diagram === */
+.diagram {
+  background: var(--bg-dark);
+  color: #f5f5f4;
+  padding: 28px;
+  border-radius: var(--radius-lg);
+  margin: 24px 0;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.8;
+  direction: ltr;
+  text-align: left;
+}
+
+.diagram .label { color: var(--primary-border); }
+.diagram .arrow { color: var(--gold); }
+
+/* === Badges === */
+.badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.badge.primary { background: var(--primary-light); color: var(--primary); border: 1px solid var(--primary-border); }
+.badge.success { background: var(--success-light); color: var(--success); border: 1px solid var(--success-border); }
+.badge.warning { background: var(--warning-light); color: var(--warning); border: 1px solid var(--warning-border); }
+.badge.danger { background: var(--danger-light); color: var(--danger); border: 1px solid var(--danger-border); }
+.badge.gold { background: var(--gold-light); color: var(--gold); border: 1px solid var(--gold); }
+
+/* === Footer === */
+footer {
+  margin-top: 96px;
+  padding: 40px 0;
+  border-top: 2px solid var(--border);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+footer .footer-meta {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+/* === Responsive === */
+@media (max-width: 1024px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { position: relative; height: auto; border-left: none; border-bottom: 1px solid var(--border); }
+  .main { padding: 40px 24px 64px; }
+  .pillars { grid-template-columns: 1fr; }
+  .comparison-grid { grid-template-columns: 1fr; }
+  .stat-grid { grid-template-columns: 1fr; }
+  .roadmap { grid-template-columns: 1fr; }
+  .roadmap-phase { border-left: none; border-bottom: 1px solid var(--border); }
+  .hero-title { font-size: 36px; }
+  .hero-stats { grid-template-columns: 1fr 1fr; }
+  .hero-stat { border-left: none; border-bottom: 1px solid var(--border); padding: 16px 0; }
+}
+
+@media print {
+  .sidebar { display: none; }
+  .app { grid-template-columns: 1fr; }
+  .main { padding: 0; max-width: 100%; }
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+</style>
+<style>
+/* working-doc specific tweaks */
+.content { max-width: 920px; margin: 0 auto; padding: 56px 64px 120px; }
+.content h1 { font-size: 2.1rem; font-weight: 800; margin: 0 0 8px; color: var(--text); letter-spacing: -0.02em; }
+.content h2 { font-size: 1.5rem; font-weight: 700; margin: 48px 0 16px; padding-top: 24px; border-top: 2px solid var(--border); color: var(--primary); }
+.content h2:first-of-type { border-top: none; padding-top: 0; }
+.content h3 { font-size: 1.18rem; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+.content h4 { font-size: 1.02rem; font-weight: 600; margin: 24px 0 10px; color: var(--text-subtle); }
+.content p { margin: 0 0 16px; color: var(--text-subtle); }
+.content ul, .content ol { margin: 0 0 18px; padding-inline-start: 26px; color: var(--text-subtle); }
+.content li { margin: 6px 0; }
+.content strong { color: var(--text); font-weight: 700; }
+.content code { font-family: 'JetBrains Mono', monospace; font-size: 0.86em; background: var(--primary-light); color: var(--primary-hover); padding: 2px 7px; border-radius: var(--radius-sm); direction: ltr; display: inline-block; }
+.content pre { background: var(--bg-dark); color: #e7e5e4; padding: 20px 24px; border-radius: var(--radius); overflow-x: auto; margin: 0 0 20px; direction: ltr; text-align: left; box-shadow: var(--shadow); }
+.content pre code { background: none; color: inherit; padding: 0; font-size: 0.84rem; line-height: 1.7; display: block; }
+.content table { width: 100%; border-collapse: collapse; margin: 0 0 24px; font-size: 0.92rem; box-shadow: var(--shadow-sm); border-radius: var(--radius); overflow: hidden; }
+.content th { background: var(--primary); color: white; padding: 12px 16px; text-align: right; font-weight: 600; }
+.content td { padding: 11px 16px; border-bottom: 1px solid var(--border); background: var(--bg-card); }
+.content tr:last-child td { border-bottom: none; }
+.content blockquote { border-inline-start: 4px solid var(--gold); background: var(--gold-light); padding: 14px 20px; margin: 0 0 20px; border-radius: var(--radius-sm); color: var(--text-subtle); }
+.content blockquote p { margin: 0; }
+.content hr { border: none; border-top: 2px solid var(--border); margin: 40px 0; }
+.content a { color: var(--primary); text-decoration: none; border-bottom: 1px solid var(--primary-border); }
+.doc-hero { background: linear-gradient(135deg, var(--bg-dark), #1c1917); color: white; padding: 44px 64px; margin: -56px -64px 48px; }
+.doc-hero h1 { color: white; font-size: 2.3rem; }
+.doc-hero .sub { color: #a8a29e; font-size: 1.05rem; margin-top: 8px; }
+.doc-hero .tag { display: inline-block; background: var(--primary); color: white; padding: 5px 14px; border-radius: 999px; font-size: 0.82rem; font-weight: 600; margin-top: 16px; }
+.layout { display: grid; grid-template-columns: 1fr; min-height: 100vh; }
+@media (max-width: 980px) { .content { padding: 32px 24px 80px; } .doc-hero { padding: 32px 24px; margin: -32px -24px 32px; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<div class="content">
+<div class="doc-hero">
+<h1>יומן החלטות ארכיטקטורה</h1>
+<div class="sub">D.01–D.20 · למה כל החלטה</div>
+<div class="tag">EMAPP · Decisions Log</div>
+</div>
+<p><strong>Purpose:</strong> One place for every architectural decision worth more than 5 minutes of discussion. Each entry: what, when, why, alternatives, reversibility, revisit trigger.</p>
+<p><strong>How to use:</strong> When you make a decision, add an entry the same day (don't batch — see WORKFLOW.md §A.4). When someone asks "why did we do X?", point them here. When tempted to reverse a decision, read its entry first.</p>
+<p><strong>Format:</strong></p>
+<pre><code>## D.NN — Title
+Date · Decision · Alternatives · Why · Reversibility · Revisit trigger
+</code></pre>
+<p><strong>Last updated:</strong> 2026-05-16 — D.16-D.20 propagated across all 9 planning docs (envelope, /api/v1/, 6 roles, status enum, national_id, Tenant→SMS).</p>
+<hr />
+<h2>D.01 — Stack: Neon + Railway + Cloudflare + Resend + Sentry</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05 (v2 architecture)</li>
+<li><strong>Decision:</strong> MVP runs on Neon (Postgres), Railway (BE + Worker containers), Cloudflare (R2 storage + Pages hosting), Resend (email), Sentry (monitoring). GitHub for code + CI.</li>
+<li><strong>Alternatives:</strong> AWS (RDS+ECS+S3+SES), Vercel+Supabase, Koyeb (was in v1), Render, Fly.io.</li>
+<li><strong>Why:</strong> Lowest operational overhead for a 2-person team; generous free tiers ($0-6/mo at MVP scale); each service swappable via the interface layer (Doc 02 §6). Neon's branching is excellent for migration testing. Railway's container model fits BE+Worker cleanly.</li>
+<li><strong>Reversibility:</strong> Medium (interface layer protects app code; infra config would change).</li>
+<li><strong>Revisit trigger:</strong> ~50 paying orgs (cost), or a provider degrades materially.</li>
+<li><strong>Ref:</strong> Doc 02 §4</li>
+</ul>
+<h2>D.02 — ORM: Drizzle (not Prisma)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05</li>
+<li><strong>Decision:</strong> Drizzle ORM for all DB access.</li>
+<li><strong>Alternatives:</strong> Prisma, Kysely, raw SQL with pg.</li>
+<li><strong>Why:</strong> Generates readable SQL (no opaque engine binary), no runtime query-engine overhead, native-feeling TypeScript types, migrations are owned files. Prisma's engine binary added edge-deploy complexity.</li>
+<li><strong>Reversibility:</strong> Hard (ORM switch = rewrite all queries).</li>
+<li><strong>Revisit trigger:</strong> Drizzle abandons maintenance, or a blocking bug with no workaround.</li>
+<li><strong>Ref:</strong> Doc 02 §4.3, Doc 04a §2.6 C.01</li>
+</ul>
+<h2>D.03 — Auth: Better Auth (not Clerk/Auth0)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05</li>
+<li><strong>Decision:</strong> Better Auth, self-hosted in our codebase.</li>
+<li><strong>Alternatives:</strong> Clerk, Auth0, Lucia, hand-rolled.</li>
+<li><strong>Why:</strong> Full control over the auth flow + data; no per-MAU pricing that punishes growth; MFA, magic links, sessions all supported; PII stays in our DB (important for Israeli privacy posture).</li>
+<li><strong>Reversibility:</strong> Hard (auth touches every request path).</li>
+<li><strong>Revisit trigger:</strong> Enterprise SSO/SAML demand that Better Auth can't meet (Phase 2+).</li>
+<li><strong>Ref:</strong> Doc 02 §4.4, Doc 07 §6</li>
+</ul>
+<h2>D.04 — Cache: PostgresCacheProvider in MVP (not Redis)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05</li>
+<li><strong>Decision:</strong> <code>ICacheProvider</code> implemented with a Postgres <code>cache_kv</code> table in MVP. Upstash Redis deferred to Growth.</li>
+<li><strong>Alternatives:</strong> Upstash Redis from day 1, self-hosted Redis, Memcached.</li>
+<li><strong>Why:</strong> Minimal Runtime principle — one fewer service. Postgres handles MVP cache load (~10k ops/sec) easily. Interface lets us swap to Upstash with no app-code change.</li>
+<li><strong>Reversibility:</strong> Easy (swap the ICacheProvider implementation).</li>
+<li><strong>Revisit trigger:</strong> ~10 paying orgs, or cache_kv p95 &gt; 10ms.</li>
+<li><strong>Ref:</strong> Doc 02 §4.5, §14.4, Doc 04a §2.6 C.02</li>
+</ul>
+<h2>D.05 — Provider tier: separate DB role + table (not is_admin boolean)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05</li>
+<li><strong>Decision:</strong> EMAPP-internal access is a structurally separate tier — <code>provider_users</code> table, <code>provider_app_role</code> DB role with BYPASSRLS, <code>withProvider()</code> wrapper, MFA mandatory, all access audited.</li>
+<li><strong>Alternatives:</strong> <code>is_admin</code> boolean on <code>users</code>; a "superadmin" org; impersonation.</li>
+<li><strong>Why:</strong> A boolean flag is one bug away from privilege escalation. Structural separation means a customer JWT can never reach provider data even if RBAC has a bug. Defense in depth.</li>
+<li><strong>Reversibility:</strong> Hard (schema + auth + RLS all depend on it).</li>
+<li><strong>Revisit trigger:</strong> Never (this is foundational).</li>
+<li><strong>Ref:</strong> Doc 02 §10, Doc 07 §11, Doc 04c P1.3, Doc 04a §2.6 C.03</li>
+</ul>
+<h2>D.06 — PII encryption: pgcrypto field-level (not disk-only)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05</li>
+<li><strong>Decision:</strong> <code>national_id</code> and <code>phone</code> and <code>signature_blob</code> encrypted at the field level via pgcrypto, with a separate <code>PII_HASH_KEY</code> for HMAC search. Two distinct keys.</li>
+<li><strong>Alternatives:</strong> Disk encryption only (Neon default), app-level encryption, no encryption.</li>
+<li><strong>Why:</strong> Disk encryption doesn't protect against a leaked connection string. Field-level means a DB dump without the key is useless. HMAC enables search without decryption.</li>
+<li><strong>Reversibility:</strong> Hard (re-encryption ceremony required — Doc 07 §14).</li>
+<li><strong>Revisit trigger:</strong> Never routinely. Only on confirmed key compromise.</li>
+<li><strong>Ref:</strong> Doc 07 §5, §14, Doc 04c P1.5</li>
+</ul>
+<h2>D.07 — Soft delete: archivedAt (not deletedAt)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05 (v2 rename)</li>
+<li><strong>Decision:</strong> Soft delete uses <code>archived_at</code> timestamp. UI verb is "ארכוב" (archive), never "מחיקה" (delete). Hard delete is a Provider-only audited operation.</li>
+<li><strong>Alternatives:</strong> <code>deleted_at</code> (v1 name), hard delete, status enum.</li>
+<li><strong>Why:</strong> "Archive" communicates recoverability to users; legal/audit requirements forbid true deletion of signature/owner data; the rename from v1 avoids the implication that data is gone.</li>
+<li><strong>Reversibility:</strong> Easy (it's a naming + UX convention).</li>
+<li><strong>Revisit trigger:</strong> Never expected.</li>
+<li><strong>Ref:</strong> Doc 04c §4, Doc 05 §16, Doc 06 §16</li>
+</ul>
+<h2>D.08 — Buildings/Owners: single table with enum (not CTI)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05 (v2 simplification)</li>
+<li><strong>Decision:</strong> One <code>buildings</code> table with a <code>type</code> enum; one <code>owners</code> table with a <code>type</code> discriminated union. No Class-Table-Inheritance child tables.</li>
+<li><strong>Alternatives:</strong> v1's CTI (residential_buildings / mixed_use_buildings / commercial_buildings; individual_owners / company_owners / inheritance_owners).</li>
+<li><strong>Why:</strong> CTI added join complexity and bug surface for marginal modeling benefit at MVP scale. Single table + enum + Zod discriminated union is simpler and faster.</li>
+<li><strong>Reversibility:</strong> Medium (could split later if a type's fields diverge significantly).</li>
+<li><strong>Revisit trigger:</strong> A building/owner type accumulates many type-specific columns.</li>
+<li><strong>Ref:</strong> Doc 04c §4, Doc 06 §16.1</li>
+</ul>
+<h2>D.09 — RLS: ENABLE + FORCE on all multi-tenant tables</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05</li>
+<li><strong>Decision:</strong> Every multi-tenant table has <code>ENABLE ROW LEVEL SECURITY</code> + <code>FORCE ROW LEVEL SECURITY</code>. <code>app_user</code> is not the table owner. Org context set via <code>SET LOCAL app.organization_id</code>.</li>
+<li><strong>Alternatives:</strong> App-level WHERE filters, separate schema per tenant, separate DB per tenant.</li>
+<li><strong>Why:</strong> RLS is enforced by Postgres even if app code has a bug. FORCE ensures it applies even to the table owner. The single highest-leverage tenant-isolation control.</li>
+<li><strong>Reversibility:</strong> Hard (the entire tenancy model depends on it).</li>
+<li><strong>Revisit trigger:</strong> Never (foundational). Tested by T1.5 (CI gate).</li>
+<li><strong>Ref:</strong> Doc 07 §10, Doc 04c P1.11</li>
+</ul>
+<h2>D.10 — API versioning: /api/v1/ from day 1</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05</li>
+<li><strong>Decision:</strong> Every endpoint is prefixed <code>/api/v1/</code>. v2 only for genuinely breaking changes, runs parallel during deprecation.</li>
+<li><strong>Alternatives:</strong> Unversioned <code>/api/</code>, header-based versioning, no versioning.</li>
+<li><strong>Why:</strong> Retrofitting a version prefix later is a breaking change for every client. The cost now is one line (<code>app.setGlobalPrefix('api/v1')</code>).</li>
+<li><strong>Reversibility:</strong> Hard once clients exist (that's the point of doing it now).</li>
+<li><strong>Revisit trigger:</strong> Never reverse. v2 prefix added when a true breaking change is unavoidable.</li>
+<li><strong>Ref:</strong> Doc 06 §5.1</li>
+</ul>
+<h2>D.11 — Hebrew collation: ICU he_il_icu per-column</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05</li>
+<li><strong>Decision:</strong> <code>CREATE COLLATION he_il_icu (provider=icu, locale='he-IL-x-icu')</code>. Applied per-column / per-query on Hebrew name fields, not as the DB default.</li>
+<li><strong>Alternatives:</strong> DB-level LC_COLLATE, app-side sort with Intl.Collator, no collation (byte order).</li>
+<li><strong>Why:</strong> Byte-order sorting makes Hebrew name lists nonsense. Per-column keeps English fields sorting by English rules. DB-default would be a one-way global decision.</li>
+<li><strong>Reversibility:</strong> Easy (it's additive — add/remove COLLATE clauses).</li>
+<li><strong>Revisit trigger:</strong> If full-text Hebrew search is added (Phase 2), revisit alongside pg_trgm.</li>
+<li><strong>Ref:</strong> Doc 04c P1.10</li>
+</ul>
+<h2>D.12 — Signature format: SVG, encrypted, inline (not R2)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05</li>
+<li><strong>Decision:</strong> Signatures captured as SVG, encrypted with pgcrypto (same <code>PII_ENCRYPTION_KEY</code>), stored inline as bytea in <code>signatures</code>. 50KB max. Plus a <code>documentHash</code> (SHA-256) for tamper detection.</li>
+<li><strong>Alternatives:</strong> PNG, raw points; storage in R2; unencrypted.</li>
+<li><strong>Why:</strong> SVG is vector (scales for print), small (~5-15KB). Inline keeps the encryption story identical to other PII and avoids a second round-trip for small, tightly-coupled data.</li>
+<li><strong>Reversibility:</strong> Medium (format column allows future PNG; storage move is a migration).</li>
+<li><strong>Revisit trigger:</strong> If wet-ink scan upload is needed (would add PNG/JPG path).</li>
+<li><strong>Ref:</strong> Doc 04c P1.8</li>
+</ul>
+<h2>D.13 — Cookie consent: no banner in MVP (Israeli law)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05</li>
+<li><strong>Decision:</strong> No cookie banner in MVP. Disclosure in Terms/Privacy page. Only 4 essential cookies. Banner becomes required only when analytics are added (Phase 2) or on EU expansion.</li>
+<li><strong>Alternatives:</strong> EU-style banner from day 1, no disclosure at all.</li>
+<li><strong>Why:</strong> Israeli privacy law (חוק הגנת הפרטיות) doesn't mandate the EU banner; essential cookies need no consent. A banner without legal need is pure friction.</li>
+<li><strong>Reversibility:</strong> Easy (add banner when analytics land).</li>
+<li><strong>Revisit trigger:</strong> Adding analytics (Phase 2), or non-trivial EU user base.</li>
+<li><strong>Ref:</strong> Doc 07 §6.14</li>
+</ul>
+<h2>D.14 — First-org bootstrap: self-serve signup</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05</li>
+<li><strong>Decision:</strong> Self-serve signup. <code>POST /api/v1/auth/signup</code> → magic link → creates org + user + manager membership + audit. Always returns 202 (anti-enumeration). No external approval. Provider Admin can also manually onboard.</li>
+<li><strong>Alternatives:</strong> Manual onboarding only (Provider creates every org), invite-only, payment-gated.</li>
+<li><strong>Why:</strong> 0-3 pilot customers; an "await approval" gate creates 30%+ drop-off. Accept the duplicate-org trade-off (Provider Admin can merge — Phase 6).</li>
+<li><strong>Reversibility:</strong> Easy (can add approval gate later).</li>
+<li><strong>Revisit trigger:</strong> Spam signups, or when billing is added (Phase 2).</li>
+<li><strong>Ref:</strong> Doc 03 Phase 2</li>
+</ul>
+<h2>D.15 — Worker scope: SSE + cleanup + retry only (MVP)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05</li>
+<li><strong>Decision:</strong> The Worker container does exactly three things in MVP: SSE push for notifications, hourly cleanup of expired tokens, 5-min retry of failed email/storage calls. Nothing else.</li>
+<li><strong>Alternatives:</strong> Run jobs inside the BE container; a full job-queue system (BullMQ); more background jobs.</li>
+<li><strong>Why:</strong> Separation keeps BE stateless and deployable without dropping SSE clients. Three jobs is the genuine MVP need; more is speculation.</li>
+<li><strong>Reversibility:</strong> Easy (add jobs as needed).</li>
+<li><strong>Revisit trigger:</strong> Real need for digests/analytics/OCR background work (Phase 2).</li>
+<li><strong>Ref:</strong> Doc 02 §5.8</li>
+</ul>
+<hr />
+<h2>Reconciliation Decisions (from partner's UX/UI spec — RECONCILIATION.md)</h2>
+<p>These four resolve the deltas between the partner's spec and our v2 docs. Decided 2026-05-16.</p>
+<h2>D.16 — JSON envelope: { data } wrapper + page object</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-16</li>
+<li><strong>Decision:</strong> Every response wraps in <code>{ "data": ... }</code>. Lists add <code>{ "data": [...], "page": { "limit", "cursor", "has_more" } }</code>. Errors: <code>{ "error": { "code", "message", "details?" } }</code>. Unpermitted Contractor fields are absent (not null).</li>
+<li><strong>Alternatives:</strong> Bare entity + <code>{ items, nextCursor }</code> (our v1 draft).</li>
+<li><strong>Why:</strong> Adopted the partner's envelope — it's a consistent, evolvable REST pattern; the explicit <code>has_more</code> boolean is cleaner than inferring from a null cursor; the field-absence rule serves the Contractor permission model well.</li>
+<li><strong>Reversibility:</strong> Hard (every endpoint + adapter + mock depends on it).</li>
+<li><strong>Revisit trigger:</strong> Never expected; this is the locked wire contract.</li>
+<li><strong>Ref:</strong> Doc 06 §5.5, §4.9 (RECONCILIATION.md Delta 1)</li>
+</ul>
+<h2>D.17 — MVP core roles = 6 (Manager/Agent/Viewer/Contractor/Tenant/Provider Admin)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-16 (revised same day after user decision)</li>
+<li><strong>Decision:</strong> MVP has <strong>SIX</strong> roles, not five. The user confirmed BOTH Viewer AND Tenant are MVP needs. Canonical set: Manager, Agent, Viewer, Contractor, <strong>Tenant (resident, SMS OTP)</strong>, Provider Admin. "Provider Admin" is the canonical name (not "Admin/Super-admin").</li>
+<li><strong>Alternatives:</strong> (a) Our v2 draft: 5 roles, Tenant Portal deferred to Phase 2. (b) Partner's draft: 5 roles with Tenant but no Viewer.</li>
+<li><strong>Why:</strong> User has customers needing read-only access (Viewer) in MVP, AND residents who need portal access from day one (Tenant). Both are real MVP needs, not Phase 2. Resolving the confusion: it was never "which 5" — it's 6.</li>
+<li><strong>Reversibility:</strong> Hard. Tenant adds an identity model + SMS auth + portal screens + tenant-scope RLS. This is a material scope expansion, consciously accepted.</li>
+<li><strong>Revisit trigger:</strong> None — this is the locked MVP role set.</li>
+<li><strong>Ref:</strong> Doc 01 §5, Doc 02 §10, Doc 06 §16.2 (supersedes RECONCILIATION.md Delta 3)</li>
+</ul>
+<h2>D.18 — Project status enum: locked v2 set</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-16</li>
+<li><strong>Decision:</strong> <code>planning</code> | <code>gathering_signatures</code> | <code>approved</code> | <code>in_construction</code> | <code>completed</code> | <code>cancelled</code>. (Partner's <code>collecting</code> → <code>gathering_signatures</code>.)</li>
+<li><strong>Alternatives:</strong> Partner's draft used <code>collecting</code>.</li>
+<li><strong>Why:</strong> <code>gathering_signatures</code> is self-documenting. Locking the full set lets the FE map each to a Hebrew label + color deterministically.</li>
+<li><strong>Reversibility:</strong> Medium (enum changes are breaking — expand-then-contract protocol applies).</li>
+<li><strong>Revisit trigger:</strong> A genuinely new project lifecycle state emerges from customer use.</li>
+<li><strong>Ref:</strong> Doc 06 §5.4 (RECONCILIATION.md Delta 4)</li>
+</ul>
+<h2>D.19 — Field naming: national_id (not tz); adopt partner's UI-shape fields</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-16</li>
+<li><strong>Decision:</strong> Wire field is <code>national_id</code> (matches <code>national_id_encrypted</code> column + Doc 07 security model). Hebrew UI label stays "ת"ז". Adopt from partner's spec: <code>avatar_color</code>, <code>capabilities[]</code> (on <code>/me</code>), <code>stats</code> sub-object + <code>last_activity_at</code> (on project list rows).</li>
+<li><strong>Alternatives:</strong> Partner's <code>tz</code>; FE re-derives capabilities from role; no stats sub-object.</li>
+<li><strong>Why:</strong> <code>national_id</code> keeps wire ↔ DB ↔ security docs consistent. The partner's <code>capabilities[]</code> is good UX (FE doesn't re-implement role logic). <code>stats</code>/<code>last_activity_at</code> are useful computed fields worth standardizing.</li>
+<li><strong>Reversibility:</strong> Medium (shared-types change ripples to adapters + mocks).</li>
+<li><strong>Revisit trigger:</strong> None expected.</li>
+<li><strong>Ref:</strong> Doc 06 §4.9 (RECONCILIATION.md Delta 5)</li>
+</ul>
+<h2>D.20 — Tenant in MVP → SMS OTP in MVP (Israeli SMS provider, not Twilio)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-16</li>
+<li><strong>Decision:</strong> Because Tenant (D.17) is MVP, SMS OTP authentication is MVP — pulled forward from Phase 2. MVP uses an <strong>Israeli SMS provider</strong> (019 / Inforu / similar) behind the existing <code>ISMSProvider</code> interface, NOT <code>NoopSMSProvider</code>, NOT Twilio.</li>
+<li><strong>Alternatives:</strong> (a) Twilio (more expensive for Israeli numbers, worse local deliverability). (b) Email magic link for tenants (rejected — many elderly owners in urban renewal have no active email; SMS is universal in Israel).</li>
+<li><strong>Why:</strong> Residents in תמ"א 38 / פינוי-בינוי are often elderly and email-averse; SMS is universal. An Israeli provider is materially cheaper per-SMS for +972 numbers and has better local deliverability. The <code>ISMSProvider</code> interface (designed in Doc 02 §6) means this is a provider swap, not an architecture change — the interface layer paying off exactly as intended.</li>
+<li><strong>Reversibility:</strong> Easy (provider swap behind interface). The decision to have Tenant at all (D.17) is the hard part; the SMS provider choice is soft.</li>
+<li><strong>Revisit trigger:</strong> SMS costs become significant (&gt;~₪500/mo) → reevaluate providers; or international expansion → add Twilio alongside.</li>
+<li><strong>Ref:</strong> Doc 02 §6 (ISMSProvider), Doc 06 §16.2, OPEN_ITEMS.md (SMS moved from Phase 2 → MVP)</li>
+</ul>
+<hr />
+<h2>Pending Decisions (not yet made — tracked in OPEN_ITEMS.md §4)</h2>
+<p>These are listed so they're visible but explicitly NOT decided:</p>
+<ul>
+<li><strong>P.01</strong> Analytics provider for Phase 2 (PostHog / Plausible / self-hosted) — affects cookie banner (D.13)</li>
+<li><strong>P.02</strong> PDF generation strategy for contracts (puppeteer / @react-pdf / server vs client) — Phase 5</li>
+<li><strong>P.03</strong> Native mobile app vs PWA-only — Phase 2+</li>
+<li><strong>P.04</strong> Audit log UI for customers (which fields, what filtering) — Phase 2</li>
+<li><strong>P.05</strong> Soft-delete cleanup job (hard-delete after N days, or never) — no urgency</li>
+</ul>
+<p>When any of these is decided, promote it to a D.NN entry and remove from this list.</p>
+<hr />
+<p><strong>Maintenance rule:</strong> Add an entry the day a decision is made. Never batch. If you're tempted to reverse a decision, read its entry first — the "Why" and "Alternatives" are there precisely for that moment.</p>
+</div>
+</div>
+</body>
+</html>

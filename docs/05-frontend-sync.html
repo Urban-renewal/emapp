@@ -1,0 +1,2598 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doc 05 · EMAPP — Frontend Sync</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #fafaf9; --bg-card: #fff; --bg-subtle: #f5f5f4; --bg-dark: #0c0a09; --bg-darker: #18181b;
+  --text: #0c0a09; --text-subtle: #44403c; --text-muted: #78716c;
+  --primary: #0f766e; --primary-hover: #0d5e57; --primary-light: #ccfbf1; --primary-border: #5eead4;
+  --success: #15803d; --success-light: #f0fdf4; --success-border: #bbf7d0;
+  --warning: #b45309; --warning-light: #fffbeb; --warning-border: #fde68a;
+  --danger: #b91c1c; --danger-light: #fef2f2; --danger-border: #fecaca;
+  --gold: #ca8a04; --gold-light: #fef9c3;
+  --purple: #7c3aed; --purple-light: #ede9fe;
+  --blue: #2563eb; --blue-light: #dbeafe;
+  --border: #e7e5e4; --border-strong: #d6d3d1;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.08);
+  --radius-sm: 6px; --radius: 10px; --radius-lg: 16px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; font-size: 15px; -webkit-font-smoothing: antialiased; }
+.app { display: grid; grid-template-columns: 320px 1fr; min-height: 100vh; }
+.sidebar { position: sticky; top: 0; height: 100vh; background: white; border-right: 1px solid var(--border); overflow-y: auto; padding: 32px 0; }
+.sidebar-header { padding: 0 28px 24px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+.sidebar-doc-num { display: inline-block; background: var(--primary); color: white; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; margin-bottom: 10px; }
+.sidebar-title { font-size: 17px; font-weight: 800; line-height: 1.3; margin-bottom: 6px; }
+.sidebar-subtitle { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+.toc { list-style: none; padding: 0 14px; }
+.toc-item { margin-bottom: 2px; }
+.toc-link { display: flex; align-items: center; gap: 12px; padding: 9px 14px; color: var(--text-subtle); text-decoration: none; font-size: 13px; font-weight: 500; border-radius: var(--radius-sm); transition: all 0.15s ease; }
+.toc-link:hover { background: var(--bg-subtle); color: var(--text); }
+.toc-link.active { background: var(--primary-light); color: var(--primary); font-weight: 700; }
+.toc-num { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; background: var(--bg-subtle); border-radius: 6px; font-size: 11px; font-weight: 700; color: var(--text-subtle); flex-shrink: 0; font-family: 'JetBrains Mono', monospace; }
+.toc-link.active .toc-num { background: var(--primary); color: white; }
+.toc-divider { margin: 16px 14px 8px; padding: 8px 14px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+.main { padding: 56px 64px 96px; max-width: 1080px; width: 100%; }
+.hero { margin-bottom: 64px; }
+.hero-meta { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.hero-doc-badge { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; background: var(--bg-dark); color: white; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; }
+.hero-doc-badge::before { content: ""; width: 6px; height: 6px; background: var(--primary); border-radius: 50%; }
+.hero-tag { display: inline-block; padding: 5px 12px; background: var(--primary-light); color: var(--primary); border-radius: 999px; font-size: 11px; font-weight: 600; }
+.hero-title { font-size: 48px; font-weight: 900; line-height: 1.05; letter-spacing: -0.03em; margin-bottom: 16px; background: linear-gradient(135deg, #0c0a09 0%, #0f766e 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.hero-lede { font-size: 19px; color: var(--text-subtle); line-height: 1.55; max-width: 720px; margin-bottom: 32px; }
+.hero-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-top: 2px solid var(--border); border-bottom: 2px solid var(--border); padding: 20px 0; }
+.hero-stat { border-right: 1px solid var(--border); padding: 0 20px; }
+.hero-stat:last-child { border-right: none; padding-right: 0; }
+.hero-stat:first-child { padding-left: 0; }
+.hero-stat-num { font-size: 28px; font-weight: 800; color: var(--primary); line-height: 1; margin-bottom: 4px; font-family: 'JetBrains Mono', monospace; }
+.hero-stat-label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+section { margin-bottom: 72px; scroll-margin-top: 32px; }
+.section-header { margin-bottom: 32px; }
+.section-num { display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: var(--primary); letter-spacing: 0.1em; margin-bottom: 8px; }
+.section-title { font-size: 32px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; margin-bottom: 12px; }
+.section-lede { font-size: 16px; color: var(--text-subtle); max-width: 720px; line-height: 1.65; }
+h3 { font-size: 22px; font-weight: 700; margin: 48px 0 16px; letter-spacing: -0.01em; }
+h4 { font-size: 17px; font-weight: 700; margin: 28px 0 12px; }
+h5 { font-size: 15px; font-weight: 700; margin: 20px 0 10px; }
+p { margin-bottom: 14px; color: var(--text-subtle); line-height: 1.75; font-size: 15px; }
+p strong, li strong { color: var(--text); font-weight: 700; }
+.lead { font-size: 17px; line-height: 1.65; color: var(--text-subtle); margin-bottom: 24px; }
+.lead strong { color: var(--text); font-weight: 600; }
+ul, ol { margin-left: 0; padding-left: 22px; }
+li { margin-bottom: 8px; color: var(--text-subtle); line-height: 1.7; }
+ul.clean { list-style: none; padding-left: 0; }
+ul.clean li { padding-left: 24px; position: relative; }
+ul.clean li::before { content: "›"; position: absolute; left: 0; top: -2px; color: var(--primary); font-weight: 700; font-size: 18px; }
+ul.checks { list-style: none; padding-left: 0; }
+ul.checks li { padding-left: 28px; position: relative; }
+ul.checks li::before { content: "✓"; position: absolute; left: 4px; top: 2px; color: var(--success); font-weight: 800; }
+ul.crosses { list-style: none; padding-left: 0; }
+ul.crosses li { padding-left: 28px; position: relative; }
+ul.crosses li::before { content: "✕"; position: absolute; left: 4px; top: 2px; color: var(--danger); font-weight: 800; }
+.num-list { list-style: none; padding: 0; counter-reset: num; }
+.num-list li { counter-increment: num; padding-left: 56px; position: relative; margin-bottom: 20px; line-height: 1.7; }
+.num-list li::before { content: counter(num, decimal-leading-zero); position: absolute; left: 0; top: -2px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: var(--primary); background: var(--primary-light); padding: 4px 8px; border-radius: 5px; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); margin: 20px 0; background: white; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: var(--bg-subtle); text-align: left; padding: 12px 16px; font-weight: 700; border-bottom: 2px solid var(--border); font-size: 12px; }
+td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--text-subtle); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--bg-subtle); }
+td code { font-size: 11px; }
+td.highlight { color: var(--primary); font-weight: 600; }
+code { font-family: 'JetBrains Mono', monospace; background: var(--bg-subtle); padding: 2px 6px; border-radius: 4px; font-size: 12px; border: 1px solid var(--border); }
+pre { background: var(--bg-dark); color: #e7e5e4; padding: 18px; border-radius: var(--radius); overflow-x: auto; margin: 12px 0; font-size: 12.5px; line-height: 1.6; }
+pre code { background: transparent; border: none; padding: 0; color: inherit; font-size: inherit; }
+.code-label { display: block; background: var(--bg-darker); color: #d4d4d8; padding: 8px 18px; font-size: 11px; font-weight: 600; border-radius: var(--radius) var(--radius) 0 0; font-family: 'JetBrains Mono', monospace; border-bottom: 1px solid #292524; }
+.code-label + pre { margin-top: 0; border-radius: 0 0 var(--radius) var(--radius); }
+pre .comment { color: #71717a; font-style: italic; }
+pre .keyword { color: #fb923c; }
+pre .string { color: #86efac; }
+.callout { padding: 18px 22px; border-radius: var(--radius); margin: 20px 0; border-left: 4px solid; background: white; border: 1px solid var(--border); }
+.callout-title { font-weight: 700; margin-bottom: 6px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.callout-body { font-size: 14px; color: var(--text-subtle); line-height: 1.7; }
+.callout.danger { background: var(--danger-light); border-left-color: var(--danger); border-color: var(--danger-border); }
+.callout.danger .callout-title { color: var(--danger); }
+.callout.warning { background: var(--warning-light); border-left-color: var(--warning); border-color: var(--warning-border); }
+.callout.warning .callout-title { color: var(--warning); }
+.callout.success { background: var(--success-light); border-left-color: var(--success); border-color: var(--success-border); }
+.callout.success .callout-title { color: var(--success); }
+.callout.info { background: var(--primary-light); border-left-color: var(--primary); border-color: var(--primary-border); }
+.callout.info .callout-title { color: var(--primary); }
+.callout.gold { background: var(--gold-light); border-left-color: var(--gold); border-color: var(--gold); }
+.callout.gold .callout-title { color: var(--gold); }
+.timeline { position: relative; padding-left: 32px; margin: 24px 0; }
+.timeline::before { content: ""; position: absolute; left: 8px; top: 8px; bottom: 8px; width: 2px; background: var(--border); }
+.timeline-item { position: relative; padding-bottom: 28px; }
+.timeline-item:last-child { padding-bottom: 0; }
+.timeline-item::before { content: ""; position: absolute; left: -28px; top: 6px; width: 14px; height: 14px; border-radius: 50%; background: white; border: 3px solid var(--primary); }
+.timeline-item.completed::before { background: var(--primary); }
+.timeline-item.current::before { background: white; border-color: var(--gold); box-shadow: 0 0 0 4px var(--gold-light); }
+.timeline-week { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; color: var(--primary); letter-spacing: 0.05em; margin-bottom: 4px; }
+.timeline-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.timeline-desc { font-size: 14px; color: var(--text-subtle); }
+.role-card { background: white; border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+.role-card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.role-icon { width: 40px; height: 40px; background: var(--primary-light); color: var(--primary); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.role-name { font-size: 16px; font-weight: 700; }
+.role-name-sub { font-size: 12px; color: var(--text-muted); }
+.contract-card { background: var(--success-light); border: 1px solid var(--success-border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+.contract-card-title { font-weight: 700; color: var(--success); margin-bottom: 8px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.contract-card-body { font-size: 14px; color: var(--text-subtle); line-height: 1.7; }
+.contract-card-body code { font-size: 12px; }
+footer { margin-top: 80px; padding: 32px 0; border-top: 2px solid var(--border); text-align: center; color: var(--text-muted); font-size: 12px; }
+footer .footer-meta { display: flex; justify-content: center; gap: 24px; margin-bottom: 12px; }
+@media (max-width: 1024px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { position: relative; height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+  .main { padding: 32px 20px 56px; }
+  .hero-title { font-size: 32px; }
+  .hero-stats { grid-template-columns: 1fr 1fr; }
+  .hero-stat { border-right: none; border-bottom: 1px solid var(--border); padding: 14px 0; }
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 5px; }
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <span class="sidebar-doc-num">DOC 05 · EMAPP</span>
+    <div class="sidebar-title">Frontend Sync</div>
+    <div class="sidebar-subtitle">For the FE developer (v2 · SAMPLE_* · adapters · glossary)</div>
+  </div>
+  <ul class="toc">
+    <li class="toc-item"><a class="toc-link" href="#section-1"><span class="toc-num">1</span><span>Welcome &amp; Read This First</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-2"><span class="toc-num">2</span><span>Project Context (TL;DR)</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-3"><span class="toc-num">3</span><span>The Two-Developer Model</span></a></li>
+    <div class="toc-divider">Your World</div>
+    <li class="toc-item"><a class="toc-link" href="#section-4"><span class="toc-num">4</span><span>Frontend Stack</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-5"><span class="toc-num">5</span><span>Repository Layout</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-6"><span class="toc-num">6</span><span>RTL &amp; i18n Setup</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-7"><span class="toc-num">7</span><span>Design System &amp; Workflow</span></a></li>
+    <div class="toc-divider">Working with Backend</div>
+    <li class="toc-item"><a class="toc-link" href="#section-8"><span class="toc-num">8</span><span>shared-types Contract</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-9"><span class="toc-num">9</span><span>API Integration + Adapter</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-10"><span class="toc-num">10</span><span>Mock-First (SAMPLE_*)</span></a></li>
+    <div class="toc-divider">Phase Plan</div>
+    <li class="toc-item"><a class="toc-link" href="#section-11"><span class="toc-num">11</span><span>What You Build When</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-12"><span class="toc-num">12</span><span>Sync Points &amp; Handoffs</span></a></li>
+    <div class="toc-divider">Tooling &amp; Reference</div>
+    <li class="toc-item"><a class="toc-link" href="#section-13"><span class="toc-num">13</span><span>Claude Code for FE</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-14"><span class="toc-num">14</span><span>Git Workflow</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-15"><span class="toc-num">15</span><span>Getting Started</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-16"><span class="toc-num">16</span><span>Glossary</span></a></li>
+  </ul>
+</aside>
+<main class="main">
+<div class="hero">
+  <div class="hero-meta">
+    <span class="hero-doc-badge">DOC 05 · EMAPP · FRONTEND SYNC</span>
+    <span class="hero-tag">v2 · SAMPLE_* mocks · Adapter pattern · Glossary</span>
+  </div>
+  <h1 class="hero-title">Frontend<br>Sync</h1>
+  <p class="hero-lede">Welcome. This document is for you — the frontend developer building <strong>EMAPP</strong> alongside your backend partner. It covers the project, your stack, what to build when, and how to coordinate without daily meetings. The formal FE/BE integration contract lives in <strong>Doc 06</strong> — read both, in order. New in v2: <code>SAMPLE_*</code> mocks convention, the <strong>adapter pattern</strong> for API-to-UI translation, and a project glossary.</p>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="hero-stat-num">16</div><div class="hero-stat-label">Sections</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">~30</div><div class="hero-stat-label">Min to read</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">1</div><div class="hero-stat-label">Backend partner</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">~3mo</div><div class="hero-stat-label">To MVP</div></div>
+  </div>
+</div>
+
+<section id="section-1">
+  <div class="section-header">
+    <div class="section-num">01 · Welcome</div>
+    <h2 class="section-title">Read This First</h2>
+    <p class="section-lede">Five minutes to orient you. The rest of this document is reference material you'll come back to.</p>
+  </div>
+
+  <p class="lead">You're the frontend developer on a 2-person team building <strong>EMAPP</strong> — a B2B platform for Israeli real estate developers managing תמ"א 38 and פינוי-בינוי projects. Your partner is building the backend. You're building everything users see.</p>
+
+  <h3>1.1 What This Document Is</h3>
+
+  <p>This is your reference for working alongside the backend developer. It covers:</p>
+
+  <ul class="checks">
+    <li><strong>The project</strong> — what you're building and why</li>
+    <li><strong>Your stack and structure</strong> — the FE side of the codebase</li>
+    <li><strong>The contract with backend</strong> — how you stay in sync without daily meetings</li>
+    <li><strong>What to build when</strong> — the phase plan from a FE perspective</li>
+    <li><strong>Tooling</strong> — Claude Code setup, git workflow, conventions</li>
+  </ul>
+
+  <h3>1.2 What This Document Is NOT</h3>
+
+  <ul class="crosses">
+    <li>A complete spec — designs and detailed UX come from your judgment + product discussions</li>
+    <li>An exhaustive component library — you build it as needed</li>
+    <li>A backend deep-dive — that's the BE developer's domain</li>
+    <li>A daily TODO list — phases give you direction, you choose tasks within them</li>
+  </ul>
+
+  <h3>1.3 Other Documents to Read</h3>
+
+  <p>Read these in order, in the next few days:</p>
+
+  <ul class="num-list">
+    <li><strong>Doc 01 — Vision &amp; Market.</strong> The product context. Who uses this, what problem it solves, what success looks like. ~30 min read.</li>
+    <li><strong>Doc 02 — Architecture &amp; Production.</strong> The technical big picture. Skim FE-relevant sections (3, 4, 5). ~20 min skim.</li>
+    <li><strong>Doc 03 — MVP Roadmap.</strong> The phase breakdown. Helps you understand where you fit in the bigger plan. ~15 min read.</li>
+    <li><strong>Doc 04a — Claude Code Environment Setup.</strong> The tooling everyone uses. ~30 min read. Important for both of you.</li>
+    <li><strong>This document (Doc 05).</strong> Read fully now, reference often.</li>
+    <li><strong>Doc 06 — FE/BE Integration Contract.</strong> The formal contract between FE and BE. Read after this one. ~30 min. Both developers read it.</li>
+  </ul>
+
+  <p>Don't read 04b or 04c — those are backend-specific. Your partner handles them.</p>
+
+  <h3>1.4 Time Investment</h3>
+
+  <p>You and your partner are part-time developers with full-time jobs. Plan accordingly:</p>
+
+  <ul class="clean">
+    <li>Reading docs 01-05: ~2 hours total. Do it once, properly. Refer back as needed.</li>
+    <li>Phase 0 (your part): ~6-8 hours. Setup, scaffold, blank page that proves things work.</li>
+    <li>Phase 1: nothing for you. Backend works on database. You can take a break or start Phase 8 prep.</li>
+    <li>Phase 2: ~10-15 hours. Auth UI, login flow.</li>
+    <li>Phases 3-7: parallel work. Build UI as backend ships endpoints.</li>
+    <li>Phase 8: ~30-40 hours of polish. Most of your work.</li>
+  </ul>
+
+  <div class="callout success">
+    <div class="callout-title">✓ The two-developer principle</div>
+    <div class="callout-body">If at any point you don't know what to do next, the answer is in this document or in docs 01-04. The plan is intentionally complete so you can work async without blocking on your partner.</div>
+  </div>
+</section>
+
+<section id="section-2">
+  <div class="section-header">
+    <div class="section-num">02 · Project Context (TL;DR)</div>
+    <h2 class="section-title">What You're Building</h2>
+    <p class="section-lede">If you only read one section, read this one.</p>
+  </div>
+
+  <h3>2.1 The Product in Three Sentences</h3>
+
+  <p class="lead">Urban Renewal SaaS is a multi-tenant platform for Israeli real estate developers running urban renewal projects. Each project involves dozens to hundreds of property owners who must sign agreements, share documents, and coordinate over 1-3 years. Today, developers manage this with Excel + WhatsApp + paper folders. We replace that mess with a single system.</p>
+
+  <h3>2.2 The Core Workflows</h3>
+
+  <p>Five workflows that drive the product. Almost everything you build supports one of these:</p>
+
+  <ul class="num-list">
+    <li><strong>Owner Management.</strong> Developer imports a list of all property owners (often from Excel). System tracks contact info, ownership shares, and signature status for each owner.</li>
+    <li><strong>Document Distribution.</strong> Developer uploads a contract or notice. System sends it to all relevant owners (or a subset) and tracks who opened it.</li>
+    <li><strong>Digital Signatures.</strong> Owner clicks a link in an email, sees the document, signs on a canvas (or types name), submits. System records the signature with audit trail.</li>
+    <li><strong>Project Dashboard.</strong> Developer sees overview of project: how many owners signed, progress timeline, recent activity, blockers.</li>
+    <li><strong>Reports &amp; Exports.</strong> Developer generates PDF/Excel reports for legal filings, investor updates, or owner communications.</li>
+  </ul>
+
+  <h3>2.3 The User Personas</h3>
+
+  <p>You're designing for two distinct users:</p>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0;">
+    <div class="role-card">
+      <div class="role-card-header">
+        <div class="role-icon">👨‍💼</div>
+        <div>
+          <div class="role-name">The Developer</div>
+          <div class="role-name-sub">Real estate company, project manager</div>
+        </div>
+      </div>
+      <p style="font-size: 14px; margin: 0;"><strong>Primary user.</strong> Logs in daily during active projects. Manages multiple projects. Hebrew speaker, RTL native. Comfortable with software but expects efficiency. Pays the subscription.</p>
+    </div>
+
+    <div class="role-card">
+      <div class="role-card-header">
+        <div class="role-icon">👤</div>
+        <div>
+          <div class="role-name">The Owner</div>
+          <div class="role-name-sub">Property owner being signed</div>
+        </div>
+      </div>
+      <p style="font-size: 14px; margin: 0;"><strong>Public user.</strong> Receives email link. Doesn't log in. Opens link, signs document, leaves. Mixed tech comfort — could be 25 or 75. Often uses phone, not computer. Doesn't pay anything.</p>
+    </div>
+  </div>
+
+  <h3>2.4 Key Constraints That Shape Your UI</h3>
+
+  <ul class="checks">
+    <li><strong>RTL by default.</strong> Hebrew is the primary language. Layouts flow right-to-left. Mirror everything.</li>
+    <li><strong>Multi-language from day one.</strong> Hebrew + English at MVP. Arabic + Russian later. Build for i18n from the first component.</li>
+    <li><strong>Accessibility matters.</strong> Some owners are elderly. Big enough fonts, high contrast, keyboard navigation, screen reader support.</li>
+    <li><strong>Mobile-first for owner-facing.</strong> Owners click email links on phones. Sign on phones. The signature flow must work flawlessly on mobile.</li>
+    <li><strong>Desktop-primary for developer-facing.</strong> Developers use real screens. Optimize for tablet+ for the dashboard.</li>
+    <li><strong>Performance under Israeli network conditions.</strong> 4G mobile signal in older buildings is slow. Don't ship 2MB JavaScript bundles.</li>
+  </ul>
+
+  <h3>2.5 What Success Looks Like</h3>
+
+  <p>By the end of MVP (~4 weeks of part-time work):</p>
+
+  <ul class="checks">
+    <li>A developer can sign up, create a project, import 50 owners, send a document, and see signatures come back — without calling support</li>
+    <li>An owner can sign on phone in under 2 minutes — without creating an account</li>
+    <li>The whole experience feels native to Israeli users (RTL, Hebrew, familiar UX patterns)</li>
+    <li>The product is fast enough that nobody complains about loading times</li>
+  </ul>
+</section>
+
+<section id="section-3">
+  <div class="section-header">
+    <div class="section-num">03 · The Two-Developer Model</div>
+    <h2 class="section-title">How We Work Together Without Meetings</h2>
+    <p class="section-lede">Two part-time developers, full-time jobs, no shared schedule. Here's how we coordinate without daily standups.</p>
+  </div>
+
+  <h3>3.1 Division of Labor</h3>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0;">
+    <div class="role-card">
+      <div class="role-card-header">
+        <div class="role-icon">⚙️</div>
+        <div>
+          <div class="role-name">Backend Partner</div>
+          <div class="role-name-sub">Database, API, services, security</div>
+        </div>
+      </div>
+      <p style="font-size: 14px; margin-bottom: 8px;"><strong>Owns:</strong></p>
+      <ul class="clean" style="font-size: 13px; margin: 0;">
+        <li><code>apps/api/</code></li>
+        <li><code>packages/db/</code></li>
+        <li><code>packages/validators/</code></li>
+        <li>Database schemas, migrations, RLS</li>
+        <li>Auth (Better Auth), session, security</li>
+        <li>R2 file uploads, presigned URLs</li>
+        <li>BullMQ background jobs</li>
+        <li>API endpoints + their tests</li>
+      </ul>
+    </div>
+
+    <div class="role-card">
+      <div class="role-card-header">
+        <div class="role-icon">🎨</div>
+        <div>
+          <div class="role-name">You (Frontend)</div>
+          <div class="role-name-sub">Web app, components, UX, i18n</div>
+        </div>
+      </div>
+      <p style="font-size: 14px; margin-bottom: 8px;"><strong>Own:</strong></p>
+      <ul class="clean" style="font-size: 13px; margin: 0;">
+        <li><code>apps/web/</code></li>
+        <li>All components and pages</li>
+        <li>Design system (shadcn-based)</li>
+        <li>i18n strings (HE + EN)</li>
+        <li>Forms, validation UI</li>
+        <li>Routing, state management</li>
+        <li>API integration (TanStack Query)</li>
+        <li>Frontend tests (Playwright)</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>3.2 Shared Territory</h3>
+
+  <p>Some things are shared. Both developers can edit, but coordinate via PR:</p>
+
+  <ul class="clean">
+    <li><code>packages/shared-types/</code> — Zod schemas. The <strong>contract</strong> between FE and BE. Both modify, with care.</li>
+    <li><code>packages/config/</code> — env validation. Rare changes, both review.</li>
+    <li>Root <code>CLAUDE.md</code> — Claude Code conventions. Major changes need both to agree.</li>
+    <li><code>.github/workflows/</code> — CI config. Don't break each other's pipelines.</li>
+    <li><code>README.md</code> — onboarding doc. Either updates as needed.</li>
+  </ul>
+
+  <h3>3.3 Communication Channels</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Channel</th><th>Use for</th><th>Frequency</th></tr></thead>
+      <tbody>
+        <tr><td>Pull Requests</td><td>Code changes, reviews, technical discussion</td><td>Continuous</td></tr>
+        <tr><td>GitHub Issues</td><td>Bugs, feature requests, async questions</td><td>As needed</td></tr>
+        <tr><td>Shared docs (01-05)</td><td>Architecture decisions, planning</td><td>Phase boundaries</td></tr>
+        <tr><td>WhatsApp / Slack</td><td>Quick questions, blockers, urgent items</td><td>Rare, real-time</td></tr>
+        <tr><td>Voice / video call</td><td>Big decisions, complex debugging</td><td>Weekly max</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>3.4 The Async-First Principle</h3>
+
+  <p>You and your partner work on different schedules. The default is async:</p>
+
+  <ul class="num-list">
+    <li><strong>Don't block on each other.</strong> If you need something from BE, write it down (issue or message), then continue with mock data.</li>
+    <li><strong>PRs are the main artifact.</strong> Code changes go through PR. Reviews don't need to be instant — 24 hours is fine.</li>
+    <li><strong>Don't expect immediate replies.</strong> Your partner is at their day job, family, or sleeping. Async is the norm.</li>
+    <li><strong>Voice calls are for clarification, not status.</strong> If you need a 5-minute call, schedule it. If you need an answer, write it down.</li>
+  </ul>
+
+  <h3>3.5 The Weekly Pulse Check</h3>
+
+  <p>Once a week (typically Sunday or Monday morning), do a 15-minute sync:</p>
+
+  <ul class="clean">
+    <li>What got done last week (each)</li>
+    <li>What's planned this week (each)</li>
+    <li>Any blockers (each)</li>
+    <li>Anything in shared territory needing alignment</li>
+  </ul>
+
+  <p>That's it. No daily standups. Most communication happens through code.</p>
+
+  <div class="callout info">
+    <div class="callout-title">💡 The Conflict Resolution Rule</div>
+    <div class="callout-body">When you disagree on shared territory (e.g., a Zod schema design), the rule is: whoever needs it first owns the decision, but documents the trade-off. The other can revisit later if it doesn't work in practice. Don't get stuck in design debates. Ship something, learn, iterate.</div>
+  </div>
+</section>
+
+<section id="section-4">
+  <div class="section-header">
+    <div class="section-num">04 · Frontend Stack</div>
+    <h2 class="section-title">Your Tech Stack</h2>
+    <p class="section-lede">The libraries, frameworks, and tools you'll work with daily.</p>
+  </div>
+
+  <p>The stack is final — not up for debate. These choices were made deliberately for performance, portability, and ecosystem maturity.</p>
+
+  <h3>4.1 Core Stack</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Layer</th><th>Choice</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>Framework</td><td><strong>Next.js 15 (App Router)</strong></td><td>React Server Components, file-based routing, deep optimization</td></tr>
+        <tr><td>Language</td><td><strong>TypeScript (strict mode)</strong></td><td>Type safety. No <code>any</code>. <code>noUncheckedIndexedAccess</code> on.</td></tr>
+        <tr><td>UI Library</td><td><strong>shadcn/ui</strong></td><td>You own the components. Customizable. Tailwind-based.</td></tr>
+        <tr><td>Styling</td><td><strong>Tailwind CSS</strong></td><td>Utility-first. Fast iteration. RTL plugin for Hebrew.</td></tr>
+        <tr><td>State (server)</td><td><strong>TanStack Query v5</strong></td><td>Cache, refetch, optimistic updates. The data fetching standard.</td></tr>
+        <tr><td>State (client)</td><td><strong>Zustand</strong> + React state</td><td>Light, simple, no Redux ceremony</td></tr>
+        <tr><td>Forms</td><td><strong>react-hook-form + Zod</strong></td><td>Best validation library + best form library. Zero ceremony.</td></tr>
+        <tr><td>i18n</td><td><strong>next-intl</strong></td><td>Best-in-class for Next.js App Router</td></tr>
+        <tr><td>HTTP Client</td><td><strong>fetch (native)</strong> with TanStack wrapper</td><td>No need for axios. Modern fetch is enough.</td></tr>
+        <tr><td>Icons</td><td><strong>lucide-react</strong></td><td>Beautiful, consistent, RTL-aware</td></tr>
+        <tr><td>Dates</td><td><strong>date-fns</strong> (with hebrew locale)</td><td>Tree-shakeable, immutable, locale-aware</td></tr>
+        <tr><td>Tests (E2E)</td><td><strong>Playwright</strong></td><td>Modern E2E testing, mobile emulation, RTL support</td></tr>
+        <tr><td>Tests (component)</td><td><strong>Vitest + Testing Library</strong></td><td>Fast, modern, integrates with Vite</td></tr>
+        <tr><td>Error tracking</td><td><strong>Sentry</strong></td><td>FE error visibility</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>4.2 Things Not in the Stack (Intentionally)</h3>
+
+  <ul class="crosses">
+    <li><strong>Redux / Redux Toolkit</strong> — overkill for our needs. Zustand handles client state.</li>
+    <li><strong>Material-UI / Ant Design / Chakra</strong> — too heavy, too opinionated. shadcn gives you ownership.</li>
+    <li><strong>SWR</strong> — TanStack Query is more capable. Pick one.</li>
+    <li><strong>Formik</strong> — react-hook-form is faster and lighter.</li>
+    <li><strong>Moment.js</strong> — deprecated. date-fns is the modern choice.</li>
+    <li><strong>Cypress</strong> — Playwright is the modern E2E framework.</li>
+  </ul>
+
+  <h3>4.3 Decision: Server Components vs Client Components</h3>
+
+  <p>Next.js 15 App Router has both. Use them deliberately:</p>
+
+  <ul class="clean">
+    <li><strong>Server Components (default)</strong> — for static layout, server-side data fetching, SEO content. No client JS shipped. Fast first paint.</li>
+    <li><strong>Client Components ('use client')</strong> — for interactivity, forms, state, event handlers, browser APIs.</li>
+  </ul>
+
+  <p>Default to Server Components. Only mark <code>'use client'</code> when you need browser features. The boundary should be as deep as possible — make small leaf components client, keep parents on server.</p>
+
+  <h3>4.4 Performance Targets</h3>
+
+  <p>These are hard targets. Phase 8 (FE polish) will dial these in:</p>
+
+  <ul class="checks">
+    <li>Initial JS bundle: <strong>under 100KB</strong> (gzipped) for the dashboard route</li>
+    <li>Time to Interactive: <strong>under 3s</strong> on 4G</li>
+    <li>Lighthouse Performance score: <strong>over 85</strong></li>
+    <li>Lighthouse Accessibility score: <strong>over 95</strong></li>
+    <li>Page transitions: <strong>under 300ms</strong> with prefetching</li>
+  </ul>
+</section>
+
+<section id="section-5">
+  <div class="section-header">
+    <div class="section-num">05 · Repository Layout</div>
+    <h2 class="section-title">Your Side of the Monorepo</h2>
+    <p class="section-lede">The codebase is a monorepo. You live in <code>apps/web/</code> and consume some <code>packages/*</code>.</p>
+  </div>
+
+  <h3>5.1 What You Touch</h3>
+
+  <p>Your daily working area:</p>
+
+  <div class="code-label">apps/web/ (your home)</div>
+<pre><code>apps/web/
+├── src/
+│   ├── app/                    <span class="comment"># Next.js App Router pages</span>
+│   │   ├── [locale]/           <span class="comment"># Locale prefix (he/en)</span>
+│   │   │   ├── (auth)/         <span class="comment"># Login/signup routes</span>
+│   │   │   ├── (dashboard)/    <span class="comment"># Authenticated app</span>
+│   │   │   └── (public)/       <span class="comment"># Signature pages, public</span>
+│   │   ├── api/                <span class="comment"># Route handlers (rare; mostly proxy)</span>
+│   │   ├── layout.tsx
+│   │   └── globals.css
+│   ├── components/
+│   │   ├── ui/                 <span class="comment"># shadcn primitives</span>
+│   │   ├── forms/              <span class="comment"># Form components</span>
+│   │   ├── layout/             <span class="comment"># Headers, sidebars</span>
+│   │   └── &lt;feature&gt;/         <span class="comment"># Feature-specific components</span>
+│   ├── lib/
+│   │   ├── api/                <span class="comment"># API client wrapper</span>
+│   │   ├── i18n/               <span class="comment"># i18n config</span>
+│   │   └── utils.ts            <span class="comment"># cn() + helpers</span>
+│   ├── hooks/                  <span class="comment"># Custom React hooks</span>
+│   └── stores/                 <span class="comment"># Zustand stores</span>
+├── messages/                   <span class="comment"># Translation files</span>
+│   ├── he.json
+│   └── en.json
+├── public/                     <span class="comment"># Static assets</span>
+├── tests/
+│   ├── e2e/                    <span class="comment"># Playwright tests</span>
+│   └── components/             <span class="comment"># Vitest component tests</span>
+├── CLAUDE.md
+├── tailwind.config.ts
+├── next.config.ts
+├── tsconfig.json
+└── package.json
+</code></pre>
+
+  <h3>5.2 What You Consume (Read-Only)</h3>
+
+  <p>Packages you import but don't modify:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Package</th><th>What you use it for</th></tr></thead>
+      <tbody>
+        <tr><td><code>@app/shared-types</code></td><td>Zod schemas for forms, types for API responses</td></tr>
+        <tr><td><code>@app/config</code></td><td>Public env vars (NEXT_PUBLIC_*)</td></tr>
+        <tr><td><code>@app/validators</code></td><td>Israeli ID Luhn validator (used in forms)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>You import them like normal packages:</p>
+
+  <div class="code-label">apps/web/src/components/forms/owner-form.tsx</div>
+<pre><code>import { CreateOwnerInput, type CreateOwner } from '@app/shared-types';
+import { isValidIsraeliId } from '@app/validators';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+
+export function OwnerForm() {
+  const form = useForm&lt;CreateOwner&gt;({
+    resolver: zodResolver(CreateOwnerInput),
+  });
+  <span class="comment">// ... validation, handling, submit</span>
+}
+</code></pre>
+
+  <h3>5.3 What You Don't Touch</h3>
+
+  <p>Backend territory. Don't edit:</p>
+
+  <ul class="crosses">
+    <li><code>apps/api/</code> — backend code</li>
+    <li><code>packages/db/</code> — database schemas, migrations</li>
+    <li><code>packages/db/migrations/</code> — never modify, never delete</li>
+    <li>Backend-only env vars (anything not <code>NEXT_PUBLIC_*</code>)</li>
+  </ul>
+
+  <p>If you need something from one of these, open an issue or ping your partner.</p>
+
+  <h3>5.4 Adding Dependencies</h3>
+
+  <p>Adding to FE only:</p>
+
+  <div class="code-label">terminal</div>
+<pre><code><span class="comment"># Add to apps/web only</span>
+pnpm --filter web add &lt;package&gt;
+
+<span class="comment"># Add as dev dependency</span>
+pnpm --filter web add -D &lt;package&gt;
+</code></pre>
+
+  <p>Adding to a shared package: discuss with your partner first. Shared packages affect both apps.</p>
+
+  <div class="callout warning">
+    <div class="callout-title">⚠️ Coordinate before adding shared deps</div>
+    <div class="callout-body">If you need something in <code>shared-types</code> or another shared package, ping your partner first. Two reasons: (1) avoiding duplicate or conflicting deps, (2) the shared package decisions affect their work too.</div>
+  </div>
+</section>
+
+<section id="section-6">
+  <div class="section-header">
+    <div class="section-num">06 · RTL &amp; i18n Setup</div>
+    <h2 class="section-title">Hebrew First, English Second, Arabic + Russian Later</h2>
+    <p class="section-lede">RTL and i18n aren't features added later — they're foundational. Build with both in mind from your first component.</p>
+  </div>
+
+  <h3>6.1 The Setup</h3>
+
+  <p>Phase 0 (P0.5) sets this up. Here's what's already in place when you start:</p>
+
+  <ul class="checks">
+    <li><code>html lang="he" dir="rtl"</code> on the root layout</li>
+    <li>Heebo font via <code>next/font/google</code> (loaded as <code>--font-heebo</code> CSS variable)</li>
+    <li>Tailwind RTL plugin: <code>tailwindcss-rtl</code></li>
+    <li>next-intl configured for HE + EN</li>
+    <li>Locale prefix in URLs: <code>/he/projects</code>, <code>/en/projects</code></li>
+  </ul>
+
+  <h3>6.2 Writing RTL-Aware Tailwind</h3>
+
+  <p>Tailwind RTL plugin gives you logical properties:</p>
+
+  <div class="code-label">RTL-aware Tailwind classes</div>
+<pre><code><span class="comment">// ❌ Wrong: hard-coded direction</span>
+&lt;div className="ml-4 pl-2 text-left"&gt;...&lt;/div&gt;
+
+<span class="comment">// ✓ Right: logical direction</span>
+&lt;div className="ms-4 ps-2 text-start"&gt;...&lt;/div&gt;
+<span class="comment">// ms = margin-start (right in RTL, left in LTR)
+// ps = padding-start
+// text-start = right-aligned in RTL, left in LTR</span>
+
+<span class="comment">// Some things stay literal — those are fine</span>
+&lt;div className="mt-4 pb-2"&gt;...&lt;/div&gt;  <span class="comment">// top/bottom doesn't flip</span>
+</code></pre>
+
+  <h3>6.3 The Logical Properties Cheat Sheet</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Physical</th><th>Logical</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>ml-*</code></td><td><code>ms-*</code></td><td>margin-start (right in RTL)</td></tr>
+        <tr><td><code>mr-*</code></td><td><code>me-*</code></td><td>margin-end (left in RTL)</td></tr>
+        <tr><td><code>pl-*</code></td><td><code>ps-*</code></td><td>padding-start</td></tr>
+        <tr><td><code>pr-*</code></td><td><code>pe-*</code></td><td>padding-end</td></tr>
+        <tr><td><code>text-left</code></td><td><code>text-start</code></td><td>start-aligned text</td></tr>
+        <tr><td><code>text-right</code></td><td><code>text-end</code></td><td>end-aligned text</td></tr>
+        <tr><td><code>border-l-*</code></td><td><code>border-s-*</code></td><td>border-start</td></tr>
+        <tr><td><code>rounded-l-*</code></td><td><code>rounded-s-*</code></td><td>rounded-start</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>6.4 Icons That Need Mirroring</h3>
+
+  <p>Some icons should flip in RTL (arrows pointing in directions). Others should not (search, mail, settings):</p>
+
+  <div class="code-label">Icon RTL handling</div>
+<pre><code><span class="comment">// ❌ Wrong: chevron points the same way regardless of direction</span>
+&lt;ChevronRight /&gt;  <span class="comment">// In RTL, this still points right (visually wrong)</span>
+
+<span class="comment">// ✓ Right: rotate based on locale</span>
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useLocale } from 'next-intl';
+
+const locale = useLocale();
+const ChevronForward = locale === 'he' ? ChevronLeft : ChevronRight;
+
+&lt;ChevronForward /&gt;  <span class="comment">// Points "forward" relative to text direction</span>
+
+<span class="comment">// Or use Tailwind's rtl: variant</span>
+&lt;ChevronRight className="rtl:scale-x-[-1]" /&gt;
+</code></pre>
+
+  <p>Don't mirror these icons even in RTL: ✉ mail, 🔍 search, ⚙ settings, 👁 eye, ✓ check, ✕ close.</p>
+
+  <p>Do mirror: arrows (→ ←), chevrons (› ‹), play buttons (▶), back/forward navigation icons.</p>
+
+  <h3>6.5 i18n Strings Pattern</h3>
+
+  <p>Translation files are JSON in <code>messages/</code>. Use namespaces:</p>
+
+  <div class="code-label">messages/he.json (excerpt)</div>
+<pre><code>{
+  "common": {
+    "save": "שמור",
+    "cancel": "ביטול",
+    "delete": "מחק",
+    "loading": "טוען..."
+  },
+  "auth": {
+    "login": "התחברות",
+    "logout": "התנתקות",
+    "email": "אימייל",
+    "password": "סיסמה"
+  },
+  "projects": {
+    "title": "פרויקטים",
+    "newProject": "פרויקט חדש",
+    "noProjects": "אין פרויקטים עדיין"
+  }
+}
+</code></pre>
+
+  <div class="code-label">Using translations in components</div>
+<pre><code>import { useTranslations } from 'next-intl';
+
+export function ProjectsList() {
+  const t = useTranslations('projects');
+  return (
+    &lt;div&gt;
+      &lt;h1&gt;{t('title')}&lt;/h1&gt;
+      &lt;button&gt;{t('newProject')}&lt;/button&gt;
+    &lt;/div&gt;
+  );
+}
+</code></pre>
+
+  <h3>6.6 Number and Date Formatting</h3>
+
+  <p>Use Intl APIs through next-intl for locale-aware formatting:</p>
+
+  <div class="code-label">Locale-aware formatting</div>
+<pre><code>import { useFormatter } from 'next-intl';
+
+export function ProjectCard({ project }: Props) {
+  const format = useFormatter();
+  return (
+    &lt;div&gt;
+      &lt;p&gt;{format.dateTime(project.createdAt, 'short')}&lt;/p&gt;
+      &lt;p&gt;{format.number(project.budget, { style: 'currency', currency: 'ILS' })}&lt;/p&gt;
+      <span class="comment">// In Hebrew: ‎15/03/2026 and 1,250,000.00 ₪</span>
+    &lt;/div&gt;
+  );
+}
+</code></pre>
+
+  <h3>6.7 Hebrew-Specific Considerations</h3>
+
+  <ul class="checks">
+    <li><strong>Numbers stay LTR.</strong> "15/03/2026" reads left-to-right even in Hebrew text. Browsers handle this automatically with <code>dir="rtl"</code> on the parent.</li>
+    <li><strong>Mixed Hebrew + English.</strong> User types "I love NestJS" — the English flows LTR within Hebrew RTL context. Use <code>&amp;lrm;</code> or <code>&amp;rlm;</code> Unicode marks if direction breaks.</li>
+    <li><strong>Israeli ID validation.</strong> 9 digits. Use <code>isValidIsraeliId</code> from <code>@app/validators</code>. Format with leading zeros if user types 8 digits.</li>
+    <li><strong>Phone numbers.</strong> Israeli format: <code>050-1234567</code> or <code>+972-50-1234567</code>. Display normalized.</li>
+  </ul>
+
+  <div class="callout info">
+    <div class="callout-title">💡 Test RTL early and often</div>
+    <div class="callout-body">Don't develop in English then "fix RTL later". Build in Hebrew from day one. Switch to English to verify logical properties work both ways. Test with the locale switcher.</div>
+  </div>
+</section>
+
+<section id="section-7">
+  <div class="section-header">
+    <div class="section-num">07 · Design System</div>
+    <h2 class="section-title">shadcn/ui + Tailwind = Your Foundation</h2>
+    <p class="section-lede">No design system exists yet. You build it as you go, anchored on shadcn primitives.</p>
+  </div>
+
+  <h3>7.1 The Approach</h3>
+
+  <p>shadcn/ui isn't a library you install — it's a CLI that copies components into your repo. You own them. Modify freely.</p>
+
+  <p>Start with primitives. Build composites as needed. Don't try to design everything upfront — design emerges from real screens.</p>
+
+  <h3>7.2 First Components to Add</h3>
+
+  <p>During Phase 0, add these shadcn primitives. Use the CLI:</p>
+
+  <div class="code-label">terminal</div>
+<pre><code><span class="comment"># Install primitives one at a time, as needed</span>
+npx shadcn@latest add button
+npx shadcn@latest add input
+npx shadcn@latest add label
+npx shadcn@latest add form
+npx shadcn@latest add dialog
+npx shadcn@latest add card
+npx shadcn@latest add table
+npx shadcn@latest add badge
+npx shadcn@latest add toast
+</code></pre>
+
+  <p>These cover ~80% of UI needs for the MVP. Add more (select, popover, command, etc.) when you hit a use case.</p>
+
+  <h3>7.3 The Theme</h3>
+
+  <p>Pick the theme during Phase 0. Keep it simple. Two recommendations:</p>
+
+  <ul class="num-list">
+    <li><strong>Neutral / Slate</strong> — professional, B2B-feeling. Recommended for our developer-facing UI. Easy to read in long dashboards.</li>
+    <li><strong>Brand color accent</strong> — pick one accent (blue, teal, or green) for primary actions. Avoid bright reds (associated with errors).</li>
+  </ul>
+
+  <p>Configure in <code>tailwind.config.ts</code> via CSS variables. shadcn provides templates.</p>
+
+  <h3>7.4 Spacing &amp; Typography Scale</h3>
+
+  <p>Use Tailwind's default scale. Don't customize unless necessary:</p>
+
+  <ul class="clean">
+    <li>Spacing: 4px increments (<code>p-1</code> = 4px, <code>p-4</code> = 16px, <code>p-8</code> = 32px)</li>
+    <li>Font sizes: <code>text-sm</code> (14px) for body, <code>text-base</code> (16px) for emphasized, <code>text-2xl</code> (24px) for headings</li>
+    <li>Line height: <code>leading-relaxed</code> for body text (Hebrew reads better with more space)</li>
+  </ul>
+
+  <h3>7.5 Component Patterns</h3>
+
+  <p>Three categories of components in <code>components/</code>:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Folder</th><th>Purpose</th><th>Example</th></tr></thead>
+      <tbody>
+        <tr><td><code>components/ui/</code></td><td>shadcn primitives (don't modify often)</td><td>Button, Input, Dialog</td></tr>
+        <tr><td><code>components/forms/</code></td><td>Form composites with validation</td><td>OwnerForm, ProjectForm</td></tr>
+        <tr><td><code>components/&lt;feature&gt;/</code></td><td>Feature-specific UI</td><td>projects/ProjectCard, owners/OwnerList</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>7.6 The "Don't Reinvent" Rule</h3>
+
+  <p>If shadcn has a primitive for it, use shadcn. Don't write your own button, input, dialog. Reasons:</p>
+
+  <ul class="checks">
+    <li>Accessibility built in (a11y is hard to get right)</li>
+    <li>Keyboard navigation built in</li>
+    <li>Consistency across the app</li>
+    <li>Less code to maintain</li>
+  </ul>
+
+  <p>You can customize the shadcn copy in your repo. That's the whole point of shadcn — you own it.</p>
+
+  <h3>7.7 Empty States, Loading States, Error States</h3>
+
+  <p>Every list, every async data view, every form needs three states beyond the happy path:</p>
+
+  <ul class="num-list">
+    <li><strong>Loading.</strong> Skeleton or spinner. Don't show a blank page during fetches.</li>
+    <li><strong>Empty.</strong> "No projects yet" with a CTA to create the first one. Empty states are a designed state, not a default.</li>
+    <li><strong>Error.</strong> "Couldn't load. Retry?" with a retry button. Generic but actionable.</li>
+  </ul>
+
+  <p>TanStack Query gives you <code>isLoading</code>, <code>isError</code>, and data states. Use them.</p>
+
+  <div class="callout info">
+    <div class="callout-title">💡 Design as you go</div>
+    <div class="callout-body">Don't try to design the entire system before building. Build a screen, see what feels off, refine. Build the next screen, notice patterns, extract components. Real designs emerge from real screens — regardless of which design tool produces them.</div>
+  </div>
+
+  <h3>7.8 Choosing Your Design Workflow</h3>
+
+  <p>You have multiple paths to producing UI code. The choice is yours. The contract with backend (Doc 06) is identical regardless of which path you choose.</p>
+
+  <h4>Option A: Figma + Claude Design (recommended starting point)</h4>
+
+  <p>Use Figma to plan the high-level structure: which screens exist, how they connect, basic wireframes. Then use Claude Design for the actual visual design and code generation.</p>
+
+  <ul class="checks">
+    <li><strong>Figma is for thinking.</strong> Sketch flows, explore variants, share with stakeholders for feedback.</li>
+    <li><strong>Claude Design is for production.</strong> Generates polished UI code that uses shadcn primitives, follows your design tokens, handles RTL.</li>
+    <li><strong>Hand-finishing is normal.</strong> Whatever Claude Design produces, you'll likely refine it. That's the point — you own the code.</li>
+  </ul>
+
+  <h4>Option B: Claude Design only</h4>
+
+  <p>Skip Figma. Go directly from idea to UI through Claude Design. Faster for screens that are well-understood (a standard form, a list view).</p>
+
+  <ul class="checks">
+    <li>Works for screens with clear patterns from the existing app</li>
+    <li>Less suited for novel UX (signature canvas, complex wizards) — Figma exploration helps there</li>
+    <li>Iterate by re-prompting Claude Design with what you want changed</li>
+  </ul>
+
+  <h4>Option C: Direct coding with shadcn</h4>
+
+  <p>Skip both design tools. Build directly in code with shadcn primitives. Fastest for trivial screens (settings page, terms of service, simple forms with one field).</p>
+
+  <ul class="checks">
+    <li>Best when you know exactly what you want</li>
+    <li>Best for tiny changes to existing screens</li>
+    <li>Always available as a fallback</li>
+  </ul>
+
+  <h4>Mixing and matching</h4>
+
+  <p>You'll likely use different paths for different screens:</p>
+
+  <ul class="clean">
+    <li><strong>Dashboard layout</strong> — Figma to plan, Claude Design to build</li>
+    <li><strong>Owner form</strong> — Claude Design directly (it's a standard form)</li>
+    <li><strong>Settings page</strong> — Direct coding (trivial)</li>
+    <li><strong>Signature canvas</strong> — Figma exploration first (novel UX), then code by hand or with Claude Design</li>
+  </ul>
+
+  <h4>What every path must produce</h4>
+
+  <p>Regardless of which tool you used, the resulting code must:</p>
+
+  <ul class="checks">
+    <li>Import types from <code>@app/shared-types</code> (not redefined)</li>
+    <li>Use react-hook-form + zodResolver for forms</li>
+    <li>Use TanStack Query for API calls</li>
+    <li>Use shadcn primitives (don't reinvent Button, Input, Dialog)</li>
+    <li>Use logical Tailwind properties (ms/me, not ml/mr)</li>
+    <li>Externalize all strings via next-intl</li>
+    <li>Pass the FE Definition of Done in Doc 06 section 13</li>
+  </ul>
+
+  <p>If Claude Design produces code that violates these — refine it. The DoD is the truth, the tool is a means.</p>
+
+  <h4>Switching tools mid-project</h4>
+
+  <p>You can change approaches anytime. The contract doesn't care. Backend doesn't care. Switch when the current tool isn't working for the screen you're on, or when a new tool becomes more capable.</p>
+
+  <div class="callout success">
+    <div class="callout-title">✓ Tool-agnostic code is the goal</div>
+    <div class="callout-body">If someone reads your code 6 months from now, they shouldn't be able to tell whether it came from Figma + manual coding, Claude Design, or hand-typed shadcn. The code should look the same — clean, conventional, schema-driven. The tool is a delivery mechanism for code; the code is what matters.</div>
+  </div>
+</section>
+
+<section id="section-8">
+  <div class="section-header">
+    <div class="section-num">08 · shared-types Contract</div>
+    <h2 class="section-title">The Single Source of Truth</h2>
+    <p class="section-lede">The <code>shared-types</code> package is the formal contract between you and your backend partner. Treat it with care.</p>
+  </div>
+
+  <p class="lead">Every entity in the system has a Zod schema in <code>packages/shared-types/</code>. The schema defines the shape, validates input, and generates TypeScript types. <strong>Both FE and BE use the same schemas.</strong> When the schema changes, both sides update.</p>
+
+  <h3>8.1 Why This Matters</h3>
+
+  <p>In a typical FE/BE split, each side has its own type definitions. They drift. FE expects <code>{ id, name }</code>, BE actually returns <code>{ id, displayName }</code>. Bugs.</p>
+
+  <p>By sharing Zod schemas:</p>
+
+  <ul class="checks">
+    <li><strong>Forms get validation for free</strong> — same rules as backend</li>
+    <li><strong>API responses are typed automatically</strong> — no manual TypeScript interfaces</li>
+    <li><strong>Schema changes are visible</strong> — single PR shows what changed and who's affected</li>
+    <li><strong>Errors match</strong> — when BE rejects bad input, FE shows the same error message</li>
+  </ul>
+
+  <div class="callout info">
+    <div class="callout-title">💡 For full protocols on shared-types</div>
+    <div class="callout-body">This section gives you the FE-side view. <strong>Document 06 sections 4 and 8</strong> cover the formal contract: how to add new schemas, how to safely change existing ones (additive vs tightening vs breaking), and the coordination protocols with your backend partner.</div>
+  </div>
+
+  <h3>8.2 The Pattern</h3>
+
+  <p>Every entity has one file in <code>packages/shared-types/src/</code>:</p>
+
+  <div class="code-label">packages/shared-types/src/owner.ts</div>
+<pre><code>import { z } from 'zod';
+import { isValidIsraeliId } from '@app/validators';
+
+<span class="comment">// Enums first</span>
+export const OwnerTypeEnum = z.enum(['individual', 'company', 'inheritance']);
+export type OwnerType = z.infer&lt;typeof OwnerTypeEnum&gt;;
+
+<span class="comment">// Full schema (for reads)</span>
+export const OwnerSchema = z.object({
+  id: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  type: OwnerTypeEnum,
+  displayName: z.string().min(1).max(200),
+  phone: z.string().nullable(),
+  email: z.string().email().nullable(),
+  address: z.string().nullable(),
+  notes: z.string().nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  archivedAt: z.coerce.date().nullable(),
+});
+
+<span class="comment">// Input schema for individual owner (for forms)</span>
+export const CreateIndividualOwnerInput = z.object({
+  type: z.literal('individual'),
+  firstName: z.string().min(1).max(100),
+  lastName: z.string().min(1).max(100),
+  nationalId: z.string().refine(isValidIsraeliId, {
+    message: 'Invalid Israeli ID',
+  }),
+  phone: z.string().nullable(),
+  email: z.string().email().nullable(),
+  address: z.string().nullable(),
+});
+
+<span class="comment">// Type exports</span>
+export type Owner = z.infer&lt;typeof OwnerSchema&gt;;
+export type CreateIndividualOwner = z.infer&lt;typeof CreateIndividualOwnerInput&gt;;
+</code></pre>
+
+  <h3>8.3 Using Schemas in Forms</h3>
+
+  <p>react-hook-form integrates with Zod via <code>@hookform/resolvers</code>:</p>
+
+  <div class="code-label">apps/web/src/components/forms/owner-form.tsx</div>
+<pre><code>import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { CreateIndividualOwnerInput, type CreateIndividualOwner } from '@app/shared-types';
+
+export function OwnerForm({ onSubmit }: Props) {
+  const form = useForm&lt;CreateIndividualOwner&gt;({
+    resolver: zodResolver(CreateIndividualOwnerInput),
+    defaultValues: {
+      type: 'individual',
+      firstName: '',
+      lastName: '',
+      nationalId: '',
+    },
+  });
+
+  return (
+    &lt;form onSubmit={form.handleSubmit(onSubmit)}&gt;
+      <span class="comment">// Validation happens automatically</span>
+      <span class="comment">// Errors come from Zod messages</span>
+      &lt;input {...form.register('firstName')} /&gt;
+      {form.formState.errors.firstName &amp;&amp; (
+        &lt;span&gt;{form.formState.errors.firstName.message}&lt;/span&gt;
+      )}
+      <span class="comment">// ...</span>
+    &lt;/form&gt;
+  );
+}
+</code></pre>
+
+  <h3>8.4 Using Schemas to Parse API Responses</h3>
+
+  <p>When you call the API, parse the response with the schema. This catches contract drift early:</p>
+
+  <div class="code-label">apps/web/src/lib/api/projects.ts</div>
+<pre><code>import { ProjectSchema, type Project } from '@app/shared-types';
+import { z } from 'zod';
+
+export async function fetchProjects(): Promise&lt;Project[]&gt; {
+  const res = await fetch('/api/v1/projects');
+  if (!res.ok) throw new Error('Failed to fetch projects');
+
+  const data = await res.json();
+
+  <span class="comment">// Parse the response — throws if shape doesn't match</span>
+  return z.array(ProjectSchema).parse(data);
+}
+</code></pre>
+
+  <p>If the BE returns something unexpected, the parse throws — better to fail loudly here than silently elsewhere.</p>
+
+  <h3>8.5 Modifying Shared Types</h3>
+
+  <p>When you need to add or change a schema:</p>
+
+  <ul class="num-list">
+    <li><strong>Discuss first.</strong> Ping your partner. Quick chat about why and what.</li>
+    <li><strong>One person opens a PR.</strong> Whoever needs it first.</li>
+    <li><strong>The PR title says it clearly:</strong> <code>feat(shared-types): add owner inheritance schema</code></li>
+    <li><strong>Both review.</strong> Check that the schema matches BE reality and FE expectations.</li>
+    <li><strong>Merge before either side uses it.</strong> Don't reference the new type in code that lands first — that creates type errors elsewhere.</li>
+  </ul>
+
+  <h3>8.6 Common Patterns</h3>
+
+  <div class="contract-card">
+    <div class="contract-card-title">📋 Pattern: Read schema vs Input schema</div>
+    <div class="contract-card-body">Read schemas (e.g. <code>ProjectSchema</code>) include all fields the API returns: id, timestamps, organizationId. Input schemas (<code>CreateProjectInput</code>) omit those — id is generated, organizationId is injected by BE, timestamps are server-set.</div>
+  </div>
+
+  <div class="contract-card">
+    <div class="contract-card-title">📋 Pattern: Discriminated unions for polymorphic types</div>
+    <div class="contract-card-body">Owners are individuals, companies, or inheritances. Each has different fields. Use <code>z.discriminatedUnion('type', [...])</code> for type-safe handling. TypeScript narrows correctly based on the type field.</div>
+  </div>
+
+  <div class="contract-card">
+    <div class="contract-card-title">📋 Pattern: z.coerce.date() for timestamps</div>
+    <div class="contract-card-body">JSON sends dates as strings. Use <code>z.coerce.date()</code> on read schemas to auto-convert. Without coerce, you get a string where TypeScript thinks it's a Date.</div>
+  </div>
+
+  <div class="contract-card">
+    <div class="contract-card-title">📋 Pattern: nullable vs optional</div>
+    <div class="contract-card-body"><code>z.string().nullable()</code> means the field exists but value can be null. <code>z.string().optional()</code> means the field might not be in the object. For DB nullable columns, use <code>.nullable()</code>. For form fields the user might skip, use <code>.optional()</code>.</div>
+  </div>
+
+  <div class="callout warning">
+    <div class="callout-title">⚠️ The Shared Types Stability Rule</div>
+    <div class="callout-body">Once a schema is in <code>main</code> and used by both sides, breaking changes need explicit coordination. Don't rename fields casually. Don't tighten validation without checking impact. Add new optional fields freely, but reshape carefully.</div>
+  </div>
+</section>
+
+<section id="section-9">
+  <div class="section-header">
+    <div class="section-num">09 · API Integration Pattern</div>
+    <h2 class="section-title">How You Talk to the Backend</h2>
+    <p class="section-lede">TanStack Query + fetch + shared-types. A simple, modern, predictable pattern.</p>
+  </div>
+
+  <h3>9.1 The Layers</h3>
+
+  <p>Three layers between your component and the backend:</p>
+
+  <ul class="num-list">
+    <li><strong>API client functions</strong> in <code>lib/api/</code>. Plain async functions that call fetch and parse responses.</li>
+    <li><strong>TanStack Query hooks</strong> in <code>hooks/</code>. Wrap API functions in <code>useQuery</code> / <code>useMutation</code> for caching, refetching, optimistic updates.</li>
+    <li><strong>Components</strong>. Use the hooks. Don't call fetch directly.</li>
+  </ul>
+
+  <h3>9.2 The API Client Pattern</h3>
+
+  <div class="code-label">apps/web/src/lib/api/client.ts</div>
+<pre><code><span class="comment">// Base fetch wrapper with error handling and credentials</span>
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+
+export class ApiError extends Error {
+  constructor(public status: number, message: string, public body?: unknown) {
+    super(message);
+  }
+}
+
+export async function apiFetch&lt;T&gt;(
+  path: string,
+  options: RequestInit = {},
+): Promise&lt;T&gt; {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    credentials: 'include',  <span class="comment">// Send cookies for auth</span>
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() =&gt; null);
+    throw new ApiError(res.status, body?.message ?? res.statusText, body);
+  }
+
+  return await res.json() as T;
+}
+</code></pre>
+
+  <h3>9.3 The API Function Pattern</h3>
+
+  <div class="code-label">apps/web/src/lib/api/projects.ts</div>
+<pre><code>import { z } from 'zod';
+import { ProjectSchema, CreateProjectInput, type Project, type CreateProject } from '@app/shared-types';
+import { apiFetch } from './client';
+
+export async function listProjects(): Promise&lt;Project[]&gt; {
+  const data = await apiFetch&lt;unknown&gt;('/api/v1/projects');
+  return z.array(ProjectSchema).parse(data);
+}
+
+export async function getProject(id: string): Promise&lt;Project&gt; {
+  const data = await apiFetch&lt;unknown&gt;(`/api/v1/projects/${id}`);
+  return ProjectSchema.parse(data);
+}
+
+export async function createProject(input: CreateProject): Promise&lt;Project&gt; {
+  <span class="comment">// Validate input before sending</span>
+  const validated = CreateProjectInput.parse(input);
+  const data = await apiFetch&lt;unknown&gt;('/api/v1/projects', {
+    method: 'POST',
+    body: JSON.stringify(validated),
+  });
+  return ProjectSchema.parse(data);
+}
+</code></pre>
+
+  <h3>9.4 The TanStack Query Pattern</h3>
+
+  <div class="code-label">apps/web/src/hooks/use-projects.ts</div>
+<pre><code>import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { listProjects, createProject } from '@/lib/api/projects';
+import type { CreateProject } from '@app/shared-types';
+
+<span class="comment">// Query key factory — consistent keys for cache invalidation</span>
+export const projectKeys = {
+  all: ['projects'] as const,
+  lists: () =&gt; [...projectKeys.all, 'list'] as const,
+  detail: (id: string) =&gt; [...projectKeys.all, 'detail', id] as const,
+};
+
+export function useProjects() {
+  return useQuery({
+    queryKey: projectKeys.lists(),
+    queryFn: listProjects,
+    staleTime: 30_000,  <span class="comment">// 30 seconds</span>
+  });
+}
+
+export function useCreateProject() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateProject) =&gt; createProject(input),
+    onSuccess: () =&gt; {
+      <span class="comment">// Invalidate the projects list so it refetches</span>
+      queryClient.invalidateQueries({ queryKey: projectKeys.lists() });
+    },
+  });
+}
+</code></pre>
+
+  <h3>9.5 Using Hooks in Components</h3>
+
+  <div class="code-label">apps/web/src/app/[locale]/(dashboard)/projects/page.tsx</div>
+<pre><code>'use client';
+
+import { useProjects } from '@/hooks/use-projects';
+import { Skeleton } from '@/components/ui/skeleton';
+
+export default function ProjectsPage() {
+  const { data: projects, isLoading, isError, error } = useProjects();
+
+  if (isLoading) return &lt;Skeleton className="h-40 w-full" /&gt;;
+  if (isError) return &lt;p&gt;Error: {error.message}&lt;/p&gt;;
+  if (!projects?.length) return &lt;EmptyState /&gt;;
+
+  return (
+    &lt;ul&gt;
+      {projects.map(p =&gt; &lt;ProjectCard key={p.id} project={p} /&gt;)}
+    &lt;/ul&gt;
+  );
+}
+</code></pre>
+
+  <h3>9.6 Optimistic Updates</h3>
+
+  <p>For actions where the user expects instant feedback (toggle, like, mark done), use optimistic updates:</p>
+
+  <div class="code-label">Optimistic update pattern</div>
+<pre><code>export function useUpdateProject() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: updateProject,
+    onMutate: async (newProject) =&gt; {
+      <span class="comment">// Cancel in-flight queries</span>
+      await queryClient.cancelQueries({ queryKey: projectKeys.detail(newProject.id) });
+
+      <span class="comment">// Snapshot previous value</span>
+      const previous = queryClient.getQueryData(projectKeys.detail(newProject.id));
+
+      <span class="comment">// Optimistically update</span>
+      queryClient.setQueryData(projectKeys.detail(newProject.id), newProject);
+
+      return { previous };
+    },
+    onError: (err, newProject, context) =&gt; {
+      <span class="comment">// Rollback on error</span>
+      queryClient.setQueryData(projectKeys.detail(newProject.id), context?.previous);
+    },
+    onSettled: (data, err, newProject) =&gt; {
+      <span class="comment">// Refetch to ensure server state</span>
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(newProject.id) });
+    },
+  });
+}
+</code></pre>
+
+  <h3>9.7 Error Handling Strategy</h3>
+
+  <ul class="num-list">
+    <li><strong>Network errors</strong> — TanStack Query auto-retries 3x. After that, show error state.</li>
+    <li><strong>4xx errors</strong> — show specific message from API. Don't retry.</li>
+    <li><strong>5xx errors</strong> — generic "Something went wrong, try again" message. Log to Sentry.</li>
+    <li><strong>401 unauthorized</strong> — redirect to login. Clear local state.</li>
+    <li><strong>Validation errors (400)</strong> — display field-level errors in the form.</li>
+  </ul>
+
+  <h3>9.8 The Adapter Pattern — Insulate UI from API Shape</h3>
+
+  <p class="lead">The shared-types schemas are the contract with the backend. But the shape that's optimal for an API response is rarely the shape that's optimal for rendering a UI. The <strong>adapter pattern</strong> sits between them: it takes the wire shape (validated by Zod against shared-types) and returns the UI shape that components actually want.</p>
+
+  <p>Why this matters:</p>
+
+  <ul class="num-list">
+    <li><strong>Backend schema changes don't ripple into 50 components.</strong> When the backend renames <code>nationalIdEncrypted</code> to <code>nationalId</code> on the wire (because PII is decrypted server-side before sending), the adapter changes; components don't.</li>
+    <li><strong>The UI shape is what the UI needs, not what the DB has.</strong> The DB has <code>archived_at: Date | null</code>. The UI wants <code>isArchived: boolean</code>. The adapter does the translation in one place.</li>
+    <li><strong>Computed fields live in adapters, not components.</strong> "Display name" might be <code>firstName + ' ' + lastName</code> for an individual owner but the company name for a corporate owner. That logic lives in the adapter, runs once, and components just render <code>owner.displayName</code>.</li>
+    <li><strong>Multiple sources of truth become one shape.</strong> If we have <code>owners</code> and <code>contractors</code> from different endpoints but the UI shows them in the same list, the adapter normalizes both to a common <code>PersonViewModel</code>.</li>
+  </ul>
+
+  <h4>9.8.1 The Pattern</h4>
+
+  <p>Three types per entity:</p>
+
+  <ul class="clean">
+    <li><strong>Wire type</strong> — what the API returns. Lives in <code>@app/shared-types</code>. Validated with Zod.</li>
+    <li><strong>View Model</strong> — what components consume. Lives in <code>apps/web/src/models/&lt;entity&gt;.vm.ts</code>.</li>
+    <li><strong>Adapter</strong> — pure function from Wire to ViewModel. Lives in <code>apps/web/src/adapters/&lt;entity&gt;.ts</code>.</li>
+  </ul>
+
+  <div class="code-label">apps/web/src/models/project.vm.ts</div>
+<pre><code><span class="comment">// View Model: what components want to render, not what the DB has</span>
+<span class="keyword">export type</span> ProjectViewModel = {
+  id: string;
+  name: string;
+  typeLabel: string;            <span class="comment">// 'תמ"א 38/1', 'תמ"א 38/2', 'פינוי-בינוי'</span>
+  statusLabel: string;          <span class="comment">// 'בתכנון', 'איסוף חתימות', ...</span>
+  statusColor: <span class="string">'gray'</span> | <span class="string">'amber'</span> | <span class="string">'emerald'</span> | <span class="string">'red'</span>;
+  addressLine: string;          <span class="comment">// 'רחוב האגוז 12, תל אביב'</span>
+  isArchived: boolean;
+  progressPercent: number;      <span class="comment">// computed: signatures collected / target</span>
+  createdRelative: string;      <span class="comment">// 'לפני 3 ימים', formatted</span>
+};
+</code></pre>
+
+  <div class="code-label">apps/web/src/adapters/project.ts</div>
+<pre><code><span class="keyword">import type</span> { Project } <span class="keyword">from</span> <span class="string">'@app/shared-types'</span>;
+<span class="keyword">import type</span> { ProjectViewModel } <span class="keyword">from</span> <span class="string">'@/models/project.vm'</span>;
+<span class="keyword">import</span> { formatRelativeHe } <span class="keyword">from</span> <span class="string">'@/lib/format'</span>;
+
+<span class="keyword">const</span> TYPE_LABELS: Record&lt;Project[<span class="string">'type'</span>], string&gt; = {
+  tama38_1: <span class="string">'תמ"א 38/1'</span>,
+  tama38_2: <span class="string">'תמ"א 38/2'</span>,
+  pinui_binui: <span class="string">'פינוי-בינוי'</span>,
+};
+
+<span class="keyword">const</span> STATUS_LABELS: Record&lt;Project[<span class="string">'status'</span>], string&gt; = {
+  planning: <span class="string">'בתכנון'</span>,
+  gathering_signatures: <span class="string">'איסוף חתימות'</span>,
+  approved: <span class="string">'מאושר'</span>,
+  in_construction: <span class="string">'בבנייה'</span>,
+  completed: <span class="string">'הושלם'</span>,
+  cancelled: <span class="string">'בוטל'</span>,
+};
+
+<span class="keyword">const</span> STATUS_COLORS: Record&lt;Project[<span class="string">'status'</span>], ProjectViewModel[<span class="string">'statusColor'</span>]&gt; = {
+  planning: <span class="string">'gray'</span>,
+  gathering_signatures: <span class="string">'amber'</span>,
+  approved: <span class="string">'emerald'</span>,
+  in_construction: <span class="string">'emerald'</span>,
+  completed: <span class="string">'gray'</span>,
+  cancelled: <span class="string">'red'</span>,
+};
+
+<span class="keyword">export function</span> toProjectViewModel(p: Project): ProjectViewModel {
+  <span class="keyword">return</span> {
+    id: p.id,
+    name: p.name,
+    typeLabel: TYPE_LABELS[p.type],
+    statusLabel: STATUS_LABELS[p.status],
+    statusColor: STATUS_COLORS[p.status],
+    addressLine: `${p.address}, ${p.city}`,
+    isArchived: p.archivedAt !== <span class="keyword">null</span>,
+    progressPercent: computeProgress(p),
+    createdRelative: formatRelativeHe(p.createdAt),
+  };
+}
+
+<span class="comment">// Bulk version for lists</span>
+<span class="keyword">export function</span> toProjectViewModels(items: Project[]): ProjectViewModel[] {
+  <span class="keyword">return</span> items.map(toProjectViewModel);
+}
+</code></pre>
+
+  <h4>9.8.2 Where the Adapter Runs</h4>
+
+  <p>Right in the TanStack Query hook, with <code>select</code>:</p>
+
+  <div class="code-label">apps/web/src/hooks/use-projects.ts</div>
+<pre><code><span class="keyword">import</span> { useQuery } <span class="keyword">from</span> <span class="string">'@tanstack/react-query'</span>;
+<span class="keyword">import</span> { listProjects } <span class="keyword">from</span> <span class="string">'@/lib/api/projects'</span>;
+<span class="keyword">import</span> { toProjectViewModels } <span class="keyword">from</span> <span class="string">'@/adapters/project'</span>;
+
+<span class="keyword">export function</span> useProjects() {
+  <span class="keyword">return</span> useQuery({
+    queryKey: [<span class="string">'projects'</span>],
+    queryFn: listProjects,
+    select: toProjectViewModels,  <span class="comment">// adapter runs here, only on change</span>
+  });
+}
+</code></pre>
+
+  <p>TanStack Query's <code>select</code> memoizes by reference, so the adapter runs only when the underlying data changes — not on every render.</p>
+
+  <h4>9.8.3 When You Don't Need an Adapter</h4>
+
+  <p>Not every entity needs an adapter. Heuristic:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Situation</th><th>Adapter needed?</th></tr></thead>
+      <tbody>
+        <tr><td>UI shows raw fields as-is</td><td>No — use the Wire type directly</td></tr>
+        <tr><td>UI shows enum labels in Hebrew</td><td>Yes — adapter maps enum → label</td></tr>
+        <tr><td>UI shows computed fields (progress %, days remaining)</td><td>Yes — computation lives in adapter</td></tr>
+        <tr><td>UI normalizes 2 different shapes into 1 list</td><td>Yes — each shape has its own adapter to the unified VM</td></tr>
+        <tr><td>UI shows dates in relative form ("3 days ago")</td><td>Yes — adapter formats the date</td></tr>
+        <tr><td>Form input/output (write path)</td><td>No — use shared-types <code>CreateXInput</code> directly</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info">
+    <div class="callout-title">💡 Adapter rules of thumb</div>
+    <div class="callout-body">
+      <strong>Adapters are pure functions.</strong> No fetch, no side effects, no hooks inside. Input → Output. Easy to test.<br><br>
+      <strong>Adapters don't mutate the wire type.</strong> The Zod-validated <code>Project</code> stays exactly as the contract defines. The adapter produces a <em>new</em> shape next to it.<br><br>
+      <strong>Adapters live in the FE only.</strong> The backend has no concept of <code>ProjectViewModel</code> — that's UI-specific. Don't add adapters to <code>shared-types</code>.<br><br>
+      <strong>Start without them; add when needed.</strong> Don't pre-build adapters for every entity. Add the adapter the first time a component needs translation. Pre-mature abstraction is a real cost.
+    </div>
+  </div>
+</section>
+
+<section id="section-10">
+  <div class="section-header">
+    <div class="section-num">10 · Mock-First Workflow</div>
+    <h2 class="section-title">Don't Wait for Backend</h2>
+    <p class="section-lede">The shared-types contract means you can build entire features against mocks before the API exists. This is a superpower.</p>
+  </div>
+
+  <h3>10.1 The Principle</h3>
+
+  <p class="lead">Your partner is building Phase 1 (database). You don't have to wait. The shared-types schemas exist. You can build everything that consumes them with mock data, then swap to real API calls when endpoints are ready.</p>
+
+  <h3>10.2 The Mock Pattern</h3>
+
+  <p>Use Mock Service Worker (MSW) for realistic API mocking:</p>
+
+  <div class="code-label">terminal</div>
+<pre><code>pnpm --filter web add -D msw
+</code></pre>
+
+  <p>MSW intercepts fetch calls in the browser. Your code calls the real fetch, MSW returns mock data. When you switch to the real backend, you remove MSW — no code changes elsewhere.</p>
+
+  <h3>10.3 The <code>SAMPLE_*</code> Convention</h3>
+
+  <p>Mock data lives in <code>apps/web/src/mocks/samples/</code>, one file per entity, with a standardized naming convention. Every exported sample collection is named <code>SAMPLE_&lt;ENTITY&gt;S</code> in screaming snake case — making samples instantly grep-able and visually distinct from real data:</p>
+
+  <div class="code-label">apps/web/src/mocks/samples/projects.ts</div>
+<pre><code><span class="keyword">import</span> { ProjectSchema, <span class="keyword">type</span> Project } <span class="keyword">from</span> <span class="string">'@app/shared-types'</span>;
+
+<span class="comment">// SAMPLE_* — Pure data, no MSW logic. Easy to import elsewhere (e.g., Storybook).</span>
+<span class="keyword">export const</span> SAMPLE_PROJECTS: Project[] = [
+  ProjectSchema.parse({
+    id: <span class="string">'00000000-0000-0000-0000-000000000001'</span>,
+    organizationId: <span class="string">'00000000-0000-0000-0000-00000000000a'</span>,
+    name: <span class="string">'תמ"א 38 — רחוב האגוז 12'</span>,
+    description: <span class="string">'שיפוץ 12 בניינים'</span>,
+    type: <span class="string">'tama38_1'</span>,
+    status: <span class="string">'gathering_signatures'</span>,
+    address: <span class="string">'רחוב האגוז 12'</span>,
+    city: <span class="string">'תל אביב'</span>,
+    targetSignaturePct: <span class="num">67.00</span>,
+    metadata: {},
+    createdAt: <span class="keyword">new</span> Date(<span class="string">'2026-01-15'</span>).toISOString(),
+    updatedAt: <span class="keyword">new</span> Date(<span class="string">'2026-03-20'</span>).toISOString(),
+    archivedAt: <span class="keyword">null</span>,
+  }),
+  ProjectSchema.parse({
+    id: <span class="string">'00000000-0000-0000-0000-000000000002'</span>,
+    organizationId: <span class="string">'00000000-0000-0000-0000-00000000000a'</span>,
+    name: <span class="string">'פינוי-בינוי — נווה צדק'</span>,
+    type: <span class="string">'pinui_binui'</span>,
+    status: <span class="string">'planning'</span>,
+    address: <span class="string">'רחוב לילינבלום 5'</span>,
+    city: <span class="string">'תל אביב'</span>,
+    targetSignaturePct: <span class="num">80.00</span>,
+    metadata: {},
+    createdAt: <span class="keyword">new</span> Date(<span class="string">'2026-02-01'</span>).toISOString(),
+    updatedAt: <span class="keyword">new</span> Date(<span class="string">'2026-02-01'</span>).toISOString(),
+    archivedAt: <span class="keyword">null</span>,
+  }),
+];
+</code></pre>
+
+  <p>MSW handlers <strong>only orchestrate</strong> — they import the samples, don't define them. This makes the samples reusable in Storybook, snapshot tests, and developer demos:</p>
+
+  <div class="code-label">apps/web/src/mocks/handlers.ts</div>
+<pre><code><span class="keyword">import</span> { http, HttpResponse } <span class="keyword">from</span> <span class="string">'msw'</span>;
+<span class="keyword">import</span> { ProjectSchema } <span class="keyword">from</span> <span class="string">'@app/shared-types'</span>;
+<span class="keyword">import</span> { SAMPLE_PROJECTS } <span class="keyword">from</span> <span class="string">'./samples/projects'</span>;
+
+<span class="comment">// Mutable copy — handlers can push to it</span>
+<span class="keyword">const</span> projects = [...SAMPLE_PROJECTS];
+
+<span class="keyword">export const</span> handlers = [
+  http.get(<span class="string">'/api/v1/projects'</span>, () =&gt; HttpResponse.json(projects)),
+
+  http.post(<span class="string">'/api/v1/projects'</span>, <span class="keyword">async</span> ({ request }) =&gt; {
+    <span class="keyword">const</span> body = <span class="keyword">await</span> request.json();
+    <span class="keyword">const</span> newProject = ProjectSchema.parse({
+      ...body,
+      id: crypto.randomUUID(),
+      organizationId: <span class="string">'00000000-0000-0000-0000-00000000000a'</span>,
+      createdAt: <span class="keyword">new</span> Date().toISOString(),
+      updatedAt: <span class="keyword">new</span> Date().toISOString(),
+      archivedAt: <span class="keyword">null</span>,
+    });
+    projects.push(newProject);
+    <span class="keyword">return</span> HttpResponse.json(newProject);
+  }),
+];
+</code></pre>
+
+  <p>The full <code>samples/</code> directory for MVP looks like:</p>
+
+  <div class="code-label">apps/web/src/mocks/samples/ (target structure)</div>
+<pre><code>samples/
+├── organizations.ts   → SAMPLE_ORGANIZATIONS
+├── users.ts           → SAMPLE_USERS, SAMPLE_MEMBERSHIPS
+├── projects.ts        → SAMPLE_PROJECTS
+├── buildings.ts       → SAMPLE_BUILDINGS
+├── apartments.ts      → SAMPLE_APARTMENTS
+├── owners.ts          → SAMPLE_OWNERS, SAMPLE_OWNERSHIPS
+├── contractors.ts     → SAMPLE_CONTRACTORS, SAMPLE_SHARES
+├── tasks.ts           → SAMPLE_TASKS, SAMPLE_TASK_ASSIGNEES
+├── notifications.ts   → SAMPLE_NOTIFICATIONS
+├── documents.ts       → SAMPLE_DOCUMENTS
+├── signatures.ts      → SAMPLE_SIGNATURES
+├── audit-log.ts       → SAMPLE_AUDIT_ENTRIES
+└── index.ts           → re-exports all SAMPLE_*
+</code></pre>
+
+  <p>Three rules for samples:</p>
+
+  <ul class="num-list">
+    <li><strong>Every sample passes its Zod schema.</strong> <code>ProjectSchema.parse(...)</code> on every entry. If shared-types changes, broken samples are a TypeScript error — caught at build time, before runtime.</li>
+    <li><strong>UUIDs are stable.</strong> Use <code>00000000-0000-0000-0000-000000000001</code>, <code>...0002</code>, etc. — predictable IDs make tests deterministic and URLs reproducible during dev (<code>/projects/...001</code> always shows the same project).</li>
+    <li><strong>Cover the edge cases.</strong> One archived item. One with all optional fields empty. One with very long Hebrew text (RTL stress test). One with the maximum allowed values. Samples that only cover the happy path miss the bugs that matter.</li>
+  </ul>
+
+  <div class="callout success">
+    <div class="callout-title">✓ Why SAMPLE_* (not <code>mockX</code> or <code>fixtures</code>)</div>
+    <div class="callout-body">
+      The screaming-snake naming is intentional. When you see <code>SAMPLE_OWNERS</code> in code, you know instantly: <em>this is fake data, not production data, not user input</em>. The convention makes it impossible to confuse a sample with a real value at a glance. Useful in code reviews, useful in grep, useful when onboarding.
+    </div>
+  </div>
+
+  <h3>10.4 Enabling Mocks in Dev</h3>
+
+  <p>Toggle mocks via env variable:</p>
+
+  <div class="code-label">apps/web/src/lib/setup-mocks.ts</div>
+<pre><code>export async function setupMocks() {
+  if (process.env.NEXT_PUBLIC_USE_MOCKS !== 'true') return;
+  if (typeof window === 'undefined') return;
+
+  const { worker } = await import('@/mocks/browser');
+  await worker.start({
+    onUnhandledRequest: 'bypass',  <span class="comment">// Don't fail on real backend calls</span>
+  });
+}
+</code></pre>
+
+  <p>In <code>.env.local</code>: <code>NEXT_PUBLIC_USE_MOCKS=true</code>. Toggle off when backend is ready for the endpoint you're working with.</p>
+
+  <h3>10.5 The Workflow</h3>
+
+  <div class="timeline">
+    <div class="timeline-item completed">
+      <div class="timeline-week">Day 1</div>
+      <div class="timeline-title">Read the schema</div>
+      <div class="timeline-desc">Look at <code>packages/shared-types/src/&lt;entity&gt;.ts</code>. Understand the shape.</div>
+    </div>
+    <div class="timeline-item completed">
+      <div class="timeline-week">Day 1</div>
+      <div class="timeline-title">Add mock handlers</div>
+      <div class="timeline-desc">Write MSW handlers for the endpoints you'll need. Use the Zod schema to generate realistic mock data.</div>
+    </div>
+    <div class="timeline-item completed">
+      <div class="timeline-week">Day 2-N</div>
+      <div class="timeline-title">Build UI against mocks</div>
+      <div class="timeline-desc">Forms, lists, detail views, edit flows. Everything works locally with mocks.</div>
+    </div>
+    <div class="timeline-item current">
+      <div class="timeline-week">Sync point</div>
+      <div class="timeline-title">Backend ships endpoint</div>
+      <div class="timeline-desc">Your partner shares "Endpoint X is live". Toggle off mocks for that endpoint. Test against real backend.</div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-week">Cleanup</div>
+      <div class="timeline-title">Remove mocks for shipped endpoints</div>
+      <div class="timeline-desc">As real endpoints come online, remove the corresponding mock handlers. Keeps the mock layer focused on what's actually pending.</div>
+    </div>
+  </div>
+
+  <h3>10.6 Generating Mock Data</h3>
+
+  <p>For tests and demo data, use <code>faker.js</code> with Zod:</p>
+
+  <div class="code-label">Mock data generation</div>
+<pre><code>import { faker } from '@faker-js/faker';
+import { ProjectSchema } from '@app/shared-types';
+
+export function makeProject(overrides = {}) {
+  return ProjectSchema.parse({
+    id: faker.string.uuid(),
+    organizationId: faker.string.uuid(),
+    name: faker.company.name() + ' Renewal',
+    description: faker.lorem.paragraph(),
+    type: faker.helpers.arrayElement(['tama38_1', 'tama38_2', 'pinui_binui']),
+    status: faker.helpers.arrayElement(['planning', 'gathering_signatures', 'approved']),
+    address: faker.location.streetAddress(),
+    city: faker.helpers.arrayElement(['Tel Aviv', 'Haifa', 'Jerusalem']),
+    targetSignaturePct: 67.00,
+    metadata: {},
+    createdAt: faker.date.recent({ days: 30 }).toISOString(),
+    updatedAt: new Date().toISOString(),
+    archivedAt: null,
+    ...overrides,
+  });
+}
+</code></pre>
+
+  <h3>10.7 Mock-First Anti-Patterns</h3>
+
+  <p>Things to avoid:</p>
+
+  <ul class="crosses">
+    <li><strong>Don't ship mocks to production.</strong> Use env var to gate. CI should fail if MSW is enabled in build.</li>
+    <li><strong>Don't make mocks too elaborate.</strong> A few realistic items per endpoint is enough. Don't simulate the entire backend.</li>
+    <li><strong>Don't let mocks drift from schemas.</strong> If you change a Zod schema, update the mocks. Otherwise tests pass against fake data, fail against real backend.</li>
+    <li><strong>Don't keep mocks indefinitely.</strong> When the real endpoint is ready, switch and remove the mock.</li>
+  </ul>
+
+  <div class="callout success">
+    <div class="callout-title">✓ Why this works</div>
+    <div class="callout-body">Mock-first development means you're never blocked. Your partner ships endpoints when they ship. You build UI continuously. When endpoints come online, integration is just toggling a flag — because the contract (Zod schemas) was right from day one.</div>
+  </div>
+</section>
+
+<section id="section-11">
+  <div class="section-header">
+    <div class="section-num">11 · What You Build When</div>
+    <h2 class="section-title">FE Phase Plan</h2>
+    <p class="section-lede">The phase plan from your perspective. When backend is doing X, you're doing Y.</p>
+  </div>
+
+  <p class="lead">The MVP plan has 9 phases (0-8). Backend is the critical path for most of them — without DB, auth, and APIs, FE can only mock so much. This section maps backend phases to FE work, so you always know what you can be doing.</p>
+
+  <h3>11.1 The Big Picture</h3>
+
+  <div class="timeline">
+    <div class="timeline-item">
+      <div class="timeline-week">Phase 0 · 2-3 days</div>
+      <div class="timeline-title">Foundation</div>
+      <div class="timeline-desc">Both work in parallel. You scaffold Next.js, configure RTL + i18n, set up shadcn. Backend scaffolds NestJS, sets up DB connection.</div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-week">Phase 1 · 3-4 days</div>
+      <div class="timeline-title">Database (BE only)</div>
+      <div class="timeline-desc">Backend builds DB schemas, RLS, withTenant. <strong>You can take a break</strong>, or start Phase 8 prep (design tokens, layout shells, design exploration).</div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-week">Phase 2 · 3-4 days</div>
+      <div class="timeline-title">Auth</div>
+      <div class="timeline-desc">Backend builds Better Auth + guards. You build login, signup, password reset UI. Mock the auth API initially, switch when ready.</div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-week">Phase 3 · 5-7 days</div>
+      <div class="timeline-title">Domain API + Forms</div>
+      <div class="timeline-desc">Backend builds CRUD endpoints (projects, owners, etc.). You build entity forms, list views, detail views. Mock-first, switch as endpoints come online.</div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-week">Phase 4 · 3-4 days</div>
+      <div class="timeline-title">Documents (Files)</div>
+      <div class="timeline-desc">Backend builds R2 file uploads with presigned URLs. You build upload UI, document list, preview.</div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-week">Phase 5 · 4-5 days</div>
+      <div class="timeline-title">Signatures</div>
+      <div class="timeline-desc">Both work in parallel. Backend builds signature_requests + token flow. You build signature canvas (mobile-optimized!), public signing pages.</div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-week">Phase 6 · 3-4 days</div>
+      <div class="timeline-title">Import Pipeline</div>
+      <div class="timeline-desc">Backend builds Excel parsing + BullMQ jobs. You build import wizard UI, progress display, error handling.</div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-week">Phase 7 · 3-4 days</div>
+      <div class="timeline-title">Export Pipeline</div>
+      <div class="timeline-desc">Backend builds PDF/Excel generation. You build export buttons, download flow, format selection UI.</div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-week">Phase 8 · 5-7 days</div>
+      <div class="timeline-title">Frontend Polish (mostly you)</div>
+      <div class="timeline-desc">Performance, accessibility, edge cases, animations, mobile QA, browser compatibility. Backend does final security pass and monitoring setup.</div>
+    </div>
+  </div>
+
+  <h3>11.2 Phase 0 (Your Tasks)</h3>
+
+  <p>Phase 0 is shared. Your specific tasks (referenced in Doc 04b as P0.5):</p>
+
+  <ul class="checks">
+    <li>Scaffold Next.js 15 with App Router, TypeScript, Tailwind</li>
+    <li>Configure <code>html lang="he" dir="rtl"</code> in root layout</li>
+    <li>Load Heebo font via <code>next/font/google</code></li>
+    <li>Install Tailwind RTL plugin</li>
+    <li>Initialize shadcn/ui</li>
+    <li>Configure next-intl with HE + EN</li>
+    <li>Build a blank landing page that proves RTL + Hebrew + a button works</li>
+    <li>Set up Sentry for FE error tracking</li>
+    <li>Create <code>apps/web/CLAUDE.md</code></li>
+    <li>Add Dockerfile for production builds</li>
+  </ul>
+
+  <p>By the end: <code>pnpm --filter web dev</code> opens to a Hebrew-rendered, RTL page with one button. That's the goal.</p>
+
+  <h3>11.3 Phase 1 (You're Optional)</h3>
+
+  <p>Backend is heads-down on Phase 1 (database). You have options:</p>
+
+  <h4>Option A: Take a real break</h4>
+  <p>You've earned it after Phase 0. Come back fresh for Phase 2.</p>
+
+  <h4>Option B: Phase 8 prep work</h4>
+  <p>Get ahead on polish work that doesn't depend on real data:</p>
+  <ul class="clean">
+    <li>Pick the shadcn theme (slate? neutral?). Customize CSS variables.</li>
+    <li>Build the dashboard layout shell — header, sidebar, main content area. Mock everything inside.</li>
+    <li>Build empty state, loading state, error state components.</li>
+    <li>Build the locale switcher.</li>
+    <li>Add Heebo font fallbacks for fast loading.</li>
+  </ul>
+
+  <h4>Option C: Design exploration</h4>
+  <p>Sketch screens for the key flows (Figma, paper, anything). Even rough sketches help when you start building.</p>
+
+  <h3>11.4 Phase 2 (Auth UI)</h3>
+
+  <p>~10-15 hours of work. Backend ships Better Auth endpoints incrementally. You build:</p>
+
+  <ul class="checks">
+    <li>Login page with email + password form</li>
+    <li>Signup flow (creates user + organization)</li>
+    <li>Password reset request page</li>
+    <li>Password reset confirmation page (from email link)</li>
+    <li>MFA setup flow (TOTP) — Phase 2.5</li>
+    <li>Email verification flow</li>
+    <li>Logout button + session clearing</li>
+    <li>Auth guard middleware (Next.js middleware redirects unauthenticated to /login)</li>
+    <li>Auth context / store for user state</li>
+  </ul>
+
+  <p>Mock the auth API initially. Switch when backend is ready (incremental).</p>
+
+  <h3>11.5 Phase 3 (Domain UI — biggest phase)</h3>
+
+  <p>~30-40 hours of work over a week. The most volume of FE work. Build all CRUD UIs:</p>
+
+  <h4>Projects</h4>
+  <ul class="clean">
+    <li>Project list page (cards or table view, filters by status/type)</li>
+    <li>Create project form (name, type, address, city)</li>
+    <li>Project detail page (overview, plots, owners, documents tabs)</li>
+    <li>Edit project form</li>
+    <li>Delete project confirmation</li>
+  </ul>
+
+  <h4>Owners</h4>
+  <ul class="clean">
+    <li>Owner list (with search by name, filter by type)</li>
+    <li>Add owner form (with discriminated union: individual/company/inheritance)</li>
+    <li>Owner detail page</li>
+    <li>Edit owner form</li>
+    <li>Israeli ID validation in real-time using <code>@app/validators</code></li>
+  </ul>
+
+  <h4>Plots, Structures, Units</h4>
+  <ul class="clean">
+    <li>Hierarchical view: project → plots → structures → units</li>
+    <li>CRUD for each level</li>
+    <li>CTI handling for structures (residential/mixed/commercial forms)</li>
+  </ul>
+
+  <h4>Ownerships (M2M)</h4>
+  <ul class="clean">
+    <li>Assign owner to unit form</li>
+    <li>Set share (numerator/denominator with live preview of decimal)</li>
+    <li>Validation: shares for a unit must sum to 1.0</li>
+  </ul>
+
+  <h3>11.6 Phase 4 (Documents)</h3>
+
+  <p>~15-20 hours. Build:</p>
+
+  <ul class="checks">
+    <li>Drag-and-drop file upload zone</li>
+    <li>Upload progress with cancellation</li>
+    <li>Document list (per entity: project, owner, etc.)</li>
+    <li>PDF preview inline</li>
+    <li>Image preview inline</li>
+    <li>Download links</li>
+    <li>Delete with confirmation</li>
+    <li>File size + type validation client-side (before upload)</li>
+  </ul>
+
+  <h3>11.7 Phase 5 (Signatures — the most user-facing flow)</h3>
+
+  <p>~25-30 hours. Two distinct flows:</p>
+
+  <h4>Internal: Send for Signature (developer-facing)</h4>
+  <ul class="clean">
+    <li>Select document, select recipients (owners)</li>
+    <li>Customize email message</li>
+    <li>Send</li>
+    <li>Track status: pending / signed / declined / expired per owner</li>
+  </ul>
+
+  <h4>External: Signing Page (owner-facing, mobile-first!)</h4>
+  <ul class="clean">
+    <li>Lands on <code>/sign/&lt;token&gt;</code></li>
+    <li>Shows document preview</li>
+    <li>Signature canvas (touch-friendly, react-signature-canvas)</li>
+    <li>Or "Type name" alternative</li>
+    <li>Confirm checkbox</li>
+    <li>Submit</li>
+    <li>Success page with confirmation</li>
+  </ul>
+
+  <p><strong>This is the most polished flow.</strong> Owners must succeed on phone, often with poor signal, often elderly. Test extensively.</p>
+
+  <h3>11.8 Phase 6-7 (Import / Export)</h3>
+
+  <h4>Import Wizard</h4>
+  <ul class="clean">
+    <li>Step 1: Upload Excel file</li>
+    <li>Step 2: Map columns to fields</li>
+    <li>Step 3: Preview + validate (show errors per row)</li>
+    <li>Step 4: Confirm + run import (BullMQ job)</li>
+    <li>Step 5: Progress display via SSE or polling</li>
+    <li>Step 6: Result summary (X created, Y errors)</li>
+  </ul>
+
+  <h4>Export</h4>
+  <ul class="clean">
+    <li>Export buttons on relevant pages (project, owner list)</li>
+    <li>Format selection: PDF or Excel</li>
+    <li>Trigger BE generation</li>
+    <li>Download when ready (poll or SSE)</li>
+  </ul>
+
+  <h3>11.9 Phase 8 (Polish — your big phase)</h3>
+
+  <p>~40 hours over a week. Most of this is yours. Areas:</p>
+
+  <ul class="checks">
+    <li><strong>Performance:</strong> Code splitting, image optimization, font loading, bundle analysis</li>
+    <li><strong>Accessibility:</strong> Screen reader testing, keyboard nav, focus management, ARIA labels</li>
+    <li><strong>Edge cases:</strong> Empty states, error states, loading states, offline behavior</li>
+    <li><strong>Mobile QA:</strong> Test on real iOS Safari, real Android Chrome. Not just emulators.</li>
+    <li><strong>Animations:</strong> Subtle, purposeful. Page transitions, micro-interactions.</li>
+    <li><strong>Browser compatibility:</strong> Chrome, Safari (iOS + Mac), Edge. Firefox optional.</li>
+    <li><strong>Print styles:</strong> Reports look right when printed</li>
+    <li><strong>Dark mode</strong> (optional but appreciated)</li>
+  </ul>
+
+  <div class="callout warning">
+    <div class="callout-title">⚠️ Don't postpone polish</div>
+    <div class="callout-body">It's tempting to fix accessibility "in Phase 8". By then you have 100 components and retrofitting is painful. Build accessibly from Phase 3. Use shadcn primitives — they handle a11y. Test with keyboard as you build.</div>
+  </div>
+</section>
+
+<section id="section-12">
+  <div class="section-header">
+    <div class="section-num">12 · Sync Points &amp; Handoffs</div>
+    <h2 class="section-title">When You Need to Coordinate</h2>
+    <p class="section-lede">Most work is async. But certain moments require explicit sync. This section gives you the high-level moments; <strong>Document 06 sections 8-11</strong> have the detailed protocols.</p>
+  </div>
+
+  <h3>12.1 The Five Critical Sync Points</h3>
+
+  <p>These five moments are when you and your partner must coordinate explicitly:</p>
+
+  <ul class="num-list">
+    <li><strong>End of Phase 0.</strong> Both apps scaffolded, both can run, CI green. Do a 15-minute call to verify.</li>
+    <li><strong>Schema additions to <code>shared-types</code>.</strong> Either side modifying. PR + brief discussion.</li>
+    <li><strong>API endpoint shipped.</strong> Backend says "endpoint X is live". You verify and switch off mocks.</li>
+    <li><strong>Breaking changes to API.</strong> Rare but inevitable. Coordinate timing.</li>
+    <li><strong>Pre-release.</strong> Before tagging a release, both review what's shipping.</li>
+  </ul>
+
+  <h3>12.2 The Backend → Frontend Handoff</h3>
+
+  <p>When backend ships an endpoint, follow this protocol:</p>
+
+  <div class="workflow" style="display: grid; grid-template-columns: 60px 1fr; gap: 20px; margin-bottom: 16px;">
+    <div style="width: 48px; height: 48px; background: var(--bg-dark); color: white; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; font-family: 'JetBrains Mono', monospace;">01</div>
+    <div>
+      <h5 style="margin-top: 0; margin-bottom: 6px;">Backend creates handoff issue</h5>
+      <p style="font-size: 14px;">Title: "FE-Ready: &lt;feature&gt;". Body: list of endpoints, link to schemas in shared-types, special cases or edge behaviors.</p>
+    </div>
+  </div>
+
+  <div class="workflow" style="display: grid; grid-template-columns: 60px 1fr; gap: 20px; margin-bottom: 16px;">
+    <div style="width: 48px; height: 48px; background: var(--bg-dark); color: white; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; font-family: 'JetBrains Mono', monospace;">02</div>
+    <div>
+      <h5 style="margin-top: 0; margin-bottom: 6px;">FE picks up</h5>
+      <p style="font-size: 14px;">Pull latest main. Switch off mocks for that endpoint. Test against real backend in dev.</p>
+    </div>
+  </div>
+
+  <div class="workflow" style="display: grid; grid-template-columns: 60px 1fr; gap: 20px; margin-bottom: 16px;">
+    <div style="width: 48px; height: 48px; background: var(--bg-dark); color: white; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; font-family: 'JetBrains Mono', monospace;">03</div>
+    <div>
+      <h5 style="margin-top: 0; margin-bottom: 6px;">FE finds issues</h5>
+      <p style="font-size: 14px;">If endpoint behavior differs from schema or expectation, comment on the handoff issue. BE responds within 24h.</p>
+    </div>
+  </div>
+
+  <div class="workflow" style="display: grid; grid-template-columns: 60px 1fr; gap: 20px;">
+    <div style="width: 48px; height: 48px; background: var(--bg-dark); color: white; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; font-family: 'JetBrains Mono', monospace;">04</div>
+    <div>
+      <h5 style="margin-top: 0; margin-bottom: 6px;">FE merges</h5>
+      <p style="font-size: 14px;">UI is wired to real endpoint. Mock removed. Issue closed.</p>
+    </div>
+  </div>
+
+  <h3>12.3 The Frontend → Backend Request</h3>
+
+  <p>When you need a new endpoint or schema change, follow this protocol:</p>
+
+  <ul class="num-list">
+    <li><strong>Open an issue with title "BE-Request: &lt;feature&gt;".</strong> Describe what you need, why, what shape.</li>
+    <li><strong>Reference shared-types if applicable.</strong> "I need to filter projects by status" — link to <code>ProjectSchema.status</code>.</li>
+    <li><strong>Suggest the API shape.</strong> "GET /api/v1/projects?status=active". Backend can adjust if there's a reason.</li>
+    <li><strong>Continue with mocks.</strong> Don't block. Mock the endpoint you proposed. When backend ships it, swap.</li>
+  </ul>
+
+  <h3>12.4 Conflict Resolution</h3>
+
+  <p>You and your partner will sometimes disagree. The protocol:</p>
+
+  <ul class="num-list">
+    <li><strong>Default to the simpler design.</strong> If you can't agree, pick the simpler/smaller change. Easier to expand than retract.</li>
+    <li><strong>Default to the partner's territory.</strong> BE designs the API shape. FE designs the UI. Cross-cutting concerns (shared-types) need agreement.</li>
+    <li><strong>Document trade-offs.</strong> If a decision was non-obvious, write 2 sentences in PR description. Future you will thank present you.</li>
+    <li><strong>Don't get stuck.</strong> If 30 minutes of discussion doesn't resolve it, ship something, learn, iterate.</li>
+  </ul>
+
+  <h3>12.5 The Weekly Sync (15 minutes)</h3>
+
+  <p>Once a week, do a brief sync. Recommended template:</p>
+
+  <div class="code-label">Weekly sync template</div>
+<pre><code>What got done last week:
+  Partner (BE):
+    - Phase X tasks 1, 2, 3
+    - Endpoint Y shipped
+  You (FE):
+    - Component A, B
+    - Form C
+    - Mocked endpoint Z
+
+What's planned this week:
+  Partner: Phase X tasks 4, 5
+  You: Form D, integrate endpoint Y
+
+Blockers:
+  Anything?
+
+Shared territory needing alignment:
+  - Adding new field to OwnerSchema for X reason
+  - Discussing approach to file upload UX
+</code></pre>
+
+  <p>That's it. 15 minutes. No more.</p>
+
+  <h3>12.6 The Daily Reality</h3>
+
+  <p>Most days you don't talk. You both work. You see PRs from your partner. They see PRs from you. Reviews happen async. Issues get filed. Things converge.</p>
+
+  <p>If a day passes and you didn't see anything from your partner — that's normal. They might be heads-down on a complex task or had a busy day at their day job. Don't assume problems.</p>
+
+  <div class="callout success">
+    <div class="callout-title">✓ The two-developer SaaS team works</div>
+    <div class="callout-body">Many successful SaaS products started with 2 part-time developers. The async + clear contracts + decisive autonomy model is what makes it possible. Trust the process. Build, ship, iterate.</div>
+  </div>
+</section>
+
+<section id="section-13">
+  <div class="section-header">
+    <div class="section-num">13 · Claude Code for FE</div>
+    <h2 class="section-title">Your AI Pair Programmer</h2>
+    <p class="section-lede">The CLAUDE.md and slash commands set up in Doc 04a work for both developers. Here's how you use them as the FE developer.</p>
+  </div>
+
+  <h3>13.1 What's Already Set Up</h3>
+
+  <p>Doc 04a (Claude Code Environment Setup) creates the shared infrastructure. As the FE dev, you benefit from:</p>
+
+  <ul class="checks">
+    <li>Root <code>CLAUDE.md</code> — project context Claude knows in every session</li>
+    <li><code>apps/web/CLAUDE.md</code> — your specific patterns (FE conventions, RTL, i18n)</li>
+    <li>Slash commands: <code>/security-check</code>, <code>/perf-check</code>, <code>/commit</code>, <code>/release</code></li>
+    <li>Hooks: pre-commit, post-edit (typecheck), pre-write (block secrets)</li>
+    <li>Conventional commits enforcement</li>
+  </ul>
+
+  <h3>13.2 The FE-Specific CLAUDE.md</h3>
+
+  <p>Your <code>apps/web/CLAUDE.md</code> should include FE-specific patterns. Example template:</p>
+
+  <div class="code-label">apps/web/CLAUDE.md</div>
+<pre><code><span class="comment"># Web — Frontend (Next.js 15 App Router)</span>
+
+<span class="comment">## Stack</span>
+- Next.js 15 App Router (NOT Pages Router)
+- TypeScript strict mode
+- shadcn/ui + Tailwind CSS + tailwindcss-rtl
+- TanStack Query v5 for server state
+- Zustand for client state
+- react-hook-form + Zod for forms
+- next-intl for i18n
+- Playwright for E2E
+- Vitest + Testing Library for components
+
+<span class="comment">## RTL is the default</span>
+- Always use logical properties: ms/me, ps/pe, text-start/end
+- Never use ml/mr, pl/pr, text-left/right
+- Test in both HE and EN
+
+<span class="comment">## i18n</span>
+- All user-facing strings go through next-intl
+- Never hardcode Hebrew or English in components
+- Translation keys in messages/he.json and messages/en.json
+
+<span class="comment">## Server Components vs Client Components</span>
+- Default to Server Components
+- Mark 'use client' only for: forms, state, event handlers, browser APIs
+- Push 'use client' as deep as possible (small leaf components)
+
+<span class="comment">## Forms</span>
+- Always use react-hook-form + zodResolver
+- Always use schemas from @app/shared-types
+- Show validation errors in Hebrew (or English) via i18n
+
+<span class="comment">## API calls</span>
+- Use TanStack Query hooks, never fetch directly in components
+- API client functions in lib/api/
+- Custom hooks wrapping queries in hooks/
+- Always parse responses with Zod schemas
+
+<span class="comment">## File naming</span>
+- kebab-case for files: project-card.tsx
+- PascalCase for component names inside: ProjectCard
+- Test files: *.spec.tsx (component tests) or *.e2e.ts (E2E)
+
+<span class="comment">## Never</span>
+- Hardcode strings (use i18n)
+- Use any (use unknown + Zod parse)
+- Use ml/mr/pl/pr (use logical properties)
+- Skip loading/error states
+- Build forms without Zod validation
+- Make API calls outside hooks
+
+<span class="comment">## Always</span>
+- Test on mobile (real device, not just emulator)
+- Test in both HE and EN
+- Use shadcn primitives instead of writing your own
+- Add empty states to lists
+</code></pre>
+
+  <h3>13.3 FE-Specific Slash Commands</h3>
+
+  <p>Beyond the shared commands, consider adding these for FE workflows:</p>
+
+  <h4>/new-page</h4>
+  <p>Scaffolds a new page with: route, layout, loading, error boundary, basic structure.</p>
+
+  <div class="code-label">.claude/commands/new-page.md</div>
+<pre><code><span class="comment"># Create a new Next.js page</span>
+
+Create a new page in apps/web/src/app/[locale]/. Path: $ARGUMENTS
+
+Steps:
+
+1. Create folder structure:
+   apps/web/src/app/[locale]/&lt;path&gt;/
+     page.tsx       — main page component
+     loading.tsx    — Suspense fallback
+     error.tsx      — error boundary
+
+2. page.tsx requirements:
+   - Server Component by default (no 'use client')
+   - i18n strings via next-intl (no hardcoded text)
+   - Logical Tailwind classes (ms/me, not ml/mr)
+   - Renders inside the dashboard layout (auto via folder structure)
+
+3. loading.tsx — show Skeleton from shadcn
+
+4. error.tsx — show error UI with retry button
+
+5. Add i18n keys to messages/he.json AND messages/en.json
+
+6. Verify:
+   - pnpm typecheck passes
+   - pnpm dev shows the page
+   - RTL renders correctly
+</code></pre>
+
+  <h4>/new-form</h4>
+  <p>Scaffolds a form using react-hook-form + zodResolver + shared-types.</p>
+
+  <div class="code-label">.claude/commands/new-form.md</div>
+<pre><code><span class="comment"># Create a new form component</span>
+
+Create form in apps/web/src/components/forms/. Entity: $ARGUMENTS
+
+Steps:
+
+1. Find the corresponding Zod schema in @app/shared-types
+   (e.g., for "owner", find CreateOwnerInput)
+
+2. Create &lt;Entity&gt;Form.tsx with:
+   - 'use client' directive
+   - useForm with zodResolver
+   - Type from shared-types
+   - shadcn Form components (Form, FormField, FormItem, FormLabel, FormControl, FormMessage)
+   - Submit handler taking validated data
+   - Loading state on submit
+   - Error display via FormMessage
+   - i18n labels and error messages
+   - RTL-aware Tailwind classes
+
+3. Add i18n keys for all labels and validation messages
+
+4. Stop after writing form. Don't wire to API yet — let me review.
+</code></pre>
+
+  <h3>13.4 Effective Prompts for FE Work</h3>
+
+  <p>FE-specific prompt patterns that work well:</p>
+
+  <div class="code-label">Prompt: Build a screen</div>
+<pre><code>Build the &lt;ScreenName&gt; screen.
+
+Reference:
+- Schema: @app/shared-types &lt;Schema&gt;
+- Mock handler: apps/web/src/mocks/handlers.ts (line X)
+- Similar existing screen: apps/web/src/app/[locale]/X/page.tsx
+
+Requirements:
+- Server Component for the page shell
+- Client Component for the interactive part
+- TanStack Query hook (use existing or create new)
+- Empty state, loading state, error state
+- RTL with logical properties
+- All strings via i18n
+
+Stop after page.tsx is written. Let me review before adding components.
+</code></pre>
+
+  <div class="code-label">Prompt: Debug RTL issue</div>
+<pre><code>I have an RTL bug. In Hebrew the &lt;component&gt; renders wrong.
+
+Symptom: &lt;describe&gt;
+Screenshot: &lt;link or attached&gt;
+
+Don't fix yet. First:
+1. Form 3 hypotheses about the cause
+2. For each, suggest how to verify
+3. Ask which one I want to investigate first
+
+Common RTL bugs to consider:
+- Hard-coded direction (ml-* instead of ms-*)
+- Icons not mirrored (chevrons, arrows)
+- Tailwind classes overriding direction
+- Browser-specific RTL handling
+- Text containing mixed directions
+</code></pre>
+
+  <h3>13.5 Anti-Patterns to Avoid</h3>
+
+  <ul class="crosses">
+    <li><strong>Don't ask Claude to design the entire UI.</strong> You design. Claude implements.</li>
+    <li><strong>Don't accept "Done" without testing.</strong> Run the page. Test in HE and EN. Test on mobile.</li>
+    <li><strong>Don't let Claude bypass shared-types.</strong> Forms must use schemas from <code>@app/shared-types</code>, not inline types.</li>
+    <li><strong>Don't accept hard-coded strings.</strong> Every user-facing text needs an i18n key.</li>
+    <li><strong>Don't accept ml/mr/pl/pr.</strong> Always logical properties. Reject and ask for fix.</li>
+  </ul>
+</section>
+
+<section id="section-14">
+  <div class="section-header">
+    <div class="section-num">14 · Git Workflow</div>
+    <h2 class="section-title">Branches, Commits, PRs</h2>
+    <p class="section-lede">Same workflow as your partner (defined in Doc 04a). Quick reference here.</p>
+  </div>
+
+  <h3>14.1 Branching</h3>
+
+  <p>Trunk-based with feature branches. Branches are short-lived (max 5 days):</p>
+
+  <div class="code-label">Workflow</div>
+<pre><code><span class="comment"># Start a new feature</span>
+git checkout main &amp;&amp; git pull
+git checkout -b feat/owner-form
+
+<span class="comment"># Work, commit incrementally</span>
+git add .
+git commit -m "feat(web): add owner form skeleton"
+
+<span class="comment"># Sync with main if branch lives more than a day</span>
+git fetch origin
+git rebase origin/main
+
+<span class="comment"># Push regularly (don't lose work)</span>
+git push -u origin feat/owner-form
+
+<span class="comment"># Open PR when ready (or as draft sooner)</span>
+</code></pre>
+
+  <h3>14.2 Branch Naming</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Prefix</th><th>Use</th><th>Example</th></tr></thead>
+      <tbody>
+        <tr><td>feat/</td><td>New feature or screen</td><td>feat/owner-form, feat/signature-canvas</td></tr>
+        <tr><td>fix/</td><td>Bug fix</td><td>fix/rtl-chevron, fix/form-validation</td></tr>
+        <tr><td>chore/</td><td>Tooling, deps</td><td>chore/upgrade-shadcn</td></tr>
+        <tr><td>refactor/</td><td>Internal refactor</td><td>refactor/api-client</td></tr>
+        <tr><td>style/</td><td>Visual polish only</td><td>style/dashboard-spacing</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>14.3 Conventional Commits</h3>
+
+  <p>Every commit message follows the format. Commitlint enforces this:</p>
+
+  <div class="code-label">Format</div>
+<pre><code>&lt;type&gt;(&lt;scope&gt;): &lt;subject&gt;
+
+[optional body]
+
+[optional footer]
+</code></pre>
+
+  <p>FE-relevant types:</p>
+
+  <ul class="clean">
+    <li><code>feat</code> — new feature visible to users</li>
+    <li><code>fix</code> — bug fix</li>
+    <li><code>style</code> — visual/CSS changes (no logic change)</li>
+    <li><code>refactor</code> — code restructure without behavior change</li>
+    <li><code>perf</code> — performance improvement</li>
+    <li><code>test</code> — adding/fixing tests</li>
+    <li><code>docs</code> — README, comments</li>
+    <li><code>chore</code> — tooling, deps</li>
+  </ul>
+
+  <p>FE-relevant scopes:</p>
+
+  <ul class="clean">
+    <li><code>web</code> — anything in apps/web/</li>
+    <li><code>shared-types</code> — when modifying schemas</li>
+    <li><code>config</code> — env vars</li>
+    <li><code>deps</code> — dependency upgrades</li>
+  </ul>
+
+  <h3>14.4 Examples</h3>
+
+  <div class="code-label">Good FE commit messages</div>
+<pre><code>feat(web): add owner creation form
+
+fix(web): rotate chevron icons in RTL layout
+
+style(web): adjust spacing on project cards
+
+perf(web): lazy-load signature canvas component
+
+refactor(web): extract api client wrapper
+
+test(web): add E2E test for login flow
+
+chore(deps): upgrade tanstack-query to 5.20.0
+</code></pre>
+
+  <h3>14.5 The /commit Slash Command</h3>
+
+  <p>Use <code>/commit</code> in Claude Code when you have staged changes. It analyzes the diff and proposes a conventional commit. Reduces commitlint rejections to zero.</p>
+
+  <h3>14.6 Pull Requests</h3>
+
+  <p>Open PR when:</p>
+  <ul class="checks">
+    <li>Feature is complete (or as draft when you want early visibility)</li>
+    <li>All tests pass locally (<code>pnpm verify</code>)</li>
+    <li>You self-reviewed your own diff</li>
+  </ul>
+
+  <p>PR template auto-populates. Fill in: what, why, how, testing steps. Link related issues.</p>
+
+  <p>Wait for CI green + your partner's review (for non-trivial changes). Squash merge.</p>
+
+  <h3>14.7 Branch Protection (already configured)</h3>
+
+  <ul class="clean">
+    <li>main branch protected: no direct pushes, no force push</li>
+    <li>PR required: review + CI checks</li>
+    <li>Required checks: typecheck, lint, test, build, secrets-scan, audit</li>
+  </ul>
+
+  <p>If you need to bypass any of this, it's a sign something's wrong. Don't disable protection casually.</p>
+</section>
+
+<section id="section-15">
+  <div class="section-header">
+    <div class="section-num">15 · Getting Started</div>
+    <h2 class="section-title">Your First Day</h2>
+    <p class="section-lede">A concrete checklist to go from "just received this doc" to "ready to build". ~3 hours.</p>
+  </div>
+
+  <h3>15.1 Read the Docs</h3>
+
+  <p>Before touching code, read in order:</p>
+
+  <ul class="num-list">
+    <li><strong>Doc 01 — Vision &amp; Market</strong> (~30 min). Product context.</li>
+    <li><strong>Doc 02 — Architecture &amp; Production</strong> sections 3-5 (~20 min). Skim only.</li>
+    <li><strong>Doc 03 — MVP Roadmap</strong> (~15 min). The big plan.</li>
+    <li><strong>Doc 04a — Claude Code Environment Setup</strong> (~30 min). The tooling.</li>
+    <li><strong>This document (Doc 05)</strong> (already reading it).</li>
+  </ul>
+
+  <h3>15.2 Set Up Your Machine</h3>
+
+  <ul class="checks">
+    <li>Install Node.js 20 LTS (use nvm or fnm)</li>
+    <li>Install pnpm 9+: <code>npm install -g pnpm</code></li>
+    <li>Install Docker Desktop (for local infra later)</li>
+    <li>Configure Git with your SSH key for GitHub</li>
+    <li>Install VS Code with extensions: ESLint, Prettier, Tailwind CSS IntelliSense, i18n Ally</li>
+    <li>Install Claude Code (or your IDE plugin if available)</li>
+  </ul>
+
+  <h3>15.3 Get Repository Access</h3>
+
+  <ul class="checks">
+    <li>Get added to the GitHub repo by your partner</li>
+    <li>Clone the repo: <code>git clone &lt;url&gt;</code></li>
+    <li>Get <code>.env.local</code> credentials from your partner (Neon, R2, etc.)</li>
+    <li>Run <code>pnpm install</code> from the root</li>
+    <li>Run <code>pnpm dev</code> — both API (3000) and Web (3001) should start</li>
+    <li>Visit <code>http://localhost:3001</code> — should see the blank Hebrew page from Phase 0</li>
+    <li>Visit <code>http://localhost:3000/health</code> — should return <code>{ status: 'ok' }</code></li>
+  </ul>
+
+  <h3>15.4 Verify Your Setup</h3>
+
+  <p>Run the verification commands:</p>
+
+  <div class="code-label">terminal</div>
+<pre><code>pnpm typecheck   <span class="comment"># Should exit 0</span>
+pnpm lint        <span class="comment"># Should exit 0</span>
+pnpm test        <span class="comment"># Should exit 0</span>
+pnpm build       <span class="comment"># Should succeed</span>
+</code></pre>
+
+  <p>If any fail, that's your first fix.</p>
+
+  <h3>15.5 Set Up Claude Code</h3>
+
+  <p>The CLAUDE.md is already in the repo. Test that Claude Code reads it:</p>
+
+  <ul class="checks">
+    <li>Open Claude Code in the repo root</li>
+    <li>Type <code>/security-check</code> — should respond (might say "no issues" since codebase is small)</li>
+    <li>Test post-edit hook: edit a TS file via Claude — typecheck should run automatically</li>
+    <li>Test commit hook: try <code>git commit -m "bad message"</code> — should be rejected</li>
+  </ul>
+
+  <h3>15.6 Make Your First PR</h3>
+
+  <p>A trivial PR to verify the workflow:</p>
+
+  <ul class="num-list">
+    <li>Create a branch: <code>git checkout -b chore/onboarding-test</code></li>
+    <li>Make a tiny change (add a comment in <code>apps/web/CLAUDE.md</code>, for example)</li>
+    <li>Commit: <code>git commit -m "chore(web): test onboarding workflow"</code></li>
+    <li>Push: <code>git push -u origin chore/onboarding-test</code></li>
+    <li>Open PR on GitHub. Fill in template.</li>
+    <li>Watch CI run. All checks should pass.</li>
+    <li>Self-merge after CI green (or wait for partner review if it's substantial).</li>
+  </ul>
+
+  <h3>15.7 Decide What to Build First</h3>
+
+  <p>Depending on where the project is when you start:</p>
+
+  <h4>If Phase 0 isn't done</h4>
+  <p>Help finish Phase 0. Specifically P0.5 (Next.js scaffold) if not yet done. Refer to Doc 04b.</p>
+
+  <h4>If Phase 0 is done, Phase 1 in progress (BE only)</h4>
+  <p>Choose Phase 8 prep work. Pick the shadcn theme. Build the dashboard layout shell with mock data. Build empty/loading/error state components.</p>
+
+  <h4>If Phase 2 starts (Auth)</h4>
+  <p>Build login, signup, password reset UI. Mock the auth endpoints. Switch to real when backend is ready.</p>
+
+  <h4>If Phase 3+ is in progress</h4>
+  <p>Look at the FE-Ready issues your partner created. Pick one. Build it.</p>
+
+  <h3>15.8 Pace Yourself</h3>
+
+  <p>This is a 4-week project for two part-time developers. ~10-15 hours/week each is reasonable. Burnout is the enemy:</p>
+
+  <ul class="checks">
+    <li>Take real breaks between phases</li>
+    <li>Don't code when tired (FE bugs hide in tired code)</li>
+    <li>Ship small. Many small PRs beat one big PR.</li>
+    <li>Celebrate phase completions. Tag them. Acknowledge progress.</li>
+  </ul>
+
+  <div class="callout success">
+    <div class="callout-title">🎉 Welcome to the project</div>
+    <div class="callout-body">You have everything you need to start. The plan is clear. The contract with backend is clear. The tooling is set up. The path is well-marked. Now build something real, ship it, learn, repeat. The first weeks are intense but well-defined. You'll be amazed what 2 part-time developers can ship.</div>
+  </div>
+</section>
+
+<section id="section-16">
+  <div class="section-header">
+    <div class="section-num">16 · Glossary</div>
+    <h2 class="section-title">EMAPP Terminology Reference</h2>
+    <p class="section-lede">The vocabulary you'll see everywhere — in code, in docs, in conversations with your partner. Bookmark this section.</p>
+  </div>
+
+  <p class="lead">EMAPP sits at the intersection of two specialized vocabularies: Israeli real estate (urban renewal) and SaaS architecture (multi-tenancy, RLS, interfaces). When the same word means different things to different people, bugs follow. This glossary picks <strong>one canonical meaning per term</strong> and explains it. When in doubt, this is the source of truth.</p>
+
+  <h3>16.1 Domain Terms — Real Estate &amp; Urban Renewal</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Term</th><th>Meaning in EMAPP</th></tr></thead>
+      <tbody>
+        <tr><td><strong>תמ"א 38 (Tama 38)</strong></td><td>Israeli building plan for seismic retrofitting of existing residential buildings. Two variants: 38/1 (strengthen + add floors) and 38/2 (demolish + rebuild). Code: <code>tama38_1</code>, <code>tama38_2</code>.</td></tr>
+        <tr><td><strong>פינוי-בינוי (Pinui-Binui)</strong></td><td>"Evacuation-construction" — government program to demolish old neighborhoods and rebuild denser. Requires 80% owner consent. Code: <code>pinui_binui</code>.</td></tr>
+        <tr><td><strong>Apartment</strong> (the EMAPP term)</td><td>A single residential unit within a building. Stored in the <code>apartments</code> table. <em>Always use "apartment" in EMAPP code, not "unit" or "flat"</em> — see §16.4 on "apartment vs unit".</td></tr>
+        <tr><td><strong>Building</strong></td><td>A physical structure containing apartments. <code>buildings</code> table. Has a <code>type</code> enum: <code>residential</code>, <code>mixed_use</code>, <code>commercial</code>. (v2 simplified — was CTI in v1.)</td></tr>
+        <tr><td><strong>Project</strong></td><td>The top-level unit of work. A renewal project covers one or more buildings undergoing the same treatment (e.g., "Tama 38 on Rehov HaEgoz 12"). <code>projects</code> table.</td></tr>
+        <tr><td><strong>Owner</strong></td><td>A person (or company, or inheritance) who legally owns part of an apartment. Stored in <code>owners</code> table. Has encrypted PII: <code>national_id_encrypted</code>, <code>phone_encrypted</code>.</td></tr>
+        <tr><td><strong>Ownership</strong></td><td>The relationship table between Owner and Apartment with a <code>share_percent</code> (e.g., 50% / 50% for a couple). <code>ownerships</code> table. Sum across an apartment must equal 100%.</td></tr>
+        <tr><td><strong>Target signature percentage</strong></td><td>The legal threshold of owner agreement needed for a project to proceed. Tama 38: 67%. Pinui-Binui: 80%. Stored as <code>projects.target_signature_pct</code>.</td></tr>
+        <tr><td><strong>Signature</strong></td><td>A digital signature captured from an owner consenting to the project. <code>signatures</code> table. Signature blob is encrypted.</td></tr>
+        <tr><td><strong>Document</strong></td><td>Any uploaded file related to the project (contracts, surveys, town hall permits, ID photos). <code>documents</code> table. Files live in Cloudflare R2; only metadata in Postgres.</td></tr>
+        <tr><td><strong>Note</strong></td><td>Free-text annotation on any entity (owner, apartment, project). <code>notes</code> table. Used for "spoke with Mr. Cohen, wants to discuss with family first."</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>16.2 People Terms — Roles &amp; Personas</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Role</th><th>Tier</th><th>What they do</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Manager</strong></td><td>Org user (Tier 1)</td><td>Full admin within their organization. Creates projects, invites Agents, invites Contractors. <code>memberships.role = 'manager'</code>.</td></tr>
+        <tr><td><strong>Agent</strong></td><td>Org user (Tier 1)</td><td>Field-level user. Sees only projects assigned to them via <code>project_assignments</code>. Updates statuses, captures signatures. <code>memberships.role = 'agent'</code>.</td></tr>
+        <tr><td><strong>Viewer</strong></td><td>Org user (Tier 1)</td><td>Read-only org-wide. Board members, accountants. <code>memberships.role = 'viewer'</code>.</td></tr>
+        <tr><td><strong>Contractor</strong></td><td>External (Tier 2)</td><td>Lawyer / engineering firm / construction contractor invited via <code>shares</code> with JSONB-defined fine-grained permissions. Separate identity table: <code>contractors</code>.</td></tr>
+        <tr><td><strong>Provider Admin</strong></td><td>Provider (Tier 3)</td><td>EMAPP internal team member with cross-tenant access via <code>withProvider</code>, MFA mandatory, all access audited. Separate identity table: <code>provider_users</code>. Separate DB role: <code>provider_app_role</code>. FE routes <code>/provider/*</code> behind <code>ProviderAuthGuard</code> are built in <strong>Phase 6.5</strong> (Doc 03) — ~3 days, after Phase 6.</td></tr>
+        <tr><td><strong>Tenant</strong> (דייר — <em>MVP</em>, D.17+D.20)</td><td>End-user portal</td><td>A resident/owner who logs in via SMS OTP to view their own record, project status, and sign documents. <strong>IS in MVP.</strong> Portal screens are Phase 8; identity + auth land earlier. Don't confuse with "tenant" in the SaaS multi-tenancy sense (= organization).</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warning">
+    <div class="callout-title">⚠ "Tenant" has two meanings — be careful</div>
+    <div class="callout-body">
+      In SaaS architecture lingo, <strong>tenant = organization</strong> (Acme Renewal Ltd. is one "tenant" of EMAPP). In domain lingo, <strong>Tenant (role) = a resident with portal access</strong> (logs in via SMS OTP, sees only their own record). The Tenant role IS in MVP (D.17+D.20). In code, the customer entity is always "organization" (never "tenant"); the resident role is "tenant"/<code>tenants</code>. When unsure: "organization" for the SaaS customer, "owner" for an apartment owner record, "tenant" for the logged-in resident role.
+    </div>
+  </div>
+
+  <h3>16.3 Architecture Terms — Backend &amp; Multi-tenancy</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Term</th><th>Meaning in EMAPP</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Organization</strong></td><td>The tenant in multi-tenancy. Every customer = one organization. <code>organizations</code> table. <code>org_id</code> is on every multi-tenant table.</td></tr>
+        <tr><td><strong>Membership</strong></td><td>The M:N junction between User and Organization. A user can belong to N organizations (accountant working for 3 firms). <code>memberships</code> table. Carries the <code>role</code>.</td></tr>
+        <tr><td><strong>activeOrgId</strong></td><td>JWT claim indicating which of the user's memberships is "current". Switching orgs = new JWT with new <code>activeOrgId</code>.</td></tr>
+        <tr><td><strong>withTenant</strong></td><td>Mandatory wrapper for all customer-tier DB access. Signature: <code>withTenant(orgId, async (tx) =&gt; {...})</code>. Sets <code>app.organization_id</code> via <code>SET LOCAL</code>, runs the function, commits/rolls back. ESLint enforces it.</td></tr>
+        <tr><td><strong>withProvider</strong></td><td>Provider-tier equivalent. Signature: <code>withProvider(providerUserId, reason, async (tx) =&gt; {...})</code>. Reason is mandatory and audited. Uses a different DB role (<code>provider_app_role</code>) with BYPASSRLS.</td></tr>
+        <tr><td><strong>RLS</strong> (Row-Level Security)</td><td>Postgres feature that filters rows based on session state. Every multi-tenant table has <code>ENABLE</code> + <code>FORCE</code> RLS with a policy referencing <code>current_setting('app.organization_id')</code>.</td></tr>
+        <tr><td><strong>Share</strong></td><td>A grant of access from an organization to a Contractor for a specific project, with fine-grained JSONB permissions. <code>shares</code> table.</td></tr>
+        <tr><td><strong>SAMPLE_*</strong></td><td>FE convention for mock data exports. Naming: <code>SAMPLE_PROJECTS</code>, <code>SAMPLE_OWNERS</code>, etc. Always Zod-validated. See §10.3.</td></tr>
+        <tr><td><strong>ViewModel (VM)</strong></td><td>FE shape that components render, distinct from the wire/DB shape. Produced by an adapter. See §9.8.</td></tr>
+        <tr><td><strong>Adapter</strong></td><td>Pure function from Wire type → ViewModel. Lives in <code>apps/web/src/adapters/</code>. See §9.8.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>16.4 Terminology Pitfalls — Words to Use Carefully</h3>
+
+  <p>Some words have a "natural" meaning that conflicts with EMAPP's chosen terminology. To avoid confusion, prefer the EMAPP term:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Don't say</th><th>Do say</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>"Unit" (for an apartment)</td><td><strong>Apartment</strong></td><td>"Unit" is ambiguous in real estate (could mean office, parking, storage). Our DB table is <code>apartments</code>. Stick with that everywhere.</td></tr>
+        <tr><td>"Flat"</td><td><strong>Apartment</strong></td><td>Mostly British English usage; our code uses "apartment".</td></tr>
+        <tr><td>"Tenant" vs "Owner"</td><td><strong>context-dependent</strong></td><td>"Owner" = an apartment-owner data record. "Tenant" = the MVP role of a resident who logs in (SMS OTP) to see their own record. Both are MVP; they are different concepts.</td></tr>
+        <tr><td>"User" (for contractor)</td><td><strong>Contractor</strong></td><td>Contractors have a separate identity model. They're not in <code>users</code> table.</td></tr>
+        <tr><td>"Admin" (for Provider)</td><td><strong>Provider Admin</strong></td><td>"Admin" is overloaded. There can be a "Manager" admin within an org. "Provider Admin" specifically means EMAPP staff.</td></tr>
+        <tr><td>"is_admin" (column)</td><td>(don't create this column)</td><td>Provider tier is structurally separate, not a boolean flag. Don't add <code>is_admin</code> to <code>users</code>.</td></tr>
+        <tr><td>"Delete"</td><td><strong>Archive</strong></td><td>MVP uses soft delete via <code>archived_at</code> timestamp. Hard delete is a separate, audited Provider operation. Don't say "delete the project" — say "archive the project".</td></tr>
+        <tr><td>"Customer" (in code)</td><td><strong>Organization</strong></td><td>In conversations, "customer" is fine. In code/DB, it's always <code>organizations</code> / <code>orgId</code>. Avoid mixing.</td></tr>
+        <tr><td>"Tenant" (for Organization, in user-facing strings)</td><td><strong>Organization</strong></td><td>Internal SaaS jargon ("tenant" = customer org) confuses end users. UI strings say "organization" or "company".</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>16.5 Frontend-Specific Terms</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Term</th><th>Meaning in EMAPP FE</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Wire type</strong></td><td>The data shape as it crosses the API boundary, defined in <code>@app/shared-types</code> via Zod. The "raw" shape from the backend.</td></tr>
+        <tr><td><strong>ViewModel / VM</strong></td><td>The data shape components consume. Optimized for rendering. Lives in <code>apps/web/src/models/&lt;entity&gt;.vm.ts</code>.</td></tr>
+        <tr><td><strong>Adapter</strong></td><td>Pure function: <code>(Wire) =&gt; ViewModel</code>. The only place where shape translation happens.</td></tr>
+        <tr><td><strong>API function</strong></td><td>Plain async function in <code>lib/api/</code> that calls fetch and Zod-parses the response. Returns Wire types.</td></tr>
+        <tr><td><strong>Query hook</strong></td><td>TanStack Query wrapper in <code>hooks/</code> that calls an API function and (optionally) runs an adapter via <code>select</code>. Returns ViewModels to components.</td></tr>
+        <tr><td><strong>MSW</strong></td><td>Mock Service Worker. Intercepts fetch in the browser and returns sample data. Powered by SAMPLE_* exports.</td></tr>
+        <tr><td><strong>SSR / RSC</strong></td><td>Server-Side Rendering / React Server Components. Next.js 15 App Router defaults. EMAPP uses RSC for layouts and static-ish pages; client components for interactive forms.</td></tr>
+        <tr><td><strong>RTL</strong></td><td>Right-to-Left text direction. EMAPP defaults to Hebrew RTL; English is the second language. The <code>dir="rtl"</code> attribute lives on <code>&lt;html&gt;</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>16.6 Quick Reference — Most-Confused Pairs</h3>
+
+  <ul class="num-list">
+    <li><strong>apartment vs unit</strong> → Always <strong>apartment</strong>.</li>
+    <li><strong>tenant (SaaS) vs Tenant (role)</strong> → SaaS customer: always "organization". The MVP resident role: "tenant"/<code>tenants</code> (SMS OTP login, own record only).</li>
+    <li><strong>Manager vs Admin</strong> → Manager = org user role. Provider Admin = EMAPP team. Don't drop "Provider".</li>
+    <li><strong>delete vs archive</strong> → Always archive in MVP. Soft delete via <code>archived_at</code>.</li>
+    <li><strong>Wire type vs ViewModel</strong> → Wire = API contract. ViewModel = component-friendly shape. Adapter translates.</li>
+    <li><strong>Ownership vs Owner</strong> → Owner = the person. Ownership = the relationship row (with <code>share_percent</code>).</li>
+    <li><strong>withTenant vs withProvider</strong> → Customer code uses <code>withTenant(orgId, ...)</code>. Provider tools use <code>withProvider(providerUserId, reason, ...)</code>. Never mix.</li>
+  </ul>
+</section>
+
+<footer>
+  <div class="footer-meta">
+    <span>Doc 05 · EMAPP · Frontend Sync (v2)</span>
+    <span>16 sections · SAMPLE_* · Adapter · Glossary</span>
+  </div>
+  <div>Read together with: <strong>Doc 02</strong> (Architecture) · <strong>Doc 04a</strong> (Claude Environment) · <strong>Doc 06</strong> (FE/BE Integration Contract)</div>
+  <div style="margin-top: 12px; font-size: 11px; color: var(--text-muted);">
+    For questions: open a GitHub issue or ping your backend partner. For integration protocols: Doc 06.
+  </div>
+</footer>
+
+</main>
+</div>
+
+<script>
+const sections = document.querySelectorAll('section[id]');
+const tocLinks = document.querySelectorAll('.toc-link');
+
+function setActiveLink() {
+  let current = '';
+  sections.forEach(section => {
+    const top = section.offsetTop - 100;
+    if (window.scrollY >= top) current = section.id;
+  });
+  tocLinks.forEach(link => {
+    link.classList.remove('active');
+    if (link.getAttribute('href') === '#' + current) {
+      link.classList.add('active');
+    }
+  });
+}
+
+window.addEventListener('scroll', setActiveLink);
+setActiveLink();
+</script>
+
+</body>
+</html>

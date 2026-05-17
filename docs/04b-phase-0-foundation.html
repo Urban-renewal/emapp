@@ -1,0 +1,2250 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doc 04b · EMAPP — Phase 0 Foundation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #fafaf9; --bg-card: #fff; --bg-subtle: #f5f5f4; --bg-dark: #0c0a09; --bg-darker: #18181b;
+  --text: #0c0a09; --text-subtle: #44403c; --text-muted: #78716c;
+  --primary: #0f766e; --primary-hover: #0d5e57; --primary-light: #ccfbf1; --primary-border: #5eead4;
+  --success: #15803d; --success-light: #f0fdf4; --success-border: #bbf7d0;
+  --warning: #b45309; --warning-light: #fffbeb; --warning-border: #fde68a;
+  --danger: #b91c1c; --danger-light: #fef2f2; --danger-border: #fecaca;
+  --gold: #ca8a04; --gold-light: #fef9c3;
+  --purple: #7c3aed; --purple-light: #ede9fe;
+  --blue: #2563eb; --blue-light: #dbeafe;
+  --border: #e7e5e4; --border-strong: #d6d3d1;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.08);
+  --radius-sm: 6px; --radius: 10px; --radius-lg: 16px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; font-size: 15px; -webkit-font-smoothing: antialiased; }
+.app { display: grid; grid-template-columns: 320px 1fr; min-height: 100vh; }
+.sidebar { position: sticky; top: 0; height: 100vh; background: white; border-right: 1px solid var(--border); overflow-y: auto; padding: 32px 0; }
+.sidebar-header { padding: 0 28px 24px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+.sidebar-doc-num { display: inline-block; background: var(--primary); color: white; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; margin-bottom: 10px; }
+.sidebar-title { font-size: 17px; font-weight: 800; line-height: 1.3; margin-bottom: 6px; }
+.sidebar-subtitle { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+.toc { list-style: none; padding: 0 14px; }
+.toc-item { margin-bottom: 2px; }
+.toc-link { display: flex; align-items: center; gap: 12px; padding: 9px 14px; color: var(--text-subtle); text-decoration: none; font-size: 13px; font-weight: 500; border-radius: var(--radius-sm); transition: all 0.15s ease; }
+.toc-link:hover { background: var(--bg-subtle); color: var(--text); }
+.toc-link.active { background: var(--primary-light); color: var(--primary); font-weight: 700; }
+.toc-num { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; background: var(--bg-subtle); border-radius: 6px; font-size: 11px; font-weight: 700; color: var(--text-subtle); flex-shrink: 0; font-family: 'JetBrains Mono', monospace; }
+.toc-link.active .toc-num { background: var(--primary); color: white; }
+.toc-divider { margin: 16px 14px 8px; padding: 8px 14px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+.main { padding: 56px 64px 96px; max-width: 1080px; width: 100%; }
+.hero { margin-bottom: 64px; }
+.hero-meta { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.hero-doc-badge { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; background: var(--bg-dark); color: white; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; }
+.hero-doc-badge::before { content: ""; width: 6px; height: 6px; background: var(--primary); border-radius: 50%; }
+.hero-tag { display: inline-block; padding: 5px 12px; background: var(--primary-light); color: var(--primary); border-radius: 999px; font-size: 11px; font-weight: 600; }
+.hero-title { font-size: 48px; font-weight: 900; line-height: 1.05; letter-spacing: -0.03em; margin-bottom: 16px; background: linear-gradient(135deg, #0c0a09 0%, #0f766e 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.hero-lede { font-size: 19px; color: var(--text-subtle); line-height: 1.55; max-width: 720px; margin-bottom: 32px; }
+.hero-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-top: 2px solid var(--border); border-bottom: 2px solid var(--border); padding: 20px 0; }
+.hero-stat { border-right: 1px solid var(--border); padding: 0 20px; }
+.hero-stat:last-child { border-right: none; padding-right: 0; }
+.hero-stat:first-child { padding-left: 0; }
+.hero-stat-num { font-size: 28px; font-weight: 800; color: var(--primary); line-height: 1; margin-bottom: 4px; font-family: 'JetBrains Mono', monospace; }
+.hero-stat-label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+section { margin-bottom: 72px; scroll-margin-top: 32px; }
+.section-header { margin-bottom: 32px; }
+.section-num { display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: var(--primary); letter-spacing: 0.1em; margin-bottom: 8px; }
+.section-title { font-size: 32px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; margin-bottom: 12px; }
+.section-lede { font-size: 16px; color: var(--text-subtle); max-width: 720px; line-height: 1.65; }
+h3 { font-size: 22px; font-weight: 700; margin: 48px 0 16px; letter-spacing: -0.01em; }
+h4 { font-size: 17px; font-weight: 700; margin: 28px 0 12px; }
+h5 { font-size: 15px; font-weight: 700; margin: 20px 0 10px; }
+p { margin-bottom: 14px; color: var(--text-subtle); line-height: 1.75; font-size: 15px; }
+p strong, li strong { color: var(--text); font-weight: 700; }
+.lead { font-size: 17px; line-height: 1.65; color: var(--text-subtle); margin-bottom: 24px; }
+.lead strong { color: var(--text); font-weight: 600; }
+ul, ol { margin-left: 0; padding-left: 22px; }
+li { margin-bottom: 8px; color: var(--text-subtle); line-height: 1.7; }
+ul.clean { list-style: none; padding-left: 0; }
+ul.clean li { padding-left: 24px; position: relative; }
+ul.clean li::before { content: "›"; position: absolute; left: 0; top: -2px; color: var(--primary); font-weight: 700; font-size: 18px; }
+ul.checks { list-style: none; padding-left: 0; }
+ul.checks li { padding-left: 28px; position: relative; }
+ul.checks li::before { content: "✓"; position: absolute; left: 4px; top: 2px; color: var(--success); font-weight: 800; }
+ul.crosses { list-style: none; padding-left: 0; }
+ul.crosses li { padding-left: 28px; position: relative; }
+ul.crosses li::before { content: "✕"; position: absolute; left: 4px; top: 2px; color: var(--danger); font-weight: 800; }
+.num-list { list-style: none; padding: 0; counter-reset: num; }
+.num-list li { counter-increment: num; padding-left: 56px; position: relative; margin-bottom: 20px; line-height: 1.7; }
+.num-list li::before { content: counter(num, decimal-leading-zero); position: absolute; left: 0; top: -2px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: var(--primary); background: var(--primary-light); padding: 4px 8px; border-radius: 5px; }
+.task-card { background: white; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 28px; margin-bottom: 20px; transition: all 0.2s ease; }
+.task-card:hover { border-color: var(--primary-border); box-shadow: var(--shadow); }
+.task-card-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.task-id { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 800; color: var(--primary); background: var(--primary-light); padding: 6px 12px; border-radius: 6px; flex-shrink: 0; letter-spacing: 0.05em; }
+.task-title { font-size: 18px; font-weight: 700; line-height: 1.3; margin-bottom: 4px; }
+.task-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.task-meta-item { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); font-weight: 500; font-family: 'JetBrains Mono', monospace; }
+.task-meta-item strong { color: var(--text-subtle); }
+.task-section { margin-bottom: 18px; }
+.task-section:last-child { margin-bottom: 0; }
+.task-section-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--primary); margin-bottom: 10px; }
+.phase-banner { background: linear-gradient(135deg, var(--bg-dark) 0%, #1c1917 100%); color: white; padding: 32px 36px; border-radius: var(--radius-lg); margin-bottom: 32px; position: relative; overflow: hidden; }
+.phase-banner::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, var(--primary), var(--primary-hover)); }
+.phase-banner-num { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: var(--primary-border); letter-spacing: 0.1em; margin-bottom: 8px; }
+.phase-banner-title { font-size: 32px; font-weight: 900; letter-spacing: -0.02em; margin-bottom: 8px; }
+.phase-banner-desc { color: rgba(255,255,255,0.8); font-size: 16px; max-width: 720px; line-height: 1.6; }
+.phase-banner-meta { display: flex; gap: 24px; margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.15); flex-wrap: wrap; }
+.phase-banner-meta-item { font-size: 12px; color: rgba(255,255,255,0.7); }
+.phase-banner-meta-item strong { display: block; color: white; font-size: 14px; font-weight: 600; margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); margin: 20px 0; background: white; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: var(--bg-subtle); text-align: left; padding: 12px 16px; font-weight: 700; border-bottom: 2px solid var(--border); font-size: 12px; }
+td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--text-subtle); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--bg-subtle); }
+td code { font-size: 11px; }
+td.highlight { color: var(--primary); font-weight: 600; }
+code { font-family: 'JetBrains Mono', monospace; background: var(--bg-subtle); padding: 2px 6px; border-radius: 4px; font-size: 12px; border: 1px solid var(--border); }
+pre { background: var(--bg-dark); color: #e7e5e4; padding: 18px; border-radius: var(--radius); overflow-x: auto; margin: 12px 0; font-size: 12.5px; line-height: 1.6; }
+pre code { background: transparent; border: none; padding: 0; color: inherit; font-size: inherit; }
+.code-label { display: block; background: var(--bg-darker); color: #d4d4d8; padding: 8px 18px; font-size: 11px; font-weight: 600; border-radius: var(--radius) var(--radius) 0 0; font-family: 'JetBrains Mono', monospace; border-bottom: 1px solid #292524; }
+.code-label + pre { margin-top: 0; border-radius: 0 0 var(--radius) var(--radius); }
+pre .comment { color: #71717a; font-style: italic; }
+pre .keyword { color: #fb923c; }
+pre .string { color: #86efac; }
+.callout { padding: 18px 22px; border-radius: var(--radius); margin: 20px 0; border-left: 4px solid; background: white; border: 1px solid var(--border); }
+.callout-title { font-weight: 700; margin-bottom: 6px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.callout-body { font-size: 14px; color: var(--text-subtle); line-height: 1.7; }
+.callout.danger { background: var(--danger-light); border-left-color: var(--danger); border-color: var(--danger-border); }
+.callout.danger .callout-title { color: var(--danger); }
+.callout.warning { background: var(--warning-light); border-left-color: var(--warning); border-color: var(--warning-border); }
+.callout.warning .callout-title { color: var(--warning); }
+.callout.success { background: var(--success-light); border-left-color: var(--success); border-color: var(--success-border); }
+.callout.success .callout-title { color: var(--success); }
+.callout.info { background: var(--primary-light); border-left-color: var(--primary); border-color: var(--primary-border); }
+.callout.info .callout-title { color: var(--primary); }
+.callout.gold { background: var(--gold-light); border-left-color: var(--gold); border-color: var(--gold); }
+.callout.gold .callout-title { color: var(--gold); }
+.test-item { display: grid; grid-template-columns: 90px 1fr auto; gap: 16px; padding: 14px 18px; background: white; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 6px; align-items: center; font-size: 13px; }
+.test-item-id { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; color: var(--primary); background: var(--primary-light); padding: 3px 8px; border-radius: 4px; text-align: center; }
+.test-item-name { color: var(--text); font-weight: 500; }
+.test-item-type { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.05em; }
+.test-item-type.unit { background: var(--blue-light); color: var(--blue); }
+.test-item-type.integration { background: var(--gold-light); color: var(--gold); }
+.test-item-type.e2e { background: var(--purple-light); color: var(--purple); }
+.test-item-type.critical { background: var(--danger-light); color: var(--danger); }
+.test-item-type.manual { background: var(--bg-subtle); color: var(--text-subtle); }
+.done-criteria { background: var(--success-light); border: 1px solid var(--success-border); border-radius: var(--radius); padding: 18px 22px; margin-top: 16px; }
+.done-criteria-title { font-weight: 700; color: var(--success); margin-bottom: 10px; font-size: 13px; }
+.done-criteria ul { margin: 0; padding-left: 0; list-style: none; }
+.done-criteria ul li { padding-left: 26px; position: relative; margin-bottom: 6px; font-size: 13px; line-height: 1.6; }
+.done-criteria ul li::before { content: "✓"; position: absolute; left: 4px; top: 0; color: var(--success); font-weight: 800; }
+.file-tree { background: var(--bg-dark); color: #f5f5f4; padding: 20px 24px; border-radius: var(--radius); margin: 16px 0; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; line-height: 1.7; overflow-x: auto; }
+.file-tree .folder { color: #5eead4; font-weight: 600; }
+.file-tree .file { color: #e7e5e4; }
+.file-tree .comment { color: #71717a; }
+.workflow { display: grid; grid-template-columns: 60px 1fr; gap: 20px; margin-bottom: 24px; align-items: start; }
+.workflow-num { width: 48px; height: 48px; background: var(--bg-dark); color: white; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; font-family: 'JetBrains Mono', monospace; }
+.workflow-content h5 { margin-top: 0; margin-bottom: 6px; }
+.workflow-content p { font-size: 14px; margin-bottom: 8px; }
+footer { margin-top: 80px; padding: 32px 0; border-top: 2px solid var(--border); text-align: center; color: var(--text-muted); font-size: 12px; }
+footer .footer-meta { display: flex; justify-content: center; gap: 24px; margin-bottom: 12px; }
+@media (max-width: 1024px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { position: relative; height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+  .main { padding: 32px 20px 56px; }
+  .hero-title { font-size: 32px; }
+  .hero-stats { grid-template-columns: 1fr 1fr; }
+  .hero-stat { border-right: none; border-bottom: 1px solid var(--border); padding: 14px 0; }
+  .test-item { grid-template-columns: 1fr; gap: 6px; }
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 5px; }
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <span class="sidebar-doc-num">DOC 04b · EMAPP</span>
+    <div class="sidebar-title">Phase 0 — Foundation</div>
+    <div class="sidebar-subtitle">Project setup · Tooling · CI (v2)</div>
+  </div>
+  <ul class="toc">
+    <li class="toc-item"><a class="toc-link" href="#section-1"><span class="toc-num">1</span><span>Phase Overview</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-2"><span class="toc-num">2</span><span>Prerequisites</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-3"><span class="toc-num">3</span><span>Resulting Structure</span></a></li>
+    <div class="toc-divider">Tasks</div>
+    <li class="toc-item"><a class="toc-link" href="#task-1"><span class="toc-num">P0.1</span><span>Initialize Monorepo</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#task-2"><span class="toc-num">P0.2</span><span>Free Tier Accounts</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#task-3"><span class="toc-num">P0.3</span><span>Empty Packages</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#task-4"><span class="toc-num">P0.4</span><span>NestJS Backend</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#task-5"><span class="toc-num">P0.5</span><span>Next.js Frontend</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#task-6"><span class="toc-num">P0.6</span><span>ESLint + Prettier</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#task-7"><span class="toc-num">P0.7</span><span>Vitest Testing</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#task-8"><span class="toc-num">P0.8</span><span>GitHub Actions CI</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#task-9"><span class="toc-num">P0.9</span><span>Docker Setup</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#task-10"><span class="toc-num">P0.10</span><span>Documentation</span></a></li>
+    <div class="toc-divider">Validation</div>
+    <li class="toc-item"><a class="toc-link" href="#section-tests"><span class="toc-num">T</span><span>Required Tests</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-troubleshooting"><span class="toc-num">?</span><span>Troubleshooting</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-next"><span class="toc-num">→</span><span>Next: Phase 1</span></a></li>
+  </ul>
+</aside>
+<main class="main">
+<div class="hero">
+  <div class="hero-meta">
+    <span class="hero-doc-badge">DOC 04b · EMAPP · PHASE 0</span>
+    <span class="hero-tag">v2 · Foundation · Israeli validators</span>
+  </div>
+  <h1 class="hero-title">Phase 0:<br>Foundation</h1><div style="border:2px solid #c80;padding:12px 16px;border-radius:8px;margin:14px 0;background:rgba(200,140,0,.07)"><strong>🤖 קלוד קוד מבצע — Phase 0.</strong> זה לא מדריך שאתה מבצע ידנית — קלוד קוד קורא ומבצע אותו דרך הפרומפטים ב-BUILD_LAYER_4. הקמת הסביבה הידנית שלך = רק START_HERE_GUIDE.</div>
+  <p class="hero-lede">Build the skeleton before the muscle. Monorepo, two empty apps, four shared packages (including Israeli ID + phone validators), accounts on the 5 production providers, professional tooling, and CI. By the end, <code>pnpm dev</code> brings up everything in under 15 minutes from a fresh clone.</p>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="hero-stat-num">10</div><div class="hero-stat-label">Atomic tasks</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">16+</div><div class="hero-stat-label">Required tests</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">~7</div><div class="hero-stat-label">Days estimate</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">$0-6</div><div class="hero-stat-label">Monthly cost</div></div>
+  </div>
+</div>
+
+<section id="section-1">
+  <div class="section-header">
+    <div class="section-num">01 · Phase Overview</div>
+    <h2 class="section-title">What Phase 0 Is, and What It Is Not</h2>
+    <p class="section-lede">Phase 0 is unglamorous infrastructure work. It is also the most important phase to do well, because everything else builds on it.</p>
+  </div>
+
+  <p class="lead">Phase 0 establishes the <strong>shape</strong> of the project: how files are organized, how code is shared between frontend and backend, how dependencies flow, how tests run, and how CI verifies everything works. None of this is user-visible. All of it is foundational.</p>
+
+  <div class="phase-banner">
+    <div class="phase-banner-num">PHASE 00</div>
+    <div class="phase-banner-title">Foundation</div>
+    <div class="phase-banner-desc">Set up the monorepo, scaffold both apps, create empty packages, configure tooling, set up Free Tier cloud accounts, establish CI. By the end, <code>pnpm dev</code> brings up everything in a clean dev environment.</div>
+    <div class="phase-banner-meta">
+      <div class="phase-banner-meta-item">Duration<strong>2-3 days</strong></div>
+      <div class="phase-banner-meta-item">Tasks<strong>10</strong></div>
+      <div class="phase-banner-meta-item">Required Tests<strong>6</strong></div>
+      <div class="phase-banner-meta-item">Output<strong>Working dev env</strong></div>
+    </div>
+  </div>
+
+  <h3>1.1 Phase 0 Goals</h3>
+
+  <p>By the end of Phase 0, all of these must be true:</p>
+
+  <ul class="checks">
+    <li>A new developer can clone the repo and run <code>pnpm dev</code> in under 15 minutes</li>
+    <li>The API responds with 200 OK on <code>GET /health</code></li>
+    <li>The web app shows a blank RTL page with the Heebo font loaded</li>
+    <li>CI runs typecheck, lint, and tests on every push and PR</li>
+    <li>All Free Tier cloud accounts are created and credentials configured</li>
+    <li>The 8 portability rules are followed from day one (no shortcuts)</li>
+    <li>Conventional commits are enforced via commitlint + Husky</li>
+    <li>Tagged as <code>v0.0.1-phase0</code> in git</li>
+  </ul>
+
+  <h3>1.2 What Phase 0 Does NOT Include</h3>
+
+  <p>Easy to scope-creep. Hold the line:</p>
+
+  <ul class="crosses">
+    <li>Database schema — that is Phase 1</li>
+    <li>Any business logic, entities, or services — Phase 1+</li>
+    <li>Authentication — Phase 2</li>
+    <li>UI components beyond a blank page — Phase 8</li>
+    <li>Production deployment — Phase 9</li>
+    <li>Real users, real data, or real customers</li>
+  </ul>
+
+  <h3>1.3 Why Phase 0 Matters More Than It Looks</h3>
+
+  <p>Skipping Phase 0 or rushing through it creates a specific kind of pain: you start writing features, then realize a fundamental tooling decision was wrong, and you waste a day untangling. Examples:</p>
+
+  <ul class="num-list">
+    <li><strong>Wrong monorepo structure</strong> — discovered when adding the second package and realizing imports don't work cleanly. Cost: half a day to refactor.</li>
+    <li><strong>Missing T3-env validation</strong> — discovered in Phase 4 when an env var was undefined in production. Cost: a 2 AM incident.</li>
+    <li><strong>No CI from day one</strong> — first 50 commits are unverified. Discovering broken tests in commit #51 means hours of bisecting.</li>
+    <li><strong>Skipping conventional commits</strong> — at month 3, generating a CHANGELOG requires manual archaeology of git log.</li>
+  </ul>
+
+  <p>The cost of doing Phase 0 right: 2-3 days. The cost of doing it wrong: ongoing friction for the entire project lifetime.</p>
+
+  <div class="callout warning">
+    <div class="callout-title">⚠️ The most common Phase 0 mistake</div>
+    <div class="callout-body">Treating Phase 0 as "just setup" and rushing through it. The setup IS the product foundation. Every minute spent thinking about structure now saves an hour later.</div>
+  </div>
+</section>
+
+<section id="section-2">
+  <div class="section-header">
+    <div class="section-num">02 · Prerequisites</div>
+    <h2 class="section-title">What You Need Before Starting</h2>
+    <p class="section-lede">Before P0.1, make sure these are in place. Otherwise you'll hit friction halfway through.</p>
+  </div>
+
+  <h3>2.1 Required Software</h3>
+
+  <ul class="checks">
+    <li><strong>Node.js 20 LTS</strong> installed via nvm or fnm</li>
+    <li><strong>pnpm 9+</strong> (<code>npm install -g pnpm</code>)</li>
+    <li><strong>Git 2.40+</strong> with your SSH key configured for GitHub</li>
+    <li><strong>VS Code</strong> (or your editor of choice) with TypeScript and ESLint extensions</li>
+    <li><strong>Docker Desktop</strong> — not used immediately, but needed for portability rule 8 by the end of Phase 0</li>
+    <li><strong>PostgreSQL client</strong> (<code>psql</code>) — for connecting to Neon during testing</li>
+  </ul>
+
+  <h3>2.2 Required Accounts</h3>
+
+  <p>You'll create these in P0.2. Make sure you have access:</p>
+
+  <ul class="checks">
+    <li><strong>GitHub account</strong> with ability to create private repos</li>
+    <li><strong>Email address</strong> dedicated to the project (not personal email — you'll register many services)</li>
+    <li><strong>Phone number</strong> for SMS verification on some providers</li>
+    <li><strong>Credit card</strong> — only for verification, all services start on Free tier</li>
+  </ul>
+
+  <h3>2.3 Required Documents Read</h3>
+
+  <p>You should have read these documents before starting Phase 0:</p>
+
+  <ul class="checks">
+    <li><strong>Document 02</strong> — Architecture decisions (especially the 8 portability rules)</li>
+    <li><strong>Document 04a</strong> — Claude Code Environment Setup (the setup we'll use throughout Phase 0)</li>
+  </ul>
+
+  <p>If you haven't read these, stop. Read them first. They contain the <em>why</em> behind decisions that Phase 0 implements without re-explaining.</p>
+
+  <h3>2.4 Time Allocation</h3>
+
+  <p>Plan your time realistically. Phase 0 across 2-3 days assumes part-time work:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Day</th><th>Tasks</th><th>Hours (part-time)</th></tr></thead>
+      <tbody>
+        <tr><td>Day 1 morning</td><td>P0.1, P0.2 (monorepo + accounts)</td><td>2-3 hours</td></tr>
+        <tr><td>Day 1 evening</td><td>P0.3 (empty packages)</td><td>1-2 hours</td></tr>
+        <tr><td>Day 2 morning</td><td>P0.4 (NestJS scaffold)</td><td>2-3 hours</td></tr>
+        <tr><td>Day 2 evening</td><td>P0.5 (Next.js scaffold)</td><td>1-2 hours</td></tr>
+        <tr><td>Day 3 morning</td><td>P0.6, P0.7 (ESLint + Vitest)</td><td>1-2 hours</td></tr>
+        <tr><td>Day 3 evening</td><td>P0.8, P0.9, P0.10 (CI + Docker + docs)</td><td>2-3 hours</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Total: 9-15 hours of focused work. If you have a few uninterrupted weekend days, you could compress to 1.5 days.</p>
+
+  <div class="callout info">
+    <div class="callout-title">💡 Order matters more than speed</div>
+    <div class="callout-body">Tasks are listed in dependency order. P0.4 depends on P0.3, which depends on P0.2 and P0.1. Don't skip ahead even if you're tempted. Each task ends in a clean, committed state — that's by design.</div>
+  </div>
+</section>
+
+<section id="section-3">
+  <div class="section-header">
+    <div class="section-num">03 · Resulting Structure</div>
+    <h2 class="section-title">What the Repo Looks Like After Phase 0</h2>
+    <p class="section-lede">A snapshot of your destination. Everything below should exist by the end of P0.10.</p>
+  </div>
+
+  <p>This is the file tree your repo will have when Phase 0 is complete. Use it as a checkpoint — if you finish Phase 0 and something here is missing, you skipped a task.</p>
+
+  <div class="file-tree">
+<pre>urban-renewal/
+├── <span class="folder">apps/</span>
+│   ├── <span class="folder">api/</span>
+│   │   ├── src/
+│   │   │   ├── <span class="file">main.ts</span>                <span class="comment"># Entry point with Fastify adapter</span>
+│   │   │   ├── <span class="file">app.module.ts</span>          <span class="comment"># Root NestJS module</span>
+│   │   │   ├── <span class="file">app.controller.ts</span>      <span class="comment"># /health endpoint</span>
+│   │   │   └── <span class="file">app.service.ts</span>
+│   │   ├── test/
+│   │   │   └── <span class="file">app.spec.ts</span>            <span class="comment"># Smoke test for /health</span>
+│   │   ├── <span class="file">Dockerfile</span>                 <span class="comment"># Multi-stage, Node 20 alpine</span>
+│   │   ├── <span class="file">CLAUDE.md</span>
+│   │   ├── <span class="file">tsconfig.json</span>
+│   │   ├── <span class="file">vitest.config.ts</span>
+│   │   └── <span class="file">package.json</span>
+│   └── <span class="folder">web/</span>
+│       ├── src/app/
+│       │   ├── <span class="file">layout.tsx</span>              <span class="comment"># RTL + Heebo font</span>
+│       │   ├── <span class="file">page.tsx</span>                <span class="comment"># Blank landing page</span>
+│       │   └── <span class="file">globals.css</span>             <span class="comment"># Tailwind base + custom</span>
+│       ├── <span class="file">Dockerfile</span>
+│       ├── <span class="file">CLAUDE.md</span>
+│       ├── <span class="file">next.config.ts</span>
+│       ├── <span class="file">tailwind.config.ts</span>
+│       └── <span class="file">package.json</span>
+├── <span class="folder">packages/</span>
+│   ├── <span class="folder">shared-types/</span>
+│   │   ├── src/
+│   │   │   └── <span class="file">index.ts</span>                <span class="comment"># Empty (filled in Phase 1)</span>
+│   │   ├── <span class="file">CLAUDE.md</span>
+│   │   ├── <span class="file">tsconfig.json</span>
+│   │   └── <span class="file">package.json</span>
+│   ├── <span class="folder">db/</span>
+│   │   ├── src/
+│   │   │   ├── <span class="file">index.ts</span>
+│   │   │   └── <span class="file">connection.ts</span>           <span class="comment"># Drizzle pool setup</span>
+│   │   ├── migrations/                <span class="comment"># Empty (filled in Phase 1)</span>
+│   │   ├── <span class="file">drizzle.config.ts</span>
+│   │   ├── <span class="file">CLAUDE.md</span>
+│   │   └── <span class="file">package.json</span>
+│   ├── <span class="folder">config/</span>
+│   │   ├── src/
+│   │   │   ├── <span class="file">env.ts</span>                  <span class="comment"># T3-env validation</span>
+│   │   │   └── <span class="file">index.ts</span>
+│   │   ├── <span class="file">CLAUDE.md</span>
+│   │   └── <span class="file">package.json</span>
+│   └── <span class="folder">validators/</span>
+│       ├── src/
+│       │   ├── <span class="file">israeli-id.ts</span>           <span class="comment"># Luhn algo</span>
+│       │   ├── <span class="file">israeli-id.spec.ts</span>      <span class="comment"># 7+ unit tests</span>
+│       │   ├── <span class="file">israeli-phone.ts</span>        <span class="comment"># E.164 + IL format</span>
+│       │   ├── <span class="file">israeli-phone.spec.ts</span>   <span class="comment"># 8+ unit tests</span>
+│       │   └── <span class="file">index.ts</span>
+│       ├── <span class="file">CLAUDE.md</span>
+│       └── <span class="file">package.json</span>
+├── <span class="folder">.claude/</span>                       <span class="comment"># From Doc 04a</span>
+│   ├── <span class="folder">commands/</span>
+│   │   ├── <span class="file">new-entity.md</span>
+│   │   ├── <span class="file">security-check.md</span>
+│   │   ├── <span class="file">perf-check.md</span>
+│   │   ├── <span class="file">portability-check.md</span>
+│   │   ├── <span class="file">test-rls.md</span>
+│   │   ├── <span class="file">commit.md</span>
+│   │   └── <span class="file">release.md</span>
+│   ├── <span class="folder">hooks/</span>
+│   │   ├── <span class="file">pre-tool-use.sh</span>
+│   │   ├── <span class="file">post-edit.sh</span>
+│   │   ├── <span class="file">pre-write.sh</span>
+│   │   ├── <span class="file">pre-commit.sh</span>
+│   │   └── <span class="file">validate-commit.sh</span>
+│   └── <span class="file">config.json</span>
+├── <span class="folder">.github/</span>
+│   ├── <span class="folder">workflows/</span>
+│   │   └── <span class="file">ci.yml</span>                     <span class="comment"># typecheck, lint, test, build</span>
+│   ├── <span class="file">CODEOWNERS</span>
+│   └── <span class="file">pull_request_template.md</span>
+├── <span class="folder">.husky/</span>
+│   ├── <span class="file">commit-msg</span>                     <span class="comment"># commitlint</span>
+│   └── <span class="file">pre-commit</span>                     <span class="comment"># lint-staged</span>
+├── <span class="file">.env.example</span>                      <span class="comment"># Placeholder values</span>
+├── <span class="file">.eslintrc.json</span>
+├── <span class="file">.prettierrc</span>
+├── <span class="file">.commitlintrc.json</span>
+├── <span class="file">.gitignore</span>
+├── <span class="file">.nvmrc</span>                            <span class="comment"># 20</span>
+├── <span class="file">CHANGELOG.md</span>
+├── <span class="file">CLAUDE.md</span>                         <span class="comment"># Root context (from Doc 04a)</span>
+├── <span class="file">docker-compose.yml</span>               <span class="comment"># postgres, redis, minio, mailhog</span>
+├── <span class="file">MIGRATION.md</span>                      <span class="comment"># Free → Prod playbook</span>
+├── <span class="file">README.md</span>
+├── <span class="file">package.json</span>                      <span class="comment"># pnpm workspace root</span>
+├── <span class="file">pnpm-workspace.yaml</span>
+├── <span class="file">turbo.json</span>
+├── <span class="file">tsconfig.json</span>                     <span class="comment"># Strict mode</span>
+└── <span class="file">vitest.config.ts</span>                  <span class="comment"># Shared config</span>
+</pre>
+  </div>
+
+  <h3>3.1 The Six Top-Level Concepts</h3>
+
+  <p>The structure encodes six key concepts. Understanding why each exists helps you maintain the structure as it grows.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Folder</th><th>Purpose</th><th>Grows by</th></tr></thead>
+      <tbody>
+        <tr><td><code>apps/</code></td><td>Deployable applications</td><td>Adding new apps (admin panel, mobile, etc.)</td></tr>
+        <tr><td><code>packages/</code></td><td>Shared code reusable across apps</td><td>New shared concerns (notifications, billing, etc.)</td></tr>
+        <tr><td><code>.claude/</code></td><td>Claude Code configuration</td><td>New slash commands, refined hooks</td></tr>
+        <tr><td><code>.github/</code></td><td>GitHub-specific config</td><td>More CI workflows (deploy, security scan, etc.)</td></tr>
+        <tr><td><code>.husky/</code></td><td>Git hooks</td><td>Rare — usually stable</td></tr>
+        <tr><td>Root files</td><td>Project-wide configuration</td><td>Rare — change carefully</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout success">
+    <div class="callout-title">✓ Why this structure scales</div>
+    <div class="callout-body">This monorepo structure handles 2 developers and 1 product cleanly. It also scales to 10+ developers and 5+ apps without restructuring. The decisions baked in here (Turborepo, pnpm workspaces, packages for shared code) are industry-standard for 2026 SaaS development.</div>
+  </div>
+</section>
+
+<div class="task-card" id="task-1">
+  <div class="task-card-header">
+    <span class="task-id">P0.1</span>
+    <div>
+      <h3 class="task-title">Initialize Monorepo</h3>
+      <p style="margin: 0; font-size: 14px;">Create the repository structure with Turborepo and pnpm workspaces. The skeleton everything else builds on.</p>
+      <div class="task-meta">
+        <span class="task-meta-item"><strong>Duration:</strong> 30-45 min</span>
+        <span class="task-meta-item"><strong>Files:</strong> ~12</span>
+        <span class="task-meta-item"><strong>Dependencies:</strong> none</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📦 What to Build</div>
+    <ul class="clean">
+      <li>Initialize git repo, push to GitHub (private)</li>
+      <li>Root <code>package.json</code> with pnpm workspace declaration</li>
+      <li><code>pnpm-workspace.yaml</code> listing apps/* and packages/*</li>
+      <li><code>turbo.json</code> with pipeline config (build, dev, test, lint, typecheck)</li>
+      <li>Root <code>tsconfig.json</code> with strict mode and path aliases</li>
+      <li><code>.gitignore</code>, <code>.npmrc</code>, <code>.editorconfig</code>, <code>.nvmrc</code></li>
+      <li>Empty <code>apps/</code> and <code>packages/</code> directories (with .gitkeep)</li>
+      <li>Set up Husky base: <code>pnpm exec husky init</code></li>
+      <li>Set up commitlint: <code>.commitlintrc.json</code> + <code>.husky/commit-msg</code> hook</li>
+      <li>First commit: <code>chore: initialize monorepo</code></li>
+    </ul>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">🎯 Decision Point — Node Version</div>
+    <p style="font-size: 14px;"><strong>Question:</strong> Node 20 LTS or Node 22 LTS?</p>
+    <p style="font-size: 14px;"><strong>Recommendation:</strong> Node 20 LTS. It has been LTS since October 2023, all hosting providers support it, and Node 22 features aren't critical. Pin in <code>.nvmrc</code> and engines field.</p>
+    <p style="font-size: 14px;"><strong>If you're already on Node 22:</strong> Fine. The code will work. Just be consistent across team — both developers should use the same version.</p>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">🎯 Decision Point — Branch Naming</div>
+    <p style="font-size: 14px;"><strong>Question:</strong> Default branch <code>main</code> or <code>master</code>?</p>
+    <p style="font-size: 14px;"><strong>Recommendation:</strong> <code>main</code>. GitHub default since 2020, modern convention. Configure on repo creation.</p>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 Reference: Root package.json</div>
+    <div class="code-label">package.json (project root)</div>
+<pre><code>{
+  "name": "urban-renewal",
+  "version": "0.0.1",
+  "private": true,
+  "engines": {
+    "node": "&gt;=20.0.0",
+    "pnpm": "&gt;=9.0.0"
+  },
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "test": "turbo test",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "format": "prettier --write .",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
+    "prettier": "^3.0.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.5.0"
+  },
+  "packageManager": "pnpm@9.0.0"
+}
+</code></pre>
+  </div>
+
+  <div class="done-criteria">
+    <div class="done-criteria-title">✓ Done When</div>
+    <ul>
+      <li><code>pnpm install</code> succeeds without errors</li>
+      <li><code>pnpm typecheck</code> exits 0 (no files to check yet, but command works)</li>
+      <li>Git repo initialized, first commit pushed to GitHub</li>
+      <li><code>.gitignore</code> excludes: <code>node_modules</code>, <code>.env</code>, <code>.env.local</code>, <code>dist</code>, <code>build</code>, <code>.turbo</code>, <code>.next</code></li>
+      <li>Try a bad commit: <code>git commit -m "bad message"</code> — commitlint rejects it</li>
+      <li>Try a good commit: <code>git commit -m "chore: setup test"</code> — accepted</li>
+      <li>Branch protection enabled on <code>main</code> (settings → branches)</li>
+    </ul>
+  </div>
+</div>
+
+<div class="task-card" id="task-2">
+  <div class="task-card-header">
+    <span class="task-id">P0.2</span>
+    <div>
+      <h3 class="task-title">Set Up Free Tier Cloud Accounts</h3>
+      <p style="margin: 0; font-size: 14px;">Create accounts on all required cloud providers and gather credentials. Do this early — some accounts need email verification, and you don't want to be blocked later.</p>
+      <div class="task-meta">
+        <span class="task-meta-item"><strong>Duration:</strong> 1.5-2 hours</span>
+        <span class="task-meta-item"><strong>Files:</strong> .env.local, .env.example</span>
+        <span class="task-meta-item"><strong>Dependencies:</strong> none (do in parallel with P0.3)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📦 Accounts to Create</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Service</th><th>What to do</th><th>Env vars to capture</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Neon</strong> (DB)</td>
+            <td>Create account, project "urban-renewal-dev" in <strong>eu-central-1 (Frankfurt)</strong>. Get connection string.</td>
+            <td><code>DATABASE_URL</code></td>
+          </tr>
+          <tr>
+            <td><strong>Cloudflare</strong></td>
+            <td>Create account. Create R2 bucket "urban-renewal-dev". Get R2 API tokens (S3-compatible). Pages account for FE hosting.</td>
+            <td><code>S3_ENDPOINT</code>, <code>S3_ACCESS_KEY_ID</code>, <code>S3_SECRET_ACCESS_KEY</code>, <code>S3_BUCKET</code>, <code>S3_REGION=auto</code></td>
+          </tr>
+          <tr>
+            <td><strong>Railway</strong></td>
+            <td>Create account. <strong>Hobby plan ($5/month)</strong>. Project will contain BE container + Worker container. Region: <strong>eu-west (Frankfurt-adjacent)</strong>.</td>
+            <td><code>RAILWAY_TOKEN</code> (for CI/CD), set via dashboard</td>
+          </tr>
+          <tr>
+            <td><strong>Upstash</strong> (Redis) — <em>deferred to Growth phase</em></td>
+            <td>Not needed for MVP. MVP uses <code>PostgresCacheProvider</code> (cache_kv table in Neon). Sign up when ~10 paying orgs justify the upgrade. See Doc 02 §14.4.</td>
+            <td>— (Phase 2 / Growth)</td>
+          </tr>
+          <tr>
+            <td><strong>Resend</strong> (Email)</td>
+            <td>Create account. Get API key. Domain verification deferred.</td>
+            <td><code>RESEND_API_KEY</code></td>
+          </tr>
+          <tr>
+            <td><strong>Sentry</strong></td>
+            <td>Create org. Two projects: <code>api</code> (Node.js) and <code>web</code> (Next.js). Get both DSNs.</td>
+            <td><code>SENTRY_DSN_API</code>, <code>SENTRY_DSN_WEB</code></td>
+          </tr>
+          <tr>
+            <td><strong>UptimeRobot</strong></td>
+            <td>Create account. Monitors set up later (after first deploy).</td>
+            <td>—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">🔒 Security Requirements</div>
+    <ul class="checks">
+      <li>ALL secrets/keys/connection-strings → <strong>Infisical</strong> (environments: dev/staging/production). NEVER in .env or git. Claude Code reads only via <code>infisical run</code>. Accounts opened <strong>per-Phase</strong>: day 1 = GitHub+Infisical only; Neon@Phase1, Railway@Phase0-2, SMS@Phase2, R2@Phase4, Resend@Phase7, Sentry+domain@Phase9</li>
+      <li>Enable <strong>2FA</strong> on all accounts (especially GitHub, Cloudflare, Neon)</li>
+      <li>Use a <strong>dedicated email address</strong> for the project, not personal email</li>
+      <li>For Neon: create a <strong>read-only role</strong> in addition to the default role (we'll use it later for analytics)</li>
+      <li>For Cloudflare R2: scope API token to <strong>specific bucket only</strong>, not account-wide</li>
+    </ul>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 .env.example Template</div>
+    <p style="font-size: 14px;">Create both <code>.env.example</code> (committed, with placeholders) and <code>.env.local</code> (gitignored, with real values).</p>
+    <div class="code-label">.env.example (commit this)</div>
+<pre><code><span class="comment"># Database (Neon Postgres)</span>
+DATABASE_URL=postgresql://user:pass@ep-xxxxx.eu-central-1.aws.neon.tech/db?sslmode=require
+
+<span class="comment"># Provider tier DB user (separate role with BYPASSRLS — see Doc 04c §P1.3)</span>
+DATABASE_URL_PROVIDER=postgresql://provider_app_role:pass@ep-xxxxx.eu-central-1.aws.neon.tech/db?sslmode=require
+
+<span class="comment"># Cache: PostgresCacheProvider uses cache_kv table in DATABASE_URL — no separate REDIS_URL in MVP.</span>
+<span class="comment"># When migrating to Upstash Redis in Growth phase, add: UPSTASH_REDIS_URL=rediss://...</span>
+
+<span class="comment"># S3-compatible storage (Cloudflare R2)</span>
+S3_ENDPOINT=https://xxxxx.r2.cloudflarestorage.com
+S3_REGION=auto
+S3_ACCESS_KEY_ID=xxxxx
+S3_SECRET_ACCESS_KEY=xxxxx
+S3_BUCKET=urban-renewal-dev
+
+<span class="comment"># Email (Resend)</span>
+RESEND_API_KEY=re_xxxxx
+
+<span class="comment"># Monitoring (Sentry)</span>
+SENTRY_DSN_API=https://xxxxx@xxxxx.ingest.sentry.io/xxxxx
+SENTRY_DSN_WEB=https://xxxxx@xxxxx.ingest.sentry.io/xxxxx
+
+<span class="comment"># PII encryption (two separate keys — see Doc 07 §5)</span>
+PII_ENCRYPTION_KEY=  <span class="comment"># 32+ char random string for pgp_sym_encrypt</span>
+PII_HASH_KEY=        <span class="comment"># 32+ char random string for HMAC (separate from encryption key)</span>
+
+<span class="comment"># Auth (Better Auth)</span>
+BETTER_AUTH_SECRET=  <span class="comment"># 32+ char random string</span>
+BETTER_AUTH_URL=http://localhost:3000
+
+<span class="comment"># App config</span>
+NODE_ENV=development
+LOG_LEVEL=debug
+PORT_API=3000
+PORT_WEB=3001
+</code></pre>
+  </div>
+
+  <div class="callout danger">
+    <div class="callout-title">⚠️ Critical: Never commit real credentials</div>
+    <div class="callout-body">Only <code>.env.example</code> with placeholders gets committed. Real values go in <code>.env.local</code> which must be in <code>.gitignore</code>. If you accidentally commit a real credential, <strong>rotate it immediately</strong> on the provider — gitleaks scanner in CI catches this, but the credential is already compromised.</div>
+  </div>
+
+  <div class="done-criteria">
+    <div class="done-criteria-title">✓ Done When</div>
+    <ul>
+      <li>All 5 essential accounts created (UptimeRobot can be deferred)</li>
+      <li>2FA enabled on all accounts</li>
+      <li><code>.env.local</code> exists locally with all values populated</li>
+      <li><code>.env.example</code> committed with placeholders</li>
+      <li>Test connection to Neon: <code>psql $DATABASE_URL -c "SELECT version()"</code> works</li>
+      <li>Test R2 access: AWS CLI configured with R2 endpoint, <code>aws s3 ls</code> shows bucket</li>
+      <li>Manually trigger Sentry test event from web UI — both projects receive it</li>
+    </ul>
+  </div>
+</div>
+
+<div class="task-card" id="task-3">
+  <div class="task-card-header">
+    <span class="task-id">P0.3</span>
+    <div>
+      <h3 class="task-title">Create Empty Shared Packages</h3>
+      <p style="margin: 0; font-size: 14px;">Scaffold the four packages that will hold shared code. Empty for now — they fill up in Phase 1+.</p>
+      <div class="task-meta">
+        <span class="task-meta-item"><strong>Duration:</strong> 1-1.5 hours</span>
+        <span class="task-meta-item"><strong>Files:</strong> ~16</span>
+        <span class="task-meta-item"><strong>Dependencies:</strong> P0.1</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📦 What to Build</div>
+    <p style="font-size: 14px; margin-bottom: 12px;">Create four packages, each with a minimal but functional structure:</p>
+    <ul class="clean">
+      <li><code>packages/shared-types/</code> — empty for now, exports nothing. Has its own CLAUDE.md.</li>
+      <li><code>packages/db/</code> — drizzle.config.ts, src/connection.ts (Drizzle pool), empty migrations/, CLAUDE.md.</li>
+      <li><code>packages/config/</code> — src/env.ts with T3-env validation for current env vars.</li>
+      <li><code>packages/validators/</code> — Israeli-specific input validators. Two starters: <code>israeli-id.ts</code> (Luhn algorithm, 7+ tests) and <code>israeli-phone.ts</code> (E.164 normalization for Israeli numbers, 8+ tests). Both pure functions, zero dependencies, easy to audit.</li>
+    </ul>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">🎯 Decision Point — Israeli ID Implementation</div>
+    <p style="font-size: 14px;"><strong>Question:</strong> Use a library or implement the Luhn validator ourselves?</p>
+    <p style="font-size: 14px;"><strong>Recommendation:</strong> Implement. The Israeli ID Luhn algorithm is ~15 lines, well-defined, and validates 9-digit IDs (with padding for shorter ones). No external dependency, full control, easy to test, easy to explain to auditors.</p>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 Reference: Israeli ID Validator</div>
+    <div class="code-label">packages/validators/src/israeli-id.ts</div>
+<pre><code><span class="comment">/**
+ * Validates Israeli ID using Luhn algorithm.
+ * Israeli IDs are 9 digits. Shorter IDs are padded with leading zeros.
+ *
+ * @param id - The ID string (digits only, may be 1-9 chars)
+ * @returns true if valid, false otherwise
+ */</span>
+export function isValidIsraeliId(id: string): boolean {
+  <span class="comment">// Strict input check</span>
+  if (typeof id !== 'string') return false;
+  if (!/^\d{1,9}$/.test(id)) return false;
+
+  <span class="comment">// Pad to 9 digits</span>
+  const padded = id.padStart(9, '0');
+
+  <span class="comment">// Luhn algorithm</span>
+  let sum = 0;
+  for (let i = 0; i &lt; 9; i++) {
+    let digit = parseInt(padded[i], 10);
+    if (i % 2 === 1) {
+      digit *= 2;
+      if (digit &gt; 9) digit -= 9;
+    }
+    sum += digit;
+  }
+
+  return sum % 10 === 0;
+}
+</code></pre>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 Reference: Required Tests (5+)</div>
+    <div class="code-label">packages/validators/src/israeli-id.spec.ts</div>
+<pre><code>import { describe, it, expect } from 'vitest';
+import { isValidIsraeliId } from './israeli-id';
+
+describe('isValidIsraeliId', () =&gt; {
+  it('accepts valid 9-digit Israeli ID', () =&gt; {
+    expect(isValidIsraeliId('123456782')).toBe(true);
+  });
+
+  it('accepts valid ID with padding (8 digits)', () =&gt; {
+    <span class="comment">// '12345674' padded to '012345674'</span>
+    expect(isValidIsraeliId('12345674')).toBe(true);
+  });
+
+  it('rejects ID with invalid checksum', () =&gt; {
+    expect(isValidIsraeliId('123456789')).toBe(false);
+  });
+
+  it('rejects empty string', () =&gt; {
+    expect(isValidIsraeliId('')).toBe(false);
+  });
+
+  it('rejects non-numeric input', () =&gt; {
+    expect(isValidIsraeliId('12345678a')).toBe(false);
+  });
+
+  it('rejects more than 9 digits', () =&gt; {
+    expect(isValidIsraeliId('1234567890')).toBe(false);
+  });
+
+  it('rejects non-string input', () =&gt; {
+    expect(isValidIsraeliId(123456782 as any)).toBe(false);
+  });
+});
+</code></pre>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">🎯 Decision Point — Israeli Phone Implementation</div>
+    <p style="font-size: 14px;"><strong>Question:</strong> Use <code>libphonenumber-js</code> or implement an IL-only validator?</p>
+    <p style="font-size: 14px;"><strong>Recommendation:</strong> Implement IL-only. <code>libphonenumber-js</code> is ~130KB minified; we only need Israeli numbers. ~30 lines of code, zero dependencies, and the canonical form is unambiguous. If we ever need other countries (Phase 2 international SMS), we can swap in libphonenumber via <code>ISMSProvider</code>'s validation hook.</p>
+    <p style="font-size: 14px;"><strong>What we accept (input):</strong></p>
+    <ul class="clean" style="font-size: 13px;">
+      <li><code>050-1234567</code> — local format with hyphen</li>
+      <li><code>0501234567</code> — local format without hyphen</li>
+      <li><code>+972501234567</code> — E.164 international</li>
+      <li><code>+972-50-123-4567</code> — international with hyphens</li>
+    </ul>
+    <p style="font-size: 14px;"><strong>What we return (normalized output):</strong> Always E.164 (<code>+972501234567</code>) or <code>null</code> if invalid. The E.164 format is what we encrypt and HMAC for storage in the <code>owners.phone_encrypted</code> column.</p>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 Reference: Israeli Phone Validator</div>
+    <div class="code-label">packages/validators/src/israeli-phone.ts</div>
+<pre><code><span class="comment">/**
+ * Israeli mobile/landline phone validator and normalizer.
+ *
+ * Israeli phone numbers:
+ *   - Country code: +972
+ *   - Mobile prefixes: 050, 052, 053, 054, 055, 058 (and historical 057, 059)
+ *   - Landline prefixes: 02, 03, 04, 08, 09 (city codes)
+ *   - Mobile total: 10 digits (0XX-NNNNNNN) or 13 chars with country (+972XX-NNNNNNN → 12 digits after +)
+ *   - Landline total: 9 digits (0X-NNNNNNN)
+ *
+ * Normalized form: E.164 (+972 prefix, no spaces or hyphens).
+ * Example: '050-1234567' → '+972501234567'
+ */</span>
+
+<span class="comment">// Mobile prefixes (current + historical), without leading 0</span>
+const MOBILE_PREFIXES = ['50', '52', '53', '54', '55', '57', '58', '59'];
+<span class="comment">// Landline area codes (single digit after the leading 0)</span>
+const LANDLINE_PREFIXES = ['2', '3', '4', '8', '9'];
+
+export function normalizeIsraeliPhone(input: string): string | null {
+  if (typeof input !== 'string') return null;
+
+  <span class="comment">// Strip all whitespace, hyphens, parens, dots</span>
+  const cleaned = input.replace(/[\s\-().]/g, '');
+  if (cleaned.length === 0) return null;
+
+  let digits: string;
+
+  if (cleaned.startsWith('+972')) {
+    digits = cleaned.slice(4);
+  } else if (cleaned.startsWith('972')) {
+    digits = cleaned.slice(3);
+  } else if (cleaned.startsWith('0')) {
+    digits = cleaned.slice(1);
+  } else {
+    return null;
+  }
+
+  if (!/^\d+$/.test(digits)) return null;
+
+  <span class="comment">// Mobile: 9 digits total (2-digit prefix + 7-digit subscriber)</span>
+  if (digits.length === 9) {
+    const prefix = digits.slice(0, 2);
+    if (MOBILE_PREFIXES.includes(prefix)) {
+      return `+972${digits}`;
+    }
+    return null;
+  }
+
+  <span class="comment">// Landline: 8 digits total (1-digit area + 7-digit subscriber)</span>
+  if (digits.length === 8) {
+    const prefix = digits.slice(0, 1);
+    if (LANDLINE_PREFIXES.includes(prefix)) {
+      return `+972${digits}`;
+    }
+    return null;
+  }
+
+  return null;
+}
+
+export function isValidIsraeliPhone(input: string): boolean {
+  return normalizeIsraeliPhone(input) !== null;
+}
+</code></pre>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 Reference: Required Tests (8+)</div>
+    <div class="code-label">packages/validators/src/israeli-phone.spec.ts</div>
+<pre><code>import { describe, it, expect } from 'vitest';
+import { normalizeIsraeliPhone, isValidIsraeliPhone } from './israeli-phone';
+
+describe('normalizeIsraeliPhone', () =&gt; {
+  it('normalizes mobile with hyphens to E.164', () =&gt; {
+    expect(normalizeIsraeliPhone('050-123-4567')).toBe('+972501234567');
+  });
+
+  it('normalizes mobile without hyphens to E.164', () =&gt; {
+    expect(normalizeIsraeliPhone('0501234567')).toBe('+972501234567');
+  });
+
+  it('passes through already-normalized E.164', () =&gt; {
+    expect(normalizeIsraeliPhone('+972501234567')).toBe('+972501234567');
+  });
+
+  it('handles E.164 with hyphens', () =&gt; {
+    expect(normalizeIsraeliPhone('+972-50-123-4567')).toBe('+972501234567');
+  });
+
+  it('accepts 972 without + prefix', () =&gt; {
+    expect(normalizeIsraeliPhone('972501234567')).toBe('+972501234567');
+  });
+
+  it('normalizes Tel Aviv landline (03)', () =&gt; {
+    expect(normalizeIsraeliPhone('03-1234567')).toBe('+97231234567');
+  });
+
+  it('rejects unknown mobile prefix (e.g., 051)', () =&gt; {
+    expect(normalizeIsraeliPhone('051-1234567')).toBeNull();
+  });
+
+  it('rejects too short numbers', () =&gt; {
+    expect(normalizeIsraeliPhone('050-123')).toBeNull();
+  });
+
+  it('rejects too long numbers', () =&gt; {
+    expect(normalizeIsraeliPhone('05012345678')).toBeNull();
+  });
+
+  it('rejects non-numeric characters in core digits', () =&gt; {
+    expect(normalizeIsraeliPhone('050-12X-4567')).toBeNull();
+  });
+
+  it('rejects empty string', () =&gt; {
+    expect(normalizeIsraeliPhone('')).toBeNull();
+  });
+
+  it('rejects non-string input', () =&gt; {
+    expect(normalizeIsraeliPhone(972501234567 as any)).toBeNull();
+  });
+});
+
+describe('isValidIsraeliPhone', () =&gt; {
+  it('returns true for valid input', () =&gt; {
+    expect(isValidIsraeliPhone('050-1234567')).toBe(true);
+  });
+
+  it('returns false for invalid input', () =&gt; {
+    expect(isValidIsraeliPhone('garbage')).toBe(false);
+  });
+});
+</code></pre>
+  </div>
+
+  <div class="callout info">
+    <div class="callout-title">💡 Why E.164 as the canonical form</div>
+    <div class="callout-body">
+      <strong>One canonical format means one search key.</strong> If we store <code>050-1234567</code> in one row and <code>+972501234567</code> in another, deduplication is impossible and HMAC search misses matches. By normalizing to E.164 at the API boundary, every phone in <code>owners.phone_encrypted</code> is in the same form. The HMAC of that value (<code>owners.phone_hash</code>) becomes a reliable search key. This is the same reason we pad Israeli IDs to 9 digits — one canonical form per value.
+    </div>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 T3-env Setup</div>
+    <div class="code-label">packages/config/src/env.ts</div>
+<pre><code>import { createEnv } from '@t3-oss/env-core';
+import { z } from 'zod';
+
+export const serverEnv = createEnv({
+  server: {
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+    DATABASE_URL: z.string().url(),
+    DATABASE_URL_PROVIDER: z.string().url(),  <span class="comment">// Provider tier (BYPASSRLS role)</span>
+    S3_ENDPOINT: z.string().url(),
+    S3_REGION: z.string().default('auto'),
+    S3_ACCESS_KEY_ID: z.string().min(1),
+    S3_SECRET_ACCESS_KEY: z.string().min(1),
+    S3_BUCKET: z.string().min(1),
+    RESEND_API_KEY: z.string().min(1),
+    SENTRY_DSN_API: z.string().url().optional(),
+    BETTER_AUTH_SECRET: z.string().min(32).optional(),
+    PII_ENCRYPTION_KEY: z.string().min(32).optional(),
+    PII_HASH_KEY: z.string().min(32).optional(),
+    <span class="comment">// REDIS_URL deferred to Growth phase — MVP uses PostgresCacheProvider</span>
+    <span class="comment">// UPSTASH_REDIS_URL: z.string().url().optional(),</span>
+  },
+  runtimeEnv: process.env,
+  emptyStringAsUndefined: true,
+});
+</code></pre>
+  </div>
+
+  <div class="done-criteria">
+    <div class="done-criteria-title">✓ Done When</div>
+    <ul>
+      <li>All 4 packages exist with proper <code>package.json</code></li>
+      <li>Each package resolves via <code>@app/&lt;name&gt;</code> imports (test in any other file)</li>
+      <li><code>pnpm typecheck</code> passes across all packages</li>
+      <li>Israeli ID validator has 7+ tests, all passing</li>
+      <li>Israeli phone validator has 8+ tests, all passing (covers mobile, landline, E.164, hyphens, invalid prefixes)</li>
+      <li>Each package has its own focused CLAUDE.md (under 50 lines)</li>
+      <li>T3-env validates on import — try removing a required var, see it fail</li>
+    </ul>
+  </div>
+</div>
+
+<div class="task-card" id="task-4">
+  <div class="task-card-header">
+    <span class="task-id">P0.4</span>
+    <div>
+      <h3 class="task-title">Scaffold NestJS Backend (apps/api)</h3>
+      <p style="margin: 0; font-size: 14px;">Create the NestJS app with Fastify adapter, basic security middleware, and a working <code>/health</code> endpoint that confirms DB connectivity.</p>
+      <div class="task-meta">
+        <span class="task-meta-item"><strong>Duration:</strong> 2-3 hours</span>
+        <span class="task-meta-item"><strong>Files:</strong> ~15</span>
+        <span class="task-meta-item"><strong>Dependencies:</strong> P0.3</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📦 What to Build</div>
+    <ul class="clean">
+      <li>NestJS scaffold (CLI: <code>nest new apps/api</code>) — then refactor to Fastify</li>
+      <li>Replace Express with <code>@nestjs/platform-fastify</code> in <code>main.ts</code></li>
+      <li>Helmet middleware for security headers</li>
+      <li>CORS configured strictly (only allowed origins)</li>
+      <li>Basic rate limiting (100 req/min/IP) via <code>@nestjs/throttler</code></li>
+      <li>T3-env validation on startup (fail fast if env is invalid)</li>
+      <li>Connect to Neon DB (just ping, no schema yet)</li>
+      <li><code>/health</code> endpoint returning <code>{ status: 'ok', db: 'connected', uptime: X }</code></li>
+      <li>pino structured logging with PII redaction config</li>
+      <li>Sentry SDK initialized for error tracking</li>
+      <li>Vitest configured for integration tests</li>
+      <li>Smoke test for <code>/health</code></li>
+      <li><code>Dockerfile</code> (multi-stage, Node 20 alpine, &lt; 200MB final image)</li>
+      <li><code>apps/api/CLAUDE.md</code></li>
+    </ul>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">🎯 Decision Point — NestJS CLI vs Manual</div>
+    <p style="font-size: 14px;"><strong>Question:</strong> Use <code>nest new</code> CLI or scaffold manually?</p>
+    <p style="font-size: 14px;"><strong>Recommendation:</strong> Use the CLI for speed, then refactor to Fastify (the CLI generates Express-based boilerplate). Total time: ~30 min refactor vs ~2 hours manual scaffold. The CLI also produces idiomatic NestJS structure that's familiar to anyone reading it later.</p>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">🔒 Security Requirements (mandatory)</div>
+    <ul class="checks">
+      <li>Helmet middleware enabled with CSP, HSTS, X-Frame-Options</li>
+      <li>CORS configured with explicit allow-list (not <code>origin: '*'</code>)</li>
+      <li>Rate limiting on all routes (100 req/min/IP minimum)</li>
+      <li>Sentry receives errors (verify with intentional throw)</li>
+      <li>pino redacts: password, token, authorization headers, JWT</li>
+      <li>No <code>console.log</code> in production code (lint rule will enforce)</li>
+      <li>Error messages to clients are generic; details only in logs</li>
+    </ul>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 Reference: main.ts</div>
+    <div class="code-label">apps/api/src/main.ts</div>
+<pre><code>import { NestFactory } from '@nestjs/core';
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import helmet from '@fastify/helmet';
+import { AppModule } from './app.module';
+import { Logger } from 'nestjs-pino';
+import { env } from '@app/config';
+
+<span class="comment">// CORS origin allow-lists — see CORS_ORIGINS.md for the full rationale.
+// Production-only includes the live FE domain. Preview includes all Cloudflare Pages
+// preview deployments (regex). Development includes the local dev server.</span>
+const CORS_ORIGINS = {
+  production: [
+    'https://app.emapp.io',
+    <span class="comment">// Provider Admin tool lives at the same domain under /provider/* (Phase 6.5)</span>
+  ],
+  preview: [
+    /^https:\/\/[\w-]+\.emapp\.pages\.dev$/,  <span class="comment">// CF Pages PR previews</span>
+  ],
+  development: [
+    'http://localhost:3001',  <span class="comment">// Next.js dev server</span>
+    'http://127.0.0.1:3001',
+  ],
+};
+
+async function bootstrap() {
+  const app = await NestFactory.create&lt;NestFastifyApplication&gt;(
+    AppModule,
+    new FastifyAdapter({ trustProxy: true }),
+    { bufferLogs: true },
+  );
+
+  app.useLogger(app.get(Logger));
+
+  <span class="comment">// API versioning: every endpoint under /api/v1/* — see Doc 06 §5.1</span>
+  app.setGlobalPrefix('api/v1');
+
+  await app.register(helmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],  <span class="comment">// shadcn/Tailwind needs inline styles</span>
+        imgSrc: ["'self'", 'https://*.r2.cloudflarestorage.com', 'data:'],
+        connectSrc: ["'self'", 'https://*.sentry.io', 'https://api.resend.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'none'"],
+      },
+    },
+    hsts: {
+      maxAge: 31536000,        <span class="comment">// 1 year</span>
+      includeSubDomains: true,
+      preload: true,           <span class="comment">// eligible for browser preload lists</span>
+    },
+    crossOriginEmbedderPolicy: false,  <span class="comment">// not needed for our SPA pattern</span>
+  });
+
+  <span class="comment">// CORS — production = strict, preview = regex match, dev = localhost</span>
+  const allowedOrigins = [
+    ...CORS_ORIGINS[env.NODE_ENV] ?? [],
+    ...(env.NODE_ENV === 'production' ? CORS_ORIGINS.preview : []),
+  ];
+
+  app.enableCors({
+    origin: (origin, callback) =&gt; {
+      <span class="comment">// no origin = same-origin or curl/server-to-server, allow</span>
+      if (!origin) return callback(null, true);
+      const allowed = allowedOrigins.some((entry) =&gt;
+        entry instanceof RegExp ? entry.test(origin) : entry === origin,
+      );
+      callback(allowed ? null : new Error(`CORS: origin ${origin} not allowed`), allowed);
+    },
+    credentials: true,           <span class="comment">// allow cookies (refresh token)</span>
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'X-Reason'],  <span class="comment">// X-Reason for Provider audit</span>
+    maxAge: 86400,               <span class="comment">// 24h preflight cache</span>
+  });
+
+  app.enableShutdownHooks();
+
+  const port = parseInt(env.PORT_API ?? '3000', 10);
+  await app.listen(port, '0.0.0.0');
+}
+
+bootstrap().catch((err) =&gt; {
+  console.error('Failed to start API:', err);
+  process.exit(1);
+});
+</code></pre>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 CORS Origins Quick Reference</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Environment</th><th>Allowed origins</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Production</strong></td><td><code>https://app.emapp.io</code> + Cloudflare Pages preview pattern</td></tr>
+          <tr><td><strong>Preview/staging</strong></td><td>Regex: <code>/^https:\/\/[\w-]+\.emapp\.pages\.dev$/</code></td></tr>
+          <tr><td><strong>Development</strong></td><td><code>http://localhost:3001</code> + <code>http://127.0.0.1:3001</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size: 13px; color: var(--text-muted); margin-top: 8px;">No wildcard, no <code>origin: '*'</code>. Adding a new client (mobile app, contractor portal in Phase 2) requires an explicit code change + PR review.</p>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 Reference: /health endpoint</div>
+    <div class="code-label">apps/api/src/app.controller.ts</div>
+<pre><code>import { Controller, Get } from '@nestjs/common';
+import { sql } from 'drizzle-orm';
+import { db } from '@app/db';
+
+@Controller('health')
+export class HealthController {
+  @Get()
+  async getHealth() {
+    let dbStatus = 'unknown';
+    try {
+      await db.execute(sql`SELECT 1`);
+      dbStatus = 'connected';
+    } catch {
+      dbStatus = 'disconnected';
+    }
+
+    return {
+      status: dbStatus === 'connected' ? 'ok' : 'degraded',
+      db: dbStatus,
+      uptime: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+</code></pre>
+  </div>
+
+  <div class="done-criteria">
+    <div class="done-criteria-title">✓ Done When</div>
+    <ul>
+      <li><code>pnpm --filter api dev</code> starts the server on port 3000</li>
+      <li><code>curl http://localhost:3000/health</code> returns 200 with <code>{ status: 'ok', db: 'connected' }</code></li>
+      <li>Smoke test passes: <code>pnpm --filter api test</code></li>
+      <li><code>docker build apps/api</code> succeeds, image &lt; 200MB</li>
+      <li>Trigger Sentry test: throw inside a controller — Sentry receives the event</li>
+      <li>Try a request with malicious header — Helmet blocks or sanitizes</li>
+      <li><code>apps/api/CLAUDE.md</code> exists and matches doc 04a section 2.3</li>
+    </ul>
+  </div>
+</div>
+
+<div class="task-card" id="task-5">
+  <div class="task-card-header">
+    <span class="task-id">P0.5</span>
+    <div>
+      <h3 class="task-title">Scaffold Next.js Frontend (apps/web)</h3>
+      <p style="margin: 0; font-size: 14px;">Create the Next.js 15 app with RTL configured, Heebo font loaded, and a blank landing page that proves the setup works.</p>
+      <div class="task-meta">
+        <span class="task-meta-item"><strong>Duration:</strong> 1.5-2 hours</span>
+        <span class="task-meta-item"><strong>Files:</strong> ~10</span>
+        <span class="task-meta-item"><strong>Dependencies:</strong> P0.3</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📦 What to Build</div>
+    <ul class="clean">
+      <li>Next.js scaffold: <code>pnpm create next-app apps/web --app --typescript --tailwind --src-dir --eslint --no-import-alias</code></li>
+      <li>Configure <code>html lang="he" dir="rtl"</code> in <code>src/app/layout.tsx</code></li>
+      <li>Heebo font via <code>next/font/google</code> with weight ranges</li>
+      <li>Tailwind RTL plugin: <code>tailwindcss-rtl</code></li>
+      <li>shadcn/ui CLI: <code>npx shadcn@latest init</code></li>
+      <li>next-intl for i18n (Hebrew + English)</li>
+      <li>Blank landing page with Heebo text + one shadcn Button</li>
+      <li>Environment variables via <code>@app/config</code></li>
+      <li>Sentry SDK for FE error tracking</li>
+      <li><code>apps/web/CLAUDE.md</code></li>
+      <li><code>Dockerfile</code> for the web app</li>
+    </ul>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">🎯 Decision Point — Pages Router vs App Router</div>
+    <p style="font-size: 14px;"><strong>Question:</strong> Pages Router or App Router?</p>
+    <p style="font-size: 14px;"><strong>Recommendation:</strong> App Router. It's the modern Next.js direction, supports React Server Components (smaller bundle, faster first paint), and matches our architecture decisions in Doc 02. Pages Router is being deprecated long-term.</p>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 Reference: layout.tsx</div>
+    <div class="code-label">apps/web/src/app/layout.tsx</div>
+<pre><code>import type { Metadata } from 'next';
+import { Heebo } from 'next/font/google';
+import './globals.css';
+
+const heebo = Heebo({
+  subsets: ['hebrew', 'latin'],
+  weight: ['300', '400', '500', '600', '700', '800'],
+  variable: '--font-heebo',
+  display: 'swap',
+});
+
+export const metadata: Metadata = {
+  title: 'התחדשות עירונית',
+  description: 'מערכת לניהול פרויקטי התחדשות עירונית',
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    &lt;html lang="he" dir="rtl" className={heebo.variable}&gt;
+      &lt;body className="font-sans antialiased"&gt;
+        {children}
+      &lt;/body&gt;
+    &lt;/html&gt;
+  );
+}
+</code></pre>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 Reference: tailwind.config.ts</div>
+    <div class="code-label">apps/web/tailwind.config.ts</div>
+<pre><code>import type { Config } from 'tailwindcss';
+import rtl from 'tailwindcss-rtl';
+
+const config: Config = {
+  content: ['./src/**/*.{ts,tsx}'],
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['var(--font-heebo)', 'system-ui', 'sans-serif'],
+      },
+    },
+  },
+  plugins: [rtl],
+};
+
+export default config;
+</code></pre>
+  </div>
+
+  <div class="done-criteria">
+    <div class="done-criteria-title">✓ Done When</div>
+    <ul>
+      <li><code>pnpm --filter web dev</code> starts on port 3001</li>
+      <li>Page renders with RTL direction and Heebo font (visible in DevTools)</li>
+      <li>Hebrew text displays correctly without garbled chars</li>
+      <li>shadcn Button component renders</li>
+      <li>i18n switching works (HE ↔ EN, even with placeholder strings)</li>
+      <li>Production build succeeds: <code>pnpm --filter web build</code></li>
+      <li>Bundle analyzer shows reasonable size (&lt; 100KB initial JS)</li>
+      <li>Sentry FE receives test error</li>
+    </ul>
+  </div>
+</div>
+
+<div class="task-card" id="task-6">
+  <div class="task-card-header">
+    <span class="task-id">P0.6</span>
+    <div>
+      <h3 class="task-title">Configure ESLint + Prettier + lint-staged</h3>
+      <p style="margin: 0; font-size: 14px;">Code quality tools that run on every commit. Catches ~80% of issues before they reach CI.</p>
+      <div class="task-meta">
+        <span class="task-meta-item"><strong>Duration:</strong> 1-1.5 hours</span>
+        <span class="task-meta-item"><strong>Files:</strong> ~6</span>
+        <span class="task-meta-item"><strong>Dependencies:</strong> P0.4 + P0.5</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📦 What to Build</div>
+    <ul class="clean">
+      <li>Root <code>.eslintrc.json</code> extending <code>@typescript-eslint/recommended</code></li>
+      <li>Plugins: <code>@typescript-eslint</code>, <code>import</code>, <code>security</code>, <code>unicorn</code></li>
+      <li>Custom rule: forbid <code>console.log</code> (allow <code>console.warn</code>, <code>console.error</code>)</li>
+      <li>Custom rule: forbid <code>any</code> (warn level until Phase 1, error after)</li>
+      <li>Root <code>.prettierrc</code> with our style (single quotes, trailing commas, 100 char line)</li>
+      <li><code>.prettierignore</code> for build outputs and migrations</li>
+      <li>lint-staged config in root <code>package.json</code></li>
+      <li>Husky pre-commit hook running lint-staged</li>
+      <li>gitleaks config for secret scanning at commit time</li>
+    </ul>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">🎯 Decision Point — Strict or Lenient ESLint</div>
+    <p style="font-size: 14px;"><strong>Question:</strong> Block on every lint error, or warn?</p>
+    <p style="font-size: 14px;"><strong>Recommendation:</strong> Strict in CI (errors fail the build), lenient locally during WIP (warnings only). The post-commit hook in lint-staged auto-fixes formatting; logical lint errors warn locally but block in CI. This balances speed with safety.</p>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 Reference: .eslintrc.json</div>
+    <div class="code-label">.eslintrc.json (project root)</div>
+<pre><code>{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "project": ["./tsconfig.json", "./apps/*/tsconfig.json", "./packages/*/tsconfig.json"],
+    "tsconfigRootDir": "."
+  },
+  "plugins": ["@typescript-eslint", "import", "security", "unicorn"],
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:@typescript-eslint/recommended-requiring-type-checking",
+    "plugin:import/recommended",
+    "plugin:import/typescript",
+    "plugin:security/recommended-legacy",
+    "plugin:unicorn/recommended",
+    "prettier"
+  ],
+  "rules": {
+    "no-console": ["error", { "allow": ["warn", "error"] }],
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "import/order": ["error", {
+      "groups": ["builtin", "external", "internal", "parent", "sibling"],
+      "newlines-between": "always",
+      "alphabetize": { "order": "asc" }
+    }],
+    "unicorn/prevent-abbreviations": "off",
+    "unicorn/filename-case": ["error", { "case": "kebabCase" }]
+  },
+  "ignorePatterns": ["dist", "build", ".next", "node_modules", "*.config.js"]
+}
+</code></pre>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 Reference: lint-staged in package.json</div>
+    <div class="code-label">package.json (excerpt)</div>
+<pre><code>{
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  }
+}
+</code></pre>
+  </div>
+
+  <div class="done-criteria">
+    <div class="done-criteria-title">✓ Done When</div>
+    <ul>
+      <li><code>pnpm lint</code> exits 0 across all packages</li>
+      <li><code>pnpm format</code> formats all files</li>
+      <li>git commit triggers Husky pre-commit → lint-staged → ESLint + Prettier</li>
+      <li>Try to commit with <code>console.log</code> in code — gets auto-fixed or rejected</li>
+      <li>Try to commit with a fake API key like <code>sk-1234567890...</code> — gitleaks blocks it</li>
+      <li>VS Code ESLint extension shows errors in real time</li>
+    </ul>
+  </div>
+</div>
+
+<div class="task-card" id="task-7">
+  <div class="task-card-header">
+    <span class="task-id">P0.7</span>
+    <div>
+      <h3 class="task-title">Configure Vitest for All Packages</h3>
+      <p style="margin: 0; font-size: 14px;">Set up testing across the monorepo with shared config and per-package overrides.</p>
+      <div class="task-meta">
+        <span class="task-meta-item"><strong>Duration:</strong> 1 hour</span>
+        <span class="task-meta-item"><strong>Files:</strong> ~6</span>
+        <span class="task-meta-item"><strong>Dependencies:</strong> P0.4 + P0.5</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📦 What to Build</div>
+    <ul class="clean">
+      <li>Root <code>vitest.config.ts</code> with shared config (paths, plugins, coverage)</li>
+      <li>Per-package <code>vitest.config.ts</code> extending root</li>
+      <li>Setup files for tests needing DB connection (placeholder for Phase 1)</li>
+      <li>Coverage configuration: V8 provider, 70% threshold for services (warning only in Phase 0)</li>
+      <li>Test scripts in all package.json files</li>
+      <li>Verify Israeli validators tests pass (israeli-id + israeli-phone)</li>
+      <li>Verify API smoke test passes</li>
+    </ul>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 Reference: Root vitest.config.ts</div>
+    <div class="code-label">vitest.config.ts (project root)</div>
+<pre><code>import { defineConfig } from 'vitest/config';
+import tsconfigPaths from 'vite-tsconfig-paths';
+
+export default defineConfig({
+  plugins: [tsconfigPaths()],
+  test: {
+    globals: true,
+    environment: 'node',
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      thresholds: {
+        lines: 70,
+        functions: 70,
+        branches: 60,
+        statements: 70,
+      },
+      exclude: [
+        '**/node_modules/**',
+        '**/dist/**',
+        '**/*.config.ts',
+        '**/*.spec.ts',
+      ],
+    },
+  },
+});
+</code></pre>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 npm Scripts</div>
+    <div class="code-label">Add to package.json files</div>
+<pre><code>{
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
+  }
+}
+</code></pre>
+  </div>
+
+  <div class="done-criteria">
+    <div class="done-criteria-title">✓ Done When</div>
+    <ul>
+      <li><code>pnpm test</code> runs all tests across packages and exits 0</li>
+      <li><code>pnpm test:coverage</code> shows coverage report with breakdown</li>
+      <li>At least 16 tests pass: 7+ from israeli-id, 8+ from israeli-phone, 1 smoke test from api</li>
+      <li>Vitest UI works: <code>pnpm test:ui</code> opens browser interface</li>
+      <li>Watch mode works: <code>pnpm test:watch</code> reruns on file changes</li>
+    </ul>
+  </div>
+</div>
+
+<div class="task-card" id="task-8">
+  <div class="task-card-header">
+    <span class="task-id">P0.8</span>
+    <div>
+      <h3 class="task-title">GitHub Actions CI</h3>
+      <p style="margin: 0; font-size: 14px;">Automated checks on every push and PR. The safety net that catches what local hooks miss.</p>
+      <div class="task-meta">
+        <span class="task-meta-item"><strong>Duration:</strong> 1-1.5 hours</span>
+        <span class="task-meta-item"><strong>Files:</strong> ~3</span>
+        <span class="task-meta-item"><strong>Dependencies:</strong> P0.6 + P0.7</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📦 What to Build</div>
+    <ul class="clean">
+      <li><code>.github/workflows/ci.yml</code> with parallel jobs: typecheck, lint, test, build, secrets-scan, audit</li>
+      <li>Cache pnpm store and Turborepo cache (drastically faster reruns)</li>
+      <li>Required checks: all jobs must pass for PR merge</li>
+      <li>GitHub branch protection on main: require status checks, no force push</li>
+      <li><code>.github/CODEOWNERS</code> for auto-requesting reviewers</li>
+      <li><code>.github/pull_request_template.md</code> per Doc 04a section 10.4</li>
+      <li>Dependabot enabled for security updates</li>
+    </ul>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 Reference: ci.yml</div>
+    <div class="code-label">.github/workflows/ci.yml</div>
+<pre><code>name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+
+  typecheck:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+
+  lint:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+
+  test:
+    needs: setup
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        options: &gt;-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+        env:
+          DATABASE_URL: postgresql://postgres:test@localhost:5432/test
+
+  build:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: 9 }
+      - run: pnpm audit --audit-level=high
+</code></pre>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">⚙️ Branch Protection Settings</div>
+    <p style="font-size: 14px;">After CI is set up, configure on GitHub: Settings → Branches → Add rule for <code>main</code>:</p>
+    <ul class="checks">
+      <li>Require pull request before merging</li>
+      <li>Require status checks to pass: typecheck, lint, test, build, secrets-scan, audit</li>
+      <li>Require branches to be up to date before merging</li>
+      <li>Do not allow bypassing the above settings (even for admins)</li>
+      <li>Restrict force pushes</li>
+      <li>Restrict deletions</li>
+    </ul>
+  </div>
+
+  <div class="done-criteria">
+    <div class="done-criteria-title">✓ Done When</div>
+    <ul>
+      <li>CI runs on push to main — all 6 jobs pass</li>
+      <li>CI runs on PR open — all 6 jobs pass</li>
+      <li>Branch protection blocks direct push to main</li>
+      <li>Cache hit on second run (CI noticeably faster)</li>
+      <li>Try to push secret in test PR — secrets-scan fails</li>
+      <li>CODEOWNERS auto-requests review on PRs</li>
+    </ul>
+  </div>
+</div>
+
+<div class="task-card" id="task-9">
+  <div class="task-card-header">
+    <span class="task-id">P0.9</span>
+    <div>
+      <h3 class="task-title">Docker Setup (docker-compose + Dockerfiles)</h3>
+      <p style="margin: 0; font-size: 14px;">Local infrastructure stack via docker-compose, plus production Dockerfiles. Satisfies portability rules 1 and 8.</p>
+      <div class="task-meta">
+        <span class="task-meta-item"><strong>Duration:</strong> 1.5-2 hours</span>
+        <span class="task-meta-item"><strong>Files:</strong> ~4</span>
+        <span class="task-meta-item"><strong>Dependencies:</strong> P0.4 + P0.5</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📦 What to Build</div>
+    <ul class="clean">
+      <li><code>docker-compose.yml</code> at root with: postgres 16 + postgis, redis 7, minio (S3-compat), mailhog</li>
+      <li><code>apps/api/Dockerfile</code> — multi-stage, Node 20 alpine, &lt; 200MB final</li>
+      <li><code>apps/web/Dockerfile</code> — Next.js standalone build, optimized</li>
+      <li><code>.dockerignore</code> at root to exclude node_modules, .next, .turbo</li>
+      <li>Test: <code>docker compose up</code> starts all services</li>
+      <li>Test: <code>docker build apps/api</code> succeeds</li>
+    </ul>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 Reference: docker-compose.yml</div>
+    <div class="code-label">docker-compose.yml</div>
+<pre><code>version: '3.9'
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: urban_renewal
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"  <span class="comment"># SMTP</span>
+      - "8025:8025"  <span class="comment"># Web UI</span>
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+</code></pre>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 Reference: apps/api/Dockerfile</div>
+    <div class="code-label">apps/api/Dockerfile</div>
+<pre><code><span class="comment"># Stage 1: dependencies</span>
+FROM node:20-alpine AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json ./apps/api/
+COPY packages/*/package.json ./packages/
+RUN pnpm install --frozen-lockfile --prod
+
+<span class="comment"># Stage 2: build</span>
+FROM node:20-alpine AS builder
+WORKDIR /app
+RUN corepack enable
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN pnpm --filter api build
+
+<span class="comment"># Stage 3: runner</span>
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+RUN addgroup -g 1001 nodejs &amp;&amp; adduser -S -u 1001 -G nodejs api
+COPY --from=builder --chown=api:nodejs /app/apps/api/dist ./dist
+COPY --from=builder --chown=api:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=api:nodejs /app/package.json ./
+USER api
+EXPOSE 3000
+CMD ["node", "dist/main.js"]
+</code></pre>
+  </div>
+
+  <div class="callout info">
+    <div class="callout-title">💡 Why docker-compose if dev runs natively?</div>
+    <div class="callout-body">During Phase 0-1, you'll likely run pnpm dev directly against Neon (no local Postgres needed). But the docker-compose.yml satisfies portability rule 8 — when a 3rd developer joins or you need to test offline, it's there. Setting it up now (30 minutes) is much cheaper than retrofitting later.</div>
+  </div>
+
+  <div class="done-criteria">
+    <div class="done-criteria-title">✓ Done When</div>
+    <ul>
+      <li><code>docker compose up</code> starts all 4 services successfully</li>
+      <li>Connect to local postgres: <code>psql -h localhost -U dev urban_renewal</code> works</li>
+      <li>Connect to local Redis: <code>redis-cli ping</code> returns PONG</li>
+      <li>MinIO console accessible at http://localhost:9001</li>
+      <li>MailHog UI accessible at http://localhost:8025</li>
+      <li><code>docker build apps/api</code> completes, image &lt; 200MB</li>
+      <li><code>docker build apps/web</code> completes, image &lt; 250MB</li>
+    </ul>
+  </div>
+</div>
+
+<div class="task-card" id="task-10">
+  <div class="task-card-header">
+    <span class="task-id">P0.10</span>
+    <div>
+      <h3 class="task-title">Documentation (README + MIGRATION + CHANGELOG)</h3>
+      <p style="margin: 0; font-size: 14px;">The onboarding documentation that proves Phase 0 is truly done. If a fresh dev can't follow the README to a working dev env, you're not done.</p>
+      <div class="task-meta">
+        <span class="task-meta-item"><strong>Duration:</strong> 1-1.5 hours</span>
+        <span class="task-meta-item"><strong>Files:</strong> 3</span>
+        <span class="task-meta-item"><strong>Dependencies:</strong> P0.1-P0.9</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📦 What to Build</div>
+    <ul class="clean">
+      <li><code>README.md</code> — project description, quick start (15 min target), structure, common commands, links to docs</li>
+      <li><code>MIGRATION.md</code> — Free Tier → Production playbook (from Doc 02 section 13)</li>
+      <li><code>CHANGELOG.md</code> — initial entry for v0.0.1 (per Keep a Changelog format)</li>
+      <li>Tag the milestone: <code>git tag -a v0.0.1-phase0 -m "Phase 0 complete: foundation"</code></li>
+    </ul>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 Reference: README.md skeleton</div>
+    <div class="code-label">README.md</div>
+<pre><code># Urban Renewal SaaS
+
+Multi-tenant platform for managing urban renewal projects in Israel
+(תמ"א 38, פינוי-בינוי).
+
+## Quick Start (Target: 15 minutes)
+
+### Prerequisites
+- Node.js 20 LTS (use nvm: \`nvm use\`)
+- pnpm 9+
+- Docker Desktop (for local infrastructure)
+
+### Setup
+
+\`\`\`bash
+# 1. Clone
+git clone https://github.com/yourorg/urban-renewal.git
+cd urban-renewal
+
+# 2. Install dependencies
+pnpm install
+
+# 3. Copy env file and fill in your credentials
+cp .env.example .env.local
+# (Get credentials from doc 04b section P0.2)
+
+# 4. Start dev servers
+pnpm dev
+\`\`\`
+
+API: http://localhost:3000
+Web: http://localhost:3001
+Health check: http://localhost:3000/health
+
+## Repository Structure
+
+\`apps/api/\` — NestJS backend
+\`apps/web/\` — Next.js frontend
+\`packages/*\` — Shared code
+
+See [Document 02 — Architecture](./docs/02-architecture-production.html) for full details.
+
+## Common Commands
+
+| Command | Purpose |
+|---------|---------|
+| \`pnpm dev\` | Start all dev servers |
+| \`pnpm build\` | Build all packages |
+| \`pnpm test\` | Run all tests |
+| \`pnpm typecheck\` | Typecheck all packages |
+| \`pnpm lint\` | Lint all packages |
+| \`pnpm format\` | Format all files |
+
+## Documentation
+
+- [Doc 01 — Vision &amp; Market](./docs/01-vision-market.html)
+- [Doc 02 — Architecture](./docs/02-architecture-production.html)
+- [Doc 03 — MVP Roadmap](./docs/03-mvp-roadmap.html)
+- [Doc 04a — Claude Code Setup](./docs/04a-claude-environment.html)
+- [Doc 04b — Phase 0 Foundation](./docs/04b-phase-0-foundation.html)
+
+## License
+
+Proprietary. Internal use only.
+</code></pre>
+  </div>
+
+  <div class="task-section">
+    <div class="task-section-title">📄 Reference: CHANGELOG.md initial entry</div>
+    <div class="code-label">CHANGELOG.md</div>
+<pre><code># Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/),
+and this project adheres to [Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+## [0.0.1] - YYYY-MM-DD
+
+### Added
+- Initial monorepo structure with Turborepo + pnpm workspaces
+- Backend scaffold (NestJS 11 + Fastify) with /health endpoint
+- Frontend scaffold (Next.js 15) with RTL + Heebo font
+- Four shared packages: shared-types, db, config, validators
+- Israeli ID Luhn validator + Israeli phone E.164 normalizer with full test coverage
+- ESLint + Prettier + Husky configuration
+- Conventional commits enforcement (commitlint)
+- GitHub Actions CI: typecheck, lint, test, build, secrets-scan, audit
+- Docker setup: docker-compose for local infra, Dockerfiles for prod
+- T3-env validation for environment variables
+- Sentry integration for FE + BE error tracking
+- Accounts: GitHub, Neon (DB Free), Railway (Hobby $5), Cloudflare R2 + Pages, Resend, Sentry
+
+### Security
+- gitleaks scanner in CI
+- Helmet middleware on API
+- Strict CORS configuration
+- pino with PII redaction
+
+[Unreleased]: https://github.com/yourorg/urban-renewal/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/yourorg/urban-renewal/releases/tag/v0.0.1
+</code></pre>
+  </div>
+
+  <div class="done-criteria">
+    <div class="done-criteria-title">✓ Done When</div>
+    <ul>
+      <li>README covers everything a new dev needs in &lt; 200 lines</li>
+      <li>MIGRATION.md is comprehensive enough to execute under stress</li>
+      <li>CHANGELOG follows Keep a Changelog format</li>
+      <li>Final test: <strong>your partner</strong> reads README cold and gets to a working dev env in &lt; 15 min</li>
+      <li>Tag pushed: <code>git push --tags</code></li>
+      <li>GitHub release created from the tag with CHANGELOG content</li>
+    </ul>
+  </div>
+</div>
+
+<section id="section-tests">
+  <div class="section-header">
+    <div class="section-num">T · Required Tests</div>
+    <h2 class="section-title">6 Tests That Must Pass Before Phase 1</h2>
+    <p class="section-lede">These are the gate to Phase 1. Don't move forward if any of them fails.</p>
+  </div>
+
+  <p>The 6 tests below validate that Phase 0 actually works end-to-end, not just that you wrote code. Run them in order. If any fails, stop and fix.</p>
+
+  <div class="test-item">
+    <span class="test-item-id">T0.1</span>
+    <div class="test-item-name">Fresh clone produces working dev env in &lt; 15 minutes</div>
+    <span class="test-item-type manual">Manual</span>
+  </div>
+  <p style="font-size: 13px; padding-left: 16px; margin-top: -2px; margin-bottom: 16px; color: var(--text-muted);">
+    Test on a fresh machine, or clone the repo to a different directory. Steps: <code>git clone</code> → <code>nvm use</code> → <code>pnpm install</code> → copy <code>.env.local</code> → <code>pnpm dev</code>. Both API (3000) and Web (3001) must respond. Time it. If &gt; 15 minutes, find the bottleneck.
+  </p>
+
+  <div class="test-item">
+    <span class="test-item-id">T0.2</span>
+    <div class="test-item-name">pnpm typecheck passes with no errors</div>
+    <span class="test-item-type unit">Tooling</span>
+  </div>
+  <p style="font-size: 13px; padding-left: 16px; margin-top: -2px; margin-bottom: 16px; color: var(--text-muted);">
+    Strict mode, <code>noUncheckedIndexedAccess</code>, no implicit <code>any</code>. Should exit 0 across all packages with verbose output showing what was checked.
+  </p>
+
+  <div class="test-item">
+    <span class="test-item-id">T0.3</span>
+    <div class="test-item-name">pnpm lint passes with 0 errors</div>
+    <span class="test-item-type unit">Tooling</span>
+  </div>
+  <p style="font-size: 13px; padding-left: 16px; margin-top: -2px; margin-bottom: 16px; color: var(--text-muted);">
+    ESLint rules: no <code>console.log</code>, no unused imports, import order enforced. Warnings are allowed (e.g. <code>no-explicit-any</code>) but errors block. Run with: <code>pnpm lint</code>.
+  </p>
+
+  <div class="test-item">
+    <span class="test-item-id">T0.4</span>
+    <div class="test-item-name">CI green on main branch</div>
+    <span class="test-item-type integration">CI</span>
+  </div>
+  <p style="font-size: 13px; padding-left: 16px; margin-top: -2px; margin-bottom: 16px; color: var(--text-muted);">
+    All 6 jobs pass on the latest main commit: typecheck, lint, test, build, secrets-scan, audit. Cache hit on second run (faster execution). Branch protection prevents direct push to main.
+  </p>
+
+  <div class="test-item">
+    <span class="test-item-id">T0.5</span>
+    <div class="test-item-name">Israeli validators: 15+ unit tests pass (ID + phone)</div>
+    <span class="test-item-type unit">Unit</span>
+  </div>
+  <p style="font-size: 13px; padding-left: 16px; margin-top: -2px; margin-bottom: 16px; color: var(--text-muted);">
+    <strong>Israeli ID</strong> (7+ tests): valid 9-digit, valid 8-digit padded, invalid checksum, invalid length, non-numeric, more than 9 digits, non-string input. <strong>Israeli phone</strong> (8+ tests): mobile with hyphens normalizes to E.164, mobile without hyphens, already-E.164 passes through, 972 without + prefix, Tel Aviv landline (03), unknown mobile prefix (051) rejected, too short, too long, non-numeric in digits, empty string, non-string input. Run: <code>pnpm --filter validators test</code>.
+  </p>
+
+  <div class="test-item">
+    <span class="test-item-id">T0.6</span>
+    <div class="test-item-name">API /health returns 200 with DB connection status</div>
+    <span class="test-item-type integration">Integration</span>
+  </div>
+  <p style="font-size: 13px; padding-left: 16px; margin-top: -2px; margin-bottom: 16px; color: var(--text-muted);">
+    Smoke test: <code>curl http://localhost:3000/health</code> returns <code>{ status: 'ok', db: 'connected', uptime: X }</code>. The DB ping confirms Neon is reachable. Sentry integration smoke-tested with intentional throw.
+  </p>
+
+  <div class="callout success">
+    <div class="callout-title">✓ All 6 Pass = Phase 0 Complete</div>
+    <div class="callout-body">When all 6 tests pass and all 10 tasks are complete, Phase 0 is done. Tag the milestone: <code>git tag -a v0.0.1-phase0 -m "Phase 0 complete"</code>. Push the tag. Take a break before Phase 1 — the next phase is significantly harder, and a tired brain makes mistakes you can't afford in DB schema work.</div>
+  </div>
+
+  <h3>T.1 How to Run All Tests at Once</h3>
+
+  <p>For convenience, add this script to root <code>package.json</code>:</p>
+
+  <div class="code-label">package.json scripts</div>
+<pre><code>{
+  "scripts": {
+    "verify": "pnpm typecheck &amp;&amp; pnpm lint &amp;&amp; pnpm test &amp;&amp; pnpm build"
+  }
+}
+</code></pre>
+
+  <p>Then run <code>pnpm verify</code> before any commit, before any merge, and before tagging the phase complete. If <code>pnpm verify</code> passes, T0.2, T0.3, T0.5, and T0.6 are all green.</p>
+</section>
+
+<section id="section-troubleshooting">
+  <div class="section-header">
+    <div class="section-num">? · Troubleshooting</div>
+    <h2 class="section-title">Common Phase 0 Problems</h2>
+    <p class="section-lede">Issues that bite developers during Phase 0 setup. Solutions tested.</p>
+  </div>
+
+  <h3>Problem: pnpm install hangs or fails</h3>
+  <p style="font-size: 14px;"><strong>Symptom:</strong> Long install times, or "ERR_PNPM_PEER_DEP_ISSUES" errors.</p>
+  <p style="font-size: 14px;"><strong>Solutions:</strong></p>
+  <ul class="clean">
+    <li>Run <code>pnpm store prune</code> to clean stale cache</li>
+    <li>Add <code>auto-install-peers=true</code> to <code>.npmrc</code></li>
+    <li>Verify <code>packageManager</code> field in root <code>package.json</code> matches your installed version</li>
+    <li>Try <code>pnpm install --force</code> to rebuild lockfile</li>
+  </ul>
+
+  <h3>Problem: Turborepo "no tasks were executed"</h3>
+  <p style="font-size: 14px;"><strong>Symptom:</strong> <code>turbo dev</code> says no tasks found.</p>
+  <p style="font-size: 14px;"><strong>Solution:</strong> Check that each package's <code>package.json</code> has the script defined. Turbo only finds tasks declared in workspace packages. The root <code>turbo.json</code> just configures the pipeline.</p>
+
+  <h3>Problem: NestJS won't start with Fastify</h3>
+  <p style="font-size: 14px;"><strong>Symptom:</strong> Errors about Express types or middleware compatibility.</p>
+  <p style="font-size: 14px;"><strong>Solution:</strong> Make sure you removed <code>@nestjs/platform-express</code> from dependencies. Use <code>@fastify/helmet</code> not <code>helmet</code>. Some Express middlewares don't work with Fastify — check the NestJS docs for Fastify-specific alternatives.</p>
+
+  <h3>Problem: Next.js RTL doesn't apply</h3>
+  <p style="font-size: 14px;"><strong>Symptom:</strong> Page renders LTR despite <code>dir="rtl"</code>.</p>
+  <p style="font-size: 14px;"><strong>Solution:</strong> Make sure <code>dir="rtl"</code> is on the <code>&lt;html&gt;</code> element, not just <code>&lt;body&gt;</code>. Verify with DevTools. Tailwind RTL plugin requires explicit usage of <code>rtl:</code> prefixes — for general RTL, the HTML attribute is enough.</p>
+
+  <h3>Problem: T3-env throws on startup</h3>
+  <p style="font-size: 14px;"><strong>Symptom:</strong> "Invalid environment variables" error before app starts.</p>
+  <p style="font-size: 14px;"><strong>Solution:</strong> The error message lists which vars failed validation. Check <code>.env.local</code> exists in the package that runs (not just root). Ensure variables are actually loaded — Next.js loads <code>.env.local</code> automatically; NestJS may need <code>@nestjs/config</code> or <code>dotenv</code> at startup.</p>
+
+  <h3>Problem: Husky hooks don't run</h3>
+  <p style="font-size: 14px;"><strong>Symptom:</strong> Bad commit messages get through; lint-staged doesn't trigger.</p>
+  <p style="font-size: 14px;"><strong>Solutions:</strong></p>
+  <ul class="clean">
+    <li>Run <code>pnpm exec husky init</code> to set up the .husky folder</li>
+    <li>Verify hooks are executable: <code>chmod +x .husky/*</code></li>
+    <li>Check <code>.git/config</code> has <code>hooksPath = .husky</code></li>
+    <li>Re-run <code>pnpm install</code> — Husky's prepare script should re-link hooks</li>
+  </ul>
+
+  <h3>Problem: Sentry doesn't receive events</h3>
+  <p style="font-size: 14px;"><strong>Symptom:</strong> Threw an error, nothing in Sentry dashboard.</p>
+  <p style="font-size: 14px;"><strong>Solutions:</strong></p>
+  <ul class="clean">
+    <li>Verify DSN is correct (copy-paste from Sentry project settings)</li>
+    <li>Check <code>NODE_ENV</code> isn't causing Sentry to skip events (some configs disable in dev)</li>
+    <li>Wait 1-2 minutes — Sentry has ingestion delay</li>
+    <li>Check Sentry project quotas — if exceeded, events are dropped silently</li>
+  </ul>
+
+  <h3>Problem: Docker build fails on monorepo</h3>
+  <p style="font-size: 14px;"><strong>Symptom:</strong> "Cannot find package @app/db" during build.</p>
+  <p style="font-size: 14px;"><strong>Solution:</strong> The Dockerfile must copy the workspace structure correctly. Use the multi-stage pattern from P0.9 reference. Common mistake: copying only <code>apps/api</code> without <code>packages/</code>. The whole workspace needs to be available during install.</p>
+
+  <h3>Problem: CI is slow (&gt; 5 minutes)</h3>
+  <p style="font-size: 14px;"><strong>Symptom:</strong> CI takes 5+ minutes when it should take 2-3.</p>
+  <p style="font-size: 14px;"><strong>Solutions:</strong></p>
+  <ul class="clean">
+    <li>Add Turborepo remote caching (TURBO_TOKEN secret) — biggest speedup</li>
+    <li>Verify pnpm cache is hitting — check the GitHub Actions log</li>
+    <li>Run jobs in parallel (typecheck, lint, test all start at the same time)</li>
+    <li>Use <code>--frozen-lockfile</code> in install — slightly faster than default</li>
+  </ul>
+
+  <div class="callout info">
+    <div class="callout-title">💡 When stuck for 30+ min</div>
+    <div class="callout-body">Phase 0 is well-trodden. If you're stuck on something for 30+ minutes, search GitHub issues for the exact tool, ask Claude with the error message, or skip and come back. Don't burn an evening on a config issue when there's a workaround.</div>
+  </div>
+</section>
+
+<section id="section-next">
+  <div class="section-header">
+    <div class="section-num">→ · Next Steps</div>
+    <h2 class="section-title">After Phase 0 — What Comes Next</h2>
+    <p class="section-lede">Phase 0 is the easiest phase. Phase 1 is the most critical. Don't rush from one to the other.</p>
+  </div>
+
+  <h3>Verify Phase 0 Is Truly Complete</h3>
+
+  <p>Before opening Doc 04c (Phase 1 — Database), verify all of these:</p>
+
+  <ul class="checks">
+    <li>All 10 P0 tasks complete and committed</li>
+    <li>All 6 P0 tests passing (T0.1-T0.6)</li>
+    <li><code>pnpm verify</code> exits 0 on a clean clone</li>
+    <li>CI green on main</li>
+    <li>Tag pushed: <code>v0.0.1-phase0</code></li>
+    <li>GitHub release created with CHANGELOG content</li>
+    <li>Run <code>/portability-check</code> in Claude Code — all 8 rules pass</li>
+    <li>README test passed: partner can set up dev env in &lt; 15 min</li>
+  </ul>
+
+  <h3>Take a Real Break</h3>
+
+  <p>Phase 1 (Database) is the most cognitively demanding phase of the entire MVP. RLS policies, polymorphic schemas, withTenant — all of it requires sharp thinking. Going into it tired produces bugs you'll be paying off for 6 months.</p>
+
+  <p>Concrete recommendations:</p>
+
+  <ul class="num-list">
+    <li>Take at least 24 hours between Phase 0 and Phase 1.</li>
+    <li>Re-read Doc 02 sections 7 (Security) and 9 (Multi-tenancy). Phase 1 is where these become real.</li>
+    <li>Read Doc 04c fully before starting any Phase 1 task. The data model decisions need context.</li>
+    <li>If you have a partner: sync with them. Make sure FE work in Phase 0 is also complete.</li>
+  </ul>
+
+  <h3>What Doc 04c (Phase 1) Will Cover</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Section</th><th>Content</th></tr></thead>
+      <tbody>
+        <tr><td>Phase 1 Overview</td><td>Why it's the most critical phase, the cardinal rule (T1.5 must pass)</td></tr>
+        <tr><td>Data Model</td><td>All ~18 tables in detail: organizations, projects, plots, structures (CTI), units, owners (CTI), ownerships, documents, signatures, audit logs</td></tr>
+        <tr><td>~12 Tasks (P1.1-P1.12)</td><td>Drizzle setup, schema files, migrations, RLS policies, indexes, withTenant, encryption helpers, seed script</td></tr>
+        <tr><td>8 Required Tests</td><td>Including T1.5 — the RLS isolation test, the most critical test in the entire codebase</td></tr>
+        <tr><td>Code Patterns</td><td>The patterns you'll reuse: schema, service, controller, Zod, test factories</td></tr>
+        <tr><td>Common Pitfalls</td><td>Forgot withTenant, SET vs SET LOCAL, owner bypass RLS, soft delete index bloat</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>What Doc 05 (Frontend Sync) Will Cover</h3>
+
+  <p>Document 05 is the parallel doc for your partner. While you do Phase 1 (DB), they can work on Phase 8 (FE polish) — design tokens, shadcn setup, layouts, i18n. The two streams converge in Phase 3 when you build the API.</p>
+
+  <h3>Updating Your Setup as You Learn</h3>
+
+  <p>Things to update during Phase 1, based on lessons learned:</p>
+
+  <ul class="num-list">
+    <li><strong>CLAUDE.md (root):</strong> Add patterns Claude got wrong during Phase 0. Add new hard rules if needed.</li>
+    <li><strong>packages/db/CLAUDE.md:</strong> Will fill in significantly during Phase 1 — RLS patterns, withTenant usage, encryption patterns.</li>
+    <li><strong>Slash commands:</strong> If you find a Phase 1 task that's repetitive, write a command. Don't pre-build commands.</li>
+    <li><strong>README.md:</strong> Update if Phase 0 setup steps changed.</li>
+  </ul>
+
+  <h3>Getting Help During Phase 1</h3>
+
+  <p>Phase 1 is where Claude Code earns its keep. Use these patterns aggressively:</p>
+
+  <ul class="num-list">
+    <li><strong>Plan-Then-Execute</strong> for every Phase 1 task — never start coding without a plan</li>
+    <li><strong>Test-First</strong> for RLS policies — write the failing test before the policy</li>
+    <li><strong>/security-check</strong> after every commit during Phase 1 — RLS bugs are silent killers</li>
+    <li><strong>/test-rls</strong> after every schema change — verify isolation hasn't broken</li>
+  </ul>
+
+  <div class="callout success">
+    <div class="callout-title">🎉 You've Built the Foundation</div>
+    <div class="callout-body">Phase 0 looks unglamorous, but you've just built the structural integrity of a 2-year project. Every decision baked in here saves time later. Drizzle, Turborepo, conventional commits, RLS-ready DB connection — all of it is the bedrock for everything else. Now we go build the actual product.</div>
+  </div>
+
+  <div class="callout info">
+    <div class="callout-title">💡 When you're ready for Doc 04c</div>
+    <div class="callout-body">Come back to me. I'll write Doc 04c — Phase 1 Database. The data model and code patterns will be ready when you are. Don't rush.</div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-meta">
+    <span>Document 04b · Phase 0: Foundation</span>
+    <span>v1.0</span>
+    <span>Internal</span>
+  </div>
+  <div>Next document: 04c — Phase 1: Database (after Phase 0 is complete)</div>
+</footer>
+
+</main>
+</div>
+
+<script>
+const sections = document.querySelectorAll('section[id], div[id^="task-"]');
+const tocLinks = document.querySelectorAll('.toc-link');
+
+function setActiveLink() {
+  let current = '';
+  sections.forEach(section => {
+    const top = section.offsetTop - 100;
+    if (window.scrollY >= top) current = section.id;
+  });
+  tocLinks.forEach(link => {
+    link.classList.remove('active');
+    if (link.getAttribute('href') === '#' + current) {
+      link.classList.add('active');
+    }
+  });
+}
+
+window.addEventListener('scroll', setActiveLink);
+setActiveLink();
+</script>
+
+</body>
+</html>

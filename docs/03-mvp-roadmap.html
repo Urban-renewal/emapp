@@ -1,0 +1,2701 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doc 03 · EMAPP — MVP Roadmap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #fafaf9;
+  --bg-card: #ffffff;
+  --bg-subtle: #f5f5f4;
+  --bg-dark: #0c0a09;
+  --text: #0c0a09;
+  --text-subtle: #44403c;
+  --text-muted: #78716c;
+  --primary: #0f766e;
+  --primary-hover: #0d5e57;
+  --primary-light: #ccfbf1;
+  --primary-border: #5eead4;
+  --accent: #b45309;
+  --accent-light: #fef3c7;
+  --success: #15803d;
+  --success-light: #f0fdf4;
+  --success-border: #bbf7d0;
+  --warning: #b45309;
+  --warning-light: #fffbeb;
+  --warning-border: #fde68a;
+  --danger: #b91c1c;
+  --danger-light: #fef2f2;
+  --danger-border: #fecaca;
+  --gold: #ca8a04;
+  --gold-light: #fef9c3;
+  --purple: #7c3aed;
+  --purple-light: #ede9fe;
+  --blue: #2563eb;
+  --blue-light: #dbeafe;
+  --border: #e7e5e4;
+  --border-strong: #d6d3d1;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.04);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.06), 0 4px 6px -4px rgb(0 0 0 / 0.04);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.04);
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+
+body {
+  font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.75;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  min-height: 100vh;
+}
+
+/* === Sidebar === */
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  background: white;
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 32px 0;
+}
+
+.sidebar-header {
+  padding: 0 28px 24px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+}
+
+.sidebar-doc-num {
+  display: inline-block;
+  background: var(--primary);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  letter-spacing: 0.05em;
+}
+
+.sidebar-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.3;
+  margin-bottom: 6px;
+}
+
+.sidebar-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.toc { list-style: none; padding: 0 14px; }
+.toc-item { margin-bottom: 2px; }
+
+.toc-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  color: var(--text-subtle);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+.toc-link:hover { background: var(--bg-subtle); color: var(--text); }
+.toc-link.active { background: var(--primary-light); color: var(--primary); font-weight: 700; }
+
+.toc-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  background: var(--bg-subtle);
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-subtle);
+  flex-shrink: 0;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.toc-link.active .toc-num { background: var(--primary); color: white; }
+
+/* === Main === */
+.main { padding: 64px 80px 120px; max-width: 1100px; width: 100%; }
+
+/* === Hero === */
+.hero {
+  margin-bottom: 80px;
+  position: relative;
+}
+
+.hero-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.hero-doc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: var(--bg-dark);
+  color: white;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.hero-doc-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: var(--primary);
+  border-radius: 50%;
+}
+
+.hero-tag {
+  display: inline-block;
+  padding: 6px 14px;
+  background: var(--primary-light);
+  color: var(--primary);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.hero-title {
+  font-size: 56px;
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  margin-bottom: 20px;
+  background: linear-gradient(135deg, #0c0a09 0%, #0f766e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-lede {
+  font-size: 22px;
+  color: var(--text-subtle);
+  font-weight: 400;
+  line-height: 1.5;
+  max-width: 780px;
+  margin-bottom: 40px;
+}
+
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  border-top: 2px solid var(--border);
+  border-bottom: 2px solid var(--border);
+  padding: 24px 0;
+}
+
+.hero-stat {
+  border-left: 1px solid var(--border);
+  padding: 0 24px;
+}
+
+.hero-stat:last-child { border-left: none; padding-left: 0; }
+.hero-stat:first-child { padding-right: 0; }
+
+.hero-stat-num {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--primary);
+  line-height: 1;
+  margin-bottom: 6px;
+  letter-spacing: -0.02em;
+}
+
+.hero-stat-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* === Sections === */
+section {
+  margin-bottom: 96px;
+  scroll-margin-top: 32px;
+}
+
+.section-header {
+  margin-bottom: 40px;
+}
+
+.section-num {
+  display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+}
+
+.section-title {
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin-bottom: 12px;
+}
+
+.section-lede {
+  font-size: 17px;
+  color: var(--text-subtle);
+  max-width: 720px;
+  line-height: 1.6;
+}
+
+h3 {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 56px 0 20px;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+h4 {
+  font-size: 19px;
+  font-weight: 700;
+  margin: 32px 0 14px;
+  color: var(--text);
+}
+
+p {
+  margin-bottom: 16px;
+  color: var(--text-subtle);
+  line-height: 1.8;
+  font-size: 16px;
+}
+
+p strong, li strong { color: var(--text); font-weight: 700; }
+
+.lead {
+  font-size: 19px;
+  line-height: 1.7;
+  color: var(--text-subtle);
+  margin-bottom: 24px;
+  font-weight: 400;
+}
+
+.lead strong { color: var(--text); font-weight: 600; }
+
+/* === Cards === */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.card-elevated { box-shadow: var(--shadow); }
+
+/* === Phase Card === */
+.phase-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  margin-bottom: 24px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
+}
+
+.phase-card:hover {
+  border-color: var(--primary-border);
+  box-shadow: var(--shadow);
+}
+
+.phase-card.critical {
+  border-color: var(--primary);
+  border-width: 2px;
+  background: linear-gradient(135deg, white 0%, var(--primary-light) 100%);
+}
+
+.phase-card.critical::before {
+  content: "★ קריטי";
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  background: var(--primary);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.phase-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.phase-num {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  background: var(--bg-dark);
+  color: white;
+  border-radius: var(--radius);
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.phase-card.critical .phase-num {
+  background: var(--primary);
+}
+
+.phase-title-block {
+  flex: 1;
+}
+
+.phase-title {
+  font-size: 24px;
+  font-weight: 800;
+  margin-bottom: 6px;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.phase-subtitle {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.phase-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-subtle);
+}
+
+.metric strong { color: var(--text); }
+
+.phase-content > div {
+  margin-bottom: 20px;
+}
+
+.phase-content > div:last-child {
+  margin-bottom: 0;
+}
+
+.phase-section {
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+
+.phase-section-title {
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--primary);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.phase-section-title::before {
+  content: "";
+  width: 24px;
+  height: 2px;
+  background: var(--primary);
+}
+
+/* === Done criteria === */
+.done-criteria {
+  background: var(--success-light);
+  border: 1px solid var(--success-border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  margin-top: 16px;
+}
+
+.done-criteria-title {
+  font-weight: 700;
+  color: var(--success);
+  margin-bottom: 10px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.done-criteria ul {
+  margin: 0;
+  padding-right: 0;
+  list-style: none;
+}
+
+.done-criteria ul li {
+  padding-right: 28px;
+  position: relative;
+  margin-bottom: 8px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-subtle);
+}
+
+.done-criteria ul li::before {
+  content: "✓";
+  position: absolute;
+  right: 4px;
+  top: 0;
+  color: var(--success);
+  font-weight: 800;
+}
+
+/* === Number List === */
+.num-list {
+  list-style: none;
+  padding: 0;
+  counter-reset: num;
+}
+
+.num-list li {
+  counter-increment: num;
+  padding-right: 60px;
+  position: relative;
+  margin-bottom: 24px;
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--text-subtle);
+}
+
+.num-list li::before {
+  content: counter(num, decimal-leading-zero);
+  position: absolute;
+  right: 0;
+  top: -2px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--primary);
+  background: var(--primary-light);
+  padding: 4px 10px;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+/* === Lists === */
+ul, ol { margin-right: 0; padding-right: 22px; }
+li { margin-bottom: 10px; color: var(--text-subtle); line-height: 1.75; }
+
+ul.clean { list-style: none; padding-right: 0; }
+ul.clean li { padding-right: 28px; position: relative; }
+ul.clean li::before {
+  content: "›";
+  position: absolute;
+  right: 0;
+  top: -2px;
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 18px;
+}
+
+ul.checks { list-style: none; padding-right: 0; }
+ul.checks li { padding-right: 32px; position: relative; }
+ul.checks li::before {
+  content: "✓";
+  position: absolute;
+  right: 4px;
+  top: 2px;
+  color: var(--success);
+  font-weight: 800;
+  font-size: 16px;
+}
+
+ul.crosses { list-style: none; padding-right: 0; }
+ul.crosses li { padding-right: 32px; position: relative; }
+ul.crosses li::before {
+  content: "✕";
+  position: absolute;
+  right: 4px;
+  top: 2px;
+  color: var(--danger);
+  font-weight: 800;
+}
+
+/* === Tables === */
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 24px 0;
+  background: white;
+  box-shadow: var(--shadow-sm);
+}
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+
+th {
+  background: var(--bg-subtle);
+  text-align: right;
+  padding: 14px 18px;
+  font-weight: 700;
+  color: var(--text);
+  border-bottom: 2px solid var(--border);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+td {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-subtle);
+  vertical-align: top;
+}
+
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--bg-subtle); }
+
+td code { font-size: 12px; }
+td.highlight { color: var(--primary); font-weight: 600; }
+
+/* === Code === */
+code {
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg-subtle);
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+  border: 1px solid var(--border);
+}
+
+/* === Callouts === */
+.callout {
+  padding: 20px 24px;
+  border-radius: var(--radius);
+  margin: 24px 0;
+  border-right: 4px solid;
+  background: white;
+  border: 1px solid var(--border);
+  position: relative;
+}
+
+.callout-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.callout-body { font-size: 15px; color: var(--text-subtle); line-height: 1.75; }
+
+.callout.danger { background: var(--danger-light); border-right-color: var(--danger); border-color: var(--danger-border); }
+.callout.danger .callout-title { color: var(--danger); }
+.callout.warning { background: var(--warning-light); border-right-color: var(--warning); border-color: var(--warning-border); }
+.callout.warning .callout-title { color: var(--warning); }
+.callout.success { background: var(--success-light); border-right-color: var(--success); border-color: var(--success-border); }
+.callout.success .callout-title { color: var(--success); }
+.callout.info { background: var(--primary-light); border-right-color: var(--primary); border-color: var(--primary-border); }
+.callout.info .callout-title { color: var(--primary); }
+.callout.gold { background: var(--gold-light); border-right-color: var(--gold); border-color: var(--gold); }
+.callout.gold .callout-title { color: var(--gold); }
+.callout.purple { background: var(--purple-light); border-right-color: var(--purple); border-color: var(--purple); }
+.callout.purple .callout-title { color: var(--purple); }
+
+/* === Dependencies tree === */
+.dep-tree {
+  background: var(--bg-dark);
+  color: #f5f5f4;
+  padding: 24px;
+  border-radius: var(--radius);
+  margin: 24px 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.85;
+  direction: ltr;
+  text-align: left;
+  overflow-x: auto;
+}
+
+.dep-tree .phase {
+  color: #5eead4;
+}
+
+.dep-tree .arrow {
+  color: #fbbf24;
+}
+
+.dep-tree .critical {
+  color: #fb923c;
+}
+
+.dep-tree .comment {
+  color: #71717a;
+}
+
+/* === Status Pills === */
+.pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pill.in-mvp { background: var(--success-light); color: var(--success); border: 1px solid var(--success-border); }
+.pill.future { background: var(--purple-light); color: var(--purple); border: 1px solid var(--purple); }
+.pill.cut { background: var(--danger-light); color: var(--danger); border: 1px solid var(--danger-border); }
+
+/* === Scope Item === */
+.scope-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 16px;
+  padding: 16px 20px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.scope-item-icon {
+  width: 40px;
+  height: 40px;
+  background: var(--primary-light);
+  color: var(--primary);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.scope-item.cut .scope-item-icon {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+
+.scope-item.future .scope-item-icon {
+  background: var(--purple-light);
+  color: var(--purple);
+}
+
+.scope-item-content h5 {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.scope-item-content p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* === Stats grid === */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin: 32px 0;
+}
+
+.stat-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  text-align: center;
+}
+
+.stat-card-num {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--primary);
+  line-height: 1;
+  margin-bottom: 6px;
+  letter-spacing: -0.02em;
+}
+
+.stat-card-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* === Pull quote === */
+.pullquote {
+  font-size: 24px;
+  line-height: 1.45;
+  font-weight: 600;
+  color: var(--text);
+  padding: 32px 40px;
+  border-right: 4px solid var(--primary);
+  margin: 40px 0;
+  background: var(--bg-card);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  letter-spacing: -0.01em;
+}
+
+/* === Footer === */
+footer {
+  margin-top: 96px;
+  padding: 40px 0;
+  border-top: 2px solid var(--border);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+footer .footer-meta {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+/* === Responsive === */
+@media (max-width: 1024px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { position: relative; height: auto; border-left: none; border-bottom: 1px solid var(--border); }
+  .main { padding: 40px 24px 64px; }
+  .stat-grid { grid-template-columns: 1fr 1fr; }
+  .scope-item { grid-template-columns: 1fr; gap: 8px; }
+  .hero-title { font-size: 36px; }
+  .hero-stats { grid-template-columns: 1fr 1fr; }
+  .hero-stat { border-left: none; border-bottom: 1px solid var(--border); padding: 16px 0; }
+}
+
+@media print {
+  .sidebar { display: none; }
+  .app { grid-template-columns: 1fr; }
+  .main { padding: 0; max-width: 100%; }
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <span class="sidebar-doc-num">DOC 03 · EMAPP</span>
+    <div class="sidebar-title">MVP Roadmap</div>
+    <div class="sidebar-subtitle">10 phases · 18+2 tables · 6 תפקידים · 6 interfaces (v2)</div>
+  </div>
+  <ul class="toc">
+    <li class="toc-item"><a class="toc-link" href="#section-1"><span class="toc-num">1</span><span>פילוסופיית MVP</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-2"><span class="toc-num">2</span><span>הגדרת Scope</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-3"><span class="toc-num">3</span><span>גרף תלויות</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-4"><span class="toc-num">4</span><span>Phase 0 · תשתית</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-5"><span class="toc-num">5</span><span>Phase 1 · DB</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-6"><span class="toc-num">6</span><span>Phase 2 · Auth</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-7"><span class="toc-num">7</span><span>Phase 3 · Domain API</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-8"><span class="toc-num">8</span><span>Phase 4 · Documents</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-9"><span class="toc-num">9</span><span>Phase 5 · Signatures</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-10"><span class="toc-num">10</span><span>Phase 6 · Import</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-11"><span class="toc-num">11</span><span>Phase 7 · Export</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-12"><span class="toc-num">12</span><span>Phase 8 · FE Polish</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-13"><span class="toc-num">13</span><span>Phase 9 · Launch</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-14"><span class="toc-num">14</span><span>אבני דרך</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-15"><span class="toc-num">15</span><span>צעדים הבאים</span></a></li>
+  </ul>
+</aside>
+
+<main class="main">
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-meta">
+    <span class="hero-doc-badge">DOC 03 · EMAPP · ROADMAP</span>
+    <span class="hero-tag">v2 · 10 phases · ~50 ימי עבודה</span>
+  </div>
+  <h1 class="hero-title">EMAPP MVP<br>Roadmap</h1>
+  <p class="hero-lede">
+    פירוק ה-MVP ל-10 שלבי בנייה מובחנים, מ-Foundation עד Launch. כל שלב עם הגדרת done ברורה, סדר תלויות, קריטריוני מעבר, ומשימות שמתאמות עם 5 העקרונות הארכיטקטוניים (Doc 02 §2). זה התכנון שמכווין את העבודה היומית במשך ~3 חודשים.
+  </p>
+  <div class="hero-stats">
+    <div class="hero-stat">
+      <div class="hero-stat-num">10</div>
+      <div class="hero-stat-label">שלבים (Phase 0-9)</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-stat-num">~50</div>
+      <div class="hero-stat-label">ימי עבודה</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-stat-num">18+2</div>
+      <div class="hero-stat-label">טבלאות (Customer + Provider)</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-stat-num">3</div>
+      <div class="hero-stat-label">אבני דרך עיקריות</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============= SECTION 1: PHILOSOPHY ============= -->
+<section id="section-1">
+  <div class="section-header">
+    <div class="section-num">01 · פילוסופיית MVP</div>
+    <h2 class="section-title">מה זה בכלל MVP, ואיך אנחנו מגדירים אותו</h2>
+    <p class="section-lede">לפני שצוללים לפרטים, חשוב להגדיר מה <strong>בדיוק</strong> אנחנו בונים, ומה אנחנו <strong>לא</strong> בונים. הגישה שלנו שונה מ-MVP "סטנדרטי".</p>
+  </div>
+
+  <p class="lead">
+    MVP במשמעות המקובלת הוא "Minimum Viable Product" — פיתוח מינימלי שמספיק כדי לקבל פידבק מהשוק. הגישה שלנו דומה אבל עם הבדל קריטי: <strong>אנחנו לא מוותרים על אבטחה ועל ביצועים.</strong> כל שאר הקיצוצים — מותרים. <strong>חמשת העקרונות הארכיטקטוניים</strong> (SOLID, Security First, Performance, Minimal Runtime, Code Efficiency — ראה Doc 02 §2) מנחים את כל החלטות ה-Roadmap הזה. אם משימה מפרה אחד מהם — היא נדחית או משוכתבת.
+  </p>
+
+  <h3>1.1 שלוש הגישות המקובלות</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>גישה</th>
+          <th>מתאים ל-</th>
+          <th>למה לא לנו</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>"Move Fast and Break Things"</strong></td>
+          <td>סטארטאפים B2C עם רגולציה רכה</td>
+          <td>תעודות זהות, נסחי טאבו — אסור "לשבור" אותם</td>
+        </tr>
+        <tr>
+          <td><strong>"Perfect Product"</strong></td>
+          <td>חברות אנטרפרייז עם תקציב ענק</td>
+          <td>אנחנו צוות 2 עם זמן מוגבל</td>
+        </tr>
+        <tr style="background: var(--success-light);">
+          <td><strong>"Quality Foundations + Iterative Features"</strong></td>
+          <td>SaaS B2B עם נתונים רגישים</td>
+          <td><strong>הגישה שלנו</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>1.2 שלושת עמודי הגישה שלנו</h3>
+
+  <ul class="num-list">
+    <li>
+      <strong>תשתית מצוינת מהיום הראשון.</strong>
+      RLS, encryption של PII, JWT, audit logs — כל אלה ב-Phase 1-2. אין "נוסיף אחר כך". הסיבה: תיקון תשתית בדיעבד יוצר חוב טכני שיעצור אותנו ב-Phase 8 כשנצטרך לשלוח לשטח.
+    </li>
+
+    <li>
+      <strong>פיצ'רים מינימליים, אבל מושלמים.</strong>
+      ה-MVP כולל ניהול פרויקטים, היררכיית בנייני-דירות-בעלים, מסמכים, חתימות, <strong>וגם משימות + התראות + הקצאת אגנטים</strong> (הוספנו ב-v2 — 4 טבלאות נוספות שמאפשרות end-to-end אמיתי). כל אחד מהם <strong>גמור</strong> — לא חצי. פיצ'רים אחרים (chat, AI, OCR, field tasks) נדחים ל-Phase 2 של מוצר. <strong>הערה:</strong> tenant portal + SMS OTP הוקדמו ל-MVP (D.17+D.20).
+    </li>
+
+    <li>
+      <strong>UX פשוט ומובן.</strong>
+      אין wizard מתוחכם, אין onboarding בן 10 שלבים, אין dashboard עם 50 metrics. דף אחד שמסביר, פעולה אחת ברורה. כשהמשתמש פותח את האפליקציה הוא יודע בתוך 5 שניות מה לעשות.
+    </li>
+  </ul>
+
+  <h3>1.3 מה זה "Done" ב-MVP שלנו</h3>
+
+  <p>
+    כל phase נחשב "done" רק אחרי שכל שלושת הקריטריונים מתקיימים:
+  </p>
+
+  <ul class="checks">
+    <li><strong>פונקציונליות עובדת.</strong> כל מה שתוכנן עובד end-to-end. לא חצי, לא 90%.</li>
+    <li><strong>טסטים עוברים.</strong> כל הטסטים של ה-phase ירוקים. כולל טסטי אבטחה (במיוחד RLS isolation).</li>
+    <li><strong>ביצועים עומדים ביעדים.</strong> יעדי ה-MVP (ראה מסמך 02, סעיף 8.1). אם משהו איטי — מתקנים לפני שעוברים הלאה.</li>
+  </ul>
+
+  <div class="callout danger">
+    <div class="callout-title">⚠️ חוק ברזל</div>
+    <div class="callout-body">
+      <strong>אסור לעבור ל-Phase הבא בלי שכל שלושת הקריטריונים של ה-Phase הנוכחי מתקיימים.</strong> זה לא בקשה — זה חוק. החוב הטכני שמצטבר אחרת יהפוך את הפרויקט לבלתי ניתן לתחזוקה.
+    </div>
+  </div>
+
+  <div class="pullquote">
+    MVP זה לא "minimum viable" — זה "minimum lovable". המוצר חייב להיות כזה שהמשתמש הראשון אוהב, אחרת לא יהיה משתמש שני.
+  </div>
+</section>
+
+<!-- ============= SECTION 2: SCOPE ============= -->
+<section id="section-2">
+  <div class="section-header">
+    <div class="section-num">02 · הגדרת Scope</div>
+    <h2 class="section-title">מה ב-MVP, מה לא, ומה דחוי לעתיד</h2>
+    <p class="section-lede">הגדרת scope ברורה היא ההחלטה החשובה ביותר. כל פיצ'ר שנכלל הוא פיצ'ר שצריך לתחזק לאורך זמן.</p>
+  </div>
+
+  <h3>2.1 מה נכלל ב-MVP</h3>
+
+  <div class="scope-item">
+    <div class="scope-item-icon">📋</div>
+    <div class="scope-item-content">
+      <h5>ניהול פרויקטים, חלקות, מבנים, יחידות</h5>
+      <p>CRUD מלא של 4 הישויות העיקריות, כולל מודל פוליפורמי של מבנים</p>
+    </div>
+    <span class="pill in-mvp">ב-MVP</span>
+  </div>
+
+  <div class="scope-item">
+    <div class="scope-item-icon">👥</div>
+    <div class="scope-item-content">
+      <h5>ניהול בעלי דירות עם פוליפורמיות</h5>
+      <p>בעלים יחידים, חברות, ירושות. קישור ליחידות עם חלקים (Ownership)</p>
+    </div>
+    <span class="pill in-mvp">ב-MVP</span>
+  </div>
+
+  <div class="scope-item">
+    <div class="scope-item-icon">📁</div>
+    <div class="scope-item-content">
+      <h5>העלאת והורדת מסמכים</h5>
+      <p>קבצי PDF, תמונות, Excel. עם signed URLs, encryption ברמת השדה</p>
+    </div>
+    <span class="pill in-mvp">ב-MVP</span>
+  </div>
+
+  <div class="scope-item">
+    <div class="scope-item-icon">✍️</div>
+    <div class="scope-item-content">
+      <h5>חתימה דיגיטלית בסיסית (Canvas)</h5>
+      <p>שליחת לינק לבעל דירה, חתימה ב-Canvas, audit log מלא</p>
+    </div>
+    <span class="pill in-mvp">ב-MVP</span>
+  </div>
+
+  <div class="scope-item">
+    <div class="scope-item-icon">📥</div>
+    <div class="scope-item-content">
+      <h5>ייבוא Excel חופשי</h5>
+      <p>Wizard בן 5 שלבים, mapping אוטומטי, validation, ייבוא של 1000+ שורות</p>
+    </div>
+    <span class="pill in-mvp">ב-MVP</span>
+  </div>
+
+  <div class="scope-item">
+    <div class="scope-item-icon">📤</div>
+    <div class="scope-item-content">
+      <h5>ייצוא ל-Excel ו-PDF</h5>
+      <p>תבניות עם RTL, פונט עברי, ייצוא של 1000+ שורות</p>
+    </div>
+    <span class="pill in-mvp">ב-MVP</span>
+  </div>
+
+  <div class="scope-item">
+    <div class="scope-item-icon">🔐</div>
+    <div class="scope-item-content">
+      <h5>Multi-tenancy עם RLS</h5>
+      <p>בידוד מלא בין tenants ברמת ה-DB, audit logs לכל פעולה</p>
+    </div>
+    <span class="pill in-mvp">ב-MVP</span>
+  </div>
+
+  <div class="scope-item">
+    <div class="scope-item-icon">🌐</div>
+    <div class="scope-item-content">
+      <h5>תמיכה ב-עברית + אנגלית</h5>
+      <p>RTL מלא, i18n מובנה, אפשרות להוסיף ערבית/רוסית בעתיד</p>
+    </div>
+    <span class="pill in-mvp">ב-MVP</span>
+  </div>
+
+  <div class="scope-item">
+    <div class="scope-item-icon">📅</div>
+    <div class="scope-item-content">
+      <h5>משימות וקלנדר (Tasks + Assignments) — חדש ב-v2</h5>
+      <p>Manager מקצה משימות לסוכנים. tasks, task_assignees, ו-project_assignments (M:N של Agent → Projects)</p>
+    </div>
+    <span class="pill in-mvp">ב-MVP</span>
+  </div>
+
+  <div class="scope-item">
+    <div class="scope-item-icon">🔔</div>
+    <div class="scope-item-content">
+      <h5>התראות (Notifications) — חדש ב-v2</h5>
+      <p>טבלת notifications. SSE לעדכונים בזמן אמת. בסיס לchat/tenant portal עתידי דרך IRealtimeProvider</p>
+    </div>
+    <span class="pill in-mvp">ב-MVP</span>
+  </div>
+
+  <div class="scope-item">
+    <div class="scope-item-icon">🤝</div>
+    <div class="scope-item-content">
+      <h5>שיתוף עם Contractors (עו"ד / הנדסה / קבלן) — חדש ב-v2</h5>
+      <p>Manager מזמין שותף חיצוני עם הרשאות פרטניות ב-JSONB. מודל זהות נפרד מ-users. Persona 4 ב-Doc 01</p>
+    </div>
+    <span class="pill in-mvp">ב-MVP</span>
+  </div>
+
+  <div class="scope-item">
+    <div class="scope-item-icon">🛡️</div>
+    <div class="scope-item-content">
+      <h5>Provider tier (צוות EMAPP) — חדש ב-v2</h5>
+      <p>טבלאות provider_users + provider_audit_log. DB role נפרד עם BYPASSRLS. MFA חובה. withProvider wrapper. Persona 5 ב-Doc 01</p>
+    </div>
+    <span class="pill in-mvp">ב-MVP</span>
+  </div>
+
+  <div class="scope-item">
+    <div class="scope-item-icon">🔌</div>
+    <div class="scope-item-content">
+      <h5>Interface Layer — חדש ב-v2</h5>
+      <p>6 interfaces (IEmailProvider, IStorageProvider, ISMSProvider, ICacheProvider, IRealtimeProvider, IEncryptionService). החלפת ספק = ימים. Doc 02 §6</p>
+    </div>
+    <span class="pill in-mvp">ב-MVP</span>
+  </div>
+
+  <h3>2.2 מה נדחה ל-Phase 2 (אחרי Beta)</h3>
+
+  <div class="scope-item future">
+    <div class="scope-item-icon">🤖</div>
+    <div class="scope-item-content">
+      <h5>חילוץ AI מנסחי טאבו</h5>
+      <p>קריאה אוטומטית של PDF, חילוץ גוש/חלקה/בעלים. דורש ניסיון רב לפני production</p>
+    </div>
+    <span class="pill future">Phase 2</span>
+  </div>
+
+  <div class="scope-item future">
+    <div class="scope-item-icon">🔍</div>
+    <div class="scope-item-content">
+      <h5>חיפוש Semantic על מסמכים</h5>
+      <p>שילוב pgvector עם embeddings. מצריך שיש מספיק מסמכים בDB</p>
+    </div>
+    <span class="pill future">Phase 2</span>
+  </div>
+
+  <div class="scope-item future">
+    <div class="scope-item-icon">🗺️</div>
+    <div class="scope-item-content">
+      <h5>אינטגרציית GovMap</h5>
+      <p>ייבוא GeoJSON/KML, הצגת מפה, חיתוך פוליגונים. דורש PostGIS</p>
+    </div>
+    <span class="pill future">Phase 2</span>
+  </div>
+
+  <div class="scope-item future">
+    <div class="scope-item-icon">📱</div>
+    <div class="scope-item-content">
+      <h5>אפליקציית מובייל native</h5>
+      <p>iOS + Android. בינתיים responsive web מספיק</p>
+    </div>
+    <span class="pill future">Phase 3</span>
+  </div>
+
+  <div class="scope-item future">
+    <div class="scope-item-icon">🌐</div>
+    <div class="scope-item-content">
+      <h5>תמיכה בערבית ורוסית</h5>
+      <p>תוספת לעברית+אנגלית של MVP. תיעשה כשיש דרישה אמיתית</p>
+    </div>
+    <span class="pill future">Phase 2</span>
+  </div>
+
+  <div class="scope-item future">
+    <div class="scope-item-icon">💳</div>
+    <div class="scope-item-content">
+      <h5>תשלומים אוטומטיים (Tranzila)</h5>
+      <p>5 לקוחות ראשונים — חיוב ידני. אחרי זה — אינטגרציה</p>
+    </div>
+    <span class="pill future">Phase 2</span>
+  </div>
+
+  <h3>2.3 מה אנחנו לא בונים, אף פעם</h3>
+
+  <div class="scope-item cut">
+    <div class="scope-item-icon">📊</div>
+    <div class="scope-item-content">
+      <h5>הנהלת חשבונות</h5>
+      <p>חשבשבת ופריוריטי עושים את זה. אנחנו לא נחליף אותם</p>
+    </div>
+    <span class="pill cut">לעולם לא</span>
+  </div>
+
+  <div class="scope-item cut">
+    <div class="scope-item-icon">📐</div>
+    <div class="scope-item-content">
+      <h5>תוכנת תכנון אדריכלי</h5>
+      <p>AutoCAD, Revit. אדריכלים יש להם כלים. אנחנו רק מנהלים את הפרויקט</p>
+    </div>
+    <span class="pill cut">לעולם לא</span>
+  </div>
+
+  <div class="scope-item cut">
+    <div class="scope-item-icon">🏪</div>
+    <div class="scope-item-content">
+      <h5>שיווק דירות חדשות</h5>
+      <p>זה תפקיד של מתווכים. אנחנו עוצרים בנקודה של מסירת דירה לבעלים</p>
+    </div>
+    <span class="pill cut">לעולם לא</span>
+  </div>
+
+  <h3>2.4 קריטריוני Beta</h3>
+
+  <p>
+    בסוף ה-MVP, נצפה לקבל את הקריטריונים הבאים — אם לא, אנחנו לא יכולים להעביר ללקוחות בטא:
+  </p>
+
+  <ul class="checks">
+    <li>יזם יכול ליצור פרויקט ולנהל אותו end-to-end תוך 30 דקות</li>
+    <li>ייבוא של 100 בעלי דירות מ-Excel קיים פועל ב-30 שניות</li>
+    <li>בעל דירה יכול לחתום על מסמך מטלפון נייד ב-1 דקה</li>
+    <li>היזם יכול לייצא דוח Excel/PDF ב-30 שניות</li>
+    <li>אין דליפת נתונים בין tenants (RLS test ירוק)</li>
+    <li>API p95 latency פחות מ-300ms ב-Free Tier</li>
+    <li>אפס באגים קריטיים פתוחים (Sentry)</li>
+    <li>תיעוד למשתמש ראשוני (5 דפים)</li>
+  </ul>
+</section>
+
+<!-- ============= SECTION 3: DEPENDENCIES ============= -->
+<section id="section-3">
+  <div class="section-header">
+    <div class="section-num">03 · גרף תלויות</div>
+    <h2 class="section-title">סדר הבנייה — מה תלוי במה</h2>
+    <p class="section-lede">הסדר הוא לא רנדומלי. הוא נגזר מהתלויות הטכניות בין השלבים.</p>
+  </div>
+
+  <p>
+    שלבי הבנייה הם <strong>חלקם linear, חלקם parallel</strong>. ה-Backend בונה תשתית ראשון, ואז הצוות יכול להתפצל: Backend ימשיך לבנות API, Frontend מתחיל לבנות מסכים בסיסיים. ב-Phase 4-7 שתי השכבות מתקדמות במקביל.
+  </p>
+
+  <div class="dep-tree">
+<pre>
+<span class="phase">Phase 0: Foundation (Both)</span>
+   <span class="comment"># Monorepo, NestJS skeleton, Next.js skeleton, env, CI</span>
+   │
+   <span class="arrow">▼</span>
+<span class="phase">Phase 1: Database (Backend)</span>           <span class="critical">★ Critical</span>
+   <span class="comment"># Drizzle schemas, RLS, withTenant, migrations</span>
+   │
+   <span class="arrow">▼</span>
+<span class="phase">Phase 2: Auth + Multi-tenant (Both)</span>   <span class="critical">★ Critical</span>
+   <span class="comment"># Better Auth, JWT, TenantGuard, login UI</span>
+   │
+   ├──▶ <span class="phase">Phase 3: Domain API (Backend)</span>
+   │       <span class="comment"># 7 vertical slices: Project, Owner, Plot, Structure...</span>
+   │       │
+   │       ▼
+   │     <span class="phase">Phase 4: Documents (Both)</span>
+   │       <span class="comment"># R2 upload/download, signed URLs</span>
+   │       │
+   │       ▼
+   │     <span class="phase">Phase 5: Signatures (Both)</span>      <span class="critical">★ Critical for Beta</span>
+   │       <span class="comment"># Canvas signing, public route, audit log</span>
+   │       │
+   │       ▼
+   │     <span class="phase">Phase 6: Import Pipeline (Both)</span>  <span class="critical">★ Critical for Beta</span>
+   │       <span class="comment"># Excel parsing, BullMQ, SSE progress</span>
+   │       │
+   │       ▼
+   │     <span class="phase">Phase 7: Export Pipeline (Both)</span>
+   │       <span class="comment"># Excel + PDF generation</span>
+   │
+   └──▶ <span class="phase">Phase 8: FE Polish (Frontend)</span>
+           <span class="comment"># shadcn/ui setup, RTL, layouts, i18n</span>
+           │
+           <span class="arrow">▼</span>
+         <span class="phase">Phase 9: Quality + Launch (Both)</span>
+           <span class="comment"># E2E tests, security audit, deploy, RUNBOOK</span>
+</pre>
+  </div>
+
+  <h3>3.1 הקריטיים — ה-3 שלבים שאסור לטעות בהם</h3>
+
+  <div class="callout danger">
+    <div class="callout-title">⚠️ Phase 1 — Database (RLS)</div>
+    <div class="callout-body">
+      <strong>הטסט הקריטי במערכת כולה (T1.5).</strong> אם RLS לא עובד נכון, אסור להמשיך לפיצ'ר אחר. זה ה-canary של בידוד הטננטים.
+    </div>
+  </div>
+
+  <div class="callout danger">
+    <div class="callout-title">⚠️ Phase 5 — Signatures</div>
+    <div class="callout-body">
+      <strong>החוויה של בעל הדירה היא הקריטית ביותר.</strong> אם בעל דירה אחד לא יצליח לחתום, היזם יחפש פתרון אחר. הUX חייב להיות מושלם מהיום הראשון.
+    </div>
+  </div>
+
+  <div class="callout danger">
+    <div class="callout-title">⚠️ Phase 6 — Import Pipeline</div>
+    <div class="callout-body">
+      <strong>זה ה-feature שיגרום ליזם לעבור או לא לעבור מ-Excel.</strong> אם הייבוא קשה או איטי, הוא יחזור ל-Excel. חייב להיות מהיר ופשוט.
+    </div>
+  </div>
+
+  <h3>3.2 הזמנים המשוערים</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Phase</th>
+          <th>תוכן</th>
+          <th>זמן משוער</th>
+          <th>במקביל?</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Phase 0</td>
+          <td>תשתית</td>
+          <td>2-3 ימים</td>
+          <td>שניהם</td>
+        </tr>
+        <tr>
+          <td>Phase 1</td>
+          <td>Database + RLS + Interfaces (14 tasks)</td>
+          <td>~8 ימים</td>
+          <td>BE בלבד · Critical Path</td>
+        </tr>
+        <tr>
+          <td>Phase 2</td>
+          <td>Auth</td>
+          <td>2-3 ימים</td>
+          <td>שניהם, חופף</td>
+        </tr>
+        <tr>
+          <td>Phase 3</td>
+          <td>Domain API</td>
+          <td>5-7 ימים</td>
+          <td>BE בלבד</td>
+        </tr>
+        <tr>
+          <td>Phase 4</td>
+          <td>Documents</td>
+          <td>2-3 ימים</td>
+          <td>שניהם</td>
+        </tr>
+        <tr>
+          <td>Phase 5</td>
+          <td>Signatures</td>
+          <td>3-4 ימים</td>
+          <td>שניהם</td>
+        </tr>
+        <tr>
+          <td>Phase 6</td>
+          <td>Import Pipeline</td>
+          <td>4-5 ימים</td>
+          <td>שניהם</td>
+        </tr>
+        <tr>
+          <td>Phase 7</td>
+          <td>Export Pipeline</td>
+          <td>2-3 ימים</td>
+          <td>שניהם</td>
+        </tr>
+        <tr>
+          <td>Phase 8</td>
+          <td>FE Polish</td>
+          <td>3-5 ימים</td>
+          <td>FE בלבד (במקביל ל-3-7)</td>
+        </tr>
+        <tr>
+          <td>Phase 9</td>
+          <td>Quality + Launch</td>
+          <td>3-4 ימים</td>
+          <td>שניהם</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    <strong>סה"כ:</strong> ~50 ימי עבודה (עודכן ב-v2 בעקבות הרחבת Phase 1 ל-14 משימות עם Provider tier ו-Interface layer). במקביל לעבודה במשרה מלאה (~2-3 שעות יום בממוצע + סופ"שים), זה מתוסף ל-<strong>~3 חודשים</strong> עד גרסת בטא ראשונה.
+  </p>
+
+  <div class="callout warning">
+    <div class="callout-title">⚠️ הערכת זמן ריאלית</div>
+    <div class="callout-body">
+      ההערכות לעיל הן <strong>אופטימיות</strong> ומבוססות על תכנון מדויק. בפועל, ייתכנו עיכובים עקב באגים, החלטות שדורשות התייעצות, או "rabbit holes" טכניים. תכנן <strong>+30%</strong> כbuffer.
+    </div>
+  </div>
+</section>
+
+<!-- ============= SECTION 4: PHASE 0 ============= -->
+<section id="section-4">
+  <div class="section-header">
+    <div class="section-num">04 · Phase 0</div>
+    <h2 class="section-title">תשתית — Foundation</h2>
+    <p class="section-lede">הצעד הראשון: הקמת התשתית הבסיסית של הפרויקט. כל מה שכל phase אחר מסתמך עליו.</p>
+  </div>
+
+  <div class="phase-card">
+    <div class="phase-header">
+      <div class="phase-num">00</div>
+      <div class="phase-title-block">
+        <div class="phase-title">תשתית — Foundation</div>
+        <div class="phase-subtitle">שניהם · Critical Path · 2-3 ימים</div>
+        <div class="phase-meta">
+          <span class="metric"><strong>Deliverable:</strong> <code>pnpm dev</code> עובד</span>
+          <span class="metric"><strong>תוצאה:</strong> אתר ריק שעובד</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase-content">
+      <div class="phase-section">
+        <div class="phase-section-title">📦 מה בונים</div>
+        <ul class="clean">
+          <li><strong>Monorepo</strong> עם Turborepo + pnpm workspaces</li>
+          <li><strong>apps/api</strong> — שלד NestJS 11 + Fastify adapter (Hello World endpoint)</li>
+          <li><strong>apps/web</strong> — שלד Next.js 15 + App Router (דף ריק עם RTL)</li>
+          <li><strong>packages/shared-types</strong> — ריק כרגע, יתמלא ב-Phase 1</li>
+          <li><strong>packages/db</strong> — Drizzle config + connection</li>
+          <li><strong>packages/config</strong> — T3-env validation</li>
+          <li><strong>packages/validators</strong> — Israeli ID Luhn validator</li>
+          <li><strong>TypeScript strict</strong> + ESLint + Prettier + Husky</li>
+          <li><strong>חשבונות:</strong> GitHub, Neon (DB Free), Railway (Hobby $5/חודש — BE + Worker), Cloudflare (R2 + Pages Free), Resend (Free), Sentry (Developer Free). Upstash Redis ייכנס ב-Growth phase (~10 ארגונים), לא ב-MVP.</li>
+          <li><strong>Environment variables</strong> מוכנים (<code>.env.example</code>)</li>
+          <li><strong>GitHub Actions CI</strong> בסיסי: typecheck + lint + test</li>
+          <li><strong>קבצי CLAUDE.md</strong> + slash commands (לפי מסמך 04)</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🚫 מה לא בונים בPhase הזה</div>
+        <ul class="crosses">
+          <li>שום business logic — רק תשתית</li>
+          <li>שום DB schema — Phase 1</li>
+          <li>שום auth — Phase 2</li>
+          <li>שום UI מורכב — רק "Hello World" עם RTL</li>
+          <li>שום deploy ל-production עדיין</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🔒 חוקי אבטחה ל-Phase</div>
+        <ul class="checks">
+          <li>Secrets רק ב-<code>.env.local</code> (gitignored)</li>
+          <li>gitleaks scanner ב-CI מהיום הראשון</li>
+          <li>HTTPS חובה גם בdev (דרך ngrok או Cloudflare Tunnel)</li>
+          <li>אין hardcoded URLs בקוד — הכל ב-T3-env</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">⚡ חוקי ביצועים ל-Phase</div>
+        <ul class="checks">
+          <li>Turbopack ל-Next.js (faster dev builds)</li>
+          <li>SWC לNestJS (faster compilation)</li>
+          <li>pnpm fetch בCI (faster install)</li>
+          <li>Caching של Turborepo בCI</li>
+        </ul>
+      </div>
+
+      <div class="done-criteria">
+        <div class="done-criteria-title">✓ הגדרת Done</div>
+        <ul>
+          <li>מפתח חדש מצליח ב-15 דקות לעבור מ-<code>git clone</code> ל-<code>pnpm dev</code> שעובד</li>
+          <li><code>pnpm typecheck</code> ירוק (אפס שגיאות)</li>
+          <li><code>pnpm lint</code> ירוק</li>
+          <li><code>pnpm test</code> ירוק (אפילו שאין טסטים אמיתיים עדיין)</li>
+          <li>CI ב-GitHub Actions ירוק על main</li>
+          <li><code>apps/api</code> מחזיר 200 OK ב-<code>/health</code></li>
+          <li><code>apps/web</code> מציג דף ריק ב-RTL עם פונט Heebo</li>
+          <li>Sentry מקבל errors מ-FE+BE (טסט ידני)</li>
+          <li>Neon DB מחובר (ping מ-API מצליח)</li>
+          <li><code>CLAUDE.md</code> מעודכן עם המבנה הנוכחי</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= SECTION 5: PHASE 1 ============= -->
+<section id="section-5">
+  <div class="section-header">
+    <div class="section-num">05 · Phase 1</div>
+    <h2 class="section-title">בסיס נתונים — Database (v2)</h2>
+    <p class="section-lede">השלב הקריטי ביותר. 18 טבלאות לקוח + 2 טבלאות Provider מחולקות ל-5 zones, RLS על הכל, dual wrappers (withTenant + withProvider), ושכבת interfaces ל-6 ספקים. בלעדיו אין מערכת. הפירוט המלא ב-<strong>Doc 04c</strong>.</p>
+  </div>
+
+  <div class="phase-card critical">
+    <div class="phase-header">
+      <div class="phase-num">01</div>
+      <div class="phase-title-block">
+        <div class="phase-title">Database Foundation — 14 Tasks</div>
+        <div class="phase-subtitle">Backend בלבד · Critical Path · ~8 ימים</div>
+        <div class="phase-meta">
+          <span class="metric"><strong>תלוי:</strong> Phase 0</span>
+          <span class="metric"><strong>מבנה:</strong> 18+2 טבלאות ב-5 zones</span>
+          <span class="metric"><strong>טסטים קריטיים:</strong> T1.5 + T1.6 + T1.7</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase-content">
+      <div class="phase-section">
+        <div class="phase-section-title">📦 מה בונים — 18 טבלאות לקוח + 2 טבלאות Provider</div>
+
+        <p style="font-size: 14px; margin-bottom: 12px;">המבנה מאורגן ב-<strong>5 zones</strong>. בתוך zone — קשרים הדוקים; בין zones — קשרים מפורשים. ה-zones (ראה Doc 04c §4):</p>
+
+        <ul class="clean">
+          <li><strong>Z1 · Tenancy</strong> (3 טבלאות): <code>organizations</code>, <code>users</code>, <code>memberships</code> (M:N — משתמש ב-N ארגונים)</li>
+          <li><strong>Z2 · Provider</strong> (2 טבלאות, חדש ב-v2): <code>provider_users</code>, <code>provider_audit_log</code> — DB role נפרד</li>
+          <li><strong>Z3 · Projects</strong> (5 טבלאות): <code>projects</code>, <code>buildings</code>, <code>apartments</code>, <code>owners</code> (PII מוצפן), <code>ownerships</code></li>
+          <li><strong>Z4 · Collaboration</strong> (6 טבלאות): <code>contractors</code>, <code>shares</code> (JSONB permissions), <code>tasks</code>, <code>task_assignees</code>, <code>notifications</code>, <code>project_assignments</code></li>
+          <li><strong>Z5 · Artifacts &amp; History</strong> (4 טבלאות): <code>documents</code>, <code>signatures</code>, <code>notes</code>, <code>audit_log</code></li>
+        </ul>
+
+        <div class="callout warning" style="margin-top: 12px;">
+          <div class="callout-title">🔄 שינוי מ-v1</div>
+          <div class="callout-body">
+            <strong>v1 הציע ~15 טבלאות עם CTI</strong> (residential_buildings, mixed_use_buildings, commercial_buildings — מורכב, prone-to-bugs).
+            <strong>v2 מפשט ל-<code>buildings</code> אחד</strong> עם enum <code>type</code>. כך גם ל-owners (אין <code>individual_owners</code>/<code>company_owners</code>/<code>inheritance_owners</code>) — רק <code>owners</code> אחד עם <code>type</code> enum. בנוסף, <strong>4 טבלאות חדשות</strong> ב-MVP: tasks, task_assignees, notifications, project_assignments (קלנדר + הקצאות + התראות).
+          </div>
+        </div>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🗂️ 14 המשימות (P1.1 → P1.14) — Doc 04c</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th>משימה</th><th>תוצאה</th><th>זמן</th></tr></thead>
+            <tbody>
+              <tr><td><code>P1.1</code></td><td>Drizzle setup + base config</td><td>חיבור DB עובד, migrations runner</td><td>0.5 יום</td></tr>
+              <tr><td><code>P1.2</code></td><td>Zone 1 — Tenancy schema</td><td>3 טבלאות (organizations, users, memberships) + RLS</td><td>0.5 יום</td></tr>
+              <tr style="background: var(--gold-light);"><td><code>P1.3</code></td><td><strong>Zone 2 — Provider tier (חדש ב-v2)</strong></td><td>provider_users + provider_audit_log + DB role נפרד + GRANT/REVOKE</td><td>1 יום</td></tr>
+              <tr><td><code>P1.4</code></td><td>Zone 3 — Project hierarchy</td><td>projects, buildings, apartments, ownerships</td><td>1 יום</td></tr>
+              <tr style="background: var(--danger-light);"><td><code>P1.5</code></td><td><strong>Owners + PII Encryption (קריטי)</strong></td><td>pgcrypto setup, national_id_encrypted + HMAC, חיפוש ע"י hash</td><td>1 יום</td></tr>
+              <tr><td><code>P1.6</code></td><td>Contractor + Shares (JSONB permissions)</td><td>contractors, shares, Zod .strict() validator</td><td>0.5 יום</td></tr>
+              <tr style="background: var(--gold-light);"><td><code>P1.7</code></td><td><strong>Tasks + Notifications + Assignments (חדש ב-v2)</strong></td><td>4 טבלאות חדשות מ-Zone 4</td><td>0.5 יום</td></tr>
+              <tr><td><code>P1.8</code></td><td>Documents + Signatures</td><td>documents (R2 metadata), signatures (encrypted blob)</td><td>0.5 יום</td></tr>
+              <tr><td><code>P1.9</code></td><td>Audit Log (append-only)</td><td>audit_log עם DB-level GRANT לא DELETE</td><td>0.5 יום</td></tr>
+              <tr><td><code>P1.10</code></td><td>PG Extensions + cache_kv</td><td>pgcrypto, citext, cache_kv table (ICacheProvider MVP impl)</td><td>0.5 יום</td></tr>
+              <tr style="background: var(--danger-light);"><td><code>P1.11</code></td><td><strong>RLS Policies (קריטי) — כל הטבלאות</strong></td><td>ENABLE + FORCE על כל הטבלאות, policies, verify-rls.sql</td><td>1 יום</td></tr>
+              <tr><td><code>P1.12</code></td><td>Composite Indexes (~45 indexes)</td><td>כל RLS subquery עם index, partial indexes</td><td>0.5 יום</td></tr>
+              <tr style="background: var(--danger-light);"><td><code>P1.13</code></td><td><strong>Dual Wrappers (קריטי): withTenant + withProvider</strong></td><td>withTenant(orgId, fn) + withProvider(providerUserId, reason, fn), ESLint rule</td><td>1 יום</td></tr>
+              <tr style="background: var(--gold-light);"><td><code>P1.14</code></td><td><strong>6 Provider Interfaces (חדש ב-v2)</strong></td><td>IEmailProvider, IStorageProvider, ISMSProvider, ICacheProvider, IRealtimeProvider, IEncryptionService + 6 implementations + 6 Fakes</td><td>1 יום</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🔒 חוקי אבטחה ל-Phase (חובה — לפי Doc 07)</div>
+        <ul class="checks">
+          <li>כל טבלה רב-לקוחית עם <code>ENABLE ROW LEVEL SECURITY</code> + <code>FORCE ROW LEVEL SECURITY</code></li>
+          <li><strong>שני DB roles נפרדים:</strong> <code>app_user</code> (לקוחות, RLS אכוף) + <code>provider_app_role</code> (EMAPP team, BYPASSRLS + audit)</li>
+          <li><code>app_user</code> <strong>אינו</strong> owner של הטבלאות (REVOKE ALL THEN GRANT specific)</li>
+          <li><code>app.organization_id</code> ב-Postgres session, נקבע ב-<code>SET LOCAL</code> (לא SET — חיוני!)</li>
+          <li>pgcrypto עם 2 מפתחות נפרדים: <code>PII_ENCRYPTION_KEY</code> + <code>PII_HASH_KEY</code> (לא אותו מפתח)</li>
+          <li>HMAC hash על national_id לחיפוש — דטרמיניסטי, לא reversible</li>
+          <li><code>app_user</code> ללא הרשאת UPDATE/DELETE על <code>audit_log</code> + <code>provider_audit_log</code> — append-only enforced ברמת DB GRANT</li>
+          <li><code>provider_users.mfa_enabled</code> = <code>NOT NULL DEFAULT FALSE</code>, אבל bootstrap script מגדיר TRUE</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">⚡ חוקי ביצועים ל-Phase (חובה)</div>
+        <ul class="checks">
+          <li>Composite index <code>(org_id, ...)</code> על כל טבלה רב-לקוחית — RLS subquery חייב index</li>
+          <li>Partial indexes ל-soft-delete: <code>WHERE archived_at IS NULL</code></li>
+          <li>Connection pool: 20 connections ל-<code>app_user</code>, 5 ל-<code>provider_app_role</code></li>
+          <li><code>statement_timeout: 30s</code> בכל pool — query איטי לא תופס connection לעולם</li>
+          <li><strong>withTenant overhead &lt; 2ms</strong> (T1.7 smoke test)</li>
+          <li><strong>p95 common queries &lt; 5ms</strong> (T1.8 smoke test)</li>
+          <li>EXPLAIN ANALYZE על כל query עיקרי לפני commit</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🧪 הטסטים החיוניים — T1.1 → T1.9</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>טסט</th><th>חשיבות</th></tr></thead>
+            <tbody>
+              <tr><td><code>T1.1</code></td><td>Migrations runs clean על DB ריק וגם על seeded</td><td>גבוהה</td></tr>
+              <tr><td><code>T1.2</code></td><td>כל הטבלאות נוצרו (18+2 = 20 בסך הכל)</td><td>גבוהה</td></tr>
+              <tr><td><code>T1.3</code></td><td>FKs נאכפים</td><td>גבוהה</td></tr>
+              <tr><td><code>T1.4</code></td><td>CHECK + UNIQUE constraints עובדים</td><td>גבוהה</td></tr>
+              <tr style="background: var(--danger-light);"><td><code>T1.5</code></td><td><strong>RLS Isolation — orgA לא רואה orgB</strong> (2 orgs בdata!)</td><td><span class="pill cut">קריטי · CI gate</span></td></tr>
+              <tr style="background: var(--danger-light);"><td><code>T1.6</code></td><td><strong>Provider tier separation — withProvider mandatory reason + audit</strong></td><td><span class="pill cut">קריטי · CI gate</span></td></tr>
+              <tr style="background: var(--danger-light);"><td><code>T1.7</code></td><td><strong>withTenant overhead &lt; 2ms — smoke test</strong></td><td><span class="pill cut">קריטי · CI gate</span></td></tr>
+              <tr><td><code>T1.8</code></td><td>pgcrypto encrypt/decrypt round-trip + HMAC search</td><td>גבוהה</td></tr>
+              <tr><td><code>T1.9</code></td><td>Append-only audit (UPDATE/DELETE על audit_log נכשל)</td><td>גבוהה</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🔌 שכבת ה-Interfaces (חדש ב-v2)</div>
+        <p style="font-size: 14px; margin-bottom: 8px;">P1.14 בונה את 6 ה-interfaces ב-<code>packages/db/src/providers/</code>. כל interface עם:</p>
+        <ul class="clean">
+          <li><strong>Interface definition</strong> (TypeScript) — מה ה-API</li>
+          <li><strong>MVP implementation</strong> — ResendEmailProvider, R2StorageProvider, <strong>IsraeliSMSProvider</strong> (Tenant OTP — D.20; NoopSMS ב-dev), PostgresCacheProvider, SseRealtimeProvider, PgcryptoEncryptionService</li>
+          <li><strong>Fake implementation</strong> — ל-tests (FakeEmailProvider, MemoryCacheProvider, וכו')</li>
+          <li><strong>Contract tests</strong> — אותן בדיקות רצות גם ל-MVP impl וגם ל-Fake</li>
+          <li><strong>Factory wiring</strong> ב-<code>apps/api/src/modules/providers.module.ts</code></li>
+        </ul>
+      </div>
+
+      <div class="done-criteria">
+        <div class="done-criteria-title">✓ הגדרת Done — Phase 1 → Phase 2 handoff</div>
+        <ul>
+          <li>כל 14 משימות P1.1-P1.14 הושלמו</li>
+          <li><strong>T1.1-T1.9 ירוקים ב-CI</strong> (כולל T1.5, T1.6, T1.7 הקריטיים)</li>
+          <li>T1.5/T1.6/T1.7 מוגדרים כ-<strong>required CI checks</strong> על main branch</li>
+          <li>שני המפתחים סקרו את ה-schema ואישרו</li>
+          <li><code>withTenant()</code> ו-<code>withProvider()</code> הם ה-API היחידים לגישה ל-DB מ-services (ESLint rule אוכף)</li>
+          <li>6 ה-interfaces (P1.14) wired ב-NestJS וכל ה-implementations עוברות contract tests</li>
+          <li>Seed script ממלא DB עם 2 ארגונים, ~5 פרויקטים, ~50 בעלים, 1 provider admin (MFA enabled)</li>
+          <li>Drizzle Studio מציג את כל 20 הטבלאות</li>
+          <li><code>verify-rls.sql</code> מחזיר 0 שורות (כל ה-RLS תקין)</li>
+          <li>Performance smoke test מראה p95 &lt; 5ms על common queries</li>
+        </ul>
+      </div>
+
+      <div class="callout info" style="margin-top: 16px;">
+        <div class="callout-title">📖 הפרטים העמוקים — Doc 04c</div>
+        <div class="callout-body">
+          המסמך הזה הוא <strong>roadmap</strong>. הפירוט הטכני המלא — כולל סכמות Drizzle של 18 הטבלאות, dual wrappers code, 6 interface definitions, RLS policies, ו-9 critical tests — נמצא ב-<strong>Doc 04c — Phase 1 Database</strong> (424KB, 14 משימות). זה ה-foundation לכל המוצר; אם משהו לא ברור, הפנה ל-Doc 04c.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= SECTION 6: PHASE 2 ============= -->
+<section id="section-6">
+  <div class="section-header">
+    <div class="section-num">06 · Phase 2</div>
+    <h2 class="section-title">אימות ו-Multi-Tenancy</h2>
+    <p class="section-lede">השלב שמחבר את ה-frontend ל-backend ומאכף multi-tenancy בכל הקריאות.</p>
+  </div>
+
+  <div class="phase-card critical">
+    <div class="phase-header">
+      <div class="phase-num">02</div>
+      <div class="phase-title-block">
+        <div class="phase-title">אימות ו-Multi-Tenancy</div>
+        <div class="phase-subtitle">שניהם · Critical Path · 2-3 ימים</div>
+        <div class="phase-meta">
+          <span class="metric"><strong>תלוי:</strong> Phase 1</span>
+          <span class="metric"><strong>Auth:</strong> Better Auth</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase-content">
+      <div class="phase-section">
+        <div class="phase-section-title">📦 מה בונים</div>
+        <ul class="clean">
+          <li><strong>Better Auth setup</strong> ב-Backend (NestJS module)</li>
+          <li><strong>Better Auth client</strong> ב-Frontend (React)</li>
+          <li><strong>Organizations plugin</strong> של Better Auth</li>
+          <li><strong>AuthGuard</strong> שמאמת JWT ומחלץ user</li>
+          <li><strong>TenantGuard + <code>@CurrentOrg()</code> decorator</strong></li>
+          <li><strong>Session management</strong> — JWT 15min + refresh rotation, sessions ב-<code>ICacheProvider</code> (PostgresCacheProvider ב-MVP)</li>
+          <li><strong>Audit log</strong> על כל login/logout/role-change</li>
+          <li><strong>Frontend</strong>: Better Auth Provider + protected layout</li>
+          <li><strong>OrgSwitcher component</strong> (משתמש יכול להיות חבר ב-N ארגונים דרך memberships M:N)</li>
+          <li><strong>MFA optional (TOTP) ל-customer users</strong> — feature flag, default off</li>
+          <li style="background: var(--gold-light); padding: 6px 12px; border-radius: 6px;"><strong>Provider tier auth (חדש ב-v2):</strong> <code>ProviderAuthGuard</code> נפרד, <strong>MFA חובה</strong> (schema-level NOT NULL), session 30min במקום 7 ימים, אין magic links, integration עם <code>withProvider()</code> wrapper מ-Phase 1</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🔒 חוקי אבטחה ל-Phase (חובה)</div>
+        <ul class="checks">
+          <li>JWT secret &gt;= 32 chars (cryptographically random)</li>
+          <li>Refresh tokens עם rotation אוטומטית (כל refresh)</li>
+          <li>bcrypt cost 12</li>
+          <li>Rate limiting על login (5/min/IP) — דרך <code>ICacheProvider</code></li>
+          <li>Password requirements: min 12 chars, complexity</li>
+          <li>JWT בזיכרון בלבד ב-frontend (NOT localStorage)</li>
+          <li>Refresh token ב-httpOnly cookie (NOT accessible to JS)</li>
+          <li>אין logging של JWT tokens (גם לא חלקי)</li>
+          <li><strong>Provider tier:</strong> bootstrap script מגדיר MFA enabled = TRUE לפני יכולת login ראשון</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">⚡ חוקי ביצועים ל-Phase (חובה)</div>
+        <ul class="checks">
+          <li>AuthGuard לא קורא ל-DB בכל request — JWT verification בלבד</li>
+          <li>Cache של user info דרך <code>ICacheProvider</code> (TTL 5 דק') — Postgres cache_kv ב-MVP, Upstash בעתיד</li>
+          <li>TenantGuard נמצא ב-execution context, לא query פר request</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🧪 הטסטים החיוניים</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>טסט</th></tr></thead>
+            <tbody>
+              <tr><td><code>T2.1</code></td><td>Login flow מלא</td></tr>
+              <tr><td><code>T2.2</code></td><td>Protected route → redirect ללא auth</td></tr>
+              <tr><td><code>T2.3</code></td><td>API ללא JWT → 401</td></tr>
+              <tr><td><code>T2.4</code></td><td>JWT שגוי → 401</td></tr>
+              <tr><td><code>T2.5</code></td><td>JWT expired → 401, refresh עובד</td></tr>
+              <tr><td><code>T2.6</code></td><td>TenantGuard מזריק org_id ל-context</td></tr>
+              <tr><td><code>T2.7</code></td><td>Org switching עובד (אם user ב-2 orgs)</td></tr>
+              <tr><td><code>T2.8</code></td><td>Audit log נכתב על כל login</td></tr>
+              <tr style="background: var(--gold-light);"><td><code>T2.9</code></td><td><strong>First-org signup creates org + Manager + audit (חדש)</strong></td></tr>
+              <tr style="background: var(--gold-light);"><td><code>T2.10</code></td><td><strong>Provider Admin MFA mandatory — login without MFA fails (חדש)</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🆕 6.X First-Org Bootstrap (חדש ב-v2)</div>
+
+        <p style="font-size: 14px;"><strong>החלטה ל-MVP:</strong> Self-serve signup. אדם נכנס ל-<code>app.emapp.io/signup</code>, ממלא: שם הארגון, שמו, האימייל שלו, וסיסמה. המערכת:</p>
+
+        <ol class="num-list">
+          <li>בודקת שהאימייל לא קיים (במקרה כן — שולחת magic link login במקום signup)</li>
+          <li>שולחת magic link לאימייל לאימות (בלי לחשוף אם אימייל קיים — anti-enumeration)</li>
+          <li>לחיצה על הקישור (בתוך 15 דקות) מבצעת: <strong>יוצרת ארגון, יוצרת user, יוצרת membership עם role=manager, יוצרת audit entry, ומתחילה session</strong></li>
+          <li>הופנייה ל-dashboard עם empty state ("צור את הפרויקט הראשון שלך")</li>
+        </ol>
+
+        <p><strong>Endpoint:</strong> <code>POST /api/v1/auth/signup</code> — מקבל <code>{organizationName, fullName, email, password}</code>. תגובה תמיד 202 ("בדוק את האימייל שלך") ללא קשר אם זה signup חדש או email קיים — anti-enumeration.</p>
+
+        <p><strong>אין בדיקת אימות חיצונית.</strong> חברה רושמת עצמה בלי intervention של EMAPP. הסיבה: pilot של 0-3 לקוחות; ה-friction של "ממתינים לאישור" יוצר drop-off של 30%+. אנחנו נקבל את ה-trade-off של ארגונים כפולים (אותו לקוח רשם פעמיים) על-ידי כלי Provider Admin שיכול למזג ארגונים — Phase 6.</p>
+
+        <p><strong>Edge cases:</strong></p>
+        <ul class="clean">
+          <li>שני אנשים מאותו ארגון נרשמים בנפרד → שני ארגונים. Provider Admin צריך למזג בידני (Phase 6)</li>
+          <li>אימייל שכבר במערכת → המערכת שולחת magic link login (לא signup). ה-UI לא מציין אם signup או login — anti-enumeration</li>
+          <li>Provider Admin יכול גם לבצע "manual onboarding" — צור ארגון + שלח invitation ל-Manager. Phase 6 deliverable</li>
+        </ul>
+
+        <div class="callout warning">
+          <div class="callout-title">⚠ מה לא ב-MVP: payment/trial</div>
+          <div class="callout-body">אין billing ב-MVP. כל ארגון משתמש חינם. Phase 2 של מוצר תוסיף Stripe + trial period. עד אז: 0-3 לקוחות pilot, ידנית.</div>
+        </div>
+      </div>
+
+      <div class="done-criteria">
+        <div class="done-criteria-title">✓ הגדרת Done</div>
+        <ul>
+          <li>משתמש יכול להירשם, להתחבר, להתנתק</li>
+          <li>משתמש שלא מחובר מועבר ל-/login</li>
+          <li>API requests עם JWT תקף עוברים, אחרים נדחים</li>
+          <li>TenantGuard מאכף שכל request כולל org_id</li>
+          <li>כל ה-10 טסטים של Phase 2 ירוקים</li>
+          <li>UI: דף login, signup, dashboard ריק</li>
+          <li>Audit log כולל לפחות login + logout events</li>
+          <li><strong>Signup flow מלא:</strong> /signup → magic link email → קישור יוצר org+user+membership → dashboard</li>
+          <li><strong>Provider Admin MFA חובה</strong> — bootstrap script שמייצר את ה-Provider Admin הראשון עם MFA enabled</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= SECTION 7: PHASE 3 ============= -->
+<section id="section-7">
+  <div class="section-header">
+    <div class="section-num">07 · Phase 3</div>
+    <h2 class="section-title">Domain API — CRUD Vertical Slices</h2>
+    <p class="section-lede">CRUD מלא לישויות הליבה של ה-MVP. כל ישות נבנית כ-vertical slice end-to-end. הסדר: מבסיס למורכב.</p>
+  </div>
+
+  <div class="phase-card">
+    <div class="phase-header">
+      <div class="phase-num">03</div>
+      <div class="phase-title-block">
+        <div class="phase-title">Domain API — Vertical Slices לכל הישויות</div>
+        <div class="phase-subtitle">Backend בלבד · ~11 ימים</div>
+        <div class="phase-meta">
+          <span class="metric"><strong>סדר (v2):</strong> Projects → Buildings → Apartments → Owners → Ownerships → Contractors+Shares → Tasks+Assignments+Notifications → Documents → Signatures → Notes → Audit-Read</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase-content">
+      <div class="phase-section">
+        <div class="phase-section-title">📦 מה בונים — לכל ישות (vertical slice)</div>
+        <ul class="num-list">
+          <li><strong>Zod schemas</strong> ב-<code>packages/shared-types/src/&lt;entity&gt;.ts</code> — Type, CreateInput, UpdateInput</li>
+          <li><strong>Drizzle table</strong> ב-<code>packages/db/src/schema/&lt;entity&gt;.ts</code></li>
+          <li><strong>Migration</strong> אם יש שינוי schema</li>
+          <li><strong>Service</strong> ב-<code>apps/api/src/modules/&lt;entity&gt;/service.ts</code> עם withTenant</li>
+          <li><strong>Controller</strong> ב-<code>apps/api/src/modules/&lt;entity&gt;/controller.ts</code> עם guards</li>
+          <li><strong>Module</strong> מוגדר ב-NestJS</li>
+          <li><strong>Integration tests</strong> שמכסים CRUD + RLS isolation</li>
+          <li><strong>OpenAPI</strong> auto-gen מהcontrollers</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🔒 חוקי אבטחה ל-Phase</div>
+        <ul class="checks">
+          <li>כל endpoint עם <code>@UseGuards(AuthGuard, TenantGuard)</code></li>
+          <li>כל endpoint עם <code>ZodValidationPipe</code> על body</li>
+          <li>כל קריאת DB עוברת <code>withTenant(orgId)</code></li>
+          <li>אין <code>any</code> בקוד (lint rule אוכף)</li>
+          <li>Error messages גנריים ללקוח, פרטים מלאים בלוגים</li>
+          <li>Soft delete לישויות עיקריות (לא DELETE physical)</li>
+          <li>Audit log על כל פעולה: create, update, delete</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">⚡ חוקי ביצועים ל-Phase</div>
+        <ul class="checks">
+          <li>Cursor pagination בלבד (לא offset)</li>
+          <li>כל JOIN מתועד עם הסבר במה הוא משמש</li>
+          <li>Drizzle queries תמיד עם <code>.limit()</code> מפורש</li>
+          <li>OpenAPI generation ב-build time, לא runtime</li>
+          <li>אין N+1 — שימוש ב-Drizzle <code>with</code> או batch queries</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🧪 הטסטים — תבנית לכל ישות (×7)</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>תבנית</th><th>טסט</th></tr></thead>
+            <tbody>
+              <tr><td><code>T3.x.1</code></td><td>Create happy path</td></tr>
+              <tr><td><code>T3.x.2</code></td><td>Create with invalid input → 422</td></tr>
+              <tr><td><code>T3.x.3</code></td><td>List paginated</td></tr>
+              <tr><td><code>T3.x.4</code></td><td>Get by id (owned by org)</td></tr>
+              <tr><td><code>T3.x.5</code></td><td>Get by id (other org) → 404</td></tr>
+              <tr><td><code>T3.x.6</code></td><td>Update happy path</td></tr>
+              <tr><td><code>T3.x.7</code></td><td>Soft delete works (record marked, not removed)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h4>טסטים מיוחדים</h4>
+        <div class="table-wrap">
+          <table>
+            <tbody>
+              <tr><td><code>T3.B.1</code></td><td>Buildings with enum type (residential / mixed_use / commercial) — single table, not CTI</td></tr>
+              <tr><td><code>T3.A.1</code></td><td>Apartments — soft delete preserves audit trail</td></tr>
+              <tr><td><code>T3.O.1</code></td><td>Owners with PII — encrypt/decrypt + HMAC search round-trip</td></tr>
+              <tr><td><code>T3.OW.1</code></td><td>Ownership share validation — sum across apartment = 100%</td></tr>
+              <tr><td><code>T3.S.1</code></td><td>Share JSONB permissions — Zod .strict() rejects unknown fields (fail-closed)</td></tr>
+              <tr><td><code>T3.T.1</code></td><td>Task assignment — Agent רואה רק tasks שהוקצו לו</td></tr>
+              <tr><td><code>T3.N.1</code></td><td>Notifications — INSERT triggers SSE push (Phase 5 integration test)</td></tr>
+              <tr><td><code>T3.PA.1</code></td><td>project_assignments — Agent רואה רק projects ב-assignment שלו</td></tr>
+              <tr><td><code>T3.OPENAPI</code></td><td>OpenAPI generation תקף וכולל את כל ה-endpoints</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="done-criteria">
+        <div class="done-criteria-title">✓ הגדרת Done</div>
+        <ul>
+          <li>כל הישויות עם CRUD מלא: Projects, Buildings, Apartments, Owners (PII), Ownerships, Contractors, Shares, Tasks, Task-Assignees, Notifications, Project-Assignments, Documents, Signatures, Notes, Audit-Read</li>
+          <li>כל הטסטים ירוקים (~70+ בסה"כ)</li>
+          <li>OpenAPI ב-<code>/api/docs</code> מציג את כל ה-endpoints</li>
+          <li>Postman collection בודק את כל ה-endpoints</li>
+          <li>אין N+1 queries (בדיקה ידנית עם logging)</li>
+          <li>RLS isolation עובד גם ב-requests של כל הישויות (T1.5 re-verified end-to-end)</li>
+          <li>Agent רואה רק projects שהוקצו לו (דרך project_assignments JOIN); Manager רואה הכל</li>
+          <li>Contractor רואה projects דרך shares + שדות מסוננים לפי share.permissions JSONB</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= SECTION 8: PHASE 4 ============= -->
+<section id="section-8">
+  <div class="section-header">
+    <div class="section-num">08 · Phase 4</div>
+    <h2 class="section-title">Documents — ניהול קבצים</h2>
+    <p class="section-lede">העלאה, אחסון, והורדה של קבצים — עם signed URLs ו-encryption ברמת השדה.</p>
+  </div>
+
+  <div class="phase-card">
+    <div class="phase-header">
+      <div class="phase-num">04</div>
+      <div class="phase-title-block">
+        <div class="phase-title">Documents — File Management</div>
+        <div class="phase-subtitle">שניהם · 2-3 ימים</div>
+        <div class="phase-meta">
+          <span class="metric"><strong>תלוי:</strong> Phase 3</span>
+          <span class="metric"><strong>Storage:</strong> Cloudflare R2</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase-content">
+      <div class="phase-section">
+        <div class="phase-section-title">📦 מה בונים</div>
+        <ul class="clean">
+          <li><strong>R2 client</strong> דרך AWS SDK ב-<code>apps/api/src/storage/</code></li>
+          <li><strong>Presigned URL service</strong> — PUT לupload, GET להורדה</li>
+          <li><strong>Documents controller</strong> — endpoints ליצירה/הורדה/מחיקה</li>
+          <li><strong>File size validation</strong> (max 50MB ב-MVP)</li>
+          <li><strong>File type validation</strong> (MIME + magic bytes)</li>
+          <li><strong>Object key naming</strong> — <code>tenants/{org_id}/documents/{file_id}/{filename}</code></li>
+          <li><strong>Frontend</strong>: file uploader עם drag-and-drop, progress bar</li>
+          <li><strong>Frontend</strong>: file list per project/owner/unit</li>
+          <li><strong>Frontend</strong>: download view (PDF preview ב-iframe)</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🔒 חוקי אבטחה ל-Phase (חובה)</div>
+        <ul class="checks">
+          <li>Signed URLs בלבד — אין public buckets</li>
+          <li>Signed URL expiration: 15 דקות לupload, 1 שעה להורדה</li>
+          <li>File size limit (50MB) — מוגדר גם ב-R2 וגם ב-API</li>
+          <li>MIME type whitelist: PDF, JPG, PNG, XLSX, DOCX</li>
+          <li>Magic bytes verification (לא רק MIME מהheader)</li>
+          <li>Object key תמיד כולל tenant_id (חוסם cross-tenant access)</li>
+          <li>Audit log על upload + download</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">⚡ חוקי ביצועים ל-Phase</div>
+        <ul class="checks">
+          <li>Direct upload ל-R2 (לא דרך Backend) — חוסך bandwidth</li>
+          <li>Streaming downloads — לא טוען את הקובץ לזיכרון</li>
+          <li>R2 לידי Cloudflare CDN — אפס egress fees</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🧪 הטסטים החיוניים</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>טסט</th></tr></thead>
+            <tbody>
+              <tr><td><code>T4.1</code></td><td>Presigned URL generation works</td></tr>
+              <tr><td><code>T4.2</code></td><td>Presigned URL expiration → 403 after timeout</td></tr>
+              <tr><td><code>T4.3</code></td><td>Upload large file (10MB) succeeds</td></tr>
+              <tr><td><code>T4.4</code></td><td>Upload file &gt; 50MB rejected</td></tr>
+              <tr><td><code>T4.5</code></td><td>Upload .exe rejected (MIME check)</td></tr>
+              <tr><td><code>T4.6</code></td><td>Cross-tenant access blocked (orgA cannot access orgB files)</td></tr>
+              <tr><td><code>T4.7</code></td><td>Download works with signed URL</td></tr>
+              <tr><td><code>T4.8</code></td><td>Soft delete keeps file in R2 but blocks new access</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="done-criteria">
+        <div class="done-criteria-title">✓ הגדרת Done</div>
+        <ul>
+          <li>משתמש יכול להעלות PDF/Excel דרך drag-and-drop</li>
+          <li>קובץ נשמר ב-R2 עם key נכון</li>
+          <li>משתמש יכול להוריד קובץ דרך לינק חתום</li>
+          <li>Cross-tenant access חסום (טסט אבטחה ידני)</li>
+          <li>כל 8 הטסטים של Phase 4 ירוקים</li>
+          <li>Frontend: דף documents עם list + uploader עובד</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= SECTION 9: PHASE 5 ============= -->
+<section id="section-9">
+  <div class="section-header">
+    <div class="section-num">09 · Phase 5</div>
+    <h2 class="section-title">Signatures — חתימות דיגיטליות</h2>
+    <p class="section-lede">החתימה היא הפיצ'ר הקריטי ביותר ב-MVP. אם בעל דירה לא מצליח לחתום, היזם לא יקנה.</p>
+  </div>
+
+  <div class="phase-card critical">
+    <div class="phase-header">
+      <div class="phase-num">05</div>
+      <div class="phase-title-block">
+        <div class="phase-title">Signatures — Digital Signing</div>
+        <div class="phase-subtitle">שניהם · Critical for Beta · 3-4 ימים</div>
+        <div class="phase-meta">
+          <span class="metric"><strong>תלוי:</strong> Phase 4</span>
+          <span class="metric"><strong>סוג:</strong> Canvas only</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase-content">
+      <div class="phase-section">
+        <div class="phase-section-title">📦 מה בונים</div>
+        <ul class="clean">
+          <li><strong>Signature request entity</strong> — ב-DB עם status (pending/signed/cancelled)</li>
+          <li><strong>Token service</strong> — יצירת JWT ייחודי לחתימה (תוקף 7 ימים)</li>
+          <li><strong>Public sign endpoint</strong> — לא דורש auth, מבוסס JWT</li>
+          <li><strong>Signature service</strong> — שמירת PNG ב-R2 + רשומה ב-DB</li>
+          <li><strong>Audit metadata</strong> — IP, User-Agent, timestamp, device fingerprint</li>
+          <li><strong>Email notification</strong> ליזם כשבעל דירה חותם</li>
+          <li><strong>Email confirmation</strong> לבעל דירה אחרי שחתם</li>
+          <li><strong>Frontend (פנימי)</strong>: יצירת signature request, ראיית סטטוס</li>
+          <li><strong>Frontend (ציבורי)</strong>: <code>/sign/[token]</code> — דף חתימה אינטואיטיבי</li>
+          <li><strong>Canvas component</strong> — חתימה במגע על מובייל, עכבר על דסקטופ</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🔒 חוקי אבטחה ל-Phase (חובה)</div>
+        <ul class="checks">
+          <li>JWT secret נפרד מ-Better Auth (לא משותף!)</li>
+          <li>Token חד-פעמי — blacklist אחרי שימוש</li>
+          <li>Rate limiting (5 attempts per IP per hour)</li>
+          <li>IP + User-Agent נשמרים ב-DB (audit)</li>
+          <li>אין logging של token (גם לא partial)</li>
+          <li>HTTPS חובה + HSTS</li>
+          <li>CSP מחמיר על דף החתימה (אין external scripts)</li>
+          <li>PNG signature עם resolution גבוה (מספיק להגדלה)</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">⚡ חוקי ביצועים ל-Phase</div>
+        <ul class="checks">
+          <li>דף החתימה: מינימום JS (Canvas + minimal logic)</li>
+          <li>Bundle size לדף ציבורי &lt; 100KB</li>
+          <li>PDF preview: lazy loading</li>
+          <li>Canvas to PNG conversion ב-client (חוסך bandwidth)</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🧪 הטסטים החיוניים</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>טסט</th></tr></thead>
+            <tbody>
+              <tr><td><code>T5.1</code></td><td>Token generation valid</td></tr>
+              <tr><td><code>T5.2</code></td><td>Token expiration → 401 after 7 days</td></tr>
+              <tr><td><code>T5.3</code></td><td>Token reuse blocked</td></tr>
+              <tr><td><code>T5.4</code></td><td>Public sign happy path E2E</td></tr>
+              <tr><td><code>T5.5</code></td><td>Canvas mobile (touch)</td></tr>
+              <tr><td><code>T5.6</code></td><td>Rate limit → 429 after 5 attempts</td></tr>
+              <tr><td><code>T5.7</code></td><td>Email notification sent</td></tr>
+              <tr><td><code>T5.8</code></td><td>Audit metadata captured</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">⚠️ מה לא נכלל ב-Phase 5</div>
+        <ul class="crosses">
+          <li>OTP / SMS verification — <strong>ב-MVP</strong> (Tenant login, ספק ישראלי — D.17+D.20)</li>
+          <li>Offline support — דחוי</li>
+          <li>חתימה אלקטרונית מאושרת רגולטורית (Comda) — Phase 3</li>
+          <li>Multi-signer (כמה אנשים חותמים על אותו מסמך) — דחוי</li>
+        </ul>
+      </div>
+
+      <div class="done-criteria">
+        <div class="done-criteria-title">✓ הגדרת Done</div>
+        <ul>
+          <li>יזם יכול ליצור signature request ולשלוח לינק</li>
+          <li>בעל דירה פותח לינק במובייל וחותם תוך 1 דקה</li>
+          <li>חתימה נשמרת כ-PNG ב-R2 + רשומה ב-DB</li>
+          <li>יזם רואה סטטוס (pending/signed) ב-real-time</li>
+          <li>Audit log כולל IP, UA, timestamp</li>
+          <li>כל 8 הטסטים של Phase 5 ירוקים</li>
+          <li>טסט ידני: בעל דירה אמיתי (חבר/בן משפחה) חותם בלי הדרכה</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= SECTION 10: PHASE 6 ============= -->
+<section id="section-10">
+  <div class="section-header">
+    <div class="section-num">10 · Phase 6</div>
+    <h2 class="section-title">Import — ייבוא Excel</h2>
+    <p class="section-lede">הפיצ'ר שיגרום ליזם לעבור או לא לעבור מ-Excel. אם הייבוא קשה, הוא יחזור ל-Excel.</p>
+  </div>
+
+  <div class="phase-card critical">
+    <div class="phase-header">
+      <div class="phase-num">06</div>
+      <div class="phase-title-block">
+        <div class="phase-title">Import Pipeline</div>
+        <div class="phase-subtitle">שניהם · Critical for Beta · 4-5 ימים</div>
+        <div class="phase-meta">
+          <span class="metric"><strong>יעד:</strong> 100 שורות &lt; 45s (Free Tier)</span>
+          <span class="metric"><strong>תלוי:</strong> Phase 4 (R2)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase-content">
+      <div class="phase-section">
+        <div class="phase-section-title">📦 מה בונים</div>
+        <ul class="clean">
+          <li><strong>BullMQ infrastructure</strong> — Queue + Worker + BullBoard UI</li>
+          <li><strong>SSE infrastructure</strong> לעדכוני progress</li>
+          <li><strong>Import job state machine</strong> ב-DB (queued/parsing/validating/persisting/done/failed)</li>
+          <li><strong>ExcelJS streaming parser</strong> — לא טוען את כל הקובץ לזיכרון</li>
+          <li><strong>Mapping templates</strong> — auto-detect by fingerprint של headers</li>
+          <li><strong>Validation engine</strong> — Israeli ID Luhn + dedup + business rules</li>
+          <li><strong>Persistence stage</strong> — transactional + partial success</li>
+          <li><strong>Idempotency-Key handling</strong> — UNIQUE ב-DB</li>
+          <li><strong>Dry-run mode</strong> — לפני commit, לראות מה יקרה</li>
+          <li><strong>Frontend</strong>: Wizard בן 5 שלבים</li>
+          <li><strong>Frontend</strong>: Progress bar עם SSE</li>
+          <li><strong>Frontend</strong>: Error report + ייצוא של שגיאות לExcel</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🔒 חוקי אבטחה ל-Phase (חובה)</div>
+        <ul class="checks">
+          <li>Presigned URLs עם תוקף 15 דקות לupload</li>
+          <li>File size limit (50MB ב-MVP)</li>
+          <li>File type validation (MIME + magic bytes)</li>
+          <li>ExcelJS עם <code>cellFormula: false</code> למניעת formula injection</li>
+          <li>ID Luhn validation לפני שמירה</li>
+          <li>Idempotency-Key UNIQUE ב-DB</li>
+          <li>Audit log על כל import job</li>
+          <li>תיק זמני נמחק אחרי הצלחה / כישלון</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">⚡ חוקי ביצועים ל-Phase (חובה)</div>
+        <ul class="checks">
+          <li>ExcelJS ב-streaming mode בלבד</li>
+          <li>Batch insert של 500 שורות ב-transaction</li>
+          <li>Savepoint כל 1000 שורות (לאחת מתוך הbatch להיכשל)</li>
+          <li>BullMQ concurrency = מספר CPUs</li>
+          <li>SSE events מקובצים: כל 500ms או כל 1000 שורות</li>
+          <li>Validation rules בצמרים (<code>SELECT EXISTS</code>, לא <code>SELECT *</code>)</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🧪 הטסטים החיוניים</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>טסט</th></tr></thead>
+            <tbody>
+              <tr><td><code>T6.1</code></td><td>Excel header detection</td></tr>
+              <tr><td><code>T6.2</code></td><td>Mapping auto-detect by fingerprint</td></tr>
+              <tr><td><code>T6.3</code></td><td>Israeli ID Luhn validation</td></tr>
+              <tr><td><code>T6.4</code></td><td>Dedup detection (אותו ID פעמיים)</td></tr>
+              <tr><td><code>T6.5</code></td><td>Dry-run no DB change</td></tr>
+              <tr><td><code>T6.6</code></td><td>Idempotency-Key prevents double import</td></tr>
+              <tr><td><code>T6.7</code></td><td>Partial failure rollback</td></tr>
+              <tr><td><code>T6.8</code></td><td>BullMQ job runs to completion</td></tr>
+              <tr><td><code>T6.9</code></td><td>SSE delivers progress events</td></tr>
+              <tr style="background: var(--primary-light);"><td><code>T6.10</code></td><td><strong>100 rows &lt; 45s (Free Tier)</strong></td></tr>
+              <tr><td><code>T6.11</code></td><td>1000 rows succeed (scale test)</td></tr>
+              <tr><td><code>T6.12</code></td><td>E2E import wizard</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="done-criteria">
+        <div class="done-criteria-title">✓ הגדרת Done</div>
+        <ul>
+          <li>יזם מעלה Excel חופשי ומקבל preview של mapping</li>
+          <li>יזם מאשר ייבוא, רואה progress בזמן אמת</li>
+          <li>אחרי הייבוא, יזם רואה דוח מלא: מה נשמר, מה נדחה, למה</li>
+          <li>ייבוא 100 שורות &lt; 45 שניות ב-Free Tier</li>
+          <li>כל 12 הטסטים של Phase 6 ירוקים</li>
+          <li>Idempotency עובד: לחיצה כפולה לא יוצרת כפילות</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============= NEW PHASE 6.5: PROVIDER ADMIN TOOL ============= -->
+  <div class="phase-card new" style="border: 2px solid var(--gold);">
+    <div class="phase-header">
+      <div class="phase-num" style="background: var(--gold);">6.5</div>
+      <div class="phase-title-block">
+        <div class="phase-title">Provider Admin Tool — כלי תמיכה פנימי (חדש ב-v2)</div>
+        <div class="phase-subtitle">Backend + Frontend (subset) · ~3 ימי עבודה · אופציונלי לפני בטא, חובה לפני production</div>
+        <div class="phase-meta">
+          <span class="metric"><strong>תלוי:</strong> Phase 1 (Provider tier ב-DB), Phase 2 (auth)</span>
+          <span class="metric"><strong>המוצר:</strong> חלק מאפליקציית ה-FE הקיימת, מאחורי routes נפרדים</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase-content">
+      <div class="phase-section">
+        <div class="phase-section-title">📦 מה בונים</div>
+
+        <p style="font-size: 14px;"><strong>החלטה ארכיטקטונית:</strong> ה-Provider Admin tool הוא <strong>section של ה-FE הקיים</strong> (לא אפליקציה נפרדת), מאחורי routes <code>/provider/*</code> מוגנים על-ידי <code>ProviderAuthGuard</code>. הסיבה: שיתוף קוד (componnts, types, design system), אבל הפרדה תפעולית מלאה (auth flow נפרד, session נפרד, role נפרד ב-DB).</p>
+
+        <ul class="clean">
+          <li><strong>Routes:</strong>
+            <ul>
+              <li><code>/provider/login</code> — login נפרד עם MFA חובה</li>
+              <li><code>/provider/orgs</code> — חיפוש ארגונים לפי email/domain (audited)</li>
+              <li><code>/provider/orgs/:id</code> — צפייה במטא של הארגון: ארץ עוצמה, פרויקטים, משתמשים. <strong>לא ניתן לערוך</strong> ב-MVP — צפייה בלבד</li>
+              <li><code>/provider/audit</code> — view של <code>provider_audit_log</code> — מי, מתי, איזה reason, מה נצפה</li>
+            </ul>
+          </li>
+          <li><strong>BE endpoints (חדשים):</strong>
+            <ul>
+              <li><code>POST /api/v1/provider/auth/login</code> — login עם email + password + TOTP חובה</li>
+              <li><code>GET /api/v1/provider/orgs?q=&lt;search&gt;</code> — חיפוש; דורש <code>reason</code> בquery string ל-audit</li>
+              <li><code>GET /api/v1/provider/orgs/:id</code> — מטא של ארגון; דורש <code>reason</code></li>
+              <li><code>GET /api/v1/provider/audit</code> — צפייה ב-audit log</li>
+            </ul>
+          </li>
+          <li><strong>ProviderAuthGuard</strong> — guard נפרד מ-<code>AuthGuard</code>. בודק JWT עם claim <code>tier=provider</code>, בודק שה-MFA אומת, בודק שה-session חי (30 דק'). אם משהו לא — 401 מיידי, ללא session refresh</li>
+          <li><strong>Audit הצמדה אוטומטית</strong> — כל endpoint <code>/api/v1/provider/*</code> דורש <code>reason: string</code> ב-body או query, נשמר ב-<code>provider_audit_log</code> לפני שה-handler רץ. אין endpoint שאינו audited</li>
+          <li><strong>PII masking ב-UI</strong> — תעודות זהות וטלפונים מוצגים כ-<code>***-1234</code> כברירת מחדל. הצגה מלאה דורשת לחיצה מפורשת ("Show PII") שיוצרת audit entry נוסף עם action <code>'decrypt'</code></li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🔒 חוקי אבטחה ל-Phase</div>
+        <ul class="checks">
+          <li>MFA חובה — אין override אפילו ל-CTO. ב-schema: <code>provider_users.mfa_enabled NOT NULL DEFAULT FALSE</code> + check constraint ש-MFA חייב להיות enabled לפני login ראשון</li>
+          <li>Session timeout 30 דקות — לא 7 ימים כמו רגיל</li>
+          <li>אין "remember me" / persistent session</li>
+          <li>Reason חובה לכל הendpoints — ZodValidationPipe דוחה ללא reason</li>
+          <li>Provider can't impersonate — אין endpoint "login as user X". יש רק read-only על data</li>
+          <li>Email התראה אוטומטי ל-Provider Admin בכל login (anti-phishing)</li>
+          <li>IP allowlist (אופציונלי) — Phase 7 hardening</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🧪 הטסטים</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>טסט</th></tr></thead>
+            <tbody>
+              <tr><td><code>T6.5.1</code></td><td>Provider login ללא MFA → 401</td></tr>
+              <tr><td><code>T6.5.2</code></td><td>Provider endpoint ללא reason → 400 Bad Request</td></tr>
+              <tr><td><code>T6.5.3</code></td><td>Every provider endpoint call writes to <code>provider_audit_log</code></td></tr>
+              <tr><td><code>T6.5.4</code></td><td>PII masking — default response shows masked, with explicit unmask flag returns full</td></tr>
+              <tr><td><code>T6.5.5</code></td><td>Session 30min — after 31min request → 401</td></tr>
+              <tr><td><code>T6.5.6</code></td><td>Customer JWT cannot access <code>/api/v1/provider/*</code> — 403 Forbidden</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="done-criteria">
+        <div class="done-criteria-title">✓ הגדרת Done</div>
+        <ul>
+          <li>Provider Admin יכול להתחבר עם MFA</li>
+          <li>חיפוש ארגון לפי email עובד עם reason</li>
+          <li>צפייה במטא של ארגון מציגה PII ממוסך</li>
+          <li>Audit log מציג את כל הפעולות (כולל אלה של ה-Provider עצמו)</li>
+          <li>כל 6 הטסטים של Phase 6.5 ירוקים</li>
+          <li>אין דרך לעקוף את ה-MFA או ה-reason requirement</li>
+        </ul>
+      </div>
+
+      <div class="callout info">
+        <div class="callout-title">💡 למה לא להפעיל ב-Phase 1 עם הקמת ה-Provider tier?</div>
+        <div class="callout-body">Phase 1 בונה את ה-<strong>תשתית</strong> (טבלאות, role, wrapper) — אבל אין צורך ב-UI לתמיכה כי אין עדיין לקוחות. Phase 6.5 בא אחרי שיש פרויקטים, ייבוא, ויזמים שעובדים — אז יכול להגיע ticket תמיכה ראשון. עד אז ה-Provider tier יושב במחסן.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= SECTION 11: PHASE 7 ============= -->
+<section id="section-11">
+  <div class="section-header">
+    <div class="section-num">11 · Phase 7</div>
+    <h2 class="section-title">Export — ייצוא Excel ו-PDF</h2>
+    <p class="section-lede">המראה החיצוני של המערכת. כשיזם שולח דוח ללקוח או לרשות, הוא מתביית בתבנית.</p>
+  </div>
+
+  <div class="phase-card">
+    <div class="phase-header">
+      <div class="phase-num">07</div>
+      <div class="phase-title-block">
+        <div class="phase-title">Export Pipeline</div>
+        <div class="phase-subtitle">שניהם · 2-3 ימים</div>
+        <div class="phase-meta">
+          <span class="metric"><strong>Excel 1000 שורות:</strong> &lt; 25s (Free Tier)</span>
+          <span class="metric"><strong>PDF 1000 שורות:</strong> &lt; 45s (Free Tier)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase-content">
+      <div class="phase-section">
+        <div class="phase-section-title">📦 מה בונים</div>
+        <ul class="clean">
+          <li><strong>Export job state machine</strong> ב-BullMQ</li>
+          <li><strong>ExcelJS streaming renderer</strong> — RTL + Heebo font</li>
+          <li><strong>Puppeteer pool service</strong> — 4 pages פתוחות מראש</li>
+          <li><strong>PDF renderer</strong> — HTML עם Heebo embedded</li>
+          <li><strong>Templates</strong> עם branding של היזם (logo, header, footer)</li>
+          <li><strong>Resend integration</strong> לאימייל קישורים</li>
+          <li><strong>Frontend</strong>: Export builder UI — בחירת שדות, סינון, פורמט</li>
+          <li><strong>Frontend</strong>: Progress + download link</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🔒 חוקי אבטחה ל-Phase</div>
+        <ul class="checks">
+          <li>Signed URL לקובץ ייצוא — תוקף 24 שעות</li>
+          <li>HTML escape של כל user input ב-PDF templates</li>
+          <li>Path traversal protection ב-template loading</li>
+          <li>Rate limit על ייצוא (10 per user per hour)</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">⚡ חוקי ביצועים ל-Phase</div>
+        <ul class="checks">
+          <li>ExcelJS streaming write (לא buffer)</li>
+          <li>Puppeteer pool — 4 pages פתוחות מראש</li>
+          <li>Heebo embedded ב-base64 (לא Google Fonts fetch)</li>
+          <li>Async + email לקבצים &gt; 10K שורות</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🧪 הטסטים החיוניים</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>טסט</th></tr></thead>
+            <tbody>
+              <tr><td><code>T7.1</code></td><td>Excel renders RTL נכון</td></tr>
+              <tr><td><code>T7.2</code></td><td>Excel Hebrew font (Heebo) נראה תקין</td></tr>
+              <tr><td><code>T7.3</code></td><td>PDF Hebrew text RTL נכון</td></tr>
+              <tr><td><code>T7.4</code></td><td>PDF branding (logo) מופיע</td></tr>
+              <tr><td><code>T7.5</code></td><td>Signed URL works</td></tr>
+              <tr><td><code>T7.6</code></td><td>Email delivery עם link</td></tr>
+              <tr style="background: var(--primary-light);"><td><code>T7.7</code></td><td><strong>Excel 1000 rows &lt; 25s (Free Tier)</strong></td></tr>
+              <tr style="background: var(--primary-light);"><td><code>T7.8</code></td><td><strong>PDF 1000 rows &lt; 45s (Free Tier)</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="done-criteria">
+        <div class="done-criteria-title">✓ הגדרת Done</div>
+        <ul>
+          <li>יזם מייצא Excel/PDF של פרויקט עם בעלי דירות</li>
+          <li>הקובץ נראה מקצועי, RTL נכון, פונט עברי</li>
+          <li>זמני יעד עומדים</li>
+          <li>כל 8 הטסטים ירוקים</li>
+          <li>Email עם link מגיע ללקוח עם RTL נכון</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= SECTION 12: PHASE 8 ============= -->
+<section id="section-12">
+  <div class="section-header">
+    <div class="section-num">12 · Phase 8</div>
+    <h2 class="section-title">Frontend Polish</h2>
+    <p class="section-lede">השלב שהופך את ה-MVP מ"עובד" ל"נעים לשימוש". UI/UX מקצועי, RTL מלא, design tokens.</p>
+  </div>
+
+  <div class="phase-card">
+    <div class="phase-header">
+      <div class="phase-num">08</div>
+      <div class="phase-title-block">
+        <div class="phase-title">Frontend Polish</div>
+        <div class="phase-subtitle">Frontend בלבד · 3-5 ימים · במקביל ל-Phase 3-7</div>
+      </div>
+    </div>
+
+    <div class="phase-content">
+      <div class="phase-section">
+        <div class="phase-section-title">📦 מה בונים</div>
+        <ul class="clean">
+          <li><strong>Next.js App Router structure</strong> מסודר</li>
+          <li><strong>Design tokens</strong> ב-Tailwind config (colors, spacing, typography)</li>
+          <li><strong>shadcn/ui</strong> עם RTL fully working</li>
+          <li><strong>Heebo font</strong> מטומע (next/font/google)</li>
+          <li><strong>i18n setup</strong> — next-intl, עברית + אנגלית</li>
+          <li><strong>Forms</strong> — react-hook-form + Zod resolver</li>
+          <li><strong>Tables</strong> — TanStack Table עם sorting, filtering, pagination</li>
+          <li><strong>Loading states</strong> — Skeleton components</li>
+          <li><strong>Error boundaries</strong> — לא ליפול בכל error</li>
+          <li><strong>Toasts</strong> — feedback אחרי actions</li>
+          <li><strong>Mobile responsive</strong> — שיהיה שמיש מ-768px</li>
+          <li><strong>Accessibility</strong> — keyboard nav, ARIA labels</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">⚡ חוקי ביצועים ל-Phase (חובה)</div>
+        <ul class="checks">
+          <li>Server Components כברירת מחדל</li>
+          <li>TanStack Query עם <code>staleTime: 30000</code></li>
+          <li>Lazy load לרכיבים כבדים</li>
+          <li>Image optimization דרך <code>&lt;Image&gt;</code></li>
+          <li>Lighthouse Performance &gt; 75 ב-Free Tier</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🧪 הטסטים החיוניים</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>טסט</th></tr></thead>
+            <tbody>
+              <tr><td><code>T8.1</code></td><td>Lighthouse Performance &gt; 75</td></tr>
+              <tr><td><code>T8.2</code></td><td>Mobile responsive 768px+</td></tr>
+              <tr><td><code>T8.3</code></td><td>a11y violations = 0 (axe-core)</td></tr>
+              <tr><td><code>T8.4</code></td><td>Forms validate (אסור לשלוח invalid)</td></tr>
+              <tr><td><code>T8.5</code></td><td>Error boundary catches FE errors</td></tr>
+              <tr><td><code>T8.6</code></td><td>Loading states no layout shift</td></tr>
+              <tr><td><code>T8.7</code></td><td>RTL נראה מצוין בכל הדפים</td></tr>
+              <tr><td><code>T8.8</code></td><td>i18n switching עובד (HE ↔ EN)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="done-criteria">
+        <div class="done-criteria-title">✓ הגדרת Done</div>
+        <ul>
+          <li>כל הדפים נראים מקצועיים ועקביים</li>
+          <li>RTL מושלם — אין שדה אחד שעובר ל-LTR</li>
+          <li>Lighthouse &gt; 75</li>
+          <li>אפס a11y violations</li>
+          <li>i18n עובד (אפילו ש-MVP בעברית בלבד תחילה)</li>
+          <li>Mobile usable מ-iPhone SE ומעלה</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= SECTION 13: PHASE 9 ============= -->
+<section id="section-13">
+  <div class="section-header">
+    <div class="section-num">13 · Phase 9</div>
+    <h2 class="section-title">Quality + Launch</h2>
+    <p class="section-lede">השלב האחרון. Security audit, performance benchmarks, deploy ל-Production, RUNBOOK.</p>
+  </div>
+
+  <div class="phase-card">
+    <div class="phase-header">
+      <div class="phase-num">09</div>
+      <div class="phase-title-block">
+        <div class="phase-title">Quality Gates ו-Launch</div>
+        <div class="phase-subtitle">שניהם · Final · 3-4 ימים</div>
+      </div>
+    </div>
+
+    <div class="phase-content">
+      <div class="phase-section">
+        <div class="phase-section-title">📦 מה בונים</div>
+        <ul class="clean">
+          <li><strong>E2E tests (Playwright)</strong> — 5 critical flows</li>
+          <li><strong>Performance benchmarks</strong> — אוטומטיים בCI</li>
+          <li><strong>Security audit</strong> — OWASP Top 10 self-check</li>
+          <li><strong>Sentry FE+BE</strong> — מוכן לקבל errors</li>
+          <li><strong>Structured logs (pino)</strong> — אלטרנטיבה ל-console.log</li>
+          <li><strong>Health check endpoints</strong> — <code>/health</code> ב-FE+BE</li>
+          <li><strong>RUNBOOK.md</strong> — מה לעשות במצבי חירום</li>
+          <li><strong>MIGRATION.md</strong> — playbook להגירה ל-production</li>
+          <li><strong>Production deployment</strong> ל-Railway (BE container + Worker container) + Cloudflare Pages (FE)</li>
+          <li><strong>Custom domain + SSL</strong></li>
+          <li><strong>Beta user docs</strong> — 5 דפים ראשונים</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🔒 Security Audit Checklist</div>
+        <ul class="checks">
+          <li>RLS enabled + FORCED על כל הטבלאות</li>
+          <li>RLS isolation test ירוק</li>
+          <li>אין secrets ב-repo (gitleaks scan)</li>
+          <li>HTTPS עם HSTS</li>
+          <li>CORS strict</li>
+          <li>Rate limiting על public endpoints</li>
+          <li>Sentry פעיל בשני הצדדים</li>
+          <li>pnpm audit נקי (0 high/critical)</li>
+          <li>Webhook svix verification</li>
+          <li>OWASP Top 10 self-check עבר</li>
+        </ul>
+      </div>
+
+      <div class="phase-section">
+        <div class="phase-section-title">🧪 5 ה-E2E Flows הקריטיים</div>
+        <ol>
+          <li><strong>Onboarding:</strong> Signup → create org → create first project</li>
+          <li><strong>Import:</strong> Upload Excel → review → confirm → see results</li>
+          <li><strong>Signing:</strong> Create signature request → owner signs → see status</li>
+          <li><strong>Document:</strong> Upload PDF → attach to owner → download</li>
+          <li><strong>Export:</strong> Generate PDF report → download → email link</li>
+        </ol>
+      </div>
+
+      <div class="done-criteria">
+        <div class="done-criteria-title">✓ הגדרת Done — MVP מוכן לבטא</div>
+        <ul>
+          <li>כל הטסטים של 9 ה-Phases ירוקים</li>
+          <li>5 E2E flows ירוקים</li>
+          <li>Security audit עבר</li>
+          <li>Performance benchmarks עומדים ב-MVP targets</li>
+          <li>Deploy ל-production מצליח</li>
+          <li>Health checks ירוקים</li>
+          <li>RUNBOOK ו-MIGRATION מסמכים מעודכנים</li>
+          <li>Beta user docs מוכנים</li>
+          <li>3 לקוחות בטא הוזמנו</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= SECTION 14: MILESTONES ============= -->
+<section id="section-14">
+  <div class="section-header">
+    <div class="section-num">14 · אבני דרך</div>
+    <h2 class="section-title">3 אבני הדרך של ה-MVP</h2>
+    <p class="section-lede">חשוב לזהות נקודות צ'ק-פוינט שמסמנות התקדמות אמיתית, לא רק "Phase X done".</p>
+  </div>
+
+  <div class="card">
+    <h4>🚦 אבן דרך 1: "התשתית עובדת"</h4>
+    <p>בסוף Phase 2 (אחרי ~3 שבועות). Backend רץ, DB עם 18+2 טבלאות + RLS + dual wrappers + 6 interfaces עובד, יוזר יכול להתחבר. Provider tier setup הושלם עם MFA חובה. אין עדיין business logic, אבל כל התשתית במקום.</p>
+    <p><strong>למה זה חשוב:</strong> זו הנקודה שבה אתה יודע שהבחירות הטכנולוגיות שלך נכונות. אם משהו לא יעבוד — עכשיו הזמן לתקן, לא בעוד 3 שבועות. T1.5/T1.6/T1.7 ב-CI מבטיחים שאי-אפשר לחזור אחורה במקרה של regression.</p>
+  </div>
+
+  <div class="card">
+    <h4>🚦 אבן דרך 2: "הליבה עובדת end-to-end"</h4>
+    <p>בסוף Phase 5 (אחרי ~7 שבועות). יזם יכול: יצירת פרויקט, הוספת בעלי דירות (PII מוצפן), העלאת מסמכים, שליחת חתימה, הקצאת אגנט, יצירת משימות, קבלת התראות (SSE). <strong>בעל דירה יכול לחתום</strong>. <strong>קבלן יכול להיכנס דרך share עם הרשאות פרטניות</strong>.</p>
+    <p><strong>למה זה חשוב:</strong> זו ההזדמנות הראשונה שלך להראות את המוצר ל-2-3 לקוחות פוטנציאליים. הם רואים demo, ונותנים פידבק שיכול לשנות את Phase 6-9.</p>
+  </div>
+
+  <div class="card">
+    <h4>🚦 אבן דרך 3: "MVP מוכן לבטא"</h4>
+    <p>בסוף Phase 9 (אחרי ~3 חודשים). כל ה-MVP עובד, deployed ל-Railway + Cloudflare Pages, מתועד. Provider Admin יכול לתת תמיכה ללקוחות (עם audit). 3 לקוחות בטא יכולים להתחיל.</p>
+    <p><strong>למה זה חשוב:</strong> זה הסיום של MVP ופתיחה של שלב חדש — Beta. ה-feedback ב-Beta יכווין את Phase 2 של מוצר (chat, AI, OCR, field tasks — ראה Doc 01 §8 ו-Doc 02 §16.3). הערה: tenant portal + SMS כבר ב-MVP (D.17+D.20).</p>
+  </div>
+</section>
+
+<!-- ============= SECTION 15: NEXT STEPS ============= -->
+<section id="section-15">
+  <div class="section-header">
+    <div class="section-num">15 · צעדים הבאים</div>
+    <h2 class="section-title">מה אחרי המסמך הזה</h2>
+    <p class="section-lede">המסמך הזה הוא ה-"מפת דרכים" של ה-Roadmap. המסמכים הנלווים נותנים את הפרטים — Doc 02 לארכיטקטורה, Doc 04c לסכמת הDB, Doc 07 לאבטחה.</p>
+  </div>
+
+  <h3>15.1 מה השגנו במסמך הזה</h3>
+
+  <ul class="checks">
+    <li>הגדרנו פילוסופיית MVP ברורה — תשתית מצוינת + פיצ'רים מינימליים אך מושלמים</li>
+    <li>הגדרנו scope מדויק — מה ב-MVP (כולל 4 פיצ'רים חדשים: tasks/notifications/assignments + Contractor + Provider tier + Interface Layer), מה דחוי, מה לעולם לא</li>
+    <li>תכננו 10 שלבי בנייה (Phase 0-9) עם תלויות ברורות</li>
+    <li>הגדרנו "done" לכל שלב, כולל קריטריוני T1.5/T1.6/T1.7 ב-CI ל-Phase 1</li>
+    <li>זיהינו 3 שלבים קריטיים שאסור לטעות בהם (Phase 1, 2, 5)</li>
+    <li>תכננו 3 אבני דרך עם משמעות עסקית</li>
+    <li>קבענו זמני יעד ריאליסטיים (~3 חודשים עד בטא, ~50 ימי עבודה)</li>
+  </ul>
+
+  <h3>15.2 המסמכים הנלווים — סטטוס נוכחי</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>מסמך</th>
+          <th>תוכן</th>
+          <th>סטטוס</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>01</td>
+          <td><strong>חזון ושוק (EMAPP)</strong></td>
+          <td>5 פרסונות, בידול תחרותי, מודל עסקי</td>
+          <td>v2 מעודכן</td>
+        </tr>
+        <tr>
+          <td>02</td>
+          <td><strong>ארכיטקטורת Production</strong></td>
+          <td>Stack, 5 עקרונות, multi-tenancy (6 תפקידים), Interface layer (6 interfaces), 8 חוקי portability</td>
+          <td>v2 מעודכן</td>
+        </tr>
+        <tr>
+          <td><strong>03</strong></td>
+          <td><strong>MVP Roadmap (זה!)</strong></td>
+          <td>10 phases, 18+2 טבלאות, scope מלא</td>
+          <td><strong>v2 מעודכן</strong></td>
+        </tr>
+        <tr>
+          <td>04a</td>
+          <td><strong>Claude Environment</strong></td>
+          <td>Claude Code setup, sub-agents, workflows</td>
+          <td>קיים</td>
+        </tr>
+        <tr>
+          <td>04b</td>
+          <td><strong>Phase 0 — Foundation</strong></td>
+          <td>10 משימות הקמת תשתית</td>
+          <td>קיים</td>
+        </tr>
+        <tr>
+          <td>04c</td>
+          <td><strong>Phase 1 — Database (חיוני!)</strong></td>
+          <td>הפירוט הטכני המלא ל-14 משימות Phase 1 — 18+2 טבלאות, RLS, dual wrappers, 6 interfaces, 9 טסטים קריטיים</td>
+          <td>v2 נכתב מחדש</td>
+        </tr>
+        <tr>
+          <td>05</td>
+          <td><strong>Frontend Sync</strong></td>
+          <td>משימות FE, types משותפים</td>
+          <td>קיים</td>
+        </tr>
+        <tr>
+          <td>06</td>
+          <td><strong>FE/BE Integration Contract</strong></td>
+          <td>חוזה אינטגרציה, OpenAPI, error handling</td>
+          <td>קיים</td>
+        </tr>
+        <tr>
+          <td>07</td>
+          <td><strong>Security Playbook</strong></td>
+          <td>threat model, PII, 10 איומים, incident response</td>
+          <td>v2 נכתב מחדש</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    <strong>הסדר המומלץ לפיתוח BE:</strong> 01 → 02 → 03 (זה) → 04a → 04b → 04c → 07 → התחל פיתוח.
+  </p>
+
+  <h3>15.3 הצעד הקונקרטי הבא</h3>
+
+  <ul class="num-list">
+    <li><strong>קרא את Doc 04c</strong> (Phase 1 Database) — זה ה-deep dive על השלב הקריטי ביותר. הוא מפרט את 14 המשימות, סכמות Drizzle של 18 הטבלאות, dual wrappers code, 6 interfaces, 9 טסטים. ~3-4 שעות קריאה מעמיקה.</li>
+    <li><strong>קרא את Doc 07</strong> (Security Playbook) — מודל איומים מלא, PII strategy, threat catalog. ~2-3 שעות.</li>
+    <li><strong>פתח חשבונות:</strong> GitHub, Neon, Railway, Cloudflare, Resend, Sentry. רשום domain emapp.io. (Phase 0 מפרט.)</li>
+    <li><strong>התחל Phase 0</strong> (Doc 04b) — ~5-7 ימי עבודה. הקמת monorepo + tooling.</li>
+    <li><strong>אחרי Phase 0 → Phase 1</strong> (Doc 04c) — ~8 ימי עבודה. ה-foundation שעליו הכל נבנה.</li>
+  </ul>
+
+  <div class="callout success" style="margin-top: 32px;">
+    <div class="callout-title">✓ ההצלחה של המסמך הזה</div>
+    <div class="callout-body">
+      המסמך הצליח אם אחרי שקראת אותו, אתה יודע: <strong>איזה Phase בא ראשון</strong>, <strong>מה צריך להיות בו</strong>, ו-<strong>איך לדעת שסיימת אותו</strong>. עבור Phase 1 — ה-Phase הקריטי — קרא גם את <strong>Doc 04c</strong> לפרטים המלאים. ל-roadmap קיימת תמונה כללית; ל-Doc 04c יש את הקוד עצמו.
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-meta">
+    <span>Doc 03 · EMAPP · MVP Roadmap (v2)</span>
+    <span>15 sections · 10 phases · 18+2 tables · ~50 ימי עבודה</span>
+  </div>
+  <div>נקרא יחד עם: <strong>Doc 02</strong> (Architecture) · <strong>Doc 04c</strong> (Phase 1 Database — הפרטים העמוקים) · <strong>Doc 07</strong> (Security Playbook)</div>
+  <div style="margin-top: 12px; font-size: 11px; color: var(--text-muted);">
+    EMAPP — Urban renewal SaaS. Roadmap = "מה ומתי"; Doc 04c = "איך"; Doc 07 = "למה בטוח".
+  </div>
+</footer>
+
+</main>
+</div>
+
+<script>
+const sections = document.querySelectorAll('section[id]');
+const tocLinks = document.querySelectorAll('.toc-link');
+
+function setActiveLink() {
+  let current = '';
+  sections.forEach(section => {
+    const top = section.offsetTop - 100;
+    if (window.scrollY >= top) current = section.id;
+  });
+  tocLinks.forEach(link => {
+    link.classList.remove('active');
+    if (link.getAttribute('href') === '#' + current) {
+      link.classList.add('active');
+    }
+  });
+}
+
+window.addEventListener('scroll', setActiveLink);
+setActiveLink();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,2924 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doc 02 — ארכיטקטורת Production</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #fafaf9; --bg-card: #fff; --bg-subtle: #f5f5f4; --bg-dark: #0c0a09; --bg-darker: #18181b;
+  --text: #0c0a09; --text-subtle: #44403c; --text-muted: #78716c;
+  --primary: #0f766e; --primary-hover: #0d5e57; --primary-light: #ccfbf1; --primary-border: #5eead4;
+  --success: #15803d; --success-light: #f0fdf4; --success-border: #bbf7d0;
+  --warning: #b45309; --warning-light: #fffbeb; --warning-border: #fde68a;
+  --danger: #b91c1c; --danger-light: #fef2f2; --danger-border: #fecaca;
+  --gold: #ca8a04; --gold-light: #fef9c3;
+  --purple: #7c3aed; --purple-light: #ede9fe;
+  --blue: #2563eb; --blue-light: #dbeafe;
+  --border: #e7e5e4; --border-strong: #d6d3d1;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.08);
+  --radius-sm: 6px; --radius: 10px; --radius-lg: 16px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; font-size: 15px; -webkit-font-smoothing: antialiased; direction: rtl; }
+.app { display: grid; grid-template-columns: 320px 1fr; min-height: 100vh; }
+.sidebar { position: sticky; top: 0; height: 100vh; background: white; border-left: 1px solid var(--border); border-right: none; overflow-y: auto; padding: 32px 0; }
+.sidebar-header { padding: 0 28px 24px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+.sidebar-doc-num { display: inline-block; background: var(--primary); color: white; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; margin-bottom: 10px; }
+.sidebar-title { font-size: 17px; font-weight: 800; line-height: 1.3; margin-bottom: 6px; }
+.sidebar-subtitle { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+.toc { list-style: none; padding: 0 14px; }
+.toc-item { margin-bottom: 2px; }
+.toc-link { display: flex; align-items: center; gap: 12px; padding: 9px 14px; color: var(--text-subtle); text-decoration: none; font-size: 13px; font-weight: 500; border-radius: var(--radius-sm); transition: all 0.15s ease; }
+.toc-link:hover { background: var(--bg-subtle); color: var(--text); }
+.toc-link.active { background: var(--primary-light); color: var(--primary); font-weight: 700; }
+.toc-num { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; background: var(--bg-subtle); border-radius: 6px; font-size: 11px; font-weight: 700; color: var(--text-subtle); flex-shrink: 0; font-family: 'JetBrains Mono', monospace; }
+.toc-link.active .toc-num { background: var(--primary); color: white; }
+.toc-divider { margin: 16px 14px 8px; padding: 8px 14px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+.toc-new .toc-num { background: var(--gold); color: white; }
+.toc-critical .toc-num { background: var(--danger); color: white; }
+.main { padding: 56px 64px 96px; max-width: 1080px; width: 100%; }
+.hero { margin-bottom: 64px; }
+.hero-meta { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.hero-doc-badge { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; background: var(--bg-dark); color: white; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; }
+.hero-doc-badge::before { content: ""; width: 6px; height: 6px; background: var(--primary); border-radius: 50%; }
+.hero-tag { display: inline-block; padding: 5px 12px; background: var(--primary-light); color: var(--primary); border-radius: 999px; font-size: 11px; font-weight: 600; }
+.hero-tag.new { background: var(--gold-light); color: var(--gold); }
+.hero-title { font-size: 48px; font-weight: 900; line-height: 1.05; letter-spacing: -0.02em; margin-bottom: 16px; background: linear-gradient(135deg, #0c0a09 0%, #0f766e 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.hero-lede { font-size: 19px; color: var(--text-subtle); line-height: 1.6; max-width: 720px; margin-bottom: 32px; }
+.hero-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-top: 2px solid var(--border); border-bottom: 2px solid var(--border); padding: 20px 0; }
+.hero-stat { border-left: 1px solid var(--border); padding: 0 20px; }
+.hero-stat:last-child { border-left: none; padding-left: 0; }
+.hero-stat:first-child { padding-right: 0; }
+.hero-stat-num { font-size: 28px; font-weight: 800; color: var(--primary); line-height: 1; margin-bottom: 4px; font-family: 'JetBrains Mono', monospace; }
+.hero-stat-label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+section { margin-bottom: 72px; scroll-margin-top: 32px; }
+.section-header { margin-bottom: 32px; }
+.section-num { display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: var(--primary); letter-spacing: 0.1em; margin-bottom: 8px; direction: ltr; text-align: right; }
+.section-title { font-size: 32px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; margin-bottom: 12px; }
+.section-lede { font-size: 16px; color: var(--text-subtle); max-width: 720px; line-height: 1.7; }
+h3 { font-size: 22px; font-weight: 700; margin: 48px 0 16px; letter-spacing: -0.01em; }
+h4 { font-size: 17px; font-weight: 700; margin: 28px 0 12px; }
+h5 { font-size: 15px; font-weight: 700; margin: 20px 0 10px; }
+p { margin-bottom: 14px; color: var(--text-subtle); line-height: 1.85; font-size: 15px; }
+p strong, li strong { color: var(--text); font-weight: 700; }
+.lead { font-size: 17px; line-height: 1.75; color: var(--text-subtle); margin-bottom: 24px; }
+.lead strong { color: var(--text); font-weight: 600; }
+ul, ol { margin-right: 0; margin-left: 0; padding-right: 22px; padding-left: 0; }
+li { margin-bottom: 8px; color: var(--text-subtle); line-height: 1.8; }
+ul.clean { list-style: none; padding-right: 0; }
+ul.clean li { padding-right: 24px; position: relative; }
+ul.clean li::before { content: "›"; position: absolute; right: 0; top: -2px; color: var(--primary); font-weight: 700; font-size: 18px; transform: scaleX(-1); }
+ul.checks { list-style: none; padding-right: 0; }
+ul.checks li { padding-right: 28px; position: relative; }
+ul.checks li::before { content: "✓"; position: absolute; right: 4px; top: 2px; color: var(--success); font-weight: 800; }
+ul.crosses { list-style: none; padding-right: 0; }
+ul.crosses li { padding-right: 28px; position: relative; }
+ul.crosses li::before { content: "✕"; position: absolute; right: 4px; top: 2px; color: var(--danger); font-weight: 800; }
+.num-list { list-style: none; padding: 0; counter-reset: num; }
+.num-list li { counter-increment: num; padding-right: 56px; position: relative; margin-bottom: 20px; line-height: 1.8; }
+.num-list li::before { content: counter(num, decimal-leading-zero); position: absolute; right: 0; top: -2px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: var(--primary); background: var(--primary-light); padding: 4px 8px; border-radius: 5px; }
+.hero-banner { background: linear-gradient(135deg, var(--bg-dark) 0%, #1c1917 100%); color: white; padding: 32px 36px; border-radius: var(--radius-lg); margin-bottom: 32px; position: relative; overflow: hidden; }
+.hero-banner::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, var(--primary), var(--gold)); }
+.hero-banner-num { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: var(--primary-border); letter-spacing: 0.1em; margin-bottom: 8px; direction: ltr; text-align: right; }
+.hero-banner-title { font-size: 30px; font-weight: 900; letter-spacing: -0.02em; margin-bottom: 8px; }
+.hero-banner-desc { color: rgba(255,255,255,0.8); font-size: 16px; max-width: 720px; line-height: 1.7; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); margin: 20px 0; background: white; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: var(--bg-subtle); text-align: right; padding: 12px 16px; font-weight: 700; border-bottom: 2px solid var(--border); font-size: 12px; }
+td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--text-subtle); vertical-align: top; text-align: right; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--bg-subtle); }
+td code { font-size: 11px; }
+td.highlight { color: var(--primary); font-weight: 600; }
+td.danger { color: var(--danger); font-weight: 600; }
+td.success { color: var(--success); font-weight: 600; }
+td.new { color: var(--gold); font-weight: 600; }
+td.ltr { direction: ltr; text-align: left; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+code { font-family: 'JetBrains Mono', monospace; background: var(--bg-subtle); padding: 2px 6px; border-radius: 4px; font-size: 12px; border: 1px solid var(--border); direction: ltr; display: inline-block; }
+pre { background: var(--bg-dark); color: #e7e5e4; padding: 18px; border-radius: var(--radius); overflow-x: auto; margin: 12px 0; font-size: 12.5px; line-height: 1.6; direction: ltr; text-align: left; }
+pre code { background: transparent; border: none; padding: 0; color: inherit; font-size: inherit; }
+.code-label { display: block; background: var(--bg-darker); color: #d4d4d8; padding: 8px 18px; font-size: 11px; font-weight: 600; border-radius: var(--radius) var(--radius) 0 0; font-family: 'JetBrains Mono', monospace; border-bottom: 1px solid #292524; direction: ltr; text-align: left; }
+.code-label + pre { margin-top: 0; border-radius: 0 0 var(--radius) var(--radius); }
+pre .comment { color: #71717a; font-style: italic; }
+pre .keyword { color: #fb923c; }
+pre .string { color: #86efac; }
+pre .num { color: #c084fc; }
+.callout { padding: 18px 22px; border-radius: var(--radius); margin: 20px 0; border-right: 4px solid; border-left: none; background: white; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.callout-title { font-weight: 700; margin-bottom: 6px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.callout-body { font-size: 14px; color: var(--text-subtle); line-height: 1.8; }
+.callout.danger { background: var(--danger-light); border-right-color: var(--danger); border-top-color: var(--danger-border); border-bottom-color: var(--danger-border); }
+.callout.danger .callout-title { color: var(--danger); }
+.callout.warning { background: var(--warning-light); border-right-color: var(--warning); border-top-color: var(--warning-border); border-bottom-color: var(--warning-border); }
+.callout.warning .callout-title { color: var(--warning); }
+.callout.success { background: var(--success-light); border-right-color: var(--success); border-top-color: var(--success-border); border-bottom-color: var(--success-border); }
+.callout.success .callout-title { color: var(--success); }
+.callout.info { background: var(--primary-light); border-right-color: var(--primary); border-top-color: var(--primary-border); border-bottom-color: var(--primary-border); }
+.callout.info .callout-title { color: var(--primary); }
+.callout.gold { background: var(--gold-light); border-right-color: var(--gold); border-top-color: var(--gold); border-bottom-color: var(--gold); }
+.callout.gold .callout-title { color: var(--gold); }
+.layer-card { background: white; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 22px 26px; margin-bottom: 16px; transition: all 0.2s ease; }
+.layer-card:hover { border-color: var(--primary-border); box-shadow: var(--shadow); }
+.layer-header { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.layer-num { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 800; color: var(--primary); background: var(--primary-light); padding: 5px 10px; border-radius: 5px; letter-spacing: 0.05em; direction: ltr; }
+.layer-title { font-size: 17px; font-weight: 700; line-height: 1.3; }
+.layer-desc { color: var(--text-subtle); font-size: 14px; margin-bottom: 10px; line-height: 1.75; }
+.layer-tech { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-muted); direction: ltr; text-align: left; }
+.principle-card { background: white; border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; margin-bottom: 14px; border-right: 4px solid; }
+.principle-card.solid { border-right-color: var(--purple); }
+.principle-card.security { border-right-color: var(--danger); }
+.principle-card.performance { border-right-color: var(--gold); }
+.principle-card.runtime { border-right-color: var(--blue); }
+.principle-card.efficiency { border-right-color: var(--success); }
+.principle-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.principle-num { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 800; padding: 4px 9px; border-radius: 4px; letter-spacing: 0.05em; direction: ltr; }
+.principle-num.solid { background: var(--purple-light); color: var(--purple); }
+.principle-num.security { background: var(--danger-light); color: var(--danger); }
+.principle-num.performance { background: var(--gold-light); color: var(--gold); }
+.principle-num.runtime { background: var(--blue-light); color: var(--blue); }
+.principle-num.efficiency { background: var(--success-light); color: var(--success); }
+.principle-title { font-size: 16px; font-weight: 700; }
+.principle-body { font-size: 14px; color: var(--text-subtle); line-height: 1.75; }
+footer { margin-top: 80px; padding: 32px 0; border-top: 2px solid var(--border); text-align: center; color: var(--text-muted); font-size: 12px; }
+footer .footer-meta { display: flex; justify-content: center; gap: 24px; margin-bottom: 12px; }
+@media (max-width: 1024px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { position: relative; height: auto; border-left: none; border-bottom: 1px solid var(--border); }
+  .main { padding: 32px 20px 56px; }
+  .hero-title { font-size: 32px; }
+  .hero-stats { grid-template-columns: 1fr 1fr; }
+  .hero-stat { border-left: none; border-bottom: 1px solid var(--border); padding: 14px 0; }
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 5px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <span class="sidebar-doc-num">DOC 02</span>
+    <div class="sidebar-title">ארכיטקטורת Production</div>
+    <div class="sidebar-subtitle">ה-bird's-eye view של המערכת — Stack, אבטחה, multi-tenancy, מודולריות</div>
+  </div>
+  <ul class="toc">
+    <div class="toc-divider">תמונה כללית</div>
+    <li class="toc-item"><a class="toc-link" href="#section-1"><span class="toc-num">1</span><span>סקירה ארכיטקטונית</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-2"><span class="toc-num">2</span><span>חמשת העקרונות</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-3"><span class="toc-num">3</span><span>שכבות המערכת</span></a></li>
+    <div class="toc-divider">Stack ו-Cloud</div>
+    <li class="toc-item"><a class="toc-link" href="#section-4"><span class="toc-num">4</span><span>Stack טכני</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-5"><span class="toc-num">5</span><span>Production Cloud</span></a></li>
+    <li class="toc-item toc-new"><a class="toc-link" href="#section-6"><span class="toc-num">6</span><span>שכבת ה-Interfaces</span></a></li>
+    <div class="toc-divider">איך זה עובד</div>
+    <li class="toc-item"><a class="toc-link" href="#section-7"><span class="toc-num">7</span><span>זרימות נתונים</span></a></li>
+    <li class="toc-item toc-critical"><a class="toc-link" href="#section-8"><span class="toc-num">8</span><span>אבטחה</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-9"><span class="toc-num">9</span><span>ביצועים</span></a></li>
+    <li class="toc-item toc-new"><a class="toc-link" href="#section-10"><span class="toc-num">10</span><span>Multi-tenancy (6 תפקידים)</span></a></li>
+    <div class="toc-divider">תפעול</div>
+    <li class="toc-item"><a class="toc-link" href="#section-11"><span class="toc-num">11</span><span>אינטגרציות</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-12"><span class="toc-num">12</span><span>Observability</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-13"><span class="toc-num">13</span><span>8 חוקי Portability</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-14"><span class="toc-num">14</span><span>מסלול הגירה</span></a></li>
+    <div class="toc-divider">סיכום</div>
+    <li class="toc-item"><a class="toc-link" href="#section-15"><span class="toc-num">15</span><span>מודל נתונים</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#section-16"><span class="toc-num">16</span><span>צעדים הבאים</span></a></li>
+  </ul>
+</aside>
+
+<main class="main">
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="hero-doc-badge">DOC 02 · ARCHITECTURE</span>
+    <span class="hero-tag">Bird's-eye view</span>
+    <span class="hero-tag new">v2: 6 roles · Provider tier · Interface layer</span>
+  </div>
+  <h1 class="hero-title">ארכיטקטורת Production</h1>
+  <p class="hero-lede">ה-bird's-eye view של המערכת. חמישה ספקים + GitHub. חמש שכבות מודולריות. שתי דרכי גישה ל-DB (לקוח ו-Provider). שש שכבות interface שמאפשרות החלפת ספק בימים, לא חודשים. וחמישה עקרונות שמכוונים כל החלטה.</p>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="hero-stat-num">5</div><div class="hero-stat-label">ספקים + GitHub</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">18</div><div class="hero-stat-label">טבלאות לקוח</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">2</div><div class="hero-stat-label">DB roles</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">$0-6</div><div class="hero-stat-label">/חודש ב-MVP</div></div>
+  </div>
+</div>
+
+<section id="section-1">
+  <div class="section-header">
+    <div class="section-num">01 · OVERVIEW</div>
+    <h2 class="section-title">המערכת ב-30 שניות</h2>
+    <p class="section-lede">תמונה כללית של מה המערכת עושה, איך היא בנויה, ועם מה היא מתחברת.</p>
+  </div>
+
+  <div class="hero-banner">
+    <div class="hero-banner-num">EMAPP · URBAN RENEWAL SAAS</div>
+    <div class="hero-banner-title">B2B SaaS לחברות התחדשות עירונית בישראל</div>
+    <div class="hero-banner-desc">מערכת לניהול פרויקטי תמ"א 38, פינוי-בינוי, וחיזוק מבנים — מהפגישה הראשונה עם בעלי הדירות ועד החתימה הסופית על החוזה. המערכת מנהלת את הפרויקטים, הדיירים, האחוזי בעלות, החתימות, המסמכים, השיתופים עם קבלנים, וקלנדר העבודה של הצוות.</div>
+  </div>
+
+  <h3>1.1 מה המערכת עושה</h3>
+
+  <p>EMAPP היא מערכת SaaS שמכוונת לחברות התחדשות עירונית בישראל. החברות הללו מנהלות פרויקטים מורכבים: עשרות בעלי דירות בכל בניין, אחוזי בעלות מסובכים, חוזים שדורשים רוב חתימות (לרוב 67% או 80%), שיתוף פעולה עם קבלנים חיצוניים, ותהליכים ארוכים של חודשים עד שנים.</p>
+
+  <p>המוצר נותן לחברות:</p>
+
+  <ul class="num-list">
+    <li><strong>ניהול היררכי של פרויקטים</strong> — פרויקט מכיל בניינים, בניין מכיל דירות, דירה מכילה בעלים עם אחוזי בעלות.</li>
+    <li><strong>מעקב סטטוס דירה-דירה</strong> — מי הסכים, מי סירב, מי בפגישה, מי לא בקשר. תמונת מצב בזמן אמת.</li>
+    <li><strong>שיתוף בקרה עם קבלנים</strong> — הזמנת חברת הנדסה/עו"ד/קבלן לראות חלקים מהפרויקט עם הרשאות מדויקות לכל שדה.</li>
+    <li><strong>חתימות דיגיטליות</strong> — חתימת בעל דירה על חוזה, עם הוכחת זהות, IP, וחותמת זמן.</li>
+    <li><strong>קלנדר ומשימות</strong> — מנהל מקצה משימות לסוכנים, מתזמן פגישות, ועוקב אחר התקדמות.</li>
+    <li><strong>תיעוד מלא</strong> — audit log של כל פעולה, מסמכים מקושרים לדירות, היסטוריית סטטוסים.</li>
+  </ul>
+
+  <h3>1.2 מי המשתמשים</h3>
+
+  <p>חמישה סוגי משתמשים — בארבעה תפקידים בצד הלקוח + אחד פנימי ב-EMAPP. הפרק על Multi-tenancy (Section 10) מתאר את ההפרדה הטכנית; כאן זו תמונת המבט:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>תפקיד</th><th>למי שייך</th><th>מה רואה</th><th>הרשאות</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Manager</strong></td><td>ארגון לקוח</td><td>כל הפרויקטים שלו</td><td>כתיבה מלאה, ניהול משתמשים</td></tr>
+        <tr><td><strong>Agent</strong></td><td>ארגון לקוח</td><td>רק פרויקטים שהוקצו לו</td><td>כתיבה על הפרויקטים שלו</td></tr>
+        <tr><td><strong>Viewer</strong></td><td>ארגון לקוח</td><td>כל הפרויקטים (קריאה בלבד)</td><td>קריאה בלבד</td></tr>
+        <tr><td><strong>Contractor</strong></td><td>חיצוני (קבלן/עו"ד/הנדסה)</td><td>רק פרויקטים שהוזמן אליהם</td><td>לפי <code>share.permissions</code> ב-JSONB</td></tr>
+        <tr><td class="new"><strong>Tenant (דייר)</strong></td><td>דייר בפרויקט (התחברות SMS OTP)</td><td>רק הרשומה שלו: הדירה, סטטוס חתימה, מסמכים אליו</td><td>קריאה על עצמו + חתימה. לא רואה דיירים אחרים</td></tr>
+        <tr><td class="new"><strong>Provider Admin</strong></td><td>צוות EMAPP פנימי</td><td>כל הלקוחות (בהרשאה + audit)</td><td>קריאה רחבה לתמיכה; כתיבה מוגבלת ומבוקרת</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>שלושת התפקידים הראשונים (Manager / Agent / Viewer) הם משתמשי הארגון הלקוח. Contractor הוא ישות חיצונית עם מודל זהות משלה. <strong>Tenant (דייר)</strong> הוא תפקיד MVP (D.17) — הדייר בבניין, מתחבר ב-SMS OTP, רואה רק את הרשומה שלו. <strong>Provider Admin</strong> הוא צוות EMAPP פנימי שיכול לגשת לנתונים לצורכי תמיכה — דרך מנגנון נפרד לחלוטין (DB role נפרד, audit נפרד, MFA חובה). <strong>סה"כ 6 תפקידים ב-MVP.</strong></p>
+
+  <h3>1.3 איך זה בנוי במשפט אחד</h3>
+
+  <p>מונורפו TypeScript עם Next.js בקדמי, NestJS+Fastify בצד שרת, Drizzle ORM מעל Postgres עם Row-Level Security, פרוס על 5 ספקים: <strong>Neon</strong> (DB), <strong>Railway</strong> (containers), <strong>Cloudflare</strong> (R2 storage + Pages FE), <strong>Resend</strong> (email), <strong>Sentry</strong> (monitoring). עלות MVP: <strong>$0-6 לחודש</strong>.</p>
+
+  <h3>1.4 מה התחדש בארכיטקטורה (v2)</h3>
+
+  <p>הגרסה הזו של מסמך הארכיטקטורה כוללת שלושה עדכונים מהותיים מהגרסה הקודמת:</p>
+
+  <ul class="num-list">
+    <li><strong>חמשת העקרונות המרכזיים</strong> (Section 2): SOLID, Security First, Performance, Minimal Runtime, Code Efficiency. כל החלטה ארכיטקטונית מתבססת על אחד או יותר מהם.</li>
+    <li><strong>Provider tier נפרד מבחינה מבנית</strong> (Section 10): טבלת זהויות נפרדת (<code>provider_users</code>), DB role נפרד (<code>provider_app_role</code>), wrapper נפרד (<code>withProvider</code>) — לא דגל "is_admin" על משתמש רגיל.</li>
+    <li><strong>שכבת Interfaces לכל תלות חיצונית</strong> (Section 6): <code>IEmailProvider</code>, <code>IStorageProvider</code>, <code>IEncryptionService</code>, ועוד. החלפת ספק = ימים, לא חודשים. הקוד העסקי לא יודע מי הספק.</li>
+  </ul>
+
+  <p>בנוסף, ה-MVP גדל מ-14 טבלאות ל-<strong>18 טבלאות לקוח + 2 טבלאות Provider</strong> — נוספו <code>tasks</code>, <code>task_assignees</code>, <code>notifications</code>, <code>project_assignments</code> כדי לאפשר MVP אמיתי end-to-end (קלנדר, הקצאות, התראות).</p>
+
+  <h3>1.5 מסמכים נלווים</h3>
+
+  <p>המסמך הזה הוא ה-bird's-eye view. לפרטים מעמיקים:</p>
+
+  <ul class="clean">
+    <li><strong>Doc 01</strong> — חזון, שוק, פרסונות, ערך עסקי</li>
+    <li><strong>Doc 03</strong> — MVP Roadmap: סדר הפיתוח (Phase 0 → Phase 8)</li>
+    <li><strong>Doc 04a</strong> — סביבת Claude לפיתוח</li>
+    <li><strong>Doc 04b</strong> — Phase 0: הקמת התשתית והכלים</li>
+    <li><strong>Doc 04c</strong> — Phase 1: שכבת הנתונים (18 טבלאות, RLS, wrappers, interfaces) — <em>הפרטים הטכניים העמוקים</em></li>
+    <li><strong>Doc 05</strong> — סנכרון Backend ↔ Frontend</li>
+    <li><strong>Doc 06</strong> — חוזה אינטגרציה FE/BE</li>
+    <li><strong>Doc 07</strong> — Security Playbook: מודל איומים, PII, RLS עמוק, threats catalog — <em>פרטי האבטחה העמוקים</em></li>
+  </ul>
+
+  <div class="callout info">
+    <div class="callout-title">💡 מתי לחזור לכאן</div>
+    <div class="callout-body">המסמך הזה מתאר את <em>מה</em> ו-<em>איך גסה</em>. אם אתה מחפש את <em>למה</em> — קרא קודם את Doc 01. אם אתה מחפש את <em>איך מפורט</em> — קרא את Doc 04c לטבלאות, או את Doc 07 לאבטחה. Doc 02 הוא נקודת הניווט בין כל המסמכים.</div>
+  </div>
+</section>
+
+<section id="section-2">
+  <div class="section-header">
+    <div class="section-num">02 · CORE PRINCIPLES</div>
+    <h2 class="section-title">חמשת העקרונות שמכוונים כל החלטה</h2>
+    <p class="section-lede">לפני כל בחירה — של ספק, של ספרייה, של מבנה — אנחנו שואלים: האם זה תואם את חמשת העקרונות? אם לא — נדחה. אם כן — נמשיך.</p>
+  </div>
+
+  <p class="lead">ארכיטקטורה טובה אינה רשימה של בחירות נכונות; היא <strong>שיטה להגיע לבחירות נכונות באופן עקבי</strong>. חמשת העקרונות הללו הם השיטה שלנו. הם לא מתחרים — הם משלימים. כל החלטה ארכיטקטונית מסוננת דרכם, וכל "למה זה ככה?" צריך להתחבר לפחות לאחד מהם.</p>
+
+  <div class="principle-card solid">
+    <div class="principle-header">
+      <span class="principle-num solid">SOLID</span>
+      <h4 class="principle-title">עקרונות SOLID</h4>
+    </div>
+    <div class="principle-body">
+      <strong>Single Responsibility</strong> — כל מודול, מחלקה ופונקציה אחראית על דבר אחד.<br>
+      <strong>Open/Closed</strong> — פתוח להרחבה, סגור לשינוי (interfaces, לא ירושות).<br>
+      <strong>Liskov</strong> — Implementation A יכול להחליף Implementation B ללא שינוי קוד צרכן.<br>
+      <strong>Interface Segregation</strong> — interface צר עדיף על interface רחב; הצרכן לא תלוי בפונקציות שאינו משתמש בהן.<br>
+      <strong>Dependency Inversion</strong> — קוד עסקי תלוי ב-interface, לא ב-implementation. NestJS DI מזריק את ה-implementation בהפעלה.
+      <br><br>
+      <strong>איך זה מתורגם בפועל:</strong> שכבת Interfaces לכל תלות חיצונית (Section 6); fakes לכל בדיקה; החלפת ספק = factory swap.
+    </div>
+  </div>
+
+  <div class="principle-card security">
+    <div class="principle-header">
+      <span class="principle-num security">SECURITY FIRST</span>
+      <h4 class="principle-title">אבטחה היא דרישה בסיסית, לא פיצ'ר</h4>
+    </div>
+    <div class="principle-body">
+      כל פיצ'ר נשאל "איך זה נכשל בטוח?" לפני "איך זה עובד?" אבטחה מנצחת כשיש קונפליקט — תמיד.<br><br>
+      <strong>איך זה מתורגם בפועל:</strong> RLS + FORCE על כל טבלה רב-לקוחית; הצפנת PII ב-pgcrypto עם מפתחות session-scoped; audit log append-only ברמת ה-DB (לא ברמת אפליקציה); 2 DB roles נפרדים (app_user + provider_app_role); MFA חובה ל-Provider tier; fail-closed ב-default. ראה Doc 07 לפרטים מלאים.
+    </div>
+  </div>
+
+  <div class="principle-card performance">
+    <div class="principle-header">
+      <span class="principle-num performance">PERFORMANCE</span>
+      <h4 class="principle-title">latency נמוך מהיום הראשון</h4>
+    </div>
+    <div class="principle-body">
+      MVP אינו תירוץ לאיטיות. אם בנינו על תשתית איטית, נשבר ב-100 לקוחות. נבנה נכון מההתחלה.<br><br>
+      <strong>היעדים:</strong> p95 API &lt; 200ms, p99 &lt; 500ms; p95 DB query &lt; 5ms; First Contentful Paint &lt; 1.5s; Time to Interactive &lt; 3s.<br><br>
+      <strong>איך זה מתורגם בפועל:</strong> Composite indexes לכל RLS subquery; connection pool עם statement_timeout; HTTP/2 + brotli; CDN edge למשאבים סטטיים; Drizzle (בקרת query מדויקת) במקום Prisma (מטא-טריקים מסתורים). ראה Section 9.
+    </div>
+  </div>
+
+  <div class="principle-card runtime">
+    <div class="principle-header">
+      <span class="principle-num runtime">MINIMAL RUNTIME</span>
+      <h4 class="principle-title">פחות runtime, פחות סיכון</h4>
+    </div>
+    <div class="principle-body">
+      כל service, queue, cache, או runtime זר מוסיף תחזוקה, debugging, ו-failure modes. נשתמש בכמה שפחות.<br><br>
+      <strong>איך זה מתורגם בפועל:</strong> Container-first (Railway), לא serverless עם cold starts; Postgres עושה כפול תפקיד (DB + Cache + Queue ב-pg-boss אם נצטרך); אין Redis ב-MVP (יבוא ב-Phase 2 דרך <code>ICacheProvider</code>); אין Kubernetes ב-MVP; אין message broker — pg-boss אם נצטרך queue.
+    </div>
+  </div>
+
+  <div class="principle-card efficiency">
+    <div class="principle-header">
+      <span class="principle-num efficiency">CODE EFFICIENCY</span>
+      <h4 class="principle-title">DRY עם שכל — לא over-abstraction</h4>
+    </div>
+    <div class="principle-body">
+      הקוד הוא נכס. כל שורה מתחזקת, נקראת, ומבדק. נכתוב פחות שורות שעושות יותר.<br><br>
+      <strong>איך זה מתורגם בפועל:</strong> סכמה מוצהרת פעם אחת ב-Drizzle, ה-TS types נגזרים אוטומטית; Zod DTOs נגזרים מ-Drizzle עם <code>drizzle-zod</code>; helpers משותפים (commonColumns, tenantColumns); אבל לא over-abstraction — כל abstraction חייב להצדיק את עצמו. כשיש 2 אפשרויות, נבחר את הפשוטה.
+    </div>
+  </div>
+
+  <h3>2.1 איך העקרונות פותרים קונפליקטים</h3>
+
+  <p>לפעמים שני עקרונות לכאורה נוגדים. הסדר הוא:</p>
+
+  <ol class="num-list">
+    <li><strong>Security First מנצח תמיד.</strong> אם החלטה מקלה על ביצועים אך מסכנת אבטחה — נדחה. אם החלטה הופכת קוד פשוט אך משאירה PII בלוגים — נדחה.</li>
+    <li><strong>Minimal Runtime לפני Performance בהיקפים קטנים.</strong> ב-MVP, פוסטגרס כ-cache (איטי יותר מ-Redis) מנצח Redis (מהיר יותר אבל runtime נוסף). ב-100 לקוחות, נשקול.</li>
+    <li><strong>SOLID לפני Code Efficiency.</strong> Interface מוסיף קבצים, אבל עוזר ל-Liskov. הוספת קוד תמורת gainability נכון.</li>
+    <li><strong>Performance מנצח Code Efficiency בנקודות חמות.</strong> אם query עסקית רצה 1000 פעמים בדקה, אינדקס denormalized מוצדק גם אם הוא נראה כפילות.</li>
+  </ol>
+
+  <h3>2.2 כל החלטה — מקושרת לעקרון</h3>
+
+  <p>אנחנו מתעדים כל החלטה ארכיטקטונית עם העקרון שמצדיק אותה. דוגמאות מה-Stack:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>החלטה</th><th>עקרון</th><th>הסבר תמציתי</th></tr></thead>
+      <tbody>
+        <tr><td>Postgres ולא NoSQL</td><td class="success">Security + Performance</td><td>RLS, transactions, joins אמיתיים, indexes חזקים</td></tr>
+        <tr><td>Drizzle ולא Prisma</td><td class="success">Performance</td><td>קרוב יותר ל-SQL; ללא lazy loading; ללא runtime cost</td></tr>
+        <tr><td>NestJS+Fastify ולא Express</td><td class="success">Performance + SOLID</td><td>Fastify מהיר; NestJS DI נדרש ל-interface layer</td></tr>
+        <tr><td>Railway containers ולא Cloudflare Workers</td><td class="success">Runtime + Performance</td><td>אין cold starts; long-running worker אפשרי</td></tr>
+        <tr><td>Postgres cache_kv ב-MVP ולא Redis</td><td class="success">Minimal Runtime</td><td>פחות שירות לנהל; ביצועים מספיקים ב-MVP</td></tr>
+        <tr><td>shadcn/ui ולא MUI</td><td class="success">Code Efficiency</td><td>קוד שלך; ללא תלות חיצונית; קל לשנות</td></tr>
+        <tr><td>Container-first ולא serverless</td><td class="success">Runtime + Performance</td><td>פשטות תפעולית; אין cold starts; אין vendor lock-in</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout success">
+    <div class="callout-title">✓ העקרונות הם הפרויקט</div>
+    <div class="callout-body">אם מישהו בצוות שואל "למה אנחנו עושים ככה?", התשובה היא אחד מחמשת העקרונות. אם התשובה אינה מתחברת לעקרון, ההחלטה צריכה חשיבה מחדש. עקביות מגיעה מהפעלת אותו סינון לכל בחירה — לא מספר חוקים סטטי.</div>
+  </div>
+</section>
+
+<section id="section-3">
+  <div class="section-header">
+    <div class="section-num">03 · SYSTEM LAYERS</div>
+    <h2 class="section-title">חמש השכבות שבונות את המערכת</h2>
+    <p class="section-lede">המערכת מחולקת לחמש שכבות, כל אחת עם אחריות מוגדרת. הקו ביניהן ברור; התקשורת ביניהן עוברת דרך חוזים מפורשים.</p>
+  </div>
+
+  <p class="lead">חלוקה לשכבות אינה תרגיל אקדמי — היא הדרך שלנו לוודא שכל מודול אחראי על דבר אחד (Single Responsibility), ושאפשר להחליף שכבה בלי לגרור שינויים ב-others. כשמישהו שואל "איפה הקוד הזה צריך לחיות?", התשובה מתחילה ב"באיזה שכבה הוא נמצא?"</p>
+
+  <div class="layer-card">
+    <div class="layer-header">
+      <span class="layer-num">L1 · UI</span>
+      <h4 class="layer-title">Frontend — Next.js App Router</h4>
+    </div>
+    <div class="layer-desc">
+      ממשק משתמש. דפים בעברית RTL. רכיבים מ-shadcn/ui עם tailwind. State management ב-Zustand (לא Redux — minimal runtime). אינטראקציה עם השרת דרך React Query.
+    </div>
+    <div class="layer-tech">Next.js 15 · React 18 · TypeScript · shadcn/ui · Tailwind · Zustand · React Query · Cloudflare Pages</div>
+  </div>
+
+  <div class="layer-card">
+    <div class="layer-header">
+      <span class="layer-num">L2 · API</span>
+      <h4 class="layer-title">API Layer — NestJS + Fastify</h4>
+    </div>
+    <div class="layer-desc">
+      שכבת HTTP. Controllers שמקבלים בקשות, מאמתים אותן עם Zod, ומעבירים ל-services. Auth middleware. Rate limiting. Error handling. <strong>אין כאן business logic</strong> — רק תרגום בין HTTP לבין שירותים.
+    </div>
+    <div class="layer-tech">NestJS · Fastify · Zod · Better Auth · @nestjs/swagger</div>
+  </div>
+
+  <div class="layer-card">
+    <div class="layer-header">
+      <span class="layer-num">L3 · SERVICES</span>
+      <h4 class="layer-title">שכבת השירותים — Business Logic</h4>
+    </div>
+    <div class="layer-desc">
+      ה-logic האמיתי. שירות "ProjectsService" יודע מה זה פרויקט, איך יוצרים אותו, איך מוקצים אגנטים. <strong>השירות לא יודע על HTTP</strong> ולא על SQL ספציפי. מקבל DTOs, מחזיר DTOs. משתמש ב-<code>withTenant</code> / <code>withProvider</code> ב-DAL. משתמש ב-<code>IEmailProvider</code> / <code>IStorageProvider</code> דרך DI.
+    </div>
+    <div class="layer-tech">NestJS Injectable · withTenant · AuditService · IEmailProvider · IStorageProvider</div>
+  </div>
+
+  <div class="layer-card">
+    <div class="layer-header">
+      <span class="layer-num">L4 · DATA</span>
+      <h4 class="layer-title">שכבת הנתונים — Drizzle + Postgres</h4>
+    </div>
+    <div class="layer-desc">
+      ה-DB עצמו ו-Drizzle schemas. הסכמה היא מקור האמת — כל ה-types נגזרים ממנה. RLS policies על כל טבלה רב-לקוחית. שתי connection pools (app_user + provider_app_role). שני wrappers (<code>withTenant</code> + <code>withProvider</code>) — היחידים שכותבים/קוראים מה-DB. ראה Doc 04c.
+    </div>
+    <div class="layer-tech">Drizzle ORM · pg pool · pgcrypto · Neon Postgres · RLS + FORCE</div>
+  </div>
+
+  <div class="layer-card">
+    <div class="layer-header">
+      <span class="layer-num">L5 · INFRA</span>
+      <h4 class="layer-title">שכבת תשתית — ספקים חיצוניים</h4>
+    </div>
+    <div class="layer-desc">
+      Email, Storage, SMS, Monitoring. כל אחד מהם מוסתר מאחורי interface (Section 6). הספקים יכולים להתחלף; השכבה הקוד מעליהם לא משתנה.
+    </div>
+    <div class="layer-tech">Resend (email) · R2 (storage) · ספק SMS ישראלי (MVP — D.20) · Sentry (monitoring) · Postgres cache_kv (Phase 2 → Upstash)</div>
+  </div>
+
+  <h3>3.1 חוקי התקשורת בין שכבות</h3>
+
+  <p>חמישה כללים שמגדירים איך השכבות מדברות זו עם זו:</p>
+
+  <ul class="num-list">
+    <li><strong>שכבה גבוהה מדברת עם שכבה נמוכה — לא להפך.</strong> UI מדבר עם API. API מדבר עם Services. Services מדברים עם Data. Data מדבר עם Infra דרך interfaces. אסור לרוץ אחורה.</li>
+    <li><strong>כל שכבה חוצה את הגבול דרך חוזה מפורש.</strong> UI → API דרך REST + Zod. Services → Data דרך wrappers + Drizzle types. Services → Infra דרך interfaces.</li>
+    <li><strong>אין שכבה שמדלגת על שכבה.</strong> UI אינו ניגש ישירות ל-DB. Controllers אינם ניגשים ישירות לספק חיצוני. אם נדמה לך שצריך לדלג — בדוק את התכנון.</li>
+    <li><strong>DTOs נכתבים בגבול ה-API.</strong> ה-DB types (Drizzle) לא חוצים את ה-API החוצה. Services ממירים אותם ל-DTOs לפני שהם מחזירים ל-Controllers.</li>
+    <li><strong>שגיאות מוגדרות בכל שכבה.</strong> NotFoundError ב-Service. HttpException ב-Controller. השכבה הגבוהה ממירה לפרוטוקול שלה (HTTP status, JSON shape).</li>
+  </ul>
+
+  <h3>3.2 ההיררכיה בתרשים</h3>
+
+  <p>איך הבקשה זורמת מלמעלה למטה, ואיך התשובה חוזרת:</p>
+
+  <div class="code-label">request flow (right-to-left arrows due to RTL flow visualization)</div>
+<pre><code>┌──────────────────────────────────────────────────────────────┐
+│  L1 · UI (Next.js)                                            │
+│  - React component triggers action                            │
+│  - React Query calls API endpoint                             │
+└────────────────────────┬─────────────────────────────────────┘
+                         │  HTTP POST /api/projects + Zod payload
+                         ▼
+┌──────────────────────────────────────────────────────────────┐
+│  L2 · API (NestJS Controller)                                 │
+│  - Validates payload with Zod                                 │
+│  - Extracts orgId from JWT (NOT from body!)                   │
+│  - Calls projectsService.create(orgId, userId, dto)           │
+└────────────────────────┬─────────────────────────────────────┘
+                         ▼
+┌──────────────────────────────────────────────────────────────┐
+│  L3 · SERVICES (ProjectsService)                              │
+│  - Opens withTenant(orgId, ...)                               │
+│  - Business validation (e.g., role allows create?)            │
+│  - Calls tx.insert(projects).values(...)                      │
+│  - Calls audit.log(...) in same tx                            │
+│  - Optionally: email via IEmailProvider                       │
+└────────────────────────┬─────────────────────────────────────┘
+                         ▼
+┌──────────────────────────────────────────────────────────────┐
+│  L4 · DATA (Drizzle + Postgres)                               │
+│  - SET LOCAL app.organization_id = orgId                      │
+│  - RLS policy enforces tenant isolation                       │
+│  - INSERT into projects + audit_log atomically                │
+└────────────────────────┬─────────────────────────────────────┘
+                         ▼
+┌──────────────────────────────────────────────────────────────┐
+│  L5 · INFRA (Resend, R2, Sentry)                              │
+│  - Email sent via IEmailProvider (Resend impl)                │
+│  - Errors caught by Sentry                                    │
+└──────────────────────────────────────────────────────────────┘
+</code></pre>
+
+  <h3>3.3 הסיבה למבנה הזה</h3>
+
+  <p>למה דווקא חמש שכבות, ולא ארבע או שש? המבחן הוא <strong>אחריות יחידה</strong>:</p>
+
+  <ul class="checks">
+    <li>UI אחראי על המראה ועל התגובה למשתמש; לא יודע על מבנה DB</li>
+    <li>API אחראי על HTTP; לא יודע על business logic</li>
+    <li>Services אחראים על business logic; לא יודעים על HTTP או על pgcrypto</li>
+    <li>Data אחראי על persistence; לא יודע על business invariants ברמה הגבוהה</li>
+    <li>Infra אחראי על תקשורת עם העולם החיצוני; כל אחד מאחורי interface</li>
+  </ul>
+
+  <p>כל שכבה אפשר להחליף או לבדוק בנפרד. החלפת ה-UI (React → Vue) לא מצריכה שינוי ב-Services. החלפת DB (Postgres → CockroachDB) דורשת שינוי ב-Data ובמשהו ב-Services (RLS-equivalents), אבל לא ב-API. החלפת ספק email מצריכה שינוי <em>קובץ אחד</em> במודול ה-Infra — כי ה-interface נשמר.</p>
+
+  <div class="callout info">
+    <div class="callout-title">💡 איפה זה לא נכון להחיל</div>
+    <div class="callout-body">השכבות הן חזק עבור CRUD ועבור business logic סטנדרטי. עבור scripts (migration scripts, seed scripts, one-offs) — לא תמיד נדרשת חלוקה לחמש שכבות. הקפדה חיונית בקוד אפליקציה ראשי; פחות חיונית בקוד עזר.</div>
+  </div>
+</section>
+<section id="section-4">
+  <div class="section-header">
+    <div class="section-num">04 · TECH STACK</div>
+    <h2 class="section-title">Stack טכני — הבחירות הסופיות</h2>
+    <p class="section-lede">5 ספקים + GitHub. כל ספק נבחר בכוונה, מקושר לעקרון, ואפשרי להחלפה. המבנה הסופי שמתחיל ב-MVP ומחזיק עד 100+ ארגונים.</p>
+  </div>
+
+  <p class="lead">ה-Stack הוא נקודת ההחלטה הקריטית ביותר באמצע ה-MVP. בחירה שגויה כאן עוצרת את הפרויקט בעוד חודשים. אנחנו הגענו לבחירות הסופיות הללו אחרי השוואה בין 4-5 חלופות לכל קטגוריה — והבחירות מקושרות לחמשת העקרונות (Section 2).</p>
+
+  <h3>4.1 ה-Stack ב-30 שניות</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>קטגוריה</th><th>הבחירה</th><th>למה</th><th>עלות MVP</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Database</strong></td><td class="highlight">Neon Postgres</td><td>Serverless Postgres עם RLS, branching, free tier</td><td class="ltr">$0 (Free → Launch)</td></tr>
+        <tr><td><strong>Backend container</strong></td><td class="highlight">Railway</td><td>Container-first, אין cold starts, $5 Hobby</td><td class="ltr">$5/חודש</td></tr>
+        <tr><td><strong>Worker container</strong></td><td class="highlight">Railway (same project)</td><td>Always-on worker בלי תוספת ניהול</td><td class="ltr">incl. above</td></tr>
+        <tr><td><strong>File storage</strong></td><td class="highlight">Cloudflare R2</td><td>S3-compatible, ללא egress fees</td><td class="ltr">$0 (10GB free)</td></tr>
+        <tr><td><strong>Frontend hosting</strong></td><td class="highlight">Cloudflare Pages</td><td>Edge globally, ללא bandwidth limits</td><td class="ltr">$0 (Free)</td></tr>
+        <tr><td><strong>Email</strong></td><td class="highlight">Resend</td><td>API מעולה, deliverability גבוהה</td><td class="ltr">$0 (3K/חודש)</td></tr>
+        <tr><td><strong>Monitoring</strong></td><td class="highlight">Sentry</td><td>Error tracking + performance, Developer free</td><td class="ltr">$0 (Developer)</td></tr>
+        <tr><td><strong>Code hosting</strong></td><td class="highlight">GitHub</td><td>CI/CD ב-Actions, סטנדרט</td><td class="ltr">$0</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p><strong>סה"כ MVP: $0-6 לחודש. ב-10 ארגונים: ~$100-180. ב-100 ארגונים: ~$500-1000.</strong> ראה Section 14 (מסלול הגירה) לפרטים על סקלינג.</p>
+
+  <h3>4.2 שכבת ה-Code (לא ספקים, אבל חלק מה-Stack)</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>שכבה</th><th>הבחירה</th><th>למה</th></tr></thead>
+      <tbody>
+        <tr><td>Language</td><td class="ltr">TypeScript (strict)</td><td>Type safety בכל הקוד, מ-DB עד UI</td></tr>
+        <tr><td>Monorepo</td><td class="ltr">pnpm + Turborepo</td><td>Workspace efficient, build caching</td></tr>
+        <tr><td>Frontend framework</td><td class="ltr">Next.js 15 App Router</td><td>SSR/RSC, file-based routing, סטנדרט</td></tr>
+        <tr><td>UI library</td><td class="ltr">shadcn/ui + Tailwind</td><td>קוד שלך, אין dependency hell</td></tr>
+        <tr><td>State management</td><td class="ltr">Zustand + React Query</td><td>Zustand: client state; RQ: server state</td></tr>
+        <tr><td>Backend framework</td><td class="ltr">NestJS + Fastify adapter</td><td>NestJS DI; Fastify מהיר מ-Express</td></tr>
+        <tr><td>ORM</td><td class="ltr">Drizzle</td><td>קרוב ל-SQL, ללא query לא צפויות, type-safe</td></tr>
+        <tr><td>Validation</td><td class="ltr">Zod (+ drizzle-zod)</td><td>Schema אחד ל-runtime + types + DTOs</td></tr>
+        <tr><td>Auth</td><td class="ltr">Better Auth</td><td>בקוד שלך (לא Clerk SaaS), MFA + magic links</td></tr>
+        <tr><td>Testing</td><td class="ltr">Vitest + Playwright</td><td>מהיר; e2e אמיתי</td></tr>
+        <tr><td>Linting</td><td class="ltr">ESLint + Prettier + custom rules</td><td>אכיפת ארכיטקטורה (ראה P1.13)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>4.3 למה Neon ולא...</h3>
+
+  <p>השוואה תמציתית בין הספקי DB ששקלנו:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ספק</th><th>יתרונות</th><th>חסרונות</th><th>החלטה</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Neon</strong></td><td>Serverless Postgres, RLS, branching לפיתוח, Free tier נדיב</td><td>Compute scale-to-zero יכול לגרום cold start (~1s)</td><td class="success">נבחר</td></tr>
+        <tr><td>Supabase</td><td>Postgres + Auth + Realtime + Storage חבילה אחת</td><td>Coupling חזק לאקוסיסטם שלהם; קשה יותר להחליף ספק; Auth שלהם פחות גמיש מ-Better Auth</td><td class="danger">נדחה</td></tr>
+        <tr><td>Convex</td><td>חוויית פיתוח מודרנית, real-time מובנה</td><td>לא Postgres אמיתי; לא תומך RLS באותו אופן; vendor lock-in חזק</td><td class="danger">נדחה</td></tr>
+        <tr><td>RDS / Aurora</td><td>בוגר, מוכר, היציב ביותר</td><td>יקר ב-MVP ($50+/חודש); תפעול AWS מסובך</td><td class="danger">נדחה ל-MVP</td></tr>
+        <tr><td>PlanetScale</td><td>MySQL מנוהל, branching</td><td>MySQL ולא Postgres; אין RLS; אין pgcrypto</td><td class="danger">נדחה</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>הסיבה המכרעת לבחירת Neon: <strong>RLS + branching + Postgres אמיתי + מחיר נמוך</strong>. אם בעתיד נצטרך לעבור ל-RDS/Aurora, ההגירה אפשרית — Postgres הוא Postgres. אבל ל-MVP, Neon מספיק בלי קומפרומיסים.</p>
+
+  <h3>4.4 למה Railway ולא...</h3>
+
+  <p>החלטת ה-runtime היא קריטית — היא קובעת מודל deployment, scale, ו-cold starts:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ספק</th><th>יתרונות</th><th>חסרונות</th><th>החלטה</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Railway</strong></td><td>Container-first, אין cold starts, פריסה ב-30 שניות, $5/חודש</td><td>פחות בוגר מ-AWS</td><td class="success">נבחר</td></tr>
+        <tr><td>Cloudflare Workers</td><td>Edge globally, free tier נדיב</td><td>אין long-running processes; אין worker container; cold starts; CPU limits</td><td class="danger">נדחה ל-Backend</td></tr>
+        <tr><td>Vercel</td><td>חוויית פיתוח מצוינת, אינטגרציה עם Next.js</td><td>Serverless = cold starts; יקר בכמויות גדולות; vendor lock-in</td><td class="danger">נדחה</td></tr>
+        <tr><td>Fly.io</td><td>Edge globally, geo-distributed Postgres</td><td>מורכבות תפעול גבוהה יותר; pricing פחות צפוי</td><td class="danger">נדחה ל-MVP</td></tr>
+        <tr><td>Render</td><td>דומה ל-Railway באופי</td><td>פחות פוליש, פחות מוכר בקהילה</td><td class="danger">נדחה</td></tr>
+        <tr><td>AWS ECS/Fargate</td><td>הסטנדרט המקצועי</td><td>מורכב מאוד ל-MVP; דורש זמן setup; דורש DevOps</td><td class="danger">נדחה ל-MVP</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Railway זוכה כי הוא <strong>container-first אמיתי</strong>: שירות אחד שרץ תמיד, ללא cold starts, ב-$5/חודש. ה-worker (Phase 6 — SSE + scheduled jobs) רץ באותו פרויקט. נסיגה מ-Vercel/Koyeb (שהיו ב-Doc הקודם) — הם serverless ולא מתאימים לאוויר תמידי.</p>
+
+  <h3>4.5 למה Cloudflare</h3>
+
+  <p>Cloudflare מספק שני שירותים נפרדים שמשרתים אותנו:</p>
+
+  <ul class="num-list">
+    <li><strong>R2 ל-file storage.</strong> S3-compatible, אבל <strong>ללא egress fees</strong>. עלות storage נמוכה. גישה דרך AWS SDK עם endpoint מוחלף — מאפשר מעבר ל-S3 עתידי בשורת קוד אחת.</li>
+    <li><strong>Pages ל-Frontend hosting.</strong> CDN globally, edge servers, ללא bandwidth limits ב-free tier. פרוס Next.js statically + ISR. מהיר יותר מ-Vercel עבור משתמשים בישראל (יש להם POP בתל אביב).</li>
+  </ul>
+
+  <p>החלפת Cloudflare — אם פעם נצטרך — היא עבודה של ימים: R2 ל-S3 (אותו API), Pages ל-Vercel (אותו Next.js). ה-interface layer (Section 6) מסתיר את ההבדלים.</p>
+
+  <h3>4.6 למה Resend ולא...</h3>
+
+  <p>שיקולי email service — דלת ה-onboarding וה-notifications:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ספק</th><th>פלוס</th><th>מינוס</th><th>החלטה</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Resend</strong></td><td>API נקי, deliverability מעולה, $0 ל-3K/חודש, $20 ל-50K</td><td>חדש יחסית בשוק</td><td class="success">נבחר</td></tr>
+        <tr><td>SES</td><td>זול ביותר ($0.10/1K), AWS</td><td>הגדרה מסובכת, deliverability לא תמיד מצוין מ-default</td><td class="danger">נדחה ל-MVP</td></tr>
+        <tr><td>SendGrid</td><td>בוגר, mature</td><td>UI מסורבל, מחירים גבוהים</td><td class="danger">נדחה</td></tr>
+        <tr><td>Postmark</td><td>Deliverability מעולה</td><td>יקר יחסית</td><td class="danger">נדחה ל-MVP</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Resend נבחר כי <strong>ה-API שלהם נקי</strong> (כתיבת integration קלה), <strong>deliverability גבוהה</strong> (במיוחד ל-Gmail), והמחיר אגרסיבי. כל מימוש מתבצע דרך <code>IEmailProvider</code> (Section 6), כך שמעבר ל-SES או SendGrid הוא קובץ אחד.</p>
+
+  <h4>4.6.1 רשימת ה-Email templates ל-MVP</h4>
+
+  <p>שש תבניות חובה ל-MVP. כל אחת קיימת בעברית כברירת מחדל ובאנגלית. כולן ב-<code>apps/api/src/email/templates/</code>:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Template</th><th>מתי נשלח</th><th>תוכן עיקרי</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><code>magic-link.tsx</code></td><td>בקשת login דרך email</td><td>קישור חד-פעמי, תוקף 15 דקות, IP/דפדפן שביקש</td></tr>
+        <tr><td>2</td><td><code>welcome.tsx</code></td><td>אחרי signup ראשון של ארגון</td><td>ברכת קבלה, קישור לדשבורד, 3 צעדים ראשונים</td></tr>
+        <tr><td>3</td><td><code>user-invitation.tsx</code></td><td>Manager מזמין Agent/Viewer</td><td>שם המזמין, שם הארגון, role המוקצה, קישור הצטרפות (תוקף 7 ימים)</td></tr>
+        <tr><td>4</td><td><code>contractor-invitation.tsx</code></td><td>Manager מזמין Contractor חיצוני</td><td>שם הפרויקט, הרשאות מותרות (מה הוא יראה), קישור setup (תוקף 30 ימים)</td></tr>
+        <tr><td>5</td><td><code>password-reset.tsx</code></td><td>בקשת איפוס סיסמה</td><td>קישור איפוס, תוקף שעה, אזהרת phishing</td></tr>
+        <tr><td>6</td><td><code>notification.tsx</code></td><td>אירועי מערכת (פרויקט הוקצה, משימה ב-due, חתימה הושלמה)</td><td>תוכן דינמי לפי <code>NotificationKind</code>, deep-link לפעולה</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>4.6.2 ארכיטקטורת ה-templates</h4>
+
+  <ul class="num-list">
+    <li><strong>טכנולוגיה:</strong> <a href="https://react.email" target="_blank">React Email</a> — JSX components שמתרנדרים ל-HTML. מאפשר preview ב-dev עם Storybook-like UI ומחלקי קוד עם FE</li>
+    <li><strong>RTL מובנה:</strong> מטא <code>dir="rtl"</code> ב-HTML root לכל template עברית. בדיקה ידנית ב-Gmail/Outlook לפני production</li>
+    <li><strong>i18n פשוט:</strong> Phase 1 = עברית בלבד. Phase 2 = שתי גרסאות (he/en) שנבחרות לפי <code>user.preferred_language</code>. אין i18n library מסובך — שתי תבניות paralleot per email</li>
+    <li><strong>Plain-text fallback:</strong> כל template מחזיר גם גרסת text/plain — חיוני ל-deliverability ולקוראי-מסך</li>
+    <li><strong>Subject lines:</strong> מוגדרים ב-TypeScript לצד התבנית, לא בתבנית עצמה. <code>getSubject(template, locale, data)</code>: function</li>
+    <li><strong>From address:</strong> <code>EMAPP &lt;noreply@emapp.io&gt;</code> ב-production, <code>EMAPP Dev &lt;dev@emapp.io&gt;</code> ב-staging. אף פעם לא personal email</li>
+  </ul>
+
+  <div class="code-label">apps/api/src/email/templates/magic-link.tsx (skeleton)</div>
+<pre><code><span class="keyword">import</span> { Html, Body, Container, Heading, Link, Text } <span class="keyword">from</span> <span class="string">'@react-email/components'</span>;
+
+<span class="keyword">interface</span> Props {
+  recipientName: string;
+  magicLinkUrl: string;
+  requestedFromIp: string;
+  expiresInMinutes: number;
+  locale: <span class="string">'he'</span> | <span class="string">'en'</span>;
+}
+
+<span class="keyword">export default function</span> MagicLinkEmail({ recipientName, magicLinkUrl, expiresInMinutes, locale }: Props) {
+  <span class="keyword">const</span> isHebrew = locale === <span class="string">'he'</span>;
+  <span class="keyword">return</span> (
+    &lt;Html lang={locale} dir={isHebrew ? <span class="string">'rtl'</span> : <span class="string">'ltr'</span>}&gt;
+      &lt;Body&gt;
+        &lt;Container&gt;
+          &lt;Heading&gt;{isHebrew ? <span class="string">`שלום ${recipientName}`</span> : <span class="string">`Hello ${recipientName}`</span>}&lt;/Heading&gt;
+          &lt;Text&gt;{isHebrew ? <span class="string">'לחיצה על הקישור תכניס אותך:'</span> : <span class="string">'Click to log in:'</span>}&lt;/Text&gt;
+          &lt;Link href={magicLinkUrl}&gt;{isHebrew ? <span class="string">'התחברות'</span> : <span class="string">'Log in'</span>}&lt;/Link&gt;
+          &lt;Text&gt;{isHebrew ? <span class="string">`הקישור בתוקף ${expiresInMinutes} דקות.`</span> : <span class="string">`Link valid for ${expiresInMinutes} minutes.`</span>}&lt;/Text&gt;
+        &lt;/Container&gt;
+      &lt;/Body&gt;
+    &lt;/Html&gt;
+  );
+}
+
+<span class="keyword">export const</span> magicLinkSubject = (locale: <span class="string">'he'</span> | <span class="string">'en'</span>) =&gt;
+  locale === <span class="string">'he'</span> ? <span class="string">'קישור התחברות ל-EMAPP'</span> : <span class="string">'Your EMAPP sign-in link'</span>;
+</code></pre>
+
+  <h4>4.6.3 מה לא ב-MVP (templates עתידיים)</h4>
+
+  <ul class="crosses">
+    <li>Weekly digest (סיכום שבועי של פעילות) — Phase 2</li>
+    <li>Payment receipts — אין billing ב-MVP</li>
+    <li>Marketing emails / newsletter — בכלל לא בתכנון</li>
+    <li>SMS templates — <strong>MVP</strong> (Tenant OTP, ספק ישראלי דרך <code>ISMSProvider</code> — D.20)</li>
+  </ul>
+
+  <h3>4.7 למה Sentry</h3>
+
+  <p>Sentry הוא לא רק error tracking — הוא ה-observability foundation שלנו:</p>
+
+  <ul class="checks">
+    <li>Error tracking עם stack traces (פרונט + בק)</li>
+    <li>Performance monitoring (p95, p99 latencies)</li>
+    <li>Release tracking (איזה errors הופיעו אחרי איזה deploy)</li>
+    <li>User context (מי חווה את הבעיה)</li>
+    <li>Source maps לקוד מ-production</li>
+    <li>Free tier ל-Developer plan (5K errors/חודש) — מספיק ל-MVP</li>
+  </ul>
+
+  <p>Sentry יחליף אותנו רק אם נגדל מאוד (10M+ events). אז Datadog/New Relic ייכנסו לתמונה. עד אז, Sentry מספיק.</p>
+
+  <h3>4.8 GitHub</h3>
+
+  <p>בחירת ברירת מחדל: GitHub עם Actions ל-CI/CD. אין כאן השוואה — זה הסטנדרט. GitLab/Bitbucket אפשריים אם פעם נצטרך, אבל Actions מצוין.</p>
+
+  <p><strong>מה אנחנו מפעילים ב-Actions:</strong></p>
+
+  <ul class="clean">
+    <li>Build + tests ב-PR (כולל T1.5/T1.6/T1.7 הקריטיים)</li>
+    <li>Type-check + lint + format check</li>
+    <li>Migration check (האם הסכמה משתנה בלי migration?)</li>
+    <li>Deploy ל-Railway ב-merge ל-main (BE + Worker)</li>
+    <li>Deploy ל-Cloudflare Pages ב-merge ל-main (FE)</li>
+    <li>Sentry release tracking על כל deploy</li>
+  </ul>
+
+  <h3>4.9 מה השתנה מהמסמך הקודם</h3>
+
+  <p>שלוש החלטות התעדכנו מ-Doc 02 הראשוני:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>קטגוריה</th><th>הבחירה הקודמת</th><th>הבחירה הנוכחית</th><th>הסיבה</th></tr></thead>
+      <tbody>
+        <tr><td>Backend runtime</td><td class="danger">Koyeb</td><td class="success">Railway</td><td>Railway פוליש יותר, אינטגרציה עם Postgres טובה יותר, $5/חודש זהה</td></tr>
+        <tr><td>Frontend hosting</td><td class="danger">Vercel</td><td class="success">Cloudflare Pages</td><td>אין bandwidth limits, edge בתל אביב, $0 free tier אמיתי</td></tr>
+        <tr><td>Cache layer (MVP)</td><td>Upstash Redis</td><td class="success">Postgres cache_kv</td><td>Minimal Runtime עקרון — פחות שירות לנהל ב-MVP; Upstash יחזור ב-Phase 2</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout success">
+    <div class="callout-title">✓ ה-Stack חתום</div>
+    <div class="callout-body">חמשת הספקים האלה + GitHub הם ההחלטה הסופית. אנחנו לא נשנה אותם ב-MVP. אם פעם נחליף — זה יעשה דרך interface layer (Section 6) — בימים, לא חודשים. הקפדה על קביעות הזו חוסכת זמן ומאפשרת פוקוס במוצר.</div>
+  </div>
+</section>
+
+<section id="section-5">
+  <div class="section-header">
+    <div class="section-num">05 · PRODUCTION CLOUD</div>
+    <h2 class="section-title">איך זה ייראה בענן ב-Production</h2>
+    <p class="section-lede">תרשים פריסה. איך השירותים מדברים אחד עם השני. מי איפה. מה זורם.</p>
+  </div>
+
+  <p class="lead">חמשת הספקים הנפרדים, איך הם מתחברים. תרשים הפריסה מציג איך request של משתמש זורם מהדפדפן ועד ל-DB וחזרה — דרך כל השכבות. מי הולך לאן, איזה דאטה זורם, ואיפה שמורים הקריטיים.</p>
+
+  <h3>5.1 תרשים הפריסה</h3>
+
+  <div class="code-label">production deployment diagram</div>
+<pre><code>                                    ┌─────────────────────────────┐
+                                    │      User's Browser         │
+                                    │  (chrome / safari / edge)   │
+                                    └──────────────┬──────────────┘
+                                                   │  HTTPS
+                          ┌────────────────────────┼────────────────────────┐
+                          │                        ▼                        │
+                          │    ╔════════════════════════════════════╗      │
+                          │    ║      Cloudflare Edge Network        ║     │
+                          │    ║   (CDN, DDoS, edge POPs globally)   ║     │
+                          │    ╚════════════════════════════════════╝      │
+                          │                        │                        │
+                          │       ┌────────────────┴────────────────┐       │
+                          │       ▼                                  ▼       │
+                          │  ┌──────────────┐              ┌──────────────┐  │
+                          │  │  CF Pages    │              │ R2 Object    │  │
+                          │  │  (Next.js FE)│              │   Storage    │  │
+                          │  │  - app.html  │              │  - documents │  │
+                          │  │  - assets    │              │  - signatures│  │
+                          │  └──────────────┘              └──────────────┘  │
+                          │     CLOUDFLARE                                   │
+                          └──────────────────────────────────────────────────┘
+                                                   │
+                                                   │  API requests
+                                                   ▼
+                          ┌────────────────────────────────────────────────┐
+                          │                  Railway                        │
+                          │  ┌──────────────────┐     ┌─────────────────┐ │
+                          │  │  BE Container    │     │ Worker Container│ │
+                          │  │  (NestJS/Fastify)│◄────┤ (scheduled jobs │ │
+                          │  │  - API handlers  │     │  + SSE pusher)  │ │
+                          │  │  - business logic│     │                 │ │
+                          │  └────────┬─────────┘     └────────┬────────┘ │
+                          └───────────┼───────────────────────┼──────────┘
+                                      │                       │
+                                      │ pg (app_user role)   │ pg (worker)
+                                      ▼                       ▼
+                          ┌────────────────────────────────────────────────┐
+                          │                Neon Postgres                    │
+                          │   ┌─────────────────────────────────────────┐  │
+                          │   │ 18 customer tables + 2 provider tables  │  │
+                          │   │ RLS + FORCE on all multi-tenant tables  │  │
+                          │   │ 2 DB roles: app_user + provider_app_role│  │
+                          │   │ pgcrypto for PII encryption             │  │
+                          │   └─────────────────────────────────────────┘  │
+                          └────────────────────────────────────────────────┘
+
+                Side services (one-direction calls from BE):
+                  ┌──────────────┐     ┌──────────────┐
+                  │   Resend     │     │   Sentry     │
+                  │   (email)    │     │ (monitoring) │
+                  └──────────────┘     └──────────────┘
+</code></pre>
+
+  <h3>5.2 הנכסים והיכן הם</h3>
+
+  <p>מה נמצא איפה — מקור האמת לכל סוג נתון:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>נכס</th><th>איפה</th><th>מתי נכתב</th><th>מתי נקרא</th></tr></thead>
+      <tbody>
+        <tr><td>Frontend bundle (HTML, JS, CSS)</td><td>Cloudflare Pages CDN</td><td>בעת deploy</td><td>בכל בקשת דף</td></tr>
+        <tr><td>Customer data (rows)</td><td>Neon Postgres</td><td>בכל פעולת write דרך API</td><td>בכל פעולת read דרך API</td></tr>
+        <tr><td>PII (encrypted)</td><td>Neon (BYTEA columns)</td><td>בעת insert/update of owner</td><td>בעת read של מסך owner</td></tr>
+        <tr><td>Audit log</td><td>Neon (append-only)</td><td>בכל פעולה state-changing</td><td>במסכי audit / חקירת אירוע</td></tr>
+        <tr><td>Document files (PDFs, חוזים)</td><td>Cloudflare R2</td><td>upload דרך presigned URL</td><td>download דרך presigned URL</td></tr>
+        <tr><td>Sessions + rate-limit counters</td><td>Neon (cache_kv table)</td><td>על login + per-request</td><td>בכל בקשה (auth check)</td></tr>
+        <tr><td>Logs + errors</td><td>Sentry + Railway logs</td><td>בכל error/event</td><td>בעת debugging</td></tr>
+        <tr><td>Emails (sent)</td><td>Resend (לוג שמור אצלם)</td><td>בעת auth flow / notifications</td><td>במסכי deliverability ב-Resend</td></tr>
+        <tr><td>Encryption keys</td><td>Railway env vars</td><td>בעת rotation (Doc 07 §14)</td><td>בכל בקשה (SET LOCAL)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>5.3 הקשרים בין הספקים</h3>
+
+  <p>איך הקופסאות בתרשים מדברות אחת עם השנייה:</p>
+
+  <ul class="num-list">
+    <li><strong>User → Cloudflare Pages (Frontend):</strong> בקשת HTML/JS/CSS. Cloudflare CDN משרת מ-edge הקרוב. בישראל: POP בתל אביב, latency &lt; 20ms.</li>
+    <li><strong>Frontend → Railway BE (API):</strong> בקשות REST דרך <code>api.emapp.io</code>. Cookies לסשן. Railway חושף את ה-BE דרך custom domain.</li>
+    <li><strong>BE → Neon (DB):</strong> Pool של 20 connections (app_user) + 5 connections (provider_app_role). Connection-string פרטי, לא חשוף ל-Frontend.</li>
+    <li><strong>BE → R2 (Storage):</strong> שירות BE מייצר presigned URLs. הקליינט מעלה/מוריד ישירות מ-R2 (לא דרך BE) — חוסך bandwidth.</li>
+    <li><strong>BE → Resend (Email):</strong> API call לכל email send. רק BE שולח; Frontend לא ניגש ל-Resend ישירות.</li>
+    <li><strong>BE → Sentry:</strong> SDK מסתעף לכל error. Frontend גם שולח שגיאות שלו ל-Sentry (browser SDK).</li>
+    <li><strong>Worker → Neon:</strong> אותו DB. Worker ב-Railway רץ במכולה נפרדת מ-BE, מתחבר ל-Neon כמו BE. משמש ל-scheduled jobs + SSE push.</li>
+  </ul>
+
+  <h3>5.4 Custom domains</h3>
+
+  <p>סדר ה-DNS:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Domain</th><th>מצביע ל-</th><th>הערה</th></tr></thead>
+      <tbody>
+        <tr><td><code>emapp.io</code></td><td>Cloudflare Pages</td><td>הדף הראשי + marketing site</td></tr>
+        <tr><td><code>app.emapp.io</code></td><td>Cloudflare Pages</td><td>אפליקציית Next.js (Hebrew RTL)</td></tr>
+        <tr><td><code>api.emapp.io</code></td><td>Railway BE</td><td>נקודת קצה לכל ה-REST API</td></tr>
+        <tr><td><code>files.emapp.io</code></td><td>R2 bucket (custom domain)</td><td>נקודת הגישה ל-R2 files</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>SSL/TLS: Cloudflare מספק certificates אוטומטית עבור כל ה-domains שעוברים דרכו.</p>
+
+  <h3>5.5 איזורי גיאוגרפיה</h3>
+
+  <p>החלטות פיזיקליות:</p>
+
+  <ul class="checks">
+    <li><strong>Cloudflare Pages + R2:</strong> Edge globally; ה-POP הקרוב משרת. בישראל: תל אביב.</li>
+    <li><strong>Railway BE/Worker:</strong> בוחרים region — Frankfurt (eu-central-1 equivalent). הקרוב ביותר לישראל מבחינת latency.</li>
+    <li><strong>Neon Postgres:</strong> אותו region — Frankfurt. Latency BE → DB &lt; 5ms.</li>
+    <li><strong>Resend + Sentry:</strong> Global APIs, latency משתנה.</li>
+  </ul>
+
+  <p>בחירה אסטרטגית: <strong>BE + DB באותו region</strong>. אם הם רחוקים — כל query הולך זמן ארוך, וה-API נעשה איטי. Frankfurt-Israel: ~30-40ms RTT. אם פעם נצטרך, נשקול region בקרבת הצרכן (אבל אין region כזה בישראל נכון להיום).</p>
+
+  <h3>5.6 Disaster Recovery (תקציר)</h3>
+
+  <p>פירוט מלא ב-Doc 07. תמצית:</p>
+
+  <ul class="num-list">
+    <li><strong>Neon backups:</strong> Daily snapshots, point-in-time recovery עד 7 ימים אחורה. ב-Pro plan: 30 ימים.</li>
+    <li><strong>R2 files:</strong> Cloudflare מבטיח 99.999999999% durability (11 nines). אם נדאג: replication to S3 ב-Phase 2.</li>
+    <li><strong>Railway containers:</strong> ללא state פנימי. Deploy חדש = פתרון.</li>
+    <li><strong>Encryption keys:</strong> מאוחסנים ב-Railway env vars + גיבוי ידני ב-1Password של הצוות. אובדן = כל ה-PII הצפון אבוד.</li>
+    <li><strong>Audit log:</strong> נמצא ב-Neon backups. אם DB נחרב, ניתן לשחזור מ-snapshot.</li>
+  </ul>
+
+  <div class="callout warning">
+    <div class="callout-title">⚠ הסיכון הגדול ביותר: אובדן מפתחות הצפנה</div>
+    <div class="callout-body">אם <code>PII_ENCRYPTION_KEY</code> אובד, כל ה-PII (תעודות זהות + טלפונים) בלתי קריא לעולם. הגיבוי הפיזי של המפתחות הוא דרישה מנדטורית. ראה Doc 07 Section 14 לפרוצדורת ה-rotation וה-backup.</div>
+  </div>
+
+  <h3>5.7 Timezone Strategy — Asia/Jerusalem ב-UI, UTC במערכת</h3>
+
+  <p class="lead"><strong>החלטה:</strong> Postgres ושכבת ה-API עובדים UTC בלבד. UI מציג זמן ב-<code>Asia/Jerusalem</code> דרך <code>Intl.DateTimeFormat</code>. Scheduled jobs ב-Worker container רצים ב-UTC, ולוקחים את ה-DST בחשבון רק ברמת הקוד.</p>
+
+  <p>הזמן הוא נקודת כשל קלאסית. ישראל ב-UTC+2 בחורף ו-UTC+3 בקיץ (DST). בלי החלטה מפורשת, כל פיתוח חודש 4 חודשים פולש לבאגים: "למה החתימה הופיעה ביום אחרי?", "המייל יצא בארבע לפנות בוקר", "audit log אומר שזה קרה אתמול אבל זה קרה היום".</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>שכבה</th><th>מה משתמשים</th><th>למה</th></tr></thead>
+      <tbody>
+        <tr><td><strong>DB columns</strong></td><td><code>timestamptz</code> (UTC store)</td><td>Postgres ממיר ל-UTC פנימית. queries עובדים תמיד נכון. אין DST surprises ברמת ה-storage</td></tr>
+        <tr><td><strong>API ↔ FE wire</strong></td><td>ISO 8601 עם <code>Z</code> (UTC)</td><td>תאריך נשלח כ-string ב-UTC. FE ממיר ל-display זמן ישראל</td></tr>
+        <tr><td><strong>UI display</strong></td><td><code>Asia/Jerusalem</code> דרך <code>Intl.DateTimeFormat</code></td><td>המשתמש רואה שעה מקומית. נכון אוטומטית ל-DST</td></tr>
+        <tr><td><strong>Audit log timestamps</strong></td><td>UTC ב-DB; UI מציג ישראל</td><td>תיעוד "מה קרה" צריך להיות חד-משמעי גלובלית; הצפייה מקומית</td></tr>
+        <tr><td><strong>Worker scheduled jobs</strong></td><td>UTC (cron expressions)</td><td>"רוץ ב-9:00 ישראל בכל בוקר" → cron expression ב-UTC משתנה לפי DST</td></tr>
+        <tr><td><strong>Email templates (שעות תוקף)</strong></td><td>הצגה במייל ב-Asia/Jerusalem</td><td>"הקישור בתוקף עד 14:30" — המשתמש רואה שעה מקומית</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>5.7.1 ההשלכות הקונקרטיות</h4>
+
+  <p><strong>ב-FE</strong> — כל הצגת תאריך/שעה דרך <code>useFormatter</code> מ-<code>next-intl</code> או <code>Intl.DateTimeFormat</code> עם locale <code>he-IL</code> ו-<code>timeZone: 'Asia/Jerusalem'</code>. אין conversion ידני, אין hard-coded "UTC+2".</p>
+
+  <p><strong>ב-BE controllers</strong> — תאריך נכנס כ-ISO 8601 UTC; נאחסן כפי שהוא. תאריך יוצא כ-ISO 8601 UTC; FE ממיר.</p>
+
+  <p><strong>ב-DB queries</strong> — אם יש WHERE על תאריך, עובדים ב-UTC. דוגמה: "פרויקטים שנוצרו היום" = <code>WHERE created_at &gt;= date_trunc('day', NOW() AT TIME ZONE 'Asia/Jerusalem') AT TIME ZONE 'Asia/Jerusalem'</code>. <strong>זה הדגם היחיד</strong> שבו ה-DB יודע על Asia/Jerusalem — וזה רק לחישוב גבול היום של המשתמש.</p>
+
+  <p><strong>ב-Worker scheduled jobs</strong> — cron expressions ב-UTC. "כל יום בשעה 9 בבוקר ישראל" = <code>0 7 * * *</code> בחורף, <code>0 6 * * *</code> בקיץ. הפתרון: שני יוצרי cron בקוד, או job rescheduling אוטומטי ב-DST switch (פעמיים בשנה). MVP = שני entries cron עם תיעוד שמסביר.</p>
+
+  <h4>5.7.2 הטסטים שמגבים את ההחלטה</h4>
+
+  <ul class="checks">
+    <li>Test: יצירת רשומה ב-23:30 ישראל בחורף — <code>created_at</code> ב-DB צריך להיות 21:30 UTC, ה-UI מציג 23:30</li>
+    <li>Test: כפילות שעה DST (ב-26 באוקטובר 2026 השעה 03:00 חוזרת ל-02:00) — audit log עדיין מציג סדר נכון בגלל אחסון UTC</li>
+    <li>Test: בקשת "פרויקטים מהיום" ב-00:30 ישראל — מחזירה את היום הנכון</li>
+    <li>Test: scheduled job ב-Worker רץ פעם אחת ביום גם ב-DST switch (אסור פעמיים, אסור 0 פעמים)</li>
+  </ul>
+
+  <div class="callout info">
+    <div class="callout-title">💡 שני זמני התקלות הסבירים</div>
+    <div class="callout-body">
+      <strong>1. סוף מרץ (DST in):</strong> השעה 02:00 קופצת ל-03:00. cron job ב-02:30 לא רץ ביום הזה.<br>
+      <strong>2. סוף אוקטובר (DST out):</strong> השעה 03:00 חוזרת ל-02:00. cron job ב-02:30 רץ פעמיים.<br>
+      הפתרון בשני המקרים: לוודא ש-scheduled jobs פועלים idempotent (אם זה רץ פעמיים — לא קרה כלום), ולא להגדיר jobs בשעות 02:00-04:00 ישראל.
+    </div>
+  </div>
+
+  <h3>5.8 Worker Container — מה הוא עושה ב-MVP</h3>
+
+  <p>ה-Worker container ב-Railway הוא container שני, נפרד מ-BE, שמתחבר לאותו Neon DB. הוא לא מקבל HTTP requests — הוא רץ עם long-lived processes. ב-MVP הוא מבצע <strong>שלוש משימות בלבד</strong>:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>משימה</th><th>תדירות</th><th>פירוט</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><strong>SSE push לhתראות</strong></td><td>Real-time (always-on)</td><td>WebSocket-like connection לכל user מחובר ל-FE. כשרשומה נוספת ב-<code>notifications</code>, ה-Worker דוחף ל-clients הרלוונטיים. ראה <code>IRealtimeProvider</code> ב-§6</td></tr>
+        <tr><td>2</td><td><strong>Cleanup של tokens פגי-תוקף</strong></td><td>כל שעה (cron)</td><td>מחיקת rows מ-<code>cache_kv</code> עם <code>expires_at &lt; NOW()</code>: magic link tokens שנשלחו ולא נצרכו, password reset tokens, אם יש</td></tr>
+        <tr><td>3</td><td><strong>Retry לשליחת email/storage שנכשלו</strong></td><td>כל 5 דקות (cron)</td><td>אם <code>ResendEmailProvider.send()</code> זרק exception, הרשומה נכנסת לטבלת <code>failed_external_calls</code>. ה-Worker מנסה שוב עם exponential backoff. אחרי 5 כשלונות — alert ב-Sentry</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>5.8.1 מה לא ב-Worker ב-MVP</h4>
+
+  <ul class="crosses">
+    <li><strong>Background analytics processing</strong> — Phase 2 (כשנוסיף analytics)</li>
+    <li><strong>Document OCR</strong> — Phase 2 of product</li>
+    <li><strong>Weekly digest emails</strong> — Phase 2</li>
+    <li><strong>Backup-to-S3 of R2</strong> — Phase 4 / Scale</li>
+    <li><strong>Audit log archival ל-partition table</strong> — Phase 3 (כשהטבלה גדולה)</li>
+  </ul>
+
+  <h4>5.8.2 ההפרדה: למה לא לעשות הכל ב-BE container</h4>
+
+  <p>אפשר להפעיל את ה-3 משימות מתוך ה-BE container עצמו. אבל לא בריא:</p>
+
+  <ul class="num-list">
+    <li><strong>SSE צורך connections פתוחות ארוכות.</strong> אם BE container מטפל גם ב-HTTP requests וגם ב-SSE, restart לdeploy פוגע גם בlivecלקוחות שצופים. הפרדה = deploy ל-API ללא הפרעה ל-SSE clients</li>
+    <li><strong>Cron jobs מערערים את ה-thread pool.</strong> ב-Fastify, ה-thread pool של BE מוקדש לבקשות. job ש-CPU-intensive (גם אם רק כל שעה) מאט תגובות בעלות עומס</li>
+    <li><strong>Scaling differently.</strong> Phase 2: יכול להיות שנרצה 3 BE replicas מאחורי load balancer + 1 Worker. אם הכל באותו container, הקסקלה לא נקייה</li>
+  </ul>
+
+  <p>$5/חודש נוספים על Railway = שווה את ההפרדה. ה-Worker container זול ומאפשר ל-BE להיות לחלוטין stateless.</p>
+</section>
+
+<section id="section-6">
+  <div class="section-header">
+    <div class="section-num">06 · INTERFACE LAYER</div>
+    <h2 class="section-title">שכבת ה-Interfaces — SOLID בפעולה</h2>
+    <p class="section-lede">שש interfaces. שש implementations. החלפת ספק = ימים, לא חודשים. הקוד העסקי לא יודע מי הספק.</p>
+  </div>
+
+  <p class="lead">החלטה ארכיטקטונית מהותית: כל תלות חיצונית (ספק email, storage, SMS, cache, monitoring, real-time) <strong>מסתתרת מאחורי interface</strong>. שירותי business logic תלויים ב-interface (<code>IEmailProvider</code>), לא ב-implementation (<code>ResendEmailProvider</code>). NestJS DI מזריק את ה-implementation בעת הפעלה. ה-test code מזריק <code>FakeEmailProvider</code>. החלפת ספק = שינוי factory; שירות הקוד אינו זז.</p>
+
+  <h3>6.1 ה-Interfaces שיש לנו</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Interface</th><th>מה מסתיר</th><th>MVP impl</th><th>חלופות עתידיות</th></tr></thead>
+      <tbody>
+        <tr><td><code>IEncryptionService</code></td><td>הצפנת PII + HMAC</td><td>PgcryptoEncryptionService</td><td>NodeCryptoEncryptionService · KmsEncryptionService</td></tr>
+        <tr><td><code>IEmailProvider</code></td><td>שליחת אימייל</td><td>ResendEmailProvider</td><td>SesEmailProvider · SendgridEmailProvider</td></tr>
+        <tr><td><code>ISMSProvider</code></td><td>שליחת SMS (Tenant OTP — MVP)</td><td>IsraeliSMSProvider (019/Inforu) · NoopSMSProvider (dev)</td><td>TwilioSmsProvider (הרחבה בינלאומית)</td></tr>
+        <tr><td><code>IStorageProvider</code></td><td>אחסון קבצים</td><td>R2StorageProvider</td><td>S3StorageProvider · LocalFilesystemProvider</td></tr>
+        <tr><td><code>ICacheProvider</code></td><td>Key-value cache (sessions, rate limits)</td><td>PostgresCacheProvider</td><td>RedisCacheProvider · MemcachedCacheProvider</td></tr>
+        <tr><td><code>IRealtimeProvider</code></td><td>Push לקליינטים (SSE, WS)</td><td>SseRealtimeProvider</td><td>WebSocketRealtimeProvider · PusherRealtimeProvider</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>ראה Doc 04c Section 6 לפרטי המבנה המלאים. הסיכום כאן:</p>
+
+  <h3>6.2 איך נראה Interface אופייני</h3>
+
+  <p>הדפוס זהה לכל ה-6:</p>
+
+  <div class="code-label">packages/db/src/providers/email/email.interface.ts</div>
+<pre><code><span class="keyword">export interface</span> EmailMessage {
+  to: string;
+  from?: string;
+  subject: string;
+  html?: string;
+  text?: string;
+  tags?: Record&lt;string, string&gt;;
+}
+
+<span class="keyword">export interface</span> EmailDeliveryResult {
+  id: string;
+  status: <span class="string">'sent'</span> | <span class="string">'queued'</span> | <span class="string">'rejected'</span>;
+  error?: string;
+}
+
+<span class="keyword">export interface</span> IEmailProvider {
+  send(message: EmailMessage): Promise&lt;EmailDeliveryResult&gt;;
+  healthCheck(): Promise&lt;<span class="keyword">void</span>&gt;;
+}
+</code></pre>
+
+  <h3>6.3 איך נראית implementation</h3>
+
+  <div class="code-label">packages/db/src/providers/email/resend.provider.ts (קיצור)</div>
+<pre><code><span class="keyword">import</span> { Resend } <span class="keyword">from</span> <span class="string">'resend'</span>;
+<span class="keyword">import</span> { IEmailProvider } <span class="keyword">from</span> <span class="string">'./email.interface'</span>;
+
+<span class="keyword">export class</span> ResendEmailProvider <span class="keyword">implements</span> IEmailProvider {
+  <span class="keyword">constructor</span>(<span class="keyword">private</span> client: Resend, <span class="keyword">private</span> defaultFrom: string) {}
+
+  <span class="keyword">async</span> send(message: EmailMessage): Promise&lt;EmailDeliveryResult&gt; {
+    <span class="keyword">const</span> result = <span class="keyword">await</span> <span class="keyword">this</span>.client.emails.send({
+      from: message.from ?? <span class="keyword">this</span>.defaultFrom,
+      to: message.to,
+      subject: message.subject,
+      html: message.html,
+      text: message.text,
+    });
+    <span class="keyword">return</span> { id: result.data?.id ?? <span class="string">''</span>, status: <span class="string">'sent'</span> };
+  }
+
+  <span class="keyword">async</span> healthCheck(): Promise&lt;<span class="keyword">void</span>&gt; {
+    <span class="keyword">await</span> <span class="keyword">this</span>.client.domains.list();
+  }
+}
+</code></pre>
+
+  <h3>6.4 ה-Wiring ב-NestJS</h3>
+
+  <p>ה-binding בין interface ל-implementation קורה במודול אחד מרכזי:</p>
+
+  <div class="code-label">apps/api/src/modules/providers.module.ts</div>
+<pre><code><span class="keyword">@Module</span>({
+  providers: [
+    {
+      provide: EMAIL_PROVIDER,
+      useFactory: () =&gt; {
+        <span class="keyword">if</span> (env.NODE_ENV === <span class="string">'test'</span>) {
+          <span class="keyword">return new</span> FakeEmailProvider();
+        }
+        <span class="keyword">return new</span> ResendEmailProvider(<span class="keyword">new</span> Resend(env.RESEND_API_KEY), env.EMAIL_FROM_DEFAULT);
+      },
+    },
+    <span class="comment">// ... similar for SMS, STORAGE, CACHE, REALTIME, ENCRYPTION</span>
+  ],
+  exports: [EMAIL_PROVIDER, SMS_PROVIDER, STORAGE_PROVIDER, CACHE_PROVIDER, ...],
+})
+<span class="keyword">export class</span> ProvidersModule {}
+</code></pre>
+
+  <h3>6.5 איך השירות צרכן</h3>
+
+  <p>קוד השירות לא יודע על Resend. הוא יודע רק על <code>IEmailProvider</code>:</p>
+
+  <div class="code-label">apps/api/src/auth/auth.service.ts</div>
+<pre><code><span class="keyword">@Injectable</span>()
+<span class="keyword">export class</span> AuthService {
+  <span class="keyword">constructor</span>(
+    <span class="keyword">@Inject</span>(EMAIL_PROVIDER) <span class="keyword">private</span> email: IEmailProvider,
+  ) {}
+
+  <span class="keyword">async</span> sendMagicLink(email: string, token: string) {
+    <span class="comment">// AuthService doesn't know it's Resend — just IEmailProvider</span>
+    <span class="keyword">await</span> <span class="keyword">this</span>.email.send({
+      to: email,
+      subject: <span class="string">'התחברות ל-EMAPP'</span>,
+      html: renderMagicLinkTemplate(token),
+    });
+  }
+}
+</code></pre>
+
+  <h3>6.6 SMS Provider — ספק ישראלי ב-MVP (לא Noop, לא Twilio)</h3>
+
+  <div class="callout warning">
+    <div class="callout-title">⚠ עודכן — החלטה D.20 (2026-05-16)</div>
+    <div class="callout-body">המסמך תכנן במקור <code>NoopSMSProvider</code> כי tenant portal היה Phase 2. <strong>אבל Tenant הוא עכשיו MVP (D.17), ולכן SMS OTP הוא MVP.</strong> ב-MVP משתמשים ב-<strong>ספק SMS ישראלי אמיתי</strong> (019 / Inforu / דומה) מאחורי <code>ISMSProvider</code> — לא Noop, ולא Twilio. הקטע למטה משקף את ההחלטה הסופית.</div>
+  </div>
+
+  <p>דיירים מתחברים ב-SMS OTP — אין להם אימייל/סיסמה. זה תפקיד MVP (פרסונה 3, Doc 01). ה-Auth flow קורא ל-<code>ISMSProvider</code>, וב-MVP ה-implementation הוא ספק ישראלי אמיתי.</p>
+
+  <p><strong>למה ספק ישראלי ולא Twilio:</strong> דיירים בהתחדשות עירונית הם לרוב מבוגרים, עם מספרים +972. ספק ישראלי (019, Inforu) זול משמעותית למספרים ישראליים ובעל deliverability טוב יותר בארץ מ-Twilio. הכל מאחורי <code>ISMSProvider</code> — אם נצטרך Twilio (הרחבה בינלאומית) זו החלפת factory.</p>
+
+  <p><strong>למה עדיין דרך interface:</strong> אם נחליף ספק SMS (מחיר, deliverability, הרחבה), שירות הקוד לא זז — רק ה-factory. בדיוק כמו שאר ה-providers. ב-dev אפשר להגדיר <code>NoopSMSProvider</code> (קורא OTP מ-logs) כדי לא לשרוף SMS אמיתיים בבדיקות — אבל ב-staging/production זה הספק הישראלי.</p>
+
+  <div class="code-label">israeli-sms.provider.ts (MVP — production/staging)</div>
+<pre><code><span class="keyword">export class</span> IsraeliSMSProvider <span class="keyword">implements</span> ISMSProvider {
+  <span class="keyword">constructor</span>(<span class="keyword">private</span> http: HttpClient, <span class="keyword">private</span> cfg: SmsConfig) {}
+
+  <span class="keyword">async</span> send(to: string, body: string): Promise&lt;SMSDeliveryResult&gt; {
+    <span class="comment">// to: E.164 (+9725...). Provider API per 019/Inforu docs.</span>
+    <span class="keyword">const</span> res = <span class="keyword">await</span> this.http.post(this.cfg.endpoint, {
+      user: this.cfg.user, pass: this.cfg.token,
+      to: toLocalIsraeli(to), msg: body,
+    });
+    <span class="keyword">return</span> { id: res.messageId, status: res.ok ? <span class="string">'sent'</span> : <span class="string">'failed'</span> };
+  }
+
+  <span class="keyword">async</span> healthCheck(): Promise&lt;<span class="keyword">void</span>&gt; { <span class="keyword">await</span> this.http.get(this.cfg.healthUrl); }
+}
+
+<span class="comment">// dev only — reads OTP from logs, sends nothing</span>
+<span class="keyword">export class</span> NoopSMSProvider <span class="keyword">implements</span> ISMSProvider {
+  <span class="keyword">async</span> send(to: string, body: string): Promise&lt;SMSDeliveryResult&gt; {
+    logger.warn({ msg: <span class="string">'SMS (dev noop)'</span>, to: maskPhone(to), bodyPreview: body.slice(0, 30) });
+    <span class="keyword">return</span> { id: <span class="string">'noop-'</span> + Date.now(), status: <span class="string">'sent'</span> };
+  }
+  <span class="keyword">async</span> healthCheck(): Promise&lt;<span class="keyword">void</span>&gt; {}
+}
+</code></pre>
+
+  <p>Factory בוחר לפי env: <code>SMS_PROVIDER=israeli</code> (staging/prod) או <code>SMS_PROVIDER=noop</code> (dev/test).</p>
+
+  <h3>6.7 Contract Tests</h3>
+
+  <p>ההוכחה שה-interface באמת abstraction: <strong>אותן בדיקות רצות לכל ה-implementations</strong>. אם ResendEmailProvider עובר את הבדיקה, ו-FakeEmailProvider עובר אותה — שתיהן עומדות בחוזה. החלפה ביניהן בטוחה.</p>
+
+  <div class="code-label">contract test pattern</div>
+<pre><code><span class="keyword">function</span> contractTests(name: string, factory: () =&gt; IEmailProvider) {
+  describe(<span class="string">`IEmailProvider — ${name}`</span>, () =&gt; {
+    it(<span class="string">'send returns id on success'</span>, <span class="keyword">async</span> () =&gt; {
+      <span class="keyword">const</span> provider = factory();
+      <span class="keyword">const</span> result = <span class="keyword">await</span> provider.send({ to: <span class="string">'a@b.c'</span>, subject: <span class="string">'x'</span>, text: <span class="string">'y'</span> });
+      expect(result.id).toBeTruthy();
+    });
+    <span class="comment">// ... more contract tests</span>
+  });
+}
+
+contractTests(<span class="string">'FakeEmailProvider'</span>, () =&gt; <span class="keyword">new</span> FakeEmailProvider());
+<span class="comment">// In integration env, also against real ResendEmailProvider</span>
+</code></pre>
+
+  <h3>6.8 העלות והתועלת</h3>
+
+  <p>שכבת ה-interfaces אינה חינמית:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>עלות</th><th>תועלת</th></tr></thead>
+      <tbody>
+        <tr><td>+1 קובץ לכל interface (הגדרה)</td><td>קוד שירות testable בלי תלות חיצונית</td></tr>
+        <tr><td>+1-2 קבצים לכל implementation</td><td>החלפת ספק = factory swap</td></tr>
+        <tr><td>~30-50 שורות wiring ב-NestJS</td><td>חוזה מתועד (ה-interface הוא ה-doc)</td></tr>
+        <tr><td>+1 שלב במודל המנטלי ("איפה ה-wiring?")</td><td>מפתחים חדשים קוראים interfaces כדי להבין את המערכת</td></tr>
+        <tr><td></td><td>Future-proofing מבני, לא מוצהר בהערה</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>6.9 דוגמאות לתרחישי החלפה</h3>
+
+  <p>איך נראה מעבר בפועל, כשהאינטרפייס במקום:</p>
+
+  <ul class="num-list">
+    <li><strong>Resend → SES.</strong> אם Resend מחיר עולה / deliverability מתדרדר: כתיבת <code>SesEmailProvider</code> (~50 שורות), שינוי factory ב-providers.module.ts (~3 שורות), הרצת contract tests. <strong>זמן: יום-יומיים.</strong> שירותי AuthService, NotificationService, ProjectsService — לא משתנים.</li>
+    <li><strong>R2 → S3.</strong> AWS SDK is the same — רק endpoint משתנה. <code>S3StorageProvider</code> קוד כמעט זהה ל-<code>R2StorageProvider</code>. <strong>זמן: שעות.</strong></li>
+    <li><strong>החלפת ספק SMS (אם צריך).</strong> כתיבת provider חדש, החלפה ב-factory, contract tests. <strong>זמן: יום.</strong> (ב-MVP: ספק ישראלי — D.20.)</li>
+    <li><strong>Postgres cache → Upstash Redis (Phase 2).</strong> כתיבת <code>UpstashRedisCacheProvider</code>, החלפה ב-factory, בדיקה ש-sessions ו-rate limits עובדים. <strong>זמן: 2-3 ימים.</strong></li>
+  </ul>
+
+  <p>בלי שכבת interfaces, כל מעבר כזה היה רפקטור רוחבי על עשרות קבצי שירות — לרוב שבועות.</p>
+
+  <div class="callout success">
+    <div class="callout-title">✓ Reversibility כביטוח</div>
+    <div class="callout-body">שכבת ה-interfaces היא הביטוח על בחירות ה-Stack שלנו. אם Resend ייסגר מחר, יש לנו כלי לעבור ב-יום. אם Cloudflare תעלה מחירים ב-10x, יש לנו אופציה. אנחנו לא נעולים. ההחלטות שעשינו הן <em>קונפיגורציה</em>, לא ארכיטקטורה.</div>
+  </div>
+</section>
+<section id="section-7">
+  <div class="section-header">
+    <div class="section-num">07 · DATA FLOWS</div>
+    <h2 class="section-title">איך מידע זורם במערכת</h2>
+    <p class="section-lede">חמש זרימות מרכזיות. מה קורה ב-request, איפה עוצרים, מה נכתב, מה נקרא.</p>
+  </div>
+
+  <p class="lead">הבנת זרימות נתונים היא הדרך לדבר על המערכת בלי לטבוע בפרטים. הזרימות הללו מופיעות עשרות פעמים ביום במערכת — והן זהות מבחינה מבנית, גם אם הנתונים שונים. פעם אחת מבינים אותן, ואז כל פיצ'ר חדש "נראה כמו אחת מהזרימות הללו, עם שינויים."</p>
+
+  <h3>7.1 זרימה A — קריאה פשוטה (List Projects)</h3>
+
+  <p>הדפוס הנפוץ ביותר: משתמש פותח דף, רואה רשימה.</p>
+
+  <div class="code-label">Flow A: GET /api/projects (read flow)</div>
+<pre><code><span class="num">1.</span>  Browser → Cloudflare Pages: load app.html
+<span class="num">2.</span>  React Query → Railway BE: GET /api/projects (Cookie: session=...)
+<span class="num">3.</span>  NestJS middleware:
+       a. validate session cookie via ICacheProvider (PostgresCacheProvider)
+       b. decode JWT → activeOrgId, userId, role
+       c. attach { user, orgId } to request
+<span class="num">4.</span>  ProjectsController.list(req):
+       → ProjectsService.list(orgId, user)
+<span class="num">5.</span>  ProjectsService.list:
+       await withTenant(orgId, async (tx) =&gt; {
+         SET LOCAL app.organization_id = orgId  <span class="comment">// RLS context</span>
+         SET LOCAL app.encryption_key = env.PII_ENCRYPTION_KEY
+         <span class="comment">// RLS policy filters: WHERE org_id = current_setting(...)</span>
+         <span class="keyword">return</span> tx.select().from(projects).where(roleSpecificFilter)
+       })
+<span class="num">6.</span>  Response: array of Project DTOs
+<span class="num">7.</span>  Browser receives JSON, React Query caches, UI renders
+</code></pre>
+
+  <p>נקודות חשובות:</p>
+
+  <ul class="checks">
+    <li><strong>orgId לא מגיע מ-body או query string</strong> — הוא נשלף מה-JWT (לא ניתן לזיוף)</li>
+    <li><strong>RLS עושה את העבודה</strong> — גם אם השירות שגוי, ה-DB מסנן</li>
+    <li><strong>Role filter על גבי RLS</strong> — Manager רואה הכל; Agent רק שהוקצו לו (דרך <code>project_assignments</code> join)</li>
+    <li><strong>אין PII בזרימה הזו</strong> — projects.name ושאר השדות הם plaintext</li>
+  </ul>
+
+  <h3>7.2 זרימה B — יצירה עם Audit (Create Project)</h3>
+
+  <p>פעולה state-changing. חייבת audit. דורשת transaction.</p>
+
+  <div class="code-label">Flow B: POST /api/projects (write flow with audit)</div>
+<pre><code><span class="num">1.</span>  Browser → BE: POST /api/projects, body: { name, type, ... }
+<span class="num">2.</span>  Middleware: auth + activeOrgId extracted from JWT
+<span class="num">3.</span>  Controller: validate body with Zod (CreateProjectDto)
+<span class="num">4.</span>  ProjectsService.create(orgId, userId, dto):
+       await withTenant(orgId, async (tx) =&gt; {
+         <span class="comment">// 4a. Business validation (role allows? plan allows?)</span>
+         if (user.role !== <span class="string">'manager'</span>) throw ForbiddenError
+
+         <span class="comment">// 4b. Insert project (RLS WITH CHECK enforces org_id=current)</span>
+         const [project] = await tx.insert(projects)
+           .values({ ...dto, orgId, createdBy: userId })
+           .returning()
+
+         <span class="comment">// 4c. Audit — SAME TX, before any external call</span>
+         await audit.log({
+           orgId,
+           action: <span class="string">'project.created'</span>,
+           targetTable: <span class="string">'projects'</span>,
+           targetId: project.id,
+           after: { name: project.name, type: project.type },
+         }, tx)
+
+         <span class="keyword">return</span> project
+       })
+<span class="num">5.</span>  After commit: optional post-commit side-effects
+       (e.g., email manager — best-effort, doesn't roll back)
+<span class="num">6.</span>  Response: ProjectDto
+<span class="num">7.</span>  Browser: React Query invalidates list cache, UI updates
+</code></pre>
+
+  <p>נקודות עיקריות:</p>
+
+  <ul class="checks">
+    <li><strong>Insert + audit באותה transaction</strong> — אטומיות: שניהם מצליחים או שניהם נכשלים</li>
+    <li><strong>Email אחרי commit</strong> — אם Resend נופל, המשתמש עדיין יצר את הפרויקט (best-effort)</li>
+    <li><strong>RLS WITH CHECK</strong> — אם dto.orgId היה אחר, ה-INSERT היה נכשל ב-DB level (defense in depth)</li>
+    <li><strong>No PII flowing here</strong> — projects לא כוללת PII</li>
+  </ul>
+
+  <h3>7.3 זרימה C — קריאה של PII (Get Owner Details)</h3>
+
+  <p>הזרימה הרגישה ביותר. מחזירה ת"ז וטלפון מוצפנים — דורש פענוח ב-DB session-scoped.</p>
+
+  <div class="code-label">Flow C: GET /api/apartments/:id/owners (PII flow)</div>
+<pre><code><span class="num">1.</span>  Browser → BE: GET /api/apartments/&lt;id&gt;/owners
+<span class="num">2.</span>  Middleware: auth check + role check
+<span class="num">3.</span>  Controller: extract apartment_id from URL
+<span class="num">4.</span>  OwnersService.listForApartment(orgId, apartmentId, user):
+       await withTenant(orgId, async (tx) =&gt; {
+         <span class="comment">// 4a. RLS scopes to org. SET LOCAL app.encryption_key set.</span>
+
+         <span class="comment">// 4b. Fetch with decryption — pgcrypto runs IN the DB</span>
+         const rows = await tx.execute(sql`
+           SELECT o.id, o.name, o.email,
+             pgp_sym_decrypt(o.national_id_encrypted,
+                             current_setting(<span class="string">'app.encryption_key'</span>)) AS national_id,
+             CASE WHEN o.phone_encrypted IS NOT NULL THEN
+               pgp_sym_decrypt(o.phone_encrypted,
+                               current_setting(<span class="string">'app.encryption_key'</span>))
+             ELSE NULL END AS phone
+           FROM owners o
+           JOIN ownerships ow ON ow.owner_id = o.id
+           WHERE ow.apartment_id = ${apartmentId}
+             AND ow.ended_at IS NULL
+         `)
+
+         <span class="comment">// 4c. Map to DTOs — never expose national_id_hash etc.</span>
+         <span class="keyword">return</span> rows.map(mapToOwnerDto)
+       })
+<span class="num">5.</span>  Response: OwnerDto array with plaintext national_id, phone
+<span class="num">6.</span>  Browser: HTTPS-encrypted in transit; sensitive data displayed in UI
+</code></pre>
+
+  <p>נקודות קריטיות:</p>
+
+  <ul class="checks">
+    <li><strong>Decryption ב-DB</strong>, לא ב-app code (Doc 04c P1.5)</li>
+    <li><strong>Key הוא session var</strong>, נמסר דרך SET LOCAL ב-withTenant — לא משאיר עקבות בלוגים</li>
+    <li><strong>Plaintext PII חוצה את ה-network רק פעם אחת</strong> (DB → BE → browser, מוצפן ב-TLS)</li>
+    <li><strong>אין PII ב-logs</strong> — Pino redactors מסירים שדות רגישים (Doc 07)</li>
+    <li><strong>Audit אופציונלי כאן</strong> — קריאת PII היא רגישה אבל לא state-changing. Doc 07 דן מתי לרשום audit ב-read.</li>
+  </ul>
+
+  <h3>7.4 זרימה D — Contractor רואה עם הרשאות JSONB</h3>
+
+  <p>הזרימה הכי מורכבת מבחינת logic. Contractor מקבל תגובה מסוננת לפי <code>share.permissions</code>.</p>
+
+  <div class="code-label">Flow D: GET /api/contractor/projects/:id (filtered by share permissions)</div>
+<pre><code><span class="num">1.</span>  Contractor logs in → JWT has contractorId (not userId)
+<span class="num">2.</span>  Browser → BE: GET /api/contractor/projects/&lt;id&gt;
+<span class="num">3.</span>  ContractorMiddleware:
+       a. validates contractor JWT
+       b. attaches { contractorId, orgId } to request
+<span class="num">4.</span>  ContractorProjectsService.get(orgId, projectId, contractorId):
+       await withTenant(orgId, async (tx) =&gt; {
+         <span class="comment">// 4a. Resolve share (or 403)</span>
+         const share = await resolveActiveShare(tx, projectId, contractorId)
+         if (!share) throw ForbiddenError
+
+         <span class="comment">// 4b. Validate JSONB permissions structure (fail-closed)</span>
+         const parsed = sharePermissionsSchema.safeParse(share.permissions)
+         if (!parsed.success) throw ForbiddenError  <span class="comment">// corrupted = no access</span>
+
+         <span class="comment">// 4c. Fetch project data — RLS allows because contractor in org</span>
+         const project = await tx.query.projects.findFirst({...})
+
+         <span class="comment">// 4d. Filter response by permissions</span>
+         <span class="keyword">return</span> {
+           id: project.id,
+           name: project.name,
+           overview: parsed.data.overview.on ? project.overview : <span class="keyword">undefined</span>,
+           tenants: parsed.data.tenants.on
+             ? project.apartments.map(a =&gt; filterTenantByPermissions(a, parsed.data))
+             : <span class="keyword">undefined</span>,
+           <span class="comment">// hidden fields ABSENT (not null) — see Doc 07 §7.4</span>
+         }
+       })
+<span class="num">5.</span>  Response: filtered ProjectDto
+</code></pre>
+
+  <p>נקודות מהותיות:</p>
+
+  <ul class="checks">
+    <li><strong>Share validation fail-closed</strong> — JSONB corrupted = no access (not "best effort")</li>
+    <li><strong>Hidden fields are <em>absent</em>, not null</strong> — אם permission כבוי, השדה אינו ב-response. ראה Doc 07 §7.4</li>
+    <li><strong>Contractor אינו "user"</strong> — מודל זהות נפרד; אינו ב-<code>users</code> table</li>
+    <li><strong>orgId נשלף מה-share</strong> — חתימת ה-org משלב התחברות</li>
+  </ul>
+
+  <h3>7.5 זרימה E — Provider Admin Access (Cross-Tenant)</h3>
+
+  <p>הזרימה היחידה שחוצה tenants. דרכה נכנס צוות EMAPP לתמיכה. כל גישה audited.</p>
+
+  <div class="code-label">Flow E: Provider Admin reads customer data</div>
+<pre><code><span class="num">1.</span>  Provider Admin logs in to internal tool:
+       - email + password
+       - MFA (TOTP) — MANDATORY
+       - separate session from customer-facing app
+<span class="num">2.</span>  Provider opens "Customer Search" tool, types ticket #1234
+<span class="num">3.</span>  Internal tool → BE: POST /internal/provider/search-by-email
+       { email: <span class="string">'user@customer.com'</span>, reason: <span class="string">'ticket #1234'</span> }
+<span class="num">4.</span>  ProviderAuthMiddleware: validates provider JWT, extracts providerUserId
+<span class="num">5.</span>  ProviderSupportService.findByEmail(providerUserId, email, reason):
+       <span class="keyword">return</span> withProvider(providerUserId, `ticket #1234: ${reason}`, async (tx) =&gt; {
+         <span class="comment">// uses providerPool (provider_app_role) — BYPASSRLS</span>
+         <span class="comment">// audit INSERT happens BEFORE the work, in same TX</span>
+
+         <span class="keyword">return</span> tx.select().from(users).where(eq(users.email, email))
+       })
+<span class="num">6.</span>  provider_audit_log now has the entry
+<span class="num">7.</span>  Response: user info, OR error if not found
+</code></pre>
+
+  <p>נקודות חיוניות:</p>
+
+  <ul class="checks">
+    <li><strong>נתיב נפרד לחלוטין</strong> — endpoints נפרדים, JWT נפרד, DB role נפרד, audit נפרד</li>
+    <li><strong>Reason חובה</strong> — withProvider דוחה reason קצר מ-5 תווים</li>
+    <li><strong>Audit BEFORE work</strong> — אם הקריאה תיכשל, ה-attempt עדיין מתועד</li>
+    <li><strong>BYPASSRLS</strong> — לכן ניתן לחפש user ב-org שלא ידוע</li>
+    <li><strong>אין UPDATE/DELETE על audit</strong> — Provider אינו יכול למחוק עקבות שלו</li>
+  </ul>
+
+  <h3>7.6 הסיכום: כלל ה-zero-trust</h3>
+
+  <p>כל הזרימות מצייתות לעקרון אחד: <strong>שום שכבה לא סומכת על השכבה מעל</strong>. ה-UI יכול לשלוח כל מה שירצה; ה-API מאמת. ה-API יכול לקרוא לכל service; ה-service בודק role. ה-service יכול לכתוב כל מה שירצה ל-DB; RLS מסנן. אם רק שכבה אחת עובדת, המערכת בטוחה. אם כל השכבות יחד נכשלות — ההצפנה של PII היא ה-last line.</p>
+
+  <div class="callout info">
+    <div class="callout-title">💡 הזרימות הללו חוזרות בכל המוצר</div>
+    <div class="callout-body">פיצ'ר חדש שמופיע כמעט תמיד הוא וריאציה של אחת מחמשת הזרימות. הוסף owner לדירה? זרימה B + הצפנת PII. עדכן status של דירה? זרימה B. הוסף document? זרימה B + IStorageProvider. הצג audit log? זרימה A. אם הפיצ'ר אינו נראה כמו אחת מהן — עצור ושאל אם משהו לא מתאים לארכיטקטורה.</div>
+  </div>
+</section>
+
+<section id="section-8">
+  <div class="section-header">
+    <div class="section-num">08 · SECURITY</div>
+    <h2 class="section-title">אבטחה — חמש שכבות הגנה</h2>
+    <p class="section-lede">תקציר אסטרטגיית האבטחה. הפרטים המלאים ב-Doc 07.</p>
+  </div>
+
+  <p class="lead">המסמך הזה מציג את <strong>הגישה</strong>. הפרטים — מודל איומים מלא, מטריצת הרשאות, קטלוג איומים T01-T10, פרוצדורות תגובה לאירוע — נמצאים ב-<a href="#" style="color: var(--primary); font-weight: 600;">Doc 07 — Security Playbook</a>. כאן רק חמשת שכבות ההגנה ואיך הן עובדות יחד.</p>
+
+  <h3>8.1 הפילוסופיה — Defense in Depth</h3>
+
+  <p>כל שכבה לבדה מספיקה. כל שכבה מניחה שהבאה אחריה תיכשל. אם כולן עובדות יחד — האבטחה הרבה יותר חזקה מהסכום.</p>
+
+  <div class="layer-card">
+    <div class="layer-header">
+      <span class="layer-num">SHIELD 1</span>
+      <h4 class="layer-title">Network &amp; Edge — Cloudflare</h4>
+    </div>
+    <div class="layer-desc">
+      DDoS protection, rate limiting ברמת ה-Edge, WAF rules בסיסיים. רוב הבוטים אינם מגיעים עד הסרבר. בנוסף, HTTPS (TLS 1.3) כברירת מחדל לכל ה-domains.
+    </div>
+    <div class="layer-tech">Cloudflare DDoS · WAF · TLS · Edge rate limiting</div>
+  </div>
+
+  <div class="layer-card">
+    <div class="layer-header">
+      <span class="layer-num">SHIELD 2</span>
+      <h4 class="layer-title">App-level — NestJS Middleware</h4>
+    </div>
+    <div class="layer-desc">
+      Auth middleware (Better Auth): session validation, JWT verification. Role-based access (Manager/Agent/Viewer/Contractor/Provider). Rate limiting per-user. CSRF protection. Zod validation לכל body/query. Helmet headers (CSP, X-Frame-Options, etc.).
+    </div>
+    <div class="layer-tech">Better Auth · Zod · Helmet · per-user rate limit · CSRF tokens</div>
+  </div>
+
+  <div class="layer-card">
+    <div class="layer-header">
+      <span class="layer-num">SHIELD 3</span>
+      <h4 class="layer-title">DB role separation</h4>
+    </div>
+    <div class="layer-desc">
+      שני DB roles נפרדים: <code>app_user</code> (קוד הלקוח, RLS אכוף) ו-<code>provider_app_role</code> (צוות EMAPP, BYPASSRLS + audit). אפילו אם קוד שירות נשבר, ה-DB role הוא הקיר. ל-app_user אין הרשאת UPDATE/DELETE על audit_log או על provider tables.
+    </div>
+    <div class="layer-tech">app_user · provider_app_role · GRANT/REVOKE · BYPASSRLS attribute</div>
+  </div>
+
+  <div class="layer-card">
+    <div class="layer-header">
+      <span class="layer-num">SHIELD 4</span>
+      <h4 class="layer-title">Row-Level Security (RLS)</h4>
+    </div>
+    <div class="layer-desc">
+      Policy על כל טבלה רב-לקוחית: <code>org_id = current_setting('app.organization_id')::uuid</code>. אם <code>withTenant</code> לא נקרא, RLS מחזיר 0 שורות. אם ה-app code שוגה ושוכח filter — RLS מסנן. השכבה האחרונה לפני ה-data.
+    </div>
+    <div class="layer-tech">ENABLE RLS · FORCE RLS · current_setting · SET LOCAL</div>
+  </div>
+
+  <div class="layer-card">
+    <div class="layer-header">
+      <span class="layer-num">SHIELD 5</span>
+      <h4 class="layer-title">PII Encryption</h4>
+    </div>
+    <div class="layer-desc">
+      תעודות זהות וטלפונים מוצפנים ב-BYTEA columns עם pgcrypto. גם אם הכל אחר נשבר — DB dump חשוף לעולם — ה-PII אינו קריא. ה-encryption key אינו ב-DB; הוא ב-Railway env vars, מועבר ל-session דרך SET LOCAL.
+    </div>
+    <div class="layer-tech">pgcrypto · pgp_sym_encrypt · HMAC for lookup · session-scoped key</div>
+  </div>
+
+  <h3>8.2 מטריצת איומים תמציתית</h3>
+
+  <p>10 האיומים העיקריים. הקטלוג המלא ב-Doc 07 §9:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>איום</th><th>הגנה ראשית</th><th>הגנה משנית</th></tr></thead>
+      <tbody>
+        <tr><td><strong>T01</strong></td><td>SQL Injection</td><td>Drizzle parameterized queries</td><td>RLS לא תאפשר חשיפה רחבה</td></tr>
+        <tr><td><strong>T02</strong></td><td>Cross-tenant data leak</td><td>RLS + FORCE</td><td>withTenant validation; T1.5 in CI</td></tr>
+        <tr><td><strong>T03</strong></td><td>Auth bypass</td><td>Better Auth + MFA for Provider</td><td>Rate limiting; account lockout</td></tr>
+        <tr><td><strong>T04</strong></td><td>Session hijacking</td><td>HttpOnly + Secure cookies + SameSite</td><td>Short session TTL; rotation</td></tr>
+        <tr><td><strong>T05</strong></td><td>PII exposure via app bug</td><td>Encryption at column level</td><td>Pino log redaction; field-absence pattern</td></tr>
+        <tr><td><strong>T06</strong></td><td>Insider misuse (Provider)</td><td>withProvider mandatory audit</td><td>No UPDATE/DELETE on audit; MFA</td></tr>
+        <tr><td><strong>T07</strong></td><td>Privilege escalation (Agent→Manager)</td><td>JWT claims signed; role check</td><td>RLS per-row enforcement</td></tr>
+        <tr><td><strong>T08</strong></td><td>Brute force / credential stuffing</td><td>Per-user rate limit</td><td>Cloudflare edge rate limit</td></tr>
+        <tr><td><strong>T09</strong></td><td>JSONB injection (share permissions)</td><td>Zod schema .strict()</td><td>fail-closed on parse error</td></tr>
+        <tr><td><strong>T10</strong></td><td>R2 unauthorized access</td><td>Presigned URLs, short TTL (15 min)</td><td>HMAC content hashing</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>8.3 הצפנת PII — מבט תמציתי</h3>
+
+  <p>מודל ההצפנה (פרטים ב-Doc 04c §P1.5 ו-Doc 07 §5):</p>
+
+  <ul class="num-list">
+    <li><strong>שני columns לכל שדה רגיש:</strong> <code>national_id_encrypted</code> (BYTEA) + <code>national_id_hash</code> (TEXT, HMAC). ההצפנה מסתירה; ה-hash מאפשר חיפוש.</li>
+    <li><strong>הצפנה ב-DB:</strong> <code>pgp_sym_encrypt(plaintext, key)</code>. הקוד אינו רואה plaintext מחוץ ל-INSERT הראשי.</li>
+    <li><strong>HMAC ב-app:</strong> <code>createHmac('sha256', hashKey).update(input)</code>. דטרמיניסטי — אותו קלט תמיד אותו hash.</li>
+    <li><strong>שני מפתחות נפרדים:</strong> <code>PII_ENCRYPTION_KEY</code> (להצפנה) ו-<code>PII_HASH_KEY</code> (ל-HMAC). מובדלים כדי שאף אחד מהם לא יחשוף את השני.</li>
+    <li><strong>Session-scoped:</strong> withTenant עושה SET LOCAL לשני המפתחות. הם מתפוגגים בסוף ה-transaction.</li>
+  </ul>
+
+  <h3>8.4 Provider Tier — תוסף קריטי</h3>
+
+  <p>צוות EMAPP צריך לפעמים לגשת לנתוני לקוח (תמיכה, debugging). הגישה הזו <strong>אסור שתיראה כמו admin flag</strong> על משתמש רגיל. במקום, היא tier נפרד מבחינה מבנית:</p>
+
+  <ul class="num-list">
+    <li><strong>זהות נפרדת:</strong> טבלת <code>provider_users</code> (לא <code>users</code>). MFA חובה ברמת ה-schema (column NOT NULL). Password חובה (אין magic links).</li>
+    <li><strong>DB role נפרד:</strong> <code>provider_app_role</code> עם BYPASSRLS. שירותי לקוח אינם יכולים לכתוב כ-provider, ולהפך.</li>
+    <li><strong>Audit נפרד וחזק:</strong> <code>provider_audit_log</code> עם <code>reason</code> חובה לכל גישה. INSERT only — אין UPDATE/DELETE.</li>
+    <li><strong>Wrapper נפרד:</strong> <code>withProvider(providerUserId, reason, fn)</code>. דוחה reason קצר מ-5 תווים. כותב audit לפני העבודה.</li>
+    <li><strong>Session קצר:</strong> Provider session TTL = 30 דקות, לא 7 ימים. אי אפשר "להישאר מחובר" לאורך זמן.</li>
+  </ul>
+
+  <p>הסיבה: <strong>פריצת חשבון Provider Admin היא קטסטרופלית פי כמה מפריצת לקוח</strong> (כל הלקוחות חשופים). השכבות הנוספות הללו אינן ביורוקרטיה — הן ההגנה מפני נקודת כשל יחידה.</p>
+
+  <h3>8.5 Audit Log — מקור האמת על מה קרה</h3>
+
+  <p>שני audit logs נפרדים:</p>
+
+  <ul class="checks">
+    <li><strong><code>audit_log</code></strong> — לכל פעולה ב-tier הלקוח. INSERT only. ניתן לקרוא ע"י Manager (פעולות שלו), Provider (לחקירת אירועים).</li>
+    <li><strong><code>provider_audit_log</code></strong> — לכל גישת Provider Admin. INSERT only. ניתן לקרוא ע"י Provider Admins (התנהגות צוות פנים), אסור לקוחות.</li>
+  </ul>
+
+  <p>שניהם append-only ברמת ה-DB GRANT — אין UPDATE, אין DELETE. גם אם attacker יקבל הרשאות מלאות של app_user — הוא לא יכול למחוק עקבות.</p>
+
+  <h3>8.6 מה לא נכלל ב-MVP (אבל ב-roadmap)</h3>
+
+  <ul class="crosses">
+    <li>SOC 2 Type II — אחרי ~10 לקוחות (Phase 4 של רוד-מאפ)</li>
+    <li>External pentest — אחרי שיהיו 5-10 לקוחות (תקציב)</li>
+    <li>Bug bounty program — אחרי SOC 2</li>
+    <li>HSM ל-encryption keys — Phase 3 (כרגע מספיק Railway env vars)</li>
+    <li>WAF advanced rules — Cloudflare Pro מהוסיף ב-Phase 2</li>
+    <li>SAML/SSO — לפי דרישת לקוחות (Phase 2 של מוצר)</li>
+  </ul>
+
+  <p>ה-MVP מכוון לקבל <strong>חברה ישראלית קטנה-בינונית</strong> כלקוח ראשון. הוא <em>אינו</em> מכוון לבנק או חברת ביטוח (אלה יבואו אחרי SOC 2).</p>
+
+  <div class="callout danger">
+    <div class="callout-title">⚠ Security First — לא ניתן לפשרה</div>
+    <div class="callout-body">העקרון השני מבין החמישה. כל החלטה ארכיטקטונית שעלולה לפגוע באבטחה — נדחית. אם איזון בין performance לאבטחה — אבטחה מנצחת. אם איזון בין נוחות פיתוח לאבטחה — אבטחה מנצחת. הסיבה: לקוחות שלנו מחזיקים PII של עשרות אלפי דיירים. פריצה אחת = סוף הפרויקט.</div>
+  </div>
+</section>
+
+<section id="section-9">
+  <div class="section-header">
+    <div class="section-num">09 · PERFORMANCE</div>
+    <h2 class="section-title">ביצועים — יעדים ושיטות</h2>
+    <p class="section-lede">מה אנחנו מבטיחים. איך אנחנו מבטיחים את זה. אילו טכניקות אנחנו משתמשים.</p>
+  </div>
+
+  <p class="lead">Performance הוא עקרון השלישי מחמשת (Section 2). זה לא optimization שאנו עושים בסוף — אלא דרישה בכל החלטה. שירות SaaS איטי הוא שירות SaaS שמשתמשים נוטשים. היעדים והשיטות הללו מבטיחים שגם ב-100 ארגונים, המערכת תרגיש מהירה.</p>
+
+  <h3>9.1 היעדים — מה אנחנו מבטיחים</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>מדד</th><th>יעד MVP</th><th>יעד 100 ארגונים</th><th>איך מודדים</th></tr></thead>
+      <tbody>
+        <tr><td>p95 API latency</td><td class="ltr">&lt; 200ms</td><td class="ltr">&lt; 300ms</td><td>Sentry Performance</td></tr>
+        <tr><td>p99 API latency</td><td class="ltr">&lt; 500ms</td><td class="ltr">&lt; 800ms</td><td>Sentry Performance</td></tr>
+        <tr><td>p95 DB query</td><td class="ltr">&lt; 5ms</td><td class="ltr">&lt; 10ms</td><td>pg_stat_statements</td></tr>
+        <tr><td>First Contentful Paint</td><td class="ltr">&lt; 1.5s</td><td class="ltr">&lt; 2s</td><td>Web Vitals</td></tr>
+        <tr><td>Time to Interactive</td><td class="ltr">&lt; 3s</td><td class="ltr">&lt; 4s</td><td>Web Vitals</td></tr>
+        <tr><td>withTenant overhead</td><td class="ltr">&lt; 2ms</td><td class="ltr">&lt; 3ms</td><td>smoke tests</td></tr>
+        <tr><td>Cold start (Railway)</td><td colspan="2" class="ltr">N/A — container always on</td><td>—</td></tr>
+        <tr><td>SSE event push latency</td><td class="ltr">&lt; 500ms</td><td class="ltr">&lt; 1s</td><td>app metrics</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>9.2 איך אנחנו מגיעים לזה — DB layer</h3>
+
+  <p>ה-DB הוא הצוואר. אם הוא איטי, הכל איטי. ה-techniques שלנו:</p>
+
+  <ul class="num-list">
+    <li><strong>Composite indexes על כל RLS subquery.</strong> כל policy שבודק org_id חייב אינדקס שמתחיל ב-org_id. ראה Doc 04c P1.12 לרשימה המלאה (~45 אינדקסים).</li>
+    <li><strong>Connection pool עם statement_timeout.</strong> 20 connections ל-app_user. statement_timeout = 30s. בקשה איטית לא תופסת חיבור לעולמים.</li>
+    <li><strong>Drizzle ולא Prisma.</strong> Drizzle יוצר queries צפויות; ללא lazy loading; ללא runtime overhead. כל query גלוי בלוגים.</li>
+    <li><strong>Denormalization מודעת.</strong> <code>buildings.apt_count</code> מתוחזק ע"י trigger — חוסך COUNT(*) בכל list. <code>audit_log.actor_email</code> denormalized — חוסך join ל-users בכל read.</li>
+    <li><strong>JSONB עם indexes מתאימים.</strong> <code>share.permissions</code> כ-JSONB. אם נצטרך GIN index — נוסיף בנקודה הנכונה.</li>
+    <li><strong>Partial indexes על דפוסים נפוצים.</strong> <code>notifications WHERE read_at IS NULL</code> — index קטן ומהיר ל-"unread" query.</li>
+  </ul>
+
+  <h3>9.3 איך אנחנו מגיעים לזה — API layer</h3>
+
+  <ul class="num-list">
+    <li><strong>Fastify ולא Express.</strong> Fastify מהיר ~2x מ-Express ל-throughput. אינו פתרון יחיד אבל קלאסי.</li>
+    <li><strong>NestJS injection ברמת request, לא global.</strong> Services נוצרים פעם אחת; מצב חוצה-בקשה נמנע.</li>
+    <li><strong>Streaming responses ל-list endpoints גדולים.</strong> במידת הצורך. ב-MVP לא נדרש.</li>
+    <li><strong>HTTP/2 כברירת מחדל.</strong> Railway תומך. Multiplexing מקטין latency.</li>
+    <li><strong>Brotli compression.</strong> ה-edge של Cloudflare דוחס responses אוטומטית.</li>
+  </ul>
+
+  <h3>9.4 איך אנחנו מגיעים לזה — Frontend</h3>
+
+  <ul class="num-list">
+    <li><strong>Static generation בכל פעם שאפשר.</strong> דפי landing, docs, public pages — built בעת deploy, מוגשים מ-CDN.</li>
+    <li><strong>App Router עם RSC.</strong> Server Components לדפים static-ish. Client Components רק כשצריך interactivity.</li>
+    <li><strong>React Query עם stale-while-revalidate.</strong> UI מוצג מהר; refresh ברקע.</li>
+    <li><strong>Tree shaking + code splitting.</strong> Next.js עושה את זה אוטומטית.</li>
+    <li><strong>Image optimization.</strong> next/image עם WebP/AVIF.</li>
+    <li><strong>Preconnect ל-API origin.</strong> מקטין zone DNS+TLS handshake.</li>
+  </ul>
+
+  <h3>9.5 איך אנחנו מודדים</h3>
+
+  <p>אין performance ללא measurement:</p>
+
+  <ul class="checks">
+    <li><strong>Sentry Performance</strong> — p50/p95/p99 לכל endpoint. dashboard לפי route.</li>
+    <li><strong>pg_stat_statements</strong> — top-10 slow queries ב-Neon dashboard.</li>
+    <li><strong>Web Vitals</strong> — FCP, LCP, TTI נשלחים ל-Sentry מה-browser.</li>
+    <li><strong>Smoke tests ב-CI</strong> — withTenant overhead, common queries (Doc 04c §P1.12). Block PR if p95 &gt; 5ms.</li>
+    <li><strong>Synthetic monitoring</strong> — Phase 2 (Sentry Cron checks, Pingdom).</li>
+  </ul>
+
+  <h3>9.6 אזורי סיכון לביצועים</h3>
+
+  <p>שלוש מקומות שאנחנו עוקבים מקרוב:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>אזור</th><th>למה זה סיכון</th><th>הקלה</th></tr></thead>
+      <tbody>
+        <tr><td>RLS subquery על apartments</td><td>apartments → buildings → projects 3-level join בכל query</td><td>Indexes על כל ה-FK חברים; אם איטי - denormalize org_id ל-apartments</td></tr>
+        <tr><td>PII decrypt בכל read של owner</td><td>pgp_sym_decrypt CPU cost</td><td>נמדד — בקנה מידה MVP זה ~0.5ms/row. ב-100 owners זה ~50ms total. סביר.</td></tr>
+        <tr><td>Audit log INSERT בכל write</td><td>+1 query לכל פעולה</td><td>אינדקסים על audit_log (org_id, created_at DESC). INSERT הוא ~1ms.</td></tr>
+        <tr><td>SSE connections at scale</td><td>בקנה מידה 1000 connections בו-זמנית, in-memory state</td><td>MVP: עד 100 משתמשים פעילים. Phase 2: עבור Pusher/WebSocket דרך IRealtimeProvider.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>9.7 מתי לבצע optimization</h3>
+
+  <p>הכלל: <strong>measure first, optimize second.</strong> אנחנו לא עושים optimization "מראש" אלא אם זה מובנה (אינדקסים, schema). דפוס ה-decision:</p>
+
+  <ol class="num-list">
+    <li>EXPLAIN ANALYZE של השאילתה החשודה</li>
+    <li>בדיקה ב-Sentry: באמת איטי? באיזה p%?</li>
+    <li>בדיקה אם זה rare event (1% מהבקשות) או hot path (50% מהבקשות)</li>
+    <li>רק אם hot path + p95 חורג מהיעד — נשפר</li>
+    <li>שיפור: אינדקס נוסף → query rewrite → denormalization → cache (לפי סדר עלות)</li>
+  </ol>
+
+  <div class="callout success">
+    <div class="callout-title">✓ ביצועים מהיום הראשון</div>
+    <div class="callout-body">המערכת תרגיש מהירה ב-MVP, ב-10 ארגונים, וב-100 ארגונים — כי הטכניקות הללו מובנות. אם בעתיד נצטרך לעבור ל-edge runtimes או ל-DB sharding, התשתית מאפשרת. אבל ב-MVP הקנה מידה הזה — Postgres אחד + Railway BE + Cloudflare CDN — הוא יותר ממספיק.</div>
+  </div>
+</section>
+<section id="section-10">
+  <div class="section-header">
+    <div class="section-num">10 · MULTI-TENANCY</div>
+    <h2 class="section-title">Multi-tenancy — שישה תפקידים, שלושה tiers</h2>
+    <p class="section-lede">המודל הזה הוא הלב של ה-SaaS. שישה תפקידים (כולל Tenant ב-MVP — D.17). שלושה tiers של זהות. שני wrappers. RLS על הכל.</p>
+  </div>
+
+  <p class="lead">Multi-tenancy אינה רק "ב-DB יש <code>org_id</code> בכל טבלה." היא <strong>מודל מבני שמגדיר מי קיים, מי רואה מה, ואיך הקוד מוודא את זה</strong>. המודל הזה הוא ההבדל בין SaaS שניתן לסמוך עליו ובין SaaS עם cross-tenant leakage. אנחנו לוקחים את זה ברצינות מהיום הראשון.</p>
+
+  <h3>10.1 ה-Tiers</h3>
+
+  <p>החמשת תפקידים מאורגנים בשלושה tiers של זהות:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Tier</th><th>תפקידים</th><th>טבלה</th><th>DB Role</th><th>Wrapper</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Tier 1: Organization Users</strong></td><td>Manager, Agent, Viewer</td><td><code>users</code> + <code>memberships</code></td><td><code>app_user</code></td><td><code>withTenant(orgId, ...)</code></td></tr>
+        <tr><td><strong>Tier 2: External Entities</strong></td><td>Contractor, <strong>Tenant (דייר)</strong></td><td><code>contractors</code> + <code>shares</code> · <code>tenants</code></td><td><code>app_user</code></td><td><code>withTenant(orgId, ...)</code> + share/tenant scope resolution</td></tr>
+        <tr><td class="new"><strong>Tier 3: Provider</strong></td><td>Provider Admin</td><td><code>provider_users</code></td><td><code>provider_app_role</code></td><td><code>withProvider(providerUserId, reason, ...)</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warning">
+    <div class="callout-title">⚠ Tenant (דייר) — תפקיד MVP, D.17+D.20</div>
+    <div class="callout-body">
+      Tenant הוא ישות חיצונית ב-Tier 2 (כמו Contractor) אבל עם מודל scope משלו: דייר רואה <strong>רק את הרשומה של עצמו</strong> (הדירה שלו, סטטוס החתימה שלו, מסמכים אליו). טבלת זהות נפרדת <code>tenants</code>, התחברות ב-<strong>SMS OTP</strong> (ספק ישראלי — §6.6), ו-RLS policy ייעודי שמסנן ל-<code>tenant_id</code> של המבקש. דייר לעולם לא רואה דיירים אחרים, רשימות, או נתוני ארגון. ה-RLS לדייר מחמיר יותר מ-Contractor — אין JSONB permissions, פשוט "רק שלי".
+    </div>
+  </div>
+
+  <p>הסיבה לחלוקה לשלושה tiers: <strong>מי לא צריך לראות מי</strong>. Provider Admin לא צריך להופיע ב-tenant audit logs ככה. Contractor לא צריך להופיע ב-<code>users</code>. כל tier הוא מודל זהות נפרד, עם wrapper משלו, עם DB role משלו (ב-tier 3).</p>
+
+  <h3>10.2 התפקידים בפירוט</h3>
+
+  <h4>Tier 1.1 — Manager</h4>
+
+  <p>מנהל פרויקטים בארגון לקוח. בעל ההרשאות הרחבות בארגון.</p>
+
+  <ul class="clean">
+    <li><strong>רואה:</strong> כל הפרויקטים בארגון; כל הדירות; כל הבעלים (PII); audit log של הארגון</li>
+    <li><strong>פעולות:</strong> יצירת פרויקטים, ניהול בניינים, ניהול בעלים, הקצאת Agents (project_assignments), הזמנת Contractors (shares), כל פעולת CRUD</li>
+    <li><strong>הקצאה:</strong> דרך membership עם <code>role = 'manager'</code></li>
+    <li><strong>במציאות עסקית:</strong> ראש פרויקט בחברת התחדשות. בדרך כלל 1-3 מנהלים בארגון.</li>
+  </ul>
+
+  <h4>Tier 1.2 — Agent</h4>
+
+  <p>סוכן שמטפל בפרויקטים ספציפיים. רואה רק מה שהוקצה לו.</p>
+
+  <ul class="clean">
+    <li><strong>רואה:</strong> רק פרויקטים שב-<code>project_assignments</code> שלו; דירות בהם; בעלים שלהם</li>
+    <li><strong>פעולות:</strong> CRUD על הדירות שלו, סטטוסים, notes, tasks, signatures. אינו יכול להקצות Agents אחרים או להזמין Contractors.</li>
+    <li><strong>הקצאה:</strong> Membership עם <code>role = 'agent'</code> + Manager מקצה לפרויקטים דרך <code>project_assignments</code></li>
+    <li><strong>במציאות עסקית:</strong> "איש שטח" שעובד עם דיירים. בדרך כלל 5-20 בארגון. מטפל בכמה פרויקטים במקביל.</li>
+  </ul>
+
+  <h4>Tier 1.3 — Viewer</h4>
+
+  <p>קריאה בלבד. רואה הכל בארגון, אינו יכול לכתוב.</p>
+
+  <ul class="clean">
+    <li><strong>רואה:</strong> כל הפרויקטים בארגון (כמו Manager)</li>
+    <li><strong>פעולות:</strong> SELECT בלבד. שום INSERT/UPDATE/DELETE.</li>
+    <li><strong>הקצאה:</strong> Membership עם <code>role = 'viewer'</code></li>
+    <li><strong>במציאות עסקית:</strong> בעלי מניות, חברי דירקטוריון, רואה חשבון פנימי. צריכים לראות, לא לעדכן.</li>
+  </ul>
+
+  <h4>Tier 2 — Contractor</h4>
+
+  <p>ישות חיצונית (עו"ד, חברת הנדסה, קבלן) שמקבלת גישה לפרויקטים ספציפיים.</p>
+
+  <ul class="clean">
+    <li><strong>רואה:</strong> רק פרויקטים שיש להם <code>share</code> פעיל; ובתוכם, רק שדות שמוגדרים ב-<code>share.permissions</code> JSONB</li>
+    <li><strong>פעולות:</strong> תלוי ב-<code>share.permissions</code>. בדרך כלל read; לפעמים upload documents</li>
+    <li><strong>הקצאה:</strong> Manager יוצר <code>contractor</code> + <code>share(project, contractor, permissions)</code></li>
+    <li><strong>במציאות עסקית:</strong> "תזמין את עו"ד יוסי לראות חוזים בפרויקט X, אבל לא ת"ז של בעלים." הזמנת אורח עם הרשאות פרטניות.</li>
+    <li><strong>טכני:</strong> מודל זהות נפרד מ-users (שולחים JWT עם <code>contractorId</code> + <code>orgId</code>). אינו ב-<code>users</code> table.</li>
+  </ul>
+
+  <h4>Tier 3 — Provider Admin</h4>
+
+  <p>צוות EMAPP פנימי. הגישה היחידה שחוצה לקוחות. מבחינתית מבחינה מבנית.</p>
+
+  <ul class="clean">
+    <li><strong>רואה:</strong> כל הלקוחות (BYPASSRLS), אבל כל גישה audited</li>
+    <li><strong>פעולות:</strong> SELECT רחב לתמיכה. UPDATE על מצומצם של טבלאות (אם נדרש). אין DELETE.</li>
+    <li><strong>הקצאה:</strong> מבוצעת ידנית דרך bootstrap script + רישום ב-<code>provider_users</code></li>
+    <li><strong>הגנות נוספות:</strong> MFA חובה (schema-level NOT NULL), session 30 דקות, אין magic links</li>
+    <li><strong>במציאות עסקית:</strong> 2-5 אנשי תמיכה ב-EMAPP. גישה לקוח-לקוח כשמתקבלת בקשת תמיכה. כל פעולה חייבת <code>reason</code>.</li>
+  </ul>
+
+  <h3>10.3 מטריצת הרשאות (תמצית)</h3>
+
+  <p>מטריצה מלאה ב-Doc 07 §8. כאן תמצית — מה כל תפקיד יכול לעשות:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>פעולה</th><th>Manager</th><th>Agent</th><th>Viewer</th><th>Contractor</th><th>Provider</th></tr></thead>
+      <tbody>
+        <tr><td>List projects (org)</td><td class="success">✓ כולם</td><td class="success">✓ שלי</td><td class="success">✓ כולם</td><td class="success">✓ shared</td><td class="success">✓ כל orgs</td></tr>
+        <tr><td>Create project</td><td class="success">✓</td><td class="danger">✕</td><td class="danger">✕</td><td class="danger">✕</td><td class="danger">✕</td></tr>
+        <tr><td>Edit project</td><td class="success">✓</td><td class="success">✓ שלי</td><td class="danger">✕</td><td class="danger">✕</td><td class="danger">✕</td></tr>
+        <tr><td>Assign Agent</td><td class="success">✓</td><td class="danger">✕</td><td class="danger">✕</td><td class="danger">✕</td><td class="danger">✕</td></tr>
+        <tr><td>Invite Contractor</td><td class="success">✓</td><td class="danger">✕</td><td class="danger">✕</td><td class="danger">✕</td><td class="danger">✕</td></tr>
+        <tr><td>Read owner PII</td><td class="success">✓</td><td class="success">✓ שלי</td><td class="success">✓</td><td class="warning">תלוי share</td><td class="success">✓ audited</td></tr>
+        <tr><td>Sign contracts (proxy)</td><td class="danger">✕</td><td class="danger">✕</td><td class="danger">✕</td><td class="danger">✕</td><td class="danger">✕</td></tr>
+        <tr><td>Read audit log</td><td class="success">✓ org</td><td class="danger">✕</td><td class="success">✓ org</td><td class="danger">✕</td><td class="success">✓ all</td></tr>
+        <tr><td>Read provider audit</td><td class="danger">✕</td><td class="danger">✕</td><td class="danger">✕</td><td class="danger">✕</td><td class="success">✓ team</td></tr>
+        <tr><td>Delete audit entries</td><td class="danger">✕</td><td class="danger">✕</td><td class="danger">✕</td><td class="danger">✕</td><td class="danger">✕ (no GRANT)</td></tr>
+        <tr><td>Cross-tenant query</td><td class="danger">✕ RLS</td><td class="danger">✕ RLS</td><td class="danger">✕ RLS</td><td class="danger">✕ RLS</td><td class="success">✓ audited</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>10.4 איך זה מתממש טכנית</h3>
+
+  <p>שלוש שכבות של אכיפה. גם אם אחת תיכשל, השנייה והשלישית עוצרות:</p>
+
+  <ul class="num-list">
+    <li><strong>App-level RBAC.</strong> בקוד השירות, <code>if (user.role !== 'manager') throw ForbiddenError</code>. ה-decision מבוסס על JWT claims.</li>
+    <li><strong>RLS policies על כל טבלה.</strong> גם אם השירות שגוי, ה-DB מסנן ל-<code>org_id = current_setting('app.organization_id')::uuid</code>. אם RLS מתפעל, לא נראה דאטה של ארגון אחר.</li>
+    <li><strong>DB GRANTs.</strong> אפילו אם RLS לא מוגדר נכון או נופל, ה-app_user role פשוט לא יכול לעשות UPDATE על audit_log, DELETE על provider_users, etc.</li>
+  </ul>
+
+  <p>ראה Doc 04c §P1.11 (RLS Policies) ו-§P1.13 (withTenant + withProvider) למימוש המלא.</p>
+
+  <h3>10.5 רב-ארגוניות (Multi-org users)</h3>
+
+  <p>נקודה דקה אבל קריטית: <strong>משתמש יכול לשייך לכמה ארגונים</strong>. למשל, רואה חשבון שעובד עם 3 חברות התחדשות. ייצוג במודל:</p>
+
+  <ul class="checks">
+    <li><code>users</code> table אינו מכיל <code>org_id</code>. user הוא אדם, לא "אדם-בארגון".</li>
+    <li><code>memberships</code> table הוא ה-M:N junction. שורה: (user_id, org_id, role, is_primary, accepted_at, revoked_at).</li>
+    <li>משתמש יכול להיות Manager ב-org A, Agent ב-org B, Viewer ב-org C — בו זמנית.</li>
+    <li>JWT נושא <code>activeOrgId</code> — איזה membership זה "הנוכחי". מעבר בין ארגונים = יצירת JWT חדש (endpoint נפרד).</li>
+    <li>RLS על <code>users</code> משתמש ב-EXISTS subquery: "user נראה אם יש לו membership ב-org הנוכחי שאינה revoked."</li>
+  </ul>
+
+  <h3>10.6 שמירת PII במודל</h3>
+
+  <p>קישור בין הרשאות לבין PII:</p>
+
+  <ul class="num-list">
+    <li><strong>Manager / Agent / Viewer:</strong> רואים PII (national_id, phone) של בעלים בארגונם. ה-decryption קורה ב-DB; ה-key הוא session-scoped.</li>
+    <li><strong>Contractor:</strong> רואה PII רק אם <code>share.permissions.tenants.fields.national_id = true</code>. ה-app filter מסיר את ה-field לחלוטין מה-response אם false (absence pattern).</li>
+    <li><strong>Provider Admin:</strong> יכול לראות PII דרך BYPASSRLS, אבל הגישה audited עם <code>action_type = 'decrypt'</code> ב-provider_audit_log. בנוסף, ה-internal tool של Provider Admin מציג רק 4 ספרות אחרונות כברירת מחדל; מציג מלא רק בלחיצה מפורשת.</li>
+  </ul>
+
+  <h3>10.7 דוגמאות תרחישים</h3>
+
+  <p>איך הכל מתחבר בפועל:</p>
+
+  <div class="callout info">
+    <div class="callout-title">תרחיש 1: Manager מזמין Contractor חדש</div>
+    <div class="callout-body">
+      <strong>1.</strong> Manager לוחץ "Invite Contractor" → POST /api/contractors<br>
+      <strong>2.</strong> withTenant(orgId): INSERT contractor + INSERT share + INSERT audit_log<br>
+      <strong>3.</strong> Post-commit: email ל-contractor עם magic link + סיסמה ראשונית<br>
+      <strong>4.</strong> Contractor מתחבר → JWT עם <code>contractorId</code> + <code>orgId</code><br>
+      <strong>5.</strong> Contractor רואה רק פרויקטים עם share פעיל; שדות מסוננים לפי <code>share.permissions</code>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <div class="callout-title">תרחיש 2: Agent מנסה לראות פרויקט שלא הוקצה לו</div>
+    <div class="callout-body">
+      <strong>1.</strong> Agent יודע את ה-projectId (חבר סיפר לו) → GET /api/projects/&lt;id&gt;<br>
+      <strong>2.</strong> withTenant(orgId): SELECT projects WHERE id = &lt;id&gt;<br>
+      <strong>3.</strong> שכבת service מסננת: <code>WHERE id IN (SELECT project_id FROM project_assignments WHERE user_id = userId)</code><br>
+      <strong>4.</strong> אם לא הוקצה — 0 rows<br>
+      <strong>5.</strong> Response: 404 (Not Found, לא 403, כדי לא לחשוף existence)
+    </div>
+  </div>
+
+  <div class="callout info">
+    <div class="callout-title">תרחיש 3: Provider Admin עוזר עם בעיית login</div>
+    <div class="callout-body">
+      <strong>1.</strong> Customer פתח ticket #1234 — "אני לא מצליח להתחבר"<br>
+      <strong>2.</strong> Provider Admin פותח internal tool, מחפש את ה-customer ב-email<br>
+      <strong>3.</strong> withProvider(providerUserId, "ticket #1234: login issue investigation"): SELECT users WHERE email = ...<br>
+      <strong>4.</strong> provider_audit_log קיבל INSERT עם reason + action_type='read'<br>
+      <strong>5.</strong> Provider Admin רואה: לא MFA enabled. שולח לו email עם הסבר.
+    </div>
+  </div>
+
+  <div class="callout danger">
+    <div class="callout-title">⚠ Multi-tenancy אינו fail-safe — היא fail-DEEP</div>
+    <div class="callout-body">3 שכבות הגנה (RBAC + RLS + GRANTs) מבטיחות שגם אם שתיים נכשלות, השלישית עוצרת. אבל אם כולן ייכשלו — PII Encryption (Shield 5 ב-Section 8) הוא ה-last line. שילוב 4 שכבות הגנה הוא מה שהופך SaaS שניתן לסמוך עליו.</div>
+  </div>
+</section>
+
+<section id="section-11">
+  <div class="section-header">
+    <div class="section-num">11 · INTEGRATIONS</div>
+    <h2 class="section-title">אינטגרציות — חיבורים לעולם החיצוני</h2>
+    <p class="section-lede">מה אנחנו מתחברים אליו, איך, ולמה.</p>
+  </div>
+
+  <p class="lead">מערכת SaaS לא חיה לבד. היא מתחברת לשירותי email, storage, SMS, monitoring, אולי בעתיד SSO ו-OCR. כל אינטגרציה צריכה לעמוד בארבעה כללים: <strong>מאחורי interface</strong> (Section 6), <strong>health check</strong> ב-startup, <strong>graceful degradation</strong> אם נופל, <strong>audit אם רגישה</strong>.</p>
+
+  <h3>11.1 רשימת האינטגרציות ב-MVP</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>אינטגרציה</th><th>מטרה</th><th>Interface</th><th>Implementation</th><th>אם נופל</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Resend</strong></td><td>Email (auth, notifications)</td><td><code>IEmailProvider</code></td><td>ResendEmailProvider</td><td>Best-effort, log + Sentry</td></tr>
+        <tr><td><strong>Cloudflare R2</strong></td><td>File storage (docs, signatures)</td><td><code>IStorageProvider</code></td><td>R2StorageProvider</td><td>Critical: upload fails → user retries</td></tr>
+        <tr><td><strong>Sentry</strong></td><td>Error + performance tracking</td><td>(SDK ישיר)</td><td>@sentry/nestjs + @sentry/nextjs</td><td>Silent — אבל מאבדים visibility</td></tr>
+        <tr><td><strong>Neon</strong></td><td>Database (כל הנתונים)</td><td>Drizzle (לא interface; פוסטגרס הוא הסטנדרט)</td><td>node-postgres + Drizzle</td><td>Critical: כל ה-system למטה</td></tr>
+        <tr><td><strong>Israeli SMS</strong></td><td>SMS (MVP — Tenant OTP)</td><td><code>ISMSProvider</code></td><td>IsraeliSMSProvider</td><td>Twilio (הרחבה בינלאומית)</td></tr>
+        <tr><td><strong>GitHub</strong></td><td>CI/CD trigger (Railway, CF Pages)</td><td>(webhooks)</td><td>—</td><td>Deploy ידני אפשרי</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>11.2 מה ב-Phase 2 (לא ב-MVP)</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>אינטגרציה</th><th>מטרה</th><th>Interface</th><th>תאריך משוער</th></tr></thead>
+      <tbody>
+        <tr><td>ספק SMS ישראלי (019/Inforu)</td><td>SMS OTP ל-Tenant</td><td><code>ISMSProvider</code></td><td>MVP (D.20)</td></tr>
+        <tr><td>Upstash Redis</td><td>Cache (sessions, rate limits)</td><td><code>ICacheProvider</code></td><td>~10 ארגונים</td></tr>
+        <tr><td>Pusher / WebSocket</td><td>Real-time bidirectional (chat)</td><td><code>IRealtimeProvider</code></td><td>Phase 2 של מוצר</td></tr>
+        <tr><td>Stripe / Paddle</td><td>Billing</td><td><code>IBillingProvider</code> (יוגדר)</td><td>אחרי 5 לקוחות משלמים</td></tr>
+        <tr><td>SAML/OIDC SSO</td><td>אינטגרציה עם Active Directory של לקוחות גדולים</td><td>Better Auth כבר תומך</td><td>לפי דרישה</td></tr>
+        <tr><td>OCR (Tesseract או API חיצוני)</td><td>סריקת ת"ז מ-PDF</td><td><code>IOCRProvider</code> (יוגדר)</td><td>Phase 2 של מוצר</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>11.3 ארבעה חוקים לכל אינטגרציה</h3>
+
+  <p>כל אינטגרציה חדשה חייבת לעמוד בארבעה תנאים:</p>
+
+  <ol class="num-list">
+    <li><strong>Behind an interface.</strong> אם זה ספק שאפשרי להחליפו (email, SMS, storage, cache, realtime) — חייב interface. אם זה תשתית קריטית שאינה realistically replaceable (Postgres, GitHub) — לא חובה.</li>
+    <li><strong>Health check ב-startup.</strong> בעת הפעלת האפליקציה, כל interface מקבל קריאת healthCheck(). אם נופל — האפליקציה לא עולה. עדיף crash loop ב-deploy מאשר 500s לכל בקשה.</li>
+    <li><strong>Graceful degradation אם נופל.</strong> אם השירות נופל ב-runtime, מה קורה? Email נופל → log + Sentry, המשך פעולה. R2 נופל → upload נכשל, user מקבל error מובן. שני הכשלים אינם זהים.</li>
+    <li><strong>Audit אם רגישה.</strong> אינטגרציה ששולחת PII החוצה (email עם פרטי owner, למשל) — חייבת audit entry. אינטגרציה שרק עוקבת (Sentry) — לא חובה.</li>
+  </ol>
+
+  <h3>11.4 איך אינטגרציות מתחברות לקוד</h3>
+
+  <p>הזרימה הסטנדרטית — דוגמה: שליחת magic link email:</p>
+
+  <div class="code-label">flow: send magic link integration</div>
+<pre><code><span class="comment">// 1. Service consumes the interface (DI)</span>
+<span class="keyword">@Injectable</span>()
+<span class="keyword">export class</span> AuthService {
+  <span class="keyword">constructor</span>(<span class="keyword">@Inject</span>(EMAIL_PROVIDER) <span class="keyword">private</span> email: IEmailProvider) {}
+
+  <span class="keyword">async</span> sendMagicLink(emailAddr: string, token: string) {
+    <span class="comment">// 2. Service calls interface, not implementation</span>
+    <span class="keyword">try</span> {
+      <span class="keyword">const</span> result = <span class="keyword">await</span> <span class="keyword">this</span>.email.send({
+        to: emailAddr,
+        subject: <span class="string">'התחברות ל-EMAPP'</span>,
+        html: renderMagicLinkTemplate(token),
+      });
+
+      <span class="comment">// 3. Success — log id for traceability</span>
+      logger.info({ msg: <span class="string">'magic link sent'</span>, emailId: result.id });
+    } <span class="keyword">catch</span> (err) {
+      <span class="comment">// 4. Graceful failure — log + Sentry + propagate to caller</span>
+      logger.error({ msg: <span class="string">'magic link failed'</span>, err });
+      Sentry.captureException(err);
+      <span class="keyword">throw new</span> ServiceUnavailableError(<span class="string">'email service unavailable'</span>);
+    }
+  }
+}
+
+<span class="comment">// 5. The factory in providers.module.ts decides implementation</span>
+{
+  provide: EMAIL_PROVIDER,
+  useFactory: () =&gt; <span class="keyword">new</span> ResendEmailProvider(<span class="keyword">new</span> Resend(env.RESEND_API_KEY), env.EMAIL_FROM),
+}
+</code></pre>
+
+  <h3>11.5 ניהול secrets ל-אינטגרציות</h3>
+
+  <p>כל אינטגרציה דורשת API keys / credentials. הקפדה:</p>
+
+  <ul class="checks">
+    <li><strong>אף secret לא ב-git.</strong> <code>.env</code> ב-<code>.gitignore</code>. <code>.env.example</code> committed עם names ריקים.</li>
+    <li><strong>כל הסודות ב-Railway env vars.</strong> Railway מצפין them at rest. Access logged.</li>
+    <li><strong>Validation ב-startup.</strong> T3-env מוודא שכל env var נדרש קיים ובפורמט הנכון. אם חסר — האפליקציה לא עולה.</li>
+    <li><strong>Rotation procedure</strong> (Doc 07 §14). אם API key חשוד נחשף, יש פרוצדורה מוגדרת לרוטציה.</li>
+    <li><strong>Least privilege.</strong> Resend API key רק עם זכות "send"; R2 credentials רק עם זכות לבאקט הספציפי.</li>
+  </ul>
+
+  <h3>11.6 ניטור אינטגרציות</h3>
+
+  <p>איך נדע שאינטגרציה נופלת:</p>
+
+  <ul class="num-list">
+    <li><strong>Sentry alerts.</strong> Error spikes על שגיאות מ-Resend/R2/וכו'. notification לצוות.</li>
+    <li><strong>Synthetic checks.</strong> Phase 2: בדיקות תקופתיות אם email נשלח, אם R2 נגיש.</li>
+    <li><strong>Sentry Health.</strong> Sentry SDK עצמו מנטר מה משתבש בו (rare, אבל קורה).</li>
+    <li><strong>Status pages.</strong> כל ספק יש לו status page (status.resend.com, status.cloudflare.com). מנוטרים ידנית כשמשהו נראה רע.</li>
+    <li><strong>App-level health endpoint.</strong> <code>GET /health</code> מחזיר 200 רק אם כל ה-healthChecks עוברים. שימושי ל-Railway health checks.</li>
+  </ul>
+
+  <h3>11.7 הסיכון של תלות ב-ספק חיצוני</h3>
+
+  <p>שאלה הוגנת: מה אם Resend ייסגר? מה אם Neon יעלה ב-10x? מה אם Cloudflare יתחיל ל-rate-limit אותנו?</p>
+
+  <p>התשובה שלנו מבוססת על שכבת ה-interfaces (Section 6):</p>
+
+  <ul class="checks">
+    <li><strong>החלפת ספק = ימים, לא חודשים.</strong> דוגמאות ב-§6.9</li>
+    <li><strong>אין vendor lock-in מבני.</strong> ה-code לא יודע מי הספק; ה-factory decide.</li>
+    <li><strong>Postgres הוא המעט-החלפי</strong> — אבל Postgres אינו ספק, הוא טכנולוגיה. Neon → RDS → CockroachDB כולם תומכים ב-Postgres dialect.</li>
+    <li><strong>אנחנו לא משתמשים ב-features ספציפיים לספק.</strong> Neon branching נחמד אבל לא קריטי; R2 ללא egress fees נחמד אבל S3 גם אפשרי.</li>
+  </ul>
+
+  <p>היחידה הקריטית: <strong>אובדן מפתחות הצפנה</strong>. אם Railway env vars נמחקים ואין גיבוי — PII אבוד לעולמים. ראה Doc 07 §14 לפרוצדורת הגיבוי.</p>
+
+  <div class="callout success">
+    <div class="callout-title">✓ אינטגרציות הן הסכמה, לא ההתחייבות</div>
+    <div class="callout-body">בחרנו 5 ספקים מסוימים. הם הסכמה עכשווית, לא התחייבות לעולם. אם פעם נצטרך להחליף — יש לנו כלי. הקפדה על interface layer ועל ארבעת החוקים (§11.3) מבטיחה שאינטגרציה היא <em>החלטה הפיכה</em>.</div>
+  </div>
+</section>
+<section id="section-12">
+  <div class="section-header">
+    <div class="section-num">12 · OBSERVABILITY</div>
+    <h2 class="section-title">Observability — איך אנחנו רואים מה קורה</h2>
+    <p class="section-lede">Logs, metrics, traces. הקצוות מהמשתמש ועד ה-DB. אם משהו נשבר — נדע מתי, איפה, ולמה.</p>
+  </div>
+
+  <p class="lead">Observability היא ההבדל בין צוות שיודע מה קורה במערכת ובין צוות שמנחש. ה-MVP שלנו מבוסס על Sentry בלבד — לא Datadog, לא New Relic. Sentry מספק error tracking + performance monitoring + release tracking ב-tier אחד, חינמי ל-Developer plan. כשהמערכת תגדל, נשקול הוספה (לא החלפה). כאן: מה אנחנו מתעדים, איך, ולמה.</p>
+
+  <h3>12.1 שלושת עמודי ה-Observability</h3>
+
+  <p>הגישה הסטנדרטית בתעשייה — שלוש שכבות, כל אחת עונה על שאלה שונה:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>שכבה</th><th>עונה על השאלה</th><th>הכלי שלנו</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Logs</strong></td><td>"מה קרה כאן?"</td><td>Pino → Railway logs → Sentry breadcrumbs</td></tr>
+        <tr><td><strong>Metrics</strong></td><td>"כמה? באיזה תדירות? כמה זמן?"</td><td>Sentry Performance + pg_stat_statements</td></tr>
+        <tr><td><strong>Traces</strong></td><td>"מה הזרימה? איפה זה תקוע?"</td><td>Sentry Tracing (OpenTelemetry-compatible)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>12.2 Logs — Pino בכל מקום</h3>
+
+  <p>אנחנו משתמשים ב-Pino כ-logger הסטנדרטי. מהיר (אחד הכי מהירים ב-Node.js), structured JSON, ועם פיצ'רים של redaction לאוטומציה של הסתרת PII.</p>
+
+  <div class="code-label">packages/api/src/logger.ts</div>
+<pre><code><span class="keyword">import</span> pino <span class="keyword">from</span> <span class="string">'pino'</span>;
+
+<span class="keyword">export const</span> logger = pino({
+  level: process.env.LOG_LEVEL ?? <span class="string">'info'</span>,
+
+  <span class="comment">// CRITICAL: redact PII automatically — even if a dev accidentally logs it</span>
+  redact: {
+    paths: [
+      <span class="string">'*.password'</span>, <span class="string">'*.password_hash'</span>,
+      <span class="string">'*.national_id'</span>, <span class="string">'*.national_id_encrypted'</span>,
+      <span class="string">'*.phone'</span>, <span class="string">'*.phone_encrypted'</span>,
+      <span class="string">'*.signature_blob'</span>,
+      <span class="string">'*.encryption_key'</span>, <span class="string">'*.hash_key'</span>,
+      <span class="string">'req.headers.authorization'</span>, <span class="string">'req.headers.cookie'</span>,
+    ],
+    censor: <span class="string">'[REDACTED]'</span>,
+  },
+
+  <span class="comment">// Structured fields auto-added to every log</span>
+  base: {
+    service: <span class="string">'emapp-api'</span>,
+    env: process.env.NODE_ENV,
+  },
+});
+</code></pre>
+
+  <h4>מה אנחנו לוגגים</h4>
+
+  <ul class="num-list">
+    <li><strong>כל request:</strong> method, path, statusCode, duration, userId, orgId (אבל לא תוכן ה-body)</li>
+    <li><strong>כל error:</strong> message, stack, request context. גם נשלח ל-Sentry</li>
+    <li><strong>חיבורי DB:</strong> חיבורים שנופלים, queries איטיים (&gt; 100ms)</li>
+    <li><strong>אינטגרציות חיצוניות:</strong> Resend send result, R2 operation outcome, withProvider entries</li>
+    <li><strong>Auth events:</strong> login success, login failure, MFA challenge, session expiry</li>
+    <li><strong>Sensitive events:</strong> בעת קריאת PII (PII access events) — log עם userId + apartmentId, לא PII עצמו</li>
+  </ul>
+
+  <h4>מה אנחנו לא לוגגים</h4>
+
+  <ul class="crosses">
+    <li>PII (national_id, phone) - גם לא ב-error stack traces (Pino redact מסיר)</li>
+    <li>Passwords, password hashes, MFA secrets</li>
+    <li>Session tokens, JWT contents</li>
+    <li>Request bodies בשלמות (רק metadata על הקריאה)</li>
+    <li>Encryption keys</li>
+  </ul>
+
+  <h3>12.3 Metrics — Sentry Performance</h3>
+
+  <p>Sentry's Performance product מאסף metrics אוטומטית מ-NestJS ו-Next.js דרך ה-SDKs שלהם:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Metric</th><th>איפה נמדד</th><th>מה אנחנו רואים</th></tr></thead>
+      <tbody>
+        <tr><td>API endpoint latency</td><td>Sentry @nestjs SDK</td><td>p50/p95/p99 לכל route</td></tr>
+        <tr><td>DB query duration</td><td>Sentry Tracing (auto)</td><td>זמן בכל query, slow queries</td></tr>
+        <tr><td>External call latency</td><td>Sentry HTTP integration</td><td>Resend, R2, etc. latencies</td></tr>
+        <tr><td>Frontend Web Vitals</td><td>@sentry/nextjs</td><td>FCP, LCP, CLS, TTI</td></tr>
+        <tr><td>Error rate</td><td>Sentry SDK</td><td>errors/min, by route, by version</td></tr>
+        <tr><td>Memory + CPU</td><td>Railway native</td><td>per-container resource usage</td></tr>
+        <tr><td>DB connection pool</td><td>pg pool stats → Sentry</td><td>active/idle, wait time</td></tr>
+        <tr><td>pg_stat_statements</td><td>Neon dashboard</td><td>Top 10 slow queries</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>12.4 Traces — מהמשתמש עד ה-DB</h3>
+
+  <p>Sentry Tracing מקשר אירועים מ-frontend ל-backend ל-DB ל-Resend. דוגמת trace טיפוסית:</p>
+
+  <div class="code-label">trace: user creates a new project (left = first, right = nested)</div>
+<pre><code><span class="num">[Frontend]</span>  user.click("Create Project")
+  └─ <span class="num">[POST /api/projects]</span>  Next.js Action / fetch
+       └─ <span class="num">[NestJS Controller]</span>  ProjectsController.create
+            └─ <span class="num">[ProjectsService.create]</span>
+                 ├─ <span class="num">[withTenant]</span>  SET LOCAL app.organization_id
+                 │    ├─ <span class="num">[DB: INSERT projects]</span>  ~2ms
+                 │    └─ <span class="num">[DB: INSERT audit_log]</span>  ~1ms
+                 └─ <span class="num">[POST-COMMIT]</span>  Email notification
+                      └─ <span class="num">[Resend API]</span>  ~150ms (async)
+
+Total: ~250ms (200ms in API + 50ms network)
+</code></pre>
+
+  <p>במקרה של איטיות או כשל, ה-trace הזה מציג בדיוק היכן הזמן הלך או היכן הכשל קרה. <strong>Debugging במקום ניחוש.</strong></p>
+
+  <h3>12.5 Alerts — מתי נדע שמשהו לא בסדר</h3>
+
+  <p>Sentry יוצר התראות לפי כללים. ה-MVP שלנו מגדיר את אלה:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>כלל</th><th>תנאי</th><th>ל-מי</th></tr></thead>
+      <tbody>
+        <tr><td><strong>New issue</strong></td><td>Error חדש שלא נראה קודם</td><td>Email לצוות</td></tr>
+        <tr><td><strong>Error spike</strong></td><td>Error rate &gt; 10x baseline ב-5 דקות</td><td>Email + Slack</td></tr>
+        <tr><td><strong>Slow endpoint</strong></td><td>p95 endpoint &gt; 1s ב-15 דקות רצופות</td><td>Email</td></tr>
+        <tr><td><strong>Auth failure spike</strong></td><td>&gt; 50 login failures באותה IP ב-5 דקות</td><td>Email דחוף (התקפה)</td></tr>
+        <tr><td><strong>DB connection error</strong></td><td>Failed to connect to Postgres</td><td>Email דחוף + PagerDuty (Phase 2)</td></tr>
+        <tr><td><strong>Provider tier access</strong></td><td>כל withProvider call</td><td>Audit log (לא alert; ניתוח periodic)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>12.6 Dashboards — מה אנחנו מסתכלים עליו</h3>
+
+  <p>שלוש dashboards עיקריות ב-Sentry:</p>
+
+  <h4>Dashboard 1: Health (יומי)</h4>
+
+  <ul class="clean">
+    <li>Error rate בכל endpoint (24h)</li>
+    <li>p95 / p99 latencies של top 10 endpoints</li>
+    <li>Memory + CPU של Railway containers</li>
+    <li>DB pool stats (active connections, queue length)</li>
+    <li>Resend deliverability (% sent / % failed)</li>
+  </ul>
+
+  <h4>Dashboard 2: Business (שבועי)</h4>
+
+  <ul class="clean">
+    <li>Active users (DAU, WAU)</li>
+    <li>Projects created per week</li>
+    <li>Apartments touched per week</li>
+    <li>Signatures captured per week</li>
+    <li>Documents uploaded</li>
+  </ul>
+
+  <h4>Dashboard 3: Security (יומי, אזכור פעיל)</h4>
+
+  <ul class="clean">
+    <li>Auth failures by IP (top 10)</li>
+    <li>Rate limit hits by user</li>
+    <li>Provider tier access entries (כולל reasons)</li>
+    <li>PII access events (counts, not values)</li>
+    <li>Audit log additions (rate, sanity)</li>
+  </ul>
+
+  <h3>12.7 על-mode Debugging — איך פותרים אירוע</h3>
+
+  <p>כשאלרט מגיע — הצוות יודע בדיוק מה לעשות. הזרימה:</p>
+
+  <ol class="num-list">
+    <li><strong>Sentry alert מגיע</strong> — Email/Slack. הכותרת מציינת error class + endpoint.</li>
+    <li><strong>פותחים את ה-issue ב-Sentry</strong> — רואים stack trace, request context, user context.</li>
+    <li><strong>Trace ה-event שגרם</strong> — Sentry Tracing מציג מ-frontend ועד ה-DB.</li>
+    <li><strong>בודקים breadcrumbs (logs)</strong> — מה קרה לפני ה-error בו-זמן בו-session.</li>
+    <li><strong>אם נדרש — DB inspection</strong> — Drizzle Studio או Neon dashboard עם provider credentials.</li>
+    <li><strong>אם נדרש — Production logs</strong> — Railway provides shell access; <code>railway logs</code> CLI command.</li>
+    <li><strong>Fix + deploy</strong> — PR, CI, merge. Sentry מקשר את ה-release ל-fix.</li>
+    <li><strong>Post-mortem</strong> — אם זה היה אירוע משמעותי, document ב-<code>incidents/</code>.</li>
+  </ol>
+
+  <h3>12.8 הגבלות של MVP observability</h3>
+
+  <p>אנחנו לא מנסים להיות Datadog. במגבלות שאנחנו לוקחים:</p>
+
+  <ul class="crosses">
+    <li>אין distributed tracing מעבר ל-Sentry (לא Jaeger, לא OpenTelemetry collector עצמאי)</li>
+    <li>אין infrastructure metrics מפורטים (CPU usage per query — רק aggregates)</li>
+    <li>אין SLO/SLI tracking פורמלי (Phase 2)</li>
+    <li>אין PagerDuty integration ב-MVP (email תספיק לצוות של 2)</li>
+    <li>אין log aggregation עצמאי (Railway logs + Sentry breadcrumbs מספיקים ל-MVP)</li>
+  </ul>
+
+  <p>ב-100 ארגונים, נצטרך לשדרג. הגדרת ה-roadmap:</p>
+
+  <ul class="num-list">
+    <li><strong>10 ארגונים:</strong> Sentry alone עדיין מספיק. שדרוג ל-Sentry Business אם נצטרך יותר events/חודש.</li>
+    <li><strong>30 ארגונים:</strong> שילוב BetterStack או Datadog למטריקות תשתית עמוקות. שמירה על Sentry ל-errors.</li>
+    <li><strong>100 ארגונים:</strong> Full observability stack (Datadog/Grafana/OpenTelemetry).</li>
+  </ul>
+
+  <div class="callout info">
+    <div class="callout-title">💡 Observability מהיום הראשון — לא בהמשך</div>
+    <div class="callout-body">קל לבנות מערכת בלי observability. קשה לדעת מתי משהו לא בסדר. Sentry מובנה ב-MVP כי <strong>בלי visibility, errors מצטברים בשקט</strong>. אם תופיע באג שגורם ל-Resend לפעמים להיכשל — נדע ב-Sentry; בלעדיו, נדע רק כשמשתמש מתלונן.</div>
+  </div>
+</section>
+
+<section id="section-13">
+  <div class="section-header">
+    <div class="section-num">13 · PORTABILITY</div>
+    <h2 class="section-title">שמונה חוקי הברזל ל-Portability</h2>
+    <p class="section-lede">השמונה חוקים שמאפשרים החלפת ספק בימים, לא בחודשים. כל אחד מהם נשמר כקדוש.</p>
+  </div>
+
+  <p class="lead">בחירת Stack היא לרוב blocker בעתיד: "אנחנו לא יכולים לעבור ספק כי כל הקוד תלוי בהם." אנחנו לא רוצים את זה. שמונה חוקי הברזל הללו מבטיחים ש<strong>החלפת כל אחד מהספקים שבחרנו תהיה אפשרית — לא טריוויאלית, אבל אפשרית בימים</strong>. כל החלטה ארכיטקטונית עוברת דרכם.</p>
+
+  <h3>13.1 שמונת החוקים</h3>
+
+  <div class="num-list">
+    <li><strong>שכבת interface לכל תלות חיצונית.</strong> Email, Storage, SMS, Cache, Realtime, Encryption. אם זה ספק שאפשר להחליפו — חייב interface. ראה Section 6.</li>
+    <li><strong>אין שימוש ב-features ייחודיים לספק (vendor-specific features).</strong> Neon branching נחמד; אנחנו לא בונים עליו business logic. R2 ללא egress fees חוסך כסף; אנחנו לא בונים על זה. Cloudflare Workers ייחודי; לכן לא משתמשים בו.</li>
+    <li><strong>Postgres הוא Postgres.</strong> כל SQL שאנחנו כותבים תקף בכל Postgres 15+. בלי Neon-specific extensions שאינן זמינות במקום אחר.</li>
+    <li><strong>S3-compatible API ל-storage.</strong> AWS SDK עובד עם R2 (Cloudflare), S3 (AWS), MinIO (self-hosted). שינוי endpoint = שורת קוד אחת.</li>
+    <li><strong>SMTP / API-based email — לא ספק-לוקי.</strong> Resend, SES, SendGrid כולם מספקים HTTP API דומה. ה-interface שלנו נורמלי, לא חושף את ההבדלים.</li>
+    <li><strong>Docker containers, לא serverless functions.</strong> Container יכול לרוץ ב-Railway, Fly.io, Render, AWS ECS, Google Cloud Run. Serverless functions תלויות בספק.</li>
+    <li><strong>Standard protocols.</strong> HTTPS, JWT, OAuth/OIDC, SMTP. לא משתמשים בפרוטוקולים מסחריים סגורים.</li>
+    <li><strong>Migrations versioned ב-code.</strong> Drizzle Kit migrations הם source of truth. אפשר להריץ אותם בכל DB Postgres-compatible — בלי תלות בכלי הספק.</li>
+  </div>
+
+  <h3>13.2 איך כל חוק מתממש בפועל</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>חוק</th><th>מימוש קונקרטי</th><th>בדיקה (אם הופר)</th></tr></thead>
+      <tbody>
+        <tr><td>1. Interface layer</td><td>6 interfaces ב-<code>packages/db/providers/</code></td><td>ESLint rule + code review</td></tr>
+        <tr><td>2. אין vendor-specific</td><td>List of approved features per provider; PRs מוודאים</td><td>Code review + decision log</td></tr>
+        <tr><td>3. Postgres-only SQL</td><td>אין שימוש ב-Neon-specific extensions; כל הגדרת ENABLE EXTENSION עוברת approval</td><td>Migration check ב-CI</td></tr>
+        <tr><td>4. S3-compatible storage</td><td>AWS SDK pointed at R2 endpoint; <code>R2StorageProvider</code></td><td>Contract test runs against both R2 + MinIO local</td></tr>
+        <tr><td>5. Normalized email API</td><td><code>IEmailProvider</code> interface חוצה את Resend-specifics</td><td>Contract test against fake + real</td></tr>
+        <tr><td>6. Containers</td><td>Dockerfile ב-repo. Railway / any container host</td><td>Build runs locally ב-Docker</td></tr>
+        <tr><td>7. Standard protocols</td><td>JWT עם RS256; OAuth ל-future SSO; HTTPS</td><td>Auth tests פועלים</td></tr>
+        <tr><td>8. Versioned migrations</td><td>Drizzle Kit ב-<code>packages/db/migrations/</code></td><td>CI runs migrations from scratch</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>13.3 דוגמת מימוש: חוק 4 — S3-compatible</h3>
+
+  <p>איך החוק "S3-compatible storage" מתממש קונקרטית. ה-implementation אינה תלויה ב-Cloudflare:</p>
+
+  <div class="code-label">packages/db/src/providers/storage/r2.provider.ts (extracted from §6)</div>
+<pre><code><span class="keyword">import</span> { S3Client, GetObjectCommand, PutObjectCommand } <span class="keyword">from</span> <span class="string">'@aws-sdk/client-s3'</span>;
+<span class="keyword">import</span> { getSignedUrl } <span class="keyword">from</span> <span class="string">'@aws-sdk/s3-request-presigner'</span>;
+<span class="keyword">import</span> { IStorageProvider } <span class="keyword">from</span> <span class="string">'./storage.interface'</span>;
+
+<span class="keyword">export class</span> R2StorageProvider <span class="keyword">implements</span> IStorageProvider {
+  <span class="keyword">private</span> client: S3Client;
+
+  <span class="keyword">constructor</span>(<span class="keyword">private</span> bucket: string, accountId: string, accessKey: string, secretKey: string) {
+    <span class="comment">// THE ONLY R2-SPECIFIC LINE: the endpoint URL.
+    // Change endpoint → works with S3, MinIO, Wasabi, Backblaze B2.</span>
+    <span class="keyword">this</span>.client = <span class="keyword">new</span> S3Client({
+      region: <span class="string">'auto'</span>,
+      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+      credentials: { accessKeyId: accessKey, secretAccessKey: secretKey },
+    });
+  }
+
+  <span class="keyword">async</span> getUploadUrl(key: string, opts: UploadUrlOptions): Promise&lt;string&gt; {
+    <span class="keyword">const</span> cmd = <span class="keyword">new</span> PutObjectCommand({
+      Bucket: <span class="keyword">this</span>.bucket,
+      Key: key,
+      ContentType: opts.contentType,
+      ContentLength: opts.maxSizeBytes,
+    });
+    <span class="keyword">return</span> getSignedUrl(<span class="keyword">this</span>.client, cmd, { expiresIn: opts.ttlSeconds });
+  }
+  <span class="comment">// ... getDownloadUrl, delete, healthCheck</span>
+}
+
+<span class="comment">// To switch to AWS S3, write S3StorageProvider with different endpoint.
+// All other code identical. Service layer doesn't change.</span>
+</code></pre>
+
+  <h3>13.4 דוגמת מימוש: חוק 2 — אין vendor-specific</h3>
+
+  <p>דוגמה ל-החלטה שהפסיקה Vendor lock-in מראש: <strong>Cache layer</strong>.</p>
+
+  <p>אפשר היה לבנות על Cloudflare Workers KV — fast edge cache, integrated עם Cloudflare. <strong>אבל</strong>:</p>
+
+  <ul class="crosses">
+    <li>Workers KV הוא Cloudflare-specific. שום ספק אחר לא מציע אותו exact API</li>
+    <li>אם פעם נצטרך להתרחק מ-Cloudflare — כל cache logic ידרוש rewrite</li>
+    <li>הפיצ'רים שלו (sub-1s globally consistent) אינם נחוצים ל-MVP שלנו</li>
+  </ul>
+
+  <p>במקום, בחרנו Postgres cache_kv ב-MVP → Upstash Redis ב-Phase 2. שניהם דרך <code>ICacheProvider</code>. אף אחד לא vendor-specific.</p>
+
+  <h3>13.5 הסיכון: היכן אנחנו "לא 100% portable"</h3>
+
+  <p>הוגנות: יש שלוש נקודות שבהן יש לנו "תלות רכה" שלא מוסתרת מאחורי interface:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>נקודה</th><th>איך זה תלות</th><th>הקלה</th></tr></thead>
+      <tbody>
+        <tr><td>Postgres עצמו</td><td>אנחנו מסתמכים על Postgres, לא DB אחר</td><td>Postgres הוא טכנולוגיה, לא ספק. Neon → RDS → CockroachDB אפשרי. CockroachDB תומך ב-Postgres dialect</td></tr>
+        <tr><td>pgcrypto לPII encryption</td><td>אנחנו מסתמכים על extension של Postgres</td><td>pgcrypto זמין בכל Postgres distribution. אם פעם לא יהיה — נעבור ל-encryption ב-app (תוסף ל-IEncryptionService)</td></tr>
+        <tr><td>NestJS framework</td><td>הקוד שלנו תלוי במבני NestJS (decorators, DI)</td><td>לא ניתן להחלפה זולה. אם פעם נחליף — rewrite משמעותי. מקובל כסיכון.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>שלוש התלויות הללו הן <strong>תלויות בטכנולוגיות בוגרות וסטנדרטיות</strong>, לא בספקים פרטיים. הסיכון נמוך.</p>
+
+  <h3>13.6 איך נדע אם הפרנו חוק</h3>
+
+  <p>בעיקר דרך code review. שאלות שעולות ב-PR:</p>
+
+  <ul class="checks">
+    <li>"איפה שמת את הקוד הזה? למה לא דרך interface?"</li>
+    <li>"זה משתמש ב-feature ייחודי ל-Resend. למה לא דרך נורמלי <code>send()</code>?"</li>
+    <li>"ה-SQL הזה תקף ב-Postgres standard? בדקת ב-RDS?"</li>
+    <li>"למה זה לא ב-<code>r2.provider.ts</code> אלא בקוד שירות?"</li>
+  </ul>
+
+  <p>ה-ESLint rule (P1.13) חוסם אחת הסטיות הנפוצות: שימוש ישיר ב-<code>db</code> מחוץ ל-wrappers. שאר החוקים נשמרים דרך code review + culture.</p>
+
+  <h3>13.7 העלות של ה-portability</h3>
+
+  <p>שמירה על שמונת החוקים אינה חינמית:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>עלות</th><th>תועלת</th></tr></thead>
+      <tbody>
+        <tr><td>+1 קובץ לכל interface (6 קבצים)</td><td>החלפת ספק = ימים, לא חודשים</td></tr>
+        <tr><td>+1-2 קבצי implementation per provider</td><td>Reversibility מבני, לא רק מוצהר</td></tr>
+        <tr><td>~50 שורות wiring ב-NestJS</td><td>אין vendor lock-in</td></tr>
+        <tr><td>Code review עם בדיקה לסטיות</td><td>אופציות פיננסיות (אם ספק מעלה מחיר, יש חלופה)</td></tr>
+        <tr><td>לפעמים, ויתור על feature ייחודי</td><td>Type safety + abstraction עוזר ל-tests + maintenance</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>13.8 תזכורת מ-Doc 07: למה זה קריטי לאבטחה</h3>
+
+  <p>אם פעם נצטרך להחליף ספק עקב <strong>אירוע אבטחה אצלו</strong> (data breach ב-Resend, פרצה ב-R2), הזמן הוא הקריטי. <strong>Portability ⇒ Resilience</strong>:</p>
+
+  <ul class="num-list">
+    <li>Resend חוו breach — אם אנחנו vendor-locked, נצטרך לחכות לתיקון שלהם. עם interface, אפשר לעבור ל-SES או SendGrid תוך יום.</li>
+    <li>R2 חוו אירוע — אפשר לעבור ל-S3 ב-שעות. files-בעלי ידרשו העברה אך זה ניהול ידני, לא rewrite קוד.</li>
+    <li>Neon חוו אירוע מערכתי — אפשר להעביר ל-RDS תוך 24-48 שעות. הסכמה זהה, ה-SQL זהה.</li>
+  </ul>
+
+  <div class="callout success">
+    <div class="callout-title">✓ פורטביליות = ביטוח אבטחה</div>
+    <div class="callout-body">שמונת החוקים אינם רק על "לא להיות תקוע" עם ספק. הם <strong>תוכנית גיבוי אבטחתית</strong>: אם ספק חווה אירוע, יש לנו אופציה. הקפדה על 8 החוקים לאורך כל הפיתוח שווה חודשים של חופש מאוחר יותר.</div>
+  </div>
+</section>
+<section id="section-14">
+  <div class="section-header">
+    <div class="section-num">14 · MIGRATION PATH</div>
+    <h2 class="section-title">מסלול הגירה — מ-Free Tier ל-100 ארגונים</h2>
+    <p class="section-lede">מה משתנה בכל שלב של הצמיחה. מתי לעבור tier, מה לעבור, ומה לדחות.</p>
+  </div>
+
+  <p class="lead">המערכת מתחילה ב-$0-6 לחודש, ואמורה להחזיק לפחות עד 10 לקוחות. אחרי זה — צמיחה מתוכננת, לא תזזית. הלוח הזה הוא תוכנית הצמיחה: באיזה נקודה לעבור tier, מאיזה ספק, ולמה. כדי שכשהזמן יגיע — לא נצטרך לחשוב מחדש; פשוט נריץ את התכנון.</p>
+
+  <h3>14.1 ארבעת השלבים</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>שלב</th><th>גודל</th><th>עלות חודשית</th><th>שינויים עיקריים</th></tr></thead>
+      <tbody>
+        <tr><td><strong>MVP</strong></td><td>0-3 לקוחות, pilot</td><td class="ltr">$0-6</td><td>הכל Free tier; Railway Hobby</td></tr>
+        <tr><td><strong>Launch</strong></td><td>3-10 לקוחות</td><td class="ltr">$100-180</td><td>Neon Launch; Resend Pro; Sentry Team</td></tr>
+        <tr><td><strong>Growth</strong></td><td>10-50 לקוחות</td><td class="ltr">$300-600</td><td>+ Upstash Redis; + monitoring; Railway Pro</td></tr>
+        <tr><td><strong>Scale</strong></td><td>50-100+ לקוחות</td><td class="ltr">$500-1000</td><td>Neon Pro; + Pusher (real-time); CDN Pro</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>14.2 שלב 1 — MVP ($0-6/חודש)</h3>
+
+  <p>נקודת ההתחלה. הכל Free tier כמעט; ה-$5 היחיד הוא Railway Hobby.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ספק</th><th>Plan</th><th>גבולות</th><th>מה זה מספיק עבור</th></tr></thead>
+      <tbody>
+        <tr><td>Neon</td><td>Free</td><td>0.5GB storage, 1 compute</td><td>~3 ארגונים פעילים</td></tr>
+        <tr><td>Railway</td><td>Hobby ($5/חודש)</td><td>$5 credit, אז per-usage</td><td>BE + Worker פעילים</td></tr>
+        <tr><td>Cloudflare R2</td><td>Free</td><td>10GB storage, 10M reads/חודש</td><td>~3K מסמכים</td></tr>
+        <tr><td>Cloudflare Pages</td><td>Free</td><td>Unlimited builds + bandwidth</td><td>תמיד מספיק</td></tr>
+        <tr><td>Resend</td><td>Free</td><td>3,000 emails/חודש</td><td>~10 emails/יום ב-3 ארגונים</td></tr>
+        <tr><td>Sentry</td><td>Developer</td><td>5K errors/חודש, 10K performance events</td><td>~3 ארגונים עם איכות גבוהה</td></tr>
+        <tr><td>GitHub</td><td>Free</td><td>Unlimited public + 2K Actions minutes</td><td>תמיד מספיק</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>מה לדעת ב-MVP</h4>
+
+  <ul class="checks">
+    <li>אין Redis. <code>ICacheProvider</code> מומש כ-<code>PostgresCacheProvider</code> (cache_kv table). תקין לכמה אלפי בקשות/דקה</li>
+    <li>אין real-time בידי-ידיים. <code>IRealtimeProvider</code> מומש כ-<code>SseRealtimeProvider</code> (Server-Sent Events). מספיק להתראות; לא ל-chat</li>
+    <li>SMS פעיל ב-MVP — <code>ISMSProvider</code> מומש כ-<code>IsraeliSMSProvider</code> (019/Inforu) ל-Tenant OTP. בdev: NoopSMSProvider (OTP מ-logs). Tenant portal הוא MVP (D.17+D.20)</li>
+    <li>פיצ'רים מתקדמים (AI, OCR, advanced analytics) אינם — Phase 2 של המוצר</li>
+  </ul>
+
+  <h3>14.3 שלב 2 — Launch ($100-180/חודש)</h3>
+
+  <p>3-10 לקוחות. כשהיציאה מ-pilot מתבצעת. צריך SLAs יותר חזקים, יותר storage, יותר emails.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ספק</th><th>Plan</th><th>מחיר</th><th>למה משדרגים</th></tr></thead>
+      <tbody>
+        <tr><td>Neon</td><td class="success">Launch</td><td class="ltr">$19/חודש</td><td>10GB storage, autoscaling, ~10 ארגונים</td></tr>
+        <tr><td>Railway</td><td>Hobby (אותו)</td><td class="ltr">$5-15/חודש</td><td>צריכת CPU/Memory עולה; ה-billing עולה אוטומטית</td></tr>
+        <tr><td>Resend</td><td class="success">Pro</td><td class="ltr">$20/חודש</td><td>50K emails, 5 domains</td></tr>
+        <tr><td>Sentry</td><td class="success">Team</td><td class="ltr">$26/חודש</td><td>50K errors, longer retention, alerts</td></tr>
+        <tr><td>Cloudflare R2</td><td>Free → minimal paid</td><td class="ltr">$0-5</td><td>אם 10GB כבר לא מספיק</td></tr>
+        <tr><td>Cloudflare Pages</td><td>Free</td><td class="ltr">$0</td><td>עדיין במגבלות</td></tr>
+        <tr><td><strong>Domain + DNS</strong></td><td>—</td><td class="ltr">$15/שנה</td><td>emapp.io domain registration</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>שינויים ב-codebase בשלב הזה</h4>
+
+  <ul class="num-list">
+    <li><strong>אין שינוי קוד מבני.</strong> ה-interface layer (Section 6) מאפשרת את השדרוגים בלי refactor — רק שינויים ב-providers.module.ts.</li>
+    <li><strong>Database backups תקופתיים.</strong> Neon Launch כולל point-in-time recovery עד 7 ימים. נשמור עם זה.</li>
+    <li><strong>Monitoring deeper.</strong> Sentry Team מאפשר alerts יותר עדינות (אחוז שגיאות, לא רק spike).</li>
+    <li><strong>Documents retention.</strong> אם R2 מתקרב לגבול — נבדוק מה אפשר לארכב. אבל זה לא צפוי ב-10 ארגונים.</li>
+  </ul>
+
+  <h3>14.4 שלב 3 — Growth ($300-600/חודש)</h3>
+
+  <p>10-50 לקוחות. כאן מתחילים פיצ'רים שדורשים runtime נוסף.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>שדרוג</th><th>מחיר</th><th>למה</th></tr></thead>
+      <tbody>
+        <tr><td>Neon Launch → Pro</td><td class="ltr">$69/חודש</td><td>30GB, 0.5 CPU, better autoscale</td></tr>
+        <tr><td><strong>+ Upstash Redis</strong></td><td class="ltr">$10-30/חודש</td><td>החלפת PostgresCacheProvider; מהיר יותר</td></tr>
+        <tr><td><strong>+ ספק SMS ישראלי</strong></td><td class="ltr">~₪50-150/חודש</td><td>Tenant OTP — MVP (D.20). תלוי בנפח דיירים</td></tr>
+        <tr><td>Resend Pro (אותו)</td><td class="ltr">$20/חודש</td><td>עדיין במסגרת 50K</td></tr>
+        <tr><td>Sentry Team → Business</td><td class="ltr">$80/חודש</td><td>200K errors, advanced alerts, longer retention</td></tr>
+        <tr><td>Railway Hobby → Pro</td><td class="ltr">$20/חודש (base)</td><td>SLA יותר חזק, אופציה ל-private services</td></tr>
+        <tr><td>Cloudflare R2</td><td class="ltr">~$10-20/חודש</td><td>~50GB storage</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>שינויים ב-codebase</h4>
+
+  <ul class="num-list">
+    <li><strong>החלפת PostgresCacheProvider → UpstashRedisCacheProvider.</strong> כל הקוד שמשתמש ב-<code>ICacheProvider</code> אינו נוגע. רק factory ב-providers.module.ts משתנה.</li>
+    <li><strong>החלפת ספק SMS (אם צריך).</strong> IsraeliSMSProvider כבר ב-MVP (D.20, Tenant OTP). החלפה ל-Twilio = הרחבה בינלאומית עתידית, אותו דבר דרך ISMSProvider.</li>
+    <li><strong>הוספת BillingService.</strong> Stripe או Paddle. Customer-facing billing UI ב-FE.</li>
+    <li><strong>הוספת synthetic monitoring.</strong> Pingdom או BetterStack. Health checks חיצוניים.</li>
+    <li><strong>אופציה: Sentry → BetterStack לlogs.</strong> אם 5K events ב-Sentry לא מספיק; BetterStack ל-logs aggregation.</li>
+  </ul>
+
+  <h3>14.5 שלב 4 — Scale ($500-1000/חודש)</h3>
+
+  <p>50-100+ לקוחות. השלב המבוקר. ההחלטות כאן תלויות מאוד בפרופיל השימוש הספציפי.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>שדרוג</th><th>מחיר</th><th>תרחיש</th></tr></thead>
+      <tbody>
+        <tr><td>Neon Pro → Business</td><td class="ltr">$200+/חודש</td><td>100GB+, dedicated compute, read replicas</td></tr>
+        <tr><td><strong>+ Pusher / WebSocket dedicated</strong></td><td class="ltr">$50-100/חודש</td><td>החלפת SseRealtimeProvider; chat features</td></tr>
+        <tr><td>Resend Pro → Business</td><td class="ltr">$80/חודש</td><td>200K emails/חודש</td></tr>
+        <tr><td><strong>+ Datadog / New Relic</strong> (אופציה)</td><td class="ltr">$200-500/חודש</td><td>אם Sentry לא מכסה observability</td></tr>
+        <tr><td>Railway Pro → Team</td><td class="ltr">$50+/חודש</td><td>multi-environment, יותר אנשים</td></tr>
+        <tr><td>Cloudflare Pages → Workers Paid</td><td class="ltr">$5/חודש</td><td>אם נצטרך edge functions</td></tr>
+        <tr><td>R2</td><td class="ltr">~$30-80/חודש</td><td>200GB+ storage</td></tr>
+        <tr><td><strong>+ דרישות חוקיות</strong></td><td class="ltr">$5000-15000 חד פעמי</td><td>SOC 2 Type II audit, pentest, legal</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>14.6 מה לא משתנה לאורך הצמיחה</h3>
+
+  <p>חשוב להדגיש: <strong>המבנה הארכיטקטוני אינו זז ככל שאנחנו גדלים</strong>. אותה schema, אותם wrappers, אותם interfaces. רק ההגדרות וה-implementations מאחורי ה-interfaces משתנים.</p>
+
+  <ul class="checks">
+    <li>18 הטבלאות נשארות; אולי מוסיפים עוד (chat, OCR results, billing) בשלב מאוחר</li>
+    <li>RLS policies נשארות זהות</li>
+    <li><code>withTenant</code> + <code>withProvider</code> אותם wrappers</li>
+    <li>שכבת ה-interfaces זהה; ה-implementations משתנים פנימית</li>
+    <li>5 הסוגי משתמשים זהים</li>
+    <li>5 העקרונות זהים</li>
+  </ul>
+
+  <h3>14.7 איתות לעבור tier</h3>
+
+  <p>איך אנחנו יודעים שזה הזמן לשדרג? שלושה איתותים:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ספק</th><th>איתות</th><th>תגובה</th></tr></thead>
+      <tbody>
+        <tr><td>Neon</td><td>Storage &gt; 80% מהמכסה; או compute autoscale רץ באופן חוזר</td><td>שדרוג ל-tier הבא</td></tr>
+        <tr><td>Resend</td><td>Email count &gt; 80% של חודש</td><td>שדרוג; או שקול cost-effective alternative</td></tr>
+        <tr><td>Sentry</td><td>Events &gt; 80% של החודש; דחיית events בגלל quota</td><td>שדרוג ל-Team / Business</td></tr>
+        <tr><td>R2</td><td>Storage &gt; 80% או requests &gt; 80%</td><td>שדרוג או cleanup</td></tr>
+        <tr><td>Railway</td><td>Bill חודשי גבוה משצריך</td><td>בדיקת usage patterns; אופטימיזציה לפני שדרוג</td></tr>
+        <tr><td>Postgres cache_kv</td><td>Query על cache_kv מתחיל להיות slow (&gt; 10ms)</td><td>שדרוג ל-Upstash Redis</td></tr>
+        <tr><td>SSE</td><td>&gt; 500 connections פתוחים בו-זמנית</td><td>שדרוג ל-Pusher / dedicated WebSocket</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>14.8 הסיכון של overprovisioning</h3>
+
+  <p>שדרוג מוקדם מדי הוא ההפך מסכנה — הוא בזבוז משאבים. עקרון: <strong>אנחנו לא משדרגים בגלל "מה אם", רק בגלל איתות מדיד</strong>.</p>
+
+  <ul class="num-list">
+    <li>"מה אם יבואו 50 לקוחות בבת אחת" — לא קורה בפועל. הצמיחה הדרגתית.</li>
+    <li>"Redis יהיה יותר מהיר" — תרצה לראות שה-cache_kv אמיתית בעיה לפני המעבר.</li>
+    <li>"Pusher יהיה real-time יותר טוב" — תרצה SSE קונקרטית להיות bottleneck.</li>
+  </ul>
+
+  <p>כל שדרוג מקדים = הוצאה חודשית מתמשכת + מורכבות תפעולית מוסיפה. אנחנו משלמים על תשתית שאנחנו <strong>צריכים עכשיו</strong>, לא על תשתית שאולי נצטרך בעוד שנה.</p>
+
+  <div class="callout success">
+    <div class="callout-title">✓ צמיחה כספית מתוכננת</div>
+    <div class="callout-body">העלות גדלה כמעט linear עם מספר הלקוחות. ב-3 לקוחות: $0-6/חודש. ב-10: $100-180. ב-50: $300-600. ב-100: $500-1000. זה אומר ש-<strong>cost-per-customer דווקא יורד</strong> ככל שגדלים — בזכות free tiers ו-bulk pricing.</div>
+  </div>
+</section>
+
+<section id="section-15">
+  <div class="section-header">
+    <div class="section-num">15 · DATA MODEL</div>
+    <h2 class="section-title">מודל נתונים — תמונה גבוהה</h2>
+    <p class="section-lede">18 טבלאות לקוח + 2 טבלאות Provider, מחולקות ל-5 zones. הפרטים העמוקים ב-Doc 04c.</p>
+  </div>
+
+  <p class="lead">הסכמה היא מקור האמת. כל ה-types ב-TypeScript נגזרים ממנה; כל ה-Zod DTOs מתואמים אליה; כל ה-business logic מובנה עליה. <strong>שינוי בסכמה הוא שינוי בכל המערכת</strong> — לכן חשוב לבנות אותה נכון מהפעם הראשונה. כאן: סקירה ברמת ה-zones; הפרטים המלאים ב-Doc 04c.</p>
+
+  <h3>15.1 חמשת ה-Zones</h3>
+
+  <p>הטבלאות מאורגנות ב-5 קבוצות לוגיות. בתוך zone — קשרים הדוקים; בין zones — קשרים מפורשים ומעטים:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Zone</th><th>תפקיד</th><th>טבלאות</th><th>מספר</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Z1: Tenancy</strong></td><td>מי קיים, איפה</td><td>organizations · users · memberships</td><td>3</td></tr>
+        <tr><td class="new"><strong>Z2: Provider</strong></td><td>EMAPP team's identity tier</td><td>provider_users · provider_audit_log</td><td>2</td></tr>
+        <tr><td><strong>Z3: Projects</strong></td><td>העבודה עצמה</td><td>projects · buildings · apartments · owners · ownerships</td><td>5</td></tr>
+        <tr><td><strong>Z4: Collaboration</strong></td><td>תיאום בין שחקנים</td><td>contractors · shares · tasks · task_assignees · notifications · project_assignments</td><td>6</td></tr>
+        <tr><td><strong>Z5: Artifacts &amp; History</strong></td><td>מסמכים והעבר</td><td>documents · signatures · notes · audit_log</td><td>4</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p><strong>סה"כ 18 טבלאות לקוח + 2 טבלאות Provider = 20 טבלאות.</strong></p>
+
+  <h3>15.2 התרשים — היררכיה והקשרים</h3>
+
+  <div class="code-label">data model — entity hierarchy</div>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│   Z1 · TENANCY                                                       │
+│   ┌─────────────────┐    ┌──────────────┐    ┌──────────────────┐  │
+│   │  organizations  │◄───┤ memberships  │───►│      users       │  │
+│   └────────┬────────┘    └──────────────┘    └──────────────────┘  │
+└────────────┼────────────────────────────────────────────────────────┘
+             │
+┌────────────┼────────────────────────────────────────────────────────┐
+│   Z3 · PROJECTS              ▼                                      │
+│   ┌────────────┐  ┌────────────┐  ┌────────────┐                  │
+│   │  projects  │─►│ buildings  │─►│ apartments │                  │
+│   └─────┬──────┘  └────────────┘  └─────┬──────┘                  │
+│         │                               │                          │
+│         │         ┌────────────┐        ▼                          │
+│         │         │  owners    │◄──┐ ┌──────────────┐             │
+│         │         └────────────┘   └─┤ ownerships   │             │
+│         │                            └──────────────┘             │
+└─────────┼──────────────────────────────────────────────────────────┘
+          │
+┌─────────┼──────────────────────────────────────────────────────────┐
+│   Z4 · COLLABORATION                                                │
+│         │                                                          │
+│   ┌─────▼──────┐  ┌──────────────┐  ┌──────────────┐             │
+│   │   tasks    │  │   shares     │◄─┤ contractors  │             │
+│   └─────┬──────┘  └──────┬───────┘  └──────────────┘             │
+│         │                │                                        │
+│   ┌─────▼──────────┐  ┌──▼─────────────────────┐                 │
+│   │ task_assignees │  │  project_assignments   │                 │
+│   └────────────────┘  └────────────────────────┘                 │
+│   ┌─────────────────┐                                            │
+│   │ notifications   │                                            │
+│   └─────────────────┘                                            │
+└────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────┐
+│   Z5 · ARTIFACTS &amp; HISTORY                                         │
+│   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌────────┐│
+│   │  documents   │  │  signatures  │  │   notes      │  │ audit  ││
+│   └──────────────┘  └──────────────┘  └──────────────┘  │  _log  ││
+│                                                          └────────┘│
+└────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────┐
+│   Z2 · PROVIDER (separate tier — own DB role)                       │
+│   ┌──────────────────┐         ┌────────────────────────┐         │
+│   │ provider_users   │────────►│  provider_audit_log    │         │
+│   └──────────────────┘         └────────────────────────┘         │
+└────────────────────────────────────────────────────────────────────┘
+</code></pre>
+
+  <h3>15.3 איך טבלה אופיינית נראית</h3>
+
+  <p>דוגמה — <code>projects</code>. כל הטבלאות עוקבות אחר אותו דפוס:</p>
+
+  <div class="code-label">projects table structure</div>
+<pre><code><span class="comment">// All tables have:</span>
+id            uuid PK             <span class="comment">// generated client-side</span>
+org_id        uuid FK             <span class="comment">// → organizations(id), RESTRICT delete</span>
+created_at    timestamptz         <span class="comment">// NOT NULL, default NOW()</span>
+updated_at    timestamptz         <span class="comment">// NOT NULL, auto-update trigger</span>
+archived_at   timestamptz NULL    <span class="comment">// soft delete pattern</span>
+
+<span class="comment">// projects-specific fields:</span>
+name          text                <span class="comment">// "Renewal Tama 38 — Ben Yehuda 42"</span>
+type          enum                <span class="comment">// 'tama38_1' | 'tama38_2' | 'pinui_binui'</span>
+status        enum                <span class="comment">// 'planning' | 'gathering_signatures' | ...</span>
+description   text NULL
+target_signature_pct numeric(5,2) <span class="comment">// e.g., 67.00 for tama 38</span>
+started_at    timestamptz NULL
+created_by    uuid FK             <span class="comment">// → users(id)</span>
+
+<span class="comment">// indexes:</span>
+INDEX idx_projects_org_status (org_id, status) WHERE archived_at IS NULL
+INDEX idx_projects_org_type (org_id, type)
+
+<span class="comment">// RLS:</span>
+USING (org_id = current_setting('app.organization_id', true)::uuid)
+WITH CHECK (org_id = current_setting('app.organization_id', true)::uuid)
+</code></pre>
+
+  <h3>15.4 דפוסים שמתחזרים בכל הסכמה</h3>
+
+  <p>כל הטבלאות הרב-לקוחיות עוקבות אחר אותם דפוסים:</p>
+
+  <ul class="num-list">
+    <li><strong>UUID primary keys.</strong> נוצרים ב-client (gen_random_uuid()), לא serial. מאפשר לקוח לדעת ID לפני INSERT.</li>
+    <li><strong>org_id ברוב הטבלאות.</strong> או דרך FK ישיר (rapid RLS) או דרך parent chain (ל-buildings, apartments). מנמק ב-Section 10.</li>
+    <li><strong>Timestamps cluster.</strong> created_at + updated_at + archived_at (soft delete) — בכל טבלה.</li>
+    <li><strong>FK עם RESTRICT/CASCADE מבחירה מודעת.</strong> organizations: RESTRICT (לא ניתן למחוק אם יש projects). apartments: CASCADE מ-buildings (מחיקת בניין → מחיקת דירות, אבל באמת רק soft delete).</li>
+    <li><strong>Partial unique indexes.</strong> "unique active" — UNIQUE (cols) WHERE archived_at IS NULL. מאפשר ערכים כפולים בהיסטוריה.</li>
+    <li><strong>Enums במקום text.</strong> סטטוסים מוגדרים כ-Postgres enum types; compile-time safety + small storage.</li>
+    <li><strong>JSONB לפרטים גמישים.</strong> share.permissions, organizations.settings — עם Zod schema validation בקוד.</li>
+  </ul>
+
+  <h3>15.5 PII בסכמה</h3>
+
+  <p>הטבלה היחידה שמחזיקה PII רגיש היא <code>owners</code>. הסכמה שלה:</p>
+
+  <div class="code-label">owners — the PII repository</div>
+<pre><code><span class="comment">// Plaintext (low-medium sensitivity):</span>
+name                  text         <span class="comment">// displayable; not search-sensitive</span>
+email                 citext NULL  <span class="comment">// case-insensitive, plaintext</span>
+
+<span class="comment">// CRITICAL: encrypted + HMAC for lookup</span>
+national_id_encrypted bytea NOT NULL  <span class="comment">// pgp_sym_encrypt result</span>
+national_id_hash      text NOT NULL   <span class="comment">// HMAC for indexed search</span>
+
+<span class="comment">// CRITICAL: encrypted (nullable — optional field)</span>
+phone_encrypted       bytea NULL
+phone_hash            text NULL
+
+<span class="comment">// Composite indexes for PII lookup:</span>
+INDEX idx_owners_org_natid_hash (org_id, national_id_hash)
+INDEX idx_owners_org_phone_hash (org_id, phone_hash) WHERE phone_hash IS NOT NULL
+
+<span class="comment">// Unique active by national_id_hash per org:</span>
+UNIQUE (org_id, national_id_hash) WHERE archived_at IS NULL
+</code></pre>
+
+  <p>כל טבלה אחרת אינה מחזיקה PII רגיש. signatures מחזיקות חתימות ויזואליות (יחסית רגיש — encrypted), אבל לא ת"ז/טלפון.</p>
+
+  <h3>15.6 מודל ההרשאות בסכמה</h3>
+
+  <p>קישור בין מבנה לבין החלטות הרשאה:</p>
+
+  <ul class="num-list">
+    <li><strong>memberships.role:</strong> manager | agent | viewer. נקבע כאן; ה-API והקליינט בוחנים אותו.</li>
+    <li><strong>project_assignments:</strong> ה-M:N של Agent ל-projects. RLS על projects צריך לבדוק את זה ל-Agents.</li>
+    <li><strong>shares.permissions JSONB:</strong> פירוט מה Contractor רואה ב-project ספציפי. Zod schema (.strict()) מאמת.</li>
+    <li><strong>provider_users.role:</strong> ב-MVP כולם 'admin'. Phase 2 יוסיף 'support', 'billing', 'readonly'.</li>
+  </ul>
+
+  <h3>15.7 שדות שלא תראו בסכמה — בכוונה</h3>
+
+  <p>החלטות "מה לא להוסיף":</p>
+
+  <ul class="crosses">
+    <li>אין <code>password_reset_token</code> column. ה-token חי ב-cache (ICacheProvider), לא ב-DB</li>
+    <li>אין <code>email_verified</code> boolean ב-users. רק <code>lastLoginAt</code> — נקודת הוודאות הראשונית</li>
+    <li>אין <code>session_id</code> ב-users. Sessions ב-cache בלבד</li>
+    <li>אין full-text search column. אם נצטרך — Phase 2, with pg_trgm או pg_search</li>
+    <li>אין <code>is_admin</code> ב-users. Provider tier הוא טבלה נפרדת — לא דגל</li>
+  </ul>
+
+  <h3>15.8 איך הסכמה מתפתחת</h3>
+
+  <p>שינויים בסכמה הם זהירים. הזרימה:</p>
+
+  <ol class="num-list">
+    <li><strong>הצעה ב-PR</strong> — שני המפתחים סוקרים</li>
+    <li><strong>Drizzle Kit generates migration</strong> — לא ידני</li>
+    <li><strong>Migration runs locally</strong> — מאמתים שעובד על copy של data אמיתי</li>
+    <li><strong>CI runs migration from scratch</strong> — מאמת שלא שובר את ה-setup</li>
+    <li><strong>Production rollout</strong> — ב-night-time deploy אם משמעותי</li>
+    <li><strong>Rollback ready</strong> — אם משהו מתפוצץ, יש migration להפוך</li>
+  </ol>
+
+  <p>שינויים תוספתיים (הוספת column, חדש index) — קלים. שינויים מבניים (פיצול טבלה, שינוי FK) — דורשים תכנון. שינוי שמוחק נתונים — דורש review של שני המפתחים + Provider Admin approval.</p>
+
+  <div class="callout info">
+    <div class="callout-title">💡 הסכמה נצחית — קוד אפשר לכתוב מחדש</div>
+    <div class="callout-body">קוד אפשר לרפקטור; APIs אפשר לגרסה; שינויי schema נשארים לכל החיים של המוצר. השקעה ב-Phase 1 (Doc 04c) הוא ההגנה הטובה ביותר. כל החלטה כאן מהווה ה-foundation שכל הקוד שייכתב יבנה עליה.</div>
+  </div>
+</section>
+<section id="section-16">
+  <div class="section-header">
+    <div class="section-num">16 · NEXT STEPS</div>
+    <h2 class="section-title">צעדים הבאים — מה אחרי המסמך הזה</h2>
+    <p class="section-lede">המסמך הזה הוא מבט-על. עכשיו מתחילים לבנות.</p>
+  </div>
+
+  <p class="lead">Doc 02 הוא נקודת הניווט. הוא לא בונה את המערכת — הוא מסביר אותה. עכשיו, אחרי שיש הסכמה על העקרונות (Section 2), על ה-Stack (Section 4), על המודל (Section 10), ועל הסכמה (Section 15) — מתחילים פיתוח. הסדר הוא קריטי; כל phase תלוי בקודמו.</p>
+
+  <h3>16.1 הסדר של ה-Phases</h3>
+
+  <div class="num-list">
+    <li><strong>Phase 0 — Foundation.</strong> הקמת monorepo, Drizzle setup, GitHub Actions, environment validation. ראה Doc 04b. <strong>~1 שבוע.</strong></li>
+    <li><strong>Phase 1 — Database.</strong> 18 הטבלאות + RLS + wrappers + interfaces. <strong>זה ה-foundation שעליו הכל נבנה.</strong> ראה Doc 04c. <strong>~8 ימים.</strong></li>
+    <li><strong>Phase 2 — Auth + Core CRUD.</strong> Better Auth setup, MFA ל-Provider tier, endpoints ל-CRUD על projects/buildings/apartments/owners. <strong>~11 ימים.</strong></li>
+    <li><strong>Phase 3 — Frontend.</strong> Next.js + shadcn/ui ב-Hebrew RTL. דפי הניהול: רשימת פרויקטים, דירות, בעלים, audit log. <strong>~14 ימים.</strong></li>
+    <li><strong>Phase 4 — Integration polish.</strong> Error handling, loading states, accessibility, real-world testing עם נתוני sample. <strong>~7 ימים.</strong></li>
+    <li><strong>Phase 5 — Real-time.</strong> SSE ל-notifications. SseRealtimeProvider מופעל. <strong>~4 ימים.</strong></li>
+    <li><strong>Phase 6 — Hardening + Production.</strong> Performance, monitoring deeper, production deploy ל-Railway, custom domains. <strong>~5 ימים.</strong></li>
+  </div>
+
+  <p>סה"כ: <strong>~50 ימי עבודה</strong> עם 2 מפתחים part-time. ב-realistic, זה ~3 חודשים.</p>
+
+  <h3>16.2 ה-MVP — מה הוא מספק</h3>
+
+  <p>בסוף Phase 6, יש לנו:</p>
+
+  <ul class="checks">
+    <li>Manager יכול ליצור ארגון, פרויקטים, בניינים, דירות, בעלים (עם PII מוצפן)</li>
+    <li>Manager יכול להקצות Agents לפרויקטים</li>
+    <li>Manager יכול להזמין Contractor עם הרשאות פרטניות</li>
+    <li>Agent רואה רק פרויקטים שלו, עובד על דירות, מעדכן סטטוסים</li>
+    <li>Contractor רואה פרויקטים שיש לו share פעיל, עם שדות מסוננים</li>
+    <li>Provider Admin יכול לחפש לקוח לתמיכה (audited)</li>
+    <li>Tasks + calendar + notifications פעילים</li>
+    <li>Documents מועלים ל-R2; signatures נשמרים</li>
+    <li>Audit log מלא + provider audit log נפרד</li>
+    <li>SSE לעדכונים בזמן אמת (notifications)</li>
+    <li>Production deploy עם monitoring, alerts, backups</li>
+  </ul>
+
+  <h3>16.3 מה לא ב-MVP — אבל ברודמאפ</h3>
+
+  <p>ה-MVP אינו מוצר מושלם. ה-roadmap העתידי:</p>
+
+  <h4>Phase 2 של מוצר (אחרי MVP יציב, ~5-10 לקוחות)</h4>
+
+  <ul class="num-list">
+    <li><strong>Tenant portal</strong> — בעלי דירות מתחברים, רואים את המצב שלהם, חותמים דיגיטלית</li>
+    <li><strong>SMS OTP</strong> — Twilio הופעל; משמש ל-tenant portal auth</li>
+    <li><strong>Field tasks + recon</strong> — Agent מקבל משימות שטח, מצלם דירה, מעדכן מ-mobile</li>
+    <li><strong>Chat</strong> — בין Manager ל-Agent, בין Agent ל-Contractor (WebSocket / Pusher)</li>
+    <li><strong>SSO/SAML</strong> — לקוחות גדולים שדורשים אינטגרציה עם Active Directory</li>
+  </ul>
+
+  <h4>Phase 3 של מוצר (אחרי 10-20 לקוחות)</h4>
+
+  <ul class="num-list">
+    <li><strong>AI / RAG features</strong> — סיכום מסמכים, suggestion engine</li>
+    <li><strong>OCR לתעודות זהות</strong> — Agent מצלם ת"ז, המערכת מחלצת אוטומטית</li>
+    <li><strong>Advanced analytics</strong> — דשבורד למנהלים: זמן ממוצע לחתימה, אחוז סירוב, conversion funnel</li>
+    <li><strong>Multi-language UI</strong> — אנגלית בנוסף לעברית</li>
+    <li><strong>Public API</strong> — לקוחות גדולים מתממשקים מ-ERPs שלהם</li>
+  </ul>
+
+  <h4>Phase 4 של מוצר (אחרי 50+ לקוחות)</h4>
+
+  <ul class="num-list">
+    <li><strong>SOC 2 Type II audit</strong> — לחתימת חוזים עם לקוחות enterprise</li>
+    <li><strong>External pentest</strong> — אישור חיצוני לאבטחה</li>
+    <li><strong>Bug bounty program</strong> — תגמול חוקרים שמוצאים פגיעויות</li>
+    <li><strong>Multi-region</strong> — אם יש לקוחות מחוץ לישראל</li>
+    <li><strong>Compliance frameworks נוספים</strong> — GDPR לעולם, ISO 27001 אם נדרש</li>
+  </ul>
+
+  <h3>16.4 ה-Roadmap המסמכי</h3>
+
+  <p>המסמכים הללו ייכתבו או יתעדכנו ככל שמתקדמים:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>מסמך</th><th>סטטוס</th><th>מתי נכתב</th></tr></thead>
+      <tbody>
+        <tr><td>Doc 01 — Vision &amp; Market</td><td>קיים, ייתכן עדכון</td><td>—</td></tr>
+        <tr><td>Doc 02 — Architecture</td><td class="success">המסמך הזה</td><td>עודכן עכשיו (v2)</td></tr>
+        <tr><td>Doc 03 — MVP Roadmap</td><td>ייתכן עדכון</td><td>—</td></tr>
+        <tr><td>Doc 04a — Claude Environment</td><td>קיים</td><td>—</td></tr>
+        <tr><td>Doc 04b — Phase 0</td><td>קיים</td><td>—</td></tr>
+        <tr><td>Doc 04c — Phase 1 Database</td><td class="success">קיים (v2)</td><td>נכתב מחדש</td></tr>
+        <tr><td>Doc 04d — Phase 2 Auth + CRUD</td><td class="new">יכתב</td><td>אחרי Phase 1 נסגר</td></tr>
+        <tr><td>Doc 05 — Frontend Sync</td><td>קיים</td><td>—</td></tr>
+        <tr><td>Doc 06 — FE/BE Integration</td><td>קיים</td><td>—</td></tr>
+        <tr><td>Doc 07 — Security Playbook</td><td class="success">קיים (v2)</td><td>נכתב מחדש</td></tr>
+        <tr><td>Doc 08 — Operations Runbook</td><td class="new">יכתב</td><td>אחרי Phase 6 (production)</td></tr>
+        <tr><td>Doc 09 — Phase 2 Roadmap</td><td class="new">יכתב</td><td>אחרי 5 לקוחות יציבים</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>16.5 רגעי החלטה לאורך הדרך</h3>
+
+  <p>נקודות שבהן נצטרך להחליט מחדש על הכיוון:</p>
+
+  <ol class="num-list">
+    <li><strong>אחרי Phase 1.</strong> האם RLS performance מספיק טוב? האם withTenant overhead סביר? אם לא — לא נמשיך עד שנפתור.</li>
+    <li><strong>אחרי Phase 3.</strong> האם ה-UI מספיק טוב לדגימה ללקוח ראשון? תיקונים נדרשים לפני pilot?</li>
+    <li><strong>אחרי 3 לקוחות pilot.</strong> מה הם בקשו שלא קיים? אילו חוסרים בולטים? סדר עדיפויות Phase 2.</li>
+    <li><strong>אחרי 10 לקוחות.</strong> האם cost/customer הגיוני? האם performance תחת load מתחזק? upgrade tier?</li>
+    <li><strong>אחרי שנה.</strong> SOC 2 הוא הצעד הנכון? הרחבה לישראל בלבד או חו"ל? AI features תיעדוף?</li>
+  </ol>
+
+  <h3>16.6 הכלים שצריכים להיות במקום</h3>
+
+  <p>לפני שמתחילים פיתוח רציני:</p>
+
+  <ul class="checks">
+    <li>חשבונות פעילים: GitHub, Neon, Railway, Cloudflare, Resend, Sentry</li>
+    <li>Domain רשום: emapp.io</li>
+    <li>Repository ב-GitHub עם CI/CD setup</li>
+    <li>Drizzle Studio או psql client לעבודה עם DB</li>
+    <li>1Password (או מקבילה) לשמירת secrets בצוות</li>
+    <li>Slack / Discord ליום-יום של הצוות</li>
+    <li>Linear / Notion ל-task tracking</li>
+    <li>Figma אם יש עיצובים (אופציונלי ב-MVP)</li>
+  </ul>
+
+  <h3>16.7 שורת הסיום</h3>
+
+  <p>הארכיטקטורה הזו אינה מורכבת בגלל שאנחנו חכמים. היא מורכבת בגלל ש<strong>הבעיה היא מורכבת</strong>. אנחנו בונים SaaS שמטפל ב-PII רגיש (תעודות זהות), עם משתמשים מרובים בכמה תפקידים, עם שותפים חיצוניים שיש להם הרשאות פרטניות, עם צרכי תמיכה פנימיים, ועם דרישת אבטחה גבוהה.</p>
+
+  <p>חמשת העקרונות (Section 2) הם המסנן. שלוש שכבות ההגנה (RLS + GRANTs + Encryption) הן ההגנה. שכבת ה-interfaces (Section 6) היא ה-resilience. שמונת חוקי ה-portability (Section 13) הם הביטוח. וה-18 הטבלאות (Section 15) הן ה-foundation שעליה הכל בנוי.</p>
+
+  <p>עכשיו — מתחילים פיתוח.</p>
+
+  <div class="callout success">
+    <div class="callout-title">✓ המבנה במקום — עכשיו הביצוע</div>
+    <div class="callout-body">המסמך הזה הוא ה-blueprint. הוא אינו המוצר. המוצר נבנה ב-Phases הבאות, פרק אחר פרק, על בסיס המבנה שהגדרנו. אם בנקודה כלשהי החלטה ארכיטקטונית תתעורר כלא נכונה — נחזור הנה ונעדכן. הארכיטקטורה משרתת את המוצר; היא לא מהווה את עצמה.</div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-meta">
+    <span>Doc 02 · Production Architecture (v2)</span>
+    <span>16 sections · 5 ספקים · 5 עקרונות · 18 טבלאות · 6 תפקידים</span>
+  </div>
+  <div>
+    נקרא יחד עם: <strong>Doc 04c</strong> (Phase 1 Database — הפרטים העמוקים) · <strong>Doc 07</strong> (Security Playbook) · <strong>Doc 03</strong> (MVP Roadmap)
+  </div>
+  <div style="margin-top: 12px; font-size: 11px; color: var(--text-muted);">
+    הארכיטקטורה משרתת את המוצר; היא אינה מהווה את עצמה. שינוי שעולה מהשטח — חוזר הנה.
+  </div>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

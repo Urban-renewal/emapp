@@ -88,6 +88,10 @@
 
 - Drizzle migrator tracks "applied" by journal `when` vs max `created_at` in `drizzle.__drizzle_migrations`. The one-off apply scripts insert `(hash=<tag>, created_at=<when>)`; this is enough to make the migrator skip them (it compares created_at, not the SHA256 content hash for the skip decision).
 
+- GOTCHA (cost a debugging session 2026-05-18): a `.sql` file in `migrations/` is INVISIBLE to `drizzle migrate()` unless it also has an entry in `migrations/meta/_journal.json`. `0016_better_auth_tables.sql` was hand-written but its journal entry was never added, so `migrate()` printed "Migrations applied successfully" while silently skipping it → `ba_user` never created → every signup/login 500'd at the Better Auth `findUserByEmail` query. Fix committed (journal idx 16, `when` = 1779036600000 > idx 15 so it isn't skipped). **Rule: every NEW hand-written migration MUST get a `_journal.json` entry with a `when` greater than the previous max, or it will be silently ignored.**
+
+- VERIFIED 2026-05-18: org-user signup works end-to-end against Neon dev (201, `{data:{user}}` envelope, access_token + refresh_token cookies). `providerDb` (neondb_owner) DOES bypass RLS on Neon — the earlier `organizations` INSERT failure was a PowerShell 5.1 artifact (non-UTF-8 `-Body` mangled Hebrew "בדיקה" → `?????`), NOT an RLS/app bug. To test Hebrew payloads from PS5.1, send `[Text.Encoding]::UTF8.GetBytes(...)` with `-ContentType "application/json; charset=utf-8"`.
+
 - P1.1: PROVIDER_DATABASE_URL is optional in db/src/env.ts (falls back to DATABASE_URL when unset).
 
 - P1.1: connection.ts removed; replaced by client.ts (pg Pool + drizzle/node-postgres). API health controller updated accordingly. Both use the `db` singleton directly; withTenant/withProvider wrappers in P1.13 will be the only external access path.

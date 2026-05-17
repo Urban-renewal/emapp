@@ -7,6 +7,9 @@ export default mergeConfig(
   defineConfig({
     test: {
       include: ['src/**/*.spec.ts', 'test/**/*.spec.ts'],
+      env: {
+        SKIP_ENV_VALIDATION: 'true',
+      },
     },
   }),
 );

@@ -12,11 +12,11 @@
 
 \- \*\*Phase:\*\* 0 (Foundation)
 
-\- \*\*Next task:\*\* P0.5
+\- \*\*Next task:\*\* P0.6
 
 \- \*\*Status:\*\* in\_progress
 
-\- \*\*Last completed:\*\* P0.4
+\- \*\*Last completed:\*\* P0.5
 
 \- \*\*Blocked:\*\* no
 
@@ -24,7 +24,7 @@
 
 \## Phase Completion Log
 
-\- \[ ] Phase 0 — Foundation (docs/04b) — 3/10 tasks (P0.2 awaiting accounts)
+\- \[ ] Phase 0 — Foundation (docs/04b) — 4/10 tasks (P0.2 awaiting accounts)
 
 \- \[ ] Phase 1 — Database (docs/04c) — 0/14 tasks
 
@@ -57,6 +57,8 @@
 \[2026-05-17] P0.2 ⏳ — .env.example committed, waiting for user to create accounts (Neon/Railway/Cloudflare/Resend/Sentry) and add secrets to Infisical.
 
 \[2026-05-17] P0.3 ✓ — 4 packages scaffolded: shared-types/db/config/validators. 21 validator tests green. typecheck clean across all. — commit on phase-0
+
+\[2026-05-17] P0.5 ✓ — Next.js 15 App Router: RTL+Heebo, next-intl (he/en), shadcn Button, Sentry instrumentation. build ✓ (102kB). standalone gated to NEXT_OUTPUT=standalone (Docker only). — commit 3ca4894
 
 \[2026-05-17] P0.4 ✓ — NestJS 11+Fastify scaffold: health endpoint, Helmet CSP+HSTS, CORS allow-list, throttler, Sentry, pino. 2 smoke tests green. tsconfig uses module:preserve+moduleResolution:bundler for webpack compat. Full DoD (db:connected) deferred to P0.2 account setup. — commit 57075b8
 

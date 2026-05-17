@@ -6,15 +6,15 @@
 
 ## Current Position
 
-- **Phase:** 2 (Auth + Multi-tenant + Tenant SMS OTP)
+- **Phase:** 2 complete (Org-user auth) — Tenant SMS OTP deferred by user decision
 
-- **Next task:** Gate 4 — review rate-limit config + OTP expiry + Israeli SMS provider config BEFORE implementing Tenant SMS OTP; then P2 Tenant OTP flow
+- **Next task:** Phase 3 — Domain API (after PR merge)
 
-- **Status:** in_progress — core auth done (Org user tier complete); Gate 4 stop required before SMS OTP
+- **Status:** awaiting_approval
 
-- **Last completed:** P2 Org-user auth (Better Auth + JWT + refresh tokens + guards + frontend login/signup)
+- **Last completed:** P2 Org-user auth — Better Auth + JWT + refresh tokens + guards + frontend login/signup
 
-- **Blocked:** Gate 4 (per GATES.md) — must show user rate-limit config + OTP expiry + Israeli SMS provider selection before proceeding
+- **Blocked:** no
 
 - **Branch:** phase-2
 
@@ -24,7 +24,7 @@
 
 - [x] Phase 1 — Database (docs/04c) — 14/14 tasks complete — merged
 
-- [~] Phase 2 — Auth + Multi-tenant + Tenant SMS OTP (docs/03 §6) — Org-user tier complete; Gate 4 before SMS OTP
+- [x] Phase 2 — Auth + Multi-tenant (docs/03 §6) — Org-user tier complete; Tenant SMS OTP intentionally deferred (user decision 2026-05-18)
 
 - [ ] Phase 3 — Domain API (docs/03 §7)
 
@@ -45,6 +45,8 @@
 ## Task Log (newest first)
 
 <!-- Claude appends: [YYYY-MM-DD HH:MM] P0.1 ✓ — note — commit <sha> -->
+
+[2026-05-18] P2 complete (OTP deferred) ✓ — Tenant SMS OTP skipped by user decision; PR opened for Phase 2 Org-user auth.
 
 [2026-05-18] P2 Org-user auth ✓ — Better Auth + JWT (15m access / 30d refresh) + cookie-based auth + AuthGuard/TenantGuard + AuthController (signup/login/refresh/logout/switch-org) + MeController + AuthModule + @fastify/cookie in main.ts + providerDb BYPASSRLS signup bootstrap (fixes users RLS chicken-and-egg) + Next.js login+signup pages + protected dashboard layout + i18n strings + 12 T2.x tests green. Gate 4 stop: must confirm Tenant SMS OTP rate-limit/OTP-expiry/provider config.
 

@@ -1,0 +1,15 @@
+# Backend ownership
+/apps/api/                 @Urban-renewal/dev
+/packages/db/              @Urban-renewal/dev
+/packages/validators/      @Urban-renewal/dev
+
+# Frontend ownership
+/apps/web/                 @Urban-renewal/dev
+
+# Shared — both review
+/packages/shared-types/    @Urban-renewal/dev
+/packages/config/          @Urban-renewal/dev
+
+# Critical infrastructure — both review
+/.github/                  @Urban-renewal/dev
+/CLAUDE.md                 @Urban-renewal/dev

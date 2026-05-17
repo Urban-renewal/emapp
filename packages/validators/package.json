@@ -1,0 +1,19 @@
+{
+  "name": "@emapp/validators",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.9"
+  }
+}

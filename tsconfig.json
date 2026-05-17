@@ -2,8 +2,6 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022"],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
@@ -18,7 +16,10 @@
     "isolatedModules": true,
     "baseUrl": ".",
     "paths": {
-      "@emapp/*": ["packages/*/src"]
+      "@emapp/shared-types": ["packages/shared-types/src"],
+      "@emapp/db": ["packages/db/src"],
+      "@emapp/config": ["packages/config/src"],
+      "@emapp/validators": ["packages/validators/src"]
     }
   },
   "exclude": ["node_modules", "dist", "build", ".next", ".turbo"]

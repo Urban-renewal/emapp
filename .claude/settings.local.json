@@ -8,7 +8,10 @@
       "Bash(git rm *)",
       "Bash(git add *)",
       "Bash(git -c core.hooksPath=.husky commit -m \"broken message no type\")",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(git config *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }

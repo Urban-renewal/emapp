@@ -47,13 +47,10 @@ export async function withProvider<T>(
   try {
     await client.query('BEGIN');
 
+    // Both provider session GUCs in one round trip (parameter-bound).
     await client.query({
-      text: 'SELECT set_config($1, $2, true)',
-      values: ['app.provider_user_id', providerUserId],
-    });
-    await client.query({
-      text: 'SELECT set_config($1, $2, true)',
-      values: ['app.access_reason', reason.trim()],
+      text: 'SELECT set_config($1, $2, true), set_config($3, $4, true)',
+      values: ['app.provider_user_id', providerUserId, 'app.access_reason', reason.trim()],
     });
 
     await client.query({

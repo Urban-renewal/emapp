@@ -34,29 +34,34 @@ export async function withTenant<T>(
   const client = await pool.connect();
 
   try {
-    await client.query('BEGIN');
+    // Round trip 1 (simple protocol, no params): open the transaction and drop
+    // to the restricted app_user role so RLS applies. The connecting role
+    // (e.g. neondb_owner) has BYPASSRLS; app_user does not. SET LOCAL is
+    // transaction-scoped — reverts on COMMIT/ROLLBACK.
+    await client.query('BEGIN; SET LOCAL ROLE app_user');
 
-    // Switch to the restricted app_user role so RLS policies apply.
-    // The connecting role (e.g. neondb_owner) has BYPASSRLS; app_user does not.
-    // SET LOCAL is transaction-scoped — reverts to the original role on COMMIT/ROLLBACK.
-    await client.query('SET LOCAL ROLE app_user');
-
-    await client.query({
-      text: 'SELECT set_config($1, $2, true)',
-      values: ['app.organization_id', orgId],
-    });
-
-    // Encryption key is guaranteed present by T3-env (z.string().length(44)) and
-    // verified at boot by verifyEncryptionStartup() — set unconditionally per spec §10.3.
-    await client.query({
-      text: 'SELECT set_config($1, $2, true)',
-      values: ['app.encryption_key', env.PII_ENCRYPTION_KEY],
-    });
-
+    // Round trip 2 (extended protocol, parameter-bound): set all session GUCs
+    // in one statement. Keys stay parameter-bound so they never appear in query
+    // logs (spec §5 / §10.3). app.user_id is set ONLY when provided — leaving it
+    // unset makes the notifications RLS policy compare against NULL → zero rows,
+    // which is the correct safe default. Encryption key presence is guaranteed
+    // by T3-env + verifyEncryptionStartup() at boot.
     if (options?.userId) {
       await client.query({
-        text: 'SELECT set_config($1, $2, true)',
-        values: ['app.user_id', options.userId],
+        text: 'SELECT set_config($1, $2, true), set_config($3, $4, true), set_config($5, $6, true)',
+        values: [
+          'app.organization_id',
+          orgId,
+          'app.encryption_key',
+          env.PII_ENCRYPTION_KEY,
+          'app.user_id',
+          options.userId,
+        ],
+      });
+    } else {
+      await client.query({
+        text: 'SELECT set_config($1, $2, true), set_config($3, $4, true)',
+        values: ['app.organization_id', orgId, 'app.encryption_key', env.PII_ENCRYPTION_KEY],
       });
     }
 

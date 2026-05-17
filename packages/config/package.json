@@ -10,8 +10,8 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@t3-oss/env-core": "^0.11.0",
-    "zod": "^3.23.0"
+    "@t3-oss/env-core": "^0.13.11",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^25.8.0"

@@ -71,6 +71,13 @@
       "when": 1779032400000,
       "tag": "0009_app_user_table_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1779033000000,
+      "tag": "0010_performance_and_security",
+      "breakpoints": true
     }
   ]
 }

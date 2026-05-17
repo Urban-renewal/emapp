@@ -49,6 +49,9 @@ export const buildings = pgTable(
   'buildings',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
     projectId: uuid('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
@@ -77,6 +80,9 @@ export const apartments = pgTable(
   'apartments',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
     buildingId: uuid('building_id')
       .notNull()
       .references(() => buildings.id, { onDelete: 'cascade' }),

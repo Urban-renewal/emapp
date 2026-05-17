@@ -51,6 +51,10 @@ export async function withTenant<T>(
         text: 'SELECT set_config($1, $2, true)',
         values: ['app.encryption_key', env.PII_ENCRYPTION_KEY],
       });
+    } else if (env.NODE_ENV === 'production') {
+      throw new Error(
+        'PII_ENCRYPTION_KEY is required in production — configure it in your secrets manager',
+      );
     }
 
     if (options?.userId) {

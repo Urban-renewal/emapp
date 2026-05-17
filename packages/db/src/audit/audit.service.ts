@@ -3,7 +3,7 @@ import { auditLog } from '../schema/artifacts';
 import type { NewAuditLog } from '../schema/artifacts';
 
 export interface AuditEntry {
-  orgId?: string;
+  orgId: string;
   actorUserId?: string;
   actorContractorId?: string;
   action: string;
@@ -19,7 +19,7 @@ export class AuditService {
 
   async log(entry: AuditEntry): Promise<void> {
     const row: NewAuditLog = {
-      orgId: entry.orgId ?? null,
+      orgId: entry.orgId,
       actorUserId: entry.actorUserId ?? null,
       actorContractorId: entry.actorContractorId ?? null,
       action: entry.action,
@@ -35,7 +35,7 @@ export class AuditService {
   async logMany(entries: AuditEntry[]): Promise<void> {
     if (entries.length === 0) return;
     const rows: NewAuditLog[] = entries.map((entry) => ({
-      orgId: entry.orgId ?? null,
+      orgId: entry.orgId,
       actorUserId: entry.actorUserId ?? null,
       actorContractorId: entry.actorContractorId ?? null,
       action: entry.action,

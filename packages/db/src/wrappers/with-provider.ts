@@ -9,6 +9,8 @@ type ProviderDatabase = NodePgDatabase<typeof schema>;
 interface ProviderContext {
   ip?: string;
   userAgent?: string;
+  targetTable?: string;
+  targetRecordId?: string;
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -57,9 +59,10 @@ export async function withProvider<T>(
     await client.query({
       text: `
         INSERT INTO provider_audit_log
-          (provider_user_id, reason, action_type, started_at, ip, user_agent)
+          (provider_user_id, reason, action_type, started_at, ip, user_agent,
+           target_table, target_record_id)
         VALUES
-          ($1, $2, $3, $4, $5, $6)
+          ($1, $2, $3, $4, $5, $6, $7, $8)
       `,
       values: [
         providerUserId,
@@ -68,6 +71,8 @@ export async function withProvider<T>(
         startedAt.toISOString(),
         context?.ip ?? null,
         context?.userAgent ?? null,
+        context?.targetTable ?? null,
+        context?.targetRecordId ?? null,
       ],
     });
 

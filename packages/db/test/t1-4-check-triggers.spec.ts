@@ -119,14 +119,14 @@ describe('T1.4 — CHECK constraints and immutable triggers', () => {
     try {
       // Create building → apartment → signature chain
       const bldg = await client.query<{ id: string }>(
-        `INSERT INTO buildings (project_id, address, city) VALUES ($1, $2, $3) RETURNING id`,
-        [projectId, 'Test St 1', 'Tel Aviv'],
+        `INSERT INTO buildings (org_id, project_id, address, city) VALUES ($1, $2, $3, $4) RETURNING id`,
+        [taskOrgId, projectId, 'Test St 1', 'Tel Aviv'],
       );
       const buildingId = bldg.rows[0]!.id;
 
       const apt = await client.query<{ id: string }>(
-        `INSERT INTO apartments (building_id, number) VALUES ($1, $2) RETURNING id`,
-        [buildingId, '1'],
+        `INSERT INTO apartments (org_id, building_id, number) VALUES ($1, $2, $3) RETURNING id`,
+        [taskOrgId, buildingId, '1'],
       );
       const apartmentId = apt.rows[0]!.id;
 

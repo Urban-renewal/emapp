@@ -8,11 +8,11 @@
 
 - **Phase:** 1 (Database)
 
-- **Next task:** P1.2 — Tenancy Tables (organizations, users, memberships)
+- **Next task:** Phase 1 complete — open PR from phase-1 → main, then confirm to start Phase 2
 
-- **Status:** in_progress
+- **Status:** awaiting_approval
 
-- **Last completed:** P1.1
+- **Last completed:** P1.14
 
 - **Blocked:** no
 
@@ -22,7 +22,7 @@
 
 - [x] Phase 0 — Foundation (docs/04b) — 9/10 tasks done (P0.2 awaiting Infisical accounts; all others complete)
 
-- [ ] Phase 1 — Database (docs/04c) — 1/14 tasks (P1.1 ✓)
+- [x] Phase 1 — Database (docs/04c) — 14/14 tasks complete — PR open, awaiting merge
 
 - [ ] Phase 2 — Auth + Multi-tenant + Tenant SMS OTP (docs/03 §6)
 
@@ -45,6 +45,8 @@
 ## Task Log (newest first)
 
 <!-- Claude appends: [YYYY-MM-DD HH:MM] P0.1 ✓ — note — commit <sha> -->
+
+[2026-05-17] P1.3-P1.14 ✓ — Full Phase 1: schema (collaboration/artifacts/share-permissions), migrations 0002-0009 (RLS policies, composite indexes, app_user grants), withTenant (SET LOCAL ROLE app_user), withProvider (provider_audit_log), 6 provider interfaces + impls, PII helpers, T1.5 (7 RLS tests) + T1.9 (3 rollback tests) all green. — commit a911ef8
 
 [2026-05-17] P1.1 ✓ — Drizzle setup: pg client, T3-env, 6 pgEnums, bytea/citext/inet types, commonColumns/tenantColumns, full scaffold (schema/wrappers/audit/providers), placeholder T1.5-T1.9 tests. Removed connection.ts, updated API health controller. — commit 697b827
 

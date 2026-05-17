@@ -7,6 +7,9 @@
     "build": "nest build",
     "start": "node dist/main",
     "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src"
   },
@@ -32,6 +35,6 @@
     "@types/node": "^20.0.0",
     "fastify": "^5.0.0",
     "ts-node": "^10.9.0",
-    "vitest": "^2.0.0"
+    "vitest": "^2.1.9"
   }
 }

@@ -163,6 +163,111 @@ _(no body)_
 
 **Errors:** `missing_token`, `invalid_token`, `session_revoked`
 
+### GET /api/v1/projects
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List org projects, cursor-paginated (keyset). Agent sees only assigned projects (D.17).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Project} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+
+### POST /api/v1/projects
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Create a project. Manager only; org/createdBy injected from JWT.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `description` | unknown | no | — |
+| `name` | string | yes | minLength=1, maxLength=200 |
+| `startedAt` | unknown | no | — |
+| `status` | string | no | enum=["planning","gathering_signatures","approved","in_construction","completed","cancelled"] |
+| `targetSignaturePct` | unknown | no | — |
+| `type` | string | yes | enum=["tama38_1","tama38_2","pinui_binui"] |
+
+
+**Response**
+
+```json
+{ "data": { ...Project } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `missing_token`, `invalid_token`
+
+### DELETE /api/v1/projects/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Soft delete (archivedAt — "ארכוב", not physical). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/projects/:id
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Get one project by id (org-scoped via RLS; Agent → assigned only).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Project } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/projects/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Partial update. Manager only. Every field optional.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `description` | unknown | no | — |
+| `name` | string | no | minLength=1, maxLength=200 |
+| `startedAt` | unknown | no | — |
+| `status` | string | no | enum=["planning","gathering_signatures","approved","in_construction","completed","cancelled"] |
+| `targetSignaturePct` | unknown | no | — |
+| `type` | string | no | enum=["tama38_1","tama38_2","pinui_binui"] |
+
+
+**Response**
+
+```json
+{ "data": { ...Project } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
 ### POST /api/v1/provider/auth/login
 
 - **Auth:** Public (MFA mandatory)
@@ -232,5 +337,8 @@ _(no body)_
 | `invalid_refresh` | 401 | Refresh token unknown/expired/rotated/replayed. |
 | `invalid_otp` | 401 | Tenant OTP wrong/expired/used/attempts-exhausted (generic). |
 | `not_member` | 401 | switch-org target is not an active membership. |
+| `forbidden` | 403 | Authenticated but role lacks permission (D.17 — e.g. non-Manager write). |
+| `not_found` | 404 | Resource absent OR outside the caller’s org/assignment (no oracle). |
+| `invalid_cursor` | 400 | Pagination cursor tampered/garbage — never a 500. |
 | `429` | 429 | Per-IP throttle exceeded (signup/login dedicated limits). |
 | `500` | 500 | Unexpected. Generic body; cause logged server-side only. |

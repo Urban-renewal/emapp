@@ -6,17 +6,19 @@
 
 ## Current Position
 
-- **Phase:** 2 COMPLETE & hardened (org-user + Provider Admin/MFA + **Tenant SMS OTP infra BUILT**). Tenant OTP code is fully present (otp.service/controller, TenantAuthGuard, migration 0020, contract OTP1-6) behind ISMSProvider=NoopSMSProvider; the real Israeli provider (019/Inforu) is a governed Gate-4 Infisical swap before it goes live — NOT deferred-as-unbuilt. User approved proceeding to Phase 3 (2026-05-18).
+- **Phase:** 3 IN PROGRESS — Domain API (docs/03 §7), branch `phase-3` from up-to-date main. Slice-by-slice; one PR at phase end (user-approved cadence 2026-05-18). Agent scoping enforced in the SERVICE layer (project_assignments JOIN over withTenant), not an extra RLS policy (user-approved). FE design = FE-only, not an input to the API contract (user-confirmed 2026-05-18).
 
-- **Next task:** Phase 3 — Domain API (docs/03 §7). Branch from main AFTER phase-2-hardening PR merges.
+- **Next task:** Phase 3 Slice 2 — Buildings (via-parent project→org). Slice 1 (Projects) DONE.
 
-- **Status:** phase-2 done; PR-ready on branch phase-2-hardening; Phase 3 = next session.
+- **Status:** Slice 1 (Projects) complete & verified — typecheck/lint/api-docs green; full black-box conformance **54 passed / 1 skip** (P7 env-gated) live against compiled API + Neon + RLS, incl. all 11 new Projects contract clauses (CRUD, ProjectSchema-valid responses, anti-oracle cross-tenant 404, soft-delete=archivedAt, keyset cursor, strict fail-closed, invalid_cursor 400).
+
+- **Phase 3 doc-drift DECISION (recorded, no schema deviation):** the locked Phase-1 `projects` table has NO address/city/metadata (those are `buildings` columns) and the docs/09 §3.8 enriched list fields (`stats`/`contractor`/`last_activity_at`) depend on Phase-5 signatures + the shares slice. `@emapp/shared-types` `ProjectSchema` therefore reflects the REAL locked columns; docs/06 §4.3 "(template)" and docs/09 §3.8 stats are doc-drift, NOT a schema change (Gate-2 untouched). Validation error code stays `validation_error` system-wide (docs/09 "validation_failed" is doc-drift). `Idempotency-Key` (docs/09 §3.10) deferred to Phase 5 per the approved plan. Enrichment (stats/contractor) revisited after Slice 6 (shares) + Phase 5 (signatures).
 
 - **Last completed:** P2-hardening — D.21 owned-auth rebuild + T2.10 Provider+MFA, black-box conformance **37/38 green** live (1 skip = P7 env-gated). Closed: signup atomicity, argon2id, hashed/rotating/reuse-detecting sessions, real logout, silent spec-flat lockout, per-IP throttle, JWT HS256+iss+aud, anti-enumeration, **stateless-JWT revocation hole (O3 — sid session-validity, 15s in-proc memo, flush on logout/reuse → immediate, zero UX cost)**. Provider tier: TOTP RFC6238, recovery codes, 30m/4h sessions, tier isolation. Medium audit findings closed; design gaps recorded as D.22 governed risk; D.21 propagated to CLAUDE.md/Doc07; secrets model reconciled.
 
 - **Blocked:** no.
 
-- **Branch:** phase-2-hardening (push up to date; open PR → merge → Phase 3 from main)
+- **Branch:** phase-3 (phase-2-hardening merged to main; one PR at Phase-3 end)
 
 ## Phase Completion Log
 

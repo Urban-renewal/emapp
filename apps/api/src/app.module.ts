@@ -6,6 +6,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { HealthController } from './app.controller';
 import { ConfigurableThrottlerGuard } from './common/guards/throttler.guard';
 import { AuthModule } from './modules/auth/auth.module';
+import { ProjectsModule } from './modules/projects/projects.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { AuthModule } from './modules/auth/auth.module';
       },
     }),
     AuthModule,
+    ProjectsModule,
   ],
   controllers: [HealthController],
   // Rate limiting ENFORCED globally; the configurable guard adds a

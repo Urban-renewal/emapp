@@ -12,7 +12,13 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { OtpRequestSchema, OtpVerifySchema } from '@emapp/shared-types';
+import {
+  CreateProjectInput,
+  ListProjectsQuery,
+  OtpRequestSchema,
+  OtpVerifySchema,
+  UpdateProjectInput,
+} from '@emapp/shared-types';
 import type { ZodTypeAny } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
@@ -127,6 +133,51 @@ const ENDPOINTS: Endpoint[] = [
     response: '{ "data": { "ok": true } }',
     errors: ['missing_token', 'invalid_token', 'session_revoked'],
   },
+  {
+    method: 'GET',
+    path: '/api/v1/projects',
+    auth: 'AuthGuard + TenantGuard',
+    summary:
+      'List org projects, cursor-paginated (keyset). Agent sees only assigned projects (D.17).',
+    request: ListProjectsQuery,
+    response:
+      '{ "data": [ {Project} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: ['validation_error', 'invalid_cursor', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/projects/:id',
+    auth: 'AuthGuard + TenantGuard',
+    summary: 'Get one project by id (org-scoped via RLS; Agent → assigned only).',
+    response: '{ "data": { ...Project } }',
+    errors: ['not_found', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/projects',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary: 'Create a project. Manager only; org/createdBy injected from JWT.',
+    request: CreateProjectInput,
+    response: '{ "data": { ...Project } }',
+    errors: ['validation_error', 'forbidden', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/projects/:id',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary: 'Partial update. Manager only. Every field optional.',
+    request: UpdateProjectInput,
+    response: '{ "data": { ...Project } }',
+    errors: ['validation_error', 'forbidden', 'not_found', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/projects/:id',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary: 'Soft delete (archivedAt — "ארכוב", not physical). Idempotent. 204.',
+    response: '(204 No Content)',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
+  },
 ];
 
 // §2 global error catalogue (FE switches on error.code, never on message).
@@ -140,6 +191,9 @@ const ERROR_CATALOG: Array<[string, string, string]> = [
   ['invalid_refresh', '401', 'Refresh token unknown/expired/rotated/replayed.'],
   ['invalid_otp', '401', 'Tenant OTP wrong/expired/used/attempts-exhausted (generic).'],
   ['not_member', '401', 'switch-org target is not an active membership.'],
+  ['forbidden', '403', 'Authenticated but role lacks permission (D.17 — e.g. non-Manager write).'],
+  ['not_found', '404', 'Resource absent OR outside the caller’s org/assignment (no oracle).'],
+  ['invalid_cursor', '400', 'Pagination cursor tampered/garbage — never a 500.'],
   ['429', '429', 'Per-IP throttle exceeded (signup/login dedicated limits).'],
   ['500', '500', 'Unexpected. Generic body; cause logged server-side only.'],
 ];

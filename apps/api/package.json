@@ -11,7 +11,8 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "bootstrap:provider": "tsx scripts/bootstrap-provider-admin.ts"
   },
   "dependencies": {
     "@emapp/config": "workspace:*",
@@ -42,6 +43,7 @@
     "fastify": "^5.0.0",
     "ts-loader": "^9.5.7",
     "ts-node": "^10.9.0",
+    "tsx": "^4.19.0",
     "vitest": "^2.1.9",
     "webpack-node-externals": "^3.0.0"
   }

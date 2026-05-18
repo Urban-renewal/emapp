@@ -110,6 +110,9 @@ importers:
       nestjs-pino:
         specifier: ^4.1.0
         version: 4.6.1(@nestjs/common@11.1.21(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@10.5.0)(pino@10.3.1)(rxjs@7.8.2)
+      otpauth:
+        specifier: ^9.3.4
+        version: 9.5.1
       pino-http:
         specifier: ^10.0.0
         version: 10.5.0
@@ -147,6 +150,9 @@ importers:
       ts-node:
         specifier: ^10.9.0
         version: 10.9.2(@types/node@20.19.41)(typescript@5.9.3)
+      tsx:
+        specifier: ^4.19.0
+        version: 4.22.1
       vitest:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@20.19.41)(@vitest/ui@2.1.9)(terser@5.47.1)
@@ -4646,6 +4652,9 @@ packages:
   ora@5.4.1:
     resolution: {integrity: sha512-5b6Y85tPxZZ7QytO+BQzysW31HJku27cRIlkbAXaNx+BdcVi+LlRFmVXzeF6a7JCwJpyw5c4b+YSVImQIrBpuQ==}
     engines: {node: '>=10'}
+
+  otpauth@9.5.1:
+    resolution: {integrity: sha512-fJmDAHc8wImfqqqOXIlBvT1dEKrZK0Cmb2VEgScpNTolCz0PHh6ExUZGv4sLtOsWNaHCQlD+rRqaPgnoxFoZjQ==}
 
   own-keys@1.0.1:
     resolution: {integrity: sha512-qFOyK5PjiWZd+QQIh+1jhdb9LpxTF0qs7Pm8o5QHYZ0M3vKqSqzsZaEB6oWlxZ+q2sJBMI/Ktgd2N5ZwQoRHfg==}
@@ -10160,6 +10169,10 @@ snapshots:
       log-symbols: 4.1.0
       strip-ansi: 6.0.1
       wcwidth: 1.0.1
+
+  otpauth@9.5.1:
+    dependencies:
+      '@noble/hashes': 2.2.0
 
   own-keys@1.0.1:
     dependencies:

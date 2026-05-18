@@ -1,4 +1,4 @@
-import { getDb, sql } from '@emapp/db';
+import { db, sql } from '@emapp/db';
 import { Controller, Get } from '@nestjs/common';
 
 @Controller('health')
@@ -7,7 +7,7 @@ export class HealthController {
   async getHealth() {
     let dbStatus = 'unknown';
     try {
-      await getDb().execute(sql`SELECT 1`);
+      await db.execute(sql`SELECT 1`);
       dbStatus = 'connected';
     } catch {
       dbStatus = 'disconnected';

@@ -826,7 +826,7 @@ const allUsers = await db.execute(sql`SELECT * FROM users`);
     <li><strong>Two separate keys, always.</strong> Encryption key (for pgcrypto) and HMAC key (for hashes) are different. Compromising one does not compromise the other.</li>
     <li><strong>Keys come from environment, never code.</strong> <code>PII_ENCRYPTION_KEY</code> and <code>PII_HASH_KEY</code> are env vars loaded via T3-env, validated at startup, never logged.</li>
     <li><strong>Keys are injected into Postgres session.</strong> Via <code>SET LOCAL app.encryption_key = $key</code> inside transaction. Keys never appear in query logs.</li>
-    <li><strong>Keys are 32 bytes (256-bit) random.</strong> Generated with <code>openssl rand -base64 32</code>. Stored in secrets manager (Railway environment variables).</li>
+    <li><strong>Keys are 32 bytes (256-bit) random.</strong> Generated with <code>openssl rand -base64 32</code>. <strong>Stored ONLY in Infisical</strong> (environments: dev/staging/production), injected at runtime via <code>infisical run --</code> / Infisical's CI integration. <span style="background:#fde68a;padding:1px 4px">Reconciled 2026-05-18:</span> earlier wording "Railway environment variables" (here and in the §15 inventory table) is SUPERSEDED — the operative control is the GATES.md SECRETS LAW (Infisical-only; <code>.env</code> holds placeholders only; never in code/git). Railway/host env is populated <em>from</em> Infisical at deploy, it is not the source of truth.</li>
     <li><strong>Keys rotate, but not casually.</strong> See Section 14 for the procedure. Rotation requires re-encrypting all data.</li>
   </ul>
 
@@ -972,6 +972,8 @@ const allUsers = await db.execute(sql`SELECT * FROM users`);
   </div>
 
   <h3>6.2 The Implementation: Better Auth In-Code</h3>
+
+  <p style="background:#fde68a;border:2px solid #d97706;padding:10px;border-radius:6px"><strong>⚠ SUPERSEDED BY D.21 (2026-05-18).</strong> Better Auth was REMOVED from the auth path. The auth stack is now fully owned: <strong>argon2id</strong> (OWASP params) replaces bcrypt; sessions/refresh live in the domain DB (<code>auth_sessions</code>, SHA-256-hashed refresh, rotation + reuse-detection); signup is one atomic <code>withBootstrap</code> transaction. The "in-process, data-owned, cost-stable" rationale below still holds — it is now satisfied by owning the code outright rather than via the Better Auth library. Read D.21 before this section. The bcrypt mention in §6.3 is obsolete (argon2id).</p>
 
   <p>Better Auth runs inside our NestJS backend — not as an external service. This is portability rule #6 (sacred). Three reasons:</p>
 

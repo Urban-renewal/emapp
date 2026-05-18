@@ -1,6 +1,16 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
+  "globalEnv": [
+    "NODE_ENV",
+    "SKIP_ENV_VALIDATION",
+    "DATABASE_URL",
+    "PROVIDER_DATABASE_URL",
+    "PII_ENCRYPTION_KEY",
+    "PII_HASH_KEY",
+    "BETTER_AUTH_SECRET",
+    "JWT_SECRET"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

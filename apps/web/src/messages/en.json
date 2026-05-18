@@ -8,5 +8,28 @@
     "projects": "Projects",
     "owners": "Owners",
     "settings": "Settings"
+  },
+  "auth": {
+    "loginTitle": "Sign In",
+    "loginSubtitle": "Enter your credentials to continue",
+    "signupTitle": "Create Account",
+    "signupSubtitle": "Create a new organization",
+    "email": "Email",
+    "password": "Password",
+    "fullName": "Full Name",
+    "orgName": "Organization Name",
+    "login": "Sign In",
+    "loggingIn": "Signing in...",
+    "signup": "Sign Up",
+    "signingUp": "Creating account...",
+    "createAccount": "Create Account",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?",
+    "invalidCredentials": "Invalid email or password",
+    "emailTaken": "This email is already registered",
+    "signupError": "Failed to create account, please try again",
+    "emailInvalid": "Invalid email address",
+    "required": "Required",
+    "passwordRequirements": "Password must be at least 12 characters with uppercase, lowercase, and a number"
   }
 }

@@ -8,5 +8,28 @@
     "projects": "פרויקטים",
     "owners": "בעלי דירות",
     "settings": "הגדרות"
+  },
+  "auth": {
+    "loginTitle": "כניסה למערכת",
+    "loginSubtitle": "הזן את פרטי הכניסה שלך",
+    "signupTitle": "יצירת חשבון",
+    "signupSubtitle": "צור ארגון חדש במערכת",
+    "email": "אימייל",
+    "password": "סיסמה",
+    "fullName": "שם מלא",
+    "orgName": "שם הארגון",
+    "login": "כניסה",
+    "loggingIn": "מתחבר...",
+    "signup": "הרשמה",
+    "signingUp": "יוצר חשבון...",
+    "createAccount": "יצירת חשבון",
+    "noAccount": "אין לך חשבון?",
+    "hasAccount": "יש לך חשבון?",
+    "invalidCredentials": "אימייל או סיסמה שגויים",
+    "emailTaken": "האימייל כבר רשום במערכת",
+    "signupError": "שגיאה ביצירת החשבון, נסה שנית",
+    "emailInvalid": "אימייל לא תקין",
+    "required": "שדה חובה",
+    "passwordRequirements": "הסיסמה חייבת להכיל לפחות 12 תווים, אות גדולה, אות קטנה ומספר"
   }
 }

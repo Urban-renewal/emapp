@@ -38,6 +38,11 @@
     "vitest": "^2.1.9"
   },
   "packageManager": "pnpm@9.0.0",
+  "pnpm": {
+    "overrides": {
+      "rollup": ">=3.30.0"
+    }
+  },
   "lint-staged": {
     "*.{ts,tsx}": [
       "eslint --fix --max-warnings=0",

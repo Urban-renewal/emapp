@@ -3,9 +3,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { HealthController } from './app.controller';
 
 vi.mock('@emapp/db', () => ({
-  getDb: vi.fn(() => ({
+  db: {
     execute: vi.fn().mockResolvedValue([]),
-  })),
+  },
   sql: vi.fn((strings: TemplateStringsArray) => strings.join('')),
 }));
 
@@ -25,13 +25,8 @@ describe('HealthController', () => {
   });
 
   it('returns status degraded when db throws', async () => {
-    const { getDb } = await import('@emapp/db');
-    vi.mocked(getDb).mockImplementationOnce(
-      () =>
-        ({
-          execute: vi.fn().mockRejectedValue(new Error('connection refused')),
-        }) as unknown as ReturnType<typeof getDb>,
-    );
+    const { db } = await import('@emapp/db');
+    vi.mocked(db.execute).mockRejectedValueOnce(new Error('connection refused'));
 
     const result = await controller.getHealth();
     expect(result.status).toBe('degraded');

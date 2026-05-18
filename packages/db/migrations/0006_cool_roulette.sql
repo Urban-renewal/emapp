@@ -1,0 +1,1 @@
+ALTER TABLE "provider_audit_log" ALTER COLUMN "ip" DROP NOT NULL;

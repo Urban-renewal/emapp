@@ -158,9 +158,10 @@ function render(): string {
     '## Endpoints',
     '',
   ];
-  for (const e of [...ENDPOINTS].sort((a, b) =>
-    (a.path + a.method).localeCompare(b.path + b.method),
-  )) {
+  // Codepoint sort (NOT localeCompare — that is locale-dependent and ordered
+  // endpoints differently on Windows vs the CI Linux runner → false STALE).
+  const key = (e: Endpoint): string => e.path + ' ' + e.method;
+  for (const e of [...ENDPOINTS].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0))) {
     lines.push(`### ${e.method} ${e.path}`);
     lines.push('');
     lines.push(`- **Auth:** ${e.auth}`);

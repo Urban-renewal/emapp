@@ -8,7 +8,11 @@
 
 - **Phase:** 3 IN PROGRESS — Domain API (docs/03 §7), branch `phase-3` from up-to-date main. Slice-by-slice; one PR at phase end (user-approved cadence 2026-05-18). Agent scoping enforced in the SERVICE layer (project_assignments JOIN over withTenant), not an extra RLS policy (user-approved). FE design = FE-only, not an input to the API contract (user-confirmed 2026-05-18).
 
-- **Next task:** Phase 3 COMPLETE pending final CI + un-draft PR #12 → STOP for user approval (end-of-phase gate). Slices 1-8 DONE. Slices 1-7 CI 8/8 green; Slice 8 live conformance 135 pass/1 skip (12 contract files), CI pending on push.
+- **Next task:** Phase 3 COMPLETE — awaiting_approval. PR #12 un-drafted; STOP for user (end-of-phase gate). Slices 1-9 DONE. Slices 1-8 CI 8/8 green; Slice 9 (Project-Assignments) live conformance 142 pass/1 skip (13 contract files), CI pending on push.
+
+- **Status:** Phase 3 (Domain API) FEATURE-COMPLETE. 13 vertical slices: Projects, Buildings, Apartments, Owners (PII), Ownerships (atomic set, D.25), Contractors, Shares (strict JSONB), Tasks, Task-Assignees, Notifications (self), Notes, Audit-Read, Project-Assignments. All D.16 envelope / D.17 roles / keyset pagination / soft-delete / audit / locked-schema-faithful. 142 black-box conformance clauses pass live vs compiled API + Neon + RLS + pgcrypto + locked triggers. Decisions recorded: D.24 (scale stance), D.25 (ownership atomic set). Deferred & recorded (later phases, not gaps): contractor-facing share consume endpoint (needs Contractor auth tier), notification generation+SSE (Phase 5, T3.N.1; locked RLS forbids cross-user insert in actor tx), Documents (Phase 4), Signatures (Phase 5). Doc-drift recorded where docs/06+09 conflicted with the locked schema (no Gate-2 deviations).
+
+- **Status flag:** awaiting_approval (Phase 3 end-of-phase gate per Autopilot).
 
 - **Slice 8 (Notes + Audit-Read) notes:** Notes org-scoped (direct RLS), optional project/apartment link (validated visible). manager/viewer read all org notes; agent sees own/org-level/assigned-project notes only; create = manager/agent (viewer forbidden); update/archive = manager or author. `is_pinned` (locked text col) exposed as boolean `pinned`. Audit-Read = APPEND-ONLY, Manager-only, org-scoped (audit_log RLS); projects who/what/target/when only — beforeState/afterState/ip/userAgent deliberately NOT exposed in the org view (sensitive; a future Provider-Admin cross-tenant view may surface more — recorded). No write endpoint (POST /audit → 404).
 
@@ -38,7 +42,7 @@
 
 - [x] Phase 2 — Auth + Multi-tenant (docs/03 §6) — Org-user + Provider/MFA + Tenant SMS OTP INFRA all built (D.21 owned auth; OTP behind NoopSMSProvider, real 019/Inforu = governed Gate-4 swap). Earlier "OTP deferred" lines below are superseded by the 2026-05-18 hardening.
 
-- [ ] Phase 3 — Domain API (docs/03 §7)
+- [x] Phase 3 — Domain API (docs/03 §7) — 13 slices feature-complete, CI 8/8, PR #12 — awaiting_approval
 
 - [ ] Phase 4 — Documents (docs/03 §8)
 

@@ -12,3 +12,4 @@ export * from './task';
 export * from './notification';
 export * from './note';
 export * from './audit';
+export * from './project-assignment';

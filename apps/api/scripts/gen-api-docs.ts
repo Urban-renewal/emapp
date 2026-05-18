@@ -19,6 +19,7 @@ import {
   CreateContractorInput,
   CreateNoteInput,
   CreateOwnerInput,
+  CreateProjectAssignmentInput,
   CreateProjectInput,
   CreateShareInput,
   CreateTaskInput,
@@ -29,6 +30,7 @@ import {
   ListNotesQuery,
   ListNotificationsQuery,
   ListOwnersQuery,
+  ListProjectAssignmentsQuery,
   ListOwnershipsQuery,
   ListProjectsQuery,
   ListSharesQuery,
@@ -660,6 +662,43 @@ const ENDPOINTS: Endpoint[] = [
       '{ "data": [ {AuditEntry} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
     errors: ['validation_error', 'invalid_cursor', 'forbidden', 'missing_token', 'invalid_token'],
   },
+  {
+    method: 'GET',
+    path: '/api/v1/projects/:projectId/assignments',
+    auth: 'AuthGuard + TenantGuard',
+    summary:
+      'List a project’s active assignments (D.17 linchpin). Agent → only their own rows. Via-parent isolation.',
+    request: ListProjectAssignmentsQuery,
+    response:
+      '{ "data": [ {ProjectAssignment} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: ['validation_error', 'invalid_cursor', 'not_found', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/projects/:projectId/assignments',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'Assign an org member to the project (powers Agent scoping). Unique active (project,user) → assignment_exists.',
+    request: CreateProjectAssignmentInput,
+    response: '{ "data": { ...ProjectAssignment } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'invalid_assignee',
+      'assignment_exists',
+      'missing_token',
+      'invalid_token',
+    ],
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/assignments/:id',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary: 'Unassign (unassignedAt — lifecycle, not physical delete). Idempotent. 204.',
+    response: '(204 No Content)',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
+  },
 ];
 
 // §2 global error catalogue (FE switches on error.code, never on message).
@@ -691,6 +730,7 @@ const ERROR_CATALOG: Array<[string, string, string]> = [
   ['share_exists', '409', 'That contractor already has an active share on this project.'],
   ['invalid_assignee', '400', 'Task assignee is not an active member of the org.'],
   ['assignee_exists', '409', 'That user is already assigned to the task.'],
+  ['assignment_exists', '409', 'That user already has an active assignment on this project.'],
   ['429', '429', 'Per-IP throttle exceeded (signup/login dedicated limits).'],
   ['500', '500', 'Unexpected. Generic body; cause logged server-side only.'],
 ];

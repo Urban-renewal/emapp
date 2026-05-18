@@ -128,6 +128,23 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
 
+### DELETE /api/v1/assignments/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Unassign (unassignedAt — lifecycle, not physical delete). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
 ### GET /api/v1/audit
 
 - **Auth:** AuthGuard + TenantGuard (Manager)
@@ -899,6 +916,48 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
 
+### GET /api/v1/projects/:projectId/assignments
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List a project’s active assignments (D.17 linchpin). Agent → only their own rows. Via-parent isolation.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {ProjectAssignment} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+
+### POST /api/v1/projects/:projectId/assignments
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Assign an org member to the project (powers Agent scoping). Unique active (project,user) → assignment_exists.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `roleInProject` | string | no | minLength=1, maxLength=50 |
+| `userId` | string | yes | format="uuid" |
+
+
+**Response**
+
+```json
+{ "data": { ...ProjectAssignment } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `invalid_assignee`, `assignment_exists`, `missing_token`, `invalid_token`
+
 ### GET /api/v1/projects/:projectId/buildings
 
 - **Auth:** AuthGuard + TenantGuard
@@ -1269,5 +1328,6 @@ _(no body)_
 | `share_exists` | 409 | That contractor already has an active share on this project. |
 | `invalid_assignee` | 400 | Task assignee is not an active member of the org. |
 | `assignee_exists` | 409 | That user is already assigned to the task. |
+| `assignment_exists` | 409 | That user already has an active assignment on this project. |
 | `429` | 429 | Per-IP throttle exceeded (signup/login dedicated limits). |
 | `500` | 500 | Unexpected. Generic body; cause logged server-side only. |

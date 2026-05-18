@@ -146,6 +146,66 @@ _(no body)_
 
 **Errors:** `validation_error`, `missing_token`, `invalid_token`, `not_member`
 
+### DELETE /api/v1/buildings/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Soft delete (archivedAt — "ארכוב"). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/buildings/:id
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Get one building by id (via-parent org scope; Agent → assigned project only).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Building } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/buildings/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Partial update. Manager only. Every field optional.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `address` | string | no | minLength=1, maxLength=500 |
+| `aptCount` | integer | no | minimum=0 |
+| `block` | unknown | no | — |
+| `city` | string | no | minLength=1, maxLength=100 |
+| `notes` | unknown | no | — |
+| `parcel` | unknown | no | — |
+| `subparcel` | unknown | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Building } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
 ### GET /api/v1/me
 
 - **Auth:** AuthGuard
@@ -264,6 +324,53 @@ _(no body)_
 
 ```json
 { "data": { ...Project } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/projects/:projectId/buildings
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List buildings of a project, cursor-paginated. Via-parent org isolation; Agent → assigned projects only.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Building} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+
+### POST /api/v1/projects/:projectId/buildings
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Create a building under a project. Manager only; projectId from the URL.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `address` | string | yes | minLength=1, maxLength=500 |
+| `aptCount` | integer | no | minimum=0 |
+| `block` | unknown | no | — |
+| `city` | string | yes | minLength=1, maxLength=100 |
+| `notes` | unknown | no | — |
+| `parcel` | unknown | no | — |
+| `subparcel` | unknown | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Building } }
 ```
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`

@@ -13,10 +13,13 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  CreateBuildingInput,
   CreateProjectInput,
+  ListBuildingsQuery,
   ListProjectsQuery,
   OtpRequestSchema,
   OtpVerifySchema,
+  UpdateBuildingInput,
   UpdateProjectInput,
 } from '@emapp/shared-types';
 import type { ZodTypeAny } from 'zod';
@@ -175,6 +178,51 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/projects/:id',
     auth: 'AuthGuard + TenantGuard (Manager)',
     summary: 'Soft delete (archivedAt — "ארכוב", not physical). Idempotent. 204.',
+    response: '(204 No Content)',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/projects/:projectId/buildings',
+    auth: 'AuthGuard + TenantGuard',
+    summary:
+      'List buildings of a project, cursor-paginated. Via-parent org isolation; Agent → assigned projects only.',
+    request: ListBuildingsQuery,
+    response:
+      '{ "data": [ {Building} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: ['validation_error', 'invalid_cursor', 'not_found', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/projects/:projectId/buildings',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary: 'Create a building under a project. Manager only; projectId from the URL.',
+    request: CreateBuildingInput,
+    response: '{ "data": { ...Building } }',
+    errors: ['validation_error', 'forbidden', 'not_found', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/buildings/:id',
+    auth: 'AuthGuard + TenantGuard',
+    summary: 'Get one building by id (via-parent org scope; Agent → assigned project only).',
+    response: '{ "data": { ...Building } }',
+    errors: ['not_found', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/buildings/:id',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary: 'Partial update. Manager only. Every field optional.',
+    request: UpdateBuildingInput,
+    response: '{ "data": { ...Building } }',
+    errors: ['validation_error', 'forbidden', 'not_found', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/buildings/:id',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary: 'Soft delete (archivedAt — "ארכוב"). Idempotent. 204.',
     response: '(204 No Content)',
     errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
   },

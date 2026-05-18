@@ -1173,6 +1173,18 @@ Date · Decision · Alternatives · Why · Reversibility · Revisit trigger
 <li><strong>Ref:</strong> BUILD_LAYER_4 P0.3, BUILD_LAYER_2 §2.3, pre-Phase-3 verification (PROGRESS.md)</li>
 </ul>
 <hr />
+<h2>D.24 — High-scale stance for the multi-tenant data path (governed, no stack/schema deviation)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-18</li>
+<li><strong>Decision:</strong> The locked architecture (NestJS+Fastify, Drizzle, Postgres+RLS on Neon, <code>withTenant</code>/<code>withProvider</code>) is the scale-correct design for many tenants; scaling levers are <strong>config/infra + index discipline</strong>, NOT rewrites. Priority order: (1) point <code>DATABASE_URL</code> at the <strong>Neon connection pooler in transaction mode</strong> — <code>withTenant</code> is pooler-safe by construction (<code>SET LOCAL ROLE app_user</code> + <code>set_config(..., true)</code> are transaction-scoped, reset at COMMIT, never leak across pooled sessions); (2) every RLS predicate and every list query's parent-FK filter + keyset order <code>(created_at, id)</code> MUST be backed by a matching composite/partial index — enforced per Phase-3 slice; (3) keyset cursor pagination only (never offset) — already the standard (shared <code>common/keyset-cursor.ts</code>); (4) keep <code>withTenant</code> round-trips minimal (GUCs already batched into one <code>set_config</code>). Read replicas (Neon) for read-heavy reporting endpoints and <code>cache_kv</code> for hot, tenant-scoped, low-churn reads <strong>with explicit per-tenant invalidation</strong> are deliberately DEFERRED — added measurement-driven, never speculatively (cache without correct invalidation is a multi-tenant security bug).</li>
+<li><strong>EXPLAIN discipline:</strong> a dev-only helper to inspect query plans is sanctioned; query-plan assertions are NOT wired as a CI gate — plans are non-deterministic on a fresh CI DB with no statistics, so a plan-shape assertion would flake (a plaster, contra ISO test-stability). Index discipline is enforced by review per slice instead.</li>
+<li><strong>Alternatives:</strong> (a) denormalize <code>org_id</code> onto child tables to flatten via-parent RLS — REJECTED: locked-schema change (Gate 2); via-parent RLS + service parent-FK filter + indexes is sufficient and is the sanctioned pattern. (b) Redis/alternative cache or ORM/DB swap — REJECTED: locked stack (CLAUDE.md). (c) Shard-by-org / Citus — out of scope; single-DB + RLS scales to the MVP+ horizon; revisit only on measured ceiling.</li>
+<li><strong>Why:</strong> ~99% of the throughput/latency gain at "many customers" comes from transaction-mode pooling (multiplexes thousands of tenants onto few connections) + correct indexes — both zero-architecture-risk and within the locked stack. Anything beyond is premature without a real load profile (minimal-runtime / ISO).</li>
+<li><strong>Reversibility:</strong> Trivial — pooler is a <code>DATABASE_URL</code> swap (Infisical); replicas/cache are additive later.</li>
+<li><strong>Revisit trigger:</strong> measured connection saturation, RLS subquery hot-spots in <code>pg_stat_statements</code>, or a read-replica-worthy reporting load.</li>
+<li><strong>Ref:</strong> Phase 3 (docs/03 §7), <code>withTenant</code> wrapper, PROGRESS.md scale note, user directive 2026-05-18 ("must be efficient + support high scale").</li>
+</ul>
+<hr />
 <h2>Pending Decisions (not yet made — tracked in OPEN_ITEMS.md §4)</h2>
 <p>These are listed so they're visible but explicitly NOT decided:</p>
 <ul>

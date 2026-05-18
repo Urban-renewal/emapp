@@ -2,3 +2,4 @@
 export * from './envelope';
 export * from './auth.schemas';
 export * from './project';
+export * from './building';

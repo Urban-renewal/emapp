@@ -14,36 +14,12 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, sql } from 'drizzle-orm';
 
+import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 export interface ProjectListPage {
   data: Project[];
   page: { limit: number; cursor: string | null; has_more: boolean };
-}
-
-interface Cursor {
-  c: string; // createdAt ISO
-  i: string; // id (tie-breaker)
-}
-
-// Keyset cursor (D.16: cursor pagination only, NEVER offset). Opaque
-// base64url JSON; the (createdAt desc, id desc) pair is a stable total
-// order so paging is consistent under concurrent inserts.
-function encodeCursor(row: { createdAt: Date; id: string }): string {
-  return Buffer.from(JSON.stringify({ c: row.createdAt.toISOString(), i: row.id })).toString(
-    'base64url',
-  );
-}
-function decodeCursor(raw: string): Cursor | null {
-  try {
-    const v = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as Cursor;
-    if (typeof v?.c === 'string' && typeof v?.i === 'string' && !Number.isNaN(Date.parse(v.c))) {
-      return v;
-    }
-    return null;
-  } catch {
-    return null;
-  }
 }
 
 function toProject(r: ProjectRow): Project {

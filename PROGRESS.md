@@ -12,11 +12,11 @@
 
 - **Status:** awaiting_approval
 
-- **Last completed:** P2 Org-user auth — Better Auth + JWT + refresh tokens + guards + frontend login/signup
+- **Last completed:** P2-hardening — D.21 full-ownership auth rebuild (Better Auth removed; argon2id; atomic signup; hashed/rotating/reuse-detecting sessions; lockout; global throttler). Awaiting live conformance.
 
-- **Blocked:** no
+- **Blocked:** needs user to apply migration 0018 + restart API (Infisical-gated DB) before black-box conformance can be run.
 
-- **Branch:** phase-2
+- **Branch:** phase-2-hardening
 
 ## Phase Completion Log
 
@@ -99,6 +99,14 @@
 - VERIFIED 2026-05-18 (curl + cookie jar, the reliable PS5.1 harness — use `curl.exe --data "@file.json"`, NEVER inline `-d` with spaces): full Phase 2 chain green — signup 201, duplicate 409 `email_taken`, wrong-pass 401 `invalid_credentials`, bad-body 400 `validation_error`, login 200, /me 200, /me-no-token 401, refresh 200 `{data:{ok:true}}`, logout 200. Automated: `@emapp/api` 12/12 (T2.1–T2.10 + smoke), typecheck 6/6, lint 6/6.
 
 - OPEN ISSUE (intermittent, Phase 2 follow-up): signup on a FRESH email occasionally 500s on a long-running API process under sustained mixed load (carol, bob2 failed; test2/alice2/dave succeeded — all structurally identical). NOT a logic bug (unit tests green, fresh-process signups always 201). Smells like connection-pool state/exhaustion under load, OR a stale prepared-plan after the 0016/0017 DDL on pooled connections. When signUpEmail succeeds but the providerDb bootstrap throws, the ba_user is left ORPHANED (no cross-transaction rollback between Better Auth's connection and the providerDb tx) → next attempt on that email returns 409. Dev/non-prod 5xx responses now embed a `debug` cause-chain (pgcode/detail/hint) in the JSON body (commit 2993816) so the next occurrence is self-diagnosing — capture that `debug` block to root-cause. Robustness fix to consider: compensating ba_user delete on bootstrap failure.
+
+- RESOLVED BY D.21 (2026-05-18, branch phase-2-hardening): the intermittent signup-500 / orphaned-account class is dissolved at the root — signup is now ONE `providerDb` transaction (org+user+membership+credential+audit+session). No second store ⇒ no cross-transaction orphan possible. Better Auth removed from the auth path entirely. Migration 0018 adds `auth_sessions` (SHA-256-hashed refresh, rotation, reuse-detection) + `users.failed_login_count/locked_until`. Black-box `auth.contract.spec.ts` is the conformance gate (contract-first).
+
+- D.21 ACCEPTED SCOPED DEVIATION: auth bootstrap reads (`login`/`loadProfile`/session lookup) use the `db`/`providerDb` pool directly, NOT `withTenant`. This is inherent to authentication — there is no org context before a user is authenticated, so the "all reads via withTenant" rule cannot apply pre-auth. Reads are narrowly scoped (by user id / token hash) and hold no cross-tenant exposure. Documented here as the accepted, bounded exception.
+
+- D.21 RESIDUALS (tracked, not blockers): (1) full anti-enumeration parity (identical body+timing for duplicate vs fresh signup) needs the magic-link email flow — blocked on Resend wiring (Phase 7); current build returns same 201 + neutral `{data:{ok:true}}` for duplicates (removes the 409/email_taken leak, residual = body shape differs). (2) T2.10 Provider Admin + mandatory MFA still NOT implemented — needs an explicit scope decision (implement now vs defer like Tenant OTP, recorded in DECISIONS/GATES).
+
+- ACTION REQUIRED (Infisical-gated, user must run): `infisical run --env=dev -- pnpm --filter @emapp/db db:migrate` (applies 0018) then restart the API (`infisical run --env=dev -- pnpm --filter @emapp/api dev`). Then the black-box contract suite can be run for the live conformance verdict.
 
 - P1.1: PROVIDER_DATABASE_URL is optional in db/src/env.ts (falls back to DATABASE_URL when unset).
 

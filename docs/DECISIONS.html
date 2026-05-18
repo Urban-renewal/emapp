@@ -1145,6 +1145,23 @@ Date · Decision · Alternatives · Why · Reversibility · Revisit trigger
 <li><strong>Revisit trigger:</strong> A managed auth provider (WorkOS/Auth0) is adopted org-wide, or the contract invariants change materially.</li>
 <li><strong>Ref:</strong> Doc 07 §6, Doc 08, GATES.md (Gate 6), Phase 2 audit + black-box conformance (PROGRESS.md)</li>
 </ul>
+<h2>D.22 — Production security-design hardening backlog (interim risk acceptance + remediation plan)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-18</li>
+<li><strong>Decision:</strong> A principal-level design review (docs-only) found four DESIGN-level gaps that are NOT code bugs and that a reckless mid-hardening rebuild would only turn into plasters. They are formally ACCEPTED as interim MVP risk with a dated remediation plan, per ISO 27001 risk-treatment governance, rather than rebuilt now:
+<ol>
+<li><strong>(A) Encryption-key blast radius.</strong> <code>PII_ENCRYPTION_KEY</code> is injected as a readable GUC (<code>SET LOCAL app.encryption_key</code>) on every <code>withTenant</code> tx and is process-resident. An app-level compromise (SQLi defeating Drizzle params, errant RAISE, <code>current_setting</code> readback) exposes the key for ALL tenants — the "DB dump is useless" claim holds only for cold-leak, NOT app-compromise. <em>Remediation (own workstream, before enterprise/BYOK or first external pentest):</em> move decrypt into an explicit-GRANT SQL function so the key is never a readable GUC; design envelope encryption / per-tenant DEK. <em>Interim control:</em> Drizzle parameterization everywhere (enforced), no raw SQL in app code (ESLint), key never logged (pino redaction).</li>
+<li><strong>(B) Audit log not tamper-evident.</strong> Append-only via withheld DELETE grant stops the app role only; anyone with the Neon connection string / console can DDL. Not STRIDE-R / ISO-repudiation grade. <em>Remediation:</em> hash-chain rows + periodic external WORM mirror (later phase). <em>Interim:</em> the "cannot erase their tracks" claim is hereby DOWNGRADED to "the application cannot erase tracks"; infra-level access is covered by Neon access control + Infisical.</li>
+<li><strong>(D) Neon connection/pooling model undecided.</strong> <code>SET LOCAL</code>×2–3 round-trips/request + scale-to-zero on the login path; ~100 req/s ceiling at the guessed 20-conn direct pool. <em>Remediation (before Gate 5):</em> pin pooled-transaction (PgBouncer) vs direct, validate <code>SET LOCAL</code>-in-tx under it, size the pool against measured concurrency. Tracked as a Gate-5 pre-launch checklist item.</li>
+<li><strong>(F) No server-side idempotency key on legally-weighty POSTs.</strong> <code>/auth/signup</code> is effectively idempotent on the unique email + anti-enum neutral duplicate path + tight throttle (acceptable). <code>/signatures</code> (Phase 5, not yet built) MUST get an idempotency key — recorded here as a hard Phase-5 requirement so a network partition cannot double-sign.</li>
+</ol>
+(C) secrets-model doc contradiction and (E) D.21 doc-incoherence were NOT deferred — they were FIXED 2026-05-18: Doc 07 §5.5/§15 reconciled to Infisical-only; D.21 propagated to CLAUDE.md + Doc 07 §6.2/§6.3 banner.</li>
+<li><strong>Why:</strong> ISO 27001 does not require zero risk — it requires every risk identified, owned, treated or consciously accepted with a plan. Rebuilding Phase-1 pgcrypto / audit tamper-evidence inside Phase-2 hardening would be high-blast-radius scope creep and itself the "plaster" anti-pattern. Documented acceptance + dated plan is the correct, defensible posture.</li>
+<li><strong>Risk &amp; acceptance:</strong> Product owner accepts A, B, D, F as interim MVP risk on 2026-05-18; none is a launch blocker for a 0–100-org pilot, ALL are pre-scale / pre-enterprise / pre-external-pentest blockers and are now tracked.</li>
+<li><strong>Reversibility:</strong> Each remediation is its own gated workstream; this entry is the tracking anchor.</li>
+<li><strong>Revisit trigger:</strong> first enterprise/BYOK demand, first external pentest, &gt;100 orgs, or Gate 5 (pre-launch) — whichever first.</li>
+<li><strong>Ref:</strong> Principal design critique (PROGRESS.md), Doc 02 §5.4/§8, Doc 07 §5/§8, Doc 08 §5, GATES.md (Gate 5)</li>
+</ul>
 <hr />
 <h2>Pending Decisions (not yet made — tracked in OPEN_ITEMS.md §4)</h2>
 <p>These are listed so they're visible but explicitly NOT decided:</p>

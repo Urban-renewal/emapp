@@ -519,6 +519,101 @@ describe('CONTRACT · adversarial', () => {
   });
 });
 
+// ── Provider Admin + mandatory MFA (T2.10) ─────────────────────────────────
+// P1  Missing mfa_code → 400 validation_error (MFA is not optional).
+// P2  Bad creds → generic 401 invalid_credentials (anti-enumeration; never
+//     reveals which factor failed or whether the account exists).
+// P3  No password-only path: valid-looking password + absent/garbage MFA
+//     still 401.
+// P4  Tier isolation: an ORG access token must NOT pass the provider guard.
+// P5  /provider/auth/refresh with no cookie → 401.
+// P6  GET on POST-only /provider/auth/login → 404.
+// P7  (env-gated, true black-box: needs a provisioned admin +
+//     PROVIDER_TEST_EMAIL/PASSWORD/TOTP_SECRET) full success: password +
+//     live TOTP → 200, provider cookies, refresh rotates, and the provider
+//     token does NOT pass the ORG /me guard (reverse tier isolation).
+describe('CONTRACT · provider auth (T2.10)', () => {
+  ct('P1 missing mfa_code → 400 validation_error', async () => {
+    const r = await call('/provider/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: 'pa@test.com', password: 'whatever12345' }),
+    });
+    expect(r.status).toBe(400);
+    expect((r.body['error'] as Json)?.['code']).toBe('validation_error');
+  });
+
+  ct('P2/P3 bad creds (and password-without-valid-MFA) → generic 401', async () => {
+    const r = await call('/provider/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: uniqueEmail('pa'),
+        password: 'TestPassword123456',
+        mfa_code: '000000',
+      }),
+    });
+    expect(r.status).toBe(401);
+    expect((r.body['error'] as Json)?.['code']).toBe('invalid_credentials');
+  });
+
+  ct('P4 an org access token does NOT pass the provider guard', async () => {
+    const s = await signup(uniqueEmail('p4'));
+    const at = cookie(s.cookies, 'access_token');
+    const r = await call('/provider/auth/logout', {
+      method: 'POST',
+      cookie: `provider_access_token=${at}`,
+    });
+    expect(r.status).toBe(401);
+  });
+
+  ct('P5 provider refresh with no cookie → 401', async () => {
+    const r = await call('/provider/auth/refresh', { method: 'POST' });
+    expect(r.status).toBe(401);
+  });
+
+  ct('P6 GET on POST-only /provider/auth/login → 404', async () => {
+    const res = await fetch(`${API}/provider/auth/login`, { method: 'GET' });
+    expect(res.status).toBe(404);
+  });
+
+  const pEmail = process.env['PROVIDER_TEST_EMAIL'];
+  const pPass = process.env['PROVIDER_TEST_PASSWORD'];
+  const pSecret = process.env['PROVIDER_TEST_TOTP_SECRET'];
+  const hasProv = !!(pEmail && pPass && pSecret);
+
+  it('P7 provisioned admin: password + live TOTP → 200, cookies, rotation, tier isolation', async (c) => {
+    if (!LIVE || !hasProv) return c.skip();
+    const { Secret, TOTP } = await import('otpauth');
+    const totp = new TOTP({ secret: Secret.fromBase32(pSecret!), period: 30, digits: 6 });
+    const login = await call('/provider/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: pEmail, password: pPass, mfa_code: totp.generate() }),
+    });
+    expect(login.status, `provider login failed: ${login.raw}`).toBe(200);
+    const pat = cookie(login.cookies, 'provider_access_token');
+    const prt = cookie(login.cookies, 'provider_refresh_token');
+    expect(pat).toBeTruthy();
+    expect(prt).toBeTruthy();
+    // reverse tier isolation: provider token must NOT authenticate /me (org)
+    const me = await call('/me', { cookie: `access_token=${pat}` });
+    expect(me.status, 'provider token wrongly passed the ORG guard').toBe(401);
+    // refresh rotates
+    const r1 = await call('/provider/auth/refresh', {
+      method: 'POST',
+      cookie: `provider_refresh_token=${prt}`,
+    });
+    expect(r1.status).toBe(200);
+    const prt2 = cookie(r1.cookies, 'provider_refresh_token');
+    expect(prt2).toBeTruthy();
+    expect(prt2).not.toBe(prt);
+    // old provider refresh now rejected
+    const replay = await call('/provider/auth/refresh', {
+      method: 'POST',
+      cookie: `provider_refresh_token=${prt}`,
+    });
+    expect(replay.status).toBe(401);
+  }, 30000);
+});
+
 afterAll(() => {
   if (!LIVE) return;
   // eslint-disable-next-line no-console

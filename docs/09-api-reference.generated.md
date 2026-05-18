@@ -1323,6 +1323,7 @@ _(no body)_
 | `invalid_cursor` | 400 | Pagination cursor tampered/garbage — never a 500. |
 | `invalid_json` | 400 | Body is not valid JSON (parser-level; never a 500). |
 | `bad_request` | 400 | Malformed request rejected before the handler (carried 4xx). |
+| `idempotency_conflict` | 409 | Same Idempotency-Key is still in-flight (concurrent duplicate). Retry later. |
 | `owner_exists` | 409 | Same-org duplicate national_id (not an enumeration oracle — caller is in-org). |
 | `ownership_sum_invalid` | 400 | Apartment active ownership shares must be empty or sum to exactly 100. |
 | `contractor_exists` | 409 | Same-org duplicate contractor contactEmail (active). |

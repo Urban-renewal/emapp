@@ -14,6 +14,7 @@ export * from './helpers/share-defaults';
 export * from './helpers/apply-share-permissions';
 export * from './helpers/resolve-share';
 export * from './helpers/notifications';
+export * from './helpers/idempotency';
 export * from './helpers/documents';
 export {
   encryptOwnerPii,

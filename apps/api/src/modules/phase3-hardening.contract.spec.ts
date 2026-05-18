@@ -460,6 +460,53 @@ describe('HARDENING · concurrency & latency', () => {
   );
 });
 
+describe('HARDENING · idempotency (double-submit / retry safety)', () => {
+  ct('H18 same Idempotency-Key replays once; concurrent dup → ≤1 created', async () => {
+    const at = await manager('idem');
+    const k = crypto.randomUUID();
+    const body = JSON.stringify({ name: 'IdemProj', type: 'tama38_1' });
+    const post = (key: string | null) =>
+      call('/projects', {
+        method: 'POST',
+        cookie: `access_token=${at}`,
+        body,
+        headers: key ? { 'Idempotency-Key': key } : {},
+      });
+
+    // sequential: 1st creates, 2nd replays the SAME body (same id), no dup
+    const r1 = await post(k);
+    expect(r1.status, r1.raw).toBeLessThan(300);
+    const id1 = (r1.body['data'] as Json)['id'];
+    const r2 = await post(k);
+    expect(r2.status, 'replay must mirror the original 2xx').toBeLessThan(300);
+    expect((r2.body['data'] as Json)['id'], 'replay returned a different row').toBe(id1);
+
+    // a DIFFERENT key with the same payload DOES create a second row
+    const r3 = await post(crypto.randomUUID());
+    expect((r3.body['data'] as Json)['id']).not.toBe(id1);
+
+    // concurrent storm on one fresh key → at most ONE creation, no 500
+    const k2 = crypto.randomUUID();
+    const burst = await Promise.all([post(k2), post(k2), post(k2), post(k2), post(k2)]);
+    expect(
+      burst.every((r) => r.status < 500),
+      'a concurrent idem call 500ed',
+    ).toBe(true);
+    const created = new Set(
+      burst.filter((r) => r.status < 300).map((r) => (r.body['data'] as Json)['id'] as string),
+    );
+    expect(
+      created.size,
+      `idempotency created ${created.size} distinct rows (want ≤1)`,
+    ).toBeLessThanOrEqual(1);
+
+    // malformed key → 400 validation_error (never 500)
+    const bad = await post('not-a-uuid');
+    expect(bad.status).toBe(400);
+    expect((bad.body['error'] as Json)?.['code']).toBe('validation_error');
+  });
+});
+
 describe('HARDENING · pagination integrity (data-loss / dup under keyset)', () => {
   // Creates many rows back-to-back (rapid separate txns → many share the
   // same millisecond, differing only in microseconds), then FULLY walks

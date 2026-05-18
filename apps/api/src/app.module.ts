@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 
 import { HealthController } from './app.controller';
 import { ConfigurableThrottlerGuard } from './common/guards/throttler.guard';
+import { IdempotencyInterceptor } from './common/idempotency/idempotency.interceptor';
 import { ApartmentsModule } from './modules/apartments/apartments.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -58,6 +59,12 @@ import { TasksModule } from './modules/tasks/tasks.module';
   controllers: [HealthController],
   // Rate limiting ENFORCED globally; the configurable guard adds a
   // prod-safe, env-gated per-request bypass for the conformance suite.
-  providers: [{ provide: APP_GUARD, useClass: ConfigurableThrottlerGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: ConfigurableThrottlerGuard },
+    // Optional-but-honoured Idempotency-Key on mutating POSTs (D.16-safe
+    // replay, concurrency-correct). Global; no-ops unless the header is
+    // present on a non-auth POST.
+    { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
+  ],
 })
 export class AppModule {}

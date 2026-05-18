@@ -373,6 +373,111 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
 
+### GET /api/v1/contractors
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List org contractors, cursor-paginated. Org-scoped (direct RLS).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Contractor} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+
+### POST /api/v1/contractors
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Create a contractor. Manager only. Unique contactEmail per org (active).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `companyId` | unknown | no | — |
+| `contactEmail` | string | yes | format="email" |
+| `contactPhone` | unknown | no | — |
+| `name` | string | yes | minLength=1, maxLength=200 |
+| `notes` | unknown | no | — |
+| `specialty` | unknown | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Contractor } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `contractor_exists`, `missing_token`, `invalid_token`
+
+### DELETE /api/v1/contractors/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Soft delete (archivedAt — "ארכוב"). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/contractors/:id
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Get one contractor by id (org-scoped via RLS).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Contractor } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/contractors/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Partial update. Manager only. Every field optional.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `companyId` | unknown | no | — |
+| `contactEmail` | string | no | format="email" |
+| `contactPhone` | unknown | no | — |
+| `name` | string | no | minLength=1, maxLength=200 |
+| `notes` | unknown | no | — |
+| `specialty` | unknown | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Contractor } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `contractor_exists`, `missing_token`, `invalid_token`
+
 ### GET /api/v1/me
 
 - **Auth:** AuthGuard
@@ -666,6 +771,48 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
 
+### GET /api/v1/projects/:projectId/shares
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List ACTIVE shares of a project, cursor-paginated. Via-parent isolation.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Share} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+
+### POST /api/v1/projects/:projectId/shares
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Grant a contractor a share on the project. permissions is a strict JSONB (T3.S.1 — unknown keys rejected, fail-closed).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `contractorId` | string | yes | format="uuid" |
+| `permissions` | object | yes | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Share } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `contractor_invalid`, `share_exists`, `missing_token`, `invalid_token`
+
 ### POST /api/v1/provider/auth/login
 
 - **Auth:** Public (MFA mandatory)
@@ -722,6 +869,43 @@ _(no body)_
 
 **Errors:** `missing_refresh_token`, `invalid_refresh`
 
+### DELETE /api/v1/shares/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Revoke the share (revokedAt + revokedBy — lifecycle, not physical). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/shares/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Replace the permission set of an active share (strict JSONB).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `permissions` | object | yes | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Share } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
 ## Part 2 — Global error catalogue
 
 | error.code | HTTP | cause |
@@ -740,5 +924,8 @@ _(no body)_
 | `invalid_cursor` | 400 | Pagination cursor tampered/garbage — never a 500. |
 | `owner_exists` | 409 | Same-org duplicate national_id (not an enumeration oracle — caller is in-org). |
 | `ownership_sum_invalid` | 400 | Apartment active ownership shares must be empty or sum to exactly 100. |
+| `contractor_exists` | 409 | Same-org duplicate contractor contactEmail (active). |
+| `contractor_invalid` | 400 | Share grant references a non-existent / archived contractor. |
+| `share_exists` | 409 | That contractor already has an active share on this project. |
 | `429` | 429 | Per-IP throttle exceeded (signup/login dedicated limits). |
 | `500` | 500 | Unexpected. Generic body; cause logged server-side only. |

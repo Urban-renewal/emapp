@@ -6,3 +6,5 @@ export * from './building';
 export * from './apartment';
 export * from './owner';
 export * from './ownership';
+export * from './contractor';
+export * from './share';

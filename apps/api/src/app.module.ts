@@ -8,9 +8,11 @@ import { ConfigurableThrottlerGuard } from './common/guards/throttler.guard';
 import { ApartmentsModule } from './modules/apartments/apartments.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BuildingsModule } from './modules/buildings/buildings.module';
+import { ContractorsModule } from './modules/contractors/contractors.module';
 import { OwnersModule } from './modules/owners/owners.module';
 import { OwnershipsModule } from './modules/ownerships/ownerships.module';
 import { ProjectsModule } from './modules/projects/projects.module';
+import { SharesModule } from './modules/shares/shares.module';
 
 @Module({
   imports: [
@@ -40,6 +42,8 @@ import { ProjectsModule } from './modules/projects/projects.module';
     ApartmentsModule,
     OwnersModule,
     OwnershipsModule,
+    ContractorsModule,
+    SharesModule,
   ],
   controllers: [HealthController],
   // Rate limiting ENFORCED globally; the configurable guard adds a

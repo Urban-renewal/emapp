@@ -174,7 +174,7 @@ For the Next task (e.g., P0.4):
 
 \- Blocked: dependency missing, test fails 5x, doc unclear, or a
 
-&#x20; decision needed that isn't in DECISIONS.md → STOP, write Blocked
+&#x20; decision needed that isn't in DECISIONS.html → STOP, write Blocked
 
 &#x20; + question in PROGRESS.md, ask the user.
 

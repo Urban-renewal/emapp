@@ -17,6 +17,13 @@ import { AuthGuard } from './guards/auth.guard';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // Client-controlled, untrusted: bound the length before it reaches the DB
+  // (audit_log / auth_sessions) to prevent log-bloat / storage DoS.
+  private ua(req: FastifyRequest): string | undefined {
+    const v = req.headers['user-agent'];
+    return v ? v.slice(0, 512) : undefined;
+  }
+
   private setAuthCookies(res: FastifyReply, accessToken: string, refreshToken: string) {
     const c = this.authService.cookies(accessToken, refreshToken);
     res.setCookie(c.access.name, c.access.value, c.access.opts);
@@ -32,7 +39,7 @@ export class AuthController {
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
-    const result = await this.authService.signup(dto, req.ip, req.headers['user-agent']);
+    const result = await this.authService.signup(dto, req.ip, this.ua(req));
     // Anti-enumeration (D.14): duplicate email returns the SAME 201 status
     // with a neutral body — no email_taken / 409 / existence leak.
     if ('duplicate' in result) {
@@ -51,7 +58,7 @@ export class AuthController {
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
-    const result = await this.authService.login(dto, req.ip, req.headers['user-agent']);
+    const result = await this.authService.login(dto, req.ip, this.ua(req));
     this.setAuthCookies(res, result.accessToken, result.refreshToken);
     return { data: { user: result.user } };
   }

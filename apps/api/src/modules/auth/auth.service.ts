@@ -7,8 +7,8 @@ import {
   db,
   memberships,
   organizations,
-  providerDb,
   users,
+  withBootstrap,
 } from '@emapp/db';
 import { HttpException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -83,7 +83,7 @@ export class AuthService {
     // and DO NOT throw a distinguishable 409. The unique index makes the
     // insert fail; we map that single case to a neutral "accepted" outcome.
     try {
-      const sessionId = await providerDb.transaction(async (tx) => {
+      const sessionId = await withBootstrap(async (tx) => {
         await tx
           .insert(organizations)
           .values({ id: orgId, name: dto.org_name, slug: orgId, createdAt: now, updatedAt: now });
@@ -195,7 +195,9 @@ export class AuthService {
     }
 
     if (u.lockedUntil && u.lockedUntil.getTime() > Date.now()) {
-      // 423 Locked — distinct from 401 so clients/monitoring see lockout.
+      // Pay the argon2 cost first so a locked account is NOT a faster (timing
+      // or status) enumeration oracle than wrong-password / unknown-user.
+      await dummyVerify(dto.password);
       throw new HttpException(
         { error: { code: 'account_locked', message: 'החשבון נעול זמנית' } },
         423,
@@ -204,13 +206,18 @@ export class AuthService {
 
     const ok = await verifyPassword(u.passwordHash, dto.password);
     if (!ok) {
+      // Counter is NEVER zeroed on lockout — it keeps accumulating so the
+      // lock window grows with continued abuse (exponential backoff),
+      // closing the "5 fresh attempts every 15 min forever" brute-force.
       const failed = (u.failed ?? 0) + 1;
+      const overBy = failed - MAX_FAILED;
       const locked = failed >= MAX_FAILED;
+      const lockMs = locked ? LOCK_MS * Math.min(2 ** Math.max(overBy, 0), 32) : 0;
       await db
         .update(users)
         .set({
-          failedLoginCount: locked ? 0 : failed,
-          lockedUntil: locked ? new Date(Date.now() + LOCK_MS) : null,
+          failedLoginCount: failed,
+          lockedUntil: locked ? new Date(Date.now() + lockMs) : null,
         })
         .where(eq(users.id, u.id));
       throw invalid;

@@ -4,6 +4,7 @@ export { pool, db, providerDb, type Database, type ProviderDatabase } from './cl
 export { env } from './env';
 export { withTenant } from './wrappers/with-tenant';
 export { withProvider } from './wrappers/with-provider';
+export { withBootstrap } from './wrappers/with-bootstrap';
 export { verifyEncryptionStartup } from './startup-check';
 export * from './schema/index';
 export { sql } from 'drizzle-orm';

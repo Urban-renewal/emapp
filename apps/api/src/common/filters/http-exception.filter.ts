@@ -56,15 +56,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       }
     }
 
-    // Production stays generic (D.16, no internal leakage). Outside production
-    // we attach the real error/pg-cause chain so a failing request is
-    // self-diagnosing without needing server log access.
-    const isProd = process.env['NODE_ENV'] === 'production';
+    // The pg-cause chain can echo column values / schema internals. It is
+    // EXPOSED ONLY when AUTH_DEBUG_ERRORS is explicitly set (opt-in, never
+    // by default) — gating on "not production" would leak it on staging too.
+    // The full chain is always available in server logs (logger.error above).
+    const debugOptIn = process.env['AUTH_DEBUG_ERRORS'] === '1';
     reply.status(status).send({
       error: {
         code: String(status),
         message: 'Internal server error',
-        ...(isProd || debugChain.length === 0 ? {} : { debug: debugChain }),
+        ...(debugOptIn && debugChain.length > 0 ? { debug: debugChain } : {}),
       },
     });
   }

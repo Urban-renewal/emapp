@@ -82,9 +82,20 @@ interface Res {
   cookies: string[];
 }
 
-async function call(path: string, init?: RequestInit & { cookie?: string }): Promise<Res> {
+// Functional clauses must not be defeated by the suite's own burst tripping
+// the (correctly tight) per-IP throttle. The server exposes a prod-safe,
+// env-gated bypass (THROTTLE_TEST_BYPASS); default value matches the dev
+// server's. Pass { noBypass: true } on clauses that must observe the REAL
+// limiter (e.g. the brute-force clause).
+const BYPASS = process.env['AUTH_CONTRACT_THROTTLE_BYPASS'] ?? 'contract-suite';
+
+async function call(
+  path: string,
+  init?: RequestInit & { cookie?: string; noBypass?: boolean },
+): Promise<Res> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (init?.cookie) headers['Cookie'] = init.cookie;
+  if (!init?.noBypass) headers['x-throttle-bypass'] = BYPASS;
   const res = await fetch(`${API}${path}`, {
     ...init,
     headers: { ...headers, ...(init?.headers as Record<string, string>) },
@@ -379,13 +390,16 @@ describe('CONTRACT · tenant isolation', () => {
 });
 
 describe('CONTRACT · brute-force / lockout', () => {
-  ct('B1 repeated wrong-password logins are eventually throttled (429/423)', async () => {
+  ct('B1 repeated wrong-password logins are eventually throttled (429)', async () => {
     const email = uniqueEmail('b1');
     await signup(email);
     let throttled = false;
     for (let i = 0; i < 15; i++) {
+      // noBypass: this clause must observe the REAL per-IP limiter. (Account
+      // lockout is intentionally SILENT — 401 — so 429 is the only signal.)
       const r = await call('/auth/login', {
         method: 'POST',
+        noBypass: true,
         body: JSON.stringify({ email, password: `Wrong${i}Password!!` }),
       });
       if (r.status === 429 || r.status === 423) {
@@ -463,11 +477,11 @@ describe('CONTRACT · adversarial', () => {
       method: 'POST',
       body: JSON.stringify({ email, password: PW }),
     });
-    expect(
-      good.status === 423 || good.status === 401,
-      `locked account accepted the correct password (status ${good.status})`,
-    ).toBe(true);
-    expect(good.status).not.toBe(200);
+    // Silent lockout (anti-enumeration): the locked account must return the
+    // SAME generic 401 invalid_credentials — NOT 200 (lock not enforced) and
+    // NOT a distinct 423/account_locked (that would confirm the email).
+    expect(good.status, `lock not enforced — correct password got ${good.status}`).toBe(401);
+    expect((good.body['error'] as Json)?.['code']).toBe('invalid_credentials');
   });
 
   ct('D6 GET on POST-only /auth/login → 404', async () => {

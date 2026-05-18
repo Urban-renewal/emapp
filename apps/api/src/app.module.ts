@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 
 import { HealthController } from './app.controller';
+import { ConfigurableThrottlerGuard } from './common/guards/throttler.guard';
 import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
@@ -28,7 +29,8 @@ import { AuthModule } from './modules/auth/auth.module';
     AuthModule,
   ],
   controllers: [HealthController],
-  // Rate limiting is now ENFORCED globally (was configured but never bound).
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  // Rate limiting ENFORCED globally; the configurable guard adds a
+  // prod-safe, env-gated per-request bypass for the conformance suite.
+  providers: [{ provide: APP_GUARD, useClass: ConfigurableThrottlerGuard }],
 })
 export class AppModule {}

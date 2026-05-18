@@ -11,4 +11,7 @@ import { pool } from '../src/client';
 export async function setup(): Promise<void> {
   const db = drizzle(pool);
   await migrate(db, { migrationsFolder: './migrations' });
+  // globalSetup runs in its own process; close the pool so it exits cleanly
+  // (workers open their own pools against the now-migrated DB).
+  await pool.end();
 }

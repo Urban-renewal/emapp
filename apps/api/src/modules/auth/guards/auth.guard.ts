@@ -6,6 +6,7 @@ import type { FastifyRequest } from 'fastify';
 
 import type { AccessTokenPayload } from '../auth.service';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { isOrgSessionActive } from '../session-validity';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -14,7 +15,7 @@ export class AuthGuard implements CanActivate {
     private readonly reflector: Reflector,
   ) {}
 
-  canActivate(ctx: ExecutionContext): boolean {
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       ctx.getHandler(),
       ctx.getClass(),
@@ -41,6 +42,13 @@ export class AuthGuard implements CanActivate {
 
     if (payload.type !== 'access') {
       throw new UnauthorizedException({ error: { code: 'invalid_token' } });
+    }
+
+    // Closes the stateless-JWT revocation hole: a logged-out / revoked /
+    // reuse-purged session must stop authenticating immediately, not after
+    // the access TTL. Memoised in-process (≈0 cost) — not a per-request DB.
+    if (!(await isOrgSessionActive(payload.sid))) {
+      throw new UnauthorizedException({ error: { code: 'session_revoked' } });
     }
 
     (req as FastifyRequest & { user: AccessTokenPayload }).user = payload;

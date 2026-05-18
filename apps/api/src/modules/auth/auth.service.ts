@@ -17,6 +17,7 @@ import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 import type { LoginDto } from './dto/login.dto';
 import type { SignupDto } from './dto/signup.dto';
 import { dummyVerify, hashPassword, verifyPassword } from './password';
+import { flushSessionCache } from './session-validity';
 import { createSession, findByRawToken, hashToken, newRawToken } from './session.repository';
 
 export interface AccessTokenPayload {
@@ -340,6 +341,7 @@ export class AuthService {
             });
           }
         });
+        flushSessionCache(); // immediate access-token kill on theft signal
       }
       throw expired;
     }
@@ -391,6 +393,7 @@ export class AuthService {
         action: 'logout',
       });
     });
+    flushSessionCache(); // access token stops working immediately on logout
   }
 
   async switchOrg(

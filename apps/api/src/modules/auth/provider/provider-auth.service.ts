@@ -15,6 +15,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { Secret, TOTP } from 'otpauth';
 
 import { dummyVerify, verifyPassword } from '../password';
+import { flushSessionCache } from '../session-validity';
 
 const ACCESS_TTL_SEC = 30 * 60; // Doc07 §6.7 — Provider access 30 min
 const REFRESH_TTL_SEC = 4 * 60 * 60; // Doc07 §6.7 — Provider refresh 4 h
@@ -187,6 +188,7 @@ export class ProviderAuthService {
             startedAt: new Date(),
           });
         });
+        flushSessionCache();
       }
       throw expired;
     }
@@ -233,6 +235,7 @@ export class ProviderAuthService {
         startedAt: new Date(),
       });
     });
+    flushSessionCache();
   }
 
   private signAccess(sub: string, sid: string): string {

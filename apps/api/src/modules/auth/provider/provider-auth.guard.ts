@@ -3,13 +3,15 @@ import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from
 import { JwtService } from '@nestjs/jwt';
 import type { FastifyRequest } from 'fastify';
 
+import { isProviderSessionActive } from '../session-validity';
+
 import type { ProviderTokenPayload } from './provider-auth.service';
 
 @Injectable()
 export class ProviderAuthGuard implements CanActivate {
   constructor(private readonly jwt: JwtService) {}
 
-  canActivate(ctx: ExecutionContext): boolean {
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest<FastifyRequest>();
     const cookie = (req.cookies as Record<string, string | undefined>)?.['provider_access_token'];
     const header = req.headers['authorization'];
@@ -31,6 +33,10 @@ export class ProviderAuthGuard implements CanActivate {
     // the provider guard, and vice-versa.
     if (payload.type !== 'provider_access' || payload.role !== 'provider_admin') {
       throw new UnauthorizedException({ error: { code: 'invalid_token' } });
+    }
+    // Immediate revocation (logout / reuse-purge) for the privileged tier.
+    if (!(await isProviderSessionActive(payload.sid))) {
+      throw new UnauthorizedException({ error: { code: 'session_revoked' } });
     }
     (req as FastifyRequest & { providerUser: ProviderTokenPayload }).providerUser = payload;
     return true;

@@ -347,6 +347,24 @@ describe('CONTRACT · refresh & logout (session lifecycle)', () => {
       'refresh token still valid after logout — session not revoked server-side',
     ).toBe(401);
   });
+
+  // O3: the stateless-JWT revocation hole is closed — the pre-logout ACCESS
+  // token must stop authenticating IMMEDIATELY after logout, not after its
+  // 15-min TTL.
+  ct('O3 pre-logout access token is rejected immediately after logout', async () => {
+    const s = await signup(uniqueEmail('o3'));
+    const at = cookie(s.cookies, 'access_token');
+    const before = await call('/me', { cookie: `access_token=${at}` });
+    expect(before.status, 'sanity: token works before logout').toBe(200);
+
+    await call('/auth/logout', { method: 'POST', cookie: `access_token=${at}` });
+
+    const after = await call('/me', { cookie: `access_token=${at}` });
+    expect(
+      after.status,
+      'access token still valid after logout — stateless revocation hole open',
+    ).toBe(401);
+  });
 });
 
 describe('CONTRACT · switch-org', () => {

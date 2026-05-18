@@ -1,33 +1,29 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 import { serverEnv } from '@emapp/config';
 import {
-  AuditService,
-  baSession,
+  auditLog,
+  authSessions,
   db,
   memberships,
   organizations,
   providerDb,
   users,
-  withTenant,
 } from '@emapp/db';
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { HttpException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { and, eq, gt } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 
-import { auth } from './better-auth.instance';
 import type { LoginDto } from './dto/login.dto';
 import type { SignupDto } from './dto/signup.dto';
+import { dummyVerify, hashPassword, verifyPassword } from './password';
+import { createSession, findByRawToken, hashToken, newRawToken } from './session.repository';
 
 export interface AccessTokenPayload {
   sub: string;
   orgId: string;
   role: string;
+  sid: string;
   type: 'access';
 }
 
@@ -41,210 +37,289 @@ export interface UserProfile {
 }
 
 const ACCESS_TTL_SEC = 15 * 60;
-const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const COOKIE_BASE = {
-  httpOnly: true,
-  secure: serverEnv.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
-  path: '/',
-} as const;
+const REFRESH_TTL_SEC = 30 * 24 * 60 * 60;
+const JWT_ISS = 'emapp';
+const JWT_AUD = 'emapp-api';
+const MAX_FAILED = 5;
+const LOCK_MS = 15 * 60 * 1000;
+
+// Secure cookies everywhere except local dev/test (http://localhost). Prod
+// and any non-dev/test deploy get Secure (closes the "staging not secure" gap).
+const SECURE = serverEnv.NODE_ENV !== 'development' && serverEnv.NODE_ENV !== 'test';
+const COOKIE_BASE = { httpOnly: true, secure: SECURE, sameSite: 'lax' as const } as const;
+const REFRESH_PATH = '/api/v1/auth/refresh';
+
+interface ProfileRow {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  avatarColor: string | null;
+  role: string;
+  orgId: string;
+  orgName: string;
+}
 
 @Injectable()
 export class AuthService {
   constructor(private readonly jwt: JwtService) {}
 
-  async signup(dto: SignupDto, ip?: string, userAgent?: string) {
-    // 1. Use Better Auth to create the auth user (handles password hashing)
-    let baResult: Awaited<ReturnType<typeof auth.api.signUpEmail>>;
+  // ── signup: ONE atomic transaction (D.21). org+user+membership+credential
+  // +audit+session either all commit or all roll back. No second store, so
+  // an orphaned auth identity is structurally impossible.
+  async signup(
+    dto: SignupDto,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<
+    { accessToken: string; refreshToken: string; user: UserProfile } | { duplicate: true }
+  > {
+    const passwordHash = await hashPassword(dto.password);
+    const orgId = randomUUID();
+    const userId = randomUUID();
+    const now = new Date();
+    const rawRefresh = newRawToken();
+
+    // Anti-enumeration (D.14): if the email already exists we DO NOT reveal it
+    // and DO NOT throw a distinguishable 409. The unique index makes the
+    // insert fail; we map that single case to a neutral "accepted" outcome.
     try {
-      baResult = await auth.api.signUpEmail({
-        body: {
+      const sessionId = await providerDb.transaction(async (tx) => {
+        await tx
+          .insert(organizations)
+          .values({ id: orgId, name: dto.org_name, slug: orgId, createdAt: now, updatedAt: now });
+
+        await tx.insert(users).values({
+          id: userId,
           email: dto.email,
           name: dto.name,
-          password: dto.password,
-        },
-        asResponse: false,
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '';
-      if (msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('unique')) {
-        throw new ConflictException({
-          error: { code: 'email_taken', message: 'האימייל כבר רשום' },
+          passwordHash,
+          createdAt: now,
+          updatedAt: now,
         });
+
+        await tx.insert(memberships).values({
+          userId,
+          orgId,
+          role: 'manager',
+          isPrimary: true,
+          acceptedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        const [s] = await tx
+          .insert(authSessions)
+          .values({
+            userId,
+            tokenHash: hashToken(rawRefresh),
+            expiresAt: new Date(Date.now() + REFRESH_TTL_SEC * 1000),
+            ip: ip ?? null,
+            userAgent: userAgent ?? null,
+          })
+          .returning();
+
+        await tx.insert(auditLog).values([
+          {
+            orgId,
+            actorId: userId,
+            actorType: 'user',
+            action: 'org_created',
+            targetTable: 'organizations',
+            targetId: orgId,
+            afterState: { org_name: dto.org_name },
+            ip: ip ?? null,
+            userAgent: userAgent ?? null,
+          },
+          {
+            orgId,
+            actorId: userId,
+            actorType: 'user',
+            action: 'first_manager_created',
+            targetTable: 'users',
+            targetId: userId,
+            ip: ip ?? null,
+            userAgent: userAgent ?? null,
+          },
+        ]);
+
+        return (s as { id: string }).id;
+      });
+
+      const accessToken = this.signAccess({ sub: userId, orgId, role: 'manager', sid: sessionId });
+      return {
+        accessToken,
+        refreshToken: rawRefresh,
+        user: {
+          id: userId,
+          name: dto.name,
+          email: dto.email,
+          role: 'manager',
+          avatarColor: null,
+          organization: { id: orgId, name: dto.org_name },
+        },
+      };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message.toLowerCase() : '';
+      if (msg.includes('users_email_unique') || msg.includes('duplicate key')) {
+        // Neutral outcome — caller returns a generic accepted response.
+        return { duplicate: true };
       }
       throw err;
     }
-
-    const baUserId = baResult.user.id;
-    const orgId = randomUUID();
-    const now = new Date();
-
-    // 2. Bootstrap org + user + membership with BYPASSRLS (providerDb).
-    // users RLS USING clause checks for membership existence — can't use withTenant
-    // before the membership row exists (chicken-and-egg), so we bypass RLS here.
-    await providerDb.transaction(async (tx) => {
-      await tx.insert(organizations).values({
-        id: orgId,
-        name: dto.org_name,
-        slug: orgId,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      await tx.insert(users).values({
-        id: baUserId,
-        email: dto.email,
-        name: dto.name,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      await tx.insert(memberships).values({
-        orgId,
-        userId: baUserId,
-        role: 'manager',
-        isPrimary: true,
-        acceptedAt: now,
-        createdAt: now,
-        updatedAt: now,
-      });
-    });
-
-    // 3. Audit log — membership now exists so withTenant is safe
-    await withTenant(orgId, async (tx) => {
-      const audit = new AuditService(tx);
-      await audit.log({
-        orgId,
-        actorId: baUserId,
-        actorType: 'user',
-        action: 'org_created',
-        targetTable: 'organizations',
-        targetId: orgId,
-        afterState: { org_name: dto.org_name, first_manager: baUserId },
-        ip,
-        userAgent,
-      });
-      await audit.log({
-        orgId,
-        actorId: baUserId,
-        actorType: 'user',
-        action: 'first_manager_created',
-        targetTable: 'users',
-        targetId: baUserId,
-        ip,
-        userAgent,
-      });
-    });
-
-    // 4. Issue tokens
-    const refreshToken = this.newRefreshToken(baUserId);
-    const accessToken = this.signAccess({ sub: baUserId, orgId, role: 'manager' });
-
-    return {
-      accessToken,
-      refreshToken,
-      user: {
-        id: baUserId,
-        name: dto.name,
-        email: dto.email,
-        role: 'manager',
-        organization: { id: orgId, name: dto.org_name },
-      },
-    };
   }
 
-  async login(dto: LoginDto, ip?: string, userAgent?: string) {
-    // 1. Verify credentials via Better Auth (handles timing-safe compare + hash)
-    let baResult: Awaited<ReturnType<typeof auth.api.signInEmail>>;
-    try {
-      baResult = await auth.api.signInEmail({
-        body: { email: dto.email, password: dto.password },
-        asResponse: false,
-      });
-    } catch {
-      throw new UnauthorizedException({
-        error: { code: 'invalid_credentials', message: 'אימייל או סיסמה שגויים' },
-      });
+  async login(
+    dto: LoginDto,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<{ accessToken: string; refreshToken: string; user: UserProfile }> {
+    const invalid = new UnauthorizedException({
+      error: { code: 'invalid_credentials', message: 'אימייל או סיסמה שגויים' },
+    });
+
+    const [u] = await db
+      .select({
+        id: users.id,
+        passwordHash: users.passwordHash,
+        failed: users.failedLoginCount,
+        lockedUntil: users.lockedUntil,
+        archivedAt: users.archivedAt,
+      })
+      .from(users)
+      .where(eq(users.email, dto.email))
+      .limit(1);
+
+    if (!u || !u.passwordHash || u.archivedAt) {
+      await dummyVerify(dto.password); // constant-time: no user-existence oracle
+      throw invalid;
     }
 
-    const baUserId = baResult.user.id;
-
-    // 2. Load domain data — find user's active org (first active membership)
-    const profile = await this.loadProfile(baUserId);
-    if (!profile) {
-      throw new UnauthorizedException({
-        error: { code: 'no_org', message: 'לא נמצא ארגון משויך' },
-      });
+    if (u.lockedUntil && u.lockedUntil.getTime() > Date.now()) {
+      // 423 Locked — distinct from 401 so clients/monitoring see lockout.
+      throw new HttpException(
+        { error: { code: 'account_locked', message: 'החשבון נעול זמנית' } },
+        423,
+      );
     }
 
-    // 3. Write audit log
-    await withTenant(profile.organization.id, async (tx) => {
-      const audit = new AuditService(tx);
-      await audit.log({
+    const ok = await verifyPassword(u.passwordHash, dto.password);
+    if (!ok) {
+      const failed = (u.failed ?? 0) + 1;
+      const locked = failed >= MAX_FAILED;
+      await db
+        .update(users)
+        .set({
+          failedLoginCount: locked ? 0 : failed,
+          lockedUntil: locked ? new Date(Date.now() + LOCK_MS) : null,
+        })
+        .where(eq(users.id, u.id));
+      throw invalid;
+    }
+
+    const profile = await this.loadProfile(u.id);
+    if (!profile) throw invalid; // no active org → indistinguishable from bad creds
+
+    const rawRefresh = newRawToken();
+    let sid = '';
+    await db.transaction(async (tx) => {
+      await tx
+        .update(users)
+        .set({ failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() })
+        .where(eq(users.id, u.id));
+      sid = await createSession(tx as never, u.id, rawRefresh, ip, userAgent);
+      await tx.insert(auditLog).values({
         orgId: profile.organization.id,
-        actorId: baUserId,
+        actorId: u.id,
         actorType: 'user',
         actorEmail: dto.email,
         action: 'login',
-        ip,
-        userAgent,
+        ip: ip ?? null,
+        userAgent: userAgent ?? null,
       });
     });
 
-    // 4. Issue tokens
-    const refreshToken = this.newRefreshToken(baUserId);
     const accessToken = this.signAccess({
-      sub: baUserId,
+      sub: u.id,
       orgId: profile.organization.id,
       role: profile.role,
+      sid,
     });
-
-    return { accessToken, refreshToken, user: profile };
+    return { accessToken, refreshToken: rawRefresh, user: profile };
   }
 
-  async refresh(oldRefreshToken: string) {
-    // 1. Look up the refresh token in ba_session
-    const [session] = await db
-      .select()
-      .from(baSession)
-      .where(and(eq(baSession.token, oldRefreshToken), gt(baSession.expiresAt, new Date())))
-      .limit(1);
+  // Rotation + reuse-detection. Replaying a rotated token = theft signal →
+  // revoke the whole chain for that user + audit.
+  async refresh(rawToken: string): Promise<{ accessToken: string; refreshToken: string }> {
+    const expired = new UnauthorizedException({
+      error: { code: 'invalid_refresh', message: 'Session expired' },
+    });
 
-    if (!session) {
-      throw new UnauthorizedException({
-        error: { code: 'invalid_refresh', message: 'Session expired' },
+    const s = await findByRawToken(db, rawToken);
+    if (!s) throw expired;
+
+    if (s.revokedAt) {
+      if (s.replacedBy) {
+        // Reuse of an already-rotated token → purge all sessions + audit.
+        const profile = await this.loadProfile(s.userId);
+        await db.transaction(async (tx) => {
+          await tx
+            .update(authSessions)
+            .set({ revokedAt: new Date() })
+            .where(and(eq(authSessions.userId, s.userId), isNull(authSessions.revokedAt)));
+          if (profile) {
+            await tx.insert(auditLog).values({
+              orgId: profile.organization.id,
+              actorId: s.userId,
+              actorType: 'user',
+              action: 'refresh_reuse_detected',
+              ip: null,
+              userAgent: null,
+            });
+          }
+        });
+      }
+      throw expired;
+    }
+
+    if (s.expiresAt.getTime() < Date.now()) throw expired;
+
+    const profile = await this.loadProfile(s.userId);
+    if (!profile) throw expired;
+
+    const rawNew = newRawToken();
+    let newSid = '';
+    await db.transaction(async (tx) => {
+      newSid = await createSession(tx as never, s.userId, rawNew);
+      await tx
+        .update(authSessions)
+        .set({ revokedAt: new Date(), replacedBy: newSid })
+        .where(eq(authSessions.id, s.id));
+    });
+
+    const accessToken = this.signAccess({
+      sub: s.userId,
+      orgId: profile.organization.id,
+      role: profile.role,
+      sid: newSid,
+    });
+    return { accessToken, refreshToken: rawNew };
+  }
+
+  // Logout is authenticated, so we revoke EVERY active session for the user
+  // (robust: the path-scoped refresh cookie is not sent to /logout, and a
+  // full revoke is the safer behaviour anyway).
+  async logout(userId: string, orgId: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(authSessions)
+        .set({ revokedAt: new Date() })
+        .where(and(eq(authSessions.userId, userId), isNull(authSessions.revokedAt)));
+      await tx.insert(auditLog).values({
+        orgId,
+        actorId: userId,
+        actorType: 'user',
+        action: 'logout',
       });
-    }
-
-    // 2. Load domain profile to get current role + org
-    const profile = await this.loadProfile(session.userId);
-    if (!profile) {
-      throw new UnauthorizedException({ error: { code: 'no_org' } });
-    }
-
-    // 3. Rotate refresh token (delete old, insert new)
-    const newRefreshToken = await this.rotateRefreshToken(oldRefreshToken, session.userId);
-
-    // 4. Issue new access token
-    const accessToken = this.signAccess({
-      sub: session.userId,
-      orgId: profile.organization.id,
-      role: profile.role,
-    });
-
-    return { accessToken, refreshToken: newRefreshToken };
-  }
-
-  async logout(refreshToken: string, userId: string, orgId: string) {
-    // Revoke the ba_session (makes refresh token useless)
-    await db
-      .delete(baSession)
-      .where(eq(baSession.token, refreshToken))
-      .catch(() => null);
-
-    await withTenant(orgId, async (tx) => {
-      const audit = new AuditService(tx);
-      await audit.log({ orgId, actorId: userId, actorType: 'user', action: 'logout' });
     });
   }
 
@@ -252,75 +327,78 @@ export class AuthService {
     userId: string,
     newOrgId: string,
   ): Promise<{ accessToken: string; role: string }> {
-    // Verify user is a member of the target org
-    const [membership] = await db
+    const [m] = await db
       .select({ role: memberships.role })
       .from(memberships)
-      .where(and(eq(memberships.userId, userId), eq(memberships.orgId, newOrgId)))
+      .where(
+        and(
+          eq(memberships.userId, userId),
+          eq(memberships.orgId, newOrgId),
+          isNull(memberships.revokedAt),
+        ),
+      )
       .limit(1);
 
-    if (!membership) {
-      throw new BadRequestException({ error: { code: 'not_member', message: 'לא חבר בארגון זה' } });
+    if (!m) {
+      throw new UnauthorizedException({
+        error: { code: 'not_member', message: 'לא חבר בארגון זה' },
+      });
     }
 
-    const accessToken = this.signAccess({ sub: userId, orgId: newOrgId, role: membership.role });
-    return { accessToken, role: membership.role };
+    // Audit the authorization change (security-relevant).
+    await db.insert(auditLog).values({
+      orgId: newOrgId,
+      actorId: userId,
+      actorType: 'user',
+      action: 'org_switched',
+      targetTable: 'organizations',
+      targetId: newOrgId,
+    });
+
+    // The session id is preserved (same refresh chain) — only the active org
+    // claim changes. A fresh access token bound to the new org is required;
+    // the old one stays bound to its old org (cannot reach the new one).
+    const accessToken = this.jwt.sign(
+      { sub: userId, orgId: newOrgId, role: m.role, sid: '', type: 'access' },
+      { expiresIn: ACCESS_TTL_SEC, issuer: JWT_ISS, audience: JWT_AUD, algorithm: 'HS256' },
+    );
+    return { accessToken, role: m.role };
   }
 
   async getMe(userId: string): Promise<UserProfile | null> {
     return this.loadProfile(userId);
   }
 
-  cookieOptions(ttlSec: number, path = '/') {
-    return { ...COOKIE_BASE, maxAge: ttlSec, path };
+  cookies(accessToken: string, refreshToken: string) {
+    return {
+      access: {
+        name: 'access_token',
+        value: accessToken,
+        opts: { ...COOKIE_BASE, path: '/', maxAge: ACCESS_TTL_SEC },
+      },
+      refresh: {
+        name: 'refresh_token',
+        value: refreshToken,
+        opts: { ...COOKIE_BASE, path: REFRESH_PATH, maxAge: REFRESH_TTL_SEC },
+      },
+    };
   }
 
-  clearCookieOptions() {
-    return { ...COOKIE_BASE, maxAge: 0 };
+  clearCookieOpts(path = '/') {
+    return { ...COOKIE_BASE, path, maxAge: 0 };
   }
 
-  private signAccess(payload: Omit<AccessTokenPayload, 'type'>): string {
-    return this.jwt.sign({ ...payload, type: 'access' }, { expiresIn: ACCESS_TTL_SEC });
+  private signAccess(p: Omit<AccessTokenPayload, 'type'>): string {
+    return this.jwt.sign(
+      { ...p, type: 'access' },
+      { expiresIn: ACCESS_TTL_SEC, issuer: JWT_ISS, audience: JWT_AUD, algorithm: 'HS256' },
+    );
   }
 
-  private newRefreshToken(userId: string): string {
-    const token = randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + REFRESH_TTL_MS);
-    // Fire-and-forget insert (the session will be created asynchronously)
-    db.insert(baSession)
-      .values({
-        id: randomUUID(),
-        userId,
-        token,
-        expiresAt,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .catch((err: Error) => {
-        process.stderr.write(`[auth] failed to persist refresh token: ${err.message}\n`);
-      });
-    return token;
-  }
-
-  private async rotateRefreshToken(oldToken: string, userId: string): Promise<string> {
-    const newToken = randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + REFRESH_TTL_MS);
-    await db.transaction(async (tx) => {
-      await tx.delete(baSession).where(eq(baSession.token, oldToken));
-      await tx.insert(baSession).values({
-        id: randomUUID(),
-        userId,
-        token: newToken,
-        expiresAt,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-    });
-    return newToken;
-  }
-
+  // Active membership only (revoked_at IS NULL), non-archived user, primary
+  // org first then oldest — deterministic, no privilege/offboarding bypass.
   private async loadProfile(userId: string): Promise<UserProfile | null> {
-    const [row] = await db
+    const [row] = (await db
       .select({
         userId: users.id,
         userName: users.name,
@@ -333,11 +411,18 @@ export class AuthService {
       .from(users)
       .innerJoin(memberships, eq(memberships.userId, users.id))
       .innerJoin(organizations, eq(organizations.id, memberships.orgId))
-      .where(and(eq(users.id, userId)))
-      .limit(1);
+      .where(
+        and(
+          eq(users.id, userId),
+          isNull(users.archivedAt),
+          isNull(memberships.revokedAt),
+          isNull(organizations.archivedAt),
+        ),
+      )
+      .orderBy(desc(memberships.isPrimary), asc(memberships.createdAt))
+      .limit(1)) as ProfileRow[];
 
     if (!row) return null;
-
     return {
       id: row.userId,
       name: row.userName,

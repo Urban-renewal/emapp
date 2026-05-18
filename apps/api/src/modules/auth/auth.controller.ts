@@ -13,11 +13,15 @@ import { SignupSchema } from './dto/signup.dto';
 import type { SignupDto } from './dto/signup.dto';
 import { AuthGuard } from './guards/auth.guard';
 
-const REFRESH_PATH = '/api/v1/auth/refresh';
-
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  private setAuthCookies(res: FastifyReply, accessToken: string, refreshToken: string) {
+    const c = this.authService.cookies(accessToken, refreshToken);
+    res.setCookie(c.access.name, c.access.value, c.access.opts);
+    res.setCookie(c.refresh.name, c.refresh.value, c.refresh.opts);
+  }
 
   @Public()
   @Post('signup')
@@ -28,9 +32,12 @@ export class AuthController {
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
-    const ip = req.ip;
-    const userAgent = req.headers['user-agent'];
-    const result = await this.authService.signup(dto, ip, userAgent);
+    const result = await this.authService.signup(dto, req.ip, req.headers['user-agent']);
+    // Anti-enumeration (D.14): duplicate email returns the SAME 201 status
+    // with a neutral body — no email_taken / 409 / existence leak.
+    if ('duplicate' in result) {
+      return { data: { ok: true } };
+    }
     this.setAuthCookies(res, result.accessToken, result.refreshToken);
     return { data: { user: result.user } };
   }
@@ -44,9 +51,7 @@ export class AuthController {
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
-    const ip = req.ip;
-    const userAgent = req.headers['user-agent'];
-    const result = await this.authService.login(dto, ip, userAgent);
+    const result = await this.authService.login(dto, req.ip, req.headers['user-agent']);
     this.setAuthCookies(res, result.accessToken, result.refreshToken);
     return { data: { user: result.user } };
   }
@@ -58,7 +63,7 @@ export class AuthController {
     const refreshToken = (req.cookies as Record<string, string | undefined>)?.['refresh_token'];
     if (!refreshToken) {
       res.status(401);
-      return { error: { code: 'missing_refresh_token' } };
+      return { error: { code: 'missing_refresh_token', message: 'No refresh token' } };
     }
     const result = await this.authService.refresh(refreshToken);
     this.setAuthCookies(res, result.accessToken, result.refreshToken);
@@ -70,17 +75,11 @@ export class AuthController {
   @HttpCode(200)
   async logout(
     @CurrentUser() user: AccessTokenPayload,
-    @Req() req: FastifyRequest,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
-    const refreshToken =
-      (req.cookies as Record<string, string | undefined>)?.['refresh_token'] ?? '';
-    await this.authService.logout(refreshToken, user.sub, user.orgId);
-    res.clearCookie('access_token', this.authService.clearCookieOptions());
-    res.clearCookie('refresh_token', {
-      ...this.authService.clearCookieOptions(),
-      path: REFRESH_PATH,
-    });
+    await this.authService.logout(user.sub, user.orgId);
+    res.clearCookie('access_token', this.authService.clearCookieOpts('/'));
+    res.clearCookie('refresh_token', this.authService.clearCookieOpts('/api/v1/auth/refresh'));
     return { data: { ok: true } };
   }
 
@@ -94,16 +93,8 @@ export class AuthController {
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
     const result = await this.authService.switchOrg(user.sub, dto.org_id);
-    res.setCookie('access_token', result.accessToken, this.authService.cookieOptions(15 * 60));
+    const c = this.authService.cookies(result.accessToken, '');
+    res.setCookie(c.access.name, c.access.value, c.access.opts);
     return { data: { role: result.role } };
-  }
-
-  private setAuthCookies(res: FastifyReply, accessToken: string, refreshToken: string) {
-    res.setCookie('access_token', accessToken, this.authService.cookieOptions(15 * 60));
-    res.setCookie(
-      'refresh_token',
-      refreshToken,
-      this.authService.cookieOptions(30 * 24 * 60 * 60, REFRESH_PATH),
-    );
   }
 }

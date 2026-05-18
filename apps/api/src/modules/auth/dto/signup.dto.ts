@@ -4,12 +4,12 @@ export const SignupSchema = z.object({
   org_name: z.string().min(2).max(120),
   name: z.string().min(2).max(120),
   email: z.string().email(),
+  // Doc07 §6.3 (NIST 2020): length-only, NO composition rules. Upper bound
+  // only to bound argon2 cost (DoS), not a complexity rule.
   password: z
     .string()
     .min(12, 'Password must be at least 12 characters')
-    .regex(/[A-Z]/, 'Password must contain an uppercase letter')
-    .regex(/[a-z]/, 'Password must contain a lowercase letter')
-    .regex(/[0-9]/, 'Password must contain a number'),
+    .max(256, 'Password must be at most 256 characters'),
 });
 
 export type SignupDto = z.infer<typeof SignupSchema>;

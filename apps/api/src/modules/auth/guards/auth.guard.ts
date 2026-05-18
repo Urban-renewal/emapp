@@ -31,6 +31,9 @@ export class AuthGuard implements CanActivate {
     try {
       payload = this.jwt.verify<AccessTokenPayload>(token, {
         secret: serverEnv.JWT_SECRET,
+        algorithms: ['HS256'], // pin: reject alg:none / RS↔HS confusion
+        issuer: 'emapp',
+        audience: 'emapp-api',
       });
     } catch {
       throw new UnauthorizedException({ error: { code: 'invalid_token' } });

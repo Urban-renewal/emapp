@@ -6,9 +6,11 @@ import { LoggerModule } from 'nestjs-pino';
 import { HealthController } from './app.controller';
 import { ConfigurableThrottlerGuard } from './common/guards/throttler.guard';
 import { ApartmentsModule } from './modules/apartments/apartments.module';
+import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BuildingsModule } from './modules/buildings/buildings.module';
 import { ContractorsModule } from './modules/contractors/contractors.module';
+import { NotesModule } from './modules/notes/notes.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OwnersModule } from './modules/owners/owners.module';
 import { OwnershipsModule } from './modules/ownerships/ownerships.module';
@@ -48,6 +50,8 @@ import { TasksModule } from './modules/tasks/tasks.module';
     SharesModule,
     TasksModule,
     NotificationsModule,
+    NotesModule,
+    AuditModule,
   ],
   controllers: [HealthController],
   // Rate limiting ENFORCED globally; the configurable guard adds a

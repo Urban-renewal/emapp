@@ -10,3 +10,5 @@ export * from './contractor';
 export * from './share';
 export * from './task';
 export * from './notification';
+export * from './note';
+export * from './audit';

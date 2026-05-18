@@ -128,6 +128,27 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
 
+### GET /api/v1/audit
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Read the org audit trail (append-only), cursor-paginated. Manager only; who/what/target/when (no diffs/ip/ua).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {AuditEntry} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `forbidden`, `missing_token`, `invalid_token`
+
 ### POST /api/v1/auth/login
 
 - **Auth:** Public
@@ -494,6 +515,105 @@ _(no body)_
 ```
 
 **Errors:** `missing_token`, `invalid_token`, `session_revoked`
+
+### GET /api/v1/notes
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List org notes, cursor-paginated. Agent → own / org-level / assigned-project notes only.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Note} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+
+### POST /api/v1/notes
+
+- **Auth:** AuthGuard + TenantGuard (Manager/Agent)
+- **Summary:** Create a note (optionally on a visible project/apartment). Viewer forbidden.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `apartmentId` | unknown | no | — |
+| `body` | string | yes | minLength=1, maxLength=5000 |
+| `pinned` | boolean | no | — |
+| `projectId` | unknown | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Note } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### DELETE /api/v1/notes/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager or author)
+- **Summary:** Soft delete (archivedAt — "ארכוב"). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/notes/:id
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Get one note (org-scoped; Agent → own/assigned/org-level only).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Note } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/notes/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager or author)
+- **Summary:** Update body/pinned. Manager or the note author only.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `body` | string | no | minLength=1, maxLength=5000 |
+| `pinned` | boolean | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Note } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
 
 ### GET /api/v1/notifications
 

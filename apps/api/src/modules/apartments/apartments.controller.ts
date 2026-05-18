@@ -20,6 +20,8 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 
+import { AuthorizationGuard } from '../../common/authz/authorization.guard';
+import { AuthzResource } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -34,7 +36,8 @@ const UuidParam = new ZodValidationPipe(z.string().uuid());
 // withTenant live in the service. Apartments are addressed nested under
 // their building (list/create) and directly by id (read/update/del).
 @Controller()
-@UseGuards(AuthGuard, TenantGuard)
+@AuthzResource('apartments')
+@UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class ApartmentsController {
   constructor(private readonly apartments: ApartmentsService) {}
 

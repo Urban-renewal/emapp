@@ -13,6 +13,8 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 
+import { AuthorizationGuard } from '../../common/authz/authorization.guard';
+import { AuthzAction, AuthzResource } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -35,7 +37,8 @@ const UuidParam = new ZodValidationPipe(z.string().uuid());
 // handling live in the service. Owner LOOKUP is POST /owners/search with
 // the PII in the BODY (never the URL) so it cannot leak into access logs.
 @Controller('owners')
-@UseGuards(AuthGuard, TenantGuard)
+@AuthzResource('owners')
+@UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class OwnersController {
   constructor(private readonly owners: OwnersService) {}
 
@@ -49,6 +52,7 @@ export class OwnersController {
 
   @Post('search')
   @HttpCode(200)
+  @AuthzAction('read') // a lookup, not a write — any org role
   async search(
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(OwnerSearchDto)) body: OwnerSearch,

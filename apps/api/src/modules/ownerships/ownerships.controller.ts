@@ -7,6 +7,8 @@ import {
 import { Body, Controller, Get, Param, Put, Query, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
 
+import { AuthorizationGuard } from '../../common/authz/authorization.guard';
+import { AuthzResource } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -22,7 +24,8 @@ const UuidParam = new ZodValidationPipe(z.string().uuid());
 // write is a full-set REPLACE (PUT). Reads: active ownerships + the
 // masked apartment→owners view (docs/09 §3.13).
 @Controller()
-@UseGuards(AuthGuard, TenantGuard)
+@AuthzResource('ownerships')
+@UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class OwnershipsController {
   constructor(private readonly ownerships: OwnershipsService) {}
 

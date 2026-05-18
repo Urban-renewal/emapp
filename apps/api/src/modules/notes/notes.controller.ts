@@ -20,6 +20,8 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 
+import { AuthorizationGuard } from '../../common/authz/authorization.guard';
+import { AuthzResource } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -31,7 +33,8 @@ import { NotesService } from './notes.service';
 const UuidParam = new ZodValidationPipe(z.string().uuid());
 
 @Controller('notes')
-@UseGuards(AuthGuard, TenantGuard)
+@AuthzResource('notes')
+@UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class NotesController {
   constructor(private readonly notes: NotesService) {}
 

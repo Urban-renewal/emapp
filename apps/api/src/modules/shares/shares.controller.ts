@@ -20,6 +20,8 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 
+import { AuthorizationGuard } from '../../common/authz/authorization.guard';
+import { AuthzResource } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -33,7 +35,8 @@ const UuidParam = new ZodValidationPipe(z.string().uuid());
 // Manager-side grant management. Shares are nested under their project
 // (list/create) and addressed by id (update perms / revoke).
 @Controller()
-@UseGuards(AuthGuard, TenantGuard)
+@AuthzResource('shares')
+@UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class SharesController {
   constructor(private readonly shares: SharesService) {}
 

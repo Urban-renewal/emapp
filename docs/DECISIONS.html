@@ -1196,6 +1196,17 @@ Date · Decision · Alternatives · Why · Reversibility · Revisit trigger
 <li><strong>Ref:</strong> packages/db/migrations/0002_minor_gateway.sql L191-220, docs/03 §7 T3.OW.1, docs/09 §3.13, Phase 3 Slice 5 (PROGRESS.md).</li>
 </ul>
 <hr />
+<h2>D.26 — Centralized declarative D.17 authorization (single source, enforced, verified) for ISO 27001 A.9.4</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-18</li>
+<li><strong>Decision:</strong> The Phase-3 access-control matrix was enforced by ~13 duplicated imperative <code>requireManager()</code> checks scattered across services — no single source, deny-paths unverified, and a new slice could silently omit a check (privilege-escalation by omission). Replaced with a SINGLE declarative policy: <code>apps/api/src/common/authz/policy.ts</code> states the D.17 matrix (resource × action × role) as reviewable data; <code>AuthorizationGuard</code> + <code>@AuthzResource</code>/<code>@AuthzAction</code> is the ONE enforcement point, wired on every domain controller, running after AuthGuard/TenantGuard. It is <strong>fail-closed</strong>: missing <code>@AuthzResource</code>, missing role, or a denied (role,resource,action) ⇒ 403 <code>forbidden</code>. Coarse role gating is centralized here; record-level scoping (agent→assigned, note author, self-notifications) stays in the service but is unreachable for a coarsely-forbidden role. <code>policy.spec.ts</code> is the ISO verification artifact: an INDEPENDENT restatement of D.17 (not derived from POLICY) asserts all 144 role×resource×action cells + 8 fail-closed guard-semantics — deterministic, zero-infra, runs in the CI <code>test</code> job. Existing in-service <code>requireManager</code> remains as defense-in-depth, now conceptually backed by the same matrix the test pins.</li>
+<li><strong>Alternatives:</strong> (a) leave scattered checks + add more tests — REJECTED: a plaster; the root cause is no single enforced/verified source (the user explicitly rejected this). (b) global <code>APP_GUARD</code> — REJECTED: runs before controller-bound AuthGuard, so <code>req.user</code> is unset; controller-level guard ordering is required. (c) rip out all 13 in-service checks in the same change — DEFERRED: higher-risk; the regulatory requirement (documented+enforced+verified single policy) is met by the guard+proof; removing the now-redundant inner checks is a safe follow-up the policy module enables.</li>
+<li><strong>Why:</strong> ISO 27001 A.9.4 requires access rules to be documented, consistently enforced, and verifiable. This delivers all three with one auditor-readable table + one enforcement point + an exhaustive deterministic proof — and structurally prevents the "new slice forgot authz" regression class.</li>
+<li><strong>Known residual (recorded, not hidden):</strong> RUNTIME deny-path proof for viewer/agent still needs a member-provisioning (invite/role-assign) endpoint, which does not exist in Phase 3. The control is now statically proven + centrally enforced; full black-box runtime deny conformance is reduced to testing ONE guard once provisioning lands (a scoped follow-up, not scattered work).</li>
+<li><strong>Reversibility:</strong> Easy — policy is data; the guard is additive.</li>
+<li><strong>Ref:</strong> docs/07 §RBAC, D.17, Phase-3 fresh-eyes audit (PROGRESS.md), user directive 2026-05-18 ("a real fix to meet regulation, not a plaster").</li>
+</ul>
+<hr />
 <h2>Pending Decisions (not yet made — tracked in OPEN_ITEMS.md §4)</h2>
 <p>These are listed so they're visible but explicitly NOT decided:</p>
 <ul>

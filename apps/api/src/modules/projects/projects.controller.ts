@@ -20,6 +20,8 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 
+import { AuthorizationGuard } from '../../common/authz/authorization.guard';
+import { AuthzResource } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -34,7 +36,8 @@ const UuidParam = new ZodValidationPipe(z.string().uuid());
 // authorization (D.17 role matrix) and data access (withTenant) live in
 // the service. Every route is /api/v1/projects (global prefix, D.10).
 @Controller('projects')
-@UseGuards(AuthGuard, TenantGuard)
+@AuthzResource('projects')
+@UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class ProjectsController {
   constructor(private readonly projects: ProjectsService) {}
 

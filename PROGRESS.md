@@ -6,17 +6,17 @@
 
 ## Current Position
 
-- **Phase:** 2 complete (Org-user auth) — Tenant SMS OTP deferred by user decision
+- **Phase:** 2 COMPLETE & hardened (org-user + Provider Admin/MFA). Tenant SMS OTP deferred (D.20). User approved proceeding to Phase 3 (2026-05-18).
 
-- **Next task:** Phase 3 — Domain API (after PR merge)
+- **Next task:** Phase 3 — Domain API (docs/03 §7). Branch from main AFTER phase-2-hardening PR merges.
 
-- **Status:** awaiting_approval
+- **Status:** phase-2 done; PR-ready on branch phase-2-hardening; Phase 3 = next session.
 
-- **Last completed:** P2-hardening — D.21 full-ownership auth rebuild VERIFIED: black-box contract suite **31/31 green** against live Neon-dev (signup atomicity, argon2id, hashed/rotating/reuse-detecting sessions w/ chain-purge, real logout revoke, silent spec-flat lockout, per-IP throttle, JWT HS256+iss+aud, anti-enumeration, concurrent double-spend ≤1, alg:none/tampered-JWT rejected). Medium audit findings closed; design gaps A/B/D/F recorded as D.22 governed risk; D.21 propagated to CLAUDE.md/Doc07; secrets model reconciled.
+- **Last completed:** P2-hardening — D.21 owned-auth rebuild + T2.10 Provider+MFA, black-box conformance **37/38 green** live (1 skip = P7 env-gated). Closed: signup atomicity, argon2id, hashed/rotating/reuse-detecting sessions, real logout, silent spec-flat lockout, per-IP throttle, JWT HS256+iss+aud, anti-enumeration, **stateless-JWT revocation hole (O3 — sid session-validity, 15s in-proc memo, flush on logout/reuse → immediate, zero UX cost)**. Provider tier: TOTP RFC6238, recovery codes, 30m/4h sessions, tier isolation. Medium audit findings closed; design gaps recorded as D.22 governed risk; D.21 propagated to CLAUDE.md/Doc07; secrets model reconciled.
 
-- **Blocked:** no. T2.10 Provider Admin + mandatory MFA COMPLETE: black-box conformance **36/37 green** live (org-user 22 + adversarial 9 + provider P1–P6); P7 (positive provider login w/ live TOTP) env-gated, skipped pending optional bootstrap run. Tenant SMS OTP stays deferred (D.20). Open follow-ups: run bootstrap + verify P7 before prod; D.22 design backlog; SPA 401→refresh + refresh-TTL tiering (Phase 3+).
+- **Blocked:** no.
 
-- **Branch:** phase-2-hardening
+- **Branch:** phase-2-hardening (push up to date; open PR → merge → Phase 3 from main)
 
 ## Phase Completion Log
 
@@ -84,7 +84,7 @@
 
 - DOC BUG (for the user to fix in docs/04c + docs/DECISIONS): doc 04c text and `_enums.ts` originally used project_status `permits/construction/archived`, which contradicts D.18 (LAW) `approved/in_construction/cancelled`. Code is now D.18-correct (migration 0012). The HTML doc text still says permits/construction/archived — update the doc so it matches D.18.
 
-- TEST-INFRA DEBT (Phase 1 follow-up): vitest runs the 9 T1.x spec files in parallel; each calls `setupTestDatabase()` → concurrent drizzle `migrate()`. New migrations race (TOCTOU on catalog/DDL even with IF EXISTS guards). Current workaround: apply new migrations once serially via `scripts/apply-migration-00NN.ts` (which also inserts drizzle tracking rows so the migrator no-ops). Proper fix: a vitest `globalSetup` that runs migrations once before workers; then delete the one-off apply scripts. Until then, every NEW migration needs a serial apply script run before `pnpm test`.
+- TEST-INFRA DEBT — **RESOLVED 2026-05-18**: the concurrent-`migrate()` race (parallel T1.x workers each calling `setupTestDatabase()`) that flaked CI on every new migration is fixed properly: `packages/db/test/global-setup.ts` runs `migrate()` ONCE before any worker (wired via `vitest.config.ts` `globalSetup`); `setupTestDatabase()` is now a no-op. The one-off `apply-migration-*/fix-*/drop-*/check-extensions` scripts were deleted. **New migrations need NO special handling** — globalSetup applies them. (Was the recurring Phase-2 PR CI failure root cause.)
 
 - Drizzle migrator tracks "applied" by journal `when` vs max `created_at` in `drizzle.__drizzle_migrations`. The one-off apply scripts insert `(hash=<tag>, created_at=<when>)`; this is enough to make the migrator skip them (it compares created_at, not the SHA256 content hash for the skip decision).
 

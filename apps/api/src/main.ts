@@ -21,7 +21,10 @@ async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({ trustProxy: true }),
-    { bufferLogs: true },
+    // bodyParser:false — Nest must NOT register its own application/json
+    // parser (it runs during listen() and collides with ours). We register
+    // a single JSON parser below that also tolerates an empty body.
+    { bufferLogs: true, bodyParser: false },
   );
 
   app.useLogger(app.get(Logger));

@@ -1210,6 +1210,44 @@ Open Decisions (5)
 └── 4.5 Soft delete cleanup               → No urgency
 </code></pre>
 <hr />
+<h2>5b. Phase-3 carry-over &amp; live trackers (added 2026-05-19)</h2>
+<p><strong>Authoritative, always-loaded continuity sources</strong> (this static
+doc is planning-era; when it disagrees, these win):
+<code>PROGRESS.md</code> (read first every session) ·
+<code>GATES.md</code> (Gate-status log) ·
+<code>docs/DECISIONS.html</code> (the decisions file actually lives here as
+<em>.html</em>; the "DECISIONS.md → repo root" line in §5 above is legacy
+naming — no .md exists).</p>
+<p><strong>Decisions added since this doc was written:</strong> D.24 (high-scale
+data-path stance) · D.25 (ownership atomic set-replace, mandated by the locked
+sum trigger) · D.26 (centralized declarative D.17 authorization, ISO A.9.4) ·
+D.27 (member-invite consent — token-in-response is a GOVERNED interim).</p>
+<p><strong>Open obligations carried OUT of Phase 3 (must not be lost):</strong></p>
+<ul>
+<li><strong>D.27 invite email — PRE-GATE-5 (hard):</strong> the invite token is
+returned in the API response as a governed interim; real email delivery
+(Resend via <code>IEmailProvider</code>, not yet DI-wired into the API) MUST
+replace it before prod. Resend = Infisical-gated per Gate-4 SECRETS LAW
+(account + key = user action). → GATES.md Gate-5 obligations.</li>
+<li><strong>Notification generation + SSE → Phase 5</strong> (T3.N.1): Phase 3
+shipped self-scoped read/mark only; the locked notifications RLS forbids an
+actor inserting another user's row in their tx, so generation is a Phase-5
+worker/trigger concern.</li>
+<li><strong>Contractor-facing share-consume endpoint → later phase:</strong>
+Phase 3 built manager-side grant management only; the contractor read path
+needs the Contractor auth tier (share-token).</li>
+<li><strong>Recommended pre-Gate-5 (non-blocking):</strong> extract the
+duplicated <code>isUniqueViolation</code>/<code>requireManager</code>/
+<code>assertXVisible</code> into one audited module; merge the nested-read
+double-query to one round-trip (gated by k6 data — it is no-oracle
+load-bearing, do not just delete it).</li>
+</ul>
+<p><strong>Phase-3 verification evidence (for the ISO trail):</strong> 167
+black-box conformance / 1 skip / 15 files + 164 policy-unit + 36/36 live
+red-team (<code>apps/api/scripts/redteam.ts</code>); coverage map in
+<code>docs/TEST-COVERAGE-MATRIX.md</code> (13 entities × 7 angles, no blank
+cells).</p>
+<hr />
 <h2>6. What is NOT Open (closed in Option B+ and C)</h2>
 <p>For clarity — these were gaps identified in audit and <strong>fully addressed</strong>, so they should NOT show up here in the future:</p>
 <table>

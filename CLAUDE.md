@@ -96,7 +96,7 @@ Read the relevant doc in docs/ before guessing.
 
 Phase tasks: docs/03-mvp-roadmap.html. DB: docs/04c-phase-1-database.html.
 
-Security: docs/07-security-playbook.html. Auth/API flows: docs/08-auth-api-flows.html. API reference (generate from schema, see Doc 09 §0.4): docs/09-api-reference.html. FE security DoD: docs/10-frontend-security.html. Sync mechanism (shared-types + CI enforcement): docs/11-sync-mechanism.html. Decisions: docs/DECISIONS.md.
+Security: docs/07-security-playbook.html. Auth/API flows: docs/08-auth-api-flows.html. API reference (generate from schema, see Doc 09 §0.4): docs/09-api-reference.html. FE security DoD: docs/10-frontend-security.html. Sync mechanism (shared-types + CI enforcement): docs/11-sync-mechanism.html. Decisions: docs/DECISIONS.html.
 
 \## Definition of Done for any task
 

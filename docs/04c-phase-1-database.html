@@ -2110,9 +2110,9 @@ testEmailProviderContract(<span class="string">'FakeEmailProvider'</span>, () =&
 ]);
 
 <span class="keyword">export const</span> projectStatusEnum = pgEnum(<span class="string">'project_status'</span>, [
-  <span class="string">'planning'</span>, <span class="string">'gathering_signatures'</span>, <span class="string">'permits'</span>,
-  <span class="string">'construction'</span>, <span class="string">'completed'</span>, <span class="string">'archived'</span>,
-]);
+  <span class="string">'planning'</span>, <span class="string">'gathering_signatures'</span>, <span class="string">'approved'</span>,
+  <span class="string">'in_construction'</span>, <span class="string">'completed'</span>, <span class="string">'cancelled'</span>,
+]); <span class="comment">// D.18 (LAW) — fixed 2026-05-19; matches the corrected primary block + migration 0012. Was: permits/construction/archived.</span>
 
 <span class="keyword">export const</span> apartmentStatusEnum = pgEnum(<span class="string">'apartment_status'</span>, [
   <span class="string">'pending'</span>, <span class="string">'contacted'</span>, <span class="string">'meeting'</span>,

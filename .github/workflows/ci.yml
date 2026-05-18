@@ -94,6 +94,57 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
+  # ENFORCES the auth contract (audit finding: the black-box suite SKIPS
+  # when no API is reachable, so the test job never actually ran it). Here
+  # we migrate, boot the COMPILED API (NoopSMSProvider), wait for health,
+  # then run auth.contract.spec.ts for real. A regression now fails CI.
+  conformance:
+    needs: setup
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:test@localhost:5432/test
+      PII_ENCRYPTION_KEY: dGVzdC1lbmNyeXB0aW9uLWtleS1mb3ItY2ktb25seS0x
+      PII_HASH_KEY: dGVzdC1oYXNoLWtleS1mb3ItY2ktb25seS10ZXN0aW5nMQ==
+      BETTER_AUTH_SECRET: ci-test-better-auth-secret-min-32-characters
+      JWT_SECRET: ci-test-jwt-secret-at-least-44-characters-long-ok
+      THROTTLE_TEST_BYPASS: contract-suite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @emapp/db db:migrate
+      - run: pnpm --filter @emapp/api build
+      - name: Boot API + run black-box conformance
+        run: |
+          node apps/api/dist/main.js & echo $! > /tmp/api.pid
+          for i in $(seq 1 40); do
+            curl -sf http://localhost:3000/api/v1/health && break || sleep 2
+          done
+          curl -sf http://localhost:3000/api/v1/health
+          set +e
+          pnpm --filter @emapp/api exec vitest run src/modules/auth/auth.contract.spec.ts
+          code=$?
+          kill "$(cat /tmp/api.pid)" 2>/dev/null || true
+          exit $code
+
   secrets-scan:
     runs-on: ubuntu-latest
     steps:

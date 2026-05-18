@@ -108,6 +108,10 @@
 
 - ACTION REQUIRED (Infisical-gated, user must run): `infisical run --env=dev -- pnpm --filter @emapp/db db:migrate` (applies 0018) then restart the API (`infisical run --env=dev -- pnpm --filter @emapp/api dev`). Then the black-box contract suite can be run for the live conformance verdict.
 
+- FOLLOW-UP (tracked, ISO hardening, NOT a blocker): secrets-scan uses trufflehog `--only-verified`. Strengthen later (gitleaks job / drop --only-verified) — deferred deliberately: the CI test/conformance jobs contain intentional in-the-clear CI-only test credentials (ci.yml), so a broad scanner would false-positive and break CI. Do it with a tuned allowlist, not blindly. (Cross-phase audit finding.)
+
+- DOC-DEBT (tracked, ISO-cosmetic): residual "Better Auth"/"bcrypt" prose remains in docs 01/02/03/04a/04b/05 (historical). Authoritative override = DECISIONS D.21 + CLAUDE.md (always-loaded, correct) + Doc07/Doc08 superseded banners + generated docs/09. A full 6-doc sweep is deferred to avoid churn/error; not misleading given the banners + D.21.
+
 - P1.1: PROVIDER_DATABASE_URL is optional in db/src/env.ts (falls back to DATABASE_URL when unset).
 
 - P1.1: connection.ts removed; replaced by client.ts (pg Pool + drizzle/node-postgres). API health controller updated accordingly. Both use the `db` singleton directly; withTenant/withProvider wrappers in P1.13 will be the only external access path.

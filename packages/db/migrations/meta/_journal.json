@@ -120,6 +120,13 @@
       "when": 1779036600000,
       "tag": "0016_better_auth_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1779037200000,
+      "tag": "0017_audit_log_target_table_nullable",
+      "breakpoints": true
     }
   ]
 }

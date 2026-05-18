@@ -63,7 +63,11 @@ async function bootstrap() {
   // D.10: every endpoint under /api/v1/
   app.setGlobalPrefix('api/v1');
 
-  await app.register(cookie, { secret: env.BETTER_AUTH_SECRET });
+  // Cookies are NOT signed (we never use signed:true — auth value is a
+  // self-signed JWT / hashed-at-rest refresh token). No cookie secret is
+  // needed; passing the retired Better-Auth secret here was dead, confusing
+  // surface post-D.21 and a rotation foot-gun.
+  await app.register(cookie);
 
   await app.register(helmet, {
     contentSecurityPolicy: {

@@ -1,4 +1,5 @@
 import { Body, Controller, HttpCode, Post, Req, Res, UseGuards, UsePipes } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -31,6 +32,10 @@ export class AuthController {
   }
 
   @Public()
+  // Tight per-route limit: signup does a ~50ms argon2 hash + a privileged
+  // BYPASSRLS pooled connection — the global 100/min is far too loose for an
+  // unauthenticated endpoint. 5 / 10 min / IP.
+  @Throttle({ default: { limit: 5, ttl: 600000 } })
   @Post('signup')
   @HttpCode(201)
   @UsePipes(new ZodValidationPipe(SignupSchema))
@@ -50,6 +55,10 @@ export class AuthController {
   }
 
   @Public()
+  // Per-IP volumetric brake (account lockout is the per-account control and
+  // is intentionally SILENT). 10 / min / IP — a 429 here is NOT an
+  // enumeration oracle (fires regardless of whether the account exists).
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('login')
   @HttpCode(200)
   @UsePipes(new ZodValidationPipe(LoginSchema))

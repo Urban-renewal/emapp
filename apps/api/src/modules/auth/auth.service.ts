@@ -10,7 +10,7 @@ import {
   users,
   withBootstrap,
 } from '@emapp/db';
-import { HttpException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 
@@ -226,30 +226,30 @@ export class AuthService {
       throw invalid;
     }
 
-    if (u.lockedUntil && u.lockedUntil.getTime() > Date.now()) {
-      // Pay the argon2 cost first so a locked account is NOT a faster (timing
-      // or status) enumeration oracle than wrong-password / unknown-user.
+    const isLocked = !!(u.lockedUntil && u.lockedUntil.getTime() > Date.now());
+    if (isLocked) {
+      // SILENT lockout (anti-enumeration, Doc07 §6.12.1): a locked account
+      // returns the SAME generic 401 as wrong-password / unknown-user — never
+      // a distinct 423/"account_locked", which would confirm the email
+      // exists. We still pay the argon2 cost for timing parity, then bail.
       await dummyVerify(dto.password);
-      throw new HttpException(
-        { error: { code: 'account_locked', message: 'החשבון נעול זמנית' } },
-        423,
-      );
+      throw invalid;
     }
 
     const ok = await verifyPassword(u.passwordHash, dto.password);
     if (!ok) {
-      // Counter is NEVER zeroed on lockout — it keeps accumulating so the
-      // lock window grows with continued abuse (exponential backoff),
-      // closing the "5 fresh attempts every 15 min forever" brute-force.
-      const failed = (u.failed ?? 0) + 1;
-      const overBy = failed - MAX_FAILED;
+      // Spec Doc07 §6.11: 5 failures / 15 min → flat 15-min lock (NOT
+      // exponential — that turned a known email into an indefinite DoS).
+      // A stale (expired) lock resets the window so it's exactly 5 per
+      // 15-min window, and the lock auto-clears after 15 min.
+      const staleWindow = u.lockedUntil != null && u.lockedUntil.getTime() <= Date.now();
+      const failed = (staleWindow ? 0 : (u.failed ?? 0)) + 1;
       const locked = failed >= MAX_FAILED;
-      const lockMs = locked ? LOCK_MS * Math.min(2 ** Math.max(overBy, 0), 32) : 0;
       await db
         .update(users)
         .set({
-          failedLoginCount: failed,
-          lockedUntil: locked ? new Date(Date.now() + lockMs) : null,
+          failedLoginCount: locked ? 0 : failed,
+          lockedUntil: locked ? new Date(Date.now() + LOCK_MS) : null,
         })
         .where(eq(users.id, u.id));
       throw invalid;

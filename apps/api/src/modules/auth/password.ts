@@ -9,10 +9,13 @@ const ARGON2 = {
   parallelism: 1,
 } as const;
 
-// A pre-computed argon2id hash of a throwaway value. Verifying against it on
-// the unknown-user path keeps login timing ~constant (no user-existence
-// timing oracle — Doc07 §6.12.1 anti-enumeration).
-let DUMMY_HASH: string | undefined;
+// Pre-computed at MODULE LOAD (not lazily on first unknown-user request —
+// that made the first post-boot probe pay 2× and leak via timing). Verifying
+// against it on the unknown-user / locked path keeps login timing ~constant
+// (Doc07 §6.12.1 anti-enumeration).
+const DUMMY_HASH_P: Promise<string> = hash('constant-time-dummy-secret', ARGON2);
+// Surface load-time failures instead of an unhandled rejection.
+DUMMY_HASH_P.catch(() => undefined);
 
 export async function hashPassword(plain: string): Promise<string> {
   return hash(plain, ARGON2);
@@ -29,9 +32,8 @@ export async function verifyPassword(storedHash: string, plain: string): Promise
 // Run a real argon2 verify against a dummy hash so the unknown-user branch
 // costs the same as the wrong-password branch.
 export async function dummyVerify(plain: string): Promise<void> {
-  if (!DUMMY_HASH) DUMMY_HASH = await hash('constant-time-dummy-secret', ARGON2);
   try {
-    await verify(DUMMY_HASH, plain, ARGON2);
+    await verify(await DUMMY_HASH_P, plain, ARGON2);
   } catch {
     /* result intentionally ignored */
   }

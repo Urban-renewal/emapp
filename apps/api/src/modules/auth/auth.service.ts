@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 
 import { serverEnv } from '@emapp/config';
 import {
@@ -59,6 +59,35 @@ interface ProfileRow {
   orgName: string;
 }
 
+// organizations.slug CHECK (migration 0010): ^[a-z][a-z0-9-]*[a-z0-9]$
+// — must start with a lowercase letter, end alphanumeric. A raw UUID slug
+// fails ~62% of the time (UUIDs starting 0-9). Build a conformant, unique
+// slug from the org name + a random suffix.
+export function makeSlug(name: string): string {
+  let base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  if (!/^[a-z]/.test(base)) base = base ? `org-${base}` : 'org';
+  base = base.replace(/-+/g, '-').replace(/-$/g, '');
+  const suffix = randomBytes(6).toString('hex'); // 12 chars, [0-9a-f]
+  return `${base}-${suffix}`;
+}
+
+function isEmailDuplicate(err: unknown): boolean {
+  let e: unknown = err;
+  for (let depth = 0; e && depth < 6; depth += 1) {
+    const o = e as { message?: string; code?: string; constraint?: string; cause?: unknown };
+    const msg = (o.message ?? '').toLowerCase();
+    if (o.constraint === 'users_email_unique') return true;
+    if (o.code === '23505' && msg.includes('users_email_unique')) return true;
+    if (msg.includes('users_email_unique')) return true;
+    e = o.cause;
+  }
+  return false;
+}
+
 @Injectable()
 export class AuthService {
   constructor(private readonly jwt: JwtService) {}
@@ -78,6 +107,7 @@ export class AuthService {
     const userId = randomUUID();
     const now = new Date();
     const rawRefresh = newRawToken();
+    const slug = makeSlug(dto.org_name);
 
     // Anti-enumeration (D.14): if the email already exists we DO NOT reveal it
     // and DO NOT throw a distinguishable 409. The unique index makes the
@@ -86,7 +116,7 @@ export class AuthService {
       const sessionId = await withBootstrap(async (tx) => {
         await tx
           .insert(organizations)
-          .values({ id: orgId, name: dto.org_name, slug: orgId, createdAt: now, updatedAt: now });
+          .values({ id: orgId, name: dto.org_name, slug, createdAt: now, updatedAt: now });
 
         await tx.insert(users).values({
           id: userId,
@@ -159,9 +189,11 @@ export class AuthService {
         },
       };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message.toLowerCase() : '';
-      if (msg.includes('users_email_unique') || msg.includes('duplicate key')) {
-        // Neutral outcome — caller returns a generic accepted response.
+      // ONLY the email unique index means "email already registered". Drizzle
+      // wraps the pg error, so the constraint name lives on err.cause — walk
+      // the chain. A slug clash (different constraint) must NOT be misread as
+      // duplicate-email; it surfaces as a real error.
+      if (isEmailDuplicate(err)) {
         return { duplicate: true };
       }
       throw err;

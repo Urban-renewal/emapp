@@ -27,6 +27,36 @@ async function bootstrap() {
   app.useLogger(app.get(Logger));
   app.useGlobalFilters(new GlobalExceptionFilter());
 
+  // Cookie-only POSTs (auth/refresh, auth/logout) legitimately carry no body.
+  // Fastify's default JSON parser 400s on an empty body even when the client
+  // sends Content-Type: application/json (our api-client sets it on every
+  // request). Treat an empty json body as {} so those endpoints reach the
+  // handler (and return their proper 401, not a framework 400).
+  const fastify = app.getHttpAdapter().getInstance() as unknown as {
+    removeContentTypeParser?: (t: string) => void;
+    addContentTypeParser: (
+      t: string,
+      o: { parseAs: 'string' },
+      h: (req: unknown, body: string, done: (e: Error | null, v?: unknown) => void) => void,
+    ) => void;
+  };
+  // Replace Fastify's built-in JSON parser (which 400s on empty body).
+  try {
+    fastify.removeContentTypeParser?.('application/json');
+  } catch {
+    /* not present — fine */
+  }
+  fastify.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    if (!body || body.trim() === '') return done(null, {});
+    try {
+      done(null, JSON.parse(body));
+    } catch {
+      const e = new Error('Invalid JSON') as Error & { statusCode?: number };
+      e.statusCode = 400;
+      done(e);
+    }
+  });
+
   // D.10: every endpoint under /api/v1/
   app.setGlobalPrefix('api/v1');
 

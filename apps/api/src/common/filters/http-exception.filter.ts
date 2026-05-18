@@ -20,11 +20,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const status =
       exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
 
+    const debugChain: Array<Record<string, unknown>> = [];
+
     if (status >= 500) {
       this.logger.error(
         exception instanceof Error ? exception.message : String(exception),
         exception instanceof Error ? exception.stack : undefined,
       );
+      if (exception instanceof Error) {
+        debugChain.push({ message: exception.message });
+      }
       let cause: unknown = (exception as { cause?: unknown })?.cause;
       let depth = 0;
       while (cause && depth < 5) {
@@ -32,6 +37,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         this.logger.error(
           `  ↳ cause[${depth}] pgcode=${pg.code ?? '?'} ${pg.message ?? String(cause)}${pg.detail ? ` | detail=${pg.detail}` : ''}${pg.hint ? ` | hint=${pg.hint}` : ''}`,
         );
+        debugChain.push({
+          pgcode: pg.code,
+          message: pg.message ?? String(cause),
+          detail: pg.detail,
+          hint: pg.hint,
+        });
         cause = (cause as { cause?: unknown })?.cause;
         depth += 1;
       }
@@ -45,10 +56,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       }
     }
 
+    // Production stays generic (D.16, no internal leakage). Outside production
+    // we attach the real error/pg-cause chain so a failing request is
+    // self-diagnosing without needing server log access.
+    const isProd = process.env['NODE_ENV'] === 'production';
     reply.status(status).send({
       error: {
         code: String(status),
         message: 'Internal server error',
+        ...(isProd || debugChain.length === 0 ? {} : { debug: debugChain }),
       },
     });
   }

@@ -8,7 +8,7 @@
 
 - **Phase:** 3 IN PROGRESS — Domain API (docs/03 §7), branch `phase-3` from up-to-date main. Slice-by-slice; one PR at phase end (user-approved cadence 2026-05-18). Agent scoping enforced in the SERVICE layer (project_assignments JOIN over withTenant), not an extra RLS policy (user-approved). FE design = FE-only, not an input to the API contract (user-confirmed 2026-05-18).
 
-- **Next task:** Phase 3 Slice 3 — Apartments (via-parent building→project→org). Slices 1-2 DONE.
+- **Next task:** Phase 3 Slice 4 — Owners (PII encrypt/decrypt + HMAC search). Slices 1-3 DONE (Projects/Buildings/Apartments). Slice 3 live conformance 76 pass/1 skip; CI pending on push. NOTE: local verification MUST kill any stale :3000 listener (PowerShell Get-NetTCPConnection→Stop-Process) before booting — pkill does not match the node process on Windows; a stale server caused false apartment failures until isolated.
 
 - **Status:** Slice 1 (Projects) CI-verified **8/8 green** (run 26046791639, draft PR #12). Slice 2 (Buildings) code + live conformance **65 passed / 1 skip** (auth+11 Projects+11 Buildings vs compiled API + Neon + RLS); pushed on PR #12. CI runs only on PRs to main → phase-3 PR opened as **draft** now (one PR, merged at phase end — cadence unchanged). Shared `common/keyset-cursor.ts` extracted (Projects refactored onto it). `@emapp/db` now exports `TenantTx` (typed tx for service helpers). D.24 recorded (high-scale stance: Neon pooler transaction-mode + per-slice index discipline; no schema denormalization / no Redis — locked stack; EXPLAIN as dev-helper not a CI gate).
 

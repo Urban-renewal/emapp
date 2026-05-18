@@ -13,12 +13,15 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  CreateApartmentInput,
   CreateBuildingInput,
   CreateProjectInput,
+  ListApartmentsQuery,
   ListBuildingsQuery,
   ListProjectsQuery,
   OtpRequestSchema,
   OtpVerifySchema,
+  UpdateApartmentInput,
   UpdateBuildingInput,
   UpdateProjectInput,
 } from '@emapp/shared-types';
@@ -223,6 +226,51 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/buildings/:id',
     auth: 'AuthGuard + TenantGuard (Manager)',
     summary: 'Soft delete (archivedAt — "ארכוב"). Idempotent. 204.',
+    response: '(204 No Content)',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/buildings/:buildingId/apartments',
+    auth: 'AuthGuard + TenantGuard',
+    summary:
+      'List apartments of a building, cursor-paginated. Via-parent isolation; Agent → assigned projects only.',
+    request: ListApartmentsQuery,
+    response:
+      '{ "data": [ {Apartment} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: ['validation_error', 'invalid_cursor', 'not_found', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/buildings/:buildingId/apartments',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary: 'Create an apartment under a building. Manager only; buildingId from the URL.',
+    request: CreateApartmentInput,
+    response: '{ "data": { ...Apartment } }',
+    errors: ['validation_error', 'forbidden', 'not_found', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/apartments/:id',
+    auth: 'AuthGuard + TenantGuard',
+    summary: 'Get one apartment by id (via-parent org scope; Agent → assigned project only).',
+    response: '{ "data": { ...Apartment } }',
+    errors: ['not_found', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/apartments/:id',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary: 'Partial update. Manager only. statusChangedAt advances only on a real status change.',
+    request: UpdateApartmentInput,
+    response: '{ "data": { ...Apartment } }',
+    errors: ['validation_error', 'forbidden', 'not_found', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/apartments/:id',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary: 'Soft delete (archivedAt — "ארכוב"). Idempotent, preserves audit trail. 204.',
     response: '(204 No Content)',
     errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
   },

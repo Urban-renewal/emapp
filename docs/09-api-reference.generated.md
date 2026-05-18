@@ -7,6 +7,65 @@
 
 ## Endpoints
 
+### DELETE /api/v1/apartments/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Soft delete (archivedAt — "ארכוב"). Idempotent, preserves audit trail. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/apartments/:id
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Get one apartment by id (via-parent org scope; Agent → assigned project only).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Apartment } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/apartments/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Partial update. Manager only. statusChangedAt advances only on a real status change.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `floor` | unknown | no | — |
+| `notes` | unknown | no | — |
+| `number` | string | no | minLength=1, maxLength=50 |
+| `rooms` | unknown | no | — |
+| `sizeSqm` | unknown | no | — |
+| `status` | string | no | enum=["pending","contacted","meeting","signed","refused","unreachable"] |
+
+
+**Response**
+
+```json
+{ "data": { ...Apartment } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
 ### POST /api/v1/auth/login
 
 - **Auth:** Public
@@ -145,6 +204,52 @@ _(no body)_
 ```
 
 **Errors:** `validation_error`, `missing_token`, `invalid_token`, `not_member`
+
+### GET /api/v1/buildings/:buildingId/apartments
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List apartments of a building, cursor-paginated. Via-parent isolation; Agent → assigned projects only.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Apartment} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+
+### POST /api/v1/buildings/:buildingId/apartments
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Create an apartment under a building. Manager only; buildingId from the URL.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `floor` | unknown | no | — |
+| `notes` | unknown | no | — |
+| `number` | string | yes | minLength=1, maxLength=50 |
+| `rooms` | unknown | no | — |
+| `sizeSqm` | unknown | no | — |
+| `status` | string | no | enum=["pending","contacted","meeting","signed","refused","unreachable"] |
+
+
+**Response**
+
+```json
+{ "data": { ...Apartment } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
 
 ### DELETE /api/v1/buildings/:id
 

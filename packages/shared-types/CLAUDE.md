@@ -1,13 +1,30 @@
 # @emapp/shared-types
 
-Shared TypeScript types imported by both BE and FE.
+The single FE/BE contract source of truth (Doc 11 §2 — "the heart" of the
+sync mechanism). Imported by both `@emapp/api` and `@emapp/web`.
 
-## Currently empty
-Phase 1+ will export domain types (Project, Owner, Apartment, etc.)
-and the API envelope types (`ApiResponse<T>`, `PagedResponse<T>`).
+## Reconciled 2026-05-18
+
+The earlier rule "no runtime code, only type/interface/enum" is SUPERSEDED
+by Doc 11: the contract is defined as **Zod schemas** (runtime) so a single
+definition yields both the BE DTO validation and the FE-checkable types.
+Zod is FE-safe and already used in both apps. (Same supersession pattern as
+D.21 over "Better Auth"; recorded here to keep docs↔code in sync.)
+
+## Contents
+
+- `envelope.ts` — D.16 response envelope: `{ data }`, `{ error }`,
+  list `{ data, page }`, plus Zod validators (`apiData`, `apiErrorSchema`)
+  so tests/FE can `.parse()` responses.
+- `auth.schemas.ts` — canonical Zod request schemas (signup, login,
+  org-switch, provider login, OTP request/verify) + inferred DTO types.
+- `index.ts` — re-exports.
 
 ## Rules
-- No runtime code, only `type` / `interface` / `enum` exports.
-- No imports from other `@emapp/*` packages (to avoid circular deps).
-- Every exported type must be documented with a one-line JSDoc.
-- Changes here are a breaking change for both apps — coordinate.
+
+- The schemas here are the source of truth. BE DTOs RE-EXPORT from here
+  (thin files); never redefine a schema in the app.
+- No imports from other `@emapp/*` packages (avoid circular deps).
+- A change here is a breaking change for BOTH apps — coordinate; the
+  `gen-api-docs` §1.4 gate + the CI conformance job will catch drift.
+- Keep schemas pure (no Nest/env/Node-only imports) so FE can import them.

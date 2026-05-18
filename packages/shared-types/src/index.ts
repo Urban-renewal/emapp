@@ -1,3 +1,3 @@
-// Phase 1+ will export shared TypeScript types here.
-// Keep this file for now — packages reference it via @emapp/shared-types.
-export {};
+// @emapp/shared-types — FE/BE contract source of truth (Doc 11).
+export * from './envelope';
+export * from './auth.schemas';

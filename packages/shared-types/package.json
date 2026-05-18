@@ -5,6 +5,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "zod": "^3.23.0"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint src"

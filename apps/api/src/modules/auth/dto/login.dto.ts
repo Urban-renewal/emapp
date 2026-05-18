@@ -1,14 +1,7 @@
-import { z } from 'zod';
-
-export const LoginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-});
-
-export type LoginDto = z.infer<typeof LoginSchema>;
-
-export const OrgSwitchSchema = z.object({
-  org_id: z.string().uuid(),
-});
-
-export type OrgSwitchDto = z.infer<typeof OrgSwitchSchema>;
+// Re-export the canonical contract (Doc 11 source of truth: @emapp/shared-types).
+export {
+  LoginSchema,
+  type LoginDto,
+  OrgSwitchSchema,
+  type OrgSwitchDto,
+} from '@emapp/shared-types';

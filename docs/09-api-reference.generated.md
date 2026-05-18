@@ -166,6 +166,27 @@ _(no body)_
 
 **Errors:** `validation_error`, `invalid_cursor`, `forbidden`, `missing_token`, `invalid_token`
 
+### POST /api/v1/auth/accept-invite
+
+- **Auth:** Public (one-time invite token)
+- **Summary:** Invitee sets their OWN password via the one-time invite token (single-use). Generic invalid_invite on any failure (no oracle).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `password` | string | yes | minLength=12, maxLength=256 |
+| `token` | string | yes | minLength=10, maxLength=4096 |
+
+
+**Response**
+
+```json
+{ "data": { "ok": true } }
+```
+
+**Errors:** `validation_error`, `invalid_invite`, `429`
+
 ### POST /api/v1/auth/login
 
 - **Auth:** Public
@@ -532,6 +553,86 @@ _(no body)_
 ```
 
 **Errors:** `missing_token`, `invalid_token`, `session_revoked`
+
+### GET /api/v1/members
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** List org memberships (pending + active), cursor-paginated. Manager only.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Member} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `forbidden`, `missing_token`, `invalid_token`
+
+### POST /api/v1/members
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Invite a user into the org with a role (atomic user+membership, withBootstrap-scoped). Returns a one-time invite token (email deferred). Manager only.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `email` | string | yes | format="email" |
+| `name` | string | yes | minLength=1, maxLength=120 |
+| `role` | string | yes | enum=["manager","agent","viewer"] |
+
+
+**Response**
+
+```json
+{ "data": { "member": { ...Member }, "inviteToken": "<jwt>" } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `member_exists`, `missing_token`, `invalid_token`
+
+### DELETE /api/v1/members/:userId
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Revoke a membership (revokedAt). Manager only. Cannot revoke self. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `cannot_modify_self`, `cannot_remove_last_manager`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/members/:userId
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Change a member's role. Manager only. Cannot modify self (lockout guard).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `role` | string | yes | enum=["manager","agent","viewer"] |
+
+
+**Response**
+
+```json
+{ "data": { ...Member } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `cannot_modify_self`, `cannot_remove_last_manager`, `missing_token`, `invalid_token`
 
 ### GET /api/v1/notes
 
@@ -1324,6 +1425,10 @@ _(no body)_
 | `invalid_json` | 400 | Body is not valid JSON (parser-level; never a 500). |
 | `bad_request` | 400 | Malformed request rejected before the handler (carried 4xx). |
 | `idempotency_conflict` | 409 | Same Idempotency-Key is still in-flight (concurrent duplicate). Retry later. |
+| `member_exists` | 409 | That email already has an active membership in this org. |
+| `cannot_modify_self` | 400 | A manager cannot change/revoke their own membership. |
+| `cannot_remove_last_manager` | 400 | Would leave the org with zero usable managers. |
+| `invalid_invite` | 400 | Invite token bad/expired/used or wrong membership (generic). |
 | `owner_exists` | 409 | Same-org duplicate national_id (not an enumeration oracle — caller is in-org). |
 | `ownership_sum_invalid` | 400 | Apartment active ownership shares must be empty or sum to exactly 100. |
 | `contractor_exists` | 409 | Same-org duplicate contractor contactEmail (active). |

@@ -26,7 +26,8 @@ export type Resource =
   | 'notifications'
   | 'notes'
   | 'audit'
-  | 'project_assignments';
+  | 'project_assignments'
+  | 'members';
 
 type Matrix = Record<Resource, Record<Action, readonly Role[]>>;
 
@@ -62,6 +63,8 @@ export const POLICY: Matrix = {
   notes: { read: ALL, create: MA, update: MA, delete: MA },
   audit: { read: MGR, create: MGR, update: MGR, delete: MGR },
   project_assignments: { read: ALL, create: MGR, update: MGR, delete: MGR },
+  // Org membership administration — manager only, every action.
+  members: { read: MGR, create: MGR, update: MGR, delete: MGR },
 };
 
 /** Pure decision: is this role coarsely permitted this action on this resource? */

@@ -85,6 +85,7 @@ const EXPECTED: Record<Resource, Record<Action, Role[]>> = {
     delete: ['manager', 'agent'],
   },
   audit: { read: ['manager'], create: ['manager'], update: ['manager'], delete: ['manager'] },
+  members: { read: ['manager'], create: ['manager'], update: ['manager'], delete: ['manager'] },
   project_assignments: {
     read: ['manager', 'agent', 'viewer'],
     create: ['manager'],
@@ -108,7 +109,7 @@ describe('D.17 policy matrix — exhaustive proof vs the documented control', ()
   }
 
   it('every D.17 resource is covered (no silent gap)', () => {
-    expect(RESOURCES.length).toBe(12);
+    expect(RESOURCES.length).toBe(13);
     // viewer can NEVER write anything, anywhere (A.9.4 least-privilege).
     for (const r of RESOURCES) {
       for (const a of ['create', 'update', 'delete'] as Action[]) {

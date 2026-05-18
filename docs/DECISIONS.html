@@ -1207,6 +1207,16 @@ Date · Decision · Alternatives · Why · Reversibility · Revisit trigger
 <li><strong>Ref:</strong> docs/07 §RBAC, D.17, Phase-3 fresh-eyes audit (PROGRESS.md), user directive 2026-05-18 ("a real fix to meet regulation, not a plaster").</li>
 </ul>
 <hr />
+<h2>D.27 — Member-invite consent: token-in-response is a GOVERNED interim risk until email delivery</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-19</li>
+<li><strong>Decision:</strong> Member provisioning (Slice C) uses the industry/ISO-standard invite→accept flow (invitee sets their OWN password; the manager never learns it — A.9.2.1/A.9.4.3). Email delivery (Resend) is deferred to its proper phase; meanwhile `POST /api/v1/members` returns the one-time invite token in the response body to the inviting manager. An independent security review (0 CRITICAL/0 HIGH) flagged a MEDIUM: a manager could self-accept that token, adding an EXISTING user's email to their org without that user's consent (no credential change for existing users — no account takeover; brand-new emails get creds the manager indirectly triggered). Accepted as a GOVERNED interim risk (same pattern as D.22): the inviting role is Manager (already fully privileged within its own org — adding a member to one's own org is within the manager's authority; the only true gap is out-of-band consent for a pre-existing external account, which the email channel provides). <strong>Remediation gate:</strong> real email-delivered invite links + acceptance bound to proof-of-email-control MUST land before production go-live (Gate 5); until then this is bounded, audited (member.invite/member.accept with actor+IP/UA), single-use, 7-day-expiry, role-fixed-by-manager, and recorded.</li>
+<li><strong>Also (security-review follow-through):</strong> invite token surface minimised (no email/role claim — binding is the (membershipId,userId,orgId) tuple). Last-manager lockout: a defence-in-depth `assertNotLastManager` guard was added, AND analysis shows it is structurally unreachable via the API anyway (self-modify/revoke is blocked and the acting principal is itself a usable manager, so ≥1 manager always remains) — recorded so the invariant is understood, not just asserted.</li>
+<li><strong>Alternatives:</strong> (a) block member-invite entirely until email exists — REJECTED: it is the enabler that makes the D.17 deny matrix RUNTIME-provable (the #1 ISO A.9.4 gap) and is a real product need. (b) Pretend it is fully solved — REJECTED: dishonest; the consent channel is genuinely deferred and must be recorded with a hard remediation gate.</li>
+<li><strong>Reversibility:</strong> Trivial — stop returning the token once email delivery exists; the data model (pending membership, single-use token) is already correct.</li>
+<li><strong>Ref:</strong> Slice C security review (PROGRESS.md), D.21/D.22 patterns, ISO 27001 A.9.2.1/A.9.4.3, Gate 5 (Phase 9 launch).</li>
+</ul>
+<hr />
 <h2>Pending Decisions (not yet made — tracked in OPEN_ITEMS.md §4)</h2>
 <p>These are listed so they're visible but explicitly NOT decided:</p>
 <ul>

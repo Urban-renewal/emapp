@@ -13,8 +13,12 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  AcceptInviteInput,
   CreateApartmentInput,
   CreateBuildingInput,
+  CreateMemberInput,
+  ListMembersQuery,
+  UpdateMemberInput,
   AssignTaskInput,
   CreateContractorInput,
   CreateNoteInput,
@@ -699,6 +703,68 @@ const ENDPOINTS: Endpoint[] = [
     response: '(204 No Content)',
     errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
   },
+  {
+    method: 'GET',
+    path: '/api/v1/members',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary: 'List org memberships (pending + active), cursor-paginated. Manager only.',
+    request: ListMembersQuery,
+    response:
+      '{ "data": [ {Member} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: ['validation_error', 'invalid_cursor', 'forbidden', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/members',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'Invite a user into the org with a role (atomic user+membership, withBootstrap-scoped). Returns a one-time invite token (email deferred). Manager only.',
+    request: CreateMemberInput,
+    response: '{ "data": { "member": { ...Member }, "inviteToken": "<jwt>" } }',
+    errors: ['validation_error', 'forbidden', 'member_exists', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/members/:userId',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary: "Change a member's role. Manager only. Cannot modify self (lockout guard).",
+    request: UpdateMemberInput,
+    response: '{ "data": { ...Member } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'cannot_modify_self',
+      'cannot_remove_last_manager',
+      'missing_token',
+      'invalid_token',
+    ],
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/members/:userId',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary: 'Revoke a membership (revokedAt). Manager only. Cannot revoke self. 204.',
+    response: '(204 No Content)',
+    errors: [
+      'forbidden',
+      'not_found',
+      'cannot_modify_self',
+      'cannot_remove_last_manager',
+      'missing_token',
+      'invalid_token',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/auth/accept-invite',
+    auth: 'Public (one-time invite token)',
+    summary:
+      'Invitee sets their OWN password via the one-time invite token (single-use). Generic invalid_invite on any failure (no oracle).',
+    request: AcceptInviteInput,
+    response: '{ "data": { "ok": true } }',
+    errors: ['validation_error', 'invalid_invite', '429'],
+  },
 ];
 
 // §2 global error catalogue (FE switches on error.code, never on message).
@@ -722,6 +788,10 @@ const ERROR_CATALOG: Array<[string, string, string]> = [
     '409',
     'Same Idempotency-Key is still in-flight (concurrent duplicate). Retry later.',
   ],
+  ['member_exists', '409', 'That email already has an active membership in this org.'],
+  ['cannot_modify_self', '400', 'A manager cannot change/revoke their own membership.'],
+  ['cannot_remove_last_manager', '400', 'Would leave the org with zero usable managers.'],
+  ['invalid_invite', '400', 'Invite token bad/expired/used or wrong membership (generic).'],
   [
     'owner_exists',
     '409',

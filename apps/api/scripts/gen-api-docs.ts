@@ -715,6 +715,8 @@ const ERROR_CATALOG: Array<[string, string, string]> = [
   ['forbidden', '403', 'Authenticated but role lacks permission (D.17 — e.g. non-Manager write).'],
   ['not_found', '404', 'Resource absent OR outside the caller’s org/assignment (no oracle).'],
   ['invalid_cursor', '400', 'Pagination cursor tampered/garbage — never a 500.'],
+  ['invalid_json', '400', 'Body is not valid JSON (parser-level; never a 500).'],
+  ['bad_request', '400', 'Malformed request rejected before the handler (carried 4xx).'],
   [
     'owner_exists',
     '409',

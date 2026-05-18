@@ -34,8 +34,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         : (carriedStatus ?? HttpStatus.INTERNAL_SERVER_ERROR);
 
     if (!(exception instanceof HttpException) && carriedStatus) {
-      const msg = exception instanceof Error ? exception.message : '';
-      const code = /invalid json/i.test(msg) ? 'invalid_json' : 'bad_request';
+      // Use the STABLE discriminator the thrower attached (e.g. the JSON
+      // parser sets code:'invalid_json'). No message string-matching:
+      // only our own allow-listed lowercase codes are echoed; anything
+      // else (incl. Fastify's FST_ERR_* codes) → generic 'bad_request'.
+      const ec = (exception as { code?: unknown }).code;
+      const code = ec === 'invalid_json' ? 'invalid_json' : 'bad_request';
       reply.status(carriedStatus).send({ error: { code } });
       return;
     }

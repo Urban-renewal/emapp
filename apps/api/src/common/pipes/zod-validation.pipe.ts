@@ -24,7 +24,11 @@ function stringIsUnstorable(s: string): boolean {
 }
 
 function hasUnstorableText(v: unknown, depth = 0): boolean {
-  if (depth > 8) return false;
+  // FAIL-CLOSED: a safety guard must never silently pass un-scanned
+  // input. Every Zod body schema is `.strict()` and shallow (<= ~4
+  // levels), so anything past this generous bound is pathological /
+  // adversarial -> reject rather than let it reach Postgres.
+  if (depth > 8) return true;
   if (typeof v === 'string') return stringIsUnstorable(v);
   if (Array.isArray(v)) return v.some((x) => hasUnstorableText(x, depth + 1));
   if (v && typeof v === 'object') {

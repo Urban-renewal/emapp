@@ -194,6 +194,10 @@ const OUT = join(process.cwd(), '..', '..', 'docs', '09-api-reference.generated.
 const generated = render();
 const check = process.argv.includes('--check');
 
+// Newline-insensitive: a Windows checkout (CRLF) vs the LF the script emits
+// must NOT read as "stale" — content equality is what matters, not EOL.
+const norm = (s: string): string => s.replace(/\r\n/g, '\n').replace(/\s*$/, '');
+
 if (check) {
   let current = '';
   try {
@@ -201,7 +205,7 @@ if (check) {
   } catch {
     /* missing → treated as stale */
   }
-  if (current !== generated) {
+  if (norm(current) !== norm(generated)) {
     process.stderr.write(
       'docs/09-api-reference.generated.md is STALE — run `pnpm --filter @emapp/api gen:api-docs` and commit.\n',
     );

@@ -178,7 +178,7 @@ export class ApartmentsService {
           })
           .returning();
         if (!row) throw new Error('apartment insert returned no row');
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',
@@ -225,7 +225,7 @@ export class ApartmentsService {
           .where(eq(apartments.id, id))
           .returning();
         if (!row) throw NOT_FOUND;
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',
@@ -256,7 +256,7 @@ export class ApartmentsService {
           .update(apartments)
           .set({ archivedAt: new Date(), updatedAt: new Date() })
           .where(eq(apartments.id, id));
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',

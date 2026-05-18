@@ -174,7 +174,7 @@ export class BuildingsService {
           })
           .returning();
         if (!row) throw new Error('building insert returned no row');
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',
@@ -209,7 +209,7 @@ export class BuildingsService {
 
         const [row] = await tx.update(buildings).set(patch).where(eq(buildings.id, id)).returning();
         if (!row) throw NOT_FOUND;
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',
@@ -239,7 +239,7 @@ export class BuildingsService {
           .update(buildings)
           .set({ archivedAt: new Date(), updatedAt: new Date() })
           .where(eq(buildings.id, id));
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',

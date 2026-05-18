@@ -116,7 +116,7 @@ export class ContractorsService {
             })
             .returning();
           if (!row) throw new Error('contractor insert returned no row');
-          await new AuditService(tx).log({
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
             orgId: user.orgId,
             actorId: user.sub,
             actorType: 'user',
@@ -163,7 +163,7 @@ export class ContractorsService {
             .where(eq(contractors.id, id))
             .returning();
           if (!row) throw NOT_FOUND;
-          await new AuditService(tx).log({
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
             orgId: user.orgId,
             actorId: user.sub,
             actorType: 'user',
@@ -201,7 +201,7 @@ export class ContractorsService {
           .update(contractors)
           .set({ archivedAt: new Date(), updatedAt: new Date() })
           .where(eq(contractors.id, id));
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',

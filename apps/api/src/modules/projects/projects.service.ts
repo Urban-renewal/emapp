@@ -177,7 +177,7 @@ export class ProjectsService {
           })
           .returning();
         if (!row) throw new Error('project insert returned no row');
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',
@@ -214,7 +214,7 @@ export class ProjectsService {
 
         const [row] = await tx.update(projects).set(patch).where(eq(projects.id, id)).returning();
         if (!row) throw NOT_FOUND;
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',
@@ -245,7 +245,7 @@ export class ProjectsService {
           .update(projects)
           .set({ archivedAt: sql`now()`, updatedAt: new Date() })
           .where(eq(projects.id, id));
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',

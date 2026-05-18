@@ -153,7 +153,7 @@ export class ProjectAssignmentsService {
             })
             .returning();
           if (!row) throw new Error('assignment insert returned no row');
-          await new AuditService(tx).log({
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
             orgId: user.orgId,
             actorId: user.sub,
             actorType: 'user',
@@ -192,7 +192,7 @@ export class ProjectAssignmentsService {
           .update(projectAssignments)
           .set({ unassignedAt: new Date() })
           .where(eq(projectAssignments.id, id));
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',

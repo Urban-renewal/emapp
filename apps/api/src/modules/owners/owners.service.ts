@@ -186,7 +186,7 @@ export class OwnersService {
             })
             .returning({ id: owners.id });
           if (!ins) throw new Error('owner insert returned no row');
-          await new AuditService(tx).log({
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
             orgId: user.orgId,
             actorId: user.sub,
             actorType: 'user',
@@ -257,7 +257,7 @@ export class OwnersService {
             }
           }
           await tx.update(owners).set(patch).where(eq(owners.id, id));
-          await new AuditService(tx).log({
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
             orgId: user.orgId,
             actorId: user.sub,
             actorType: 'user',
@@ -298,7 +298,7 @@ export class OwnersService {
           .update(owners)
           .set({ archivedAt: new Date(), updatedAt: new Date() })
           .where(eq(owners.id, id));
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',

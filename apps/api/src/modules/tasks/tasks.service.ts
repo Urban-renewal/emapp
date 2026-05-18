@@ -191,7 +191,7 @@ export class TasksService {
               assigneeIds.map((uid) => ({ taskId: row.id, userId: uid, assignedBy: user.sub })),
             );
         }
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',
@@ -244,7 +244,7 @@ export class TasksService {
 
         const [row] = await tx.update(tasks).set(patch).where(eq(tasks.id, id)).returning();
         if (!row) throw NOT_FOUND;
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',
@@ -276,7 +276,7 @@ export class TasksService {
           .update(tasks)
           .set({ archivedAt: new Date(), updatedAt: new Date() })
           .where(eq(tasks.id, id));
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',
@@ -328,7 +328,7 @@ export class TasksService {
             .values({ taskId, userId: input.userId, assignedBy: user.sub })
             .returning();
           if (!row) throw new Error('assignee insert returned no row');
-          await new AuditService(tx).log({
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
             orgId: user.orgId,
             actorId: user.sub,
             actorType: 'user',
@@ -361,7 +361,7 @@ export class TasksService {
           .where(and(eq(taskAssignees.taskId, taskId), eq(taskAssignees.userId, userId)))
           .returning({ id: taskAssignees.id });
         if (deleted.length === 0) throw NOT_FOUND;
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',

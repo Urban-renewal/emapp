@@ -151,7 +151,7 @@ export class SharesService {
             })
             .returning();
           if (!row) throw new Error('share insert returned no row');
-          await new AuditService(tx).log({
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
             orgId: user.orgId,
             actorId: user.sub,
             actorType: 'user',
@@ -190,7 +190,7 @@ export class SharesService {
           .where(eq(shares.id, id))
           .returning();
         if (!row) throw NOT_FOUND;
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',
@@ -223,7 +223,7 @@ export class SharesService {
           .update(shares)
           .set({ revokedAt: new Date(), revokedBy: user.sub, updatedAt: new Date() })
           .where(eq(shares.id, id));
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',

@@ -26,6 +26,12 @@ export interface AccessTokenPayload {
   role: string;
   sid: string;
   type: 'access';
+  // Request-context, NOT JWT claims — never signed/verified. Populated by
+  // the CurrentUser decorator from the trusted request (trustProxy) so
+  // services can attach source IP / User-Agent to the audit trail
+  // (ISO 27001 A.12.4). Optional: absent in non-HTTP / test contexts.
+  ip?: string;
+  userAgent?: string;
 }
 
 export interface UserProfile {

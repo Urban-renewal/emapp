@@ -204,7 +204,7 @@ export class NotesService {
           })
           .returning();
         if (!row) throw new Error('note insert returned no row');
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',
@@ -232,7 +232,7 @@ export class NotesService {
         if (input.pinned !== undefined) patch.isPinned = input.pinned ? 'true' : null;
         const [row] = await tx.update(notes).set(patch).where(eq(notes.id, id)).returning();
         if (!row) throw NOT_FOUND;
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',
@@ -259,7 +259,7 @@ export class NotesService {
           .update(notes)
           .set({ archivedAt: new Date(), updatedAt: new Date() })
           .where(eq(notes.id, id));
-        await new AuditService(tx).log({
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',

@@ -272,7 +272,7 @@ export class OwnershipsService {
               .returning();
           }
 
-          await new AuditService(tx).log({
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
             orgId: user.orgId,
             actorId: user.sub,
             actorType: 'user',

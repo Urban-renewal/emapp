@@ -1134,6 +1134,17 @@ Date · Decision · Alternatives · Why · Reversibility · Revisit trigger
 <li><strong>Revisit trigger:</strong> SMS costs become significant (&gt;~₪500/mo) → reevaluate providers; or international expansion → add Twilio alongside.</li>
 <li><strong>Ref:</strong> Doc 02 §6 (ISMSProvider), Doc 06 §16.2, OPEN_ITEMS.md (SMS moved from Phase 2 → MVP)</li>
 </ul>
+<h2>D.21 — Auth architecture: full ownership (argon2id + domain-DB sessions), Better Auth removed as orchestrator</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-18</li>
+<li><strong>Decision:</strong> Own the entire authentication stack. Password hashing via <code>argon2id</code> (OWASP params). Credentials, sessions and refresh tokens live in the <strong>domain database</strong> (RLS-aware), not in a separate Better Auth store. Signup is a <strong>single atomic transaction</strong> (org + user + membership + credential + audit) via the audited <code>withProvider</code> bootstrap. Refresh tokens are stored <strong>hashed (SHA-256)</strong> with rotation-on-use and reuse-detection (replay ⇒ revoke all sessions + audit). Better Auth is <strong>removed</strong> from the request path (it was used only for password hashing behind a custom JWT + manual-refresh hybrid). The locked stack entry "Auth: Better Auth" (CLAUDE.md) is hereby superseded by this decision.</li>
+<li><strong>Alternatives:</strong> (a) <em>Keep Better Auth, full adoption</em> — rejected: its HTTP/session model does not satisfy the locked wire contract (stateless JWT with mandated claims, opaque hashed refresh in a <code>sessions</code> table, <code>{data}</code> envelope, <code>/api/v1</code> prefix, RLS via <code>withTenant</code>), and the domain bootstrap would still span its store + ours non-atomically. (b) <em>Patch the hybrid per-finding</em> — rejected: orphaned-account / non-atomic-signup / plaintext-refresh / logout-not-revoking are all symptoms of the two-store hybrid; point fixes are plasters that retain the unsafe topology.</li>
+<li><strong>Why:</strong> A single store + single transaction makes the orphaned-account class of bug <em>structurally impossible</em> rather than "fixed". It is the only option that satisfies auth invariant #1 (atomic signup). The surface lost from Better Auth is password hashing only — replaced by a vetted argon2id library. For a 2-dev team facing security review (ISO 27001 A.8.5/A.8.24/A.8.25/A.8.26), a fully-understood auth module is more defensible than a library fighting the spec contract.</li>
+<li><strong>Risk &amp; acceptance:</strong> Hand-written auth carries hand-rolled-auth risk. Contained by: black-box invariant contract suite written <em>before</em> the code; <code>@security-reviewer</code> on the diff pre-commit; argon2id not hand-rolled; rate-limit/lockout at the framework layer. Residual risk accepted by the product owner on this date as the lower-risk path versus shipping the broken hybrid.</li>
+<li><strong>Reversibility:</strong> Hard. Auth touches schema, sessions, and every guarded route. Treated as a one-way door — hence this record + Gate 6.</li>
+<li><strong>Revisit trigger:</strong> A managed auth provider (WorkOS/Auth0) is adopted org-wide, or the contract invariants change materially.</li>
+<li><strong>Ref:</strong> Doc 07 §6, Doc 08, GATES.md (Gate 6), Phase 2 audit + black-box conformance (PROGRESS.md)</li>
+</ul>
 <hr />
 <h2>Pending Decisions (not yet made — tracked in OPEN_ITEMS.md §4)</h2>
 <p>These are listed so they're visible but explicitly NOT decided:</p>

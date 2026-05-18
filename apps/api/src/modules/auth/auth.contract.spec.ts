@@ -397,6 +397,114 @@ describe('CONTRACT · brute-force / lockout', () => {
   });
 });
 
+// ── Deep adversarial edge cases ─────────────────────────────────────────────
+// D1  A tampered access JWT is rejected (signature enforced).
+// D2  An alg:none forged token is rejected (algorithm pinned).
+// D3  A refresh token presented as an access cookie does not authenticate.
+// D4  Reuse-detection PURGES the chain: replaying an old rotated token must
+//     also invalidate the current (newest) token (theft response).
+// D5  Lockout is ENFORCED, not just counted: during the lock window even the
+//     CORRECT password does not log in.
+// D6  GET on a POST-only auth route → 404 (no verb confusion).
+// D7  Over-long password (>256) → 400 validation_error (DoS bound).
+// D8  Injection-ish payloads in email/org_name never 500 (parameterised).
+// D9  Concurrent double-spend of one refresh token → at most ONE success.
+describe('CONTRACT · adversarial', () => {
+  ct('D1 tampered access JWT → 401', async () => {
+    const s = await signup(uniqueEmail('d1'));
+    const at = cookie(s.cookies, 'access_token') ?? '';
+    const parts = at.split('.');
+    parts[1] = (parts[1] ?? '') + 'x'; // corrupt the payload segment
+    const r = await call('/me', { cookie: `access_token=${parts.join('.')}` });
+    expect(r.status).toBe(401);
+  });
+
+  ct('D2 alg:none forged token → 401', async () => {
+    const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
+    const body = Buffer.from(
+      JSON.stringify({ sub: 'x', orgId: 'x', role: 'manager', sid: 'x', type: 'access' }),
+    ).toString('base64url');
+    const forged = `${header}.${body}.`;
+    const r = await call('/me', { cookie: `access_token=${forged}` });
+    expect(r.status).toBe(401);
+  });
+
+  ct('D3 refresh token used as access cookie does not authenticate', async () => {
+    const s = await signup(uniqueEmail('d3'));
+    const rt = cookie(s.cookies, 'refresh_token') ?? '';
+    const r = await call('/me', { cookie: `access_token=${rt}` });
+    expect(r.status).toBe(401);
+  });
+
+  ct('D4 replay of a rotated token purges the whole chain', async () => {
+    const s = await signup(uniqueEmail('d4'));
+    const rt1 = cookie(s.cookies, 'refresh_token');
+    const r1 = await call('/auth/refresh', { method: 'POST', cookie: `refresh_token=${rt1}` });
+    expect(r1.status).toBe(200);
+    const rt2 = cookie(r1.cookies, 'refresh_token');
+    // Replay the now-rotated rt1 → theft signal.
+    const replay = await call('/auth/refresh', { method: 'POST', cookie: `refresh_token=${rt1}` });
+    expect(replay.status).toBe(401);
+    // The current token rt2 must now ALSO be dead (chain revoked).
+    const after = await call('/auth/refresh', { method: 'POST', cookie: `refresh_token=${rt2}` });
+    expect(after.status, 'reuse-detection did not purge the active chain').toBe(401);
+  });
+
+  ct('D5 lockout is enforced — correct password blocked during lock', async () => {
+    const email = uniqueEmail('d5');
+    await signup(email);
+    for (let i = 0; i < 6; i++) {
+      await call('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password: `Bad${i}Password!!` }),
+      });
+    }
+    const good = await call('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password: PW }),
+    });
+    expect(
+      good.status === 423 || good.status === 401,
+      `locked account accepted the correct password (status ${good.status})`,
+    ).toBe(true);
+    expect(good.status).not.toBe(200);
+  });
+
+  ct('D6 GET on POST-only /auth/login → 404', async () => {
+    const res = await fetch(`${API}/auth/login`, { method: 'GET' });
+    expect(res.status).toBe(404);
+  });
+
+  ct('D7 over-long password (>256) → 400 validation_error', async () => {
+    const r = await signup(uniqueEmail('d7'), { password: 'a'.repeat(300) });
+    expect(r.status).toBe(400);
+    expect((r.body['error'] as Json)?.['code']).toBe('validation_error');
+  });
+
+  ct('D8 injection-ish org_name/email never 500', async () => {
+    const r1 = await signup(uniqueEmail('d8'), { org_name: "Robert'); DROP TABLE users;--" });
+    expect(r1.status).toBeLessThan(500);
+    const r2 = await call('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: "' OR 1=1--@x.com", password: PW }),
+    });
+    expect(r2.status).toBeLessThan(500);
+  });
+
+  ct('D9 concurrent double-spend of one refresh token → at most one 200', async () => {
+    const s = await signup(uniqueEmail('d9'));
+    const rt = cookie(s.cookies, 'refresh_token');
+    const [a, b] = await Promise.all([
+      call('/auth/refresh', { method: 'POST', cookie: `refresh_token=${rt}` }),
+      call('/auth/refresh', { method: 'POST', cookie: `refresh_token=${rt}` }),
+    ]);
+    const oks = [a, b].filter((r) => r.status === 200).length;
+    expect(oks, `refresh double-spend: ${oks} of 2 concurrent calls succeeded`).toBeLessThanOrEqual(
+      1,
+    );
+  });
+});
+
 afterAll(() => {
   if (!LIVE) return;
   // eslint-disable-next-line no-console

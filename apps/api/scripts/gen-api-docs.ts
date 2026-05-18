@@ -207,8 +207,19 @@ if (check) {
     /* missing → treated as stale */
   }
   if (norm(current) !== norm(generated)) {
+    const a = norm(current).split('\n');
+    const b = norm(generated).split('\n');
+    const diff: string[] = [];
+    for (let i = 0; i < Math.max(a.length, b.length) && diff.length < 24; i += 1) {
+      if (a[i] !== b[i]) {
+        diff.push(
+          `L${i + 1}\n  committed: ${JSON.stringify(a[i])}\n  generated: ${JSON.stringify(b[i])}`,
+        );
+      }
+    }
     process.stderr.write(
-      'docs/09-api-reference.generated.md is STALE — run `pnpm --filter @emapp/api gen:api-docs` and commit.\n',
+      'docs/09-api-reference.generated.md is STALE — run `pnpm --filter @emapp/api gen:api-docs` and commit.\n' +
+        `(${a.length} vs ${b.length} lines) first diffs:\n${diff.join('\n')}\n`,
     );
     process.exit(1);
   }

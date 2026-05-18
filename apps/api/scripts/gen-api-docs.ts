@@ -12,6 +12,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { OtpRequestSchema, OtpVerifySchema } from '@emapp/shared-types';
 import type { ZodTypeAny } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
@@ -85,6 +86,24 @@ const ENDPOINTS: Endpoint[] = [
   },
   {
     method: 'POST',
+    path: '/api/v1/auth/otp/request',
+    auth: 'Public (Tenant SMS, D.20)',
+    summary: 'Request a Tenant SMS OTP. Always generic 200 (anti-enumeration).',
+    request: OtpRequestSchema,
+    response: '{ "data": { "ok": true } }',
+    errors: ['validation_error', '429'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/auth/otp/verify',
+    auth: 'Public (Tenant SMS, D.20)',
+    summary: 'Verify OTP → short-lived tenant_access cookie (own-record-only).',
+    request: OtpVerifySchema,
+    response: '{ "data": { "ok": true } }  (+ tenant_access cookie)',
+    errors: ['validation_error', 'invalid_otp', '429'],
+  },
+  {
+    method: 'POST',
     path: '/api/v1/provider/auth/login',
     auth: 'Public (MFA mandatory)',
     summary: 'Provider Admin: argon2 password AND TOTP/recovery. No password-only.',
@@ -119,6 +138,7 @@ const ERROR_CATALOG: Array<[string, string, string]> = [
   ['session_revoked', '401', 'Session logged out / reuse-purged — immediate revoke.'],
   ['missing_refresh_token', '401', 'No refresh cookie on the refresh endpoint.'],
   ['invalid_refresh', '401', 'Refresh token unknown/expired/rotated/replayed.'],
+  ['invalid_otp', '401', 'Tenant OTP wrong/expired/used/attempts-exhausted (generic).'],
   ['not_member', '401', 'switch-org target is not an active membership.'],
   ['429', '429', 'Per-IP throttle exceeded (signup/login dedicated limits).'],
   ['500', '500', 'Unexpected. Generic body; cause logged server-side only.'],

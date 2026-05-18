@@ -921,6 +921,7 @@ footer .footer-meta {
 <div class="doc-hero">
 <h1>זרימות Auth &amp; API — צד לקוח וצד שרת</h1>
 <div class="sub">9 זרימות · כל צעד · האבטחה בכל שכבה</div>
+<p style="background:#fde68a;border:2px solid #d97706;padding:10px;border-radius:6px"><strong>⚠ SUPERSEDED BY D.21 (2026-05-18).</strong> Every "Better Auth" / "bcrypt" reference in this document is historical. The auth stack is fully owned: <strong>argon2id</strong> hashing, domain-DB sessions (<code>auth_sessions</code>/<code>provider_sessions</code>, SHA-256-hashed refresh, rotation + reuse-detection), atomic signup via <code>withBootstrap</code>, immediate revocation, silent lockout, Provider MFA (TOTP), Tenant SMS OTP behind <code>ISMSProvider</code> (D.20). The FLOWS below (request/response shapes, envelope, cookie attrs, MFA/OTP steps) remain accurate; only the implementation library is replaced. Authoritative: DECISIONS D.21/D.22 + the generated <code>docs/09-api-reference.generated.md</code>.</p>
 <div class="tag">EMAPP · Auth &amp; API Flows</div>
 </div>
 <p><strong>מה זה:</strong> התשובה המדויקת ל"לחצתי התחברות — מה קורה?". כל זרימה כרצף: מה הדפדפן עושה, מה השרת עושה, ומה האבטחה בכל צעד.</p>

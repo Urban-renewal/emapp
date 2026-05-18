@@ -632,6 +632,65 @@ describe('CONTRACT · provider auth (T2.10)', () => {
   }, 30000);
 });
 
+// ── Tenant SMS OTP (D.20 / GATE 4) ─────────────────────────────────────────
+// OTP1 request missing phone → 400 validation_error.
+// OTP2 request with any plausible phone → generic 200 {data:{ok:true}} —
+//      an UNKNOWN phone must look identical to a known one (anti-enum, no SMS).
+// OTP3 verify missing fields → 400 validation_error.
+// OTP4 verify with non-6-digit code → 400 validation_error (schema).
+// OTP5 verify wrong/unknown → 401 invalid_otp (generic; no oracle).
+// OTP6 verb confusion: GET /auth/otp/request → 404.
+// OTP7 tier isolation: an OTP/tenant flow never yields an org/provider token;
+//      and an org access token is not a tenant token (covered by guards).
+describe('CONTRACT · tenant OTP (D.20)', () => {
+  ct('OTP1 request missing phone → 400 validation_error', async () => {
+    const r = await call('/auth/otp/request', { method: 'POST', body: JSON.stringify({}) });
+    expect(r.status).toBe(400);
+    expect((r.body['error'] as Json)?.['code']).toBe('validation_error');
+  });
+
+  ct('OTP2 request with unknown phone → generic 200 (anti-enumeration)', async () => {
+    const r = await call('/auth/otp/request', {
+      method: 'POST',
+      body: JSON.stringify({ phone: '0500000000' }),
+    });
+    expect(r.status, `unknown phone leaked (status ${r.status})`).toBe(200);
+    expect((r.body['data'] as Json)?.['ok']).toBe(true);
+  });
+
+  ct('OTP3 verify missing fields → 400 validation_error', async () => {
+    const r = await call('/auth/otp/verify', {
+      method: 'POST',
+      body: JSON.stringify({ phone: '0500000000' }),
+    });
+    expect(r.status).toBe(400);
+    expect((r.body['error'] as Json)?.['code']).toBe('validation_error');
+  });
+
+  ct('OTP4 verify with non-6-digit code → 400 validation_error', async () => {
+    const r = await call('/auth/otp/verify', {
+      method: 'POST',
+      body: JSON.stringify({ phone: '0500000000', code: 'abc' }),
+    });
+    expect(r.status).toBe(400);
+    expect((r.body['error'] as Json)?.['code']).toBe('validation_error');
+  });
+
+  ct('OTP5 verify wrong/unknown → generic 401 invalid_otp', async () => {
+    const r = await call('/auth/otp/verify', {
+      method: 'POST',
+      body: JSON.stringify({ phone: '0500000000', code: '000000' }),
+    });
+    expect(r.status).toBe(401);
+    expect((r.body['error'] as Json)?.['code']).toBe('invalid_otp');
+  });
+
+  ct('OTP6 GET on POST-only /auth/otp/request → 404', async () => {
+    const res = await fetch(`${API}/auth/otp/request`, { method: 'GET' });
+    expect(res.status).toBe(404);
+  });
+});
+
 afterAll(() => {
   if (!LIVE) return;
   // eslint-disable-next-line no-console

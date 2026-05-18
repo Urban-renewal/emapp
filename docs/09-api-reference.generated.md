@@ -45,6 +45,47 @@ _(no body)_
 
 **Errors:** `missing_token`, `invalid_token`, `session_revoked`
 
+### POST /api/v1/auth/otp/request
+
+- **Auth:** Public (Tenant SMS, D.20)
+- **Summary:** Request a Tenant SMS OTP. Always generic 200 (anti-enumeration).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `phone` | string | yes | minLength=9, maxLength=20 |
+
+
+**Response**
+
+```json
+{ "data": { "ok": true } }
+```
+
+**Errors:** `validation_error`, `429`
+
+### POST /api/v1/auth/otp/verify
+
+- **Auth:** Public (Tenant SMS, D.20)
+- **Summary:** Verify OTP → short-lived tenant_access cookie (own-record-only).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `code` | string | yes | pattern="^\\d{6}$" |
+| `phone` | string | yes | minLength=9, maxLength=20 |
+
+
+**Response**
+
+```json
+{ "data": { "ok": true } }  (+ tenant_access cookie)
+```
+
+**Errors:** `validation_error`, `invalid_otp`, `429`
+
 ### POST /api/v1/auth/refresh
 
 - **Auth:** Cookie (refresh_token)
@@ -189,6 +230,7 @@ _(no body)_
 | `session_revoked` | 401 | Session logged out / reuse-purged — immediate revoke. |
 | `missing_refresh_token` | 401 | No refresh cookie on the refresh endpoint. |
 | `invalid_refresh` | 401 | Refresh token unknown/expired/rotated/replayed. |
+| `invalid_otp` | 401 | Tenant OTP wrong/expired/used/attempts-exhausted (generic). |
 | `not_member` | 401 | switch-org target is not an active membership. |
 | `429` | 429 | Per-IP throttle exceeded (signup/login dedicated limits). |
 | `500` | 500 | Unexpected. Generic body; cause logged server-side only. |

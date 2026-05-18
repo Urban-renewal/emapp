@@ -15,14 +15,18 @@ import { join } from 'node:path';
 import {
   CreateApartmentInput,
   CreateBuildingInput,
+  CreateOwnerInput,
   CreateProjectInput,
   ListApartmentsQuery,
   ListBuildingsQuery,
+  ListOwnersQuery,
   ListProjectsQuery,
   OtpRequestSchema,
   OtpVerifySchema,
+  OwnerSearchInput,
   UpdateApartmentInput,
   UpdateBuildingInput,
+  UpdateOwnerInput,
   UpdateProjectInput,
 } from '@emapp/shared-types';
 import type { ZodTypeAny } from 'zod';
@@ -274,6 +278,69 @@ const ENDPOINTS: Endpoint[] = [
     response: '(204 No Content)',
     errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
   },
+  {
+    method: 'GET',
+    path: '/api/v1/owners',
+    auth: 'AuthGuard + TenantGuard',
+    summary:
+      'List org owners, cursor-paginated. PII (national_id/phone) returned MASKED only (decrypted+masked in SQL).',
+    request: ListOwnersQuery,
+    response:
+      '{ "data": [ {Owner — nationalIdMasked,phoneMasked} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: ['validation_error', 'invalid_cursor', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/owners/search',
+    auth: 'AuthGuard + TenantGuard',
+    summary:
+      'HMAC lookup by national_id/phone. PII in the BODY (never URL) so it cannot leak to access logs; matched by stored HMAC.',
+    request: OwnerSearchInput,
+    response: '{ "data": [ {Owner — masked} ] }',
+    errors: ['validation_error', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/owners',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'Create an owner. national_id: 9 digits + Israeli MOD-10 checksum; phone normalized to E.164. PII encrypted at rest.',
+    request: CreateOwnerInput,
+    response: '{ "data": { ...Owner (masked) } }',
+    errors: ['validation_error', 'forbidden', 'owner_exists', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/owners/:id',
+    auth: 'AuthGuard + TenantGuard',
+    summary: 'Get one owner by id (org-scoped via RLS). PII masked.',
+    response: '{ "data": { ...Owner (masked) } }',
+    errors: ['not_found', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/owners/:id',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary: 'Partial update. Manager only. PII re-encrypted/re-hashed when changed.',
+    request: UpdateOwnerInput,
+    response: '{ "data": { ...Owner (masked) } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'owner_exists',
+      'missing_token',
+      'invalid_token',
+    ],
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/owners/:id',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary: 'Soft delete (archivedAt — "ארכוב"). Idempotent. 204.',
+    response: '(204 No Content)',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
+  },
 ];
 
 // §2 global error catalogue (FE switches on error.code, never on message).
@@ -290,6 +357,11 @@ const ERROR_CATALOG: Array<[string, string, string]> = [
   ['forbidden', '403', 'Authenticated but role lacks permission (D.17 — e.g. non-Manager write).'],
   ['not_found', '404', 'Resource absent OR outside the caller’s org/assignment (no oracle).'],
   ['invalid_cursor', '400', 'Pagination cursor tampered/garbage — never a 500.'],
+  [
+    'owner_exists',
+    '409',
+    'Same-org duplicate national_id (not an enumeration oracle — caller is in-org).',
+  ],
   ['429', '429', 'Per-IP throttle exceeded (signup/login dedicated limits).'],
   ['500', '500', 'Unexpected. Generic body; cause logged server-side only.'],
 ];

@@ -328,6 +328,130 @@ _(no body)_
 
 **Errors:** `missing_token`, `invalid_token`, `session_revoked`
 
+### GET /api/v1/owners
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List org owners, cursor-paginated. PII (national_id/phone) returned MASKED only (decrypted+masked in SQL).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Owner — nationalIdMasked,phoneMasked} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+
+### POST /api/v1/owners
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Create an owner. national_id: 9 digits + Israeli MOD-10 checksum; phone normalized to E.164. PII encrypted at rest.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `email` | unknown | no | — |
+| `name` | string | yes | minLength=1, maxLength=100 |
+| `national_id` | string | yes | pattern="^\\d{9}$" |
+| `notes` | unknown | no | — |
+| `phone` | unknown | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Owner (masked) } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `owner_exists`, `missing_token`, `invalid_token`
+
+### DELETE /api/v1/owners/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Soft delete (archivedAt — "ארכוב"). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/owners/:id
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Get one owner by id (org-scoped via RLS). PII masked.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Owner (masked) } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/owners/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Partial update. Manager only. PII re-encrypted/re-hashed when changed.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `email` | unknown | no | — |
+| `name` | string | no | minLength=1, maxLength=100 |
+| `national_id` | string | no | pattern="^\\d{9}$" |
+| `notes` | unknown | no | — |
+| `phone` | unknown | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Owner (masked) } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `owner_exists`, `missing_token`, `invalid_token`
+
+### POST /api/v1/owners/search
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** HMAC lookup by national_id/phone. PII in the BODY (never URL) so it cannot leak to access logs; matched by stored HMAC.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `national_id` | string | no | pattern="^\\d{9}$" |
+| `phone` | string | no | minLength=9, maxLength=20 |
+
+
+**Response**
+
+```json
+{ "data": [ {Owner — masked} ] }
+```
+
+**Errors:** `validation_error`, `missing_token`, `invalid_token`
+
 ### GET /api/v1/projects
 
 - **Auth:** AuthGuard + TenantGuard
@@ -552,5 +676,6 @@ _(no body)_
 | `forbidden` | 403 | Authenticated but role lacks permission (D.17 — e.g. non-Manager write). |
 | `not_found` | 404 | Resource absent OR outside the caller’s org/assignment (no oracle). |
 | `invalid_cursor` | 400 | Pagination cursor tampered/garbage — never a 500. |
+| `owner_exists` | 409 | Same-org duplicate national_id (not an enumeration oracle — caller is in-org). |
 | `429` | 429 | Per-IP throttle exceeded (signup/login dedicated limits). |
 | `500` | 500 | Unexpected. Generic body; cause logged server-side only. |

@@ -8,6 +8,7 @@ import { ConfigurableThrottlerGuard } from './common/guards/throttler.guard';
 import { ApartmentsModule } from './modules/apartments/apartments.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BuildingsModule } from './modules/buildings/buildings.module';
+import { OwnersModule } from './modules/owners/owners.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 
 @Module({
@@ -25,6 +26,9 @@ import { ProjectsModule } from './modules/projects/projects.module';
           'req.headers.cookie',
           'req.body.password',
           'req.body.token',
+          // PII — owner create/update/search bodies (Doc07: never log PII).
+          'req.body.national_id',
+          'req.body.phone',
         ],
         level: process.env['NODE_ENV'] !== 'production' ? 'debug' : 'info',
       },
@@ -33,6 +37,7 @@ import { ProjectsModule } from './modules/projects/projects.module';
     ProjectsModule,
     BuildingsModule,
     ApartmentsModule,
+    OwnersModule,
   ],
   controllers: [HealthController],
   // Rate limiting ENFORCED globally; the configurable guard adds a

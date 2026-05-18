@@ -1,0 +1,215 @@
+/**
+ * gen-api-docs (Doc 09 §1.4) — generates docs/09-api-reference.generated.md
+ * from the Zod request schemas (source of truth) + the endpoint registry.
+ *
+ *   pnpm --filter @emapp/api gen:api-docs          # write
+ *   pnpm --filter @emapp/api gen:api-docs:check    # CI: exit 1 if stale
+ *
+ * Field types/validation are derived via zod-to-json-schema from the REAL
+ * schemas, so the doc cannot drift from the contract. Output is fully
+ * deterministic (stable ordering, no timestamps) so --check is reliable.
+ */
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import type { ZodTypeAny } from 'zod';
+import { zodToJsonSchema } from 'zod-to-json-schema';
+
+import { LoginSchema, OrgSwitchSchema } from '../src/modules/auth/dto/login.dto';
+import { SignupSchema } from '../src/modules/auth/dto/signup.dto';
+import { ProviderLoginSchema } from '../src/modules/auth/provider/provider-login.dto';
+
+interface Endpoint {
+  method: string;
+  path: string;
+  auth: string;
+  summary: string;
+  request?: ZodTypeAny;
+  response: string;
+  errors: string[];
+}
+
+// Routing facts are explicit; field shapes/validation come from the Zod
+// schemas via zod-to-json-schema (the schema is the source of truth).
+const ENDPOINTS: Endpoint[] = [
+  {
+    method: 'POST',
+    path: '/api/v1/auth/signup',
+    auth: 'Public',
+    summary: 'Create org + first manager + session (atomic). Anti-enumeration.',
+    request: SignupSchema,
+    response: '{ "data": { "user": { "id","name","email","role":"manager","organization":{} } } }',
+    errors: ['validation_error', '429'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/auth/login',
+    auth: 'Public',
+    summary: 'Password login. Generic failure (anti-enumeration), silent lockout.',
+    request: LoginSchema,
+    response: '{ "data": { "user": { ...profile } } }  (+ httpOnly cookies)',
+    errors: ['validation_error', 'invalid_credentials', '429'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/auth/refresh',
+    auth: 'Cookie (refresh_token)',
+    summary: 'Rotate refresh; reuse-detection purges the chain.',
+    response: '{ "data": { "ok": true } }  (+ rotated cookies)',
+    errors: ['missing_refresh_token', 'invalid_refresh'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/auth/logout',
+    auth: 'AuthGuard',
+    summary: 'Revoke all sessions for the user (immediate access kill).',
+    response: '{ "data": { "ok": true } }',
+    errors: ['missing_token', 'invalid_token', 'session_revoked'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/auth/switch-org',
+    auth: 'AuthGuard',
+    summary: 'Re-issue access token bound to another org the user belongs to.',
+    request: OrgSwitchSchema,
+    response: '{ "data": { "role": "manager|agent|viewer" } }',
+    errors: ['validation_error', 'missing_token', 'invalid_token', 'not_member'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/me',
+    auth: 'AuthGuard',
+    summary: 'Current user profile + active organization.',
+    response: '{ "data": { "id","name","email","role","avatarColor","organization":{} } }',
+    errors: ['missing_token', 'invalid_token', 'session_revoked'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/provider/auth/login',
+    auth: 'Public (MFA mandatory)',
+    summary: 'Provider Admin: argon2 password AND TOTP/recovery. No password-only.',
+    request: ProviderLoginSchema,
+    response: '{ "data": { "ok": true } }  (+ provider_* cookies)',
+    errors: ['validation_error', 'invalid_credentials', '429'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/provider/auth/refresh',
+    auth: 'Cookie (provider_refresh_token)',
+    summary: 'Provider session rotation + reuse-detection (4h refresh).',
+    response: '{ "data": { "ok": true } }',
+    errors: ['missing_refresh_token', 'invalid_refresh'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/provider/auth/logout',
+    auth: 'ProviderAuthGuard',
+    summary: 'Revoke all provider sessions.',
+    response: '{ "data": { "ok": true } }',
+    errors: ['missing_token', 'invalid_token', 'session_revoked'],
+  },
+];
+
+// §2 global error catalogue (FE switches on error.code, never on message).
+const ERROR_CATALOG: Array<[string, string, string]> = [
+  ['validation_error', '400', 'Zod DTO rejected the body. details carries field errors.'],
+  ['invalid_credentials', '401', 'Bad email/password/MFA OR locked (silent, anti-enum).'],
+  ['missing_token', '401', 'No access token cookie/bearer on a guarded route.'],
+  ['invalid_token', '401', 'JWT bad/expired/wrong-tier (HS256+iss+aud pinned).'],
+  ['session_revoked', '401', 'Session logged out / reuse-purged — immediate revoke.'],
+  ['missing_refresh_token', '401', 'No refresh cookie on the refresh endpoint.'],
+  ['invalid_refresh', '401', 'Refresh token unknown/expired/rotated/replayed.'],
+  ['not_member', '401', 'switch-org target is not an active membership.'],
+  ['429', '429', 'Per-IP throttle exceeded (signup/login dedicated limits).'],
+  ['500', '500', 'Unexpected. Generic body; cause logged server-side only.'],
+];
+
+function fieldsTable(schema: ZodTypeAny): string {
+  const js = zodToJsonSchema(schema, { target: 'jsonSchema7', $refStrategy: 'none' }) as {
+    properties?: Record<string, Record<string, unknown>>;
+    required?: string[];
+  };
+  const props = js.properties ?? {};
+  const required = new Set(js.required ?? []);
+  const names = Object.keys(props).sort();
+  if (names.length === 0) return '_(no body)_\n';
+  let out = '| field | type | required | constraints |\n|---|---|---|---|\n';
+  for (const n of names) {
+    const p = props[n] ?? {};
+    const type = String(p['type'] ?? p['format'] ?? 'unknown');
+    const c: string[] = [];
+    for (const k of ['minLength', 'maxLength', 'format', 'pattern', 'enum', 'minimum', 'maximum']) {
+      if (p[k] !== undefined) c.push(`${k}=${JSON.stringify(p[k])}`);
+    }
+    out += `| \`${n}\` | ${type} | ${required.has(n) ? 'yes' : 'no'} | ${c.join(', ') || '—'} |\n`;
+  }
+  return out;
+}
+
+function render(): string {
+  const lines: string[] = [
+    '# EMAPP API Reference — Part 3 (GENERATED)',
+    '',
+    '> Auto-generated by `apps/api/scripts/gen-api-docs.ts` from the Zod',
+    '> request schemas (Doc 09 §1.4). DO NOT EDIT BY HAND. Code wins over',
+    '> docs — this is derived from the code. Run `pnpm --filter @emapp/api',
+    '> gen:api-docs` after changing any auth DTO.',
+    '',
+    '## Endpoints',
+    '',
+  ];
+  for (const e of [...ENDPOINTS].sort((a, b) =>
+    (a.path + a.method).localeCompare(b.path + b.method),
+  )) {
+    lines.push(`### ${e.method} ${e.path}`);
+    lines.push('');
+    lines.push(`- **Auth:** ${e.auth}`);
+    lines.push(`- **Summary:** ${e.summary}`);
+    lines.push('');
+    lines.push('**Request body**');
+    lines.push('');
+    lines.push(e.request ? fieldsTable(e.request) : '_(no body)_');
+    lines.push('');
+    lines.push('**Response**');
+    lines.push('');
+    lines.push('```json');
+    lines.push(e.response);
+    lines.push('```');
+    lines.push('');
+    lines.push(`**Errors:** ${e.errors.map((c) => `\`${c}\``).join(', ')}`);
+    lines.push('');
+  }
+  lines.push('## Part 2 — Global error catalogue');
+  lines.push('');
+  lines.push('| error.code | HTTP | cause |');
+  lines.push('|---|---|---|');
+  for (const [code, http, cause] of ERROR_CATALOG) {
+    lines.push(`| \`${code}\` | ${http} | ${cause} |`);
+  }
+  lines.push('');
+  return lines.join('\n');
+}
+
+const OUT = join(process.cwd(), '..', '..', 'docs', '09-api-reference.generated.md');
+const generated = render();
+const check = process.argv.includes('--check');
+
+if (check) {
+  let current = '';
+  try {
+    current = readFileSync(OUT, 'utf8');
+  } catch {
+    /* missing → treated as stale */
+  }
+  if (current !== generated) {
+    process.stderr.write(
+      'docs/09-api-reference.generated.md is STALE — run `pnpm --filter @emapp/api gen:api-docs` and commit.\n',
+    );
+    process.exit(1);
+  }
+  process.stdout.write('API docs up to date.\n');
+  process.exit(0);
+}
+
+writeFileSync(OUT, generated, 'utf8');
+process.stdout.write(`Wrote ${OUT}\n`);

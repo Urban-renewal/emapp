@@ -2,19 +2,12 @@ import { serverEnv } from '@emapp/config';
 import { Body, Controller, HttpCode, Post, Req, Res, UseGuards, UsePipes } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { z } from 'zod';
 
 import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
 
 import { ProviderAuthGuard } from './provider-auth.guard';
 import { ProviderAuthService, type ProviderTokenPayload } from './provider-auth.service';
-
-const ProviderLoginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-  mfa_code: z.string().min(6).max(64), // TOTP (6) or recovery code
-});
-type ProviderLoginDto = z.infer<typeof ProviderLoginSchema>;
+import { ProviderLoginSchema, type ProviderLoginDto } from './provider-login.dto';
 
 const SECURE = serverEnv.NODE_ENV !== 'development' && serverEnv.NODE_ENV !== 'test';
 const BASE = { httpOnly: true, secure: SECURE, sameSite: 'lax' as const } as const;

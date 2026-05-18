@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "nest start --watch",
-    "build": "nest build",
+    "build": "tsx scripts/gen-api-docs.ts --check && nest build",
     "start": "node dist/main",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -12,7 +12,9 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src",
-    "bootstrap:provider": "tsx scripts/bootstrap-provider-admin.ts"
+    "bootstrap:provider": "tsx scripts/bootstrap-provider-admin.ts",
+    "gen:api-docs": "tsx scripts/gen-api-docs.ts",
+    "gen:api-docs:check": "tsx scripts/gen-api-docs.ts --check"
   },
   "dependencies": {
     "@emapp/config": "workspace:*",
@@ -26,6 +28,7 @@
     "@nestjs/throttler": "^6.0.0",
     "@node-rs/argon2": "^2.0.2",
     "otpauth": "^9.3.4",
+    "zod-to-json-schema": "^3.23.5",
     "@sentry/node": "^8.0.0",
     "drizzle-orm": "^0.45.2",
     "nestjs-pino": "^4.1.0",

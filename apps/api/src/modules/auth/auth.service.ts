@@ -290,10 +290,17 @@ export class AuthService {
     let newSid = '';
     await db.transaction(async (tx) => {
       newSid = await createSession(tx as never, s.userId, rawNew);
-      await tx
+      // Conditional flip closes the rotation TOCTOU: only the request that
+      // actually moves revoked_at NULL→now wins. A concurrent double-spend
+      // of the same token flips 0 rows here → we abort that branch.
+      const flipped = (await tx
         .update(authSessions)
         .set({ revokedAt: new Date(), replacedBy: newSid })
-        .where(eq(authSessions.id, s.id));
+        .where(and(eq(authSessions.id, s.id), isNull(authSessions.revokedAt)))
+        .returning({ id: authSessions.id })) as Array<{ id: string }>;
+      if (flipped.length === 0) {
+        throw expired;
+      }
     });
 
     const accessToken = this.signAccess({
@@ -326,6 +333,7 @@ export class AuthService {
   async switchOrg(
     userId: string,
     newOrgId: string,
+    sid: string,
   ): Promise<{ accessToken: string; role: string }> {
     const [m] = await db
       .select({ role: memberships.role })
@@ -358,10 +366,7 @@ export class AuthService {
     // The session id is preserved (same refresh chain) — only the active org
     // claim changes. A fresh access token bound to the new org is required;
     // the old one stays bound to its old org (cannot reach the new one).
-    const accessToken = this.jwt.sign(
-      { sub: userId, orgId: newOrgId, role: m.role, sid: '', type: 'access' },
-      { expiresIn: ACCESS_TTL_SEC, issuer: JWT_ISS, audience: JWT_AUD, algorithm: 'HS256' },
-    );
+    const accessToken = this.signAccess({ sub: userId, orgId: newOrgId, role: m.role, sid });
     return { accessToken, role: m.role };
   }
 

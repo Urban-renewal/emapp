@@ -92,7 +92,7 @@ export class AuthController {
     @CurrentUser() user: AccessTokenPayload,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
-    const result = await this.authService.switchOrg(user.sub, dto.org_id);
+    const result = await this.authService.switchOrg(user.sub, dto.org_id, user.sid);
     const c = this.authService.cookies(result.accessToken, '');
     res.setCookie(c.access.name, c.access.value, c.access.opts);
     return { data: { role: result.role } };

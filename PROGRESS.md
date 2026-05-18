@@ -92,6 +92,10 @@
 
 - VERIFIED 2026-05-18: org-user signup works end-to-end against Neon dev (201, `{data:{user}}` envelope, access_token + refresh_token cookies). `providerDb` (neondb_owner) DOES bypass RLS on Neon — the earlier `organizations` INSERT failure was a PowerShell 5.1 artifact (non-UTF-8 `-Body` mangled Hebrew "בדיקה" → `?????`), NOT an RLS/app bug. To test Hebrew payloads from PS5.1, send `[Text.Encoding]::UTF8.GetBytes(...)` with `-ContentType "application/json; charset=utf-8"`.
 
+- SPEC-ALIGNMENT 2026-05-18 (migration 0017): `audit_log.target_table` carried a legacy NOT NULL — 0003 created it as `entity_type NOT NULL`, 0014 renamed it to `target_table` (RENAME preserves NOT NULL) but never dropped it. The locked drizzle schema (artifacts.ts) defines it nullable; no-target actions (login/logout) need NULL. 0017 drops the NOT NULL. Login 500'd until 0017 was applied. Not a deviation — DB had drifted from the locked spec.
+
+- VERIFIED 2026-05-18: login (200, `{data:{user}}`, cookies) and `/me` (200, full profile) work against Neon dev after 0017. `/me` without token → 401 `missing_token`. Refresh endpoint NOT yet confirmed via PS5.1: the `refresh_token` cookie is scoped `Path=/api/v1/auth/refresh` (correct, security-by-design) but .NET `CookieContainer` has an exact-path-match bug and won't resend it — real browsers do. Verify refresh via the frontend or by passing the cookie header manually.
+
 - P1.1: PROVIDER_DATABASE_URL is optional in db/src/env.ts (falls back to DATABASE_URL when unset).
 
 - P1.1: connection.ts removed; replaced by client.ts (pg Pool + drizzle/node-postgres). API health controller updated accordingly. Both use the `db` singleton directly; withTenant/withProvider wrappers in P1.13 will be the only external access path.

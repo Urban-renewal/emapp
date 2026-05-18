@@ -495,6 +495,61 @@ _(no body)_
 
 **Errors:** `missing_token`, `invalid_token`, `session_revoked`
 
+### GET /api/v1/notifications
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List the CALLER’S OWN notifications, cursor-paginated (locked RLS: user_id = app.user_id).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Notification} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+
+### POST /api/v1/notifications/:id/read
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Mark one of the caller’s notifications read (idempotent).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Notification } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### POST /api/v1/notifications/read-all
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Mark all of the caller’s unread notifications read.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { "updated": int } }
+```
+
+**Errors:** `missing_token`, `invalid_token`
+
 ### GET /api/v1/owners
 
 - **Auth:** AuthGuard + TenantGuard
@@ -906,6 +961,171 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
 
+### GET /api/v1/tasks
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List org tasks, cursor-paginated. Agent sees ONLY tasks assigned to them (T3.T.1, service-layer).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Task} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+
+### POST /api/v1/tasks
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Create a task. Manager only. Optional assigneeIds seed task_assignees (org members).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `apartmentId` | unknown | no | — |
+| `assigneeIds` | array | no | — |
+| `description` | unknown | no | — |
+| `dueAt` | unknown | no | — |
+| `durationMinutes` | unknown | no | — |
+| `priority` | integer | no | minimum=1, maximum=3 |
+| `projectId` | unknown | no | — |
+| `title` | string | yes | minLength=1, maxLength=300 |
+| `type` | string | no | minLength=1, maxLength=50 |
+
+
+**Response**
+
+```json
+{ "data": { ...Task } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `invalid_assignee`, `missing_token`, `invalid_token`
+
+### DELETE /api/v1/tasks/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Soft delete (archivedAt — "ארכוב"). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/tasks/:id
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Get one task (org-scoped; Agent → only if assigned).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Task } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/tasks/:id
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Update. Manager: any field. Agent (assigned): status/description only. status=completed sets completedAt/By.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `apartmentId` | unknown | no | — |
+| `description` | unknown | no | — |
+| `dueAt` | unknown | no | — |
+| `durationMinutes` | unknown | no | — |
+| `priority` | integer | no | minimum=1, maximum=3 |
+| `projectId` | unknown | no | — |
+| `status` | string | no | enum=["pending","in_progress","completed","cancelled"] |
+| `title` | string | no | minLength=1, maxLength=300 |
+| `type` | string | no | minLength=1, maxLength=50 |
+
+
+**Response**
+
+```json
+{ "data": { ...Task } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/tasks/:id/assignees
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List assignees of a task (visible iff the task is visible to the caller).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": [ {TaskAssignee} ] }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### POST /api/v1/tasks/:id/assignees
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Assign an org member to the task. Unique (task,user) → assignee_exists.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `userId` | string | yes | format="uuid" |
+
+
+**Response**
+
+```json
+{ "data": { ...TaskAssignee } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `invalid_assignee`, `assignee_exists`, `missing_token`, `invalid_token`
+
+### DELETE /api/v1/tasks/:id/assignees/:userId
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Unassign a user from the task. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
 ## Part 2 — Global error catalogue
 
 | error.code | HTTP | cause |
@@ -927,5 +1147,7 @@ _(no body)_
 | `contractor_exists` | 409 | Same-org duplicate contractor contactEmail (active). |
 | `contractor_invalid` | 400 | Share grant references a non-existent / archived contractor. |
 | `share_exists` | 409 | That contractor already has an active share on this project. |
+| `invalid_assignee` | 400 | Task assignee is not an active member of the org. |
+| `assignee_exists` | 409 | That user is already assigned to the task. |
 | `429` | 429 | Per-IP throttle exceeded (signup/login dedicated limits). |
 | `500` | 500 | Unexpected. Generic body; cause logged server-side only. |

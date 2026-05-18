@@ -9,10 +9,12 @@ import { ApartmentsModule } from './modules/apartments/apartments.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BuildingsModule } from './modules/buildings/buildings.module';
 import { ContractorsModule } from './modules/contractors/contractors.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OwnersModule } from './modules/owners/owners.module';
 import { OwnershipsModule } from './modules/ownerships/ownerships.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { SharesModule } from './modules/shares/shares.module';
+import { TasksModule } from './modules/tasks/tasks.module';
 
 @Module({
   imports: [
@@ -44,6 +46,8 @@ import { SharesModule } from './modules/shares/shares.module';
     OwnershipsModule,
     ContractorsModule,
     SharesModule,
+    TasksModule,
+    NotificationsModule,
   ],
   controllers: [HealthController],
   // Rate limiting ENFORCED globally; the configurable guard adds a

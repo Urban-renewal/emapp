@@ -8,3 +8,5 @@ export * from './owner';
 export * from './ownership';
 export * from './contractor';
 export * from './share';
+export * from './task';
+export * from './notification';

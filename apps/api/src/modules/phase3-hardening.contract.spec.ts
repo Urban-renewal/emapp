@@ -460,6 +460,66 @@ describe('HARDENING · concurrency & latency', () => {
   );
 });
 
+describe('HARDENING · pagination integrity (data-loss / dup under keyset)', () => {
+  // Creates many rows back-to-back (rapid separate txns → many share the
+  // same millisecond, differing only in microseconds), then FULLY walks
+  // the keyset cursor at the smallest page size. The set traversed MUST
+  // exactly equal the set seen in one big page — no row skipped, none
+  // duplicated — and the global order must be strictly monotone. This is
+  // the canonical detector for the "cursor precision < column precision"
+  // data-loss class.
+  ct(
+    'H17 full keyset traversal loses/duplicates nothing & stays ordered',
+    async () => {
+      const at = await manager('pg-int');
+      const N = 40;
+      for (let i = 0; i < N; i++) {
+        const r = await call('/projects', {
+          method: 'POST',
+          cookie: `access_token=${at}`,
+          body: JSON.stringify({ name: `PG${i}`, type: 'tama38_1' }),
+        });
+        expect(r.status, r.raw).toBeLessThan(300);
+      }
+
+      // Ground truth: one large page (limit=100 ≥ N).
+      const big = await call('/projects?limit=100', { cookie: `access_token=${at}` });
+      const truth = (big.body['data'] as Json[]).map((p) => p['id'] as string);
+      expect(truth.length, `expected ${N} in one page`).toBe(N);
+
+      // Walk the cursor at the smallest page size.
+      const seen: string[] = [];
+      let cursor: string | null = null;
+      let pages = 0;
+      do {
+        const url = cursor
+          ? `/projects?limit=3&cursor=${encodeURIComponent(cursor)}`
+          : '/projects?limit=3';
+        const page = await call(url, { cookie: `access_token=${at}` });
+        expect(page.status, `page ${pages} → ${page.raw}`).toBe(200);
+        for (const row of page.body['data'] as Json[]) seen.push(row['id'] as string);
+        cursor = ((page.body['page'] as Json)['cursor'] as string | null) ?? null;
+        pages += 1;
+        expect(pages, 'pagination did not terminate (cursor loop)').toBeLessThan(N + 10);
+      } while (cursor);
+
+      const seenSet = new Set(seen);
+      // No duplicates across pages.
+      expect(seenSet.size, `duplicates across pages: ${seen.length} vs ${seenSet.size}`).toBe(
+        seen.length,
+      );
+      // No loss: every truth id was traversed.
+      const missing = truth.filter((id) => !seenSet.has(id));
+      expect(missing.length, `keyset SKIPPED ${missing.length}/${N} rows (data loss)`).toBe(0);
+      // Exact set equality both directions.
+      expect(seen.length, `traversed ${seen.length}, truth ${N}`).toBe(N);
+      // Same order as the single-page ground truth (stable total order).
+      expect(seen).toEqual(truth);
+    },
+    180000,
+  );
+});
+
 afterAll(() => {
   if (!LIVE) return;
   // eslint-disable-next-line no-console

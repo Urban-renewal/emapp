@@ -15,7 +15,13 @@ export * from './helpers/apply-share-permissions';
 export * from './helpers/resolve-share';
 export * from './helpers/notifications';
 export * from './helpers/documents';
-export { encryptOwnerPii, decryptOwnerPii, hashField } from './helpers/owners';
+export {
+  encryptOwnerPii,
+  decryptOwnerPii,
+  hashField,
+  encryptField,
+  decryptField,
+} from './helpers/owners';
 export type { IEncryptionService } from './providers/encryption/encryption.interface';
 export { PgcryptoEncryptionService } from './providers/encryption/pgcrypto.provider';
 export { FakeEncryptionService } from './providers/encryption/fake.provider';

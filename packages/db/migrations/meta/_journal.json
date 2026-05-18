@@ -134,6 +134,13 @@
       "when": 1779037800000,
       "tag": "0018_auth_sessions_and_lockout",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1779038400000,
+      "tag": "0019_provider_sessions",
+      "breakpoints": true
     }
   ]
 }

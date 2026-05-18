@@ -14,6 +14,8 @@ export const providerUsers = pgTable(
     mfaSecretEncrypted: bytea('mfa_secret_encrypted').notNull(),
     recoveryCodesHash: jsonb('recovery_codes_hash').$type<string[]>().notNull(),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+    failedLoginCount: integer('failed_login_count').notNull().default(0),
+    lockedUntil: timestamp('locked_until', { withTimezone: true }),
     disabledAt: timestamp('disabled_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

@@ -21,7 +21,7 @@
     "@emapp/db": "workspace:*",
     "@emapp/shared-types": "workspace:*",
     "@fastify/cookie": "^11.0.2",
-    "@fastify/helmet": "^12.0.0",
+    "@fastify/helmet": "^13.0.2",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/jwt": "^11.0.2",
@@ -30,13 +30,13 @@
     "@node-rs/argon2": "^2.0.2",
     "otpauth": "^9.3.4",
     "zod-to-json-schema": "^3.23.5",
-    "@sentry/node": "^8.0.0",
+    "@sentry/node": "^10.53.1",
     "drizzle-orm": "^0.45.2",
     "nestjs-pino": "^4.1.0",
-    "pino-http": "^10.0.0",
+    "pino-http": "^11.0.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.0",
-    "zod": "^3.23.0"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",

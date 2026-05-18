@@ -10,6 +10,9 @@ export default mergeConfig(
       env: {
         SKIP_ENV_VALIDATION: 'true',
       },
+      // Run migrations ONCE before any worker (was per-suite in parallel
+      // workers → concurrent-DDL race that flaked CI on every new migration).
+      globalSetup: ['./test/global-setup.ts'],
     },
   }),
 );

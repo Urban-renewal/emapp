@@ -209,6 +209,10 @@ export class AuthService {
       error: { code: 'invalid_credentials', message: 'אימייל או סיסמה שגויים' },
     });
 
+    // Single round-trip: auth fields + the active primary org in one JOIN
+    // (was two sequential SELECTs on the hottest path). LEFT JOINs so a user
+    // with no active membership still returns one row (orgId null) — needed
+    // to run real argon2 + lockout without leaking existence.
     const [u] = await db
       .select({
         id: users.id,
@@ -216,9 +220,21 @@ export class AuthService {
         failed: users.failedLoginCount,
         lockedUntil: users.lockedUntil,
         archivedAt: users.archivedAt,
+        userName: users.name,
+        userEmail: users.email,
+        avatarColor: users.avatarColor,
+        role: memberships.role,
+        orgId: organizations.id,
+        orgName: organizations.name,
       })
       .from(users)
+      .leftJoin(memberships, and(eq(memberships.userId, users.id), isNull(memberships.revokedAt)))
+      .leftJoin(
+        organizations,
+        and(eq(organizations.id, memberships.orgId), isNull(organizations.archivedAt)),
+      )
       .where(eq(users.email, dto.email))
+      .orderBy(desc(memberships.isPrimary), asc(memberships.createdAt))
       .limit(1);
 
     if (!u || !u.passwordHash || u.archivedAt) {
@@ -255,8 +271,16 @@ export class AuthService {
       throw invalid;
     }
 
-    const profile = await this.loadProfile(u.id);
-    if (!profile) throw invalid; // no active org → indistinguishable from bad creds
+    // No active org → indistinguishable from bad creds (anti-enumeration).
+    if (!u.orgId || !u.role || !u.orgName) throw invalid;
+    const profile: UserProfile = {
+      id: u.id,
+      name: u.userName,
+      email: u.userEmail,
+      role: u.role,
+      avatarColor: u.avatarColor,
+      organization: { id: u.orgId, name: u.orgName },
+    };
 
     const rawRefresh = newRawToken();
     let sid = '';

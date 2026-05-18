@@ -1162,6 +1162,16 @@ Date · Decision · Alternatives · Why · Reversibility · Revisit trigger
 <li><strong>Revisit trigger:</strong> first enterprise/BYOK demand, first external pentest, &gt;100 orgs, or Gate 5 (pre-launch) — whichever first.</li>
 <li><strong>Ref:</strong> Principal design critique (PROGRESS.md), Doc 02 §5.4/§8, Doc 07 §5/§8, Doc 08 §5, GATES.md (Gate 5)</li>
 </ul>
+<h2>D.23 — No separate <code>packages/ui</code>; shared UI lives in <code>apps/web/src/components/ui</code> (single-FE MVP)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-18</li>
+<li><strong>Decision:</strong> P0.3 named three empty packages: <code>shared-types</code>, <code>config</code>, <code>ui</code>. <code>shared-types</code> and <code>config</code> exist and are real. A separate <code>packages/ui</code> is intentionally NOT created — there is exactly ONE frontend (<code>apps/web</code>), and shadcn/ui's own convention places primitives in <code>apps/web/src/components/ui/</code>. A shared UI package only earns its keep with ≥2 consumers; creating an empty/contrived one now is YAGNI and adds a build edge for zero benefit. <code>apps/web/src/components/ui/</code> is the canonical shared-UI location for the MVP.</li>
+<li><strong>Alternatives:</strong> (a) create <code>packages/ui</code> and move <code>button.tsx</code> there — rejected: single consumer, pure overhead, complicates the FE-component handoff flow (BUILD_LAYER_2 §2.3) which expects components inside the Next.js app. (b) Leave it undocumented — rejected: a named P0.3 deliverable cannot silently vanish before an ISO-bound phase; this entry is the audit-trail record.</li>
+<li><strong>Why:</strong> matches shadcn convention + the partner-component handoff (components land in the Next.js app, not a package), keeps the build graph minimal. Revisit only if a second FE (e.g. native/admin) appears.</li>
+<li><strong>Reversibility:</strong> Easy — extracting <code>packages/ui</code> later is mechanical if a second consumer ever exists.</li>
+<li><strong>Revisit trigger:</strong> a second frontend/consumer of shared components.</li>
+<li><strong>Ref:</strong> BUILD_LAYER_4 P0.3, BUILD_LAYER_2 §2.3, pre-Phase-3 verification (PROGRESS.md)</li>
+</ul>
 <hr />
 <h2>Pending Decisions (not yet made — tracked in OPEN_ITEMS.md §4)</h2>
 <p>These are listed so they're visible but explicitly NOT decided:</p>

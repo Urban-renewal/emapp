@@ -6,7 +6,7 @@
 
 ## Current Position
 
-- **Phase:** 2 COMPLETE & hardened (org-user + Provider Admin/MFA). Tenant SMS OTP deferred (D.20). User approved proceeding to Phase 3 (2026-05-18).
+- **Phase:** 2 COMPLETE & hardened (org-user + Provider Admin/MFA + **Tenant SMS OTP infra BUILT**). Tenant OTP code is fully present (otp.service/controller, TenantAuthGuard, migration 0020, contract OTP1-6) behind ISMSProvider=NoopSMSProvider; the real Israeli provider (019/Inforu) is a governed Gate-4 Infisical swap before it goes live — NOT deferred-as-unbuilt. User approved proceeding to Phase 3 (2026-05-18).
 
 - **Next task:** Phase 3 — Domain API (docs/03 §7). Branch from main AFTER phase-2-hardening PR merges.
 
@@ -24,7 +24,7 @@
 
 - [x] Phase 1 — Database (docs/04c) — 14/14 tasks complete — merged
 
-- [x] Phase 2 — Auth + Multi-tenant (docs/03 §6) — Org-user tier complete; Tenant SMS OTP intentionally deferred (user decision 2026-05-18)
+- [x] Phase 2 — Auth + Multi-tenant (docs/03 §6) — Org-user + Provider/MFA + Tenant SMS OTP INFRA all built (D.21 owned auth; OTP behind NoopSMSProvider, real 019/Inforu = governed Gate-4 swap). Earlier "OTP deferred" lines below are superseded by the 2026-05-18 hardening.
 
 - [ ] Phase 3 — Domain API (docs/03 §7)
 
@@ -107,6 +107,10 @@
 - D.21 RESIDUALS (tracked, not blockers): (1) full anti-enumeration parity (identical body+timing for duplicate vs fresh signup) needs the magic-link email flow — blocked on Resend wiring (Phase 7); current build returns same 201 + neutral `{data:{ok:true}}` for duplicates (removes the 409/email_taken leak, residual = body shape differs). (2) T2.10 Provider Admin + mandatory MFA still NOT implemented — needs an explicit scope decision (implement now vs defer like Tenant OTP, recorded in DECISIONS/GATES).
 
 - ACTION REQUIRED (Infisical-gated, user must run): `infisical run --env=dev -- pnpm --filter @emapp/db db:migrate` (applies 0018) then restart the API (`infisical run --env=dev -- pnpm --filter @emapp/api dev`). Then the black-box contract suite can be run for the live conformance verdict.
+
+- T1.7 INTERPRETATION (2026-05-18): BUILD_LAYER_4 P1.14's literal "withTenant <2ms" = the RLS policy-evaluation overhead budget (Doc 02 §3.5), NOT wall-clock — a real withTenant call is ~4-5 round-trips and Neon RTT alone exceeds 2ms, so a sub-ms wall-time assertion is physically impossible and was never a real test. `t1-7-with-tenant-perf.spec.ts` instead pins a stable median/max regression guard on the full round-trip (catches missing-index/N+1/extra-round-trip regressions without flaking). The old "T1.7" label in multi-org.spec.ts was a mislabeled isolation test (now the real T1.7 exists).
+
+- TRACKED DEBT (post-MVP, NOT a Phase-3 blocker): `AuthService` (~506 lines) violates SRP (signup orchestration + login + refresh-rotation + logout + switch-org + loadProfile + slug-gen + cookie policy + JWT signing + pg-error introspection) and DIP (inline `db` Drizzle queries instead of an injected, interface-typed repository; `session.repository.ts` is a loose `db:any` function module). The SMS provider IS correctly inverted (`@Inject(SMS_PROVIDER)`); apply the same to data access in a dedicated refactor. Deferred deliberately: a 506-line refactor on freshly-CI-green auth immediately before Phase 3 is high-blast-radius (cat-and-mouse risk) for marginal gain — schedule as its own gated workstream.
 
 - FOLLOW-UP (tracked, ISO hardening, NOT a blocker): secrets-scan uses trufflehog `--only-verified`. Strengthen later (gitleaks job / drop --only-verified) — deferred deliberately: the CI test/conformance jobs contain intentional in-the-clear CI-only test credentials (ci.yml), so a broad scanner would false-positive and break CI. Do it with a tuned allowlist, not blindly. (Cross-phase audit finding.)
 

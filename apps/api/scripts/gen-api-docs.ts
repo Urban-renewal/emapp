@@ -20,10 +20,12 @@ import {
   ListApartmentsQuery,
   ListBuildingsQuery,
   ListOwnersQuery,
+  ListOwnershipsQuery,
   ListProjectsQuery,
   OtpRequestSchema,
   OtpVerifySchema,
   OwnerSearchInput,
+  SetOwnershipsInput,
   UpdateApartmentInput,
   UpdateBuildingInput,
   UpdateOwnerInput,
@@ -341,6 +343,44 @@ const ENDPOINTS: Endpoint[] = [
     response: '(204 No Content)',
     errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
   },
+  {
+    method: 'GET',
+    path: '/api/v1/apartments/:apartmentId/ownerships',
+    auth: 'AuthGuard + TenantGuard',
+    summary: 'List ACTIVE ownerships of an apartment, cursor-paginated. Via-parent isolation.',
+    request: ListOwnershipsQuery,
+    response:
+      '{ "data": [ {Ownership} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: ['validation_error', 'invalid_cursor', 'not_found', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/apartments/:apartmentId/owners',
+    auth: 'AuthGuard + TenantGuard',
+    summary:
+      'Masked owners of an apartment + their share (docs/09 §3.13). PII masked in SQL; via-parent isolation.',
+    request: ListOwnershipsQuery,
+    response:
+      '{ "data": [ {Owner masked + ownershipPct,role} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: ['validation_error', 'invalid_cursor', 'not_found', 'missing_token', 'invalid_token'],
+  },
+  {
+    method: 'PUT',
+    path: '/api/v1/apartments/:apartmentId/ownerships',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'Atomically REPLACE the apartment ownership set (locked Phase-1 trigger: active shares total 0 or exactly 100). Empty owners clears all.',
+    request: SetOwnershipsInput,
+    response: '{ "data": [ {Ownership} ] }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'ownership_sum_invalid',
+      'missing_token',
+      'invalid_token',
+    ],
+  },
 ];
 
 // §2 global error catalogue (FE switches on error.code, never on message).
@@ -361,6 +401,11 @@ const ERROR_CATALOG: Array<[string, string, string]> = [
     'owner_exists',
     '409',
     'Same-org duplicate national_id (not an enumeration oracle — caller is in-org).',
+  ],
+  [
+    'ownership_sum_invalid',
+    '400',
+    'Apartment active ownership shares must be empty or sum to exactly 100.',
   ],
   ['429', '429', 'Per-IP throttle exceeded (signup/login dedicated limits).'],
   ['500', '500', 'Unexpected. Generic body; cause logged server-side only.'],

@@ -1185,6 +1185,17 @@ Date · Decision · Alternatives · Why · Reversibility · Revisit trigger
 <li><strong>Ref:</strong> Phase 3 (docs/03 §7), <code>withTenant</code> wrapper, PROGRESS.md scale note, user directive 2026-05-18 ("must be efficient + support high scale").</li>
 </ul>
 <hr />
+<h2>D.25 — Ownership composition is ATOMIC per apartment (set-replace), mandated by the locked Phase-1 sum trigger</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-18</li>
+<li><strong>Decision:</strong> Phase-1 migration 0002 defines <code>trg_ownerships_sum_check</code> — a <code>CONSTRAINT TRIGGER ... DEFERRABLE INITIALLY DEFERRED</code> that, at COMMIT, requires <code>SUM(ownership_pct)</code> over an apartment's ACTIVE ownerships (<code>ended_at IS NULL</code>) to be <strong>0 or exactly 100</strong>. Because every <code>withTenant</code> call is its own transaction, a standalone per-row add/patch/delete can never satisfy "=100" and always rolls back. Therefore the Slice-5 write API is a single <strong>atomic full-set replace</strong>: <code>PUT /api/v1/apartments/:apartmentId/ownerships</code> with <code>{ owners: [...] }</code> that must be empty (clear all) or sum to exactly 100; the service ends all current active ownerships and inserts the new set in ONE tx so the deferred trigger sees a legal end-state. Reads unchanged: <code>GET …/ownerships</code> (active, cursor) and <code>GET …/owners</code> (masked owner + share, docs/09 §3.13). The in-app Zod refine + service guard produce a clean <code>400 ownership_sum_invalid</code>; the trigger raise is the authoritative backstop and is also mapped to 400 (never 500).</li>
+<li><strong>Alternatives:</strong> (a) per-row <code>POST/PATCH/DELETE</code> as docs/09 §3.13 literally implies — REJECTED: physically impossible against the locked deferred trigger across separate transactions (proved: a lone 50% insert → COMMIT raise → 500). (b) Make the trigger non-deferred / relax to "≤100" — REJECTED: that is a locked Phase-1 schema change (Gate 2) and weakens a data-integrity invariant. (c) Multi-row within one request but keeping "add one" semantics — still cannot reach 100 incrementally; the set-replace is the only coherent model. We conform TO the locked invariant; docs/09 §3.13's per-row shape is recorded doc-drift, NOT a schema deviation.</li>
+<li><strong>Why:</strong> matches the real-world act ("declare who owns this apartment, totalling 100%"), is the only model the locked trigger permits, and keeps the invariant strong (ISO data-integrity).</li>
+<li><strong>Reversibility:</strong> Easy at the API layer if the invariant ever changes; no data migration.</li>
+<li><strong>Revisit trigger:</strong> a product need for transient partial-ownership states (would require a Gate-2 review of the trigger).</li>
+<li><strong>Ref:</strong> packages/db/migrations/0002_minor_gateway.sql L191-220, docs/03 §7 T3.OW.1, docs/09 §3.13, Phase 3 Slice 5 (PROGRESS.md).</li>
+</ul>
+<hr />
 <h2>Pending Decisions (not yet made — tracked in OPEN_ITEMS.md §4)</h2>
 <p>These are listed so they're visible but explicitly NOT decided:</p>
 <ul>

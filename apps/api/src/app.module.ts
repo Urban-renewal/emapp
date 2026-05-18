@@ -9,6 +9,7 @@ import { ApartmentsModule } from './modules/apartments/apartments.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BuildingsModule } from './modules/buildings/buildings.module';
 import { OwnersModule } from './modules/owners/owners.module';
+import { OwnershipsModule } from './modules/ownerships/ownerships.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 
 @Module({
@@ -38,6 +39,7 @@ import { ProjectsModule } from './modules/projects/projects.module';
     BuildingsModule,
     ApartmentsModule,
     OwnersModule,
+    OwnershipsModule,
   ],
   controllers: [HealthController],
   // Rate limiting ENFORCED globally; the configurable guard adds a

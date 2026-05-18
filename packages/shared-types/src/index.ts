@@ -5,3 +5,4 @@ export * from './project';
 export * from './building';
 export * from './apartment';
 export * from './owner';
+export * from './ownership';

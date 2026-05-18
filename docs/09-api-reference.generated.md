@@ -7,6 +7,68 @@
 
 ## Endpoints
 
+### GET /api/v1/apartments/:apartmentId/owners
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Masked owners of an apartment + their share (docs/09 §3.13). PII masked in SQL; via-parent isolation.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Owner masked + ownershipPct,role} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/apartments/:apartmentId/ownerships
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List ACTIVE ownerships of an apartment, cursor-paginated. Via-parent isolation.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Ownership} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+
+### PUT /api/v1/apartments/:apartmentId/ownerships
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Atomically REPLACE the apartment ownership set (locked Phase-1 trigger: active shares total 0 or exactly 100). Empty owners clears all.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `owners` | array | yes | — |
+
+
+**Response**
+
+```json
+{ "data": [ {Ownership} ] }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `ownership_sum_invalid`, `missing_token`, `invalid_token`
+
 ### DELETE /api/v1/apartments/:id
 
 - **Auth:** AuthGuard + TenantGuard (Manager)
@@ -677,5 +739,6 @@ _(no body)_
 | `not_found` | 404 | Resource absent OR outside the caller’s org/assignment (no oracle). |
 | `invalid_cursor` | 400 | Pagination cursor tampered/garbage — never a 500. |
 | `owner_exists` | 409 | Same-org duplicate national_id (not an enumeration oracle — caller is in-org). |
+| `ownership_sum_invalid` | 400 | Apartment active ownership shares must be empty or sum to exactly 100. |
 | `429` | 429 | Per-IP throttle exceeded (signup/login dedicated limits). |
 | `500` | 500 | Unexpected. Generic body; cause logged server-side only. |

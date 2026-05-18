@@ -14,7 +14,7 @@
 
 - **Last completed:** P2-hardening — D.21 full-ownership auth rebuild VERIFIED: black-box contract suite **31/31 green** against live Neon-dev (signup atomicity, argon2id, hashed/rotating/reuse-detecting sessions w/ chain-purge, real logout revoke, silent spec-flat lockout, per-IP throttle, JWT HS256+iss+aud, anti-enumeration, concurrent double-spend ≤1, alg:none/tampered-JWT rejected). Medium audit findings closed; design gaps A/B/D/F recorded as D.22 governed risk; D.21 propagated to CLAUDE.md/Doc07; secrets model reconciled.
 
-- **Blocked:** no. Remaining Phase-2 build: T2.10 Provider Admin + mandatory MFA (in progress). Tenant SMS OTP stays deferred (D.20).
+- **Blocked:** no. T2.10 Provider Admin + mandatory MFA COMPLETE: black-box conformance **36/37 green** live (org-user 22 + adversarial 9 + provider P1–P6); P7 (positive provider login w/ live TOTP) env-gated, skipped pending optional bootstrap run. Tenant SMS OTP stays deferred (D.20). Open follow-ups: run bootstrap + verify P7 before prod; D.22 design backlog; SPA 401→refresh + refresh-TTL tiering (Phase 3+).
 
 - **Branch:** phase-2-hardening
 

@@ -24,7 +24,10 @@ export class ProviderAuthGuard implements CanActivate {
         secret: serverEnv.JWT_SECRET,
         algorithms: ['HS256'],
         issuer: 'emapp',
-        audience: 'emapp-api',
+        // Tier-isolated audience (D.29): MUST match provider-auth.service
+        // JWT_AUD. Rejects org/tenant tokens structurally — not just by
+        // the payload.type single-line check.
+        audience: 'emapp-provider',
       });
     } catch {
       throw new UnauthorizedException({ error: { code: 'invalid_token' } });

@@ -14,7 +14,11 @@ const RL_WINDOW_MS = 15 * 60 * 1000;
 const RL_MAX = 3; // 3 requests / 15 min / phone (GATE 4)
 const TENANT_ACCESS_TTL_SEC = 30 * 60;
 const JWT_ISS = 'emapp';
-const JWT_AUD = 'emapp-api';
+// Tier-isolated audience (audit-pass 2026-05-20 / D.29): distinct from
+// 'emapp-api' (org) and 'emapp-provider' (provider). Tier confusion is
+// now blocked STRUCTURALLY by JWT audience verification.
+// MUST match tenant-auth.guard.ts:audience.
+const JWT_AUD = 'emapp-tenant';
 
 @Injectable()
 export class OtpService {

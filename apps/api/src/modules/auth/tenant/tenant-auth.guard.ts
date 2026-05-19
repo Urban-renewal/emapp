@@ -27,7 +27,9 @@ export class TenantAuthGuard implements CanActivate {
         secret: serverEnv.JWT_SECRET,
         algorithms: ['HS256'],
         issuer: 'emapp',
-        audience: 'emapp-api',
+        // Tier-isolated audience (D.29): MUST match tenant/otp.service
+        // JWT_AUD. Rejects org/provider tokens structurally.
+        audience: 'emapp-tenant',
       });
     } catch {
       throw new UnauthorizedException({ error: { code: 'invalid_token' } });

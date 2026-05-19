@@ -46,3 +46,11 @@ export type ProviderDatabase = NodePgDatabase<typeof schema>;
 providerPool.on('error', (err: Error) => {
   process.stderr.write(`[providerPool] idle client error: ${err.message}\n`);
 });
+
+// Drain helper for process-level graceful shutdown (apps/api SIGTERM/SIGINT).
+// Pool.end() throws if already ended; we swallow per-pool so a duplicate
+// close (e.g. Nest enableShutdownHooks running concurrently) is a no-op.
+export async function closeAllPools(): Promise<void> {
+  await pool.end().catch(() => undefined);
+  await providerPool.end().catch(() => undefined);
+}

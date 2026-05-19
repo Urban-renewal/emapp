@@ -9,6 +9,7 @@ import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
+import { installProcessGuards } from './process-guards';
 
 const CORS_ORIGINS = {
   production: ['https://app.emapp.io'],
@@ -125,6 +126,11 @@ async function bootstrap() {
   if (!process.env['SKIP_ENV_VALIDATION']) {
     await verifyEncryptionStartup();
   }
+
+  // Process-level safety net: survive stray unhandledRejection, log+exit on
+  // unknown uncaughtException so Railway restarts cleanly, drain on
+  // SIGTERM/SIGINT. Orthogonal to the per-pool guard in @emapp/db client.
+  installProcessGuards({ app });
 
   const port = env.PORT_API ?? 3000;
   await app.listen(port, '0.0.0.0');

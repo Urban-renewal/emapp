@@ -1,6 +1,13 @@
 // DB package public API
 // Direct db/pool access is internal only — all external reads go through withTenant / withProvider
-export { pool, db, providerDb, type Database, type ProviderDatabase } from './client';
+export {
+  pool,
+  db,
+  providerDb,
+  closeAllPools,
+  type Database,
+  type ProviderDatabase,
+} from './client';
 export { env } from './env';
 export { withTenant, type TenantTx } from './wrappers/with-tenant';
 export { withProvider } from './wrappers/with-provider';

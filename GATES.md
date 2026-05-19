@@ -76,9 +76,35 @@ control was implemented and the evidence exists in code/tests.
 
 \- \*\*Gate 5 (production deploy):\*\* PENDING — Phase 9 (docs/07 §15 checklist).
 
-\- \*\*Gate 6 (architecture decisions):\*\* exercised — D.21 (auth ownership) and
+&#x20; PRE-GATE-5 OBLIGATIONS (recorded so the chain is not lost): (1) \*\*D.27\*\*
 
-&#x20; D.22 (security-design backlog) recorded with the user's approval.
+&#x20; — the member-invite token is returned in the API response as a GOVERNED
+
+&#x20; interim; real email delivery (Resend via IEmailProvider) MUST replace it
+
+&#x20; before prod. Resend is Infisical-gated per Gate-4 SECRETS LAW (account +
+
+&#x20; key = user action). (2) Gate-4 real SMS provider swap. (3) D.22 items
+
+&#x20; marked pre-prod.
+
+\- \*\*Gate 6 (architecture decisions):\*\* exercised — D.21 (auth ownership),
+
+&#x20; D.22 (security-design backlog), \*\*D.24\*\* (high-scale data-path stance),
+
+&#x20; \*\*D.25\*\* (ownership atomic set-replace, mandated by the locked sum
+
+&#x20; trigger), \*\*D.26\*\* (centralized declarative D.17 authorization, ISO
+
+&#x20; A.9.4), \*\*D.27\*\* (member-invite consent: token-in-response governed
+
+&#x20; interim, hard remediation = email before Gate 5) — all recorded in
+
+&#x20; docs/DECISIONS.html with the user's approval. (NOTE: only
+
+&#x20; docs/DECISIONS.html exists; CLAUDE.md's "docs/DECISIONS.md" path is
+
+&#x20; doc-drift — the .html is authoritative.)
 
 \- \*\*Note:\*\* Gates 1–3 were functionally satisfied during Phase 1 but not
 

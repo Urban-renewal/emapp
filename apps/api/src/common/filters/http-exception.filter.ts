@@ -17,8 +17,32 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const reply = ctx.getResponse<FastifyReply>();
 
+    // A non-HttpException that carries a numeric status (Fastify/parser
+    // convention — e.g. the JSON content-type parser sets statusCode=400)
+    // is a CLIENT error, not a 500. Honour it so malformed input returns a
+    // clean D.16 4xx instead of leaking as "Internal server error".
+    const carriedStatus = ((): number | undefined => {
+      const s =
+        (exception as { statusCode?: unknown; status?: unknown })?.statusCode ??
+        (exception as { status?: unknown })?.status;
+      return typeof s === 'number' && s >= 400 && s < 500 ? s : undefined;
+    })();
+
     const status =
-      exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
+      exception instanceof HttpException
+        ? exception.getStatus()
+        : (carriedStatus ?? HttpStatus.INTERNAL_SERVER_ERROR);
+
+    if (!(exception instanceof HttpException) && carriedStatus) {
+      // Use the STABLE discriminator the thrower attached (e.g. the JSON
+      // parser sets code:'invalid_json'). No message string-matching:
+      // only our own allow-listed lowercase codes are echoed; anything
+      // else (incl. Fastify's FST_ERR_* codes) → generic 'bad_request'.
+      const ec = (exception as { code?: unknown }).code;
+      const code = ec === 'invalid_json' ? 'invalid_json' : 'bad_request';
+      reply.status(carriedStatus).send({ error: { code } });
+      return;
+    }
 
     const debugChain: Array<Record<string, unknown>> = [];
 

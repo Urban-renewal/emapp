@@ -4,12 +4,23 @@ import { Pool } from 'pg';
 import { env } from './env';
 import * as schema from './schema/index';
 
+// Ops-tunable with production-safe HARD fallbacks. The fallback (not just
+// a zod .default) is required because @t3-oss/env-core returns raw env
+// when SKIP_ENV_VALIDATION / NODE_ENV=test, so a value may be undefined
+// or a string here. Tuning guidance: behind the Neon transaction pooler
+// (the #1 scale lever, D.24) set DB_POOL_MAX LOWER per pod — the pooler
+// multiplexes; many pods × large max exhausts Postgres connections.
+const numEnv = (v: unknown, fallback: number): number => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
+
 const appPoolConfig = {
   connectionString: env.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
-  statement_timeout: 30000,
+  max: numEnv(env.DB_POOL_MAX, 20),
+  idleTimeoutMillis: numEnv(env.DB_POOL_IDLE_MS, 30000),
+  connectionTimeoutMillis: numEnv(env.DB_POOL_CONN_TIMEOUT_MS, 5000),
+  statement_timeout: numEnv(env.DB_STATEMENT_TIMEOUT_MS, 30000),
 };
 
 export const pool = new Pool(appPoolConfig);
@@ -22,10 +33,10 @@ pool.on('error', (err: Error) => {
 
 const providerPoolConfig = {
   connectionString: env.PROVIDER_DATABASE_URL ?? env.DATABASE_URL,
-  max: 5,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
-  statement_timeout: 60000,
+  max: numEnv(env.DB_PROVIDER_POOL_MAX, 5),
+  idleTimeoutMillis: numEnv(env.DB_POOL_IDLE_MS, 30000),
+  connectionTimeoutMillis: numEnv(env.DB_POOL_CONN_TIMEOUT_MS, 5000),
+  statement_timeout: numEnv(env.DB_PROVIDER_STATEMENT_TIMEOUT_MS, 60000),
 };
 
 export const providerPool = new Pool(providerPoolConfig);

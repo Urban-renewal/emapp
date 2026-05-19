@@ -140,7 +140,7 @@ jobs:
           done
           curl -sf http://localhost:3000/api/v1/health
           set +e
-          pnpm --filter @emapp/api exec vitest run src/modules/auth/auth.contract.spec.ts
+          pnpm --filter @emapp/api exec vitest run contract.spec
           code=$?
           kill "$(cat /tmp/api.pid)" 2>/dev/null || true
           exit $code

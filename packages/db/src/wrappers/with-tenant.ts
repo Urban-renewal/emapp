@@ -6,6 +6,13 @@ import * as schema from '../schema/index';
 
 type TenantDatabase = NodePgDatabase<typeof schema>;
 
+/**
+ * The drizzle handle handed to a withTenant/withProvider callback. Exported
+ * so domain services can type helper methods that receive `tx` without
+ * reaching into wrapper internals.
+ */
+export type TenantTx = TenantDatabase;
+
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isUuid(s: string): boolean {

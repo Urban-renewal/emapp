@@ -39,14 +39,25 @@ function toRow(entry: AuditEntry): NewAuditLog {
 }
 
 export class AuditService {
-  constructor(private readonly db: Database) {}
+  // `defaults` carries cross-cutting forensic context (ISO 27001 A.12.4 —
+  // e.g. source IP / User-Agent) merged into EVERY entry from one place,
+  // so callers don't repeat it per .log() and it can't be forgotten. A
+  // per-entry value always wins over a default.
+  constructor(
+    private readonly db: Database,
+    private readonly defaults?: Partial<AuditEntry>,
+  ) {}
+
+  private merge(entry: AuditEntry): AuditEntry {
+    return this.defaults ? ({ ...this.defaults, ...entry } as AuditEntry) : entry;
+  }
 
   async log(entry: AuditEntry): Promise<void> {
-    await this.db.insert(auditLog).values(toRow(entry));
+    await this.db.insert(auditLog).values(toRow(this.merge(entry)));
   }
 
   async logMany(entries: AuditEntry[]): Promise<void> {
     if (entries.length === 0) return;
-    await this.db.insert(auditLog).values(entries.map(toRow));
+    await this.db.insert(auditLog).values(entries.map((e) => toRow(this.merge(e))));
   }
 }

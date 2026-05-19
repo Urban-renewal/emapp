@@ -7,6 +7,186 @@
 
 ## Endpoints
 
+### GET /api/v1/apartments/:apartmentId/owners
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Masked owners of an apartment + their share (docs/09 §3.13). PII masked in SQL; via-parent isolation.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Owner masked + ownershipPct,role} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/apartments/:apartmentId/ownerships
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List ACTIVE ownerships of an apartment, cursor-paginated. Via-parent isolation.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Ownership} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+
+### PUT /api/v1/apartments/:apartmentId/ownerships
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Atomically REPLACE the apartment ownership set (locked Phase-1 trigger: active shares total 0 or exactly 100). Empty owners clears all.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `owners` | array | yes | — |
+
+
+**Response**
+
+```json
+{ "data": [ {Ownership} ] }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `ownership_sum_invalid`, `missing_token`, `invalid_token`
+
+### DELETE /api/v1/apartments/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Soft delete (archivedAt — "ארכוב"). Idempotent, preserves audit trail. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/apartments/:id
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Get one apartment by id (via-parent org scope; Agent → assigned project only).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Apartment } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/apartments/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Partial update. Manager only. statusChangedAt advances only on a real status change.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `floor` | unknown | no | — |
+| `notes` | unknown | no | — |
+| `number` | string | no | minLength=1, maxLength=50 |
+| `rooms` | unknown | no | — |
+| `sizeSqm` | unknown | no | — |
+| `status` | string | no | enum=["pending","contacted","meeting","signed","refused","unreachable"] |
+
+
+**Response**
+
+```json
+{ "data": { ...Apartment } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### DELETE /api/v1/assignments/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Unassign (unassignedAt — lifecycle, not physical delete). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/audit
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Read the org audit trail (append-only), cursor-paginated. Manager only; who/what/target/when (no diffs/ip/ua).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {AuditEntry} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `forbidden`, `missing_token`, `invalid_token`
+
+### POST /api/v1/auth/accept-invite
+
+- **Auth:** Public (one-time invite token)
+- **Summary:** Invitee sets their OWN password via the one-time invite token (single-use). Generic invalid_invite on any failure (no oracle).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `password` | string | yes | minLength=12, maxLength=256 |
+| `token` | string | yes | minLength=10, maxLength=4096 |
+
+
+**Response**
+
+```json
+{ "data": { "ok": true } }
+```
+
+**Errors:** `validation_error`, `invalid_invite`, `429`
+
 ### POST /api/v1/auth/login
 
 - **Auth:** Public
@@ -146,6 +326,217 @@ _(no body)_
 
 **Errors:** `validation_error`, `missing_token`, `invalid_token`, `not_member`
 
+### GET /api/v1/buildings/:buildingId/apartments
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List apartments of a building, cursor-paginated. Via-parent isolation; Agent → assigned projects only.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Apartment} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+
+### POST /api/v1/buildings/:buildingId/apartments
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Create an apartment under a building. Manager only; buildingId from the URL.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `floor` | unknown | no | — |
+| `notes` | unknown | no | — |
+| `number` | string | yes | minLength=1, maxLength=50 |
+| `rooms` | unknown | no | — |
+| `sizeSqm` | unknown | no | — |
+| `status` | string | no | enum=["pending","contacted","meeting","signed","refused","unreachable"] |
+
+
+**Response**
+
+```json
+{ "data": { ...Apartment } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### DELETE /api/v1/buildings/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Soft delete (archivedAt — "ארכוב"). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/buildings/:id
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Get one building by id (via-parent org scope; Agent → assigned project only).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Building } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/buildings/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Partial update. Manager only. Every field optional.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `address` | string | no | minLength=1, maxLength=500 |
+| `aptCount` | integer | no | minimum=0 |
+| `block` | unknown | no | — |
+| `city` | string | no | minLength=1, maxLength=100 |
+| `notes` | unknown | no | — |
+| `parcel` | unknown | no | — |
+| `subparcel` | unknown | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Building } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/contractors
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List org contractors, cursor-paginated. Org-scoped (direct RLS).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Contractor} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+
+### POST /api/v1/contractors
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Create a contractor. Manager only. Unique contactEmail per org (active).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `companyId` | unknown | no | — |
+| `contactEmail` | string | yes | format="email" |
+| `contactPhone` | unknown | no | — |
+| `name` | string | yes | minLength=1, maxLength=200 |
+| `notes` | unknown | no | — |
+| `specialty` | unknown | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Contractor } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `contractor_exists`, `missing_token`, `invalid_token`
+
+### DELETE /api/v1/contractors/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Soft delete (archivedAt — "ארכוב"). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/contractors/:id
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Get one contractor by id (org-scoped via RLS).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Contractor } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/contractors/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Partial update. Manager only. Every field optional.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `companyId` | unknown | no | — |
+| `contactEmail` | string | no | format="email" |
+| `contactPhone` | unknown | no | — |
+| `name` | string | no | minLength=1, maxLength=200 |
+| `notes` | unknown | no | — |
+| `specialty` | unknown | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Contractor } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `contractor_exists`, `missing_token`, `invalid_token`
+
 ### GET /api/v1/me
 
 - **Auth:** AuthGuard
@@ -162,6 +553,600 @@ _(no body)_
 ```
 
 **Errors:** `missing_token`, `invalid_token`, `session_revoked`
+
+### GET /api/v1/members
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** List org memberships (pending + active), cursor-paginated. Manager only.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Member} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `forbidden`, `missing_token`, `invalid_token`
+
+### POST /api/v1/members
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Invite a user into the org with a role (atomic user+membership, withBootstrap-scoped). Returns a one-time invite token (email deferred). Manager only.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `email` | string | yes | format="email" |
+| `name` | string | yes | minLength=1, maxLength=120 |
+| `role` | string | yes | enum=["manager","agent","viewer"] |
+
+
+**Response**
+
+```json
+{ "data": { "member": { ...Member }, "inviteToken": "<jwt>" } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `member_exists`, `missing_token`, `invalid_token`
+
+### DELETE /api/v1/members/:userId
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Revoke a membership (revokedAt). Manager only. Cannot revoke self. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `cannot_modify_self`, `cannot_remove_last_manager`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/members/:userId
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Change a member's role. Manager only. Cannot modify self (lockout guard).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `role` | string | yes | enum=["manager","agent","viewer"] |
+
+
+**Response**
+
+```json
+{ "data": { ...Member } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `cannot_modify_self`, `cannot_remove_last_manager`, `missing_token`, `invalid_token`
+
+### GET /api/v1/notes
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List org notes, cursor-paginated. Agent → own / org-level / assigned-project notes only.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Note} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+
+### POST /api/v1/notes
+
+- **Auth:** AuthGuard + TenantGuard (Manager/Agent)
+- **Summary:** Create a note (optionally on a visible project/apartment). Viewer forbidden.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `apartmentId` | unknown | no | — |
+| `body` | string | yes | minLength=1, maxLength=5000 |
+| `pinned` | boolean | no | — |
+| `projectId` | unknown | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Note } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### DELETE /api/v1/notes/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager or author)
+- **Summary:** Soft delete (archivedAt — "ארכוב"). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/notes/:id
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Get one note (org-scoped; Agent → own/assigned/org-level only).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Note } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/notes/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager or author)
+- **Summary:** Update body/pinned. Manager or the note author only.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `body` | string | no | minLength=1, maxLength=5000 |
+| `pinned` | boolean | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Note } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/notifications
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List the CALLER’S OWN notifications, cursor-paginated (locked RLS: user_id = app.user_id).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Notification} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+
+### POST /api/v1/notifications/:id/read
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Mark one of the caller’s notifications read (idempotent).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Notification } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### POST /api/v1/notifications/read-all
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Mark all of the caller’s unread notifications read.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { "updated": int } }
+```
+
+**Errors:** `missing_token`, `invalid_token`
+
+### GET /api/v1/owners
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List org owners, cursor-paginated. PII (national_id/phone) returned MASKED only (decrypted+masked in SQL).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Owner — nationalIdMasked,phoneMasked} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+
+### POST /api/v1/owners
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Create an owner. national_id: 9 digits + Israeli MOD-10 checksum; phone normalized to E.164. PII encrypted at rest.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `email` | unknown | no | — |
+| `name` | string | yes | minLength=1, maxLength=100 |
+| `national_id` | string | yes | pattern="^\\d{9}$" |
+| `notes` | unknown | no | — |
+| `phone` | unknown | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Owner (masked) } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `owner_exists`, `missing_token`, `invalid_token`
+
+### DELETE /api/v1/owners/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Soft delete (archivedAt — "ארכוב"). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/owners/:id
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Get one owner by id (org-scoped via RLS). PII masked.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Owner (masked) } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/owners/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Partial update. Manager only. PII re-encrypted/re-hashed when changed.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `email` | unknown | no | — |
+| `name` | string | no | minLength=1, maxLength=100 |
+| `national_id` | string | no | pattern="^\\d{9}$" |
+| `notes` | unknown | no | — |
+| `phone` | unknown | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Owner (masked) } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `owner_exists`, `missing_token`, `invalid_token`
+
+### POST /api/v1/owners/search
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** HMAC lookup by national_id/phone. PII in the BODY (never URL) so it cannot leak to access logs; matched by stored HMAC.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `national_id` | string | no | pattern="^\\d{9}$" |
+| `phone` | string | no | minLength=9, maxLength=20 |
+
+
+**Response**
+
+```json
+{ "data": [ {Owner — masked} ] }
+```
+
+**Errors:** `validation_error`, `missing_token`, `invalid_token`
+
+### GET /api/v1/projects
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List org projects, cursor-paginated (keyset). Agent sees only assigned projects (D.17).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Project} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+
+### POST /api/v1/projects
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Create a project. Manager only; org/createdBy injected from JWT.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `description` | unknown | no | — |
+| `name` | string | yes | minLength=1, maxLength=200 |
+| `startedAt` | unknown | no | — |
+| `status` | string | no | enum=["planning","gathering_signatures","approved","in_construction","completed","cancelled"] |
+| `targetSignaturePct` | unknown | no | — |
+| `type` | string | yes | enum=["tama38_1","tama38_2","pinui_binui"] |
+
+
+**Response**
+
+```json
+{ "data": { ...Project } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `missing_token`, `invalid_token`
+
+### DELETE /api/v1/projects/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Soft delete (archivedAt — "ארכוב", not physical). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/projects/:id
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Get one project by id (org-scoped via RLS; Agent → assigned only).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Project } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/projects/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Partial update. Manager only. Every field optional.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `description` | unknown | no | — |
+| `name` | string | no | minLength=1, maxLength=200 |
+| `startedAt` | unknown | no | — |
+| `status` | string | no | enum=["planning","gathering_signatures","approved","in_construction","completed","cancelled"] |
+| `targetSignaturePct` | unknown | no | — |
+| `type` | string | no | enum=["tama38_1","tama38_2","pinui_binui"] |
+
+
+**Response**
+
+```json
+{ "data": { ...Project } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/projects/:projectId/assignments
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List a project’s active assignments (D.17 linchpin). Agent → only their own rows. Via-parent isolation.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {ProjectAssignment} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+
+### POST /api/v1/projects/:projectId/assignments
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Assign an org member to the project (powers Agent scoping). Unique active (project,user) → assignment_exists.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `roleInProject` | string | no | minLength=1, maxLength=50 |
+| `userId` | string | yes | format="uuid" |
+
+
+**Response**
+
+```json
+{ "data": { ...ProjectAssignment } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `invalid_assignee`, `assignment_exists`, `missing_token`, `invalid_token`
+
+### GET /api/v1/projects/:projectId/buildings
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List buildings of a project, cursor-paginated. Via-parent org isolation; Agent → assigned projects only.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Building} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+
+### POST /api/v1/projects/:projectId/buildings
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Create a building under a project. Manager only; projectId from the URL.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `address` | string | yes | minLength=1, maxLength=500 |
+| `aptCount` | integer | no | minimum=0 |
+| `block` | unknown | no | — |
+| `city` | string | yes | minLength=1, maxLength=100 |
+| `notes` | unknown | no | — |
+| `parcel` | unknown | no | — |
+| `subparcel` | unknown | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Building } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/projects/:projectId/shares
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List ACTIVE shares of a project, cursor-paginated. Via-parent isolation.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Share} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+
+### POST /api/v1/projects/:projectId/shares
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Grant a contractor a share on the project. permissions is a strict JSONB (T3.S.1 — unknown keys rejected, fail-closed).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `contractorId` | string | yes | format="uuid" |
+| `permissions` | object | yes | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Share } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `contractor_invalid`, `share_exists`, `missing_token`, `invalid_token`
 
 ### POST /api/v1/provider/auth/login
 
@@ -219,6 +1204,208 @@ _(no body)_
 
 **Errors:** `missing_refresh_token`, `invalid_refresh`
 
+### DELETE /api/v1/shares/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Revoke the share (revokedAt + revokedBy — lifecycle, not physical). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/shares/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Replace the permission set of an active share (strict JSONB).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `permissions` | object | yes | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Share } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/tasks
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List org tasks, cursor-paginated. Agent sees ONLY tasks assigned to them (T3.T.1, service-layer).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Task} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+
+### POST /api/v1/tasks
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Create a task. Manager only. Optional assigneeIds seed task_assignees (org members).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `apartmentId` | unknown | no | — |
+| `assigneeIds` | array | no | — |
+| `description` | unknown | no | — |
+| `dueAt` | unknown | no | — |
+| `durationMinutes` | unknown | no | — |
+| `priority` | integer | no | minimum=1, maximum=3 |
+| `projectId` | unknown | no | — |
+| `title` | string | yes | minLength=1, maxLength=300 |
+| `type` | string | no | minLength=1, maxLength=50 |
+
+
+**Response**
+
+```json
+{ "data": { ...Task } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `invalid_assignee`, `missing_token`, `invalid_token`
+
+### DELETE /api/v1/tasks/:id
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Soft delete (archivedAt — "ארכוב"). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/tasks/:id
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Get one task (org-scoped; Agent → only if assigned).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Task } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### PATCH /api/v1/tasks/:id
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Update. Manager: any field. Agent (assigned): status/description only. status=completed sets completedAt/By.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `apartmentId` | unknown | no | — |
+| `description` | unknown | no | — |
+| `dueAt` | unknown | no | — |
+| `durationMinutes` | unknown | no | — |
+| `priority` | integer | no | minimum=1, maximum=3 |
+| `projectId` | unknown | no | — |
+| `status` | string | no | enum=["pending","in_progress","completed","cancelled"] |
+| `title` | string | no | minLength=1, maxLength=300 |
+| `type` | string | no | minLength=1, maxLength=50 |
+
+
+**Response**
+
+```json
+{ "data": { ...Task } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
+### GET /api/v1/tasks/:id/assignees
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List assignees of a task (visible iff the task is visible to the caller).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": [ {TaskAssignee} ] }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`
+
+### POST /api/v1/tasks/:id/assignees
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Assign an org member to the task. Unique (task,user) → assignee_exists.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `userId` | string | yes | format="uuid" |
+
+
+**Response**
+
+```json
+{ "data": { ...TaskAssignee } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `invalid_assignee`, `assignee_exists`, `missing_token`, `invalid_token`
+
+### DELETE /api/v1/tasks/:id/assignees/:userId
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Unassign a user from the task. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+
 ## Part 2 — Global error catalogue
 
 | error.code | HTTP | cause |
@@ -232,5 +1419,23 @@ _(no body)_
 | `invalid_refresh` | 401 | Refresh token unknown/expired/rotated/replayed. |
 | `invalid_otp` | 401 | Tenant OTP wrong/expired/used/attempts-exhausted (generic). |
 | `not_member` | 401 | switch-org target is not an active membership. |
+| `forbidden` | 403 | Authenticated but role lacks permission (D.17 — e.g. non-Manager write). |
+| `not_found` | 404 | Resource absent OR outside the caller’s org/assignment (no oracle). |
+| `invalid_cursor` | 400 | Pagination cursor tampered/garbage — never a 500. |
+| `invalid_json` | 400 | Body is not valid JSON (parser-level; never a 500). |
+| `bad_request` | 400 | Malformed request rejected before the handler (carried 4xx). |
+| `idempotency_conflict` | 409 | Same Idempotency-Key is still in-flight (concurrent duplicate). Retry later. |
+| `member_exists` | 409 | That email already has an active membership in this org. |
+| `cannot_modify_self` | 400 | A manager cannot change/revoke their own membership. |
+| `cannot_remove_last_manager` | 400 | Would leave the org with zero usable managers. |
+| `invalid_invite` | 400 | Invite token bad/expired/used or wrong membership (generic). |
+| `owner_exists` | 409 | Same-org duplicate national_id (not an enumeration oracle — caller is in-org). |
+| `ownership_sum_invalid` | 400 | Apartment active ownership shares must be empty or sum to exactly 100. |
+| `contractor_exists` | 409 | Same-org duplicate contractor contactEmail (active). |
+| `contractor_invalid` | 400 | Share grant references a non-existent / archived contractor. |
+| `share_exists` | 409 | That contractor already has an active share on this project. |
+| `invalid_assignee` | 400 | Task assignee is not an active member of the org. |
+| `assignee_exists` | 409 | That user is already assigned to the task. |
+| `assignment_exists` | 409 | That user already has an active assignment on this project. |
 | `429` | 429 | Per-IP throttle exceeded (signup/login dedicated limits). |
 | `500` | 500 | Unexpected. Generic body; cause logged server-side only. |

@@ -1,0 +1,67 @@
+import { z } from 'zod';
+
+// Canonical Apartment contract (Doc 11 SoT; Phase 3 Slice 3).
+// Entity is "apartment" (NEVER "unit"); Hebrew UI "דירה" (CLAUDE.md).
+//
+// Locked-schema alignment: the `apartments` table (Phase 1, Gate-2) has
+// number/floor/sizeSqm/rooms/status/notes. docs/09 §3.13
+// `apartment_no`/`area_sqm`/`owners_count`/`sign_status` are doc-drift /
+// enrichment (owners_count needs ownerships = Slice 5, sign_status needs
+// Phase-5 signatures). This schema reflects the REAL locked columns
+// (PROGRESS doc-debt note). Apartments have NO org_id — tenant isolation
+// is via-parent (building → project → org) by RLS inside withTenant.
+
+/** Matches the `apartment_status` pg enum. */
+export const ApartmentStatusEnum = z.enum([
+  'pending',
+  'contacted',
+  'meeting',
+  'signed',
+  'refused',
+  'unreachable',
+]);
+export type ApartmentStatus = z.infer<typeof ApartmentStatusEnum>;
+
+export const ApartmentSchema = z.object({
+  id: z.string().uuid(),
+  buildingId: z.string().uuid(),
+  number: z.string().min(1).max(50),
+  floor: z.number().int().nullable(),
+  sizeSqm: z.number().min(0).nullable(),
+  rooms: z.number().min(0).nullable(),
+  status: ApartmentStatusEnum,
+  statusChangedAt: z.coerce.date(),
+  lastContactAt: z.coerce.date().nullable(),
+  notes: z.string().max(2000).nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  archivedAt: z.coerce.date().nullable(),
+});
+export type Apartment = z.infer<typeof ApartmentSchema>;
+
+// buildingId comes from the URL, never the body. statusChangedAt is
+// managed server-side (set when `status` actually changes). `.strict()`
+// fail-closed (FE-security DoD).
+const apartmentWriteShape = {
+  number: z.string().min(1).max(50),
+  floor: z.number().int().nullable().optional(),
+  sizeSqm: z.number().min(0).nullable().optional(),
+  rooms: z.number().min(0).nullable().optional(),
+  status: ApartmentStatusEnum.optional(),
+  notes: z.string().max(2000).nullable().optional(),
+} as const;
+
+/** POST body — `number` required (Doc 09 §3.13). */
+export const CreateApartmentInput = z.object(apartmentWriteShape).strict();
+export type CreateApartment = z.infer<typeof CreateApartmentInput>;
+
+/** PATCH body — every field optional. */
+export const UpdateApartmentInput = z.object(apartmentWriteShape).partial().strict();
+export type UpdateApartment = z.infer<typeof UpdateApartmentInput>;
+
+/** GET list query — cursor pagination only (D.16; never offset). */
+export const ListApartmentsQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  cursor: z.string().min(1).optional(),
+});
+export type ListApartmentsQueryDto = z.infer<typeof ListApartmentsQuery>;

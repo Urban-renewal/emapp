@@ -2,7 +2,7 @@
 // Direct db/pool access is internal only — all external reads go through withTenant / withProvider
 export { pool, db, providerDb, type Database, type ProviderDatabase } from './client';
 export { env } from './env';
-export { withTenant } from './wrappers/with-tenant';
+export { withTenant, type TenantTx } from './wrappers/with-tenant';
 export { withProvider } from './wrappers/with-provider';
 export { withBootstrap } from './wrappers/with-bootstrap';
 export { verifyEncryptionStartup } from './startup-check';
@@ -14,6 +14,8 @@ export * from './helpers/share-defaults';
 export * from './helpers/apply-share-permissions';
 export * from './helpers/resolve-share';
 export * from './helpers/notifications';
+export * from './helpers/idempotency';
+export * from './helpers/members';
 export * from './helpers/documents';
 export {
   encryptOwnerPii,

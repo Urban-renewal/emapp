@@ -54,8 +54,14 @@ async function bootstrap() {
     try {
       done(null, JSON.parse(body));
     } catch {
-      const e = new Error('Invalid JSON') as Error & { statusCode?: number };
+      // Self-describe with a STABLE discriminator (code) + status so the
+      // exception filter never has to string-match the message.
+      const e = new Error('Invalid JSON') as Error & {
+        statusCode?: number;
+        code?: string;
+      };
       e.statusCode = 400;
+      e.code = 'invalid_json';
       done(e);
     }
   });

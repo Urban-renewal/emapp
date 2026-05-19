@@ -27,6 +27,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { and, desc, eq, inArray, isNull, lt, or, type SQL } from 'drizzle-orm';
 
@@ -260,7 +261,10 @@ export class DocumentsService {
       this.logger.error(
         `presign(upload) failed (doc=${row.id}): ${e instanceof Error ? e.message : 'unknown'}`,
       );
-      throw new BadRequestException({ error: { code: 'storage_unavailable' } });
+      // 503, not 400: this is an infra outage (object-storage unreachable),
+      // not a client error. Correct status matters for monitoring/alerting
+      // and lets the client safely retry. (Audit finding 2026-05-20.)
+      throw new ServiceUnavailableException({ error: { code: 'storage_unavailable' } });
     }
 
     return {

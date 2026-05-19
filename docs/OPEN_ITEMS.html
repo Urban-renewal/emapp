@@ -1221,7 +1221,19 @@ naming — no .md exists).</p>
 <p><strong>Decisions added since this doc was written:</strong> D.24 (high-scale
 data-path stance) · D.25 (ownership atomic set-replace, mandated by the locked
 sum trigger) · D.26 (centralized declarative D.17 authorization, ISO A.9.4) ·
-D.27 (member-invite consent — token-in-response is a GOVERNED interim).</p>
+D.27 (member-invite consent — token-in-response is a GOVERNED interim) ·
+D.28 (Phase 4 documents — presigned-URL confidentiality model + governed
+R2-swap residuals R1–R4).</p>
+<p><strong>Phase 4 (Documents) carry-out — hard pre-Gate-5 (must not be
+lost):</strong> code landed (branch phase-4, PR base main); confidential
+docs with key-never-on-wire + presign-after-authorize + no-oracle;
+security-review HIGH-1 fixed at root, bulk-exfil throttled. RESIDUAL =
+provision Cloudflare R2 (bucket + R2_* creds + S3 client) in Infisical
+(Gate-4 SECRETS LAW = user action) and at that swap implement R1
+content-length-range, R2 storage-attested checksum + IStorageProvider.head
+verify on finalize, R3 server MIME-sniff, R4 orphan-blob GC/retry — see
+DECISIONS D.28 / GATES Gate-5. Also: pre-existing infra bug — API process
+crashes on Neon idle-connection drop (pg pool resilience; spawned task).</p>
 <p><strong>Open obligations carried OUT of Phase 3 (must not be lost):</strong></p>
 <ul>
 <li><strong>D.27 invite email — CODE DONE 2026-05-19; residual = Infisical

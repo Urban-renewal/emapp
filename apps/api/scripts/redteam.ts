@@ -554,6 +554,72 @@ async function main(): Promise<void> {
     `got ${wrongPwGoodMfa.status} ${(wrongPwGoodMfa.body['error'] as Json)?.['code'] ?? ''}`,
   );
 
+  // ── K. documents confidentiality (Phase 4) ──────────────────────────────
+  const KEY_RE = /org\/[0-9a-f-]+\/doc\/[0-9a-f-]+/i;
+  const docBody = {
+    name: 'secret.pdf',
+    type: 'contract',
+    mimeType: 'application/pdf',
+    sizeBytes: 1024,
+    contentHash: 'h1',
+  };
+  const kViewerCreate = await call('/documents', {
+    method: 'POST',
+    cookie: `access_token=${A.viewerTok}`,
+    body: JSON.stringify(docBody),
+  });
+  check(
+    'K1 Viewer create document → 403',
+    kViewerCreate.status === 403,
+    `got ${kViewerCreate.status}`,
+  );
+
+  const kCreate = await call('/documents', {
+    method: 'POST',
+    cookie: `access_token=${A.managerTok}`,
+    body: JSON.stringify(docBody),
+  });
+  const kDoc = (kCreate.body['data'] as Json | undefined)?.['document'] as Json | undefined;
+  const kDocId = kDoc?.['id'] as string | undefined;
+  check(
+    'K2 Manager create document → 2xx; r2Key NOT in document object',
+    kCreate.status >= 200 &&
+      kCreate.status < 300 &&
+      !!kDocId &&
+      !('r2Key' in (kDoc ?? {})) &&
+      !KEY_RE.test(JSON.stringify(kDoc ?? {})),
+    `status ${kCreate.status}`,
+  );
+
+  if (kDocId) {
+    const kGet = await call(`/documents/${kDocId}`, { cookie: `access_token=${A.managerTok}` });
+    check(
+      'K3 GET document body never contains the storage key',
+      kGet.status === 200 && !KEY_RE.test(kGet.raw),
+      kGet.status === 200 ? 'no key in body' : `got ${kGet.status}`,
+    );
+    const kCross = await call(`/documents/${kDocId}`, { cookie: `access_token=${B.managerTok}` });
+    check(
+      'K4 Org-B GET Org-A document → 404 no-oracle',
+      kCross.status === 404,
+      `got ${kCross.status}`,
+    );
+    const kCrossDl = await call(`/documents/${kDocId}/download`, {
+      cookie: `access_token=${B.managerTok}`,
+    });
+    check(
+      'K5 Org-B download Org-A document → 404 AND no URL minted',
+      kCrossDl.status === 404 && !kCrossDl.raw.includes('http'),
+      `got ${kCrossDl.status}`,
+    );
+    const kAgent = await call(`/documents/${kDocId}`, { cookie: `access_token=${A.agentTok}` });
+    check(
+      'K6 Agent GET org-level (unassigned) document → 404 no-oracle',
+      kAgent.status === 404,
+      `got ${kAgent.status}`,
+    );
+  }
+
   // ── report ───────────────────────────────────────────────────────────────
   const fails = results.filter((r) => !r.ok);
   console.log(`\n=== RED-TEAM RESULT: ${results.length - fails.length}/${results.length} held ===`);

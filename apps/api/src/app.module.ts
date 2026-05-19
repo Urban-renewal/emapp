@@ -11,6 +11,7 @@ import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BuildingsModule } from './modules/buildings/buildings.module';
 import { ContractorsModule } from './modules/contractors/contractors.module';
+import { DocumentsModule } from './modules/documents/documents.module';
 import { MembersModule } from './modules/members/members.module';
 import { NotesModule } from './modules/notes/notes.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -50,6 +51,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
     OwnersModule,
     OwnershipsModule,
     ContractorsModule,
+    DocumentsModule,
     SharesModule,
     TasksModule,
     NotificationsModule,

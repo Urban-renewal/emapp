@@ -27,7 +27,8 @@ export type Resource =
   | 'notes'
   | 'audit'
   | 'project_assignments'
-  | 'members';
+  | 'members'
+  | 'documents';
 
 type Matrix = Record<Resource, Record<Action, readonly Role[]>>;
 
@@ -65,6 +66,10 @@ export const POLICY: Matrix = {
   project_assignments: { read: ALL, create: MGR, update: MGR, delete: MGR },
   // Org membership administration — manager only, every action.
   members: { read: MGR, create: MGR, update: MGR, delete: MGR },
+  // Documents: any org role may read (agent → assigned-project docs only,
+  // record-scoped in the service); writes are manager-only. The presigned
+  // URL is minted ONLY after this gate + per-record visibility pass.
+  documents: { read: ALL, create: MGR, update: MGR, delete: MGR },
 };
 
 /** Pure decision: is this role coarsely permitted this action on this resource? */

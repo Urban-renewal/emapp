@@ -1,0 +1,64 @@
+import { randomUUID } from 'node:crypto';
+
+import { FakeStorageProvider, type IStorageProvider } from '@emapp/db';
+
+/**
+ * Phase 4 — document storage provider DI.
+ *
+ * Same GOVERNED pattern as D.27 EMAIL_PROVIDER / Gate-4 NoopSMSProvider:
+ * the abstraction is wired now; the concrete R2 provider is dropped in at
+ * THIS single factory once the Cloudflare R2 bucket + `R2_*` creds + the
+ * S3 client land in Infisical (Gate-4 SECRETS LAW — user action).
+ *
+ * SECURITY: production must NOT silently fall back to FakeStorageProvider
+ * (in-memory, mints fake URLs) — that would make every document
+ * unreadable AND could mask a misconfig. So prod FAILS FAST at boot until
+ * R2 is wired (a safe loud failure; recorded as a hard pre-Gate-5 gate).
+ */
+export const STORAGE_PROVIDER = 'STORAGE_PROVIDER';
+
+/** Presigned-URL lifetimes (seconds). Deliberately short — a signed URL
+ * is a bearer credential; minimise the exfiltration window. */
+export const UPLOAD_URL_TTL_SECONDS = 300;
+export const DOWNLOAD_URL_TTL_SECONDS = 120;
+
+export function storageProviderFactory(): IStorageProvider {
+  if (process.env['NODE_ENV'] === 'production') {
+    throw new Error(
+      'STORAGE_PROVIDER: refusing to boot — production requires Cloudflare ' +
+        'R2 (Phase 4 / Gate-4 SECRETS LAW). FakeStorageProvider would make ' +
+        'documents unreadable. Provision R2 (bucket + R2_* creds + S3 ' +
+        'client) and wire R2StorageProvider in storageProviderFactory ' +
+        'before deploying. See GATES Gate-5 / DECISIONS D.28.',
+    );
+  }
+  return new FakeStorageProvider();
+}
+
+/**
+ * The object key is SERVER-GENERATED and unguessable, partitioned per org
+ * so a bucket-level mistake is still org-scoped. The client NEVER supplies
+ * or sees this key (it is not on the wire) — only short-lived presigned
+ * URLs are returned. Format: `org/<orgId>/doc/<uuid>`.
+ */
+export function newDocumentKey(orgId: string): string {
+  return `org/${orgId}/doc/${randomUUID()}`;
+}
+
+/**
+ * Sanitise a stored document name before it is used as the download
+ * Content-Disposition filename: strip path separators, quotes, and
+ * control chars (header-injection / response-splitting defense). Falls
+ * back to a safe constant if nothing printable remains.
+ */
+export function safeDownloadFilename(name: string): string {
+  let out = '';
+  for (const ch of name) {
+    const c = ch.codePointAt(0) ?? 0;
+    if (c < 0x20 || c === 0x7f) continue; // control chars
+    if (ch === '"' || ch === '\\' || ch === '/') continue; // quoting / path
+    out += ch;
+  }
+  out = out.trim().slice(0, 200);
+  return out.length > 0 ? out : 'document';
+}

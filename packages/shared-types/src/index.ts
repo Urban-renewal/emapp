@@ -14,3 +14,4 @@ export * from './note';
 export * from './audit';
 export * from './project-assignment';
 export * from './member';
+export * from './document';

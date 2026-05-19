@@ -33,6 +33,49 @@ const resilientPoolDefaults = {
   allowExitOnIdle: false,
 };
 
+// Resilience guard observability hook. @emapp/db deliberately has NO
+// Sentry / metrics dependency — the API bootstrap injects an observer
+// via setPoolErrorObserver() (see apps/api/src/instrument.ts). When
+// unset, the guard still writes to stderr (defense in depth for ops
+// grep) and contains the failure; observability is purely additive.
+//
+// Only err.message is forwarded: pg connection-layer messages are
+// protocol-level (no query text, no PII). err.stack is intentionally
+// NOT forwarded — surrounding async frames can carry call-site context
+// that hasn't been audited for PII.
+//
+// `source` is a single value 'client' rather than 'idle'|'checked-out':
+// the per-client listener (the only one that logs/notifies) sees errors
+// for clients in BOTH states. pg-pool re-emits idle client errors to
+// pool.emit('error') ON TOP of the per-client 'error' event, so a 'source'
+// distinction at the pool listener would either duplicate (one notify per
+// layer) or require fragile access to pg internals (pool._idle). Telemetry
+// consumers that need to distinguish can classify by err.message.
+export type PoolName = 'appPool' | 'providerPool';
+export type PoolErrorSource = 'client';
+export interface PoolErrorEvent {
+  pool: PoolName;
+  source: PoolErrorSource;
+  message: string;
+}
+export type PoolErrorObserver = (event: PoolErrorEvent) => void;
+
+let poolErrorObserver: PoolErrorObserver | undefined;
+
+export function setPoolErrorObserver(observer: PoolErrorObserver | undefined): void {
+  poolErrorObserver = observer;
+}
+
+function notifyPoolErrorObserver(event: PoolErrorEvent): void {
+  const fn = poolErrorObserver;
+  if (!fn) return;
+  try {
+    fn(event);
+  } catch {
+    /* observer must never weaken the guard */
+  }
+}
+
 // The pg Pool only re-emits errors from *idle* clients to `pool.on('error')`.
 // A client whose connection Neon terminates while it is *checked out* (a
 // long-running session holding the connection) emits 'error' on the Client
@@ -41,22 +84,23 @@ const resilientPoolDefaults = {
 //
 // The per-client listener attached on `connect` is the single source of
 // truth: it fires for every client error (idle OR checked-out) and is the
-// ONLY log line we emit per event. We still register a pool-level 'error'
-// listener — pg-pool re-emits idle client errors via `pool.emit('error')`
-// (see pg-pool/index.js makeIdleListener), and an EventEmitter with no
-// 'error' listener throws synchronously, reintroducing the same crash
-// class for idle drops. The pool listener is therefore intentionally a
-// silent backstop, not a second log line.
-const attachClientErrorGuard = (poolLabel: string, p: Pool): void => {
+// ONLY path that logs/notifies (dedup contract pinned by
+// pool-resilience.spec.ts). The pool-level 'error' listener is registered
+// as a SILENT backstop: pg-pool re-emits idle client errors via
+// pool.emit('error') (see pg-pool/index.js makeIdleListener), and an
+// EventEmitter with no 'error' listener throws synchronously, reintroducing
+// the same crash class for idle drops. DO NOT remove the pool listener.
+export function attachClientErrorGuard(p: Pool, name: PoolName): void {
   p.on('connect', (client: PoolClient) => {
     client.on('error', (err: Error) => {
-      process.stderr.write(`[${poolLabel}] client error (reaped): ${err.message}\n`);
+      process.stderr.write(`[${name}] client error (reaped): ${err.message}\n`);
+      notifyPoolErrorObserver({ pool: name, source: 'client', message: err.message });
     });
   });
   // Silent backstop — see comment above. DO NOT remove: without an 'error'
   // listener on the Pool, pg's idle re-emit crashes the process.
   p.on('error', () => {});
-};
+}
 
 const appPoolConfig = {
   connectionString: env.DATABASE_URL,
@@ -71,7 +115,7 @@ export const pool = new Pool(appPoolConfig);
 export const db = drizzle(pool, { schema });
 export type Database = NodePgDatabase<typeof schema>;
 
-attachClientErrorGuard('appPool', pool);
+attachClientErrorGuard(pool, 'appPool');
 
 const providerPoolConfig = {
   connectionString: env.PROVIDER_DATABASE_URL ?? env.DATABASE_URL,
@@ -86,4 +130,4 @@ export const providerPool = new Pool(providerPoolConfig);
 export const providerDb = drizzle(providerPool, { schema });
 export type ProviderDatabase = NodePgDatabase<typeof schema>;
 
-attachClientErrorGuard('providerPool', providerPool);
+attachClientErrorGuard(providerPool, 'providerPool');

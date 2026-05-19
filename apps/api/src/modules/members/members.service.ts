@@ -6,13 +6,16 @@ import {
   memberships,
   users,
   withTenant,
+  type IEmailProvider,
   type TenantTx,
 } from '@emapp/db';
 import type { AcceptInvite, CreateMember, Member, UpdateMember } from '@emapp/shared-types';
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -21,6 +24,8 @@ import { and, desc, eq, isNotNull, isNull, lt, ne, or, sql, type SQL } from 'dri
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { hashPassword } from '../auth/password';
+
+import { EMAIL_PROVIDER, EXPOSE_INVITE_TOKEN, buildInviteEmail } from './invite-email';
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
 const SELF = new BadRequestException({ error: { code: 'cannot_modify_self' } });
@@ -50,11 +55,17 @@ export interface MemberListPage {
  * (sanctioned withBootstrap, scoped to the manager's org), return a
  * one-time signed invite token (HS256, iss/aud pinned, 7d). The invitee
  * sets their OWN password at the PUBLIC /auth/accept-invite — the
- * manager never learns it (ISO A.9.2.1/A.9.4.3). Email delivery deferred.
+ * manager never learns it (ISO A.9.2.1/A.9.4.3). D.27: the token is
+ * delivered via IEmailProvider and is NOT returned in prod responses.
  */
 @Injectable()
 export class MembersService {
-  constructor(private readonly jwt: JwtService) {}
+  private readonly logger = new Logger(MembersService.name);
+
+  constructor(
+    private readonly jwt: JwtService,
+    @Inject(EMAIL_PROVIDER) private readonly email: IEmailProvider,
+  ) {}
 
   // Availability/ISO guard: an org must never be left with ZERO usable
   // managers. If `targetUserId` is currently a usable manager (accepted,
@@ -95,7 +106,7 @@ export class MembersService {
   async create(
     user: AccessTokenPayload,
     input: CreateMember,
-  ): Promise<{ member: Member; inviteToken: string }> {
+  ): Promise<{ member: Member; inviteToken?: string }> {
     try {
       const { userId, membershipId } = await inviteOrgMember({
         orgId: user.orgId,
@@ -112,6 +123,31 @@ export class MembersService {
         { sub: userId, orgId: user.orgId, mid: membershipId, typ: 'invite' },
         { expiresIn: INVITE_TTL, issuer: JWT_ISS, audience: INVITE_AUD, algorithm: 'HS256' },
       );
+      // D.27: deliver the token via the email channel. Best-effort — the
+      // membership is already committed; a transient mail failure must not
+      // 500 the request (the manager can re-invite). The token is a
+      // credential: never logged, never in an error message.
+      try {
+        const r = await this.email.send(
+          buildInviteEmail({ to: input.email, name: input.name, token: inviteToken }),
+        );
+        if (r.status === 'rejected') {
+          // Non-PII operability signal (ISO A.12.4): membership id + provider
+          // error only. NEVER the token, the link, or the email body.
+          this.logger.error(
+            `invite email rejected (membership=${membershipId}): ${r.error ?? 'unknown'}`,
+          );
+        }
+      } catch (mailErr) {
+        // Best-effort: membership is committed; a transient send failure must
+        // not 500 (the manager can re-invite). Record the FACT + cause (no
+        // token/body) so undelivered invites are detectable in the field.
+        this.logger.error(
+          `invite email send failed (membership=${membershipId}): ${
+            mailErr instanceof Error ? mailErr.message : 'unknown'
+          }`,
+        );
+      }
       const member: Member = {
         userId,
         email: input.email,
@@ -123,7 +159,9 @@ export class MembersService {
         revokedAt: null,
         createdAt: new Date(),
       };
-      return { member, inviteToken };
+      // Token is returned ONLY outside production (dev/test convenience +
+      // conformance/red-team). In prod the email is the sole delivery path.
+      return EXPOSE_INVITE_TOKEN ? { member, inviteToken } : { member };
     } catch (e) {
       if (e instanceof MemberConflictError && e.code === 'member_exists') {
         throw new ConflictException({ error: { code: 'member_exists' } });

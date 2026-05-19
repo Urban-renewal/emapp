@@ -78,15 +78,21 @@ control was implemented and the evidence exists in code/tests.
 
 &#x20; PRE-GATE-5 OBLIGATIONS (recorded so the chain is not lost): (1) \*\*D.27\*\*
 
-&#x20; — the member-invite token is returned in the API response as a GOVERNED
+&#x20; — CODE REMEDIATION LANDED 2026-05-19 (branch d27-invite-email): invite
 
-&#x20; interim; real email delivery (Resend via IEmailProvider) MUST replace it
+&#x20; token delivered via IEmailProvider, NOT returned in prod responses;
 
-&#x20; before prod. Resend is Infisical-gated per Gate-4 SECRETS LAW (account +
+&#x20; security-review HIGH/MEDIUM fixed at root; prod now FAILS FAST at boot
 
-&#x20; key = user action). (2) Gate-4 real SMS provider swap. (3) D.22 items
+&#x20; if no real email provider (no silent hole). RESIDUAL (still hard
 
-&#x20; marked pre-prod.
+&#x20; pre-Gate-5): provision `resend` + `RESEND_API_KEY` in Infisical and
+
+&#x20; wire ResendEmailProvider at the single factory point — Gate-4 SECRETS
+
+&#x20; LAW (account + key = user action); until then prod refuses to boot
+
+&#x20; (safe). (2) Gate-4 real SMS provider swap. (3) D.22 items pre-prod.
 
 \- \*\*Gate 6 (architecture decisions):\*\* exercised — D.21 (auth ownership),
 

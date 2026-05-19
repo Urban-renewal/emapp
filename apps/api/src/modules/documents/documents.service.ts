@@ -362,10 +362,23 @@ export class DocumentsService {
     // Only NOW (authorised) is a short-lived signed GET minted. Forced to
     // attachment with a sanitised filename (no header-injection / no
     // in-browser active-content execution).
-    const url = await this.storage.getDownloadUrl(r2Key, {
-      ttlSeconds: DOWNLOAD_URL_TTL_SECONDS,
-      responseFilename: safeDownloadFilename(name),
-    });
+    // A3 audit-fix (2026-05-20): presign failure is an infra outage, not a
+    // client error. Without try/catch the raw provider error leaks as a
+    // generic 500 while the download audit row is already committed (an
+    // append-only inconsistency). Map to 503 — same governed pattern as
+    // create's presign failure.
+    let url: string;
+    try {
+      url = await this.storage.getDownloadUrl(r2Key, {
+        ttlSeconds: DOWNLOAD_URL_TTL_SECONDS,
+        responseFilename: safeDownloadFilename(name),
+      });
+    } catch (e) {
+      this.logger.error(
+        `presign(download) failed (doc=${id}): ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+      throw new ServiceUnavailableException({ error: { code: 'storage_unavailable' } });
+    }
     return { url, expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS };
   }
 

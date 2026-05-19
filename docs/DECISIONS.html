@@ -1230,6 +1230,35 @@ Date · Decision · Alternatives · Why · Reversibility · Revisit trigger
 <li><strong>R5 (added 2026-05-20) — agent-list scale:</strong> `DocumentsService.list` for an `agent` currently materialises ALL apartment-ids under ALL assigned projects into memory and emits a giant `IN (...)`. For an agent assigned to a large project this is unbounded. Pre-Gate-5 refactor: rewrite as an EXISTS / correlated-subquery (same join graph) so SQL bounds the work, not the app process. ISO availability concern, not a correctness bug. Same pattern probably exists in other services and overlaps tracked debt (b).</li>
 </ul>
 <hr />
+<h2>D.29 — Tier-isolated JWT audiences (org / provider / tenant) for structural A.9.4 defence</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-20 (Phase 4 audit-pass II, branch phase-4)</li>
+<li><strong>Decision:</strong> Each user tier mints &amp; verifies its JWTs with a distinct
+RFC-7519 audience claim — Org=<code>'emapp-api'</code>,
+Provider=<code>'emapp-provider'</code>, Tenant=<code>'emapp-tenant'</code>. Previously all three
+shared <code>'emapp-api'</code> and tier separation rested on a single per-guard
+<code>payload.type</code> check.</li>
+<li><strong>Why:</strong> ISO 27001 A.9.4 wants access rules <em>"documented, enforced, and
+verifiable"</em>. Single-line-of-defence ("if this one check is forgotten in a new
+guard or a typo turns 'tenant_access' into 'access', tiers leak into each
+other") fails the "enforced" half. JWT audience verification is a spec-level
+structural check — a token minted for one tier cannot validate against
+another tier's guard regardless of payload contents.</li>
+<li><strong>Trade-off:</strong> 4 surgical changes (2 services + 2 guards). Refresh
+tokens are not JWTs (D.21 — hashed in DB) so no other path needed updating.
+Invite tokens already had their own <code>'emapp-invite'</code> audience. Dev/test
+sessions need a re-login at deploy time (no prod impact — no prod yet).</li>
+<li><strong>Reversibility:</strong> High — 4-line revert; D.29 is documentation + 4
+literal constants.</li>
+<li><strong>Verification:</strong> red-team L1/L2/L3 prove the structural rejection
+end-to-end (tenant/provider-shaped tokens with the matching tier-audience
+return 401 at <code>/documents</code>; org token returns 401 at <code>/provider/*</code>).
+Pre-existing 42 red-team checks unchanged; <code>auth.contract</code> P4
+("org token at provider guard rejected") still green.</li>
+<li><strong>Ref:</strong> docs/07 §1.5 (security &amp; SOLID interplay), §6 AuthN, RFC 7519
+§4.1.3 <code>aud</code> claim.</li>
+</ul>
+<hr />
 <h2>Pending Decisions (not yet made — tracked in OPEN_ITEMS.md §4)</h2>
 <p>These are listed so they're visible but explicitly NOT decided:</p>
 <ul>

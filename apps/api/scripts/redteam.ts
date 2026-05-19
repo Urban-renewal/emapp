@@ -620,6 +620,74 @@ async function main(): Promise<void> {
     );
   }
 
+  // ── L. cross-tier JWT rejection (B1 architectural defence) ──────────────
+  // After B1 (D.29), each tier has a distinct JWT audience. A token validly
+  // signed for the wrong tier MUST be rejected STRUCTURALLY (not by a
+  // single payload.type check). Forge tokens with the real JWT secret but
+  // with provider/tenant audiences, then present them at /documents.
+  const jwtSecret = process.env['JWT_SECRET'];
+  if (!jwtSecret) {
+    check('L0 JWT_SECRET available for cross-tier probes', false, 'env not set');
+  } else {
+    const expSec = Math.floor(Date.now() / 1000) + 900;
+    const tenantClaims: Json = {
+      sub: '11111111-1111-1111-1111-111111111111',
+      orgId: '22222222-2222-2222-2222-222222222222',
+      role: 'tenant',
+      type: 'tenant_access',
+      sid: 'forged-tenant-sid',
+      iss: 'emapp',
+      aud: 'emapp-tenant',
+      exp: expSec,
+    };
+    const providerClaims: Json = {
+      sub: '33333333-3333-3333-3333-333333333333',
+      role: 'provider_admin',
+      type: 'provider_access',
+      sid: 'forged-provider-sid',
+      iss: 'emapp',
+      aud: 'emapp-provider',
+      exp: expSec,
+    };
+    const tenantTok = forgeHsJwt(tenantClaims, jwtSecret);
+    const providerTok = forgeHsJwt(providerClaims, jwtSecret);
+
+    const lTenant = await call('/documents', { cookie: `access_token=${tenantTok}` });
+    check(
+      'L1 Tenant token (aud=emapp-tenant) at /documents → 401 (B1)',
+      lTenant.status === 401,
+      `got ${lTenant.status} ${(lTenant.body['error'] as Json)?.['code'] ?? ''}`,
+    );
+    const lProv = await call('/documents', { cookie: `access_token=${providerTok}` });
+    check(
+      'L2 Provider token (aud=emapp-provider) at /documents → 401 (B1)',
+      lProv.status === 401,
+      `got ${lProv.status} ${(lProv.body['error'] as Json)?.['code'] ?? ''}`,
+    );
+    // Symmetric: an Org token (aud=emapp-api) must STILL be rejected at the
+    // provider guard — proves no accidental widening at /provider/auth.
+    const orgImposter: Json = {
+      sub: '44444444-4444-4444-4444-444444444444',
+      orgId: '55555555-5555-5555-5555-555555555555',
+      role: 'manager',
+      type: 'access',
+      sid: 'forged-org-sid',
+      iss: 'emapp',
+      aud: 'emapp-api',
+      exp: expSec,
+    };
+    const orgTok = forgeHsJwt(orgImposter, jwtSecret);
+    const lOrg = await call('/provider/auth/logout', {
+      method: 'POST',
+      cookie: `access_token=${orgTok}`,
+    });
+    check(
+      'L3 Org token (aud=emapp-api) at /provider/* → not 200 (B1 reverse)',
+      lOrg.status !== 200,
+      `got ${lOrg.status} ${(lOrg.body['error'] as Json)?.['code'] ?? ''}`,
+    );
+  }
+
   // ── report ───────────────────────────────────────────────────────────────
   const fails = results.filter((r) => !r.ok);
   console.log(`\n=== RED-TEAM RESULT: ${results.length - fails.length}/${results.length} held ===`);

@@ -358,6 +358,39 @@ describe('DOCUMENTS · DEEP · zero-leak error envelopes', () => {
   });
 });
 
+// ── DD11/DD12 — FE-readiness preflight + CSP (audit-pass A1/A2 fixes) ─────
+describe('DOCUMENTS · DEEP · browser-FE readiness (CORS preflight + CSP)', () => {
+  ct('DD11 CORS preflight ALLOWS Idempotency-Key (was silently blocked)', async () => {
+    const res = await fetch(`${API}/documents`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'http://localhost:3001',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'idempotency-key, content-type',
+      },
+    });
+    expect(res.status).toBeLessThan(300);
+    const allow = (res.headers.get('access-control-allow-headers') ?? '').toLowerCase();
+    expect(allow, 'CORS allow-headers must include idempotency-key').toContain('idempotency-key');
+    // Sanity — auth + content-type still allowed too.
+    expect(allow).toContain('authorization');
+    expect(allow).toContain('content-type');
+  });
+
+  ct('DD12 CSP connect-src ALLOWS R2 (was: would block FE→R2 presigned PUT/GET)', async () => {
+    const res = await fetch(`${API}/health`);
+    const csp = res.headers.get('content-security-policy') ?? '';
+    expect(csp, 'CSP header missing').toBeTruthy();
+    // Pull the connect-src directive.
+    const connectMatch = csp.match(/connect-src ([^;]+)/i);
+    expect(connectMatch, 'connect-src directive missing').toBeTruthy();
+    const connectSrc = (connectMatch?.[1] ?? '').toLowerCase();
+    expect(connectSrc).toContain('r2.cloudflarestorage.com');
+    // Sanity — 'self' + sentry + resend still allowed.
+    expect(connectSrc).toContain("'self'");
+  });
+});
+
 // ── DD10 — runtime latency guard (Principle 03/04: performance/min-runtime) ─
 describe('DOCUMENTS · DEEP · runtime latency budget', () => {
   ct(

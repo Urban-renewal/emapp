@@ -94,6 +94,24 @@ control was implemented and the evidence exists in code/tests.
 
 &#x20; (safe). (2) Gate-4 real SMS provider swap. (3) D.22 items pre-prod.
 
+&#x20; (4) \*\*D.28\*\* — Phase 4 Documents CODE LANDED 2026-05-19 (branch
+
+&#x20; phase-4): confidential docs, key never on wire, presign-after-
+
+&#x20; authorize, no-oracle; security-review HIGH-1 fixed at root + bulk-
+
+&#x20; exfil throttle added; prod FAILS FAST until R2 wired. RESIDUAL (hard
+
+&#x20; pre-Gate-5, Gate-4 SECRETS LAW = user action): provision Cloudflare
+
+&#x20; R2 (bucket + R2\_\* creds + S3 client) and wire R2StorageProvider; AND
+
+&#x20; at that swap implement R1 content-length-RANGE, R2 storage-attested
+
+&#x20; checksum + IStorageProvider.head verify on finalize, R3 server MIME
+
+&#x20; sniff, R4 orphan-blob GC/retry (see DECISIONS D.28).
+
 \- \*\*Gate 6 (architecture decisions):\*\* exercised — D.21 (auth ownership),
 
 &#x20; D.22 (security-design backlog), \*\*D.24\*\* (high-scale data-path stance),
@@ -104,7 +122,11 @@ control was implemented and the evidence exists in code/tests.
 
 &#x20; A.9.4), \*\*D.27\*\* (member-invite consent: token-in-response governed
 
-&#x20; interim, hard remediation = email before Gate 5) — all recorded in
+&#x20; interim, hard remediation = email before Gate 5), \*\*D.28\*\* (documents
+
+&#x20; presigned-URL confidentiality model + governed R2-swap residuals) —
+
+&#x20; all recorded in
 
 &#x20; docs/DECISIONS.html with the user's approval. (NOTE: only
 

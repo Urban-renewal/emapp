@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 
 import { AuthModule } from '../auth/auth.module';
 import { STORAGE_PROVIDER, storageProviderFactory } from '../documents/storage';
+import { EMAIL_PROVIDER, emailProviderFactory } from '../members/invite-email';
 
 import { PublicSignController } from './public-sign.controller';
 import { PublicSignService } from './public-sign.service';
@@ -58,6 +59,10 @@ import { SIGNATURE_TOKEN_SECRET, SignatureTokenService } from './signature-token
     // (would create a circular-import risk if Documents ever pulls
     // signatures). The factory is idempotent.
     { provide: STORAGE_PROVIDER, useFactory: storageProviderFactory },
+    // S6 delivery — same governed pattern as documents/STORAGE_PROVIDER.
+    // The factory is shared with MembersModule (D.27 invite email);
+    // re-registering it here keeps the module self-contained.
+    { provide: EMAIL_PROVIDER, useFactory: emailProviderFactory },
   ],
 })
 export class SignaturesModule {}

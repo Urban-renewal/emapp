@@ -6,13 +6,13 @@
 
 ## Current Position
 
-- **Phase:** 3 IN PROGRESS — Domain API (docs/03 §7), branch `phase-3` from up-to-date main. Slice-by-slice; one PR at phase end (user-approved cadence 2026-05-18). Agent scoping enforced in the SERVICE layer (project_assignments JOIN over withTenant), not an extra RLS policy (user-approved). FE design = FE-only, not an input to the API contract (user-confirmed 2026-05-18).
+- **Phase:** 5 COMPLETE — Signatures (docs/03 §9, public-link JWT flow), branch `phase-5` from up-to-date main. PR #20 ready-for-review. **Phase 4 was merged (commit `48f007f`); Phase 5 is the next end-of-phase gate.**
 
-- **Next task:** Phase 3 COMPLETE — awaiting_approval. PR #12 un-drafted; STOP for user (end-of-phase gate). Slices 1-9 DONE. Live verification at HEAD: **167 conformance pass / 1 skip across 15 contract files** + **164 policy unit** + **36/36 live red-team** (see 2026-05-19 bullets). After merge: close **D.27 email-delivery remediation** (pre-Gate-5 obligation; Resend = Infisical-gated per Gate-4 SECRETS LAW) → then Phase 4 (Documents).
+- **Next task:** Phase 5 sign-off — awaiting_approval. PR #20 (signature_requests + public sign + multi-channel delivery + D.33 record). 22/22 Phase 5 tests pass live vs compiled API + Neon dev (9 unit + 11 security E2E + 2 functional). After merge: Phase 6 (Import — docs/03 §10).
 
-- **Status:** Phase 3 (Domain API) FEATURE-COMPLETE. 13 vertical slices: Projects, Buildings, Apartments, Owners (PII), Ownerships (atomic set, D.25), Contractors, Shares (strict JSONB), Tasks, Task-Assignees, Notifications (self), Notes, Audit-Read, Project-Assignments. All D.16 envelope / D.17 roles / keyset pagination / soft-delete / audit / locked-schema-faithful. 142 black-box conformance clauses pass live vs compiled API + Neon + RLS + pgcrypto + locked triggers. Decisions recorded: D.24 (scale stance), D.25 (ownership atomic set). Deferred & recorded (later phases, not gaps): contractor-facing share consume endpoint (needs Contractor auth tier), notification generation+SSE (Phase 5, T3.N.1; locked RLS forbids cross-user insert in actor tx), Documents (Phase 4), Signatures (Phase 5). Doc-drift recorded where docs/06+09 conflicted with the locked schema (no Gate-2 deviations).
+- **Status:** Phase 5 (Signatures) FEATURE-COMPLETE. Public-link signing flow `/api/v1/sign/:token` per docs/03 §9 — SEPARATE JWT secret (`SIGNATURE_TOKEN_SECRET`, audience `emapp-sign`, 7-day TTL), atomic single-use guard at the DB row level, 10 security layers verified live by the credentialed-audit E2E suite. Manager side: `POST /signature-requests` (create), `GET` (list, keyset, agent record-scoped), `GET :id`, `POST :id/cancel` (status transition). Public side: `GET /sign/:token` (preview with presigned doc URL), `POST /sign/:token` (sign with SVG body). Multi-channel delivery (Email via Resend, WhatsApp `wa.me` deep-link); SMS deferred to first paying customer per user decision. Audit: 3 events per signing flow with IP/UA captured but Manager-view-redacted per docs/07 §12.3. D.33 records all the implementation choices + the 22-test verification + the live-discovered Fastify `maxParamLength` bug fix. Decision NOT to use the Phase 2 Tenant SMS-OTP infra for signing recorded (docs/03 §9 mandates public-link; the Tenant-RLS spike at `docs/PHASE-5-TENANT-DESIGN-SPIKE.md` stays as post-Phase-5 prep).
 
-- **Status flag:** awaiting_approval (Phase 3 end-of-phase gate per Autopilot).
+- **Status flag:** awaiting_approval (Phase 5 end-of-phase gate per Autopilot).
 
 - **Scale hardening (2026-05-19, user-directed; examine→plan→execute):** investigation CORRECTED two earlier "debts" (diagnosed from code, not memory): `statement_timeout` is ALREADY enforced at the pg pool (30s app / 60s provider) — earlier "(f) no statement_timeout" was FALSE; and the pools ARE explicitly sized (max 20/5 + timeouts), not defaults. Real, non-speculative deliverables shipped: (1) all connection knobs are now **env-tunable** (`DB_POOL_MAX`/`DB_PROVIDER_POOL_MAX`/`DB_POOL_IDLE_MS`/`DB_POOL_CONN_TIMEOUT_MS`/`DB_STATEMENT_TIMEOUT_MS`/`DB_PROVIDER_STATEMENT_TIMEOUT_MS`) with the current production-safe constants as HARD fallbacks (works under SKIP_ENV_VALIDATION/test; zero behaviour change at defaults) so ops tunes per-env / behind the pooler without a code change; (2) **k6 load harness** `load/k6-smoke.js` (ramping VUs, realistic 85/15 read/write mix, SLO thresholds that fail the run) + `load/README.md` operator runbook (the Neon transaction-pooler switch = lever #1, pool-sizing-behind-pooler guidance, the measure-then-decide rule, release gate). CORRECTED debt-list item (e): the nested-read double-query is **no-oracle-load-bearing** (the first lookup produces the 404 a foreign/unknown parent must get; deleting it = security regression) — optimization is "merge to ONE round-trip preserving 404", gated by k6 data, NOT a speculative rewrite. Verified: typecheck/lint green; full conformance 167 pass/1 skip (pool defaults unchanged → zero regression).
 
@@ -82,9 +82,9 @@
 
 - [x] Phase 3 — Domain API (docs/03 §7) — 13 slices feature-complete, CI 8/8, PR #12 — awaiting_approval
 
-- [ ] Phase 4 — Documents (docs/03 §8)
+- [x] Phase 4 — Documents (docs/03 §8) — merged 2026-05-20 (commit `48f007f`, PR #14)
 
-- [ ] Phase 5 — Signatures (docs/03 §9)
+- [x] Phase 5 — Signatures (docs/03 §9) — 7 slices complete (S1 schema, S2 shared-types, S3 token service, S4 manager CRUD, S5 public sign endpoint, S6 multi-channel delivery, S9 docs/D.33), 22/22 live tests pass, PR #20 — awaiting_approval
 
 - [ ] Phase 6 — Import (docs/03 §10)
 

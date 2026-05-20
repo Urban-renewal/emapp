@@ -29,4 +29,25 @@ export class ConfigurableThrottlerGuard extends ThrottlerGuard {
     }
     return super.shouldSkip(context);
   }
+
+  /**
+   * Per-USER tracking when authenticated; per-IP fallback for anonymous
+   * (login / signup / OTP — pre-auth). docs/02 §8.2 T08 prescribes per-user
+   * limits; the default `ThrottlerGuard.getTracker(req)` returns `req.ip`,
+   * which means N users behind one NAT share a single bucket. Overriding
+   * with `req.user?.sub` (the JWT subject set by AuthGuard) fixes that
+   * without sacrificing the IP brake for unauthenticated flows.
+   *
+   * Edge case — invalid token: AuthGuard throws BEFORE reaching the
+   * domain handler, so `req.user` is unset on those paths → IP fallback
+   * (no user-bucket pollution from forged tokens).
+   */
+  protected override async getTracker(req: Record<string, unknown>): Promise<string> {
+    const user = (req as { user?: { sub?: unknown } }).user;
+    if (user && typeof user.sub === 'string' && user.sub.length > 0) {
+      return `u:${user.sub}`;
+    }
+    const ip = (req as { ip?: unknown }).ip;
+    return typeof ip === 'string' && ip.length > 0 ? `ip:${ip}` : 'anon';
+  }
 }

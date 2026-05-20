@@ -88,3 +88,37 @@ describe('F1 · ConfigurableThrottlerGuard prod-safety', () => {
     expect(ok).toBe(false);
   });
 });
+
+// ── #1 audit-pass V — per-user tracker (D.31-throttle) ────────────────────
+describe('#1 · ConfigurableThrottlerGuard.getTracker — per-user when authenticated', () => {
+  // Reach the protected method via a cast — we're testing the override
+  // surface, not the parent class internals.
+  const guard = new ConfigurableThrottlerGuard([], new ThrottlerStorageService(), {} as never);
+  const getTracker = (
+    guard as unknown as { getTracker: (req: unknown) => Promise<string> }
+  ).getTracker.bind(guard);
+
+  it('uses user.sub when JWT-authenticated (N users behind one NAT do NOT share)', async () => {
+    const t = await getTracker({ user: { sub: 'user-uuid-1' }, ip: '203.0.113.1' });
+    expect(t).toBe('u:user-uuid-1');
+    // Sanity: different user, same IP, different bucket.
+    const t2 = await getTracker({ user: { sub: 'user-uuid-2' }, ip: '203.0.113.1' });
+    expect(t2).toBe('u:user-uuid-2');
+    expect(t).not.toBe(t2);
+  });
+
+  it('falls back to ip when no user (pre-auth: login / signup / OTP / accept-invite)', async () => {
+    const t = await getTracker({ ip: '203.0.113.1' });
+    expect(t).toBe('ip:203.0.113.1');
+  });
+
+  it('falls back to "anon" when neither user nor ip is present', async () => {
+    const t = await getTracker({});
+    expect(t).toBe('anon');
+  });
+
+  it('ignores a malformed user (no string sub) and falls back to ip', async () => {
+    const t = await getTracker({ user: { sub: null }, ip: '203.0.113.1' });
+    expect(t).toBe('ip:203.0.113.1');
+  });
+});

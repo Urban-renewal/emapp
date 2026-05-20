@@ -123,20 +123,30 @@ async function runOne<TPayload>(opts: {
   };
 
   // Validate the payload. Failure here is PERMANENT — a malformed
-  // payload is not going to fix itself across retries. We log the
-  // shape problem (NOT the payload itself: a real payload should
-  // never carry PII per @emapp/jobs/import-job.ts, but defense-in-
-  // depth — don't leak parse-error context that might echo values).
+  // payload is not going to fix itself across retries. Log STRUCTURAL
+  // info only (issue paths + count) — never the raw error message and
+  // never the payload data. Zod v3 does not echo values in messages by
+  // default, but tampered payloads MIGHT have stringy values whose name
+  // shows up in `received: '<value>'` for some checks. Defense in depth:
+  // we own what enters our logs (audit-pass S2 finding M1).
   let payload: TPayload;
   try {
     payload = payloadSchema.parse(job.data);
   } catch (err) {
+    const issuePaths =
+      err instanceof Error &&
+      'issues' in err &&
+      Array.isArray((err as { issues: unknown[] }).issues)
+        ? (err as { issues: Array<{ path?: Array<string | number> }> }).issues
+            .map((i) => (i.path ?? []).join('.'))
+            .slice(0, 8)
+        : [];
     scopedLog.error('payload validation failed — non-retryable', {
-      reason: err instanceof Error ? err.message : 'unknown',
+      issue_count: issuePaths.length,
+      issue_paths: issuePaths,
     });
-    // Throw a sentinel so pg-boss surfaces as failed and skips retries.
     // pg-boss has no native "non-retryable" flag at handler-throw time;
-    // we rely on retryLimit being respected and on the handler tagging
+    // we rely on retryLimit being respected AND on the handler tagging
     // its own state in import_jobs (the domain row is the source of
     // truth — pg-boss's own state is just queue plumbing).
     throw err;

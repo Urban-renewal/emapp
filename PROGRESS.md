@@ -4,11 +4,19 @@
 
 > for "where are we." Update after every task.
 
+## Heartbeat (latest — for the 30-second scan)
+
+- **Last slice:** S2 (pg-boss + ImportJobHandler + SSE) — commit `231200a`, audit-pass M1+M2 fixes follow-up commit, push origin/phase-6-s2.
+- **Next slice:** S3 (ExcelJS streaming parser) — replaces stubParseStage, sets totalRows, closes T6.1.
+- **Audit findings (S2):** M1 zod-error log structure fixed; M2 post-headers-sent error catch added; L1 stub-stage round-trips auto-resolved by S3/S5/S6; L2 SSE LISTEN/NOTIFY recorded for S7.
+- **Blocked:** no.
+- **Mode:** autonomous Phase-6 progression per AUTOPILOT; one PR at S9 end.
+
 ## Current Position
 
-- **Phase:** 6 IN PROGRESS — Import (docs/03 §10, Excel pipeline), branch `phase-6` from up-to-date main (Phase 5 merged via PR #20 commit `fe79b4b` + gap-close PR #21 commit `c13f41c`). PR #22 (draft).
+- **Phase:** 6 IN PROGRESS — Import (docs/03 §10, Excel pipeline), branch `phase-6-s2` cut from main (post PR #22 + PR #26). Local progress only; CI SHA-mapping on each push.
 
-- **Next task:** Phase 6 S3 — ExcelJS streaming parser (replaces `stubParseStage` in apps/worker/src/handlers/import-job.handler.ts; sets `import_jobs.total_rows` from real header detection per T6.1). S2 complete locally; CI SHA-mapping after push of branch `phase-6-s2`. Remaining slices S3-S9 estimated ~22 hours.
+- **Next task:** Phase 6 S3 — ExcelJS streaming parser (replaces `stubParseStage` in apps/worker/src/handlers/import-job.handler.ts; sets `import_jobs.total_rows` from real header detection per T6.1). S2 complete locally + audit-pass closed. Remaining slices S3-S9 estimated ~22 hours.
 
 - **Phase 6 S2 (2026-05-21, branch `phase-6-s2`) — pg-boss + IJobHandler adapter + ImportJobHandler + SSE endpoint:** pg-boss@10 added to `apps/worker/` and wired in `main.ts` (schema `pgboss`, separate from `public`; graceful `boss.stop({graceful,close})` in onShutdown; abort signal threaded so handlers can short-circuit). New seam `apps/worker/src/pg-boss-adapter.ts` is the SINGLE file that knows pg-boss types — every other worker file talks to `IJobHandler<T>` from `@emapp/jobs` (audit-pass abstraction holds). `apps/worker/src/handlers/import-job.handler.ts` implements `IJobHandler<ImportJobPayload>` with the full state machine (`queued→parsing→validating→persisting→done|failed`) — each transition is a guarded UPDATE inside `withTenant` so retries are idempotent, and each transition writes an `audit_log` row (`actorType='system'`, `actorId=createdBy`, `action='import.<state>'`) in the SAME tx → audit can never desync from the domain row (ISO A.12.4 / docs/07 §12.4). Parsing/validation/persistence are deliberate STUBS — S3/S5/S6 swap each one behind the seam; the state-machine + audit contract is fixed in S2. New `apps/api/src/modules/imports/` with `GET /imports/:id` snapshot + `GET /imports/:id/stream` SSE (Fastify `reply.raw`; `:stream-open` immediate flush; 500ms poll cadence per docs/03 §10; client `req.raw.close` → AbortController → loop exits promptly; emits `progress` on change, `end` on terminal, `gone` on RLS-driven 404). Policy gains `imports` resource (read=ALL, write=MGR) + matching policy.spec assertion (`RESOURCES.length === 16`). DoD↔Test ID closed for S2: **T6.8** = `apps/worker/test/import-job.handler.spec.ts` (10 integration tests vs real Neon — state machine, audit rows, idempotent retry, cross-org RLS, GRANT revoke), **T6.9** = `apps/api/src/modules/imports/imports-stream.spec.ts` (8 tests — initial poll, transitions, terminal `end`, cross-tenant `gone`, abort signal, SSE wire encoding, PII-key whitelist). Adapter unit-tested in `apps/worker/test/pg-boss-adapter.spec.ts` (7 tests — createQueue/work args, payload zod-validation, retryable vs non-retryable, scoped logger). Pre-S2 18 regression tests (10 schema + 8 bootstrap) still green. Process improvement: `packages/db/test/global-setup.ts` resolves `migrationsFolder` from `import.meta.url` (was `./migrations` which broke when reused from worker/api); zero behaviour change in db package's own runs.
 
@@ -101,6 +109,8 @@
 ## Task Log (newest first)
 
 <!-- Claude appends: [YYYY-MM-DD HH:MM] P0.1 ✓ — note — commit <sha> -->
+
+[2026-05-21] Phase 6 S2 audit-pass ✓ — fresh-eyes review on 4 axes (SOLID / security / perf / DoD↔Test). Two MEDIUM defense-in-depth fixes landed in isolated follow-up: **M1** pg-boss-adapter payload-validation log surfaces only issue_paths+issue_count (was raw Zod err.message — Zod v3 doesn't echo values by default, but defense-in-depth: we own what enters logs); **M2** SSE controller catches ALL errors after writeHead(200) was sent and emits a generic `end` frame — Nest's exception filter can't change status post-headers-sent, so propagation would surface internal messages in logs/metrics. **L1** (stub stages = 3 extra withTenant txs) auto-resolves in S3/S5/S6 when stubs are replaced — recorded, no S2 fix needed. **L2** (SSE 500ms poll → LISTEN/NOTIFY at scale) recorded for S7 perf gate. T6.8 10/10 + T6.9 8/8 + adapter 7/7 unchanged. — commit TBD
 
 [2026-05-21] Phase 6 S2 ✓ — pg-boss + ImportJobHandler + SSE endpoint. Adapter (`pg-boss-adapter.ts`) is the SINGLE pg-boss-aware file; handlers are `IJobHandler<T>` from @emapp/jobs. State machine = withTenant-guarded transitions + atomic audit_log rows. SSE `GET /imports/:id/stream` via Fastify reply.raw with abort-signal client-disconnect. Policy gains 'imports' (16 resources). Tests: T6.8 worker 10/10, T6.9 SSE 8/8, adapter 7/7, baseline 18/18 unchanged. Lint+typecheck green. global-setup.ts path now resolves from import.meta.url so api+worker reuse works. — commit TBD
 

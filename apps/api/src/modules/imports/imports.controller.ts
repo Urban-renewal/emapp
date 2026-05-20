@@ -12,7 +12,7 @@
  *   AuthGuard → TenantGuard → AuthorizationGuard (verb→action, policy
  *   `imports`) → service `withTenant` (RLS FORCE org-isolation).
  */
-import { Controller, Get, Param, Req, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, Logger, Param, Req, Res, UseGuards } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
@@ -32,6 +32,8 @@ const UuidParam = new ZodValidationPipe(z.string().uuid());
 @AuthzResource('imports')
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class ImportsController {
+  private readonly logger = new Logger(ImportsController.name);
+
   constructor(private readonly imports: ImportsService) {}
 
   @Get(':id')
@@ -64,7 +66,7 @@ export class ImportsController {
       Connection: 'keep-alive',
     });
     // Many clients (and reverse proxies) buffer until SOMETHING flushes.
-    // Emit a single ":ping" comment immediately so the connection
+    // Emit a single ":stream-open" comment immediately so the connection
     // graduates to "streaming" on the client side without waiting for
     // the first poll's 500ms.
     reply.raw.write(': stream-open\n\n');
@@ -72,6 +74,13 @@ export class ImportsController {
     const abort = new AbortController();
     req.raw.on('close', () => abort.abort());
 
+    // Once writeHead() has fired, headers are committed — Nest's exception
+    // filter can no longer transform a thrown error into a JSON response
+    // (the status code is already 200 on the wire). To keep the contract
+    // clean for the client AND prevent a propagation up the stack that
+    // could surface an internal error string in logs/metrics, catch ALL
+    // here, emit a generic close frame, and end the socket. (audit-pass
+    // S2 finding M2.)
     try {
       await this.imports.streamProgress({
         user,
@@ -79,6 +88,17 @@ export class ImportsController {
         write: (ev) => reply.raw.write(encodeSseFrame(ev)),
         signal: abort.signal,
       });
+    } catch (e: unknown) {
+      this.logger.error(
+        `SSE stream errored after headers-sent (import=${id}): ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
+      try {
+        reply.raw.write(encodeSseFrame({ event: 'end', data: { id, status: 'failed' } }));
+      } catch {
+        /* socket already dead */
+      }
     } finally {
       // Close the underlying socket. The frame writes above are best-
       // effort; if reply.raw is already closed (client disconnected),

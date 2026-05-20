@@ -1,6 +1,14 @@
 import { randomInt } from 'node:crypto';
 
-import { db, env as dbEnv, hashField, type ISMSProvider, otpCodes, owners } from '@emapp/db';
+import {
+  db,
+  env as dbEnv,
+  hashField,
+  type ISMSProvider,
+  organizations,
+  otpCodes,
+  owners,
+} from '@emapp/db';
 import { normalizeIsraeliPhone } from '@emapp/validators';
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -29,9 +37,22 @@ export class OtpService {
 
   // Always returns the SAME generic outcome — never reveals whether the
   // phone maps to an owner (anti-enumeration, D.14/Doc07 §6.12.1). SMS is
-  // sent ONLY if the phone resolves to an owner; otherwise a silent no-op
-  // with an identical response.
-  async request(rawPhone: string): Promise<void> {
+  // sent ONLY if the phone resolves to a UNIQUE owner; otherwise a silent
+  // no-op with an identical response.
+  //
+  // F2 (audit-pass III, D.30) — multi-org phone disambiguation. The
+  // owners table is org-scoped; the same phone can be a legitimate owner
+  // in multiple orgs (docs/01 §5.3 — resident with apartments in
+  // different developers' projects). Historical code did
+  // `WHERE phoneHash=X LIMIT 1` against the BYPASSRLS pool → arbitrary
+  // owner picked → Tenant token issued for the WRONG org. Now:
+  //   * `org_slug` supplied → filter by (phoneHash AND orgs.slug); if
+  //     no match → silent no-op (anti-enum).
+  //   * `org_slug` absent → count owners by phoneHash; only send SMS if
+  //     EXACTLY ONE matches. 0 or ≥2 → silent no-op (caller must use
+  //     the slug to disambiguate; matches the spec's "the WhatsApp link
+  //     is per-project" model, so the FE always has the slug).
+  async request(rawPhone: string, orgSlug?: string): Promise<void> {
     const phone = normalizeIsraeliPhone(rawPhone);
     if (!phone) return; // invalid → generic no-op
     const phoneHash = hashField(phone, dbEnv.PII_HASH_KEY as string);
@@ -48,19 +69,33 @@ export class OtpService {
       )) as Array<{ n: number }>;
     if ((rl[0]?.n ?? 0) >= RL_MAX) return; // silently throttled — same generic response
 
-    const [owner] = await db
-      .select({ id: owners.id, orgId: owners.orgId })
-      .from(owners)
-      .where(eq(owners.phoneHash, phoneHash))
-      .limit(1);
-    if (!owner) return; // unknown phone → no SMS, identical response
+    // F2 disambiguation — see comment above.
+    let matched: { id: string; orgId: string } | undefined;
+    if (orgSlug) {
+      const [m] = await db
+        .select({ id: owners.id, orgId: owners.orgId })
+        .from(owners)
+        .innerJoin(organizations, eq(organizations.id, owners.orgId))
+        .where(and(eq(owners.phoneHash, phoneHash), eq(organizations.slug, orgSlug)))
+        .limit(1);
+      matched = m;
+    } else {
+      // LIMIT 2 is sufficient to distinguish "exactly 1" from "≥2".
+      const rows = await db
+        .select({ id: owners.id, orgId: owners.orgId })
+        .from(owners)
+        .where(eq(owners.phoneHash, phoneHash))
+        .limit(2);
+      if (rows.length === 1) matched = rows[0];
+    }
+    if (!matched) return; // unknown / ambiguous → no SMS, identical response
 
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0'); // CSPRNG
     await db.insert(otpCodes).values({
       phoneHash,
       codeHash: hashField(code, dbEnv.PII_HASH_KEY as string),
-      ownerId: owner.id,
-      orgId: owner.orgId,
+      ownerId: matched.id,
+      orgId: matched.orgId,
       expiresAt: new Date(Date.now() + TTL_MS),
     });
     await this.sms.send(phone, `EMAPP: קוד האימות שלך ${code}. תקף ל-5 דקות.`);

@@ -234,6 +234,7 @@ _(no body)_
 
 | field | type | required | constraints |
 |---|---|---|---|
+| `org_slug` | string | no | minLength=1, maxLength=100 |
 | `phone` | string | yes | minLength=9, maxLength=20 |
 
 

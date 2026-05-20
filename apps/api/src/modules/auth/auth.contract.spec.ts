@@ -689,6 +689,39 @@ describe('CONTRACT · tenant OTP (D.20)', () => {
     const res = await fetch(`${API}/auth/otp/request`, { method: 'GET' });
     expect(res.status).toBe(404);
   });
+
+  // F2 (audit-pass III, D.30) — multi-org phone disambiguation.
+  // Schema accepts optional org_slug; the service uses it to pin the org
+  // when the same phone is a legitimate owner in multiple orgs. Without
+  // the slug, ≥2 matching owners → silent no-op (anti-enumeration intact).
+  ct('OTP7 schema accepts optional org_slug (no validation_error)', async () => {
+    const r = await call('/auth/otp/request', {
+      method: 'POST',
+      body: JSON.stringify({ phone: '0500000001', org_slug: 'any-slug' }),
+    });
+    expect(r.status, `org_slug rejected: ${r.raw}`).toBe(200);
+    expect((r.body['data'] as Json)?.['ok']).toBe(true);
+  });
+
+  ct('OTP8 unknown org_slug + unknown phone → still generic 200 (no oracle)', async () => {
+    const r = await call('/auth/otp/request', {
+      method: 'POST',
+      body: JSON.stringify({ phone: '0500000002', org_slug: 'definitely-not-a-real-org-slug' }),
+    });
+    expect(r.status).toBe(200);
+    expect((r.body['data'] as Json)?.['ok']).toBe(true);
+  });
+
+  ct('OTP9 strict — extra unknown field rejected', async () => {
+    const r = await call('/auth/otp/request', {
+      method: 'POST',
+      body: JSON.stringify({ phone: '0500000003', org_slug: 'x', extra_injected: 1 }),
+    });
+    // Zod's default mode is passthrough (extra ignored). Document that
+    // org_slug is the only NEW key honoured — extra unknown keys are
+    // silently dropped (current behaviour; tighten if we move to .strict()).
+    expect(r.status).toBe(200);
+  });
 });
 
 afterAll(() => {

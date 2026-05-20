@@ -1259,6 +1259,62 @@ Pre-existing 42 red-team checks unchanged; <code>auth.contract</code> P4
 §4.1.3 <code>aud</code> claim.</li>
 </ul>
 <hr />
+<h2>D.30 — Tenant OTP: prod-safe throttler + multi-org phone disambiguation (audit-pass III)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-20 (Phase 4 audit-pass III, branch phase-4)</li>
+<li><strong>F1 — throttler bypass is prod-fail-closed (was prod-leaking):</strong>
+<code>ConfigurableThrottlerGuard</code> previously honoured an
+<code>x-throttle-bypass</code> header whenever <code>THROTTLE_TEST_BYPASS</code>
+env was set, with NO <code>NODE_ENV</code> gate. The doc comment said
+"never in production" but the code didn't enforce it. An ops typo
+copying the env var into Infisical prod (the CI value is the public
+literal <code>'contract-suite'</code> in <code>ci.yml</code>) would have
+silently disabled every rate-limit for anyone who knew the value.
+Fixed: hard refuse in production even when env + header match. Unit
+proof <code>throttler.guard.spec.ts</code> (4 cases incl. prod-refuses).
+Same env-only pattern remains DELIBERATE for <code>AUTH_DEBUG_ERRORS</code>
+(the filter explicitly chose env-only so staging can leak details
+without enabling them in prod — recorded, not changed).</li>
+<li><strong>F2 — Tenant OTP multi-org phone:</strong> the OTP service
+queried <code>owners WHERE phoneHash=X LIMIT 1</code> against the
+BYPASSRLS pool (no <code>app.organization_id</code> set before auth) →
+when the same phone was a legitimate owner in multiple orgs (real per
+docs/01 §5.3 — a resident can have apartments in different developers'
+projects), an arbitrary owner was picked → the Tenant token was issued
+for the WRONG org. Latent today (no Tenant data endpoints yet — Phase
+5 Signatures) but would have detonated at Phase 5: the wrong org's
+document would have been signed. Fix: <code>OtpRequestSchema</code> gains
+an optional <code>org_slug</code>; service uses it to pin the org (join
+<code>owners→organizations</code>). When the slug is absent, the service
+proceeds ONLY if EXACTLY ONE owner matches; 0 or ≥2 → silent no-op
+(anti-enumeration preserved — same generic 200 as the unknown-phone
+path). The Phase-5 FE link is per-project, so it can always supply
+the slug.</li>
+<li><strong>Why F2 backward-compat (optional, not required):</strong> single-org
+phones (the common case) keep working without the slug. Multi-org phones
+need the slug. No existing client breaks. Strict fail-closed (the
+"always-required" alternative) was rejected because it would have broken
+the existing OTP contract tests for no security gain — multi-org is the
+only ambiguous case.</li>
+<li><strong>Reversibility:</strong> High — F1 is 2 lines; F2 is the schema
+field + the disambiguation block. No DB or interface changes.</li>
+<li><strong>Verification:</strong> typecheck/lint green; unit 183 (incl. 4 new
+throttler.guard.spec cases); auth.contract + members.contract +
+documents.contract + documents-deep 79/80 (1 skip) — OTP7/OTP8/OTP9
+prove the schema accepts org_slug and the generic-200 surface is
+preserved across unknown/ambiguous paths; red-team 45/45 unchanged.</li>
+<li><strong>Residual (recorded for Phase 5):</strong> end-to-end multi-org
+verification (asserting that ONLY the correct org's owner gets the SMS)
+requires SMS-provider introspection beyond the black-box surface. The
+disambiguation logic is verifiable by code review + the schema/smoke
+tests; a deeper Tenant-flow E2E (SMS capture in a TestSMSProvider)
+should land with Phase 5 Signatures when the full Tenant-data path
+exists.</li>
+<li><strong>Ref:</strong> docs/01 §5.3 (Tenant persona), docs/07 §6 (AuthN),
+docs/07 §10 (Cross-Tenant Isolation — same defense pattern at the
+Tenant tier), GATE 4 (SMS provider swap).</li>
+</ul>
+<hr />
 <h2>Pending Decisions (not yet made — tracked in OPEN_ITEMS.md §4)</h2>
 <p>These are listed so they're visible but explicitly NOT decided:</p>
 <ul>

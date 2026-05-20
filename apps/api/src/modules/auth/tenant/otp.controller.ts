@@ -23,7 +23,8 @@ export class OtpController {
   @HttpCode(200)
   @UsePipes(new ZodValidationPipe(OtpRequestSchema))
   async request(@Body() dto: OtpRequestDto) {
-    await this.otp.request(dto.phone);
+    // F2: optional org_slug disambiguates multi-org phones — see D.30.
+    await this.otp.request(dto.phone, dto.org_slug);
     return { data: { ok: true } };
   }
 

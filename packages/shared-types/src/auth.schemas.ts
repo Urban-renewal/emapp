@@ -37,9 +37,20 @@ export const ProviderLoginSchema = z.object({
 });
 export type ProviderLoginDto = z.infer<typeof ProviderLoginSchema>;
 
-/** Tenant OTP request (D.20). Phone normalized/validated server-side. */
+/** Tenant OTP request (D.20).
+ * Phone normalized/validated server-side.
+ *
+ * F2 (audit-pass III, D.30) — optional `org_slug` disambiguates a phone
+ * that is a legitimate owner in MULTIPLE orgs (docs/01 §5.3: a resident
+ * can own apartments in different developers' projects). Without it the
+ * historical code picked an arbitrary owner and the Tenant ended up
+ * authed to a wrong org. With it the caller pins the org. If the slug
+ * is absent and >1 owners match, the service returns the same generic
+ * no-op as the unknown-phone path (anti-enumeration preserved). The
+ * Phase-5 FE link is per-project, so it can always supply the slug. */
 export const OtpRequestSchema = z.object({
   phone: z.string().min(9).max(20),
+  org_slug: z.string().min(1).max(100).optional(),
 });
 export type OtpRequestDto = z.infer<typeof OtpRequestSchema>;
 

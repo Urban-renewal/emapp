@@ -1226,6 +1226,127 @@ Date · Decision · Alternatives · Why · Reversibility · Revisit trigger
 <li><strong>Why:</strong> closes the product owner's "zero document leakage" requirement at the API+DB layers now (RLS FORCE + presign-after-authorize + key-never-on-wire + no-oracle), while honestly recording the residuals that only the credentialed R2 integration can close — same governed pattern as D.20 SMS / D.27 email.</li>
 <li><strong>Reversibility:</strong> High — the abstraction (IStorageProvider) isolates the swap; residuals R1–R3 are implemented at the single factory/provider when R2 lands.</li>
 <li><strong>Ref:</strong> Phase 4 security review (PROGRESS.md), docs/03 §8, Gate-4 SECRETS LAW (R2@P4), Gate 5.</li>
+<li><strong>Audit-pass 2026-05-20 — recorded spec↔impl deviations (so the chain is not lost):</strong> (a) signed-URL TTL: impl 300s upload / 120s download is INTENTIONALLY shorter than docs/03 §8's 15min/1hr — exfil-window hardening, not a deviation against a Gate-2/Gate-6 lock; (b) storage key shape: impl `org/&lt;orgId&gt;/doc/&lt;uuid&gt;` (no filename, server-random) instead of docs/03 §8's `tenants/&lt;org&gt;/documents/&lt;file_id&gt;/&lt;filename&gt;` — no PII / no header-injection in key, org partition preserved; (c) MIME allow-list is a superset of docs/03 §8 (adds webp/gif/csv/xls/txt; svg/html still excluded). (d) <strong>docs/03 §8 lists "Magic bytes verification (not just header MIME)" as MANDATORY-for-phase, but it is NOT implemented today</strong> — explicitly deferred under R3 (server-side content-sniff at the R2 swap, requires an `IStorageProvider.head` extension); current mitigations = MIME allow-list excludes active-content types + forced-attachment download + sanitised filename. This is the most important spec↔impl conflict and is hereby recorded so it cannot be overlooked at swap time. (e) Error-status correctness: presign failure now returns 503 `storage_unavailable` (was 400) — infra outage, not a client error; affects monitoring/retry.</li>
+<li><strong>R5 (added 2026-05-20) — agent-list scale:</strong> `DocumentsService.list` for an `agent` currently materialises ALL apartment-ids under ALL assigned projects into memory and emits a giant `IN (...)`. For an agent assigned to a large project this is unbounded. Pre-Gate-5 refactor: rewrite as an EXISTS / correlated-subquery (same join graph) so SQL bounds the work, not the app process. ISO availability concern, not a correctness bug. Same pattern probably exists in other services and overlaps tracked debt (b). <strong>CLOSED 2026-05-20 by commit <code>71d119e</code> (audit-pass V improvement #2):</strong> agent filter rewritten as two EXISTS subqueries (direct-project + via-apartment); 26/26 documents tests unchanged; CI SHA-mapped green.</li>
+<li><strong>R1/R2 interface side (added 2026-05-20) — IStorageProvider.head extension:</strong> CLOSED at the interface + Fake + R2 provider sides by commit <code>e3bcdd6</code> (audit-pass V improvement #4). <code>StorageObjectMeta { contentLength, checksumSha256? }</code> added to <code>IStorageProvider.head()</code>; <code>FakeStorageProvider.head()</code> returns null (no real bytes to attest); <code>R2StorageProvider.head()</code> uses <code>HeadObjectCommand</code>, maps 404/NotFound/NoSuchKey → null but RETHROWS auth/5xx/network so an R2 outage cannot silently weaken the gate to "no attestation"; <code>DocumentsService.finalize</code> now runs a TWO-LAYER integrity gate (client-consistency THEN storage-attestation). No behaviour change with Fake (null → layer-1 stands); when R2 lands the same code path becomes true tamper-evidence. The remaining R1 work (binding a content-length <em>range</em> on the presigned PUT, not just ContentLength) lands at the R2 provider construction; R3 (server content-sniff on finalize) stays Gate-5 governed.</li>
+</ul>
+<hr />
+<h2>D.29 — Tier-isolated JWT audiences (org / provider / tenant) for structural A.9.4 defence</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-20 (Phase 4 audit-pass II, branch phase-4)</li>
+<li><strong>Decision:</strong> Each user tier mints &amp; verifies its JWTs with a distinct
+RFC-7519 audience claim — Org=<code>'emapp-api'</code>,
+Provider=<code>'emapp-provider'</code>, Tenant=<code>'emapp-tenant'</code>. Previously all three
+shared <code>'emapp-api'</code> and tier separation rested on a single per-guard
+<code>payload.type</code> check.</li>
+<li><strong>Why:</strong> ISO 27001 A.9.4 wants access rules <em>"documented, enforced, and
+verifiable"</em>. Single-line-of-defence ("if this one check is forgotten in a new
+guard or a typo turns 'tenant_access' into 'access', tiers leak into each
+other") fails the "enforced" half. JWT audience verification is a spec-level
+structural check — a token minted for one tier cannot validate against
+another tier's guard regardless of payload contents.</li>
+<li><strong>Trade-off:</strong> 4 surgical changes (2 services + 2 guards). Refresh
+tokens are not JWTs (D.21 — hashed in DB) so no other path needed updating.
+Invite tokens already had their own <code>'emapp-invite'</code> audience. Dev/test
+sessions need a re-login at deploy time (no prod impact — no prod yet).</li>
+<li><strong>Reversibility:</strong> High — 4-line revert; D.29 is documentation + 4
+literal constants.</li>
+<li><strong>Verification:</strong> red-team L1/L2/L3 prove the structural rejection
+end-to-end (tenant/provider-shaped tokens with the matching tier-audience
+return 401 at <code>/documents</code>; org token returns 401 at <code>/provider/*</code>).
+Pre-existing 42 red-team checks unchanged; <code>auth.contract</code> P4
+("org token at provider guard rejected") still green.</li>
+<li><strong>Ref:</strong> docs/07 §1.5 (security &amp; SOLID interplay), §6 AuthN, RFC 7519
+§4.1.3 <code>aud</code> claim.</li>
+</ul>
+<hr />
+<h2>D.30 — Tenant OTP: prod-safe throttler + multi-org phone disambiguation (audit-pass III)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-20 (Phase 4 audit-pass III, branch phase-4)</li>
+<li><strong>F1 — throttler bypass is prod-fail-closed (was prod-leaking):</strong>
+<code>ConfigurableThrottlerGuard</code> previously honoured an
+<code>x-throttle-bypass</code> header whenever <code>THROTTLE_TEST_BYPASS</code>
+env was set, with NO <code>NODE_ENV</code> gate. The doc comment said
+"never in production" but the code didn't enforce it. An ops typo
+copying the env var into Infisical prod (the CI value is the public
+literal <code>'contract-suite'</code> in <code>ci.yml</code>) would have
+silently disabled every rate-limit for anyone who knew the value.
+Fixed: hard refuse in production even when env + header match. Unit
+proof <code>throttler.guard.spec.ts</code> (4 cases incl. prod-refuses).
+A SIMILAR env-only loophole for <code>AUTH_DEBUG_ERRORS</code> was
+CLOSED on the same fail-closed pattern by commit <code>6afb703</code>
+(audit-pass V improvement #3, 2026-05-20): the filter now requires
+<code>AUTH_DEBUG_ERRORS=1 AND NODE_ENV !== 'production'</code> — staging
++ dev still get the debug body when the flag is on; prod refuses
+structurally even if the flag is somehow set. Same posture as F1.</li>
+<li><strong>F2 — Tenant OTP multi-org phone:</strong> the OTP service
+queried <code>owners WHERE phoneHash=X LIMIT 1</code> against the
+BYPASSRLS pool (no <code>app.organization_id</code> set before auth) →
+when the same phone was a legitimate owner in multiple orgs (real per
+docs/01 §5.3 — a resident can have apartments in different developers'
+projects), an arbitrary owner was picked → the Tenant token was issued
+for the WRONG org. Latent today (no Tenant data endpoints yet — Phase
+5 Signatures) but would have detonated at Phase 5: the wrong org's
+document would have been signed. Fix: <code>OtpRequestSchema</code> gains
+an optional <code>org_slug</code>; service uses it to pin the org (join
+<code>owners→organizations</code>). When the slug is absent, the service
+proceeds ONLY if EXACTLY ONE owner matches; 0 or ≥2 → silent no-op
+(anti-enumeration preserved — same generic 200 as the unknown-phone
+path). The Phase-5 FE link is per-project, so it can always supply
+the slug.</li>
+<li><strong>Why F2 backward-compat (optional, not required):</strong> single-org
+phones (the common case) keep working without the slug. Multi-org phones
+need the slug. No existing client breaks. Strict fail-closed (the
+"always-required" alternative) was rejected because it would have broken
+the existing OTP contract tests for no security gain — multi-org is the
+only ambiguous case.</li>
+<li><strong>Reversibility:</strong> High — F1 is 2 lines; F2 is the schema
+field + the disambiguation block. No DB or interface changes.</li>
+<li><strong>Verification:</strong> typecheck/lint green; unit 183 (incl. 4 new
+throttler.guard.spec cases); auth.contract + members.contract +
+documents.contract + documents-deep 79/80 (1 skip) — OTP7/OTP8/OTP9
+prove the schema accepts org_slug and the generic-200 surface is
+preserved across unknown/ambiguous paths; red-team 45/45 unchanged.</li>
+<li><strong>Residual (recorded for Phase 5):</strong> end-to-end multi-org
+verification (asserting that ONLY the correct org's owner gets the SMS)
+requires SMS-provider introspection beyond the black-box surface. The
+disambiguation logic is verifiable by code review + the schema/smoke
+tests; a deeper Tenant-flow E2E (SMS capture in a TestSMSProvider)
+should land with Phase 5 Signatures when the full Tenant-data path
+exists.</li>
+<li><strong>Ref:</strong> docs/01 §5.3 (Tenant persona), docs/07 §6 (AuthN),
+docs/07 §10 (Cross-Tenant Isolation — same defense pattern at the
+Tenant tier), GATE 4 (SMS provider swap).</li>
+</ul>
+<hr />
+<h2>D.31 — Auth audit completion + token_expired discrimination (audit-pass IV)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-20 (Phase 4 audit-pass IV, branch phase-4)</li>
+<li><strong>Context:</strong> User-directed deep doc-grounded audit (docs/02 §8, docs/07 §3+§6+§9+§12, docs/08 §4, docs/09 §2, docs/10 §2). Three real spec-vs-impl gaps verified in code and closed.</li>
+<li><strong>G2 — Access-token expiry distinct from invalid:</strong> AuthGuard catch-all returned <code>invalid_token</code> for every JWT failure. docs/10 §2 and docs/09 §2.1 require <code>token_expired</code> as a distinct discriminator so the FE can silently <code>/auth/refresh</code> instead of forcing <code>/login</code>. Fixed in <code>auth.guard.ts</code> (TokenExpiredError → <code>token_expired</code>, all other → <code>invalid_token</code>). Same 401 status, different code. Verified via red-team L4 (expired) + L5 (wrong-sig).</li>
+<li><strong>G1a — OTP request/verify audit:</strong> docs/07 §6.5 + §12.2 + docs/08 §4d/§4e require every OTP send and every verify (success/failure) to be audited with IP+timestamp. <code>otp.service</code> wrote no audit rows. Closed: <code>writeAuditSafe</code> helper writes <code>auth.otp_requested</code> when an owner is matched and <code>auth.tenant_login</code> / <code>auth.tenant_login_failed</code> at verify (success / wrong-code / expired / exhausted). Unknown-phone and multi-org-no-slug paths stay silent (anti-enumeration preserved — they also have no org context). actor_type is <code>'system'</code> per the <code>audit_log_actor_type_valid</code> CHECK (migration 0014 limits to user|system|provider); the Tenant identity is recorded via <code>target_table='owners'</code> + <code>target_id=ownerId</code>. Companion: <code>UserProfile.organization.slug</code> now exposed on <code>/me</code> (public URL-safe identifier, zero PII risk, also needed by the test to pin OTP via F2 disambiguation).</li>
+<li><strong>G1b — Login failure audit:</strong> docs/07 §12.2 lists <em>Login success/failure</em>. Success was already audited; failure paths (silent lockout + wrong password) were not. Closed via <code>writeLoginAuditSafe</code> writing <code>auth.login_failed</code> with <code>afterState={reason:'locked'|'wrong_password', attempts, lockedNow}</code>. Audit only when the user's org is resolvable; unknown-user attempts stay silent (no org → no multi-tenant audit row possible, and matches the anti-enumeration posture). User-facing response stays generic 401 <code>invalid_credentials</code>.</li>
+<li><strong>Diagnostic note (recorded as a lesson):</strong> the OTP audit was failing silently because <code>writeAuditSafe</code>'s try/catch was hiding a CHECK constraint violation when I initially used <code>actorType='tenant'</code>. Found by reading migration 0014 directly. Fixed at root (use spec-compliant <code>'system'</code>). The best-effort wrapper is correct for the auth-flow-safety property, but it taught me to enable diagnostic logging in development for the first run after a new audit-write site lands.</li>
+<li><strong>Reversibility:</strong> High. G2 is 5 lines in auth.guard. G1a/G1b are additive (new helpers + insert calls); no behaviour change on the success path. The <code>slug</code> addition to UserProfile is additive on the wire.</li>
+<li><strong>Verification:</strong> typecheck/lint/build green. Conformance subset (auth+members+documents+documents-deep) 82/83 (1 skip). Red-team 47/47 (incl. L1-L5). Three new contract tests: <code>OTP10</code> (otp_requested audit), <code>LOGIN-FAIL</code> (login_failed audit), <code>L4/L5</code> (token_expired discrimination). Three commits in sequence, each with isolated CI SHA-mapped verification: <code>4d3e38c</code> (G2), <code>db2da41</code> (G1a), <code>b7f9a33</code> (G1b).</li>
+<li><strong>Recorded for next phase (not closed here):</strong> (a) widen <code>audit_log_actor_type_valid</code> CHECK to include <code>'tenant'</code> via a Gate-2 migration — would let us record the Tenant as a first-class actor instead of via target_table; (b) docs/07 §1.5 deviation: throttler is per-IP not per-user — <strong>CLOSED 2026-05-20 by commit <code>fd0bf2a</code> (audit-pass V improvement #1):</strong> <code>ConfigurableThrottlerGuard.getTracker()</code> override → per-user (<code>u:&lt;sub&gt;</code>) when authenticated, IP fallback (<code>ip:&lt;ip&gt;</code>) pre-auth, <code>anon</code> when neither resolves; 8/8 unit incl. 4 new cases; behaviour change is additive (pre-auth paths like login/signup keep IP-based throttling which is the correct anti-enumeration posture); (c) docs/07 §6.1 deviation: Manager access TTL is 15min (impl) vs 1h (spec) — tighter is safer, recorded; (d) Tenant refresh token absent (impl re-OTPs every 30min vs spec 30min+24h refresh) — security tradeoff, Phase-5 UX decision; (e) Tenant data RLS pattern (tenant_user_id scope) — required by docs/07 §9 T01; design spike at <code>docs/PHASE-5-TENANT-DESIGN-SPIKE.md</code> recommends Option B (new <code>tenant_user</code> Postgres role + per-table policies + <code>withTenantUser(orgId, ownerId)</code> wrapper) as the spec-compliant implementation — Options A/C fail the spec (A leaks the whole org; C removes the DB layer). Mirrors the existing org/provider role split. <strong>Not a pending decision</strong>: Phase-5 implementing agent proceeds with Option B; founders review the migration in the Phase-5 PR. Consolidating record will land as D.33 on merge; (f) <strong>Password reset email link (docs/07 §6.3) — PROMOTED to HIGH-priority pre-Gate-5 obligation</strong> (audit-pass V reassessment 2026-05-20, user-approved). Originally framed as "future feature"; reassessment surfaced that NO recovery path exists today for an org-user who forgets their password — combined with the silent-lockout policy (D.21 + docs/07 §6.11) this would strand a paying customer the first time a Manager mistypes their password 5×. docs/07 §6.3 + §6.12.2 already specify the contract (3/email/hour + 10/IP/hour, single-use token, 1h expiry, generic 200 response for anti-enumeration). Email delivery infra is already in place (D.27 <code>IEmailProvider</code>, fail-fast in prod until Resend is wired), so this is a service+endpoint+template, not greenfield. Must land before Gate-5 production cutover. Tracked alongside the D.27 Resend provisioning; (g) <code>/api/v1/docs</code> runtime OpenAPI endpoint (docs/06 §12.5) — current build-time markdown gen is functionally equivalent for auditability, recorded as Phase 9 polish.</li>
+<li><strong>Ref:</strong> docs/07 §6.5/§9.5/§12.2; docs/08 §4d/§4e; docs/09 §2.1; docs/10 §2; migration 0014 (CHECK constraint).</li>
+</ul>
+<hr />
+<h2>D.32 — Audit-pass V governed-deferral reassessment (six improvements)</h2>
+<ul>
+<li><strong>Date:</strong> 2026-05-20 (Phase 4 audit-pass V close-out, branch phase-4, PR #14)</li>
+<li><strong>Context:</strong> audit-pass V's comprehensive code review (see <code>AUDIT-PASS-V-FINDINGS.md</code>) found ZERO new actionable findings on the deficiency axis — everything HIGH/MEDIUM the spec mandates was already closed in passes I–IV. The user then asked whether the 14 GOVERNED deferrals (D.27 Resend, D.28 R1–R5, D.31 (a)–(g), <code>AUTH_DEBUG_ERRORS</code> env-only) were truly governed-correct or had room for improvement. Honest reassessment surfaced six items where the deferral was either weaker than the spec or a real safety risk given today's threat model. User approved all six; each landed in an isolated commit with full local verification AND CI SHA-mapped green before the next.</li>
+<li><strong>#1 throttler per-user tracking</strong> (<code>fd0bf2a</code>) — closes D.31 (b). See D.31 (b) for details.</li>
+<li><strong>#2 documents.list EXISTS subquery</strong> (<code>71d119e</code>) — closes D.28 R5. See D.28 R5 for details.</li>
+<li><strong>#3 <code>AUTH_DEBUG_ERRORS</code> prod-fail-closed gate</strong> (<code>6afb703</code>) — same fail-closed posture as F1 throttler. Previously env-only; an ops typo putting <code>AUTH_DEBUG_ERRORS=1</code> into prod Infisical would have leaked schema details (the pg-cause chain) via the global exception filter. Now structurally refused in production even if the flag is set. Filter retains the full chain in server logs (forensics), drops it from the wire (zero-leak). See updated D.30 F1 entry.</li>
+<li><strong>#4 <code>IStorageProvider.head()</code> extension</strong> (<code>e3bcdd6</code>) — closes the interface side of D.28 R1/R2. See D.28 R1/R2 entry for details. Note: this is INTERFACE PREP, not the full R1/R2 closure — the content-length range binding (R1 PUT side) and the server content-sniff (R3) still land at the R2 provider construction.</li>
+<li><strong>#5 password-reset HIGH promotion</strong> (<code>6467ba8</code>) — re-classifies D.31 (f) from "future feature" to HIGH-priority pre-Gate-5 obligation. See D.31 (f) for details.</li>
+<li><strong>#6 Phase 5 Tenant-RLS design spike</strong> (<code>6840bec</code>) — opens <code>docs/PHASE-5-TENANT-DESIGN-SPIKE.md</code> with three options evaluated (A rejected on org-leak, B recommended = new <code>tenant_user</code> role + per-table policies + <code>withTenantUser(orgId, ownerId)</code> wrapper, C rejected on defense-in-depth). <strong>Revised 2026-05-20 (same day):</strong> Option B is the spec-compliant implementation (per D.20 + docs/07 §9 T01 + D.21), not an architectural choice awaiting sign-off — Phase-5 implementing agent proceeds; founders review the migration in the Phase-5 PR. Consolidating record lands as D.33 on merge. See D.31 (e) for details.</li>
+<li><strong>Why this entry exists:</strong> the six improvements touch four older decisions (D.28, D.30, D.31). Without a single entry recording them collectively, a future reader would have to reconstruct the close-out by reading PROGRESS.md + git log — the kind of context erosion the DECISIONS log is supposed to prevent.</li>
+<li><strong>Reversibility:</strong> High for #1/#2/#3 (small, isolated, test-pinned). High for #4 (additive interface method, Fake returns null → no behaviour change in dev/test). Doc-only for #5/#6 (no code).</li>
+<li><strong>Verification:</strong> typecheck/lint green at each commit; commit-specific tests green (8/8 throttler unit, 26/26 documents tests, 30/30 documents tests, 47/47 redteam); CI SHA-mapped green at every push (<code>fd0bf2a</code> → <code>71d119e</code> → <code>6afb703</code> → <code>e3bcdd6</code> → <code>6467ba8</code> → <code>6840bec</code>). PR #14 MERGEABLE/CLEAN with all 8 CI checks green at HEAD.</li>
+<li><strong>Ref:</strong> <code>AUDIT-PASS-V-FINDINGS.md</code>; D.28 (R5 + R1/R2 interface prep); D.30 (F1 + AUTH_DEBUG_ERRORS hardening); D.31 (b)/(e)/(f); <code>docs/PHASE-5-TENANT-DESIGN-SPIKE.md</code>.</li>
 </ul>
 <hr />
 <h2>D.29 — pg pool resilience: process must survive idle/blip disconnects (per-client guard + keepAlive + silent backstop + Sentry observability)</h2>

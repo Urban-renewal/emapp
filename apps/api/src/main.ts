@@ -14,7 +14,12 @@ const CORS_ORIGINS = {
   production: ['https://app.emapp.io'],
   preview: [/^https:\/\/[\w-]+\.emapp\.pages\.dev$/],
   development: ['http://localhost:3001', 'http://127.0.0.1:3001'],
-  test: [] as string[],
+  // 'test' is the conformance CI env (ci.yml NODE_ENV=test). The contract
+  // suite is Node-side fetch (no Origin) so this used to not matter — but
+  // DD11 explicitly sends an Origin to verify the CORS preflight (A1
+  // audit-fix). Allow the dev origin in test too so that browser-shaped
+  // preflight tests work in CI. Benign — test env never reaches users.
+  test: ['http://localhost:3001', 'http://127.0.0.1:3001'],
 } as const;
 
 async function bootstrap() {
@@ -82,7 +87,15 @@ async function bootstrap() {
         scriptSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'https://*.r2.cloudflarestorage.com', 'data:'],
-        connectSrc: ["'self'", 'https://*.sentry.io', 'https://api.resend.com'],
+        connectSrc: [
+          "'self'",
+          'https://*.sentry.io',
+          'https://api.resend.com',
+          // A2 audit-fix (2026-05-20): FE direct PUT/GET to R2 presigned
+          // URLs (docs/03 §8) needs R2 in connect-src or browsers block
+          // every upload/download. imgSrc already lists R2; this matches.
+          'https://*.r2.cloudflarestorage.com',
+        ],
         fontSrc: ["'self'", 'https://fonts.gstatic.com'],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
@@ -114,7 +127,11 @@ async function bootstrap() {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type', 'X-Reason'],
+    // A1 audit-fix (2026-05-20): Idempotency-Key must be in the preflight
+    // allow-list or browsers silently block every mutating POST that sets
+    // it (Phase 3 hardening contract). Server-side tests pass without it
+    // (no preflight); real browsers would 0-request the endpoint.
+    allowedHeaders: ['Authorization', 'Content-Type', 'X-Reason', 'Idempotency-Key'],
     maxAge: 86400,
   });
 

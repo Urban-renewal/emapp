@@ -27,8 +27,9 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, desc, eq, inArray, isNull, lt, or, type SQL } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
@@ -260,7 +261,10 @@ export class DocumentsService {
       this.logger.error(
         `presign(upload) failed (doc=${row.id}): ${e instanceof Error ? e.message : 'unknown'}`,
       );
-      throw new BadRequestException({ error: { code: 'storage_unavailable' } });
+      // 503, not 400: this is an infra outage (object-storage unreachable),
+      // not a client error. Correct status matters for monitoring/alerting
+      // and lets the client safely retry. (Audit finding 2026-05-20.)
+      throw new ServiceUnavailableException({ error: { code: 'storage_unavailable' } });
     }
 
     return {
@@ -270,18 +274,52 @@ export class DocumentsService {
     };
   }
 
-  // Integrity gate: the finalize-declared size/hash must match what was
-  // declared at create (the presigned PUT already bound size+type). A
-  // mismatch ⇒ inconsistent/confused client ⇒ archive + purge the object.
-  // (True server-side recompute needs an IStorageProvider.head extension —
-  // recorded as the D.28 follow-up; out of the locked interface for MVP.)
+  // Integrity gate (TWO-LAYER):
+  //   1) CLIENT consistency — the finalize-declared size/hash must match
+  //      what was declared at create. Catches a confused/inconsistent
+  //      client.
+  //   2) STORAGE attestation (D.28 R1/R2, audit-pass V #4) — when the
+  //      provider can attest (R2 → real values; Fake → null), the
+  //      object's ACTUAL content-length (and sha256 when available) must
+  //      match the create-declared values. This is the true tamper-
+  //      evident check: a client could lie identically at create+finalize
+  //      while uploading different bytes; layer-2 catches that.
+  //   On any mismatch ⇒ archive + purge the object + 409.
+  //   `head()` returning null (Fake, or object briefly absent) is NOT a
+  //   pass — it just means there is no storage-attested fact; the
+  //   layer-1 client check stands alone. (Documented in
+  //   storage.interface.ts StorageObjectMeta.)
   async finalize(user: AccessTokenPayload, id: string, input: FinalizeDocument): Promise<Document> {
     this.requireManager(user);
     const result = await withTenant(
       user.orgId,
       async (tx) => {
         const row = await this.loadVisible(tx, user, id);
-        const mismatch = input.sizeBytes !== row.sizeBytes || input.contentHash !== row.contentHash;
+        // Layer 1: client-consistency.
+        let mismatch = input.sizeBytes !== row.sizeBytes || input.contentHash !== row.contentHash;
+        // Layer 2: storage-attestation (only when layer-1 already passed —
+        // an inconsistent client is already a reject, no need to probe R2).
+        // head() is best-effort: an infra failure here MUST NOT silently
+        // weaken the gate, but it also MUST NOT block a legitimate
+        // finalize on a transient R2 hiccup. We log + treat as "no
+        // attestation" (layer-1 stands). Fake → null → no-op.
+        if (!mismatch) {
+          try {
+            const head = await this.storage.head(row.r2Key);
+            if (head !== null) {
+              const sizeOk = head.contentLength === row.sizeBytes;
+              const hashOk =
+                head.checksumSha256 === undefined || head.checksumSha256 === row.contentHash;
+              if (!sizeOk || !hashOk) mismatch = true;
+            }
+          } catch (e: unknown) {
+            this.logger.error(
+              `storage.head() failed during finalize (doc=${row.id}): ${
+                e instanceof Error ? e.message : 'unknown'
+              }`,
+            );
+          }
+        }
         if (mismatch) {
           await tx
             .update(documents)
@@ -358,10 +396,23 @@ export class DocumentsService {
     // Only NOW (authorised) is a short-lived signed GET minted. Forced to
     // attachment with a sanitised filename (no header-injection / no
     // in-browser active-content execution).
-    const url = await this.storage.getDownloadUrl(r2Key, {
-      ttlSeconds: DOWNLOAD_URL_TTL_SECONDS,
-      responseFilename: safeDownloadFilename(name),
-    });
+    // A3 audit-fix (2026-05-20): presign failure is an infra outage, not a
+    // client error. Without try/catch the raw provider error leaks as a
+    // generic 500 while the download audit row is already committed (an
+    // append-only inconsistency). Map to 503 — same governed pattern as
+    // create's presign failure.
+    let url: string;
+    try {
+      url = await this.storage.getDownloadUrl(r2Key, {
+        ttlSeconds: DOWNLOAD_URL_TTL_SECONDS,
+        responseFilename: safeDownloadFilename(name),
+      });
+    } catch (e) {
+      this.logger.error(
+        `presign(download) failed (doc=${id}): ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+      throw new ServiceUnavailableException({ error: { code: 'storage_unavailable' } });
+    }
     return { url, expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS };
   }
 
@@ -386,27 +437,34 @@ export class DocumentsService {
         if (query.apartmentId) filters.push(eq(documents.apartmentId, query.apartmentId));
 
         // Agent record-scoping: restrict to docs whose parent project is an
-        // active assignment (directly or via apartment→building→project).
+        // active assignment (directly OR via apartment→building→project).
+        //
+        // D.28 R5 (audit-pass V #2 — 2026-05-20): refactored from
+        // app-side IN-list materialisation to two correlated EXISTS
+        // subqueries. The prior approach loaded EVERY apartment id under
+        // EVERY assigned project into memory and emitted `IN (...)`
+        // clauses with thousands of UUIDs — unbounded for large orgs and
+        // wasteful for small ones. EXISTS pushes the filtering to SQL
+        // where it is bounded by the indexes on (project_assignments,
+        // buildings.project_id, apartments.building_id) — constant
+        // memory, scales with org size, no IN-list overhead. Semantics
+        // are identical: `OR(direct-project-match, via-apartment-chain)`.
         if (user.role === 'agent') {
-          const assigned = await tx
-            .select({ pid: projectAssignments.projectId })
-            .from(projectAssignments)
-            .where(
-              and(eq(projectAssignments.userId, user.sub), isNull(projectAssignments.unassignedAt)),
-            );
-          const pids = assigned.map((a) => a.pid);
-          if (pids.length === 0) return [];
-          const aptRows = await tx
-            .select({ aid: apartments.id })
-            .from(apartments)
-            .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
-            .where(inArray(buildings.projectId, pids));
-          const aids = aptRows.map((a) => a.aid);
-          const scope = or(
-            inArray(documents.projectId, pids),
-            aids.length > 0 ? inArray(documents.apartmentId, aids) : undefined,
-          );
-          filters.push(scope);
+          const directProjectAssigned = sql<boolean>`EXISTS (
+            SELECT 1 FROM project_assignments pa
+            WHERE pa.user_id = ${user.sub}::uuid
+              AND pa.unassigned_at IS NULL
+              AND pa.project_id = ${documents.projectId}
+          )`;
+          const viaApartment = sql<boolean>`EXISTS (
+            SELECT 1 FROM apartments a
+            JOIN buildings b ON b.id = a.building_id
+            JOIN project_assignments pa ON pa.project_id = b.project_id
+            WHERE pa.user_id = ${user.sub}::uuid
+              AND pa.unassigned_at IS NULL
+              AND a.id = ${documents.apartmentId}
+          )`;
+          filters.push(or(directProjectAssigned, viaApartment));
         }
 
         const keyset: SQL | undefined = cur

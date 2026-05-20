@@ -31,6 +31,15 @@ describe('Phase 4 · storage helpers', () => {
     expect(k1).not.toBe(k2); // random uuid → not predictable/sequential
   });
 
+  it('FakeStorageProvider.head() returns null (no real bytes to attest)', async () => {
+    // D.28 R1/R2 interface prep — the finalize integrity gate calls
+    // head() and treats null as "no storage attestation; layer-1 client
+    // check stands alone". When R2 lands, this same call site gets real
+    // contentLength + sha256 → true tamper evidence, no code change.
+    const p = new FakeStorageProvider();
+    expect(await p.head('any/key')).toBeNull();
+  });
+
   it('safeDownloadFilename strips control/quote/path; falls back', () => {
     expect(safeDownloadFilename('חוזה.pdf')).toBe('חוזה.pdf');
     expect(safeDownloadFilename('a"b\\c/d.pdf')).toBe('abcd.pdf');

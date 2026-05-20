@@ -20,7 +20,11 @@ import { flushSessionCache } from '../session-validity';
 const ACCESS_TTL_SEC = 30 * 60; // Doc07 §6.7 — Provider access 30 min
 const REFRESH_TTL_SEC = 4 * 60 * 60; // Doc07 §6.7 — Provider refresh 4 h
 const JWT_ISS = 'emapp';
-const JWT_AUD = 'emapp-api';
+// Tier-isolated audience (audit-pass 2026-05-20 / D.29): distinct from
+// 'emapp-api' (org) and 'emapp-tenant' (tenant). Tier confusion is now
+// blocked STRUCTURALLY by JWT audience verification — not by a single
+// payload.type check. MUST match provider-auth.guard.ts:audience.
+const JWT_AUD = 'emapp-provider';
 const MAX_FAILED = 5;
 const LOCK_MS = 15 * 60 * 1000;
 

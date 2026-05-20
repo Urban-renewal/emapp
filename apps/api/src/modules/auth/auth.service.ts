@@ -40,7 +40,10 @@ export interface UserProfile {
   email: string;
   role: string;
   avatarColor: string | null;
-  organization: { id: string; name: string };
+  // G1a-supporting (audit-pass IV): expose org slug so the FE's per-project
+  // Tenant link (`/tenant/<slug>?...`) can be constructed without a second
+  // call. Slug is already public (URL-safe org identifier); zero PII risk.
+  organization: { id: string; name: string; slug: string };
 }
 
 const ACCESS_TTL_SEC = 15 * 60;
@@ -64,6 +67,7 @@ interface ProfileRow {
   role: string;
   orgId: string;
   orgName: string;
+  orgSlug: string;
 }
 
 // organizations.slug CHECK (migration 0010): ^[a-z][a-z0-9-]*[a-z0-9]$
@@ -192,7 +196,7 @@ export class AuthService {
           email: dto.email,
           role: 'manager',
           avatarColor: null,
-          organization: { id: orgId, name: dto.org_name },
+          organization: { id: orgId, name: dto.org_name, slug },
         },
       };
     } catch (err: unknown) {
@@ -233,6 +237,7 @@ export class AuthService {
         role: memberships.role,
         orgId: organizations.id,
         orgName: organizations.name,
+        orgSlug: organizations.slug,
       })
       .from(users)
       .leftJoin(memberships, and(eq(memberships.userId, users.id), isNull(memberships.revokedAt)))
@@ -256,6 +261,21 @@ export class AuthService {
       // a distinct 423/"account_locked", which would confirm the email
       // exists. We still pay the argon2 cost for timing parity, then bail.
       await dummyVerify(dto.password);
+      // G1b (audit-pass IV) — docs/07 §12.2 mandates "Login success/failure".
+      // We have a real user + org context here (lockout requires a known
+      // user; the JOIN supplies the primary org); audit it. The user-facing
+      // response is still generic — no anti-enumeration regression.
+      if (u.orgId) {
+        await this.writeLoginAuditSafe({
+          orgId: u.orgId,
+          actorId: u.id,
+          actorEmail: dto.email,
+          action: 'auth.login_failed',
+          afterState: { reason: 'locked' },
+          ip,
+          userAgent,
+        });
+      }
       throw invalid;
     }
 
@@ -275,6 +295,20 @@ export class AuthService {
           lockedUntil: locked ? new Date(Date.now() + LOCK_MS) : null,
         })
         .where(eq(users.id, u.id));
+      // G1b — wrong-password audit. Records whether THIS attempt triggered
+      // the lock (a separate state transition worth distinguishing in the
+      // audit trail for brute-force detection).
+      if (u.orgId) {
+        await this.writeLoginAuditSafe({
+          orgId: u.orgId,
+          actorId: u.id,
+          actorEmail: dto.email,
+          action: 'auth.login_failed',
+          afterState: { reason: 'wrong_password', attempts: failed, lockedNow: locked },
+          ip,
+          userAgent,
+        });
+      }
       throw invalid;
     }
 
@@ -286,7 +320,7 @@ export class AuthService {
       email: u.userEmail,
       role: u.role,
       avatarColor: u.avatarColor,
-      organization: { id: u.orgId, name: u.orgName },
+      organization: { id: u.orgId, name: u.orgName, slug: u.orgSlug ?? '' },
     };
 
     const rawRefresh = newRawToken();
@@ -484,6 +518,7 @@ export class AuthService {
         role: memberships.role,
         orgId: organizations.id,
         orgName: organizations.name,
+        orgSlug: organizations.slug,
       })
       .from(users)
       .innerJoin(memberships, eq(memberships.userId, users.id))
@@ -506,7 +541,36 @@ export class AuthService {
       email: row.userEmail,
       avatarColor: row.avatarColor,
       role: row.role,
-      organization: { id: row.orgId, name: row.orgName },
+      organization: { id: row.orgId, name: row.orgName, slug: row.orgSlug },
     };
+  }
+
+  // G1b helper — best-effort audit_log write for login failure events.
+  // Best-effort: an audit hiccup must never escalate to a 500 on the
+  // auth flow itself. Uses the BYPASSRLS pool with an explicit org_id
+  // because the login flow has no app.organization_id context yet.
+  private async writeLoginAuditSafe(entry: {
+    orgId: string;
+    actorId: string;
+    actorEmail: string;
+    action: string;
+    afterState?: Record<string, unknown>;
+    ip?: string;
+    userAgent?: string;
+  }): Promise<void> {
+    try {
+      await db.insert(auditLog).values({
+        orgId: entry.orgId,
+        actorId: entry.actorId,
+        actorType: 'user',
+        actorEmail: entry.actorEmail,
+        action: entry.action,
+        afterState: entry.afterState,
+        ip: entry.ip,
+        userAgent: entry.userAgent,
+      });
+    } catch {
+      // best-effort; never surface to the user.
+    }
   }
 }

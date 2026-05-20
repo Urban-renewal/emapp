@@ -81,10 +81,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     // The pg-cause chain can echo column values / schema internals. It is
-    // EXPOSED ONLY when AUTH_DEBUG_ERRORS is explicitly set (opt-in, never
-    // by default) — gating on "not production" would leak it on staging too.
-    // The full chain is always available in server logs (logger.error above).
-    const debugOptIn = process.env['AUTH_DEBUG_ERRORS'] === '1';
+    // EXPOSED ONLY when AUTH_DEBUG_ERRORS=1 AND we are NOT in production
+    // (audit-pass V #3 — hardened 2026-05-20: previously env-only, an ops
+    // typo putting the env var in prod Infisical would have leaked schema
+    // details. Same fail-closed posture as F1 in the throttler. Staging
+    // and dev still get the debug body when the flag is on; prod refuses
+    // structurally even if the flag is somehow set). The full chain is
+    // always available in server logs (logger.error above) for forensics.
+    const debugOptIn =
+      process.env['AUTH_DEBUG_ERRORS'] === '1' && process.env['NODE_ENV'] !== 'production';
     reply.status(status).send({
       error: {
         code: String(status),

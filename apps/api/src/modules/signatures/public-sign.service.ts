@@ -8,7 +8,9 @@ import {
   owners,
   signatureRequests,
   signatures,
+  users,
   withTenant,
+  type IEmailProvider,
   type IStorageProvider,
 } from '@emapp/db';
 import type { PublicSignPreview, PublicSignSubmit } from '@emapp/shared-types';
@@ -26,7 +28,9 @@ import {
   STORAGE_PROVIDER,
   safeDownloadFilename,
 } from '../documents/storage';
+import { EMAIL_PROVIDER } from '../members/invite-email';
 
+import { notifyAfterSign } from './signature-link-delivery';
 import { SignatureTokenService } from './signature-token.service';
 
 /** Generic 401 for the resident — no oracle distinguishes
@@ -66,6 +70,7 @@ export class PublicSignService {
   constructor(
     private readonly tokenService: SignatureTokenService,
     @Inject(STORAGE_PROVIDER) private readonly storage: IStorageProvider,
+    @Inject(EMAIL_PROVIDER) private readonly email: IEmailProvider,
   ) {}
 
   /** GET /sign/:token — preview. Loads document + owner names + mints a
@@ -210,7 +215,7 @@ export class PublicSignService {
     }
 
     try {
-      return await withTenant(claims.orgId, async (tx) => {
+      const result = await withTenant(claims.orgId, async (tx) => {
         // Layer 2 — ATOMIC single-use UPDATE. This is the heart of the
         // security model. The WHERE clause encodes ALL guards in one
         // statement so the DB itself is the source of truth on
@@ -238,6 +243,7 @@ export class PublicSignService {
             id: signatureRequests.id,
             documentId: signatureRequests.documentId,
             ownerId: signatureRequests.ownerId,
+            createdBy: signatureRequests.createdBy,
             signedAt: signatureRequests.signedAt,
           });
 
@@ -259,8 +265,14 @@ export class PublicSignService {
         // Layer 6 reinforced — fetch the document_hash for forensic
         // immutability (the signature attests to THIS hash; if the doc
         // is ever replaced, the signature still pins what was signed).
+        // We also load `name` for the post-sign notification emails
+        // (T5.7 manager-notify + resident-confirm — DoD docs/03 §9).
         const [doc] = await tx
-          .select({ id: documents.id, contentHash: documents.contentHash })
+          .select({
+            id: documents.id,
+            contentHash: documents.contentHash,
+            name: documents.name,
+          })
           .from(documents)
           .where(eq(documents.id, req.documentId))
           .limit(1);
@@ -269,6 +281,21 @@ export class PublicSignService {
           // treat as reject (consistent surface).
           throw INVALID_TOKEN;
         }
+
+        // Load owner (for resident confirmation) and manager (for the
+        // T5.7 notification). Neither blocks the sign — if either lookup
+        // returns nothing, the matching channel is skipped. RLS is in
+        // effect (withTenant), so these reads are org-scoped.
+        const [own] = await tx
+          .select({ id: owners.id, name: owners.name, email: owners.email })
+          .from(owners)
+          .where(eq(owners.id, req.ownerId))
+          .limit(1);
+        const [mgr] = await tx
+          .select({ id: users.id, name: users.name, email: users.email })
+          .from(users)
+          .where(eq(users.id, req.createdBy))
+          .limit(1);
 
         // D.12 LAW — encrypt the SVG at rest via pgcrypto.
         const signatureBlob = await encryptField(tx, body.signatureSvg, encKey);
@@ -315,8 +342,43 @@ export class PublicSignService {
           },
         });
 
-        return { signedAt: signatureRow.signedAt };
+        // Bundle data needed for post-sign emails (T5.7). Fire AFTER
+        // the tx commits so a slow Resend call never holds a DB
+        // connection (same governed pattern as SignatureRequestsService.create).
+        return {
+          signedAt: signatureRow.signedAt,
+          notify: {
+            managerEmail: mgr?.email ?? null,
+            residentEmail: own?.email ?? null,
+            ownerName: own?.name ?? 'בעל דירה',
+            documentName: doc.name,
+          },
+        };
       });
+
+      // T5.7 — post-sign notifications. NEVER fails the resident's
+      // sign call; individual failures are logged + swallowed.
+      try {
+        await notifyAfterSign(
+          this.email,
+          {
+            managerEmail: result.notify.managerEmail,
+            residentEmail: result.notify.residentEmail,
+            ownerName: result.notify.ownerName,
+            documentName: result.notify.documentName,
+            signedAt: result.signedAt,
+          },
+          { error: (m): void => this.logger.error(m) },
+        );
+      } catch (e: unknown) {
+        // notifyAfterSign already catches per-channel; this is a guard
+        // for the unexpected.
+        this.logger.error(
+          `[sign] notifyAfterSign threw unexpectedly: ${e instanceof Error ? e.message : 'unknown'}`,
+        );
+      }
+
+      return { signedAt: result.signedAt };
     } catch (e: unknown) {
       if (e instanceof UnauthorizedException) throw e;
       if (e instanceof ServiceUnavailableException) throw e;

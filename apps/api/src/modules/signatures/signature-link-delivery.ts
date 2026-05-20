@@ -74,6 +74,76 @@ export interface SignatureEmailInput {
   signUrl: string;
 }
 
+/** Manager-side notification after a resident signs (T5.7 — docs/03 §9
+ *  DoD bullet "Email notification ליזם כשבעל דירה חותם"). NO IP/UA in
+ *  the email body — IP/UA stays in the audit_log only (docs/07 §12.3
+ *  sensitive, Provider-Admin only). */
+export function buildManagerSignedNotification(input: {
+  to: string;
+  ownerName: string;
+  documentName: string;
+  signedAt: Date;
+}): {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  tags: Record<string, string>;
+} {
+  const docNameSafe = escapeHtml(input.documentName);
+  const ownerNameSafe = escapeHtml(input.ownerName);
+  // Format the timestamp in Israel timezone (Asia/Jerusalem) per
+  // CLAUDE.md "Dates: store UTC, display Asia/Jerusalem".
+  const whenIL = new Intl.DateTimeFormat('he-IL', {
+    timeZone: 'Asia/Jerusalem',
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(input.signedAt);
+  const whenSafe = escapeHtml(whenIL);
+  const subject = headerSafe(`חתימה התקבלה — ${input.documentName}`);
+  const text =
+    `${input.ownerName} חתם על המסמך "${input.documentName}".\n` +
+    `מועד: ${whenIL}\n\n` +
+    `פרטי החתימה זמינים ב-EMAPP במסך החתימות.`;
+  const html =
+    `<div dir="rtl" style="font-family:Heebo,Arial,sans-serif">` +
+    `<p><strong>${ownerNameSafe}</strong> חתם על המסמך <strong>${docNameSafe}</strong>.</p>` +
+    `<p>מועד: ${whenSafe}</p>` +
+    `<p style="color:#666;font-size:12px">פרטי החתימה זמינים ב-EMAPP במסך החתימות.</p>` +
+    `</div>`;
+  return { to: input.to, subject, html, text, tags: { kind: 'signature_signed_mgr' } };
+}
+
+/** Resident-side confirmation after they sign (docs/03 §9 DoD bullet
+ *  "Email confirmation לבעל דירה אחרי שחתם"). Best-effort — if the
+ *  owner has no email on file, we skip silently. */
+export function buildResidentSignedConfirmation(input: {
+  to: string;
+  ownerName: string;
+  documentName: string;
+}): {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  tags: Record<string, string>;
+} {
+  const docNameSafe = escapeHtml(input.documentName);
+  const ownerNameSafe = escapeHtml(input.ownerName);
+  const subject = headerSafe(`תודה — חתימתך נקלטה`);
+  const text =
+    `שלום ${input.ownerName},\n\n` +
+    `החתימה שלך על "${input.documentName}" נקלטה בהצלחה.\n` +
+    `אם לא חתמת על מסמך זה, צור קשר עם היזם בהקדם.`;
+  const html =
+    `<div dir="rtl" style="font-family:Heebo,Arial,sans-serif">` +
+    `<p>שלום ${ownerNameSafe},</p>` +
+    `<p>החתימה שלך על <strong>${docNameSafe}</strong> נקלטה בהצלחה.</p>` +
+    `<p style="color:#666;font-size:12px">אם לא חתמת על מסמך זה, צור קשר עם היזם בהקדם.</p>` +
+    `</div>`;
+  return { to: input.to, subject, html, text, tags: { kind: 'signature_signed_resident' } };
+}
+
 /** Resident invite — "click here to sign". The link is a 7-day single-
  *  use JWT; no PII beyond names in the body. */
 export function buildResidentInviteEmail(input: SignatureEmailInput): {
@@ -178,6 +248,85 @@ export async function deliverSignatureLink(
       : { available: false, reason: 'sms_provider_not_configured' };
 
   return { email: emailRes, whatsapp: whatsappRes, sms: smsRes };
+}
+
+/** Fire after a successful sign — notifies the manager (T5.7) and the
+ *  resident (confirmation). Each send is independent; one failing does
+ *  not abort the other, and neither one can block the response (we
+ *  catch + log). Return shape mirrors the per-channel delivery report
+ *  so the caller can include it in an audit row if desired. */
+export interface PostSignNotifyContext {
+  managerEmail: string | null;
+  residentEmail: string | null;
+  ownerName: string;
+  documentName: string;
+  signedAt: Date;
+}
+
+export async function notifyAfterSign(
+  email: IEmailProvider,
+  ctx: PostSignNotifyContext,
+  logger: { error: (m: string) => void },
+): Promise<{ manager: ChannelResult; resident: ChannelResult }> {
+  const manager: ChannelResult = ctx.managerEmail
+    ? await sendOne(
+        email,
+        buildManagerSignedNotification({
+          to: ctx.managerEmail,
+          ownerName: ctx.ownerName,
+          documentName: ctx.documentName,
+          signedAt: ctx.signedAt,
+        }),
+        'manager_notify',
+        logger,
+      )
+    : { available: false, reason: 'no_manager_email_on_file' };
+
+  const resident: ChannelResult = ctx.residentEmail
+    ? await sendOne(
+        email,
+        buildResidentSignedConfirmation({
+          to: ctx.residentEmail,
+          ownerName: ctx.ownerName,
+          documentName: ctx.documentName,
+        }),
+        'resident_confirm',
+        logger,
+      )
+    : { available: false, reason: 'no_email_on_file' };
+
+  return { manager, resident };
+}
+
+async function sendOne(
+  email: IEmailProvider,
+  msg: {
+    to: string;
+    subject: string;
+    html: string;
+    text: string;
+    tags: Record<string, string>;
+  },
+  tag: string,
+  logger: { error: (m: string) => void },
+): Promise<ChannelResult> {
+  try {
+    const res = await email.send(msg);
+    if (res.status === 'rejected') {
+      logger.error(
+        `[signature-delivery:${tag}] email rejected for ${maskEmail(msg.to)}: ${res.error ?? 'unknown'}`,
+      );
+      return { available: false, reason: `${tag}_rejected`, to: maskEmail(msg.to) };
+    }
+    return { available: true, status: res.status, to: maskEmail(msg.to) };
+  } catch (e: unknown) {
+    logger.error(
+      `[signature-delivery:${tag}] email send threw for ${maskEmail(msg.to)}: ${
+        e instanceof Error ? e.message : 'unknown'
+      }`,
+    );
+    return { available: false, reason: `${tag}_send_failed` };
+  }
 }
 
 async function sendInviteEmail(

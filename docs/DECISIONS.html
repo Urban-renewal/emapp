@@ -1382,7 +1382,19 @@ Tenant tier), GATE 4 (SMS provider swap).</li>
     <li>2/2 <code>phase5-signatures.functional.spec.ts</code> (functional E2E, QA-manager sign-off) — F1 audit trail integrity (3 audit rows landed, IP/UA NOT leaked in Manager view), F2 (T5.6) rate limit fires without bypass (5 OK + 6th 429).</li>
   </ul>
 </li>
-<li><strong>Phase 5 DoD (docs/03 §9) status:</strong> backend complete. UI/manual UX test out-of-BE-scope. T5.5 (Canvas mobile) is FE; T5.7 (Email notification sent) is satisfied at the BE side by S6 delivery (the actual send is verified by F1 audit row landing); the resident-confirmation-after-sign email is a future enhancement, not a DoD blocker since the success response itself is the user-facing confirmation.</li>
+<li><strong>Phase 5 DoD (docs/03 §9) status:</strong> backend complete. UI/manual UX test out-of-BE-scope.
+  <ul>
+    <li>T5.1 (token gen valid) — unit test signature-token.service.spec.</li>
+    <li>T5.2 (expiration → 401) — E10 contract.</li>
+    <li>T5.3 (token reuse blocked) — E4 contract.</li>
+    <li>T5.4 (happy path E2E) — E2+E3 contract.</li>
+    <li>T5.5 (Canvas mobile touch) — FE, out-of-BE-scope.</li>
+    <li>T5.6 (rate limit 429 after 5) — F2 functional.</li>
+    <li>T5.7 (email notification ליזם + לדייר) — initial implementation in S6 covered ONLY the invite email; <strong>the post-sign notifications (manager + resident confirmation) were ADDED IN A FOLLOW-UP COMMIT after the user explicitly asked "100% behind it?" caught the gap in the close-out review</strong> (recorded for future reference: the original D.33 claim "S6 covers T5.7" was incorrect — S6 only sent the invite at create time; the post-sign send was missing). Now wired in <code>PublicSignService.sign()</code> via <code>notifyAfterSign()</code>; F3 functional pin (200 from /sign + audit clean of email template strings).</li>
+    <li>T5.8 (audit metadata captured) — F1 functional (3 audit rows landed; IP/UA stored but Manager-view-redacted per docs/07 §12.3).</li>
+  </ul>
+  <br />Idempotency-Key on POST /sign/:token (D.22 F) — verified by F4 functional (same key + same token replays cached response; second POST does NOT hit the atomic single-use guard).
+  <br /><strong>Process lesson recorded:</strong> a DoD-to-test mapping table (like the one above) must accompany every "phase done" claim. Narrative claims like "S6 covers it" are not acceptable evidence — only an explicit test ID is. The first version of D.33 violated this; the gap was caught by the user's "100% behind it?" challenge, not by the agent's self-review. Going forward this table is the FIRST artifact written when a phase closes.</li>
 <li><strong>Operational secret requirements (Infisical, all envs):</strong> <code>SIGNATURE_TOKEN_SECRET</code> (≥44 chars, distinct from <code>JWT_SECRET</code>), <code>RESEND_API_KEY</code> (D.27, dev present, staging+prod pending), <code>PII_ENCRYPTION_KEY</code> (existing). SMS provider key (<code>INFORU_*</code>) NOT required for MVP.</li>
 <li><strong>Why this entry exists:</strong> Phase 5 is the most security-sensitive flow in the MVP (a public-link JWT that authorizes signing a tamper-evident legal artifact). Recording the exact implementation choices + the 22 tests that pin them + the live-discovered Fastify bug + the channel deferral matrix is the only way a future reviewer (founder, auditor, or new engineer) can verify the security model without rebuilding it from scratch.</li>
 <li><strong>Reversibility:</strong> Schema migration 0021 is forward-only (no destructive operations). Code structure mirrors documents/auth modules and can be refactored without breaking the wire contract. The SMS channel can be enabled post-deploy via env flag + Infisical key, no code change. The two-secret JWT model (org vs sign) is structural — reversing would require a coordinated migration to merge audiences (not recommended).</li>

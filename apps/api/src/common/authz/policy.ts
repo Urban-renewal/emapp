@@ -28,7 +28,8 @@ export type Resource =
   | 'audit'
   | 'project_assignments'
   | 'members'
-  | 'documents';
+  | 'documents'
+  | 'signature_requests';
 
 type Matrix = Record<Resource, Record<Action, readonly Role[]>>;
 
@@ -70,6 +71,13 @@ export const POLICY: Matrix = {
   // record-scoped in the service); writes are manager-only. The presigned
   // URL is minted ONLY after this gate + per-record visibility pass.
   documents: { read: ALL, create: MGR, update: MGR, delete: MGR },
+  // Signature requests (Phase 5, docs/03 §9): manager creates and cancels
+  // (status transition; never DELETE — forensic evidence per migration
+  // 0021). Any org role may read the list/status (record-scoping via the
+  // underlying document for agents lives in the service). The actual
+  // signing endpoint /sign/:token is PUBLIC (no auth, JWT is the
+  // credential) and therefore bypasses this matrix entirely.
+  signature_requests: { read: ALL, create: MGR, update: MGR, delete: MGR },
 };
 
 /** Pure decision: is this role coarsely permitted this action on this resource? */

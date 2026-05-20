@@ -104,6 +104,22 @@ TypeScript passes, lint passes, tests green, no console.log,
 
 diff reviewed, CLAUDE.md updated if a new pattern emerged.
 
+\## Definition of Done for any PHASE
+
+In addition to the per-task DoD above, a PHASE is "done" ONLY when a
+
+DoD↔Test mapping table is produced — every spec bullet (docs/03 §X T-IDs)
+
+points to an explicit test ID. Narrative claims like "X covers Y" are
+
+NOT acceptable evidence. Empty cell ⇒ phase is NOT done. (Process lesson
+
+from Phase 5 close-out, recorded in DECISIONS D.33: the first version of
+
+the phase-5 closure D.33 claimed "S6 covers T5.7" without a test ID and
+
+the gap was caught only by the user's challenge, not by self-review.)
+
 \## ===== AUTOPILOT PROTOCOL =====
 
 \### On every session start

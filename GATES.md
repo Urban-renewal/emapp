@@ -124,7 +124,13 @@ control was implemented and the evidence exists in code/tests.
 
 &#x20; interim, hard remediation = email before Gate 5), \*\*D.28\*\* (documents
 
-&#x20; presigned-URL confidentiality model + governed R2-swap residuals) —
+&#x20; presigned-URL confidentiality model + governed R2-swap residuals),
+
+&#x20; \*\*D.32\*\* (audit-pass V six improvements close-out), \*\*D.33\*\* (Phase 5
+
+&#x20; public-link JWT signing flow + multi-channel delivery + DoD↔Test mapping
+
+&#x20; process correction) —
 
 &#x20; all recorded in
 

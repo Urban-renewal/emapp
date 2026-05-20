@@ -274,18 +274,52 @@ export class DocumentsService {
     };
   }
 
-  // Integrity gate: the finalize-declared size/hash must match what was
-  // declared at create (the presigned PUT already bound size+type). A
-  // mismatch ⇒ inconsistent/confused client ⇒ archive + purge the object.
-  // (True server-side recompute needs an IStorageProvider.head extension —
-  // recorded as the D.28 follow-up; out of the locked interface for MVP.)
+  // Integrity gate (TWO-LAYER):
+  //   1) CLIENT consistency — the finalize-declared size/hash must match
+  //      what was declared at create. Catches a confused/inconsistent
+  //      client.
+  //   2) STORAGE attestation (D.28 R1/R2, audit-pass V #4) — when the
+  //      provider can attest (R2 → real values; Fake → null), the
+  //      object's ACTUAL content-length (and sha256 when available) must
+  //      match the create-declared values. This is the true tamper-
+  //      evident check: a client could lie identically at create+finalize
+  //      while uploading different bytes; layer-2 catches that.
+  //   On any mismatch ⇒ archive + purge the object + 409.
+  //   `head()` returning null (Fake, or object briefly absent) is NOT a
+  //   pass — it just means there is no storage-attested fact; the
+  //   layer-1 client check stands alone. (Documented in
+  //   storage.interface.ts StorageObjectMeta.)
   async finalize(user: AccessTokenPayload, id: string, input: FinalizeDocument): Promise<Document> {
     this.requireManager(user);
     const result = await withTenant(
       user.orgId,
       async (tx) => {
         const row = await this.loadVisible(tx, user, id);
-        const mismatch = input.sizeBytes !== row.sizeBytes || input.contentHash !== row.contentHash;
+        // Layer 1: client-consistency.
+        let mismatch = input.sizeBytes !== row.sizeBytes || input.contentHash !== row.contentHash;
+        // Layer 2: storage-attestation (only when layer-1 already passed —
+        // an inconsistent client is already a reject, no need to probe R2).
+        // head() is best-effort: an infra failure here MUST NOT silently
+        // weaken the gate, but it also MUST NOT block a legitimate
+        // finalize on a transient R2 hiccup. We log + treat as "no
+        // attestation" (layer-1 stands). Fake → null → no-op.
+        if (!mismatch) {
+          try {
+            const head = await this.storage.head(row.r2Key);
+            if (head !== null) {
+              const sizeOk = head.contentLength === row.sizeBytes;
+              const hashOk =
+                head.checksumSha256 === undefined || head.checksumSha256 === row.contentHash;
+              if (!sizeOk || !hashOk) mismatch = true;
+            }
+          } catch (e: unknown) {
+            this.logger.error(
+              `storage.head() failed during finalize (doc=${row.id}): ${
+                e instanceof Error ? e.message : 'unknown'
+              }`,
+            );
+          }
+        }
         if (mismatch) {
           await tx
             .update(documents)

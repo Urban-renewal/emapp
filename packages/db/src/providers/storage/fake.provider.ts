@@ -1,4 +1,9 @@
-import type { IStorageProvider, UploadUrlOptions, DownloadUrlOptions } from './storage.interface';
+import type {
+  IStorageProvider,
+  UploadUrlOptions,
+  DownloadUrlOptions,
+  StorageObjectMeta,
+} from './storage.interface';
 
 export class FakeStorageProvider implements IStorageProvider {
   public uploaded: Array<{ key: string; opts: UploadUrlOptions }> = [];
@@ -17,6 +22,17 @@ export class FakeStorageProvider implements IStorageProvider {
 
   async delete(key: string): Promise<void> {
     this.deleted.push(key);
+  }
+
+  /** D.28 R2 interface prep: Fake doesn't store real bytes, so it cannot
+   *  attest object metadata — returns null. Callers (e.g.
+   *  DocumentsService.finalize) treat null as "no storage attestation"
+   *  and fall back to the existing client-consistency check. When R2
+   *  lands, the real provider will return actual contentLength + checksum
+   *  and the same call site gains true tamper-evidence with no code
+   *  change. */
+  async head(_key: string): Promise<StorageObjectMeta | null> {
+    return null;
   }
 
   async healthCheck(): Promise<void> {}

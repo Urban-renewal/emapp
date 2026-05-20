@@ -162,6 +162,20 @@
       "when": 1779040200000,
       "tag": "0022_import_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1779040800000,
+      "tag": "0023_import_errors_drop_raw_row",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1779041400000,
+      "tag": "0024_import_jobs_revoke_delete",
+      "breakpoints": true
     }
   ]
 }

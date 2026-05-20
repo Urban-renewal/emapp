@@ -108,6 +108,14 @@ export type NewImportJob = typeof importJobs.$inferInsert;
  *
  * row_number is 1-indexed to match what the manager sees in their
  * spreadsheet — the source-of-truth pointer for "fix row X".
+ *
+ * D.12 + ISO A.9.4: NO `raw_row` column. The original (pre-audit) shape
+ * stored the raw parsed row in jsonb — but urban-renewal Excel rows
+ * contain national_id + phone (PII). Storing them unencrypted violated
+ * the locked rule. Resolution: drop the column (migration 0023). The
+ * manager fixes their source Excel using row_number + field + code,
+ * then re-uploads. The original file is still in R2 via
+ * `import_jobs.file_r2_key` — we don't duplicate row content.
  */
 export const importJobErrors = pgTable(
   'import_job_errors',
@@ -123,9 +131,6 @@ export const importJobErrors = pgTable(
     field: text('field'),
     code: text('code').notNull(),
     message: text('message'),
-    /** Raw parsed row — for resubmit/fix UI. Bounded by client + parser
-     *  side; up to ~8KB per row is practical. */
-    rawRow: jsonb('raw_row').$type<Record<string, unknown>>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

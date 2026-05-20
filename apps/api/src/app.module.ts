@@ -12,6 +12,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { BuildingsModule } from './modules/buildings/buildings.module';
 import { ContractorsModule } from './modules/contractors/contractors.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { ImportsModule } from './modules/imports/imports.module';
 import { MembersModule } from './modules/members/members.module';
 import { NotesModule } from './modules/notes/notes.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -82,6 +83,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
     ProjectAssignmentsModule,
     MembersModule,
     SignaturesModule,
+    ImportsModule,
   ],
   controllers: [HealthController],
   // Rate limiting ENFORCED globally; the configurable guard adds a

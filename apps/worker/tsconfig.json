@@ -8,6 +8,7 @@
     "paths": {
       "@emapp/config": ["../../packages/config/src"],
       "@emapp/db": ["../../packages/db/src"],
+      "@emapp/jobs": ["../../packages/jobs/src"],
       "@emapp/shared-types": ["../../packages/shared-types/src"]
     }
   },

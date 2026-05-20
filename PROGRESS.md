@@ -8,7 +8,9 @@
 
 - **Phase:** 6 IN PROGRESS — Import (docs/03 §10, Excel pipeline), branch `phase-6` from up-to-date main (Phase 5 merged via PR #20 commit `fe79b4b` + gap-close PR #21 commit `c13f41c`). PR #22 (draft).
 
-- **Next task:** Phase 6 S2 — pg-boss + queue infrastructure + SSE endpoint. Foundation slices S1 (schema) + S1.5 (worker skeleton) complete + CI green SHA-mapped (`d6b5224`). Remaining slices S2-S9 estimated ~27 hours / 4 days. See PR #22 description for full DoD↔Test mapping table.
+- **Next task:** Phase 6 S3 — ExcelJS streaming parser (replaces `stubParseStage` in apps/worker/src/handlers/import-job.handler.ts; sets `import_jobs.total_rows` from real header detection per T6.1). S2 complete locally; CI SHA-mapping after push of branch `phase-6-s2`. Remaining slices S3-S9 estimated ~22 hours.
+
+- **Phase 6 S2 (2026-05-21, branch `phase-6-s2`) — pg-boss + IJobHandler adapter + ImportJobHandler + SSE endpoint:** pg-boss@10 added to `apps/worker/` and wired in `main.ts` (schema `pgboss`, separate from `public`; graceful `boss.stop({graceful,close})` in onShutdown; abort signal threaded so handlers can short-circuit). New seam `apps/worker/src/pg-boss-adapter.ts` is the SINGLE file that knows pg-boss types — every other worker file talks to `IJobHandler<T>` from `@emapp/jobs` (audit-pass abstraction holds). `apps/worker/src/handlers/import-job.handler.ts` implements `IJobHandler<ImportJobPayload>` with the full state machine (`queued→parsing→validating→persisting→done|failed`) — each transition is a guarded UPDATE inside `withTenant` so retries are idempotent, and each transition writes an `audit_log` row (`actorType='system'`, `actorId=createdBy`, `action='import.<state>'`) in the SAME tx → audit can never desync from the domain row (ISO A.12.4 / docs/07 §12.4). Parsing/validation/persistence are deliberate STUBS — S3/S5/S6 swap each one behind the seam; the state-machine + audit contract is fixed in S2. New `apps/api/src/modules/imports/` with `GET /imports/:id` snapshot + `GET /imports/:id/stream` SSE (Fastify `reply.raw`; `:stream-open` immediate flush; 500ms poll cadence per docs/03 §10; client `req.raw.close` → AbortController → loop exits promptly; emits `progress` on change, `end` on terminal, `gone` on RLS-driven 404). Policy gains `imports` resource (read=ALL, write=MGR) + matching policy.spec assertion (`RESOURCES.length === 16`). DoD↔Test ID closed for S2: **T6.8** = `apps/worker/test/import-job.handler.spec.ts` (10 integration tests vs real Neon — state machine, audit rows, idempotent retry, cross-org RLS, GRANT revoke), **T6.9** = `apps/api/src/modules/imports/imports-stream.spec.ts` (8 tests — initial poll, transitions, terminal `end`, cross-tenant `gone`, abort signal, SSE wire encoding, PII-key whitelist). Adapter unit-tested in `apps/worker/test/pg-boss-adapter.spec.ts` (7 tests — createQueue/work args, payload zod-validation, retryable vs non-retryable, scoped logger). Pre-S2 18 regression tests (10 schema + 8 bootstrap) still green. Process improvement: `packages/db/test/global-setup.ts` resolves `migrationsFolder` from `import.meta.url` (was `./migrations` which broke when reused from worker/api); zero behaviour change in db package's own runs.
 
 - **Status:** Phase 6 foundation done. **Architectural locks confirmed** (Gate 6 — recorded in PR description, will land in D.34 at S9): queue backend = pg-boss (docs/02 §354, D.04 — no Redis in MVP); worker = separate process (`apps/worker/`, Railway service per docs/03 §1424). Migration 0022 creates `import_jobs` (state machine queued→parsing→validating→persisting→done|failed|cancelled with progress counters, idempotency_key UNIQUE per org, RLS, 3 indexes) + `import_job_errors` (CASCADE delete, RLS). `apps/worker/` package boots via tsx (no separate build step), structured pino logs with `service="emapp-worker"`, DB smoke-test via shared pool (D.21), SIGTERM graceful shutdown placeholder (S2 wires pg-boss.stop), uncaughtException/unhandledRejection process-exit guards (D.29 resilience). Dockerfile multi-stage alpine non-root. Smoke-boot live verified: `worker booting` → `db connectivity OK` → SIGTERM → clean exit 0. **Process improvement from Phase 5:** PR #22 description carries a DoD↔Test ID mapping table (per the corrected D.33 lesson — "no narrative claims, only explicit test IDs count"). S9 will close the table with all 11 BE test IDs filled in.
 
@@ -70,7 +72,7 @@
 
 - **Blocked:** no.
 
-- **Branch:** phase-3 (phase-2-hardening merged to main; one PR at Phase-3 end)
+- **Branch:** phase-6-s2 (cut from main after PR #26 merged; one PR at S9 / Phase-6 end with the full DoD↔Test mapping table per D.33)
 
 ## Phase Completion Log
 
@@ -86,7 +88,7 @@
 
 - [x] Phase 5 — Signatures (docs/03 §9) — 7 slices complete (S1 schema, S2 shared-types, S3 token service, S4 manager CRUD, S5 public sign endpoint, S6 multi-channel delivery, S9 docs/D.33), 22/22 live tests pass, PR #20 — awaiting_approval
 
-- [ ] Phase 6 — Import (docs/03 §10) — **IN PROGRESS** on branch `phase-6` (PR #22 draft). S1 (schema migration 0022 + import_jobs/import_job_errors + RLS) + S1.5 (apps/worker/ skeleton, separate Railway service per docs/02 §354 + docs/03 §1424) complete + CI green. Remaining: S2 (pg-boss + SSE) → S3 (ExcelJS parser) → S4 (mapping) → S5 (validation + dry-run) → S6 (persistence + idempotency + dedup + rollback) → S7 (perf gates T6.10/T6.11) → S8 (api endpoints) → S9 (D.34 + DoD↔Test mapping).
+- [ ] Phase 6 — Import (docs/03 §10) — **IN PROGRESS** on branch `phase-6-s2` (S1+S1.5 merged via PR #22; audit-pass via PR #26). S2 complete locally (pg-boss adapter + ImportJobHandler state machine + audit + SSE; T6.8 10/10 + T6.9 8/8 + adapter 7/7 + 18 pre-S2 regression baseline green). Remaining: S3 (ExcelJS parser) → S4 (mapping) → S5 (validation + dry-run) → S6 (persistence + idempotency + dedup + rollback) → S7 (perf gates T6.10/T6.11) → S8 (api endpoints — POST/cancel/errors-export) → S9 (D.34 + DoD↔Test mapping).
 
 - [ ] Phase 6.5 — Provider Admin tool (docs/03 §10.5)
 
@@ -99,6 +101,8 @@
 ## Task Log (newest first)
 
 <!-- Claude appends: [YYYY-MM-DD HH:MM] P0.1 ✓ — note — commit <sha> -->
+
+[2026-05-21] Phase 6 S2 ✓ — pg-boss + ImportJobHandler + SSE endpoint. Adapter (`pg-boss-adapter.ts`) is the SINGLE pg-boss-aware file; handlers are `IJobHandler<T>` from @emapp/jobs. State machine = withTenant-guarded transitions + atomic audit_log rows. SSE `GET /imports/:id/stream` via Fastify reply.raw with abort-signal client-disconnect. Policy gains 'imports' (16 resources). Tests: T6.8 worker 10/10, T6.9 SSE 8/8, adapter 7/7, baseline 18/18 unchanged. Lint+typecheck green. global-setup.ts path now resolves from import.meta.url so api+worker reuse works. — commit TBD
 
 [2026-05-19] Phase 4 Documents ✓ — D1–D6: shared-types (no r2Key on wire, MIME allow-list), STORAGE_PROVIDER DI (prod fail-fast) + policy 'documents' (policy.spec 176), service/controller/module (presign-after-authorize, no-oracle, agent-scoped, finalize verify-or-archive, soft-delete+purge). Security review 0 CRIT; HIGH-1 (r2_key via pg-error) fixed at root; Item-8 bulk-exfil throttle added; R2-swap residuals = D.28 governed. unit 179 + documents.contract 10/10 + red-team 42/42, zero regression. Pre-existing Neon idle-disconnect API crash flagged (spawned task). Branch phase-4, PR base main. — commit TBD
 

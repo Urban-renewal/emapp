@@ -25,7 +25,15 @@ const CORS_ORIGINS = {
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({ trustProxy: true }),
+    new FastifyAdapter({
+      trustProxy: true,
+      // Phase 5 (docs/03 §9): the public-link signing flow puts a JWT in
+      // the path (`/sign/:token`). HS256 JWTs with our claim shape are
+      // ~600-800 chars; Fastify's default maxParamLength is 100, which
+      // would silently 404 every real signing link. 1500 is generous
+      // headroom for any future claim additions.
+      maxParamLength: 1500,
+    }),
     // bodyParser:false — Nest must NOT register its own application/json
     // parser (it runs during listen() and collides with ours). We register
     // a single JSON parser below that also tolerates an empty body.

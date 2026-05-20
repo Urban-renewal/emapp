@@ -1,0 +1,303 @@
+/**
+ * Phase 5 — Signatures FUNCTIONAL E2E (BLACK-BOX, QA-manager posture).
+ *
+ * The security spec (phase5-signatures.contract.spec.ts) pinned the 10
+ * documented security layers. This spec answers a different question:
+ * "did the system actually do what the spec says it should, end-to-end,
+ * with state landing where the spec says it should land?"
+ *
+ * Pins:
+ *  F1  Audit-trail integrity (docs/03 §9 DoD "Audit log כולל IP, UA,
+ *      timestamp" + docs/07 §12.4 every signing event tracked).
+ *      Manager queries GET /audit and sees:
+ *        - 1× signature_request.create (actor_type=user, target row)
+ *        - 1× signature.preview          (actor_type=system)
+ *        - 1× signature.signed           (actor_type=system,
+ *                                         target_table=signatures)
+ *      All carry timestamps. IP/UA are stored but NOT exposed in the
+ *      Manager audit view (deliberate per docs/07 §12.3 — sensitive,
+ *      Provider-Admin only); we assert they're NOT leaked.
+ *  F2  T5.6 — Rate limit fires WITHOUT the contract bypass header.
+ *      docs/03 §9 mandates "Rate limiting (5 attempts per IP per hour)".
+ *      Six POSTs from the same IP within an hour → 6th = 429.
+ */
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+const BASE = process.env['AUTH_CONTRACT_BASE_URL'] ?? 'http://localhost:3000';
+const API = `${BASE}/api/v1`;
+const BYPASS = process.env['AUTH_CONTRACT_THROTTLE_BYPASS'] ?? 'contract-suite';
+
+let LIVE = false;
+
+type Json = Record<string, unknown>;
+interface Res {
+  status: number;
+  body: Json;
+  raw: string;
+  cookies: string[];
+}
+
+/** Helper that ALWAYS sends the throttle bypass — for setup paths. */
+async function call(path: string, init?: RequestInit & { cookie?: string }): Promise<Res> {
+  return rawCall(path, init, /*bypass*/ true);
+}
+
+/** Helper that sends NO bypass — for the rate-limit assertion. */
+async function callNoBypass(path: string, init?: RequestInit & { cookie?: string }): Promise<Res> {
+  return rawCall(path, init, /*bypass*/ false);
+}
+
+async function rawCall(
+  path: string,
+  init: (RequestInit & { cookie?: string }) | undefined,
+  bypass: boolean,
+): Promise<Res> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (bypass) headers['x-throttle-bypass'] = BYPASS;
+  if (init?.cookie) headers['Cookie'] = init.cookie;
+  const res = await fetch(`${API}${path}`, {
+    ...init,
+    headers: { ...headers, ...(init?.headers as Record<string, string>) },
+  });
+  const raw = await res.text();
+  let body: Json = {};
+  try {
+    body = raw ? (JSON.parse(raw) as Json) : {};
+  } catch {
+    body = { __nonjson: raw };
+  }
+  const gsc = (res.headers as { getSetCookie?: () => string[] }).getSetCookie;
+  const cookies = typeof gsc === 'function' ? gsc.call(res.headers) : [];
+  return { status: res.status, body, raw, cookies };
+}
+
+function cookieValue(set: string[], name: string): string | undefined {
+  return set
+    .find((c) => c.startsWith(`${name}=`))
+    ?.split(';')[0]
+    ?.split('=')[1];
+}
+function uniqueEmail(tag: string): string {
+  return `func_${tag}_${Date.now()}_${Math.floor(Math.random() * 1e6)}@audit.test`;
+}
+const PW = 'AuditPassword123456';
+
+async function signup(tag: string): Promise<string> {
+  const r = await call('/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify({
+      org_name: `Func Org ${tag}`,
+      name: 'Func Manager',
+      email: uniqueEmail(tag),
+      password: PW,
+    }),
+  });
+  const at = cookieValue(r.cookies, 'access_token');
+  if (!at) throw new Error(`signup ${tag} → no access_token: ${r.raw}`);
+  return at;
+}
+
+async function createDocument(at: string): Promise<string> {
+  const r = await call('/documents', {
+    method: 'POST',
+    cookie: `access_token=${at}`,
+    body: JSON.stringify({
+      name: 'תמא38-חוזה.pdf',
+      type: 'contract',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      contentHash: 'sha256:func-' + Math.random().toString(36).slice(2),
+    }),
+  });
+  if (r.status !== 201 && r.status !== 200) {
+    throw new Error(`create doc failed ${r.status}: ${r.raw}`);
+  }
+  const body = r.body as { data?: { document?: { id?: string } } };
+  return body.data!.document!.id!;
+}
+
+function validId(seed: number): string {
+  const eight = String(seed % 100000000).padStart(8, '0');
+  let sum = 0;
+  for (let i = 0; i < 8; i++) {
+    let d = Number(eight[i]);
+    if (i % 2 === 1) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+  }
+  const check = (10 - (sum % 10)) % 10;
+  return eight + String(check);
+}
+let idSeed = 60_000_000 + Math.floor(Math.random() * 20_000_000);
+const nextNationalId = (): string => validId(idSeed++);
+
+async function createOwner(at: string): Promise<string> {
+  const r = await call('/owners', {
+    method: 'POST',
+    cookie: `access_token=${at}`,
+    body: JSON.stringify({
+      name: 'משה לוי',
+      national_id: nextNationalId(),
+      phone: '0541112233',
+      email: 'moshe@audit.test',
+    }),
+  });
+  if (r.status !== 201 && r.status !== 200) {
+    throw new Error(`create owner failed ${r.status}: ${r.raw}`);
+  }
+  return (r.body as { data?: { id?: string } }).data!.id!;
+}
+
+async function createSignatureRequest(
+  at: string,
+  documentId: string,
+  ownerId: string,
+): Promise<{ token: string; requestId: string }> {
+  const r = await call('/signature-requests', {
+    method: 'POST',
+    cookie: `access_token=${at}`,
+    body: JSON.stringify({ documentId, ownerId }),
+  });
+  if (r.status !== 201 && r.status !== 200) {
+    throw new Error(`create sig req failed ${r.status}: ${r.raw}`);
+  }
+  const body = r.body as {
+    data?: { signUrl?: string; request?: { id?: string } };
+  };
+  const token = body.data!.signUrl!.split('/sign/')[1]!;
+  return { token, requestId: body.data!.request!.id! };
+}
+
+const VALID_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50"><path d="M 10 10 L 50 25 L 90 10" stroke="black" fill="none"/></svg>`;
+
+beforeAll(async () => {
+  try {
+    const res = await fetch(`${API}/health`, { signal: AbortSignal.timeout(2500) });
+    LIVE = res.ok;
+  } catch {
+    LIVE = false;
+  }
+  if (!LIVE) {
+    // eslint-disable-next-line no-console
+    console.warn(`[phase5-functional] API not reachable at ${API} — all tests SKIPPED.`);
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.warn(`[phase5-functional] ran against ${API}`);
+});
+
+afterAll(() => {
+  // No teardown — leaves fixtures consistent with other contract suites.
+});
+
+function ft(name: string, fn: () => Promise<void>): void {
+  it(
+    name,
+    async () => {
+      if (!LIVE) return;
+      await fn();
+    },
+    60000,
+  );
+}
+
+describe('Phase 5 · Signatures · FUNCTIONAL — QA-manager sign-off', () => {
+  // ─── F1: full audit-trail integrity ─────────────────────────────
+  ft(
+    'F1 audit trail: create + preview + signed events landed; IP/UA NOT leaked in Manager view',
+    async () => {
+      const at = await signup('f1');
+      const doc = await createDocument(at);
+      const owner = await createOwner(at);
+      const { token, requestId } = await createSignatureRequest(at, doc, owner);
+
+      // Walk through the resident-side flow.
+      const preview = await call(`/sign/${token}`);
+      expect(preview.status).toBe(200);
+
+      const sign = await call(`/sign/${token}`, {
+        method: 'POST',
+        body: JSON.stringify({ signatureSvg: VALID_SVG }),
+      });
+      expect(sign.status).toBe(200);
+
+      // Manager pulls the audit log for the org.
+      const audit = await call('/audit?limit=100', { cookie: `access_token=${at}` });
+      expect(audit.status).toBe(200);
+      const audBody = audit.body as { data?: Array<Record<string, unknown>> };
+      expect(Array.isArray(audBody.data)).toBe(true);
+      const rows = audBody.data!;
+
+      // Locate the three Phase-5 events tied to this request.
+      const create = rows.find(
+        (r) => r.action === 'signature_request.create' && r.targetId === requestId,
+      );
+      const previewEv = rows.find(
+        (r) => r.action === 'signature.preview' && r.targetId === requestId,
+      );
+      const signed = rows.find((r) => r.action === 'signature.signed');
+
+      expect(create, 'signature_request.create row should exist').toBeTruthy();
+      expect(previewEv, 'signature.preview row should exist').toBeTruthy();
+      expect(signed, 'signature.signed row should exist').toBeTruthy();
+
+      // actor_type assertions — D.31 G1a pattern (system for public flow,
+      // user for the manager's create).
+      expect(create!.actorType).toBe('user');
+      expect(previewEv!.actorType).toBe('system');
+      expect(signed!.actorType).toBe('system');
+
+      // The signed row's target is the SIGNATURE artifact, not the
+      // request (the request transition itself is forensic via the row
+      // state; the signature is the new record).
+      expect(signed!.targetTable).toBe('signatures');
+
+      // Timestamps present.
+      expect(create!.createdAt).toBeTruthy();
+      expect(previewEv!.createdAt).toBeTruthy();
+      expect(signed!.createdAt).toBeTruthy();
+
+      // IP/UA stored in DB but DELIBERATELY not surfaced in the Manager
+      // view (docs/07 §12.3 — sensitive, Provider-Admin only).
+      // Verify the wire shape doesn't leak them.
+      for (const r of [create!, previewEv!, signed!]) {
+        expect(r.ip, `audit row "${r.action}" must not leak ip`).toBeUndefined();
+        expect(r.userAgent, `audit row "${r.action}" must not leak userAgent`).toBeUndefined();
+      }
+    },
+  );
+
+  // ─── F2: T5.6 — rate limit explicitly fires WITHOUT bypass ──────
+  ft('F2 (T5.6) rate limit: 6th POST /sign within an hour from same IP → 429', async () => {
+    const at = await signup('f2');
+    // Mint six independent fresh tokens so each POST is otherwise valid.
+    const tokens: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      const doc = await createDocument(at);
+      const owner = await createOwner(at);
+      const { token } = await createSignatureRequest(at, doc, owner);
+      tokens.push(token);
+    }
+
+    // Fire 6 POSTs from this process's IP, NO bypass header → real
+    // throttler sees them as a burst.
+    const responses: number[] = [];
+    for (const t of tokens) {
+      const r = await callNoBypass(`/sign/${t}`, {
+        method: 'POST',
+        body: JSON.stringify({ signatureSvg: VALID_SVG }),
+      });
+      responses.push(r.status);
+    }
+
+    // The first 5 should succeed (200). The 6th should be 429.
+    // Exact distribution: 200,200,200,200,200,429.
+    const ok = responses.filter((s) => s === 200).length;
+    const throttled = responses.filter((s) => s === 429).length;
+    expect(ok).toBe(5);
+    expect(throttled).toBe(1);
+    expect(responses[5]).toBe(429);
+  });
+});

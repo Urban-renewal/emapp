@@ -1,23 +1,31 @@
-# Phase 5 — Tenant data access design spike
+# Tenant-authenticated data path — RLS design spike (POST-Phase-5)
 
-> **Status (revised 2026-05-20):** Option B is the **recommended
-> implementation per spec**, not an architectural choice awaiting
-> founders' sign-off. Re-examination clarified: the spec
-> (D.20 + docs/07 §9 T01 + D.21) already mandates RLS-enforced Tenant
-> scoping in three defense layers; Options A and C both fail that
-> requirement (A leaks the whole org via the existing
-> `tenant_isolation` policy; C eliminates the DB layer entirely).
-> Option B is therefore not a "decision" — it is the only spec-
-> compliant implementation, and it mirrors the precedent already
-> established for the provider tier (`provider_user_role` separate
-> from `app_user`). The Phase-5 implementing agent should proceed
-> with Option B; founders review the migration in the Phase-5 PR like
-> any other schema change. The six open questions below remain
-> deferred to Phase-5 scope-lock (they're product/UX choices, not
-> architecture).
+> **Status (re-scoped 2026-05-20, same day):** this spike was originally
+> filed as a "pre-Phase-5 obligation" by audit-pass V #6. **That framing
+> was wrong** and is corrected here: Phase 5 per docs/03 §9 is the
+> **public-link JWT signing flow** (`/sign/[token]`, 7-day single-use
+> token, NO Tenant authentication required for the signing endpoint).
+> Phase 5 does NOT introduce any Tenant-authenticated data endpoint,
+> therefore does NOT need a Tenant-RLS role/policies. The Tenant
+> SMS-OTP infrastructure that exists today (built in Phase 2) is
+> currently unused by any data endpoint.
 >
-> **Owner:** Phase-5 implementing agent. **Reviewers:** founders at
-> Phase-5 PR.
+> This spike is therefore **future infrastructure** for whenever a
+> Tenant-authenticated data path lands (a hypothetical Phase 6+ feature
+> like "resident dashboard — log in via OTP, see your own apartments
+> and pending signatures"). The design remains valid for that future
+> phase, but it is NOT on the Phase 5 critical path and SHOULD NOT
+> block Phase 5 work.
+>
+> **Owner:** whichever phase introduces Tenant-authenticated data
+> endpoints. **NOT Phase 5.** **Reviewers:** founders at that phase's
+> PR.
+>
+> **Why this spike still exists:** Option B is the only spec-compliant
+> implementation (per D.20 + docs/07 §9 T01 + D.21) for whenever it IS
+> needed, and capturing it in cold blood now (rather than under sprint
+> pressure later) is the original justification. Just don't act on it
+> yet.
 >
 > **References:** docs/07 §3 (defense in depth), §9 T01 (Tenant sees
 > another tenant's apartment), §6.5 (Tenant SMS-OTP), DECISIONS D.20
@@ -105,21 +113,17 @@ a Tenant is allowed to see.
     now (signing flows write via a service-layer choke point that runs
     as `app_user` with an explicit ownerId match — keeps writes
     auditable through the same path as org writes).
-  - New policies on those tables, scoped to `TO tenant_user`:
-    - `owners`: `id = current_setting('app.tenant_owner_id', true)::uuid
-AND organization_id = current_setting('app.organization_id', true)::uuid`
-    - `apartments`: `EXISTS (SELECT 1 FROM ownerships o WHERE
+  - New policies on those tables, scoped to `TO tenant_user`: - `owners`: `id = current_setting('app.tenant_owner_id', true)::uuid
+AND organization_id = current_setting('app.organization_id', true)::uuid` - `apartments`: `EXISTS (SELECT 1 FROM ownerships o WHERE
 o.apartment_id = apartments.id AND o.owner_id =
 current_setting('app.tenant_owner_id', true)::uuid AND
 o.ended_at IS NULL) AND organization_id = …` (own
-      apartments via active ownership).
-    - `documents` (when Tenant-readable): same EXISTS pattern joined
-      through `apartment_id`, restricted to document types the Tenant
-      is allowed to see (decided per-document-type at Phase 5 scope-
-      lock).
-    - `signatures`: `owner_id = current_setting('app.tenant_owner_id')`
-      — a Tenant can only see THEIR OWN signature artifacts (not
-      other owners of the same apartment).
+    apartments via active ownership). - `documents` (when Tenant-readable): same EXISTS pattern joined
+    through `apartment_id`, restricted to document types the Tenant
+    is allowed to see (decided per-document-type at Phase 5 scope-
+    lock). - `signatures`: `owner_id = current_setting('app.tenant_owner_id')`
+    — a Tenant can only see THEIR OWN signature artifacts (not
+    other owners of the same apartment).
   - **No widening** of any existing `app_user` / `provider_user_role`
     policy. They keep doing exactly what they do today.
 - **Code delta:** one new wrapper

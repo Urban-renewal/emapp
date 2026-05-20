@@ -10,16 +10,18 @@
 
 After the deficiency-axis sweep returned NONE, the user asked to re-examine the 14 governed deferrals — were they truly governed-correct, or was there room for improvement? Honest reassessment surfaced six items that warranted action. All six landed in isolated commits with full local verification AND CI SHA-mapped green before the next. Consolidating record at **D.32**.
 
-| #   | Commit    | What                                                          | Closes               |
-| --- | --------- | ------------------------------------------------------------- | -------------------- |
-| 1   | `fd0bf2a` | throttler per-user `getTracker()` override                    | D.31 (b)             |
-| 2   | `71d119e` | documents.list EXISTS subquery for agent                      | D.28 R5              |
-| 3   | `6afb703` | `AUTH_DEBUG_ERRORS` prod-fail-closed gate                     | D.30 follow-up       |
-| 4   | `e3bcdd6` | `IStorageProvider.head()` interface prep + 2-layer finalize   | D.28 R1/R2 (iface)   |
-| 5   | `6467ba8` | D.31 (f) password-reset → HIGH-priority pre-Gate-5 obligation | D.31 (f) re-class    |
-| 6   | `6840bec` | `docs/PHASE-5-TENANT-DESIGN-SPIKE.md` (Option B recommended)  | D.31 (e) design side |
+| #   | Commit    | What                                                                               | Closes                     |
+| --- | --------- | ---------------------------------------------------------------------------------- | -------------------------- |
+| 1   | `fd0bf2a` | throttler per-user `getTracker()` override                                         | D.31 (b)                   |
+| 2   | `71d119e` | documents.list EXISTS subquery for agent                                           | D.28 R5                    |
+| 3   | `6afb703` | `AUTH_DEBUG_ERRORS` prod-fail-closed gate                                          | D.30 follow-up             |
+| 4   | `e3bcdd6` | `IStorageProvider.head()` interface prep + 2-layer finalize                        | D.28 R1/R2 (iface)         |
+| 5   | `6467ba8` | D.31 (f) password-reset → HIGH-priority pre-Gate-5 obligation                      | D.31 (f) re-class          |
+| 6   | `6840bec` | Tenant-RLS design spike (Option B) — **re-scoped same day: post-Phase-5, NOT pre** | D.31 (e) future-phase prep |
 
-**Outcome:** PR #14 (phase-4) MERGEABLE/CLEAN, all 8 CI checks SUCCESS at HEAD (`6840bec`). Phase-4 is sealed; awaiting user merge per the AUTOPILOT end-of-phase gate.
+**Outcome:** PR #14 (phase-4) MERGEABLE/CLEAN, all 8 CI checks SUCCESS. Phase-4 is sealed; awaiting user merge per the AUTOPILOT end-of-phase gate.
+
+**Correction (same day, recorded so the chain holds):** improvement #6 was originally framed as a "pre-Phase-5 obligation". When the user asked for "the full picture before deciding" on Phase 5 work, re-reading docs/03 §9 surfaced that Phase 5 is the public-link JWT signing flow (no Tenant authentication), so Tenant-RLS infrastructure is NOT a Phase 5 blocker. The spike remains valid as future-phase prep but is NOT on the Phase 5 critical path. Lesson recorded inside D.32 #6.
 
 ## Top-line summary
 

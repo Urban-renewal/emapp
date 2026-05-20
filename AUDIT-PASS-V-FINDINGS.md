@@ -4,7 +4,22 @@
 **Completed:** 2026-05-20
 **Branch:** `phase-4` (PR #14)
 **Method:** Doc-grounded, slice-by-slice. Every finding cites file:line + doc:section. No invented opinions.
-**Status:** ✅ complete. **Verdict: ZERO new actionable findings.** All HIGH/MEDIUM gaps spec mandates were already closed in audit passes I–IV (F1, F2, B1, A1, A2, A3, G1a, G1b, G2). Remaining items are all either GOVERNED (recorded in DECISIONS D.21–D.31) or NOTE-only (no code action).
+**Status:** ✅ complete. **Verdict: ZERO new actionable findings on the deficiency axis.** All HIGH/MEDIUM gaps spec mandates were already closed in audit passes I–IV (F1, F2, B1, A1, A2, A3, G1a, G1b, G2). Remaining items are all either GOVERNED (recorded in DECISIONS D.21–D.32) or NOTE-only (no code action).
+
+## Close-out — governed-deferral reassessment (2026-05-20, user-directed)
+
+After the deficiency-axis sweep returned NONE, the user asked to re-examine the 14 governed deferrals — were they truly governed-correct, or was there room for improvement? Honest reassessment surfaced six items that warranted action. All six landed in isolated commits with full local verification AND CI SHA-mapped green before the next. Consolidating record at **D.32**.
+
+| #   | Commit    | What                                                          | Closes               |
+| --- | --------- | ------------------------------------------------------------- | -------------------- |
+| 1   | `fd0bf2a` | throttler per-user `getTracker()` override                    | D.31 (b)             |
+| 2   | `71d119e` | documents.list EXISTS subquery for agent                      | D.28 R5              |
+| 3   | `6afb703` | `AUTH_DEBUG_ERRORS` prod-fail-closed gate                     | D.30 follow-up       |
+| 4   | `e3bcdd6` | `IStorageProvider.head()` interface prep + 2-layer finalize   | D.28 R1/R2 (iface)   |
+| 5   | `6467ba8` | D.31 (f) password-reset → HIGH-priority pre-Gate-5 obligation | D.31 (f) re-class    |
+| 6   | `6840bec` | `docs/PHASE-5-TENANT-DESIGN-SPIKE.md` (Option B recommended)  | D.31 (e) design side |
+
+**Outcome:** PR #14 (phase-4) MERGEABLE/CLEAN, all 8 CI checks SUCCESS at HEAD (`6840bec`). Phase-4 is sealed; awaiting user merge per the AUTOPILOT end-of-phase gate.
 
 ## Top-line summary
 

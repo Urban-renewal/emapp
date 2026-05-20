@@ -29,7 +29,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, desc, eq, inArray, isNull, lt, or, type SQL } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
@@ -403,27 +403,34 @@ export class DocumentsService {
         if (query.apartmentId) filters.push(eq(documents.apartmentId, query.apartmentId));
 
         // Agent record-scoping: restrict to docs whose parent project is an
-        // active assignment (directly or via apartment→building→project).
+        // active assignment (directly OR via apartment→building→project).
+        //
+        // D.28 R5 (audit-pass V #2 — 2026-05-20): refactored from
+        // app-side IN-list materialisation to two correlated EXISTS
+        // subqueries. The prior approach loaded EVERY apartment id under
+        // EVERY assigned project into memory and emitted `IN (...)`
+        // clauses with thousands of UUIDs — unbounded for large orgs and
+        // wasteful for small ones. EXISTS pushes the filtering to SQL
+        // where it is bounded by the indexes on (project_assignments,
+        // buildings.project_id, apartments.building_id) — constant
+        // memory, scales with org size, no IN-list overhead. Semantics
+        // are identical: `OR(direct-project-match, via-apartment-chain)`.
         if (user.role === 'agent') {
-          const assigned = await tx
-            .select({ pid: projectAssignments.projectId })
-            .from(projectAssignments)
-            .where(
-              and(eq(projectAssignments.userId, user.sub), isNull(projectAssignments.unassignedAt)),
-            );
-          const pids = assigned.map((a) => a.pid);
-          if (pids.length === 0) return [];
-          const aptRows = await tx
-            .select({ aid: apartments.id })
-            .from(apartments)
-            .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
-            .where(inArray(buildings.projectId, pids));
-          const aids = aptRows.map((a) => a.aid);
-          const scope = or(
-            inArray(documents.projectId, pids),
-            aids.length > 0 ? inArray(documents.apartmentId, aids) : undefined,
-          );
-          filters.push(scope);
+          const directProjectAssigned = sql<boolean>`EXISTS (
+            SELECT 1 FROM project_assignments pa
+            WHERE pa.user_id = ${user.sub}::uuid
+              AND pa.unassigned_at IS NULL
+              AND pa.project_id = ${documents.projectId}
+          )`;
+          const viaApartment = sql<boolean>`EXISTS (
+            SELECT 1 FROM apartments a
+            JOIN buildings b ON b.id = a.building_id
+            JOIN project_assignments pa ON pa.project_id = b.project_id
+            WHERE pa.user_id = ${user.sub}::uuid
+              AND pa.unassigned_at IS NULL
+              AND a.id = ${documents.apartmentId}
+          )`;
+          filters.push(or(directProjectAssigned, viaApartment));
         }
 
         const keyset: SQL | undefined = cur

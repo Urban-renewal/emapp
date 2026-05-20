@@ -40,7 +40,10 @@ export interface UserProfile {
   email: string;
   role: string;
   avatarColor: string | null;
-  organization: { id: string; name: string };
+  // G1a-supporting (audit-pass IV): expose org slug so the FE's per-project
+  // Tenant link (`/tenant/<slug>?...`) can be constructed without a second
+  // call. Slug is already public (URL-safe org identifier); zero PII risk.
+  organization: { id: string; name: string; slug: string };
 }
 
 const ACCESS_TTL_SEC = 15 * 60;
@@ -64,6 +67,7 @@ interface ProfileRow {
   role: string;
   orgId: string;
   orgName: string;
+  orgSlug: string;
 }
 
 // organizations.slug CHECK (migration 0010): ^[a-z][a-z0-9-]*[a-z0-9]$
@@ -192,7 +196,7 @@ export class AuthService {
           email: dto.email,
           role: 'manager',
           avatarColor: null,
-          organization: { id: orgId, name: dto.org_name },
+          organization: { id: orgId, name: dto.org_name, slug },
         },
       };
     } catch (err: unknown) {
@@ -233,6 +237,7 @@ export class AuthService {
         role: memberships.role,
         orgId: organizations.id,
         orgName: organizations.name,
+        orgSlug: organizations.slug,
       })
       .from(users)
       .leftJoin(memberships, and(eq(memberships.userId, users.id), isNull(memberships.revokedAt)))
@@ -286,7 +291,7 @@ export class AuthService {
       email: u.userEmail,
       role: u.role,
       avatarColor: u.avatarColor,
-      organization: { id: u.orgId, name: u.orgName },
+      organization: { id: u.orgId, name: u.orgName, slug: u.orgSlug ?? '' },
     };
 
     const rawRefresh = newRawToken();
@@ -484,6 +489,7 @@ export class AuthService {
         role: memberships.role,
         orgId: organizations.id,
         orgName: organizations.name,
+        orgSlug: organizations.slug,
       })
       .from(users)
       .innerJoin(memberships, eq(memberships.userId, users.id))
@@ -506,7 +512,7 @@ export class AuthService {
       email: row.userEmail,
       avatarColor: row.avatarColor,
       role: row.role,
-      organization: { id: row.orgId, name: row.orgName },
+      organization: { id: row.orgId, name: row.orgName, slug: row.orgSlug },
     };
   }
 }

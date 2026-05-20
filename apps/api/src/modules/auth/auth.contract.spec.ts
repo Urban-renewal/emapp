@@ -722,6 +722,74 @@ describe('CONTRACT · tenant OTP (D.20)', () => {
     // silently dropped (current behaviour; tighten if we move to .strict()).
     expect(r.status).toBe(200);
   });
+
+  // G1a (audit-pass IV, D.31) — docs/07 §6.5 + §12.2 + docs/08 §4d:
+  // every OTP send for a known owner writes an audit_log row. Read it
+  // back via the manager-only /audit endpoint to prove the row exists.
+  ct('OTP10 audit: OTP request for a known owner writes auth.otp_requested', async () => {
+    // 1. Manager A signs up (fresh org).
+    const email = uniqueEmail('au-otp');
+    const su = await call('/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify({
+        org_name: 'OTP Audit Org',
+        name: 'AU Manager',
+        email,
+        password: 'TestPassword123456',
+      }),
+    });
+    const at = cookie(su.cookies, 'access_token');
+    expect(at, 'signup did not yield access_token').toBeTruthy();
+
+    // Get the org slug — needed to pin OTP to THIS org (dev DB
+    // accumulates owners with arbitrary phones; without slug the F2
+    // multi-org rule may silently no-op when the same phone exists
+    // elsewhere).
+    const me = await call('/me', { cookie: `access_token=${at}` });
+    const orgSlug = ((me.body['data'] as Json)?.['organization'] as Json | undefined)?.['slug'] as
+      | string
+      | undefined;
+    expect(orgSlug, '/me missing organization.slug').toBeTruthy();
+
+    // 2. Create an owner with a valid Israeli ID + a HIGH-ENTROPY phone.
+    const uniquePhone = `050${String(Date.now()).slice(-7)}`;
+    const owner = await call('/owners', {
+      method: 'POST',
+      cookie: `access_token=${at}`,
+      body: JSON.stringify({
+        name: 'AU Owner',
+        national_id: '000000018', // valid 9-digit Israeli ID (checksum OK)
+        phone: uniquePhone,
+      }),
+    });
+    expect(owner.status, owner.raw).toBeGreaterThanOrEqual(200);
+    expect(owner.status).toBeLessThan(300);
+    const ownerId = (owner.body['data'] as Json)['id'] as string;
+    expect(ownerId).toBeTruthy();
+
+    // 3. Trigger an OTP, pinning the org via slug so F2 disambiguation
+    // can't silent-no-op on a phone collision in the dev DB.
+    const otpReq = await call('/auth/otp/request', {
+      method: 'POST',
+      body: JSON.stringify({ phone: uniquePhone, org_slug: orgSlug }),
+    });
+    expect(otpReq.status).toBe(200);
+
+    // 4. As Manager, read /audit. Find the auth.otp_requested row.
+    const audit = await call('/audit?limit=50', { cookie: `access_token=${at}` });
+    expect(audit.status).toBe(200);
+    const rows = audit.body['data'] as Json[];
+    const hit = rows.find(
+      (r) =>
+        r['action'] === 'auth.otp_requested' &&
+        r['targetTable'] === 'owners' &&
+        r['targetId'] === ownerId,
+    );
+    expect(hit, 'auth.otp_requested audit row missing for the OTP send').toBeDefined();
+    // actor_type='system' per CHECK constraint audit_log_actor_type_valid
+    // (Tenant identity is recorded via targetTable='owners' + targetId).
+    expect((hit as Json)['actorType']).toBe('system');
+  });
 });
 
 afterAll(() => {

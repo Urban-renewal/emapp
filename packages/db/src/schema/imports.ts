@@ -1,0 +1,137 @@
+import { sql } from 'drizzle-orm';
+import {
+  bigint,
+  boolean,
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
+
+import { organizations, users } from './tenancy';
+
+/**
+ * Phase 6 — Excel import pipeline.
+ *
+ * Architecture (locked):
+ *  - Queue backend = pg-boss (docs/02 §354 + D.04: no Redis in MVP)
+ *  - Worker = separate process (apps/worker/, Railway service)
+ *
+ * `import_jobs` is OUR domain state machine. pg-boss owns its own job
+ * table in a separate schema; we correlate via `pgBossJobId`.
+ *
+ * Lifecycle:
+ *   queued → parsing → validating → persisting → done | failed | cancelled
+ *
+ * Dry-run mode (T6.5): parse + validate but skip persistence.
+ */
+export const importJobs = pgTable(
+  'import_jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+
+    /** State machine — enforced by CHECK in migration 0022. */
+    status: text('status').notNull().default('queued'),
+
+    /** Source file (uploaded via presigned PUT to R2). */
+    fileR2Key: text('file_r2_key').notNull(),
+    fileName: text('file_name').notNull(),
+    fileSizeBytes: bigint('file_size_bytes', { mode: 'number' }).notNull(),
+    fileContentHash: text('file_content_hash').notNull(),
+
+    /** Progress counters — NULL totalRows until parsing knows. */
+    totalRows: integer('total_rows'),
+    processedRows: integer('processed_rows').notNull().default(0),
+    okRows: integer('ok_rows').notNull().default(0),
+    failedRows: integer('failed_rows').notNull().default(0),
+
+    /** Aggregated error stats (per-row details in import_job_errors). */
+    errorsSummary: jsonb('errors_summary').$type<Record<string, unknown>>(),
+
+    /** T6.5 — dry-run skips persistence stage. */
+    dryRun: boolean('dry_run').notNull().default(false),
+
+    /** Future-mapping templates (S4). Nullable until then. */
+    mappingTemplateId: uuid('mapping_template_id'),
+
+    /** D.22 F idempotency. UNIQUE per (org, key) when non-null. */
+    idempotencyKey: text('idempotency_key'),
+
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+
+    /** pg-boss correlation (filled when worker picks up). */
+    pgBossJobId: text('pg_boss_job_id'),
+  },
+  (table) => ({
+    orgStatusCreatedIdx: index('idx_import_jobs_org_status_created').on(
+      table.orgId,
+      table.status,
+      table.createdAt.desc(),
+    ),
+    idemUnique: uniqueIndex('import_jobs_idem_unique')
+      .on(table.orgId, table.idempotencyKey)
+      .where(sql`${table.idempotencyKey} IS NOT NULL`),
+    workerPickupIdx: index('idx_import_jobs_worker_pickup')
+      .on(table.createdAt)
+      .where(sql`${table.status} IN ('queued','parsing','validating','persisting')`),
+    statusCheck: check(
+      'import_jobs_status_valid',
+      sql`${table.status} IN ('queued','parsing','validating','persisting','done','failed','cancelled')`,
+    ),
+    sizeCheck: check(
+      'import_jobs_size_reasonable',
+      sql`${table.fileSizeBytes} > 0 AND ${table.fileSizeBytes} <= 52428800`,
+    ),
+  }),
+);
+
+export type ImportJob = typeof importJobs.$inferSelect;
+export type NewImportJob = typeof importJobs.$inferInsert;
+
+/**
+ * Per-row validation errors. CASCADE delete from import_jobs by design
+ * (the only way to delete the parent is a provider-admin intervention).
+ *
+ * row_number is 1-indexed to match what the manager sees in their
+ * spreadsheet — the source-of-truth pointer for "fix row X".
+ */
+export const importJobErrors = pgTable(
+  'import_job_errors',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    jobId: uuid('job_id')
+      .notNull()
+      .references(() => importJobs.id, { onDelete: 'cascade' }),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    rowNumber: integer('row_number').notNull(),
+    field: text('field'),
+    code: text('code').notNull(),
+    message: text('message'),
+    /** Raw parsed row — for resubmit/fix UI. Bounded by client + parser
+     *  side; up to ~8KB per row is practical. */
+    rawRow: jsonb('raw_row').$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    jobRowIdx: index('idx_import_job_errors_job_row').on(table.jobId, table.rowNumber),
+  }),
+);
+
+export type ImportJobError = typeof importJobErrors.$inferSelect;
+export type NewImportJobError = typeof importJobErrors.$inferInsert;

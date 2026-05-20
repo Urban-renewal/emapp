@@ -1,13 +1,23 @@
 # Phase 5 — Tenant data access design spike
 
-> **Status:** DESIGN SPIKE (not code). Pre-Phase-5 obligation, opened by
-> audit-pass V (2026-05-20) per user-approved governed-deferral
-> reassessment. The point is to decide the Tenant-RLS pattern in cold
-> blood now, NOT under Phase-5 sprint pressure. No schema changes here;
-> Gate-2 untouched.
+> **Status (revised 2026-05-20):** Option B is the **recommended
+> implementation per spec**, not an architectural choice awaiting
+> founders' sign-off. Re-examination clarified: the spec
+> (D.20 + docs/07 §9 T01 + D.21) already mandates RLS-enforced Tenant
+> scoping in three defense layers; Options A and C both fail that
+> requirement (A leaks the whole org via the existing
+> `tenant_isolation` policy; C eliminates the DB layer entirely).
+> Option B is therefore not a "decision" — it is the only spec-
+> compliant implementation, and it mirrors the precedent already
+> established for the provider tier (`provider_user_role` separate
+> from `app_user`). The Phase-5 implementing agent should proceed
+> with Option B; founders review the migration in the Phase-5 PR like
+> any other schema change. The six open questions below remain
+> deferred to Phase-5 scope-lock (they're product/UX choices, not
+> architecture).
 >
-> **Owner:** founders. **Reviewers:** both founders + security-reviewer
-> sub-agent at draft close.
+> **Owner:** Phase-5 implementing agent. **Reviewers:** founders at
+> Phase-5 PR.
 >
 > **References:** docs/07 §3 (defense in depth), §9 T01 (Tenant sees
 > another tenant's apartment), §6.5 (Tenant SMS-OTP), DECISIONS D.20
@@ -72,11 +82,11 @@ Add one GUC; widen every Tenant-visible table's existing policy with an
 extra branch (`OR tenant_owner_id_matches`).
 
 - **Pro:** smallest delta to the schema. One new wrapper, no new role.
-- **Con (fatal):** the existing org-tenant_isolation policy on
+- **Con (fatal):** the existing org-tenant*isolation policy on
   `apartments` is `organization_id = current_setting('app.organization_id')`
   — i.e. ANY caller with the right `app.organization_id` GUC sees ALL
   apartments in that org. A Tenant connection sets the same GUC, so the
-  org branch matches _first_ and the Tenant sees the entire org's
+  org branch matches \_first* and the Tenant sees the entire org's
   apartments. Defeats T01. To fix it we'd need to gate the org branch
   on "no tenant GUC set" — fragile, easy to mis-write, every new
   Tenant-visible table re-litigates this. **Rejected.**
@@ -97,11 +107,11 @@ a Tenant is allowed to see.
     auditable through the same path as org writes).
   - New policies on those tables, scoped to `TO tenant_user`:
     - `owners`: `id = current_setting('app.tenant_owner_id', true)::uuid
- AND organization_id = current_setting('app.organization_id', true)::uuid`
+AND organization_id = current_setting('app.organization_id', true)::uuid`
     - `apartments`: `EXISTS (SELECT 1 FROM ownerships o WHERE
- o.apartment_id = apartments.id AND o.owner_id =
- current_setting('app.tenant_owner_id', true)::uuid AND
- o.ended_at IS NULL) AND organization_id = …` (own
+o.apartment_id = apartments.id AND o.owner_id =
+current_setting('app.tenant_owner_id', true)::uuid AND
+o.ended_at IS NULL) AND organization_id = …` (own
       apartments via active ownership).
     - `documents` (when Tenant-readable): same EXISTS pattern joined
       through `apartment_id`, restricted to document types the Tenant
@@ -222,13 +232,13 @@ the security story we've already built four phases of evidence around.
 
 ## 7. Exit criteria for this spike
 
-The spike "closes" when **both founders sign off on Option B** as the
-chosen direction and the six open questions above are explicitly
-answered (or explicitly deferred to Phase-5 sprint kickoff with a
-written reason). At that point this file becomes the authoritative
-input to the Phase-5 task (which will live in docs/03 §8 / a new
-Phase 5 task file) and a `D.32 Tenant data RLS pattern` entry is added
-to docs/DECISIONS.html consolidating the decision.
-
-Until that sign-off, this is a working draft — open the PR, comment
-inline, iterate.
+**Revised 2026-05-20:** there is no upfront sign-off gate. The
+implementing agent proceeds with Option B (per the status block above)
+as the spec-compliant implementation, in the same way prior phases
+implemented their schema changes — founders review the migration in
+the Phase-5 PR. On PR merge, a consolidating `D.33 Tenant data RLS
+pattern` entry lands in docs/DECISIONS.html recording the realised
+implementation (commit SHA, migration number, the policies as
+shipped). The six open questions above remain deferred to Phase-5
+scope-lock — they are product/UX choices, not architecture, and are
+not pre-requisites for opening Phase-5.

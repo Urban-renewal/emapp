@@ -34,7 +34,13 @@
  *   - This handler never reads file content (S3) or owner rows (S5+).
  *   - Logs scope by jobId; nothing else.
  */
-import { AuditService, importJobs, withTenant, type TenantTx } from '@emapp/db';
+import {
+  AuditService,
+  importJobs,
+  withTenant,
+  type IStorageProvider,
+  type TenantTx,
+} from '@emapp/db';
 import {
   IMPORT_JOB_NAME,
   ImportJobPayloadSchema,
@@ -44,6 +50,8 @@ import {
   type JobContext,
 } from '@emapp/jobs';
 import { and, eq, sql } from 'drizzle-orm';
+
+import { ExcelParserError, parseExcelHeader } from '../parser/excel.parser';
 
 /** Domain state machine. MUST match the CHECK constraint in migration
  *  0022 (`import_jobs_status_valid`). Compile-time alignment with
@@ -79,6 +87,14 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
   /** Exposed so the adapter's payload validation uses the same schema
    *  the rest of the codebase imports (single source of truth). */
   readonly payloadSchema = ImportJobPayloadSchema;
+
+  /** S3 (this slice) injects IStorageProvider so the parser can read
+   *  the uploaded file from R2 (Fake in dev/test). Optional so the
+   *  pre-S3 test path (T6.8) still constructs `new ImportJobHandler()`
+   *  with no args; if no provider, the parsing stage falls back to the
+   *  S2 stub behaviour (totalRows = 0). Production main.ts always
+   *  passes the real factory-built provider. */
+  constructor(private readonly storage?: IStorageProvider) {}
 
   async handle(payload: ImportJobPayload, ctx: JobContext): Promise<void> {
     ctx.log.info('import job picked up', { orgId: payload.orgId });
@@ -206,21 +222,80 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
     // it T6.9 would observe a state-only stream which is technically
     // correct but practically useless. We keep this minimal: real
     // parsing/validation/persistence is large + slice-owned.
-    if (to === 'parsing') await this.stubParseStage(payload);
+    if (to === 'parsing') await this.parseStage(payload, ctx);
     if (to === 'validating') await this.stubValidateStage(payload);
     if (to === 'persisting') await this.stubPersistStage(payload);
   }
 
-  /** S3 will replace this — parse the Excel via ExcelJS streaming and
-   *  set totalRows. For S2 we set a small known value so the SSE test
-   *  has a deterministic emit. */
-  private async stubParseStage(payload: ImportJobPayload): Promise<void> {
+  /** S3 — real ExcelJS streaming parse. Reads `file_r2_key` from the
+   *  domain row, streams bytes via IStorageProvider, detects the
+   *  header row + counts data rows (T6.1), and writes totalRows back
+   *  to the same import_jobs row. Without an IStorageProvider (the
+   *  pre-S3 unit-test path, T6.8 baseline) this falls back to the S2
+   *  stub semantics so existing tests keep passing.
+   *
+   *  Errors:
+   *   - ExcelParserError (corrupt/sparse/formula-in-header) → wrapped
+   *     as NonRetryableJobError so pg-boss skips retries and
+   *     markFailed transitions the domain row to 'failed'.
+   *   - Storage I/O error (R2 blip) → propagate as RETRYABLE; the
+   *     boss's retry policy handles it. */
+  private async parseStage(payload: ImportJobPayload, ctx: JobContext): Promise<void> {
+    if (!this.storage) {
+      // Pre-S3 fallback — keeps T6.8's bare `new ImportJobHandler()`
+      // path running. Production main.ts always injects a provider.
+      await withTenant(
+        payload.orgId,
+        async (tx) => {
+          await tx
+            .update(importJobs)
+            .set({ totalRows: 0, updatedAt: new Date() })
+            .where(eq(importJobs.id, payload.jobId));
+        },
+        { userId: payload.createdBy },
+      );
+      return;
+    }
+
+    const row = await withTenant(
+      payload.orgId,
+      async (tx) => {
+        const [r] = await tx
+          .select({ fileR2Key: importJobs.fileR2Key })
+          .from(importJobs)
+          .where(eq(importJobs.id, payload.jobId))
+          .limit(1);
+        return r;
+      },
+      { userId: payload.createdBy },
+    );
+    if (!row) {
+      throw new NonRetryableJobError('import_job vanished mid-parse', 'job_not_visible');
+    }
+
+    let parsed;
+    try {
+      const stream = await this.storage.getObjectStream(row.fileR2Key);
+      parsed = await parseExcelHeader(stream);
+    } catch (e: unknown) {
+      if (e instanceof ExcelParserError) {
+        throw new NonRetryableJobError(`parse failed: ${e.code}`, `parse_${e.code}`);
+      }
+      // I/O error from storage — retryable; the boss handles.
+      throw e;
+    }
+
+    ctx.log.info('excel header detected', {
+      header_cols: parsed.headers.length,
+      data_rows: parsed.rowCount,
+    });
+
     await withTenant(
       payload.orgId,
       async (tx) => {
         await tx
           .update(importJobs)
-          .set({ totalRows: 0, updatedAt: new Date() })
+          .set({ totalRows: parsed.rowCount, updatedAt: new Date() })
           .where(eq(importJobs.id, payload.jobId));
       },
       { userId: payload.createdBy },

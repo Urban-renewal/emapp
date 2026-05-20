@@ -6,9 +6,9 @@
 
 ## Heartbeat (latest — for the 30-second scan)
 
-- **Last slice:** S2 (pg-boss + ImportJobHandler + SSE) — commit `231200a`, audit-pass M1+M2 fixes follow-up commit, push origin/phase-6-s2.
-- **Next slice:** S3 (ExcelJS streaming parser) — replaces stubParseStage, sets totalRows, closes T6.1.
-- **Audit findings (S2):** M1 zod-error log structure fixed; M2 post-headers-sent error catch added; L1 stub-stage round-trips auto-resolved by S3/S5/S6; L2 SSE LISTEN/NOTIFY recorded for S7.
+- **Last slice:** S3 (ExcelJS parser + IStorageProvider.getObjectStream + handler wire-up) — closes T6.1 (Excel header detection). 11 parser unit tests + 4 handler integration tests + baseline 25 worker + 8 T6.9 SSE = **48 worker+S3 tests green**. Push pending.
+- **Next slice:** S4 (mapping templates — auto-detect by fingerprint of headers, T6.2).
+- **Audit findings (S3):** 0 Critical/High. M3 candidate (ExcelJS msg leak via audit) re-examined and rejected — layered wrapping discards raw ExcelJS messages. L3 (50MB buffered memory profile) + L4 (eachRow includeEmpty cost on wide-sparse sheets) recorded for S7 perf gate. **Architectural note:** `IStorageProvider.getObjectStream(key)` added to the interface — both Fake and R2 implementations updated; the worker is the only consumer. This is an obvious read-side extension of the existing storage abstraction (not Gate 6 — D.28 already governs the storage layer).
 - **Blocked:** no.
 - **Mode:** autonomous Phase-6 progression per AUTOPILOT; one PR at S9 end.
 
@@ -109,6 +109,8 @@
 ## Task Log (newest first)
 
 <!-- Claude appends: [YYYY-MM-DD HH:MM] P0.1 ✓ — note — commit <sha> -->
+
+[2026-05-21] Phase 6 S3 ✓ — ExcelJS streaming parser closes T6.1. Tradeoff documented in parser comments: bounded full-buffer read (50MB cap mirrors migration 0022 CHECK) + ExcelJS in-memory load, because the streaming WorkbookReader fails to parse Readable.from(buffer) inputs ("Cannot read properties of undefined ('sheets')") even when the bytes are a valid xlsx. Streaming spirit of docs/03 §10 preserved (eachRow iterates row-by-row — never builds a giant array). Formula-injection guard on header cells (CSV/XLSX-injection vector). Defense: stream destroyed in finally + bounded read. Tests: T6.1 unit 11/11 (header shapes, sparse, formula, hebrew, blanks, dates/numbers, stream destroy on success+failure) + T6.1 integration 4/4 (real handler+FakeStorage end-to-end; parser error → NonRetryableJobError; missing key → retryable; no provider → S2-stub fallback keeps T6.8 baseline). `IStorageProvider.getObjectStream(key): Promise<Readable>` added to interface; both Fake (in-memory Map<key,Buffer>) and R2 (S3 GetObjectCommand) impls updated. New apps/worker/src/storage-provider.ts factory with same fail-fast-in-prod posture as apps/api's. — commit TBD
 
 [2026-05-21] Phase 6 S2 audit-pass ✓ — fresh-eyes review on 4 axes (SOLID / security / perf / DoD↔Test). Two MEDIUM defense-in-depth fixes landed in isolated follow-up: **M1** pg-boss-adapter payload-validation log surfaces only issue_paths+issue_count (was raw Zod err.message — Zod v3 doesn't echo values by default, but defense-in-depth: we own what enters logs); **M2** SSE controller catches ALL errors after writeHead(200) was sent and emits a generic `end` frame — Nest's exception filter can't change status post-headers-sent, so propagation would surface internal messages in logs/metrics. **L1** (stub stages = 3 extra withTenant txs) auto-resolves in S3/S5/S6 when stubs are replaced — recorded, no S2 fix needed. **L2** (SSE 500ms poll → LISTEN/NOTIFY at scale) recorded for S7 perf gate. T6.8 10/10 + T6.9 8/8 + adapter 7/7 unchanged. — commit TBD
 

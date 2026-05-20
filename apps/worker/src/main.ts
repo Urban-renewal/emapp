@@ -33,6 +33,7 @@ import pino from 'pino';
 import { registerCrashHandlers, registerSignalHandlers, smokeTestDb } from './bootstrap';
 import { ImportJobHandler } from './handlers/import-job.handler';
 import { registerHandler, type BossLike } from './pg-boss-adapter';
+import { storageProviderFactory } from './storage-provider';
 
 const log = pino({
   level: process.env['LOG_LEVEL'] ?? 'info',
@@ -92,7 +93,10 @@ async function main(): Promise<void> {
 
   // Register handlers. The list is intentionally small (Phase 6 has one
   // job type); future phases (Phase 7 export, notifications) add more.
-  const importHandler = new ImportJobHandler();
+  // Storage provider is constructed BEFORE the handler so a missing
+  // R2 config in production fails the boot here (D.28 governed).
+  const storage = storageProviderFactory();
+  const importHandler = new ImportJobHandler(storage);
   try {
     await registerHandler({
       // pg-boss v10's class shape is compatible with BossLike (we only

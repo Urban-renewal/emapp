@@ -1,3 +1,5 @@
+import type { Readable } from 'node:stream';
+
 export interface UploadUrlOptions {
   contentType: string;
   maxSizeBytes: number;
@@ -36,5 +38,15 @@ export interface IStorageProvider {
    *  storage-attested fact" and fall back to the client-consistency
    *  check (not as an integrity pass). */
   head(key: string): Promise<StorageObjectMeta | null>;
+  /** Return a server-side Readable for the object's bytes. Used by the
+   *  worker's Excel parser (Phase 6, docs/03 §10 "ExcelJS streaming
+   *  parser — לא טוען את כל הקובץ לזיכרון"). Readers MUST consume the
+   *  stream and either await its end or destroy it — leaving it
+   *  half-open leaks an R2 connection.
+   *
+   *  NB: this is the WORKER's read path — the API never streams object
+   *  bytes back to clients; it mints a short-lived presigned URL via
+   *  `getDownloadUrl` instead (confidentiality posture, D.28). */
+  getObjectStream(key: string): Promise<Readable>;
   healthCheck(): Promise<void>;
 }

@@ -1,3 +1,5 @@
+import { Readable } from 'node:stream';
+
 import type {
   IStorageProvider,
   UploadUrlOptions,
@@ -81,6 +83,20 @@ export class R2StorageProvider implements IStorageProvider {
     await this.deps.client.send(
       new this.deps.DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
     );
+  }
+
+  /** Phase 6 worker: stream the object bytes for ExcelJS streaming
+   *  parse. The S3 SDK v3 GetObjectCommand returns `{ Body }` which in
+   *  Node is a Readable. Caller MUST consume or destroy the stream
+   *  (otherwise we leak an open R2 connection from the pool). */
+  async getObjectStream(key: string): Promise<Readable> {
+    const cmd = new this.deps.GetObjectCommand({ Bucket: this.bucket, Key: key });
+    const res = (await this.deps.client.send(cmd)) as { Body?: unknown };
+    const body = res?.Body;
+    if (!body || typeof (body as Readable).pipe !== 'function') {
+      throw new Error(`R2: GetObject for ${key} returned no streamable body`);
+    }
+    return body as Readable;
   }
 
   /** D.28 R1/R2: storage-attested object metadata. Returns:

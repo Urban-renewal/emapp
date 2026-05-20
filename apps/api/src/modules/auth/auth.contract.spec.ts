@@ -726,6 +726,41 @@ describe('CONTRACT · tenant OTP (D.20)', () => {
   // G1a (audit-pass IV, D.31) — docs/07 §6.5 + §12.2 + docs/08 §4d:
   // every OTP send for a known owner writes an audit_log row. Read it
   // back via the manager-only /audit endpoint to prove the row exists.
+  // G1b (audit-pass IV, D.31) — docs/07 §12.2: "Login success/failure" must
+  // be audited. Live proof: wrong-password attempt on a known account writes
+  // an 'auth.login_failed' audit row visible via the manager-only /audit
+  // endpoint. The user-facing response stays generic 401 (anti-enumeration).
+  ct('LOGIN-FAIL audit: wrong password writes auth.login_failed', async () => {
+    const email = uniqueEmail('au-lf');
+    const su = await call('/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify({
+        org_name: 'LF Audit Org',
+        name: 'LF Manager',
+        email,
+        password: 'TestPassword123456',
+      }),
+    });
+    const at = cookie(su.cookies, 'access_token');
+    expect(at).toBeTruthy();
+
+    // Attempt login with wrong password (should generic-401).
+    const badLogin = await call('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password: 'WrongPassword999!' }),
+    });
+    expect(badLogin.status).toBe(401);
+    expect((badLogin.body['error'] as Json)?.['code']).toBe('invalid_credentials');
+
+    // Use the original (successful) signup cookie to read /audit.
+    const audit = await call('/audit?limit=50', { cookie: `access_token=${at}` });
+    expect(audit.status).toBe(200);
+    const rows = audit.body['data'] as Json[];
+    const hit = rows.find((r) => r['action'] === 'auth.login_failed' && r['actorEmail'] === email);
+    expect(hit, 'auth.login_failed audit row missing for wrong-password attempt').toBeDefined();
+    expect((hit as Json)['actorType']).toBe('user');
+  });
+
   ct('OTP10 audit: OTP request for a known owner writes auth.otp_requested', async () => {
     // 1. Manager A signs up (fresh org).
     const email = uniqueEmail('au-otp');

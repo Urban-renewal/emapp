@@ -1,0 +1,27 @@
+{
+  "name": "@emapp/worker",
+  "version": "0.0.1",
+  "private": true,
+  "description": "EMAPP background worker — pg-boss job consumer (Phase 6 Excel import + future jobs). Runs as a separate Railway service from @emapp/api per docs/02 §354 + docs/03 §1424.",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "echo 'worker uses tsx at runtime — no separate build'",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@emapp/config": "workspace:*",
+    "@emapp/db": "workspace:*",
+    "@emapp/shared-types": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "pino": "^9.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.19.0",
+    "vitest": "^2.1.9"
+  }
+}

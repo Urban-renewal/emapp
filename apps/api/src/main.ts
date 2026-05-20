@@ -14,7 +14,12 @@ const CORS_ORIGINS = {
   production: ['https://app.emapp.io'],
   preview: [/^https:\/\/[\w-]+\.emapp\.pages\.dev$/],
   development: ['http://localhost:3001', 'http://127.0.0.1:3001'],
-  test: [] as string[],
+  // 'test' is the conformance CI env (ci.yml NODE_ENV=test). The contract
+  // suite is Node-side fetch (no Origin) so this used to not matter — but
+  // DD11 explicitly sends an Origin to verify the CORS preflight (A1
+  // audit-fix). Allow the dev origin in test too so that browser-shaped
+  // preflight tests work in CI. Benign — test env never reaches users.
+  test: ['http://localhost:3001', 'http://127.0.0.1:3001'],
 } as const;
 
 async function bootstrap() {

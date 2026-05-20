@@ -9,7 +9,7 @@
     "start": "tsx src/main.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@emapp/config": "workspace:*",

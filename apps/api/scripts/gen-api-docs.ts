@@ -104,7 +104,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard',
     summary: 'Revoke all sessions for the user (immediate access kill).',
     response: '{ "data": { "ok": true } }',
-    errors: ['missing_token', 'invalid_token', 'session_revoked'],
+    errors: ['missing_token', 'invalid_token', 'token_expired', 'session_revoked'],
   },
   {
     method: 'POST',
@@ -113,7 +113,7 @@ const ENDPOINTS: Endpoint[] = [
     summary: 'Re-issue access token bound to another org the user belongs to.',
     request: OrgSwitchSchema,
     response: '{ "data": { "role": "manager|agent|viewer" } }',
-    errors: ['validation_error', 'missing_token', 'invalid_token', 'not_member'],
+    errors: ['validation_error', 'missing_token', 'invalid_token', 'token_expired', 'not_member'],
   },
   {
     method: 'GET',
@@ -121,7 +121,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard',
     summary: 'Current user profile + active organization.',
     response: '{ "data": { "id","name","email","role","avatarColor","organization":{} } }',
-    errors: ['missing_token', 'invalid_token', 'session_revoked'],
+    errors: ['missing_token', 'invalid_token', 'token_expired', 'session_revoked'],
   },
   {
     method: 'POST',
@@ -164,7 +164,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'ProviderAuthGuard',
     summary: 'Revoke all provider sessions.',
     response: '{ "data": { "ok": true } }',
-    errors: ['missing_token', 'invalid_token', 'session_revoked'],
+    errors: ['missing_token', 'invalid_token', 'token_expired', 'session_revoked'],
   },
   {
     method: 'GET',
@@ -175,7 +175,13 @@ const ENDPOINTS: Endpoint[] = [
     request: ListProjectsQuery,
     response:
       '{ "data": [ {Project} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
-    errors: ['validation_error', 'invalid_cursor', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'GET',
@@ -183,7 +189,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard',
     summary: 'Get one project by id (org-scoped via RLS; Agent → assigned only).',
     response: '{ "data": { ...Project } }',
-    errors: ['not_found', 'missing_token', 'invalid_token'],
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'POST',
@@ -192,7 +198,7 @@ const ENDPOINTS: Endpoint[] = [
     summary: 'Create a project. Manager only; org/createdBy injected from JWT.',
     request: CreateProjectInput,
     response: '{ "data": { ...Project } }',
-    errors: ['validation_error', 'forbidden', 'missing_token', 'invalid_token'],
+    errors: ['validation_error', 'forbidden', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'PATCH',
@@ -201,7 +207,14 @@ const ENDPOINTS: Endpoint[] = [
     summary: 'Partial update. Manager only. Every field optional.',
     request: UpdateProjectInput,
     response: '{ "data": { ...Project } }',
-    errors: ['validation_error', 'forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'DELETE',
@@ -209,7 +222,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard (Manager)',
     summary: 'Soft delete (archivedAt — "ארכוב", not physical). Idempotent. 204.',
     response: '(204 No Content)',
-    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'GET',
@@ -220,7 +233,14 @@ const ENDPOINTS: Endpoint[] = [
     request: ListBuildingsQuery,
     response:
       '{ "data": [ {Building} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
-    errors: ['validation_error', 'invalid_cursor', 'not_found', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'POST',
@@ -229,7 +249,14 @@ const ENDPOINTS: Endpoint[] = [
     summary: 'Create a building under a project. Manager only; projectId from the URL.',
     request: CreateBuildingInput,
     response: '{ "data": { ...Building } }',
-    errors: ['validation_error', 'forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'GET',
@@ -237,7 +264,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard',
     summary: 'Get one building by id (via-parent org scope; Agent → assigned project only).',
     response: '{ "data": { ...Building } }',
-    errors: ['not_found', 'missing_token', 'invalid_token'],
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'PATCH',
@@ -246,7 +273,14 @@ const ENDPOINTS: Endpoint[] = [
     summary: 'Partial update. Manager only. Every field optional.',
     request: UpdateBuildingInput,
     response: '{ "data": { ...Building } }',
-    errors: ['validation_error', 'forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'DELETE',
@@ -254,7 +288,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard (Manager)',
     summary: 'Soft delete (archivedAt — "ארכוב"). Idempotent. 204.',
     response: '(204 No Content)',
-    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'GET',
@@ -265,7 +299,14 @@ const ENDPOINTS: Endpoint[] = [
     request: ListApartmentsQuery,
     response:
       '{ "data": [ {Apartment} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
-    errors: ['validation_error', 'invalid_cursor', 'not_found', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'POST',
@@ -274,7 +315,14 @@ const ENDPOINTS: Endpoint[] = [
     summary: 'Create an apartment under a building. Manager only; buildingId from the URL.',
     request: CreateApartmentInput,
     response: '{ "data": { ...Apartment } }',
-    errors: ['validation_error', 'forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'GET',
@@ -282,7 +330,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard',
     summary: 'Get one apartment by id (via-parent org scope; Agent → assigned project only).',
     response: '{ "data": { ...Apartment } }',
-    errors: ['not_found', 'missing_token', 'invalid_token'],
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'PATCH',
@@ -291,7 +339,14 @@ const ENDPOINTS: Endpoint[] = [
     summary: 'Partial update. Manager only. statusChangedAt advances only on a real status change.',
     request: UpdateApartmentInput,
     response: '{ "data": { ...Apartment } }',
-    errors: ['validation_error', 'forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'DELETE',
@@ -299,7 +354,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard (Manager)',
     summary: 'Soft delete (archivedAt — "ארכוב"). Idempotent, preserves audit trail. 204.',
     response: '(204 No Content)',
-    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'GET',
@@ -310,7 +365,13 @@ const ENDPOINTS: Endpoint[] = [
     request: ListOwnersQuery,
     response:
       '{ "data": [ {Owner — nationalIdMasked,phoneMasked} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
-    errors: ['validation_error', 'invalid_cursor', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'POST',
@@ -320,7 +381,7 @@ const ENDPOINTS: Endpoint[] = [
       'HMAC lookup by national_id/phone. PII in the BODY (never URL) so it cannot leak to access logs; matched by stored HMAC.',
     request: OwnerSearchInput,
     response: '{ "data": [ {Owner — masked} ] }',
-    errors: ['validation_error', 'missing_token', 'invalid_token'],
+    errors: ['validation_error', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'POST',
@@ -330,7 +391,14 @@ const ENDPOINTS: Endpoint[] = [
       'Create an owner. national_id: 9 digits + Israeli MOD-10 checksum; phone normalized to E.164. PII encrypted at rest.',
     request: CreateOwnerInput,
     response: '{ "data": { ...Owner (masked) } }',
-    errors: ['validation_error', 'forbidden', 'owner_exists', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'forbidden',
+      'owner_exists',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'GET',
@@ -338,7 +406,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard',
     summary: 'Get one owner by id (org-scoped via RLS). PII masked.',
     response: '{ "data": { ...Owner (masked) } }',
-    errors: ['not_found', 'missing_token', 'invalid_token'],
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'PATCH',
@@ -354,6 +422,7 @@ const ENDPOINTS: Endpoint[] = [
       'owner_exists',
       'missing_token',
       'invalid_token',
+      'token_expired',
     ],
   },
   {
@@ -362,7 +431,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard (Manager)',
     summary: 'Soft delete (archivedAt — "ארכוב"). Idempotent. 204.',
     response: '(204 No Content)',
-    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'GET',
@@ -372,7 +441,14 @@ const ENDPOINTS: Endpoint[] = [
     request: ListOwnershipsQuery,
     response:
       '{ "data": [ {Ownership} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
-    errors: ['validation_error', 'invalid_cursor', 'not_found', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'GET',
@@ -383,7 +459,14 @@ const ENDPOINTS: Endpoint[] = [
     request: ListOwnershipsQuery,
     response:
       '{ "data": [ {Owner masked + ownershipPct,role} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
-    errors: ['validation_error', 'invalid_cursor', 'not_found', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'PUT',
@@ -400,6 +483,7 @@ const ENDPOINTS: Endpoint[] = [
       'ownership_sum_invalid',
       'missing_token',
       'invalid_token',
+      'token_expired',
     ],
   },
   {
@@ -410,7 +494,13 @@ const ENDPOINTS: Endpoint[] = [
     request: ListContractorsQuery,
     response:
       '{ "data": [ {Contractor} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
-    errors: ['validation_error', 'invalid_cursor', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'POST',
@@ -425,6 +515,7 @@ const ENDPOINTS: Endpoint[] = [
       'contractor_exists',
       'missing_token',
       'invalid_token',
+      'token_expired',
     ],
   },
   {
@@ -433,7 +524,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard',
     summary: 'Get one contractor by id (org-scoped via RLS).',
     response: '{ "data": { ...Contractor } }',
-    errors: ['not_found', 'missing_token', 'invalid_token'],
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'PATCH',
@@ -449,6 +540,7 @@ const ENDPOINTS: Endpoint[] = [
       'contractor_exists',
       'missing_token',
       'invalid_token',
+      'token_expired',
     ],
   },
   {
@@ -457,7 +549,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard (Manager)',
     summary: 'Soft delete (archivedAt — "ארכוב"). Idempotent. 204.',
     response: '(204 No Content)',
-    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'GET',
@@ -467,7 +559,14 @@ const ENDPOINTS: Endpoint[] = [
     request: ListSharesQuery,
     response:
       '{ "data": [ {Share} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
-    errors: ['validation_error', 'invalid_cursor', 'not_found', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'POST',
@@ -485,6 +584,7 @@ const ENDPOINTS: Endpoint[] = [
       'share_exists',
       'missing_token',
       'invalid_token',
+      'token_expired',
     ],
   },
   {
@@ -494,7 +594,14 @@ const ENDPOINTS: Endpoint[] = [
     summary: 'Replace the permission set of an active share (strict JSONB).',
     request: UpdateShareInput,
     response: '{ "data": { ...Share } }',
-    errors: ['validation_error', 'forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'DELETE',
@@ -502,7 +609,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard (Manager)',
     summary: 'Revoke the share (revokedAt + revokedBy — lifecycle, not physical). Idempotent. 204.',
     response: '(204 No Content)',
-    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'GET',
@@ -513,7 +620,13 @@ const ENDPOINTS: Endpoint[] = [
     request: ListTasksQuery,
     response:
       '{ "data": [ {Task} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
-    errors: ['validation_error', 'invalid_cursor', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'POST',
@@ -522,7 +635,14 @@ const ENDPOINTS: Endpoint[] = [
     summary: 'Create a task. Manager only. Optional assigneeIds seed task_assignees (org members).',
     request: CreateTaskInput,
     response: '{ "data": { ...Task } }',
-    errors: ['validation_error', 'forbidden', 'invalid_assignee', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'forbidden',
+      'invalid_assignee',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'GET',
@@ -530,7 +650,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard',
     summary: 'Get one task (org-scoped; Agent → only if assigned).',
     response: '{ "data": { ...Task } }',
-    errors: ['not_found', 'missing_token', 'invalid_token'],
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'PATCH',
@@ -540,7 +660,14 @@ const ENDPOINTS: Endpoint[] = [
       'Update. Manager: any field. Agent (assigned): status/description only. status=completed sets completedAt/By.',
     request: UpdateTaskInput,
     response: '{ "data": { ...Task } }',
-    errors: ['validation_error', 'forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'DELETE',
@@ -548,7 +675,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard (Manager)',
     summary: 'Soft delete (archivedAt — "ארכוב"). Idempotent. 204.',
     response: '(204 No Content)',
-    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'GET',
@@ -556,7 +683,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard',
     summary: 'List assignees of a task (visible iff the task is visible to the caller).',
     response: '{ "data": [ {TaskAssignee} ] }',
-    errors: ['not_found', 'missing_token', 'invalid_token'],
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'POST',
@@ -573,6 +700,7 @@ const ENDPOINTS: Endpoint[] = [
       'assignee_exists',
       'missing_token',
       'invalid_token',
+      'token_expired',
     ],
   },
   {
@@ -581,7 +709,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard (Manager)',
     summary: 'Unassign a user from the task. 204.',
     response: '(204 No Content)',
-    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'GET',
@@ -592,7 +720,13 @@ const ENDPOINTS: Endpoint[] = [
     request: ListNotificationsQuery,
     response:
       '{ "data": [ {Notification} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
-    errors: ['validation_error', 'invalid_cursor', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'POST',
@@ -600,7 +734,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard',
     summary: 'Mark all of the caller’s unread notifications read.',
     response: '{ "data": { "updated": int } }',
-    errors: ['missing_token', 'invalid_token'],
+    errors: ['missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'POST',
@@ -608,7 +742,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard',
     summary: 'Mark one of the caller’s notifications read (idempotent).',
     response: '{ "data": { ...Notification } }',
-    errors: ['not_found', 'missing_token', 'invalid_token'],
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'GET',
@@ -619,7 +753,13 @@ const ENDPOINTS: Endpoint[] = [
     request: ListNotesQuery,
     response:
       '{ "data": [ {Note} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
-    errors: ['validation_error', 'invalid_cursor', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'POST',
@@ -628,7 +768,14 @@ const ENDPOINTS: Endpoint[] = [
     summary: 'Create a note (optionally on a visible project/apartment). Viewer forbidden.',
     request: CreateNoteInput,
     response: '{ "data": { ...Note } }',
-    errors: ['validation_error', 'forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'GET',
@@ -636,7 +783,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard',
     summary: 'Get one note (org-scoped; Agent → own/assigned/org-level only).',
     response: '{ "data": { ...Note } }',
-    errors: ['not_found', 'missing_token', 'invalid_token'],
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'PATCH',
@@ -645,7 +792,14 @@ const ENDPOINTS: Endpoint[] = [
     summary: 'Update body/pinned. Manager or the note author only.',
     request: UpdateNoteInput,
     response: '{ "data": { ...Note } }',
-    errors: ['validation_error', 'forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'DELETE',
@@ -653,7 +807,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard (Manager or author)',
     summary: 'Soft delete (archivedAt — "ארכוב"). Idempotent. 204.',
     response: '(204 No Content)',
-    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'GET',
@@ -664,7 +818,14 @@ const ENDPOINTS: Endpoint[] = [
     request: ListAuditQuery,
     response:
       '{ "data": [ {AuditEntry} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
-    errors: ['validation_error', 'invalid_cursor', 'forbidden', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'forbidden',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'GET',
@@ -675,7 +836,14 @@ const ENDPOINTS: Endpoint[] = [
     request: ListProjectAssignmentsQuery,
     response:
       '{ "data": [ {ProjectAssignment} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
-    errors: ['validation_error', 'invalid_cursor', 'not_found', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'POST',
@@ -693,6 +861,7 @@ const ENDPOINTS: Endpoint[] = [
       'assignment_exists',
       'missing_token',
       'invalid_token',
+      'token_expired',
     ],
   },
   {
@@ -701,7 +870,7 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard (Manager)',
     summary: 'Unassign (unassignedAt — lifecycle, not physical delete). Idempotent. 204.',
     response: '(204 No Content)',
-    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token'],
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'GET',
@@ -711,7 +880,14 @@ const ENDPOINTS: Endpoint[] = [
     request: ListMembersQuery,
     response:
       '{ "data": [ {Member} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
-    errors: ['validation_error', 'invalid_cursor', 'forbidden', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'forbidden',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'POST',
@@ -721,7 +897,14 @@ const ENDPOINTS: Endpoint[] = [
       'Invite a user into the org with a role (atomic user+membership, withBootstrap-scoped). Returns a one-time invite token (email deferred). Manager only.',
     request: CreateMemberInput,
     response: '{ "data": { "member": { ...Member }, "inviteToken": "<jwt>" } }',
-    errors: ['validation_error', 'forbidden', 'member_exists', 'missing_token', 'invalid_token'],
+    errors: [
+      'validation_error',
+      'forbidden',
+      'member_exists',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'PATCH',
@@ -738,6 +921,7 @@ const ENDPOINTS: Endpoint[] = [
       'cannot_remove_last_manager',
       'missing_token',
       'invalid_token',
+      'token_expired',
     ],
   },
   {
@@ -753,6 +937,7 @@ const ENDPOINTS: Endpoint[] = [
       'cannot_remove_last_manager',
       'missing_token',
       'invalid_token',
+      'token_expired',
     ],
   },
   {
@@ -772,7 +957,7 @@ const ERROR_CATALOG: Array<[string, string, string]> = [
   ['validation_error', '400', 'Zod DTO rejected the body. details carries field errors.'],
   ['invalid_credentials', '401', 'Bad email/password/MFA OR locked (silent, anti-enum).'],
   ['missing_token', '401', 'No access token cookie/bearer on a guarded route.'],
-  ['invalid_token', '401', 'JWT bad/expired/wrong-tier (HS256+iss+aud pinned).'],
+  ['invalid_token', 'token_expired', '401', 'JWT bad/expired/wrong-tier (HS256+iss+aud pinned).'],
   ['session_revoked', '401', 'Session logged out / reuse-purged — immediate revoke.'],
   ['missing_refresh_token', '401', 'No refresh cookie on the refresh endpoint.'],
   ['invalid_refresh', '401', 'Refresh token unknown/expired/rotated/replayed.'],

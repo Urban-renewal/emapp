@@ -26,7 +26,7 @@
 { "data": [ {Owner masked + ownershipPct,role} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
 ```
 
-**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/apartments/:apartmentId/ownerships
 
@@ -47,7 +47,7 @@
 { "data": [ {Ownership} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
 ```
 
-**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### PUT /api/v1/apartments/:apartmentId/ownerships
 
@@ -67,7 +67,7 @@
 { "data": [ {Ownership} ] }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `ownership_sum_invalid`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `ownership_sum_invalid`, `missing_token`, `invalid_token`, `token_expired`
 
 ### DELETE /api/v1/apartments/:id
 
@@ -84,7 +84,7 @@ _(no body)_
 (204 No Content)
 ```
 
-**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/apartments/:id
 
@@ -101,7 +101,7 @@ _(no body)_
 { "data": { ...Apartment } }
 ```
 
-**Errors:** `not_found`, `missing_token`, `invalid_token`
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### PATCH /api/v1/apartments/:id
 
@@ -126,7 +126,7 @@ _(no body)_
 { "data": { ...Apartment } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### DELETE /api/v1/assignments/:id
 
@@ -143,7 +143,7 @@ _(no body)_
 (204 No Content)
 ```
 
-**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/audit
 
@@ -164,7 +164,7 @@ _(no body)_
 { "data": [ {AuditEntry} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
 ```
 
-**Errors:** `validation_error`, `invalid_cursor`, `forbidden`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `invalid_cursor`, `forbidden`, `missing_token`, `invalid_token`, `token_expired`
 
 ### POST /api/v1/auth/accept-invite
 
@@ -223,7 +223,7 @@ _(no body)_
 { "data": { "ok": true } }
 ```
 
-**Errors:** `missing_token`, `invalid_token`, `session_revoked`
+**Errors:** `missing_token`, `invalid_token`, `token_expired`, `session_revoked`
 
 ### POST /api/v1/auth/otp/request
 
@@ -325,7 +325,7 @@ _(no body)_
 { "data": { "role": "manager|agent|viewer" } }
 ```
 
-**Errors:** `validation_error`, `missing_token`, `invalid_token`, `not_member`
+**Errors:** `validation_error`, `missing_token`, `invalid_token`, `token_expired`, `not_member`
 
 ### GET /api/v1/buildings/:buildingId/apartments
 
@@ -346,7 +346,7 @@ _(no body)_
 { "data": [ {Apartment} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
 ```
 
-**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### POST /api/v1/buildings/:buildingId/apartments
 
@@ -371,7 +371,7 @@ _(no body)_
 { "data": { ...Apartment } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### DELETE /api/v1/buildings/:id
 
@@ -388,7 +388,7 @@ _(no body)_
 (204 No Content)
 ```
 
-**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/buildings/:id
 
@@ -405,7 +405,7 @@ _(no body)_
 { "data": { ...Building } }
 ```
 
-**Errors:** `not_found`, `missing_token`, `invalid_token`
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### PATCH /api/v1/buildings/:id
 
@@ -431,7 +431,7 @@ _(no body)_
 { "data": { ...Building } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/contractors
 
@@ -452,7 +452,7 @@ _(no body)_
 { "data": [ {Contractor} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
 ```
 
-**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`, `token_expired`
 
 ### POST /api/v1/contractors
 
@@ -477,7 +477,7 @@ _(no body)_
 { "data": { ...Contractor } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `contractor_exists`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `contractor_exists`, `missing_token`, `invalid_token`, `token_expired`
 
 ### DELETE /api/v1/contractors/:id
 
@@ -494,7 +494,7 @@ _(no body)_
 (204 No Content)
 ```
 
-**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/contractors/:id
 
@@ -511,7 +511,7 @@ _(no body)_
 { "data": { ...Contractor } }
 ```
 
-**Errors:** `not_found`, `missing_token`, `invalid_token`
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### PATCH /api/v1/contractors/:id
 
@@ -536,7 +536,7 @@ _(no body)_
 { "data": { ...Contractor } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `contractor_exists`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `contractor_exists`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/me
 
@@ -553,7 +553,7 @@ _(no body)_
 { "data": { "id","name","email","role","avatarColor","organization":{} } }
 ```
 
-**Errors:** `missing_token`, `invalid_token`, `session_revoked`
+**Errors:** `missing_token`, `invalid_token`, `token_expired`, `session_revoked`
 
 ### GET /api/v1/members
 
@@ -574,7 +574,7 @@ _(no body)_
 { "data": [ {Member} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
 ```
 
-**Errors:** `validation_error`, `invalid_cursor`, `forbidden`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `invalid_cursor`, `forbidden`, `missing_token`, `invalid_token`, `token_expired`
 
 ### POST /api/v1/members
 
@@ -596,7 +596,7 @@ _(no body)_
 { "data": { "member": { ...Member }, "inviteToken": "<jwt>" } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `member_exists`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `member_exists`, `missing_token`, `invalid_token`, `token_expired`
 
 ### DELETE /api/v1/members/:userId
 
@@ -613,7 +613,7 @@ _(no body)_
 (204 No Content)
 ```
 
-**Errors:** `forbidden`, `not_found`, `cannot_modify_self`, `cannot_remove_last_manager`, `missing_token`, `invalid_token`
+**Errors:** `forbidden`, `not_found`, `cannot_modify_self`, `cannot_remove_last_manager`, `missing_token`, `invalid_token`, `token_expired`
 
 ### PATCH /api/v1/members/:userId
 
@@ -633,7 +633,7 @@ _(no body)_
 { "data": { ...Member } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `cannot_modify_self`, `cannot_remove_last_manager`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `cannot_modify_self`, `cannot_remove_last_manager`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/notes
 
@@ -654,7 +654,7 @@ _(no body)_
 { "data": [ {Note} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
 ```
 
-**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`, `token_expired`
 
 ### POST /api/v1/notes
 
@@ -677,7 +677,7 @@ _(no body)_
 { "data": { ...Note } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### DELETE /api/v1/notes/:id
 
@@ -694,7 +694,7 @@ _(no body)_
 (204 No Content)
 ```
 
-**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/notes/:id
 
@@ -711,7 +711,7 @@ _(no body)_
 { "data": { ...Note } }
 ```
 
-**Errors:** `not_found`, `missing_token`, `invalid_token`
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### PATCH /api/v1/notes/:id
 
@@ -732,7 +732,7 @@ _(no body)_
 { "data": { ...Note } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/notifications
 
@@ -753,7 +753,7 @@ _(no body)_
 { "data": [ {Notification} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
 ```
 
-**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`, `token_expired`
 
 ### POST /api/v1/notifications/:id/read
 
@@ -770,7 +770,7 @@ _(no body)_
 { "data": { ...Notification } }
 ```
 
-**Errors:** `not_found`, `missing_token`, `invalid_token`
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### POST /api/v1/notifications/read-all
 
@@ -787,7 +787,7 @@ _(no body)_
 { "data": { "updated": int } }
 ```
 
-**Errors:** `missing_token`, `invalid_token`
+**Errors:** `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/owners
 
@@ -808,7 +808,7 @@ _(no body)_
 { "data": [ {Owner — nationalIdMasked,phoneMasked} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
 ```
 
-**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`, `token_expired`
 
 ### POST /api/v1/owners
 
@@ -832,7 +832,7 @@ _(no body)_
 { "data": { ...Owner (masked) } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `owner_exists`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `owner_exists`, `missing_token`, `invalid_token`, `token_expired`
 
 ### DELETE /api/v1/owners/:id
 
@@ -849,7 +849,7 @@ _(no body)_
 (204 No Content)
 ```
 
-**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/owners/:id
 
@@ -866,7 +866,7 @@ _(no body)_
 { "data": { ...Owner (masked) } }
 ```
 
-**Errors:** `not_found`, `missing_token`, `invalid_token`
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### PATCH /api/v1/owners/:id
 
@@ -890,7 +890,7 @@ _(no body)_
 { "data": { ...Owner (masked) } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `owner_exists`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `owner_exists`, `missing_token`, `invalid_token`, `token_expired`
 
 ### POST /api/v1/owners/search
 
@@ -911,7 +911,7 @@ _(no body)_
 { "data": [ {Owner — masked} ] }
 ```
 
-**Errors:** `validation_error`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/projects
 
@@ -932,7 +932,7 @@ _(no body)_
 { "data": [ {Project} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
 ```
 
-**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`, `token_expired`
 
 ### POST /api/v1/projects
 
@@ -957,7 +957,7 @@ _(no body)_
 { "data": { ...Project } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `missing_token`, `invalid_token`, `token_expired`
 
 ### DELETE /api/v1/projects/:id
 
@@ -974,7 +974,7 @@ _(no body)_
 (204 No Content)
 ```
 
-**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/projects/:id
 
@@ -991,7 +991,7 @@ _(no body)_
 { "data": { ...Project } }
 ```
 
-**Errors:** `not_found`, `missing_token`, `invalid_token`
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### PATCH /api/v1/projects/:id
 
@@ -1016,7 +1016,7 @@ _(no body)_
 { "data": { ...Project } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/projects/:projectId/assignments
 
@@ -1037,7 +1037,7 @@ _(no body)_
 { "data": [ {ProjectAssignment} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
 ```
 
-**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### POST /api/v1/projects/:projectId/assignments
 
@@ -1058,7 +1058,7 @@ _(no body)_
 { "data": { ...ProjectAssignment } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `invalid_assignee`, `assignment_exists`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `invalid_assignee`, `assignment_exists`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/projects/:projectId/buildings
 
@@ -1079,7 +1079,7 @@ _(no body)_
 { "data": [ {Building} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
 ```
 
-**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### POST /api/v1/projects/:projectId/buildings
 
@@ -1105,7 +1105,7 @@ _(no body)_
 { "data": { ...Building } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/projects/:projectId/shares
 
@@ -1126,7 +1126,7 @@ _(no body)_
 { "data": [ {Share} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
 ```
 
-**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### POST /api/v1/projects/:projectId/shares
 
@@ -1147,7 +1147,7 @@ _(no body)_
 { "data": { ...Share } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `contractor_invalid`, `share_exists`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `contractor_invalid`, `share_exists`, `missing_token`, `invalid_token`, `token_expired`
 
 ### POST /api/v1/provider/auth/login
 
@@ -1186,7 +1186,7 @@ _(no body)_
 { "data": { "ok": true } }
 ```
 
-**Errors:** `missing_token`, `invalid_token`, `session_revoked`
+**Errors:** `missing_token`, `invalid_token`, `token_expired`, `session_revoked`
 
 ### POST /api/v1/provider/auth/refresh
 
@@ -1220,7 +1220,7 @@ _(no body)_
 (204 No Content)
 ```
 
-**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### PATCH /api/v1/shares/:id
 
@@ -1240,7 +1240,7 @@ _(no body)_
 { "data": { ...Share } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/tasks
 
@@ -1261,7 +1261,7 @@ _(no body)_
 { "data": [ {Task} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
 ```
 
-**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`, `token_expired`
 
 ### POST /api/v1/tasks
 
@@ -1289,7 +1289,7 @@ _(no body)_
 { "data": { ...Task } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `invalid_assignee`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `invalid_assignee`, `missing_token`, `invalid_token`, `token_expired`
 
 ### DELETE /api/v1/tasks/:id
 
@@ -1306,7 +1306,7 @@ _(no body)_
 (204 No Content)
 ```
 
-**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/tasks/:id
 
@@ -1323,7 +1323,7 @@ _(no body)_
 { "data": { ...Task } }
 ```
 
-**Errors:** `not_found`, `missing_token`, `invalid_token`
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### PATCH /api/v1/tasks/:id
 
@@ -1351,7 +1351,7 @@ _(no body)_
 { "data": { ...Task } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/tasks/:id/assignees
 
@@ -1368,7 +1368,7 @@ _(no body)_
 { "data": [ {TaskAssignee} ] }
 ```
 
-**Errors:** `not_found`, `missing_token`, `invalid_token`
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### POST /api/v1/tasks/:id/assignees
 
@@ -1388,7 +1388,7 @@ _(no body)_
 { "data": { ...TaskAssignee } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `invalid_assignee`, `assignee_exists`, `missing_token`, `invalid_token`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `invalid_assignee`, `assignee_exists`, `missing_token`, `invalid_token`, `token_expired`
 
 ### DELETE /api/v1/tasks/:id/assignees/:userId
 
@@ -1405,7 +1405,7 @@ _(no body)_
 (204 No Content)
 ```
 
-**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ## Part 2 — Global error catalogue
 
@@ -1414,7 +1414,7 @@ _(no body)_
 | `validation_error` | 400 | Zod DTO rejected the body. details carries field errors. |
 | `invalid_credentials` | 401 | Bad email/password/MFA OR locked (silent, anti-enum). |
 | `missing_token` | 401 | No access token cookie/bearer on a guarded route. |
-| `invalid_token` | 401 | JWT bad/expired/wrong-tier (HS256+iss+aud pinned). |
+| `invalid_token` | token_expired | 401 |
 | `session_revoked` | 401 | Session logged out / reuse-purged — immediate revoke. |
 | `missing_refresh_token` | 401 | No refresh cookie on the refresh endpoint. |
 | `invalid_refresh` | 401 | Refresh token unknown/expired/rotated/replayed. |

@@ -36,8 +36,16 @@ export class AuthGuard implements CanActivate {
         issuer: 'emapp',
         audience: 'emapp-api',
       });
-    } catch {
-      throw new UnauthorizedException({ error: { code: 'invalid_token' } });
+    } catch (e) {
+      // Audit-pass IV (G2 / docs/09 §2.1 + docs/10 §2): distinguish a
+      // mere TTL expiry (FE auto-refreshes silently via /auth/refresh)
+      // from a structurally invalid / forged / wrong-tier token (FE
+      // clears state, /login). Same 401 — different discriminator code.
+      // The check is by error class name so no new import is needed.
+      const isExpired = e instanceof Error && e.name === 'TokenExpiredError';
+      throw new UnauthorizedException({
+        error: { code: isExpired ? 'token_expired' : 'invalid_token' },
+      });
     }
 
     if (payload.type !== 'access') {

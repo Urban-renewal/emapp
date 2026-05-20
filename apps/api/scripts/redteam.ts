@@ -686,6 +686,37 @@ async function main(): Promise<void> {
       lOrg.status !== 200,
       `got ${lOrg.status} ${(lOrg.body['error'] as Json)?.['code'] ?? ''}`,
     );
+
+    // L4 (audit-pass IV G2): an EXPIRED-but-valid-signature org token must
+    // return 401 with code 'token_expired' (FE → silent refresh), NOT
+    // 'invalid_token' (FE → /login). Spec docs/09 §2.1 + docs/10 §2.
+    const expiredOrg: Json = {
+      sub: '66666666-6666-6666-6666-666666666666',
+      orgId: '77777777-7777-7777-7777-777777777777',
+      role: 'manager',
+      type: 'access',
+      sid: 'forged-org-sid-expired',
+      iss: 'emapp',
+      aud: 'emapp-api',
+      exp: Math.floor(Date.now() / 1000) - 60, // expired 60s ago
+    };
+    const expiredTok = forgeHsJwt(expiredOrg, jwtSecret);
+    const lExp = await call('/me', { cookie: `access_token=${expiredTok}` });
+    check(
+      'L4 Expired org token → 401 token_expired (NOT invalid_token)',
+      lExp.status === 401 && (lExp.body['error'] as Json)?.['code'] === 'token_expired',
+      `got ${lExp.status} ${(lExp.body['error'] as Json)?.['code'] ?? ''}`,
+    );
+    // L5 — by contrast, a structurally invalid token (wrong signature,
+    // built earlier in A4) returns 'invalid_token'. Re-prove here so a
+    // regression collapsing the two cases is caught.
+    const wrongSigTok = forgeHsJwt({ sub: 'x', role: 'manager', type: 'access' }, 'wrong-secret');
+    const lInv = await call('/me', { cookie: `access_token=${wrongSigTok}` });
+    check(
+      'L5 Wrong-signature org token → 401 invalid_token (NOT token_expired)',
+      lInv.status === 401 && (lInv.body['error'] as Json)?.['code'] === 'invalid_token',
+      `got ${lInv.status} ${(lInv.body['error'] as Json)?.['code'] ?? ''}`,
+    );
   }
 
   // ── report ───────────────────────────────────────────────────────────────

@@ -80,6 +80,10 @@ jobs:
           PII_HASH_KEY: dGVzdC1oYXNoLWtleS1mb3ItY2ktb25seS10ZXN0aW5nMQ==
           BETTER_AUTH_SECRET: ci-test-better-auth-secret-min-32-characters
           JWT_SECRET: ci-test-jwt-secret-at-least-44-characters-long-ok
+          # Phase 5 (docs/03 §9): the SignaturesModule factory throws at
+          # boot if SIGNATURE_TOKEN_SECRET is missing (same governed
+          # pattern as JWT_SECRET). CI value is a test-only literal.
+          SIGNATURE_TOKEN_SECRET: ci-test-signature-token-secret-min-44-chars-ok-ok
 
   build:
     needs: setup
@@ -121,6 +125,9 @@ jobs:
       PII_HASH_KEY: dGVzdC1oYXNoLWtleS1mb3ItY2ktb25seS10ZXN0aW5nMQ==
       BETTER_AUTH_SECRET: ci-test-better-auth-secret-min-32-characters
       JWT_SECRET: ci-test-jwt-secret-at-least-44-characters-long-ok
+      # Phase 5 — required for the SignaturesModule boot factory; CI
+      # value is a test-only literal (NOT the prod value).
+      SIGNATURE_TOKEN_SECRET: ci-test-signature-token-secret-min-44-chars-ok-ok
       THROTTLE_TEST_BYPASS: contract-suite
     steps:
       - uses: actions/checkout@v4

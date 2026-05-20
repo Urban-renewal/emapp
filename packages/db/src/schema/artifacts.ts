@@ -85,6 +85,69 @@ export const signatures = pgTable(
 export type Signature = typeof signatures.$inferSelect;
 export type NewSignature = typeof signatures.$inferInsert;
 
+/**
+ * Phase 5 — signature_requests: drives the public-link signing flow.
+ *
+ * Manager creates a request → server mints a JWT signed with
+ * SIGNATURE_TOKEN_SECRET (separate from JWT_SECRET, see docs/03 §9) →
+ * link is delivered to the resident via Email/WhatsApp/SMS → resident
+ * opens `/sign/[token]` → POSTs the SVG → atomic single-use UPDATE
+ * (WHERE jti=? AND status='pending') flips status to 'signed' and the
+ * actual signature row lands in the `signatures` table.
+ *
+ * Status machine: pending → signed | cancelled. Once 'signed' or
+ * 'cancelled', the row is forensic evidence — only the status fields
+ * change (the row itself is never deleted; no `archived_at`).
+ */
+export const signatureRequests = pgTable(
+  'signature_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'restrict' }),
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => owners.id, { onDelete: 'restrict' }),
+    /** JWT `jti` claim. UNIQUE — this is the atomic single-use guard's key. */
+    jti: text('jti').notNull(),
+    /** 'pending' | 'signed' | 'cancelled' — enforced by CHECK in migration 0021. */
+    status: text('status').notNull().default('pending'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    signedAt: timestamp('signed_at', { withTimezone: true }),
+    /** Links to the actual encrypted-SVG row in `signatures` once signed. */
+    signedSignatureId: uuid('signed_signature_id').references(() => signatures.id, {
+      onDelete: 'restrict',
+    }),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    cancelledBy: uuid('cancelled_by').references(() => users.id),
+  },
+  (table) => ({
+    jtiUnique: uniqueIndex('signature_requests_jti_unique').on(table.jti),
+    orgStatusCreatedIdx: index('idx_signature_requests_org_status_created').on(
+      table.orgId,
+      table.status,
+      table.createdAt.desc(),
+    ),
+    docStatusIdx: index('idx_signature_requests_doc_status').on(table.documentId, table.status),
+    ownerStatusIdx: index('idx_signature_requests_owner_status').on(table.ownerId, table.status),
+    statusCheck: check(
+      'signature_requests_status_valid',
+      sql`${table.status} IN ('pending','signed','cancelled')`,
+    ),
+  }),
+);
+
+export type SignatureRequest = typeof signatureRequests.$inferSelect;
+export type NewSignatureRequest = typeof signatureRequests.$inferInsert;
+
 export const notes = pgTable(
   'notes',
   {

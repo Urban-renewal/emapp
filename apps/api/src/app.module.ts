@@ -20,6 +20,7 @@ import { OwnershipsModule } from './modules/ownerships/ownerships.module';
 import { ProjectAssignmentsModule } from './modules/project-assignments/project-assignments.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { SharesModule } from './modules/shares/shares.module';
+import { SignaturesModule } from './modules/signatures/signatures.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 
 @Module({
@@ -32,15 +33,36 @@ import { TasksModule } from './modules/tasks/tasks.module';
     ]),
     LoggerModule.forRoot({
       pinoHttp: {
-        redact: [
-          'req.headers.authorization',
-          'req.headers.cookie',
-          'req.body.password',
-          'req.body.token',
-          // PII — owner create/update/search bodies (Doc07: never log PII).
-          'req.body.national_id',
-          'req.body.phone',
-        ],
+        redact: {
+          paths: [
+            'req.headers.authorization',
+            'req.headers.cookie',
+            'req.body.password',
+            'req.body.token',
+            // PII — owner create/update/search bodies (Doc07: never log PII).
+            'req.body.national_id',
+            'req.body.phone',
+            // Phase 5 (docs/03 §9): signing token NEVER in logs, not even
+            // partial. The token is the credential — same posture as a
+            // password. The :token path param is redacted via the URL
+            // censor below.
+            'req.params.token',
+            // SVG signature payload is encrypted at rest (D.12 LAW); also
+            // keep it out of request logs.
+            'req.body.signatureSvg',
+          ],
+          // Path-level redaction for the URL itself — Pino doesn't have
+          // a built-in regex censor, so we set a censor function that
+          // replaces /sign/<token>... with /sign/[REDACTED] across
+          // log fields containing the URL. The leaf redactions above
+          // cover the structured request; this covers any embedded URL.
+          censor: (value: unknown): unknown => {
+            if (typeof value === 'string' && /\/sign\/[\w-]+\.[\w-]+\.[\w-]+/.test(value)) {
+              return value.replace(/\/sign\/[\w-]+\.[\w-]+\.[\w-]+/g, '/sign/[REDACTED]');
+            }
+            return '[REDACTED]';
+          },
+        },
         level: process.env['NODE_ENV'] !== 'production' ? 'debug' : 'info',
       },
     }),
@@ -59,6 +81,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
     AuditModule,
     ProjectAssignmentsModule,
     MembersModule,
+    SignaturesModule,
   ],
   controllers: [HealthController],
   // Rate limiting ENFORCED globally; the configurable guard adds a

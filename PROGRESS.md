@@ -6,11 +6,14 @@
 
 ## Heartbeat (latest — for the 30-second scan)
 
-- **Last slice:** S5 (validation engine — Luhn + dedup + dry-run; T6.3 + T6.4 + T6.5). New `validation/row-validator.ts` (pure), new `parser/excel.parser.parseExcelFull()` returning rows+rowNumbers. handler.validateStage iterates rows, accumulates structured errors → `import_job_errors` (no raw values, no PII). dry-run skips persist. **75 worker tests green** (17 validator unit + 6 S5 integration + 4 S3 integration + 11 parser + 12 mapping + 10 T6.8 + 8 bootstrap + 7 adapter).
-- **Next slice:** S6 (real persistence — batched insert of buildings + apartments + owners + ownerships under withTenant with savepoints + idempotency; closes T6.6 + T6.7).
-- **Audit findings (S5):** 0 Critical/High/Medium. L6 (validateStage re-downloads the file vs caching parseStage's bytes) recorded for S7 perf gate. PII posture verified at both unit (test 13) and integration (test 6) — error messages and audit_log carry only structural data.
-- **Blocked:** no.
-- **Mode:** autonomous Phase-6 progression per AUTOPILOT; one PR at S9 end.
+- **Last slice:** S5 (validation engine — Luhn + dedup + dry-run; T6.3 + T6.4 + T6.5). 75 worker tests green (17 validator unit + 6 S5 integration + 4 S3 integration + 11 parser + 12 mapping + 10 T6.8 + 8 bootstrap + 7 adapter). Commit `8f39de0`, pushed.
+- **Next slice:** S6 (real persistence + idempotency + rollback; T6.6 + T6.7) — **BLOCKED**, see below.
+- **Blocked:** **YES — Gate 6 / Gate 1 (schema) decision needed before S6 starts.** `import_jobs` row has no `project_id` column, and `ImportJobPayload` carries none. Persistence in S6 needs to materialise buildings (`buildings.project_id` is NOT NULL) — there's no path from a job to a project. Three candidate resolutions (Claude's recommendation = A):
+  - **(A) Add `project_id uuid REFERENCES projects(id)` to `import_jobs`** via a new migration. The wizard FE (S8) supplies project_id at POST /imports time. Single source of truth: the row says where to write. Most aligned with docs/03 §10 ("יזם מעלה Excel חופשי ומקבל preview של mapping" — the project context is fixed before upload). **Recommended.**
+  - **(B) Add `project_id` to `ImportJobPayloadSchema`** only (no schema change). Worker reads it from the pg-boss payload. Drawback: the domain row loses the project association — re-trying / re-inspecting requires the queue.
+  - **(C) Embed project in the file as a mapping canonical.** Drawback: every row would carry the project label; misalignment risk; doesn't match the wizard flow.
+- **Audit findings (S5):** 0 Critical/High/Medium. L6 (validateStage re-downloads the file vs caching parseStage's bytes) recorded for S7 perf gate.
+- **Mode:** autonomous Phase-6 progression PAUSED until Lidor decides A/B/C.
 
 ## Current Position
 

@@ -28,6 +28,8 @@ import { Readable } from 'node:stream';
 
 import { Workbook } from 'exceljs';
 
+import { zipPreflight } from './zip-preflight';
+
 /** What S3 extracts from the file. Intentionally minimal — S4 layers
  *  on mapping (column → domain field); S5 iterates row values. */
 export interface ParsedHeader {
@@ -61,6 +63,7 @@ export type ParserErrorCode =
   | 'sparse_header' // header has < 2 non-empty cells
   | 'formula_in_header' // CSV-injection guard (header row)
   | 'formula_in_data' // CSV-injection guard (any data row) — audit-pass v2 C1
+  | 'decompressed_too_large' // zip-bomb guard — audit-pass v2 C8
   | 'corrupt_file'; // ExcelJS threw
 
 export class ExcelParserError extends Error {
@@ -108,6 +111,12 @@ const MAX_ROWS_SAFETY = 2_000_000;
 export async function parseExcelHeader(stream: Readable): Promise<ParsedHeader> {
   try {
     const buffer = await readStreamBounded(stream, MAX_INPUT_BYTES);
+
+    // SECURITY (audit-pass v2 C8) — zip-bomb pre-flight. Parses the
+    // zip Central Directory to sum uncompressed sizes WITHOUT calling
+    // ExcelJS decompression. Rejects with 'decompressed_too_large'
+    // before `xlsx.load(buffer)` can OOM the worker.
+    zipPreflight(buffer);
 
     const workbook = new Workbook();
     try {
@@ -211,6 +220,13 @@ export async function parseExcelHeader(stream: Readable): Promise<ParsedHeader> 
 export async function parseExcelFull(stream: Readable): Promise<ParsedRows> {
   try {
     const buffer = await readStreamBounded(stream, MAX_INPUT_BYTES);
+
+    // SECURITY (audit-pass v2 C8) — zip-bomb pre-flight. Same guard
+    // as parseExcelHeader; both stages must enforce it independently
+    // (validateStage re-downloads + re-parses; the bomb could appear
+    // there for the first time if a different file is somehow at the
+    // same R2 key — defense in depth).
+    zipPreflight(buffer);
 
     const workbook = new Workbook();
     try {

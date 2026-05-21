@@ -13,6 +13,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
+import { projects } from './projects';
 import { organizations, users } from './tenancy';
 
 /**
@@ -61,6 +62,16 @@ export const importJobs = pgTable(
 
     /** Future-mapping templates (S4). Nullable until then. */
     mappingTemplateId: uuid('mapping_template_id'),
+
+    /** Phase 6 S6 — the project this import populates. Migration 0026
+     *  adds the column nullable; the API layer (S8 wizard endpoint)
+     *  enforces non-null on insert via the create-import Zod DTO. The
+     *  worker's persistStage refuses to advance without it. Nullable
+     *  here so the older tests + dev fixtures that don't set it can
+     *  keep working through the validate stage. */
+    projectId: uuid('project_id').references(() => projects.id, {
+      onDelete: 'restrict',
+    }),
 
     /** D.22 F idempotency. UNIQUE per (org, key) when non-null. */
     idempotencyKey: text('idempotency_key'),

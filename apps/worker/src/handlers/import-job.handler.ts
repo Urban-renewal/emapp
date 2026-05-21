@@ -36,8 +36,13 @@
  */
 import {
   AuditService,
+  apartments,
+  buildings,
+  encryptOwnerPii,
   importJobErrors,
   importJobs,
+  owners,
+  ownerships,
   withTenant,
   type IStorageProvider,
   type TenantTx,
@@ -57,6 +62,22 @@ import { ExcelParserError, parseExcelFull, type ParsedRows } from '../parser/exc
 import { summariseFailureForAudit } from '../security/audit-sanitiser';
 import { validateRow } from '../validation/row-validator';
 
+/** A validated row that passed S5 row-validator. The canonical fields
+ *  are extracted + trimmed; persistStage (S6) consumes this shape. */
+interface ValidatedRow {
+  /** 1-indexed source row in the Excel (for forensic mapping). */
+  rowNumber: number;
+  nationalId: string;
+  phone: string;
+  name: string;
+  apartmentNumber: string;
+  buildingAddress: string;
+  /** Already parsed to a number (0..100). null when the column was
+   *  unmapped or empty — persistStage applies the default (100 for
+   *  a single owner, error if multi-owner without explicit pct). */
+  ownershipPct: number | null;
+}
+
 /** Per-`handle()` cache so parseStage's parsed rows are reused by
  *  validateStage instead of being re-downloaded + re-parsed.
  *
@@ -71,6 +92,10 @@ import { validateRow } from '../validation/row-validator';
 interface JobCache {
   parsed?: ParsedRows;
   mapping?: ColumnMapping;
+  /** Rows that passed validation (S5). persistStage (S6) consumes
+   *  these to build the owners + apartments + buildings + ownerships
+   *  trees. Populated by validateStage. */
+  okRows?: ValidatedRow[];
 }
 
 /** Domain state machine. MUST match the CHECK constraint in migration
@@ -79,6 +104,164 @@ interface JobCache {
  *  below (Drizzle infers the column type as `text`, runtime CHECK
  *  guards the value). */
 type Status = 'queued' | 'parsing' | 'validating' | 'persisting' | 'done' | 'failed' | 'cancelled';
+
+/** Extract a row's canonical-field values from the parsed cell vector,
+ *  given the resolved mapping. Returns a ValidatedRow ready for S6's
+ *  persistence pipeline. The mapping has already been confirmed
+ *  complete by resolveMapping, so the required canonicals all have
+ *  column indexes. */
+function extractValidatedRow(
+  row: string[],
+  rowNumber: number,
+  mapping: ColumnMapping,
+): ValidatedRow {
+  const get = (col: number | undefined): string =>
+    col !== undefined ? (row[col] ?? '').trim() : '';
+  const pctCol = mapping.columns.ownership_pct;
+  let ownershipPct: number | null = null;
+  if (pctCol !== undefined) {
+    const raw = get(pctCol);
+    if (raw !== '') {
+      const parsed = Number(raw.replace('%', ''));
+      if (Number.isFinite(parsed)) ownershipPct = parsed;
+    }
+  }
+  return {
+    rowNumber,
+    nationalId: get(mapping.columns.national_id).padStart(9, '0'),
+    phone: get(mapping.columns.phone),
+    name: get(mapping.columns.name),
+    apartmentNumber: get(mapping.columns.apartment_number),
+    buildingAddress: get(mapping.columns.building_address),
+    ownershipPct,
+  };
+}
+
+/** Find-or-create a building row keyed by (project, address). Caches
+ *  results in `cache` so a multi-row import that all targets one
+ *  building does one SELECT + one INSERT (max) across all rows. */
+async function findOrCreateBuilding(
+  tx: TenantTx,
+  projectId: string,
+  address: string,
+  cache: Map<string, string>,
+): Promise<string> {
+  const hit = cache.get(address);
+  if (hit) return hit;
+
+  const [existing] = await tx
+    .select({ id: buildings.id })
+    .from(buildings)
+    .where(
+      and(
+        eq(buildings.projectId, projectId),
+        eq(buildings.address, address),
+        sql`${buildings.archivedAt} IS NULL`,
+      ),
+    )
+    .limit(1);
+  if (existing) {
+    cache.set(address, existing.id);
+    return existing.id;
+  }
+
+  // City is required (NOT NULL). The import file has no city column
+  // in the MVP mapping; default to a sentinel that the Manager can
+  // edit via the buildings UI. S8's wizard could pre-fill from
+  // project metadata; that's a UX improvement, not an S6 blocker.
+  const [created] = await tx
+    .insert(buildings)
+    .values({ projectId, address, city: '-' })
+    .returning({ id: buildings.id });
+  if (!created) throw new Error('failed to insert building');
+  cache.set(address, created.id);
+  return created.id;
+}
+
+/** Find-or-create an apartment keyed by (building, number). */
+async function findOrCreateApartment(
+  tx: TenantTx,
+  buildingId: string,
+  number: string,
+  cache: Map<string, string>,
+): Promise<string> {
+  const key = `${buildingId}${number}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+
+  const [existing] = await tx
+    .select({ id: apartments.id })
+    .from(apartments)
+    .where(
+      and(
+        eq(apartments.buildingId, buildingId),
+        eq(apartments.number, number),
+        sql`${apartments.archivedAt} IS NULL`,
+      ),
+    )
+    .limit(1);
+  if (existing) {
+    cache.set(key, existing.id);
+    return existing.id;
+  }
+
+  const [created] = await tx
+    .insert(apartments)
+    .values({ buildingId, number })
+    .returning({ id: apartments.id });
+  if (!created) throw new Error('failed to insert apartment');
+  cache.set(key, created.id);
+  return created.id;
+}
+
+/** Find-or-create an owner keyed by (org_id, national_id_hash). PII
+ *  is encrypted via pgcrypto + HMAC-hashed via D.12 helpers. Cross-
+ *  import dedup is RESOLVED here: a second import with the same
+ *  national_id reuses the existing owner row.  */
+async function findOrCreateOwner(
+  tx: TenantTx,
+  orgId: string,
+  row: ValidatedRow,
+  cache: Map<string, string>,
+): Promise<string> {
+  const piiEnc = await encryptOwnerPii(tx, {
+    nationalId: row.nationalId,
+    phone: row.phone,
+  });
+  const cached = cache.get(piiEnc.nationalIdHash);
+  if (cached) return cached;
+
+  const [existing] = await tx
+    .select({ id: owners.id })
+    .from(owners)
+    .where(
+      and(
+        eq(owners.orgId, orgId),
+        eq(owners.nationalIdHash, piiEnc.nationalIdHash),
+        sql`${owners.archivedAt} IS NULL`,
+      ),
+    )
+    .limit(1);
+  if (existing) {
+    cache.set(piiEnc.nationalIdHash, existing.id);
+    return existing.id;
+  }
+
+  const [created] = await tx
+    .insert(owners)
+    .values({
+      orgId,
+      name: row.name,
+      nationalIdEncrypted: piiEnc.nationalIdEncrypted,
+      nationalIdHash: piiEnc.nationalIdHash,
+      phoneEncrypted: piiEnc.phoneEncrypted,
+      phoneHash: piiEnc.phoneHash,
+    })
+    .returning({ id: owners.id });
+  if (!created) throw new Error('failed to insert owner');
+  cache.set(piiEnc.nationalIdHash, created.id);
+  return created.id;
+}
 
 /** Linear transition order. The handler walks forward only — never
  *  backward. Cancellation comes from a separate API endpoint (S8), not
@@ -290,7 +473,7 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
     // parsing/validation/persistence is large + slice-owned.
     if (to === 'parsing') await this.parseStage(payload, ctx, cache);
     if (to === 'validating') await this.validateStage(payload, ctx, cache);
-    if (to === 'persisting') await this.persistStage(payload, ctx);
+    if (to === 'persisting') await this.persistStage(payload, ctx, cache);
   }
 
   /** S3 — real ExcelJS streaming parse. Reads `file_r2_key` from the
@@ -495,11 +678,15 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
       code: string;
       message: string;
     }> = [];
+    const okRows: ValidatedRow[] = [];
 
     for (let i = 0; i < parsed.rows.length; i += 1) {
       const result = validateRow(parsed.rows[i]!, parsed.rowNumbers[i]!, mapping, seenIds);
       if (result.ok) {
         okCount += 1;
+        // S6 — cache the validated row's canonical-extracted shape so
+        // persistStage doesn't have to re-extract from the raw row.
+        okRows.push(extractValidatedRow(parsed.rows[i]!, parsed.rowNumbers[i]!, mapping));
       } else {
         failedCount += 1;
         for (const err of result.errors) {
@@ -514,6 +701,9 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
         }
       }
     }
+
+    // Cache the validated rows for persistStage (S6).
+    cache.okRows = okRows;
 
     // Persist counters + errors atomically. Batch errors into one
     // INSERT — for typical 100-row imports with handful of errors this
@@ -558,21 +748,52 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
     });
   }
 
-  /** S6 will replace this — batched insert into owners/apartments/
-   *  buildings under withTenant with savepoints per docs/03 §10. For
-   *  S5 we early-exit when dry_run=true (T6.5) and otherwise no-op
-   *  (real persistence ships in S6).
+  /** S6 — real persistence (closes T6.6 + T6.7).
+   *
+   *  Materialises validated rows into the domain model:
+   *    1. Resolve / find-or-create one building per unique
+   *       (project_id, address) — buildings.city defaults to a
+   *       sentinel '-' until the wizard adds a city column.
+   *    2. Resolve / find-or-create one apartment per unique
+   *       (building_id, number).
+   *    3. For each ok row: encrypt PII (pgcrypto via encryptOwnerPii)
+   *       and find-or-create the owner by national_id_hash.
+   *    4. Per apartment, atomically set-replace ownerships (D.25):
+   *       end any active ownership rows, insert the new set. The
+   *       DEFERRABLE INITIALLY DEFERRED sum-check trigger fires at
+   *       COMMIT; per-apartment sums must total exactly 100 (or 0
+   *       if zero rows). The handler refuses to advance an apartment
+   *       whose imported rows don't sum to 100.
+   *
+   *  Everything inside ONE withTenant transaction so the constraint
+   *  trigger sees a consistent state. Idempotent on pg-boss retry:
+   *    - find-or-create is naturally idempotent.
+   *    - ownership set-replace is idempotent (end + insert with the
+   *      same percentages = same final state).
+   *
+   *  Dry-run path (T6.5): persistStage early-exits when
+   *  import_jobs.dry_run = true. Validation already produced the
+   *  errors the manager needs; the persist stage just transitions
+   *  cleanly to done.
    *
    *  T6.5 ("Dry-run no DB change"): when import_jobs.dry_run = true,
    *  we explicitly DON'T touch the owner-domain tables. Validation
    *  already produced errors so the manager sees exactly what WOULD
    *  happen; the persist stage just transitions cleanly to done. */
-  private async persistStage(payload: ImportJobPayload, ctx: JobContext): Promise<void> {
+  private async persistStage(
+    payload: ImportJobPayload,
+    ctx: JobContext,
+    cache: JobCache,
+  ): Promise<void> {
     const job = await withTenant(
       payload.orgId,
       async (tx) => {
         const [r] = await tx
-          .select({ dryRun: importJobs.dryRun, okRows: importJobs.okRows })
+          .select({
+            dryRun: importJobs.dryRun,
+            okRows: importJobs.okRows,
+            projectId: importJobs.projectId,
+          })
           .from(importJobs)
           .where(eq(importJobs.id, payload.jobId))
           .limit(1);
@@ -587,8 +808,6 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
 
     if (job.dryRun) {
       ctx.log.info('dry-run — persistence skipped (T6.5)', { ok: job.okRows });
-      // No domain writes. Counters already final from validateStage.
-      // Just touch updated_at so the SSE sees a tick.
       await withTenant(
         payload.orgId,
         async (tx) => {
@@ -602,12 +821,142 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
       return;
     }
 
-    // S6 lands the real persistence (batched owner/apartment/
-    // building writes with savepoints). For S5 this is a no-op so
-    // the existing T6.8 baseline keeps passing.
+    // No project_id → can't materialise buildings. This is the
+    // pre-S8 fallback (older tests / dev fixtures created import_jobs
+    // rows without a project). S8's wizard enforces project_id at
+    // POST /imports; production never hits this path.
+    if (!job.projectId) {
+      ctx.log.warn('persistStage skipped — import_jobs.project_id is null (S6 stub)');
+      await withTenant(
+        payload.orgId,
+        async (tx) => {
+          await tx
+            .update(importJobs)
+            .set({ updatedAt: new Date() })
+            .where(eq(importJobs.id, payload.jobId));
+        },
+        { userId: payload.createdBy },
+      );
+      return;
+    }
+
+    // No validated rows in cache → nothing to persist. Either the
+    // file had zero ok rows, OR this is a retry where validateStage
+    // didn't run in this attempt (handler resumed at 'persisting').
+    // We don't auto-recover by re-validating here — that's a deep
+    // re-fetch path. Instead, treat empty cache.okRows as "nothing
+    // to do", touch updated_at, advance. If a retry needs persistence,
+    // the operator restarts the job from 'queued'.
+    const okRows = cache.okRows ?? [];
+    if (okRows.length === 0) {
+      ctx.log.info('persistStage no rows to persist (cache miss or empty validation)', {
+        cache_present: cache.okRows !== undefined,
+      });
+      await withTenant(
+        payload.orgId,
+        async (tx) => {
+          await tx
+            .update(importJobs)
+            .set({ updatedAt: new Date() })
+            .where(eq(importJobs.id, payload.jobId));
+        },
+        { userId: payload.createdBy },
+      );
+      return;
+    }
+
+    const { projectId } = job;
+    // Group rows by apartment-key (address + number). Each group
+    // becomes one apartment in the DB; the group's rows become its
+    // ownership set.
+    const apartmentGroups = new Map<string, ValidatedRow[]>();
+    for (const r of okRows) {
+      const key = `${r.buildingAddress}${r.apartmentNumber}`;
+      const list = apartmentGroups.get(key);
+      if (list) list.push(r);
+      else apartmentGroups.set(key, [r]);
+    }
+
+    // Validate per-apartment ownership percentages before any write:
+    //  - single owner: pct defaults to 100 if null.
+    //  - multi owner: every row must have explicit pct; sum must == 100.
+    const apartmentPctErrors: string[] = [];
+    for (const [key, rows] of apartmentGroups) {
+      if (rows.length === 1) continue; // single-owner path handles itself
+      const pcts = rows.map((r) => r.ownershipPct);
+      if (pcts.some((p) => p === null)) {
+        apartmentPctErrors.push(
+          `apartment '${key.replace('', ' #')}' has multiple owners but a row is missing ownership_pct`,
+        );
+        continue;
+      }
+      const sum = pcts.reduce<number>((s, p) => s + (p ?? 0), 0);
+      if (Math.abs(sum - 100) > 0.01) {
+        apartmentPctErrors.push(
+          `apartment '${key.replace('', ' #')}' ownership percentages sum to ${sum}, expected 100`,
+        );
+      }
+    }
+    if (apartmentPctErrors.length > 0) {
+      throw new NonRetryableJobError(
+        `persistence rejected: ${apartmentPctErrors[0]}`,
+        'persist_ownership_sum_invalid',
+      );
+    }
+
+    // Resolve unique buildings + apartments + owners (3 maps). All
+    // writes happen in a single withTenant tx so the deferred sum
+    // trigger (D.25) sees a consistent state at COMMIT.
     await withTenant(
       payload.orgId,
       async (tx) => {
+        // Build the building cache: one entry per unique address.
+        const buildingByAddress = new Map<string, string>();
+        const apartmentByKey = new Map<string, string>();
+        const ownerByHash = new Map<string, string>();
+
+        for (const [, rows] of apartmentGroups) {
+          const first = rows[0]!;
+          const buildingId = await findOrCreateBuilding(
+            tx,
+            projectId,
+            first.buildingAddress,
+            buildingByAddress,
+          );
+          const apartmentId = await findOrCreateApartment(
+            tx,
+            buildingId,
+            first.apartmentNumber,
+            apartmentByKey,
+          );
+
+          // For each row in this apartment group, resolve the owner.
+          const ownersForApt: Array<{ ownerId: string; pct: number }> = [];
+          for (const r of rows) {
+            const ownerId = await findOrCreateOwner(tx, payload.orgId, r, ownerByHash);
+            const pct = rows.length === 1 ? (r.ownershipPct ?? 100) : (r.ownershipPct ?? 0);
+            ownersForApt.push({ ownerId, pct });
+          }
+
+          // Atomic set-replace (D.25): end any currently-active
+          // ownerships for this apartment, then insert the new set.
+          const now = new Date();
+          await tx
+            .update(ownerships)
+            .set({ endedAt: now })
+            .where(
+              and(eq(ownerships.apartmentId, apartmentId), sql`${ownerships.endedAt} IS NULL`),
+            );
+          for (const o of ownersForApt) {
+            await tx.insert(ownerships).values({
+              apartmentId,
+              ownerId: o.ownerId,
+              ownershipPct: String(o.pct),
+            });
+          }
+        }
+
+        // Touch updated_at so SSE sees a final tick.
         await tx
           .update(importJobs)
           .set({ updatedAt: new Date() })
@@ -615,6 +964,11 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
       },
       { userId: payload.createdBy },
     );
+
+    ctx.log.info('persistence complete', {
+      apartments: apartmentGroups.size,
+      ok_rows: okRows.length,
+    });
   }
 
   /** Best-effort transition to 'failed' + audit. Guarded with

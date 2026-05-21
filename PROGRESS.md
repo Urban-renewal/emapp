@@ -6,14 +6,11 @@
 
 ## Heartbeat (latest — for the 30-second scan)
 
-- **Last slice:** S5 (validation engine — Luhn + dedup + dry-run; T6.3 + T6.4 + T6.5). 75 worker tests green (17 validator unit + 6 S5 integration + 4 S3 integration + 11 parser + 12 mapping + 10 T6.8 + 8 bootstrap + 7 adapter). Commit `8f39de0`, pushed.
-- **Next slice:** S6 (real persistence + idempotency + rollback; T6.6 + T6.7) — **BLOCKED**, see below.
-- **Blocked:** **YES — Gate 6 / Gate 1 (schema) decision needed before S6 starts.** `import_jobs` row has no `project_id` column, and `ImportJobPayload` carries none. Persistence in S6 needs to materialise buildings (`buildings.project_id` is NOT NULL) — there's no path from a job to a project. Three candidate resolutions (Claude's recommendation = A):
-  - **(A) Add `project_id uuid REFERENCES projects(id)` to `import_jobs`** via a new migration. The wizard FE (S8) supplies project_id at POST /imports time. Single source of truth: the row says where to write. Most aligned with docs/03 §10 ("יזם מעלה Excel חופשי ומקבל preview של mapping" — the project context is fixed before upload). **Recommended.**
-  - **(B) Add `project_id` to `ImportJobPayloadSchema`** only (no schema change). Worker reads it from the pg-boss payload. Drawback: the domain row loses the project association — re-trying / re-inspecting requires the queue.
-  - **(C) Embed project in the file as a mapping canonical.** Drawback: every row would carry the project label; misalignment risk; doesn't match the wizard flow.
-- **Audit findings (S5):** 0 Critical/High/Medium. L6 (validateStage re-downloads the file vs caching parseStage's bytes) recorded for S7 perf gate.
-- **Mode:** autonomous Phase-6 progression PAUSED until Lidor decides A/B/C.
+- **Last slice:** audit-pass v2 Track 1 (4 HIGH/MEDIUM security fixes) + Track 2 tests. Fresh-eyes review by an independent agent found 3 sign-off blockers + 2 partial-T6.x claims. Closed in 4 isolated commits: C2 PII scrub from audit metadata (`1920c19`); C1 CSV-injection guard on data rows + header (`3451666`); C8 zip-bomb pre-flight CD parser cap at 200MB decompressed (`22931fb`); C9 migration 0025 UNIQUE + ON CONFLICT for retry idempotency (`9913d4b`). **116/116 worker tests green** (was 75 + 41 new). Lint + typecheck clean. Push pending.
+- **Next slice:** S6 (real persistence + idempotency + rollback; T6.6 + T6.7) — **still BLOCKED**, see below.
+- **Blocked:** **YES — Gate 6 / Gate 1 (schema) decision needed before S6 starts.** `import_jobs` row has no `project_id` column. (A) add column via migration; (B) add to ImportJobPayload only; (C) embed in file. Claude's recommendation = (A). Awaiting Lidor.
+- **Audit findings (v2 INDEPENDENT):** Closed in Track 1: C1 (CSV-injection HIGH), C2 (PII in audit HIGH), C8 (zip-bomb HIGH), C9 (retry duplicates MEDIUM). Still tracked: C5 (missing `import.queued` audit row — happens at S8 API enqueue, not in worker), C7 (pg-boss DDL privileges — ops-side role split or migration provision), L3/L4/L6/L7 (perf — 20 DB round-trips/job, R2 double-download, SSE poll at scale — deferred to S7 perf gate). T6.x corrections: T6.1 was PARTIAL (streaming-mode spec; mitigated by C8 cap), T6.4 in-file-only (spec literal may be cross-import — recorded), T6.8 was PARTIAL (test bypassed pg-boss; Track 2 #4 end-to-end pg-boss integration NOT yet written).
+- **Mode:** autonomous Phase-6 progression PAUSED until Lidor decides A/B/C for S6.
 
 ## Current Position
 

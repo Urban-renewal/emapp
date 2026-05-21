@@ -103,6 +103,52 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
   async handle(payload: ImportJobPayload, ctx: JobContext): Promise<void> {
     ctx.log.info('import job picked up', { orgId: payload.orgId });
 
+    // Audit-pass v2 finding C5 (HIGH): the first audit row used to be
+    // `import.parsing` — a regulator scanning audit_log saw jobs
+    // springing into existence at parsing with no worker-side
+    // provenance. Now we write `import.received` at handler entry,
+    // BEFORE any state transition.
+    //
+    // Per-attempt (NOT deduped on retry): pg-boss retries ARE
+    // forensically meaningful events — each retry indicates a prior
+    // failure that warrants its own audit trail. metadata carries
+    // ctx.attempt so the retry sequence is reconstructable.
+    //
+    // RLS visibility precondition: we only write the audit row if the
+    // import_jobs row is visible under this withTenant scope (defense
+    // against a tampered payload — if the orgId doesn't match the
+    // job, the row won't be visible and we skip silently; readStatus
+    // will then throw NonRetryable below).
+    try {
+      await withTenant(
+        payload.orgId,
+        async (tx) => {
+          const existing = await tx
+            .select({ id: importJobs.id })
+            .from(importJobs)
+            .where(eq(importJobs.id, payload.jobId))
+            .limit(1);
+          if (existing.length === 0) return;
+          await new AuditService(tx).log({
+            orgId: payload.orgId,
+            actorId: payload.createdBy,
+            actorType: 'system',
+            action: 'import.received',
+            targetTable: 'import_jobs',
+            targetId: payload.jobId,
+            metadata: { pg_boss_job_id: ctx.jobId, attempt: String(ctx.attempt) },
+          });
+        },
+        { userId: payload.createdBy },
+      );
+    } catch (e: unknown) {
+      // Audit write failure is non-fatal — log + continue. Better to
+      // run the job than to refuse it because of an audit blip.
+      ctx.log.warn('failed to write import.received audit row', {
+        reason: e instanceof Error ? e.name : 'unknown',
+      });
+    }
+
     try {
       // Drive the state machine forward until we hit `done` (or an
       // error transitions to `failed`). Each iteration is one withTenant

@@ -67,15 +67,26 @@ async function main(): Promise<void> {
   // long parse/validate/persist steps and pg-boss.stop() can return.
   const shutdownController = new AbortController();
 
-  // Construct pg-boss. Two notes:
+  // Construct pg-boss. Three notes:
   //  - We pass connectionString (NOT the existing `pool`) so pg-boss
   //    owns its own pg client. That's the supported v10 pattern; sharing
   //    a Pool requires the `db` option with a custom executeSql adapter
   //    and isn't necessary for our scale.
-  //  - migrate:true (default) lets pg-boss apply its own schema on first
-  //    start. Idempotent; safe to leave on in prod.
+  //  - We use PROVIDER_DATABASE_URL (the BYPASSRLS owner role). Audit-
+  //    pass v2 finding C7 (MEDIUM): pg-boss with `migrate:true` (the
+  //    default, kept here) needs CREATE on the database to provision
+  //    its own schema + tables on first start. Granting CREATE to
+  //    app_user (the RLS-restricted application role used by every
+  //    withTenant call) is a least-privilege violation — app_user
+  //    must only be able to SELECT/INSERT/UPDATE its own domain
+  //    tables. The provider role is already authorised for DDL (it
+  //    owns the migrations) and is the right principal for the queue
+  //    plumbing. Falls back to DATABASE_URL for dev environments that
+  //    haven't set PROVIDER_DATABASE_URL — see @emapp/db env defaults.
+  //  - migrate:true (default) lets pg-boss apply its own schema on
+  //    first start. Idempotent; safe to leave on in prod.
   const boss = new PgBoss({
-    connectionString: env.DATABASE_URL,
+    connectionString: env.PROVIDER_DATABASE_URL ?? env.DATABASE_URL,
     schema: PG_BOSS_SCHEMA,
   });
 

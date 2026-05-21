@@ -118,7 +118,15 @@ describe('T6.8 — ImportJobHandler runs to completion', () => {
     const audits = await getAuditRows(org, jobId);
     const actions = audits.map((a) => a.action).sort();
     expect(actions).toEqual(
-      ['import.done', 'import.parsing', 'import.persisting', 'import.validating'].sort(),
+      // 'import.received' = audit-pass v2 C5 — written at handler entry
+      // BEFORE any state transition. Per-attempt (NOT deduped on retry).
+      [
+        'import.done',
+        'import.parsing',
+        'import.persisting',
+        'import.received',
+        'import.validating',
+      ].sort(),
     );
   });
 
@@ -126,7 +134,8 @@ describe('T6.8 — ImportJobHandler runs to completion', () => {
     const jobId = await createJob(org);
     await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
     const audits = await getAuditRows(org, jobId);
-    expect(audits.length).toBeGreaterThanOrEqual(4);
+    // 5 rows: received + parsing + validating + persisting + done.
+    expect(audits.length).toBeGreaterThanOrEqual(5);
     for (const a of audits) {
       expect(a.actorType).toBe('system');
       expect(a.actorId).toBe(org.users[0]!.id);
@@ -146,7 +155,7 @@ describe('T6.8 — ImportJobHandler runs to completion', () => {
     expect(row?.failedRows).toBe(0);
   });
 
-  it('5) re-running handler on a done row is a no-op (idempotent)', async () => {
+  it('5) re-running handler on a done row is a state-machine no-op (idempotent)', async () => {
     const jobId = await createJob(org);
     const payload: ImportJobPayload = {
       jobId,
@@ -154,12 +163,22 @@ describe('T6.8 — ImportJobHandler runs to completion', () => {
       createdBy: org.users[0]!.id,
     };
     await handler.handle(payload, makeCtx());
-    const auditCountBefore = (await getAuditRows(org, jobId)).length;
+    const transitionsBefore = (await getAuditRows(org, jobId)).filter(
+      (a) => a.action !== 'import.received',
+    ).length;
 
     await handler.handle(payload, makeCtx());
-    const auditCountAfter = (await getAuditRows(org, jobId)).length;
+    const transitionsAfter = (await getAuditRows(org, jobId)).filter(
+      (a) => a.action !== 'import.received',
+    ).length;
 
-    expect(auditCountAfter).toBe(auditCountBefore);
+    // State-machine idempotency: NO new transition rows on the second
+    // run (state was already 'done', readStatus returns terminal,
+    // handler exits without firing any transition). The 'import.received'
+    // row IS expected to grow per-attempt (audit-pass v2 C5 — pg-boss
+    // retries are forensically meaningful events). So we compare only
+    // transition rows.
+    expect(transitionsAfter).toBe(transitionsBefore);
     const row = await getJob(org, jobId);
     expect(row?.status).toBe('done');
   });

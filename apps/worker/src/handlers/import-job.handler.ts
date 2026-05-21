@@ -53,9 +53,25 @@ import {
 import { and, eq, sql } from 'drizzle-orm';
 
 import { MappingError, resolveMapping, type ColumnMapping } from '../mapping/mapping';
-import { ExcelParserError, parseExcelFull, parseExcelHeader } from '../parser/excel.parser';
+import { ExcelParserError, parseExcelFull, type ParsedRows } from '../parser/excel.parser';
 import { summariseFailureForAudit } from '../security/audit-sanitiser';
 import { validateRow } from '../validation/row-validator';
+
+/** Per-`handle()` cache so parseStage's parsed rows are reused by
+ *  validateStage instead of being re-downloaded + re-parsed.
+ *
+ *  Audit-pass v2 finding L6: a clean run wasted ~1-2s on the double
+ *  R2 GET + ExcelJS load. The cache cuts that to one read per job.
+ *
+ *  Scope: ONE per `handler.handle(...)` invocation — created at the
+ *  top of handle() and dropped on return. Survives across stages
+ *  WITHIN one attempt; does NOT persist across pg-boss retries (a
+ *  retry is a fresh handle() call → empty cache → validateStage
+ *  re-downloads, which is the correct restart-from-scratch posture). */
+interface JobCache {
+  parsed?: ParsedRows;
+  mapping?: ColumnMapping;
+}
 
 /** Domain state machine. MUST match the CHECK constraint in migration
  *  0022 (`import_jobs_status_valid`). Compile-time alignment with
@@ -149,6 +165,9 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
       });
     }
 
+    // Per-attempt cache — see JobCache JSDoc.
+    const cache: JobCache = {};
+
     try {
       // Drive the state machine forward until we hit `done` (or an
       // error transitions to `failed`). Each iteration is one withTenant
@@ -170,11 +189,7 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
           return;
         }
 
-        // Run the stage's stub work. S3/S5/S6 swap each stub with the
-        // real implementation. The stub's only job is to demonstrate
-        // the seam compiles + audit fires + progress increments —
-        // enough for T6.8.
-        await this.runStage({ payload, ctx, from: current, to: next });
+        await this.runStage({ payload, ctx, from: current, to: next, cache });
       }
     } catch (err) {
       // On any error: transition to 'failed' (idempotent guarded UPDATE)
@@ -218,8 +233,9 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
     ctx: JobContext;
     from: Status;
     to: Status;
+    cache: JobCache;
   }): Promise<void> {
-    const { payload, ctx, from, to } = opts;
+    const { payload, ctx, from, to, cache } = opts;
     ctx.log.info('stage transition', { from, to });
 
     await withTenant(
@@ -272,8 +288,8 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
     // it T6.9 would observe a state-only stream which is technically
     // correct but practically useless. We keep this minimal: real
     // parsing/validation/persistence is large + slice-owned.
-    if (to === 'parsing') await this.parseStage(payload, ctx);
-    if (to === 'validating') await this.validateStage(payload, ctx);
+    if (to === 'parsing') await this.parseStage(payload, ctx, cache);
+    if (to === 'validating') await this.validateStage(payload, ctx, cache);
     if (to === 'persisting') await this.persistStage(payload, ctx);
   }
 
@@ -290,7 +306,11 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
    *     markFailed transitions the domain row to 'failed'.
    *   - Storage I/O error (R2 blip) → propagate as RETRYABLE; the
    *     boss's retry policy handles it. */
-  private async parseStage(payload: ImportJobPayload, ctx: JobContext): Promise<void> {
+  private async parseStage(
+    payload: ImportJobPayload,
+    ctx: JobContext,
+    cache: JobCache,
+  ): Promise<void> {
     if (!this.storage) {
       // Pre-S3 fallback — keeps T6.8's bare `new ImportJobHandler()`
       // path running. Production main.ts always injects a provider.
@@ -323,26 +343,30 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
       throw new NonRetryableJobError('import_job vanished mid-parse', 'job_not_visible');
     }
 
-    let parsed;
+    // Audit-pass v2 finding L6: parseStage USED to call
+    // parseExcelHeader (header + rowCount only) and validateStage
+    // re-downloaded + re-parsed via parseExcelFull. That cost ~1-2s
+    // wasted from the T6.10 45s budget per 100-row job.
+    //
+    // Now parseStage runs parseExcelFull and caches the result in the
+    // per-attempt JobCache so validateStage reuses it. Memory delta is
+    // tiny vs the cost saved (typical 1000-row import = ~300KB of
+    // string[][], 100x cheaper than the R2 round-trip + decompression).
+    let parsed: ParsedRows;
     try {
       const stream = await this.storage.getObjectStream(row.fileR2Key);
-      parsed = await parseExcelHeader(stream);
+      parsed = await parseExcelFull(stream);
     } catch (e: unknown) {
       if (e instanceof ExcelParserError) {
         throw new NonRetryableJobError(`parse failed: ${e.code}`, `parse_${e.code}`);
       }
-      // I/O error from storage — retryable; the boss handles.
       throw e;
     }
 
-    // S4 — fail-fast mapping check (T6.2). Resolves canonical fields
-    // from headers; the file is rejected here (before validation +
-    // persistence) when required fields are missing or ambiguously
-    // mapped. The resolved mapping itself is recomputed in S5 (it's a
-    // pure function of headers; cheap to repeat) — we don't persist it
-    // on the row in this slice.
+    // S4 — fail-fast mapping check (T6.2). Cache it for validateStage.
+    let mapping: ColumnMapping;
     try {
-      const mapping = resolveMapping(parsed.headers);
+      mapping = resolveMapping(parsed.headers);
       ctx.log.info('mapping resolved', {
         bound: Object.keys(mapping.columns).length,
         unmapped: mapping.unmapped.length,
@@ -354,6 +378,9 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
       }
       throw e;
     }
+
+    cache.parsed = parsed;
+    cache.mapping = mapping;
 
     ctx.log.info('excel header detected', {
       header_cols: parsed.headers.length,
@@ -385,7 +412,11 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
    *  T6.5 dry-run is NOT handled here — persistStage early-exits when
    *  dry_run=true. Validation always runs (dry-run shows the manager
    *  what WOULD happen — same errors, just no persistence). */
-  private async validateStage(payload: ImportJobPayload, ctx: JobContext): Promise<void> {
+  private async validateStage(
+    payload: ImportJobPayload,
+    ctx: JobContext,
+    cache: JobCache,
+  ): Promise<void> {
     if (!this.storage) {
       await withTenant(
         payload.orgId,
@@ -400,45 +431,53 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
       return;
     }
 
-    // Re-download + re-parse for full row data. Acceptable cost for
-    // MVP (the storage read is bounded by 50MB; ExcelJS parse already
-    // benchmarks <2s for the T6.10 100-row gate). S7 may add a cache
-    // if the perf gate fails.
-    const row = await withTenant(
-      payload.orgId,
-      async (tx) => {
-        const [r] = await tx
-          .select({ fileR2Key: importJobs.fileR2Key })
-          .from(importJobs)
-          .where(eq(importJobs.id, payload.jobId))
-          .limit(1);
-        return r;
-      },
-      { userId: payload.createdBy },
-    );
-    if (!row) {
-      throw new NonRetryableJobError('import_job vanished mid-validate', 'job_not_visible');
-    }
-
-    let parsed;
-    try {
-      const stream = await this.storage.getObjectStream(row.fileR2Key);
-      parsed = await parseExcelFull(stream);
-    } catch (e: unknown) {
-      if (e instanceof ExcelParserError) {
-        throw new NonRetryableJobError(`parse failed: ${e.code}`, `parse_${e.code}`);
-      }
-      throw e;
-    }
-
+    // L6: prefer the per-attempt cache (parseStage in this same
+    // handle() invocation already paid for the R2 GET + ExcelJS load).
+    // Falls back to re-download for the retry path: pg-boss restart
+    // mid-flight reads `current='validating'` and the cache is empty
+    // because handle() is fresh. The fallback preserves correctness
+    // (a retry MUST be self-contained) at the cost of duplicating the
+    // download — same posture as before L6, just now ONLY on retry.
+    let parsed: ParsedRows;
     let mapping: ColumnMapping;
-    try {
-      mapping = resolveMapping(parsed.headers);
-    } catch (e: unknown) {
-      if (e instanceof MappingError) {
-        throw new NonRetryableJobError(`mapping failed: ${e.code}`, `mapping_${e.code}`);
+
+    if (cache.parsed && cache.mapping) {
+      parsed = cache.parsed;
+      mapping = cache.mapping;
+      ctx.log.info('validateStage using cached parse result');
+    } else {
+      const row = await withTenant(
+        payload.orgId,
+        async (tx) => {
+          const [r] = await tx
+            .select({ fileR2Key: importJobs.fileR2Key })
+            .from(importJobs)
+            .where(eq(importJobs.id, payload.jobId))
+            .limit(1);
+          return r;
+        },
+        { userId: payload.createdBy },
+      );
+      if (!row) {
+        throw new NonRetryableJobError('import_job vanished mid-validate', 'job_not_visible');
       }
-      throw e;
+      try {
+        const stream = await this.storage.getObjectStream(row.fileR2Key);
+        parsed = await parseExcelFull(stream);
+      } catch (e: unknown) {
+        if (e instanceof ExcelParserError) {
+          throw new NonRetryableJobError(`parse failed: ${e.code}`, `parse_${e.code}`);
+        }
+        throw e;
+      }
+      try {
+        mapping = resolveMapping(parsed.headers);
+      } catch (e: unknown) {
+        if (e instanceof MappingError) {
+          throw new NonRetryableJobError(`mapping failed: ${e.code}`, `mapping_${e.code}`);
+        }
+        throw e;
+      }
     }
 
     // Run validation across all rows. seenIds is per-import — T6.4

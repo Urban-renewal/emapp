@@ -285,9 +285,14 @@ describe('Test #7 — storage I/O error retry posture', () => {
     // policy is governed separately.
   });
 
-  it('7) storage failure in validateStage (after parseStage success) — same posture', async () => {
-    // Wire a storage that succeeds on the FIRST getObjectStream call
-    // (parseStage) but fails on the SECOND (validateStage).
+  it('7) storage failure on validateStage RETRY (cache-miss fallback) — same posture', async () => {
+    // L6 cache (introduced in v2 audit-pass): a single handle() call
+    // only downloads once — parseStage populates the cache, validateStage
+    // reads from it. The fallback re-download path fires when the state
+    // machine is RESUMED on a fresh handle() invocation (pg-boss retry
+    // after a crash mid-flight): cache is empty, validateStage falls
+    // back to its own getObjectStream call. This test exercises THAT
+    // path (the only one where validateStage talks to storage now).
     const realStorage = new FakeStorageProvider();
     const r2Key = `org/${org.id}/import/flaky-7.xlsx`;
     realStorage.setObject(
@@ -299,16 +304,40 @@ describe('Test #7 — storage I/O error retry posture', () => {
     const flakyStorage: typeof realStorage = Object.create(realStorage);
     flakyStorage.getObjectStream = async (k: string) => {
       calls += 1;
+      // First call: parseStage in the first handle() — success.
+      // Second call: validateStage in the SECOND handle() (cache empty
+      // because it's a fresh invocation) — fail.
       if (calls >= 2) throw new Error('R2 connection reset');
       return realStorage.getObjectStream(k);
     };
 
     const handler = new ImportJobHandler(flakyStorage);
     const jobId = await createJob(org, r2Key);
+    const payload = { jobId, orgId: org.id, createdBy: org.users[0]!.id };
+
+    // First handle(): parseStage downloads + caches; validateStage
+    // uses cache. Full success.
+    await handler.handle(payload, makeCtx());
+
+    // Simulate a pg-boss retry: force-reset state to 'parsing' so the
+    // second handle() runs the parsing→validating transition (which
+    // invokes validateStage). Cache is empty in the new invocation,
+    // validateStage falls back to its own getObjectStream call —
+    // which now fails (call #2 of the flaky storage).
+    //
+    // (Note: the runStage `to === 'validating'` branch is what calls
+    // validateStage. Forcing state directly to 'validating' would
+    // run persistStage on the next transition instead.)
+    const provClient = await providerPool.connect();
+    try {
+      await provClient.query(`UPDATE import_jobs SET status='parsing' WHERE id=$1`, [jobId]);
+    } finally {
+      provClient.release();
+    }
 
     let caught: unknown;
     try {
-      await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
+      await handler.handle(payload, makeCtx());
     } catch (e) {
       caught = e;
     }

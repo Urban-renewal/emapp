@@ -55,11 +55,17 @@ function makeCtx(over: Partial<JobContext> = {}): JobContext {
 }
 
 async function createJob(o: TestOrg, idempotencyKey?: string): Promise<string> {
+  // projectId required as of audit-pass v3 D5. T6.8 tests don't
+  // exercise persistence (no IStorageProvider is injected — they
+  // use the S2 stub-fallback path), but they DO advance the state
+  // machine to 'done' which now requires project_id since the
+  // recovery hook tries to invoke persistStage on persisting→done.
   const inserted = await withTenant(o.id, async (tx) =>
     tx
       .insert(importJobs)
       .values({
         orgId: o.id,
+        projectId: o.projects[0]!.id,
         fileR2Key: 'org/test/import/file.xlsx',
         fileName: 'import.xlsx',
         fileSizeBytes: 1024,

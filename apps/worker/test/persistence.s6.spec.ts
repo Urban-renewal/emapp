@@ -246,7 +246,14 @@ describe('S6 persistence — T6.6 + T6.7', () => {
     // ownerships grew by 1 (the new apartment's ownership).
   }, 180_000);
 
-  it('4) retry idempotency — second handle.handle does not double rows', async () => {
+  it('4) retry idempotency — second handle on completed job yields SAME final state', async () => {
+    // POST-v3-FIX: persistStage on cache miss now REBUILDS the cache
+    // (re-runs validateStage) so the retry path actually persists. The
+    // OLD test asserted "no change on retry" which codified the data-
+    // loss bug (audit-pass v3 finding A4). The NEW assertion: after
+    // a forced retry from 'persisting', the find-or-create logic
+    // produces the SAME final state (idempotency via find-or-create,
+    // not via silent no-op).
     const storage = new FakeStorageProvider();
     const handler = new ImportJobHandler(storage);
     const projectId = org.projects[0]!.id;
@@ -258,14 +265,15 @@ describe('S6 persistence — T6.6 + T6.7', () => {
     const jobId = await createImportJob(org, projectId, r2Key);
     const payload = { jobId, orgId: org.id, createdBy: org.users[0]!.id };
 
-    // First run.
+    // First run — persists.
     await handler.handle(payload, makeCtx());
     const after1 = await countAll(org);
 
-    // Force-reset to 'persisting' and re-run — simulates a pg-boss
-    // mid-persist retry. The handler's cache.okRows is empty in the
-    // new handle() (per L6 design); persistStage detects empty cache
-    // and no-ops. Domain counts stay the same.
+    // Force-reset to 'persisting' and re-run. NEW behavior: cache
+    // miss → validateStage re-runs → cache rebuilt → find-or-create
+    // sees existing owner/apartment/building → no NEW rows
+    // materialise (idempotent), but the operations DO run. The
+    // observable count is the same.
     const c = await providerPool.connect();
     try {
       await c.query(`UPDATE import_jobs SET status='persisting' WHERE id=$1`, [jobId]);
@@ -275,6 +283,7 @@ describe('S6 persistence — T6.6 + T6.7', () => {
     await handler.handle(payload, makeCtx());
     const after2 = await countAll(org);
 
+    // Identical final state.
     expect(after2).toEqual(after1);
   }, 180_000);
 
@@ -354,7 +363,15 @@ describe('S6 persistence — T6.6 + T6.7', () => {
     }
   }, 120_000);
 
-  it('7) project_id NULL → persistStage gracefully skips (pre-S8 fallback)', async () => {
+  it('7) project_id NULL → state=failed (NOT silent-success) — audit-pass v3 D5', async () => {
+    // POST-v3-FIX: audit-pass v3 finding D5 — the old behavior was a
+    // silent graceful-skip that advanced state to 'done' with zero
+    // writes. That was a trust-destroying failure mode for a tool
+    // handling PII: Manager sees "succeeded", regulator sees no audit
+    // trail of the skip, no data was persisted. Defense-in-depth:
+    // the worker now FAILS LOUDLY when project_id is null. The S8
+    // wizard enforces project_id at API ingress; the worker enforces
+    // it as the second line of defense.
     const storage = new FakeStorageProvider();
     const handler = new ImportJobHandler(storage);
     const r2Key = `org/${org.id}/import/s6-7.xlsx`;
@@ -377,11 +394,18 @@ describe('S6 persistence — T6.6 + T6.7', () => {
     }
 
     const before = await countAll(org);
-    await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
+    let caught: unknown;
+    try {
+      await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(NonRetryableJobError);
+    expect((caught as NonRetryableJobError).code).toBe('persist_no_project');
 
     const job = await getJob(org, jobId);
-    expect(job?.status).toBe('done');
-    // No domain writes happened (project_id NULL early-exit).
+    expect(job?.status).toBe('failed');
+    // No domain writes happened (early-fail before any persist work).
     const after = await countAll(org);
     expect(after).toEqual(before);
   }, 120_000);

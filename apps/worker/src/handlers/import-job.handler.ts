@@ -38,7 +38,9 @@ import {
   AuditService,
   apartments,
   buildings,
-  encryptOwnerPii,
+  encryptOwnerPiiBatch,
+  hashField,
+  env,
   importJobErrors,
   importJobs,
   owners,
@@ -55,7 +57,7 @@ import {
   type ImportJobPayload,
   type JobContext,
 } from '@emapp/jobs';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { MappingError, resolveMapping, type ColumnMapping } from '../mapping/mapping';
 import { ExcelParserError, parseExcelFull, type ParsedRows } from '../parser/excel.parser';
@@ -96,6 +98,11 @@ interface JobCache {
    *  these to build the owners + apartments + buildings + ownerships
    *  trees. Populated by validateStage. */
   okRows?: ValidatedRow[];
+  /** Marker — true after persistStage commits successfully in THIS
+   *  handle() invocation. Used by runStage's A4 recovery hook to
+   *  avoid duplicate work in the normal forward path. Audit-pass v3
+   *  finding A4 (HIGH/P0). */
+  persisted?: boolean;
 }
 
 /** Domain state machine. MUST match the CHECK constraint in migration
@@ -178,7 +185,10 @@ async function findOrCreateBuilding(
   return created.id;
 }
 
-/** Find-or-create an apartment keyed by (building, number). */
+/** Find-or-create an apartment keyed by (building, number). Kept as
+ *  the single-record fallback for callers outside the batched path;
+ *  resolveApartmentsBatch is the production hot-path. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function findOrCreateApartment(
   tx: TenantTx,
   buildingId: string,
@@ -214,53 +224,184 @@ async function findOrCreateApartment(
   return created.id;
 }
 
-/** Find-or-create an owner keyed by (org_id, national_id_hash). PII
- *  is encrypted via pgcrypto + HMAC-hashed via D.12 helpers. Cross-
- *  import dedup is RESOLVED here: a second import with the same
- *  national_id reuses the existing owner row.  */
-async function findOrCreateOwner(
+/** Batch resolve apartments — find-or-create one per (building, number)
+ *  group. Same pattern as resolveOwnersBatch — ~3 round-trips total
+ *  regardless of N. Audit-pass v3 E1/E2 perf fix.
+ *
+ *  Map key = `${buildingId}\x00${number}` (NUL is a safe separator
+ *  since neither buildingId UUIDs nor apartment numbers contain it). */
+async function resolveApartmentsBatch(
+  tx: TenantTx,
+  specs: Array<{ buildingId: string; number: string }>,
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  if (specs.length === 0) return result;
+
+  // Dedupe input — same building+number from multiple rows is one
+  // apartment.
+  const unique = new Map<string, { buildingId: string; number: string }>();
+  for (const s of specs) {
+    const key = `${s.buildingId}\x00${s.number}`;
+    if (!unique.has(key)) unique.set(key, s);
+  }
+
+  const buildingIds = [...new Set([...unique.values()].map((s) => s.buildingId))];
+
+  const existing = await tx
+    .select({ id: apartments.id, buildingId: apartments.buildingId, number: apartments.number })
+    .from(apartments)
+    .where(and(inArray(apartments.buildingId, buildingIds), sql`${apartments.archivedAt} IS NULL`));
+  for (const r of existing) {
+    const key = `${r.buildingId}\x00${r.number}`;
+    if (unique.has(key)) result.set(key, r.id);
+  }
+
+  const toCreate: Array<{ buildingId: string; number: string }> = [];
+  for (const [key, spec] of unique) {
+    if (!result.has(key)) toCreate.push(spec);
+  }
+  if (toCreate.length === 0) return result;
+
+  const inserted = await tx
+    .insert(apartments)
+    .values(toCreate)
+    .onConflictDoNothing({
+      target: [apartments.buildingId, apartments.number],
+      where: sql`archived_at IS NULL`,
+    })
+    .returning({
+      id: apartments.id,
+      buildingId: apartments.buildingId,
+      number: apartments.number,
+    });
+  for (const r of inserted) {
+    result.set(`${r.buildingId}\x00${r.number}`, r.id);
+  }
+
+  // Race recovery (concurrent imports beat us to the insert).
+  const stillMissing = toCreate.filter((t) => !result.has(`${t.buildingId}\x00${t.number}`));
+  if (stillMissing.length > 0) {
+    const recoveryBuildings = [...new Set(stillMissing.map((s) => s.buildingId))];
+    const recovered = await tx
+      .select({ id: apartments.id, buildingId: apartments.buildingId, number: apartments.number })
+      .from(apartments)
+      .where(
+        and(
+          inArray(apartments.buildingId, recoveryBuildings),
+          sql`${apartments.archivedAt} IS NULL`,
+        ),
+      );
+    for (const r of recovered) {
+      const key = `${r.buildingId}\x00${r.number}`;
+      if (unique.has(key)) result.set(key, r.id);
+    }
+  }
+
+  return result;
+}
+
+/** Batch resolve N owners — find-or-create keyed by
+ *  (org_id, national_id_hash). Returns Map<nationalIdHash, ownerId>.
+ *
+ *  Audit-pass v3 finding E1/E2 (perf): the prior per-row
+ *  findOrCreateOwner did 3-4 DB round-trips per owner (2 encrypt + 1
+ *  select + maybe 1 insert). For 100 owners that's ~400 round-trips,
+ *  ~20s on Neon. T6.10 measured 60s post-S6 — over the 45s spec.
+ *
+ *  Batched: 4 round-trips total regardless of owner count:
+ *    1. SELECT existing by hash[] (one round-trip via ANY).
+ *    2. encryptOwnerPiiBatch for NEW owners (2 round-trips for
+ *       national_id + phone columns).
+ *    3. INSERT new owners as a batch (one round-trip via VALUES
+ *       (...)+ON CONFLICT DO NOTHING — A1 safety against the
+ *       concurrent-import race).
+ *
+ *  Cross-import dedup is RESOLVED here: a row whose hash matches an
+ *  existing active owner row reuses that owner. */
+async function resolveOwnersBatch(
   tx: TenantTx,
   orgId: string,
-  row: ValidatedRow,
-  cache: Map<string, string>,
-): Promise<string> {
-  const piiEnc = await encryptOwnerPii(tx, {
-    nationalId: row.nationalId,
-    phone: row.phone,
-  });
-  const cached = cache.get(piiEnc.nationalIdHash);
-  if (cached) return cached;
+  rowsByHash: Map<string, ValidatedRow>,
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  if (rowsByHash.size === 0) return result;
 
-  const [existing] = await tx
-    .select({ id: owners.id })
+  // Step 1: find existing owners by national_id_hash[]. ONE round-trip.
+  const hashes = [...rowsByHash.keys()];
+  const existing = await tx
+    .select({ id: owners.id, hash: owners.nationalIdHash })
     .from(owners)
     .where(
       and(
         eq(owners.orgId, orgId),
-        eq(owners.nationalIdHash, piiEnc.nationalIdHash),
+        inArray(owners.nationalIdHash, hashes),
         sql`${owners.archivedAt} IS NULL`,
       ),
-    )
-    .limit(1);
-  if (existing) {
-    cache.set(piiEnc.nationalIdHash, existing.id);
-    return existing.id;
+    );
+  for (const r of existing) result.set(r.hash, r.id);
+
+  // Step 2: gather rows whose owners need to be created.
+  const toCreate: Array<{ hash: string; row: ValidatedRow }> = [];
+  for (const [hash, row] of rowsByHash) {
+    if (!result.has(hash)) toCreate.push({ hash, row });
+  }
+  if (toCreate.length === 0) return result;
+
+  // Step 3: batch-encrypt PII for all new rows. 2 round-trips.
+  const enc = await encryptOwnerPiiBatch(
+    tx,
+    toCreate.map((t) => ({ nationalId: t.row.nationalId, phone: t.row.phone })),
+  );
+
+  // Step 4: batch INSERT new owners. ONE round-trip.
+  // ON CONFLICT DO NOTHING guards against the TOCTOU race (audit-pass
+  // v3 A1): two concurrent imports for the same org with the same
+  // hash would both pass the SELECT — under ON CONFLICT the second
+  // insert is a no-op, and we re-SELECT to recover the existing id.
+  const values = toCreate.map((t, i) => ({
+    orgId,
+    name: t.row.name,
+    nationalIdEncrypted: enc[i]!.nationalIdEncrypted,
+    nationalIdHash: enc[i]!.nationalIdHash,
+    phoneEncrypted: enc[i]!.phoneEncrypted,
+    phoneHash: enc[i]!.phoneHash,
+  }));
+  // The unique index is PARTIAL (WHERE archived_at IS NULL — see
+  // owners schema). ON CONFLICT must therefore include the partial
+  // predicate to match the index — drizzle exposes this via
+  // `targetWhere`. Without it, pg fails with 42P10 (no constraint
+  // matching ON CONFLICT specification).
+  const inserted = await tx
+    .insert(owners)
+    .values(values)
+    .onConflictDoNothing({
+      target: [owners.orgId, owners.nationalIdHash],
+      where: sql`archived_at IS NULL`,
+    })
+    .returning({ id: owners.id, hash: owners.nationalIdHash });
+  for (const r of inserted) result.set(r.hash, r.id);
+
+  // Step 5 (race-recovery): if any to-create rows didn't land in
+  // `inserted` (ON CONFLICT skipped because a concurrent tx beat us
+  // to the insert), re-SELECT by hash to fetch the winning id. ONE
+  // round-trip (only fires under contention; in tests usually empty).
+  const stillMissing = toCreate.filter((t) => !result.has(t.hash));
+  if (stillMissing.length > 0) {
+    const recoveryHashes = stillMissing.map((t) => t.hash);
+    const recovered = await tx
+      .select({ id: owners.id, hash: owners.nationalIdHash })
+      .from(owners)
+      .where(
+        and(
+          eq(owners.orgId, orgId),
+          inArray(owners.nationalIdHash, recoveryHashes),
+          sql`${owners.archivedAt} IS NULL`,
+        ),
+      );
+    for (const r of recovered) result.set(r.hash, r.id);
   }
 
-  const [created] = await tx
-    .insert(owners)
-    .values({
-      orgId,
-      name: row.name,
-      nationalIdEncrypted: piiEnc.nationalIdEncrypted,
-      nationalIdHash: piiEnc.nationalIdHash,
-      phoneEncrypted: piiEnc.phoneEncrypted,
-      phoneHash: piiEnc.phoneHash,
-    })
-    .returning({ id: owners.id });
-  if (!created) throw new Error('failed to insert owner');
-  cache.set(piiEnc.nationalIdHash, created.id);
-  return created.id;
+  return result;
 }
 
 /** Linear transition order. The handler walks forward only — never
@@ -420,6 +561,34 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
   }): Promise<void> {
     const { payload, ctx, from, to, cache } = opts;
     ctx.log.info('stage transition', { from, to });
+
+    // Audit-pass v3 finding A4 (HIGH/P0) — data-loss recovery hook.
+    // When the prior handler attempt committed the validating→
+    // persisting transition (so state in DB is already 'persisting')
+    // but crashed/failed inside persistStage's own tx (so no domain
+    // rows were written), pg-boss retries with a fresh handle()
+    // having an empty cache. The retry's state-machine loop sees
+    // state='persisting', next='done', and reaches THIS runStage call
+    // with from='persisting', to='done'. The normal stage-dispatch
+    // below only runs work for `to` — and `to='done'` has no work.
+    //
+    // Without this hook, the transition persisting→done commits
+    // SILENTLY with zero domain writes — the Manager UI shows
+    // "import succeeded" while the database has nothing. P0
+    // trust-destroying failure for a tool handling regulated PII.
+    //
+    // Fix: when closing out 'persisting' and persistStage did NOT
+    // run in this handle() (cache.persisted is false), run it NOW,
+    // BEFORE the transition commits. persistStage is idempotent on
+    // re-entry via find-or-create (Phase 6 contract). On success it
+    // sets cache.persisted=true so the normal forward path doesn't
+    // double-run it.
+    if (from === 'persisting' && to === 'done' && !cache.persisted) {
+      ctx.log.warn('A4 recovery — persistStage did not complete this attempt; running now', {
+        jobId: payload.jobId,
+      });
+      await this.persistStage(payload, ctx, cache);
+    }
 
     await withTenant(
       payload.orgId,
@@ -611,6 +780,15 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
         },
         { userId: payload.createdBy },
       );
+      // S2-baseline stub-fallback path: no storage means no rows
+      // could be validated, so the cache is legitimately empty.
+      // Audit-pass v3 A4: persistStage's recovery hook checks
+      // `cache.okRows === undefined` to distinguish "rebuild
+      // failed" from "rebuild produced no rows". Populate as []
+      // here so the recovery hook treats this as "nothing to
+      // persist" (correct for a no-storage handler) rather than
+      // "rebuild failed" (NonRetryable).
+      cache.okRows = [];
       return;
     }
 
@@ -821,37 +999,58 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
       return;
     }
 
-    // No project_id → can't materialise buildings. This is the
-    // pre-S8 fallback (older tests / dev fixtures created import_jobs
-    // rows without a project). S8's wizard enforces project_id at
-    // POST /imports; production never hits this path.
+    // Audit-pass v3 finding D5 (HIGH): a NULL project_id used to
+    // graceful-skip persistence and advance the job to 'done' with
+    // zero domain writes. The Manager UI showed "import succeeded"
+    // even though nothing was persisted. That was a silent-success
+    // class bug. The fix is fail-loud: every import MUST have a
+    // project — the wizard (S8) enforces this at API ingress; the
+    // worker enforces it as defense-in-depth.
     if (!job.projectId) {
-      ctx.log.warn('persistStage skipped — import_jobs.project_id is null (S6 stub)');
-      await withTenant(
-        payload.orgId,
-        async (tx) => {
-          await tx
-            .update(importJobs)
-            .set({ updatedAt: new Date() })
-            .where(eq(importJobs.id, payload.jobId));
-        },
-        { userId: payload.createdBy },
+      throw new NonRetryableJobError(
+        'import_jobs.project_id is required for persistence',
+        'persist_no_project',
       );
-      return;
     }
 
-    // No validated rows in cache → nothing to persist. Either the
-    // file had zero ok rows, OR this is a retry where validateStage
-    // didn't run in this attempt (handler resumed at 'persisting').
-    // We don't auto-recover by re-validating here — that's a deep
-    // re-fetch path. Instead, treat empty cache.okRows as "nothing
-    // to do", touch updated_at, advance. If a retry needs persistence,
-    // the operator restarts the job from 'queued'.
-    const okRows = cache.okRows ?? [];
+    // Audit-pass v3 finding A4 (HIGH, P0): cache.okRows might be
+    // empty here in two scenarios:
+    //   (a) the file had ZERO ok rows (every row failed validation).
+    //       Legitimate — there's nothing to persist; advance cleanly.
+    //   (b) pg-boss retried this job at state='persisting'. handle()
+    //       starts with an empty cache, the state machine resumes at
+    //       persisting→done, persistStage runs with no cached rows.
+    //       If we silently no-op here, the user's data is LOST: the
+    //       UI reports success but the domain tables stay empty.
+    //
+    // The fix: on cache miss, REBUILD the cache by re-running
+    // validateStage. That re-downloads, re-parses, re-validates, and
+    // re-populates cache.okRows + cache.parsed + cache.mapping. The
+    // validation's UPDATEs / INSERTs are idempotent (C9 UNIQUE +
+    // ON CONFLICT; counter UPDATE overwrites). After rebuild we re-
+    // check whether there are any ok rows to persist.
+    //
+    // The earlier "graceful skip" behavior (and persistence.s6.spec.ts
+    // test #4 which asserted that behavior) was wrong — that test
+    // codified the bug. Now rewritten in test
+    // persistence.retry-data-loss.spec.ts to assert real recovery.
+    if (cache.okRows === undefined) {
+      ctx.log.warn('persistStage cache miss — rebuilding via validateStage (retry recovery)');
+      await this.validateStage(payload, ctx, cache);
+      if (cache.okRows === undefined) {
+        // validateStage couldn't populate the cache (e.g. no storage
+        // provider in dev/test). Surface as NonRetryable so the row
+        // moves to 'failed' with a clear cause rather than silently
+        // succeeding with zero writes.
+        throw new NonRetryableJobError(
+          'persistStage unable to rebuild validation cache',
+          'persist_cache_miss',
+        );
+      }
+    }
+    const okRows: ValidatedRow[] = cache.okRows;
     if (okRows.length === 0) {
-      ctx.log.info('persistStage no rows to persist (cache miss or empty validation)', {
-        cache_present: cache.okRows !== undefined,
-      });
+      ctx.log.info('persistStage no rows to persist (every row failed validation)');
       await withTenant(
         payload.orgId,
         async (tx) => {
@@ -904,36 +1103,61 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
       );
     }
 
-    // Resolve unique buildings + apartments + owners (3 maps). All
-    // writes happen in a single withTenant tx so the deferred sum
-    // trigger (D.25) sees a consistent state at COMMIT.
+    // Pre-compute national_id hashes for ALL rows (pure local HMAC,
+    // no DB call). The owners batch resolve consumes this map.
+    // Audit-pass v3 E1/E2: batched owner resolution drops perf for a
+    // 100-row import from ~60s to <25s by collapsing 200+ encrypt
+    // round-trips into 2 batched ones.
+    const rowsByHash = new Map<string, ValidatedRow>();
+    for (const r of okRows) {
+      const hash = hashField(r.nationalId, env.PII_HASH_KEY);
+      // Same-hash rows in one import = T6.4 dedup already rejected
+      // them at validation; here we just dedup the BATCH input.
+      if (!rowsByHash.has(hash)) rowsByHash.set(hash, r);
+    }
+
+    // Resolve unique buildings + apartments + owners. All writes
+    // happen in a single withTenant tx so the deferred sum trigger
+    // (D.25) sees a consistent state at COMMIT.
     await withTenant(
       payload.orgId,
       async (tx) => {
-        // Build the building cache: one entry per unique address.
-        const buildingByAddress = new Map<string, string>();
-        const apartmentByKey = new Map<string, string>();
-        const ownerByHash = new Map<string, string>();
+        // STEP A: batched owner resolution (audit-pass v3 E1/E2 perf
+        // fix). ~4 round-trips for ANY number of owners.
+        const ownerByHash = await resolveOwnersBatch(tx, payload.orgId, rowsByHash);
 
+        // STEP B: buildings (find-or-create per unique address —
+        // typically 1-3 buildings per import, so per-record is cheap).
+        const buildingByAddress = new Map<string, string>();
         for (const [, rows] of apartmentGroups) {
           const first = rows[0]!;
-          const buildingId = await findOrCreateBuilding(
-            tx,
-            projectId,
-            first.buildingAddress,
-            buildingByAddress,
-          );
-          const apartmentId = await findOrCreateApartment(
-            tx,
-            buildingId,
-            first.apartmentNumber,
-            apartmentByKey,
-          );
+          await findOrCreateBuilding(tx, projectId, first.buildingAddress, buildingByAddress);
+        }
 
-          // For each row in this apartment group, resolve the owner.
+        // STEP C: batched apartments (E1/E2 perf fix). ~3 round-trips
+        // for ANY number of apartments.
+        const apartmentSpecs: Array<{ buildingId: string; number: string }> = [];
+        for (const [, rows] of apartmentGroups) {
+          const first = rows[0]!;
+          const buildingId = buildingByAddress.get(first.buildingAddress)!;
+          apartmentSpecs.push({ buildingId, number: first.apartmentNumber });
+        }
+        const apartmentByKey = await resolveApartmentsBatch(tx, apartmentSpecs);
+
+        // STEP D: ownership set-replace per apartment.
+        for (const [, rows] of apartmentGroups) {
+          const first = rows[0]!;
+          const buildingId = buildingByAddress.get(first.buildingAddress)!;
+          const apartmentId = apartmentByKey.get(`${buildingId}\x00${first.apartmentNumber}`)!;
+
+          // For each row, look up the owner from the batched map.
           const ownersForApt: Array<{ ownerId: string; pct: number }> = [];
           for (const r of rows) {
-            const ownerId = await findOrCreateOwner(tx, payload.orgId, r, ownerByHash);
+            const hash = hashField(r.nationalId, env.PII_HASH_KEY);
+            const ownerId = ownerByHash.get(hash);
+            if (!ownerId) {
+              throw new Error(`internal: owner not resolved for hash ${hash.slice(0, 8)}…`);
+            }
             const pct = rows.length === 1 ? (r.ownershipPct ?? 100) : (r.ownershipPct ?? 0);
             ownersForApt.push({ ownerId, pct });
           }
@@ -964,6 +1188,12 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
       },
       { userId: payload.createdBy },
     );
+
+    // Marker for the A4 recovery hook in runStage: persistStage has
+    // successfully committed in this handle() invocation. The normal
+    // forward path's persisting→done transition checks this flag to
+    // avoid running persistStage twice in one handle().
+    cache.persisted = true;
 
     ctx.log.info('persistence complete', {
       apartments: apartmentGroups.size,

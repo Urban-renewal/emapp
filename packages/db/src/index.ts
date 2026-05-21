@@ -30,6 +30,7 @@ export * from './helpers/members';
 export * from './helpers/documents';
 export {
   encryptOwnerPii,
+  encryptOwnerPiiBatch,
   decryptOwnerPii,
   hashField,
   encryptField,

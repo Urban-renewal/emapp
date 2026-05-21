@@ -49,11 +49,15 @@ async function buildXlsx(): Promise<Buffer> {
 }
 
 async function createJob(o: TestOrg, r2Key: string): Promise<string> {
+  // projectId is required by the worker's persistStage as of audit-
+  // pass v3 D5 (the prior silent-skip path was a security/UX bug).
+  // All test fixtures must supply it.
   const inserted = await withTenant(o.id, async (tx) =>
     tx
       .insert(importJobs)
       .values({
         orgId: o.id,
+        projectId: o.projects[0]!.id,
         fileR2Key: r2Key,
         fileName: 'import.xlsx',
         fileSizeBytes: 1024,

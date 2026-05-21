@@ -33,11 +33,13 @@ function makeCtx(): JobContext {
 }
 
 async function createJob(o: TestOrg, r2Key: string): Promise<string> {
+  // projectId required as of audit-pass v3 D5 — see audit-c5-received.spec.ts.
   const inserted = await withTenant(o.id, async (tx) =>
     tx
       .insert(importJobs)
       .values({
         orgId: o.id,
+        projectId: o.projects[0]!.id,
         fileR2Key: r2Key,
         fileName: 'import.xlsx',
         fileSizeBytes: 1024,

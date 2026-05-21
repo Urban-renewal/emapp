@@ -59,7 +59,8 @@ export type ParserErrorCode =
   | 'empty_workbook' // zero sheets
   | 'no_header_row' // first sheet has no non-empty row
   | 'sparse_header' // header has < 2 non-empty cells
-  | 'formula_in_header' // CSV-injection guard
+  | 'formula_in_header' // CSV-injection guard (header row)
+  | 'formula_in_data' // CSV-injection guard (any data row) — audit-pass v2 C1
   | 'corrupt_file'; // ExcelJS threw
 
 export class ExcelParserError extends Error {
@@ -162,7 +163,20 @@ export async function parseExcelHeader(stream: Readable): Promise<ParsedHeader> 
         return;
       }
 
-      if (nonEmpty.length > 0) rowCount += 1;
+      if (nonEmpty.length === 0) return;
+
+      // Data-row formula guard — mirrors parseExcelFull. Reject as
+      // early as possible so the handler doesn't advance through one
+      // useless state transition before the validate stage catches it.
+      // See parseExcelFull for the full security rationale.
+      if (rowHasFormula(row)) {
+        throw new ExcelParserError(
+          'data row contains a formula cell (CSV-injection guard)',
+          'formula_in_data',
+        );
+      }
+
+      rowCount += 1;
     });
 
     if (!headers) {
@@ -248,6 +262,31 @@ export async function parseExcelFull(stream: Readable): Promise<ParsedRows> {
       }
 
       if (nonEmpty.length === 0) return; // skip blank data rows
+
+      // SECURITY (audit-pass v2 C1, HIGH — docs/03 §10 line 2124:
+      // "ExcelJS עם cellFormula: false למניעת formula injection"):
+      // ExcelJS's load() API has no cellFormula:false option (only the
+      // streaming reader exposed it, and we don't use it — see
+      // parseExcelHeader docstring for the why). Functional equivalent:
+      // REJECT any file that contains ANY formula cell, anywhere.
+      // Rationale:
+      //   1. Import files describe real-world data (owners, IDs, phones,
+      //      addresses) — there is no legitimate reason for a formula.
+      //   2. Even if the formula evaluates to a benign result HERE, the
+      //      formula text would re-emerge on the Manager's error-export
+      //      (S8) and re-inject into a downstream consumer (Excel/CSV
+      //      reopened locally). The classic CSV-injection chain.
+      //   3. Strict reject is simpler to audit than per-cell coercion.
+      // This is a deliberate departure from the spec wording (which
+      // suggested a cellFormula:false flag) — same security posture,
+      // achieved at file-level instead of cell-level.
+      if (rowHasFormula(row)) {
+        throw new ExcelParserError(
+          `data row ${excelRowNumber} contains a formula cell (CSV-injection guard)`,
+          'formula_in_data',
+        );
+      }
+
       rows.push(cells);
       rowNumbers.push(excelRowNumber);
     });

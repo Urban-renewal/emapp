@@ -176,6 +176,13 @@
       "when": 1779041400000,
       "tag": "0024_import_jobs_revoke_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1779042000000,
+      "tag": "0025_import_job_errors_unique",
+      "breakpoints": true
     }
   ]
 }

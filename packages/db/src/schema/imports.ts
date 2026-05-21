@@ -135,6 +135,18 @@ export const importJobErrors = pgTable(
   },
   (table) => ({
     jobRowIdx: index('idx_import_job_errors_job_row').on(table.jobId, table.rowNumber),
+    // Audit-pass v2 C9 (MEDIUM, migration 0025): UNIQUE prevents
+    // duplicate error rows on pg-boss retry. The handler's batched
+    // INSERT uses ON CONFLICT (job_id, row_number, code) DO NOTHING.
+    // Composite — a single row can fail multiple ways (invalid_luhn
+    // AND invalid_phone) and produce two error entries with the same
+    // row_number but different code; the composite preserves this
+    // legitimate multiplicity while preventing exact duplicates.
+    jobRowCodeUnique: uniqueIndex('import_job_errors_unique').on(
+      table.jobId,
+      table.rowNumber,
+      table.code,
+    ),
   }),
 );
 

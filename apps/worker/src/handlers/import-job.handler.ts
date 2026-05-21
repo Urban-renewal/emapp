@@ -441,6 +441,8 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
         await tx
           .update(importJobs)
           .set({
+            // overwrite (not add) — on pg-boss retry these reflect the
+            // CURRENT validation pass, not an accumulation.
             processedRows: parsed.rows.length,
             okRows: okCount,
             failedRows: failedCount,
@@ -448,7 +450,17 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
           })
           .where(eq(importJobs.id, payload.jobId));
         if (errorBatch.length > 0) {
-          await tx.insert(importJobErrors).values(errorBatch);
+          // Audit-pass v2 finding C9 (MEDIUM): on pg-boss retry the
+          // same row+code is recomputed; without ON CONFLICT DO
+          // NOTHING the table would double up every error row on
+          // every retry. Migration 0025 added the UNIQUE
+          // (job_id, row_number, code) index; this clause uses it.
+          await tx
+            .insert(importJobErrors)
+            .values(errorBatch)
+            .onConflictDoNothing({
+              target: [importJobErrors.jobId, importJobErrors.rowNumber, importJobErrors.code],
+            });
         }
       },
       { userId: payload.createdBy },

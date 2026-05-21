@@ -54,6 +54,7 @@ import { and, eq, sql } from 'drizzle-orm';
 
 import { MappingError, resolveMapping, type ColumnMapping } from '../mapping/mapping';
 import { ExcelParserError, parseExcelFull, parseExcelHeader } from '../parser/excel.parser';
+import { summariseFailureForAudit } from '../security/audit-sanitiser';
 import { validateRow } from '../validation/row-validator';
 
 /** Domain state machine. MUST match the CHECK constraint in migration
@@ -545,10 +546,17 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
           action: 'import.failed',
           targetTable: 'import_jobs',
           targetId: payload.jobId,
-          metadata: {
-            reason: err instanceof Error ? err.message : 'unknown',
-            non_retryable: err instanceof NonRetryableJobError ? err.code : null,
-          },
+          // SECURITY (audit-pass v2 finding C2 — HIGH): err.message
+          // for a pg-error (unique-violation / FK-violation / CHECK) can
+          // include row VALUES — e.g. `Key (national_id)=(123456789)
+          // already exists`. That row value would land in audit_log
+          // (jsonb), queryable by any Manager with audit:read. PII via
+          // audit is a docs/07 §5 violation. Strip to structured,
+          // value-free fields: the error CLASS (always safe — class
+          // names are program identifiers) + the NonRetryable code
+          // (already a discriminator, never a value). The full pg-error
+          // chain belongs only in the worker's pino logs (redacted).
+          metadata: summariseFailureForAudit(err),
         });
       },
       { userId: payload.createdBy },

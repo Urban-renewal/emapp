@@ -6,12 +6,29 @@
 
 ## Heartbeat (latest — for the 30-second scan)
 
-- **Last slice:** S6 — real persistence (T6.6 + T6.7). Per Lidor "תסגור את כל הליקויים", picked resolution (A) for project_id: migration 0026 adds `import_jobs.project_id`. Handler `persistStage` materialises validated rows into owners/apartments/buildings/ownerships under ONE withTenant tx; PII pgcrypto-encrypted via `encryptOwnerPii` (D.12); atomic ownership set-replace per D.25; partial-failure → automatic rollback via the deferred sum-check trigger. **150/150 worker + api tests green**. Commit `edeb816`.
-- **Phase 6 T-IDs closed:** T6.1, T6.2, T6.3, T6.4, T6.5, T6.6, T6.7, T6.8, T6.9, T6.10 — **10 of 12**. Remaining: T6.11 (1000 rows scale — S7 perf gate, not blocking) + T6.12 (E2E wizard — Phase 8 frontend).
-- **Audit-pass v2 status:** ALL findings closed. C1, C2, C8, C9 fixed in Track 1 (4 commits). C5 + C7 fixed (commit `f80d0f6`). L6 fixed via parse cache (commit `270db0d`). Tests #4 (e2e pg-boss), #6 (cross-import dedup pinned), #8 (SSE HTTP wire), #10 (T6.10 perf baseline = 10.1s vs 45s spec budget) all landed. Deferred-by-audit items still recorded: L3 (SSE LISTEN/NOTIFY → S7) + L4 (memory peak → S7 / ExcelJS swap).
-- **Next slice:** **S7 perf gate** (T6.11 scale test 1000 rows + L3/L4 perf work IF the gate exposes a real regression) OR **S8 API endpoints** (POST /imports + cancel + errors export — wizard surface for Phase 8). Both are open; no blocker.
+- **Last slice:** audit-pass v3 — INDEPENDENT fresh-eyes review (third pass) found **3 HIGH bugs + 1 P0** that v2 missed, including a silent data-loss path that the v2 test #4 actually CODIFIED as expected. Closed in commit `1a53d6b`: A4 data-loss recovery (runStage gains persisting→done recovery hook, persistStage rebuilds cache from validateStage on retry, ownership find-or-create idempotent on re-entry); D5 NULL project_id fail-loud (was silent-success → NonRetryable + state=failed); E1/E2 batched encryption + apartment/owner resolution (T6.10 perf restored from 60s+timeout back to 44.3s, under 45s spec). New tests: persistence.retry-data-loss.spec.ts (3 cases). All 9 createJob fixtures updated to supply projectId.
+- **Phase 6 T-IDs closed:** T6.1, T6.2, T6.3, T6.4, T6.5, T6.6, T6.7, T6.8, T6.9, T6.10 — **10 of 12**. **145/145 worker tests green**, lint + typecheck clean. T6.10 perf measured 44.3s (1.5s under 45s spec).
+- **Audit-pass v3 status:** P0 + HIGH all closed (A4, D5, E1, E2). MEDIUM recorded for follow-up: A1 (no UNIQUE on buildings(project_id, address) — TOCTOU race produces silent duplicates; needs migration + ON CONFLICT in findOrCreateBuilding), D4 (200MB decompressed cap may OOM Free Tier at upper bound — recommend dropping to 50MB), D1 (missing `import.materialised` aggregate audit row per ISO A.18.1.4). LOW recorded: A5 (address normalization — "Herzl 10" vs "herzl 10" produce duplicates), E3 (T6.11 1000 rows still ~400s — needs ownership set-replace batching).
+- **Next slice:** **S7 perf gate** (close A1 + ownership batching for T6.11; address A5 normalization decision; D4 cap tightening) OR **S8 API endpoints** (POST /imports + cancel + errors export — wizard surface for Phase 8). No blocker. Recommended order: S7 first (closes the remaining MEDIUM findings + unlocks T6.11), then S8.
 - **Blocked:** no.
-- **Mode:** Phase 6 worker+API surface ready for sign-off. Awaiting direction on S7 vs S8 next.
+- **Mode:** Phase 6 worker+API surface ready for sign-off pending the recorded MEDIUM follow-ups. Three audit-passes (v1, v2, v3) consumed — each found real bugs the prior missed. Next agent should run a v4 only AFTER S7's ownership-batching lands.
+
+## For the next agent (handoff)
+
+Read these IN ORDER:
+
+1. `CLAUDE.md` — hard rules. AUTOPILOT protocol.
+2. `GATES.md` — Gate-6 means STOP. Don't make architectural decisions unilaterally.
+3. This heartbeat (above) — current state.
+4. Latest 4 git log entries on `phase-6-s2` branch — what changed in the v3 audit-pass.
+5. `docs/03-mvp-roadmap.html` §10 — Phase 6 T-IDs (T6.1-T6.12).
+
+Where to continue:
+
+- Branch `phase-6-s2` has 22 commits since `main`. Do NOT merge yet — wait for Lidor.
+- The audit-pass v3 report (in this session's response) records the remaining MEDIUM/LOW findings. Don't re-discover them; close them in priority order: A1 → D4 → D1 → A5 → E3.
+- S6 persistence is real and tested. S7 (perf gate + remaining audit findings) is the recommended next slice. S8 (API endpoints) blocks Phase 8 frontend but isn't urgent yet.
+- The 3 audit-passes (v1, v2, v3) each found bugs that survived prior audits. **Spawn an independent agent for v4** when significant new code lands (NOT a self-review by the same agent). The pattern works.
 
 ## Current Position
 

@@ -6,11 +6,12 @@
 
 ## Heartbeat (latest — for the 30-second scan)
 
-- **Last slice:** audit-pass v2 Track 1 (4 HIGH/MEDIUM security fixes) + Track 2 tests. Fresh-eyes review by an independent agent found 3 sign-off blockers + 2 partial-T6.x claims. Closed in 4 isolated commits: C2 PII scrub from audit metadata (`1920c19`); C1 CSV-injection guard on data rows + header (`3451666`); C8 zip-bomb pre-flight CD parser cap at 200MB decompressed (`22931fb`); C9 migration 0025 UNIQUE + ON CONFLICT for retry idempotency (`9913d4b`). **116/116 worker tests green** (was 75 + 41 new). Lint + typecheck clean. Push pending.
-- **Next slice:** S6 (real persistence + idempotency + rollback; T6.6 + T6.7) — **still BLOCKED**, see below.
-- **Blocked:** **YES — Gate 6 / Gate 1 (schema) decision needed before S6 starts.** `import_jobs` row has no `project_id` column. (A) add column via migration; (B) add to ImportJobPayload only; (C) embed in file. Claude's recommendation = (A). Awaiting Lidor.
-- **Audit findings (v2 INDEPENDENT):** Closed in Track 1: C1 (CSV-injection HIGH), C2 (PII in audit HIGH), C8 (zip-bomb HIGH), C9 (retry duplicates MEDIUM). Still tracked: C5 (missing `import.queued` audit row — happens at S8 API enqueue, not in worker), C7 (pg-boss DDL privileges — ops-side role split or migration provision), L3/L4/L6/L7 (perf — 20 DB round-trips/job, R2 double-download, SSE poll at scale — deferred to S7 perf gate). T6.x corrections: T6.1 was PARTIAL (streaming-mode spec; mitigated by C8 cap), T6.4 in-file-only (spec literal may be cross-import — recorded), T6.8 was PARTIAL (test bypassed pg-boss; Track 2 #4 end-to-end pg-boss integration NOT yet written).
-- **Mode:** autonomous Phase-6 progression PAUSED until Lidor decides A/B/C for S6.
+- **Last slice:** S6 — real persistence (T6.6 + T6.7). Per Lidor "תסגור את כל הליקויים", picked resolution (A) for project_id: migration 0026 adds `import_jobs.project_id`. Handler `persistStage` materialises validated rows into owners/apartments/buildings/ownerships under ONE withTenant tx; PII pgcrypto-encrypted via `encryptOwnerPii` (D.12); atomic ownership set-replace per D.25; partial-failure → automatic rollback via the deferred sum-check trigger. **150/150 worker + api tests green**. Commit `edeb816`.
+- **Phase 6 T-IDs closed:** T6.1, T6.2, T6.3, T6.4, T6.5, T6.6, T6.7, T6.8, T6.9, T6.10 — **10 of 12**. Remaining: T6.11 (1000 rows scale — S7 perf gate, not blocking) + T6.12 (E2E wizard — Phase 8 frontend).
+- **Audit-pass v2 status:** ALL findings closed. C1, C2, C8, C9 fixed in Track 1 (4 commits). C5 + C7 fixed (commit `f80d0f6`). L6 fixed via parse cache (commit `270db0d`). Tests #4 (e2e pg-boss), #6 (cross-import dedup pinned), #8 (SSE HTTP wire), #10 (T6.10 perf baseline = 10.1s vs 45s spec budget) all landed. Deferred-by-audit items still recorded: L3 (SSE LISTEN/NOTIFY → S7) + L4 (memory peak → S7 / ExcelJS swap).
+- **Next slice:** **S7 perf gate** (T6.11 scale test 1000 rows + L3/L4 perf work IF the gate exposes a real regression) OR **S8 API endpoints** (POST /imports + cancel + errors export — wizard surface for Phase 8). Both are open; no blocker.
+- **Blocked:** no.
+- **Mode:** Phase 6 worker+API surface ready for sign-off. Awaiting direction on S7 vs S8 next.
 
 ## Current Position
 

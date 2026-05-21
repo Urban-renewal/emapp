@@ -38,11 +38,21 @@
  */
 import { ExcelParserError } from './excel.parser';
 
-/** 200MB cap. Generous vs realistic xlsx imports (a 1000-row owner
- *  import decompresses to ~5MB; 100k rows to ~50MB), strict vs the
- *  Railway Free Tier 512MB total per worker (50MB raw + 200MB
- *  decompressed + ~100MB ExcelJS workbook overhead + Node + V8 = fits). */
-export const MAX_DECOMPRESSED_BYTES = 200 * 1024 * 1024;
+/** 50MB cap on decompressed size.
+ *
+ *  Audit-pass v3 finding D4 (MEDIUM) — the original 200MB cap was
+ *  unsafe on Railway Free Tier (512MB total): ExcelJS's load() creates
+ *  a Workbook object whose memory footprint is empirically 2-3× the
+ *  decompressed XML size. At 200MB decompressed = 400-600MB workbook,
+ *  pushing total RSS past the Free Tier limit even on a single import.
+ *
+ *  50MB is 10× the realistic urban-renewal import size (1000-row file
+ *  ≈ 5MB decompressed) and still well above the 10:1 compression ratio
+ *  bound the 50MB compressed input cap (migration 0022) implies.
+ *
+ *  Tightening this is a one-line policy change; the preflight scan
+ *  itself doesn't change. */
+export const MAX_DECOMPRESSED_BYTES = 50 * 1024 * 1024;
 
 const CD_HEADER_SIGNATURE = 0x02014b50;
 const ZIP64_SENTINEL = 0xffffffff;

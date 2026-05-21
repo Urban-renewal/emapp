@@ -153,27 +153,27 @@ describe('Test #3a — zipPreflight unit (audit-pass v2 C8)', () => {
   });
 
   it('7) MANY small entries summing to a safe total → accept', () => {
-    // 100 entries × 1MB each = 100MB total (under 200MB cap).
+    // 40 entries × 1MB each = 40MB total (under the 50MB cap, D4 fix).
     const entry = buildCdEntry({
       compressedSize: 100,
       uncompressedSize: 1_000_000,
       fileName: 'small',
     });
-    const buf = Buffer.concat(Array(100).fill(entry));
+    const buf = Buffer.concat(Array(40).fill(entry));
     const out = zipPreflight(buf);
-    expect(out.entryCount).toBe(100);
-    expect(out.totalUncompressed).toBe(100_000_000);
+    expect(out.entryCount).toBe(40);
+    expect(out.totalUncompressed).toBe(40_000_000);
   });
 
   it('8) MANY small entries summing OVER cap → reject (fail-fast)', () => {
-    // 300 entries × 1MB = 300MB > 200MB cap. Preflight should throw
-    // mid-loop without examining all 300.
+    // 100 entries × 1MB = 100MB > 50MB cap (D4). Preflight should throw
+    // mid-loop without examining all 100.
     const entry = buildCdEntry({
       compressedSize: 100,
       uncompressedSize: 1_000_000,
       fileName: 's',
     });
-    const buf = Buffer.concat(Array(300).fill(entry));
+    const buf = Buffer.concat(Array(100).fill(entry));
     expect(() => zipPreflight(buf)).toThrow(
       expect.objectContaining({ code: 'decompressed_too_large' }),
     );

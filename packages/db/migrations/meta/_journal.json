@@ -190,6 +190,27 @@
       "when": 1779042600000,
       "tag": "0026_import_jobs_project_id",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1779043200000,
+      "tag": "0027_import_jobs_awaiting_mapping",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1779043800000,
+      "tag": "0028_mapping_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1779044400000,
+      "tag": "0029_buildings_project_address_unique",
+      "breakpoints": true
     }
   ]
 }

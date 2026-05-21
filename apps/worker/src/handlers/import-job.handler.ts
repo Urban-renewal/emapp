@@ -59,7 +59,8 @@ import {
 } from '@emapp/jobs';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
-import { MappingError, resolveMapping, type ColumnMapping } from '../mapping/mapping';
+import { type ColumnMapping } from '../mapping/mapping';
+import { LegacyAliasResolver, type IMappingResolver } from '../mapping/mapping-resolver';
 import { ExcelParserError, parseExcelFull, type ParsedRows } from '../parser/excel.parser';
 import { summariseFailureForAudit } from '../security/audit-sanitiser';
 import { validateRow } from '../validation/row-validator';
@@ -110,7 +111,16 @@ interface JobCache {
  *  packages/db/src/schema/imports.ts is enforced by the typed UPDATEs
  *  below (Drizzle infers the column type as `text`, runtime CHECK
  *  guards the value). */
-type Status = 'queued' | 'parsing' | 'validating' | 'persisting' | 'done' | 'failed' | 'cancelled';
+/** Status enum — MUST match migration 0027's CHECK constraint. */
+type Status =
+  | 'queued'
+  | 'parsing'
+  | 'validating'
+  | 'persisting'
+  | 'done'
+  | 'failed'
+  | 'cancelled'
+  | 'awaiting_mapping';
 
 /** Extract a row's canonical-field values from the parsed cell vector,
  *  given the resolved mapping. Returns a ValidatedRow ready for S6's
@@ -415,6 +425,12 @@ const FORWARD: Record<Status, Status | null> = {
   done: null,
   failed: null,
   cancelled: null,
+  // D.34 Layer-mapping seam: 'awaiting_mapping' is terminal-for-this-
+  // pg-boss-attempt. The wizard (S8) or agent (Phase 7+) resolves the
+  // mapping out-of-band, transitions the row back to 'validating'
+  // (with mapping_template_id set), and re-enqueues a new pg-boss job.
+  // This handler does NOT forward-progress past awaiting_mapping.
+  awaiting_mapping: null,
 };
 
 export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
@@ -432,13 +448,22 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
    *  the rest of the codebase imports (single source of truth). */
   readonly payloadSchema = ImportJobPayloadSchema;
 
-  /** S3 (this slice) injects IStorageProvider so the parser can read
-   *  the uploaded file from R2 (Fake in dev/test). Optional so the
-   *  pre-S3 test path (T6.8) still constructs `new ImportJobHandler()`
-   *  with no args; if no provider, the parsing stage falls back to the
-   *  S2 stub behaviour (totalRows = 0). Production main.ts always
-   *  passes the real factory-built provider. */
-  constructor(private readonly storage?: IStorageProvider) {}
+  /** Dependencies (DI seam):
+   *
+   *  - `storage` (S3): R2 / FakeStorageProvider. Optional; the
+   *    no-storage path is exercised by legacy T6.8 tests + the
+   *    storageProviderFactory fail-fast guards prod.
+   *
+   *  - `mappingResolver` (S7 / D.34): the mapping-strategy chain.
+   *    Defaults to a single-element chain of `LegacyAliasResolver`
+   *    (the deterministic Layer-1 alias registry). Production
+   *    main.ts MAY compose additional layers (Layer-2 saved
+   *    templates, Layer-3 agent) — but ONLY once the wizard /
+   *    agent endpoints land. */
+  constructor(
+    private readonly storage?: IStorageProvider,
+    private readonly mappingResolver: IMappingResolver = new LegacyAliasResolver(),
+  ) {}
 
   async handle(payload: ImportJobPayload, ctx: JobContext): Promise<void> {
     ctx.log.info('import job picked up', { orgId: payload.orgId });
@@ -715,21 +740,65 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
       throw e;
     }
 
-    // S4 — fail-fast mapping check (T6.2). Cache it for validateStage.
-    let mapping: ColumnMapping;
-    try {
-      mapping = resolveMapping(parsed.headers);
-      ctx.log.info('mapping resolved', {
-        bound: Object.keys(mapping.columns).length,
-        unmapped: mapping.unmapped.length,
-        ambiguous: mapping.ambiguous.length,
-      });
-    } catch (e: unknown) {
-      if (e instanceof MappingError) {
-        throw new NonRetryableJobError(`mapping failed: ${e.code}`, `mapping_${e.code}`);
-      }
-      throw e;
+    // S7 / D.34 — layered mapping resolution. The injected resolver
+    // is a chain (LegacyAliasResolver today; future: + TemplateResolver
+    // + AgentResolver). Three possible outcomes:
+    //   resolved: continue to validateStage with the column mapping.
+    //   reject:   malformed input (duplicate alias). NonRetryable.
+    //   unknown:  no strategy could resolve. Transition the row to
+    //             'awaiting_mapping' and stop — the wizard (S8) or
+    //             agent (Phase 7+) resolves out-of-band.
+    const resolution = await this.mappingResolver.resolve(parsed.headers);
+    if (resolution.kind === 'reject') {
+      throw new NonRetryableJobError(`mapping rejected: ${resolution.reason}`, 'mapping_rejected');
     }
+    if (resolution.kind === 'unknown') {
+      // D.34: graceful await — the manager (or agent) will provide
+      // a mapping via the wizard endpoint (S8). We commit the
+      // 'parsing' → 'awaiting_mapping' transition + an audit row,
+      // log + return. pg-boss sees no error (no retry storm).
+      ctx.log.warn('mapping unresolved — transitioning to awaiting_mapping', {
+        header_count: parsed.headers.length,
+      });
+      await withTenant(
+        payload.orgId,
+        async (tx) => {
+          const now = new Date();
+          await tx
+            .update(importJobs)
+            .set({
+              status: 'awaiting_mapping',
+              totalRows: parsed.rowCount,
+              updatedAt: now,
+            })
+            .where(eq(importJobs.id, payload.jobId));
+          await new AuditService(tx).log({
+            orgId: payload.orgId,
+            actorId: payload.createdBy,
+            actorType: 'system',
+            action: 'import.awaiting_mapping',
+            targetTable: 'import_jobs',
+            targetId: payload.jobId,
+            metadata: {
+              header_count: String(parsed.headers.length),
+              resolver: this.mappingResolver.name,
+            },
+          });
+        },
+        { userId: payload.createdBy },
+      );
+      // Signal the state-machine loop to halt at this state (the
+      // outer loop reads the new status, finds null next, returns).
+      cache.parsed = parsed;
+      return;
+    }
+    const mapping: ColumnMapping = resolution.mapping;
+    ctx.log.info('mapping resolved', {
+      bound: Object.keys(mapping.columns).length,
+      unmapped: mapping.unmapped.length,
+      ambiguous: mapping.ambiguous.length,
+      source: resolution.source,
+    });
 
     cache.parsed = parsed;
     cache.mapping = mapping;
@@ -831,13 +900,25 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
         }
         throw e;
       }
-      try {
-        mapping = resolveMapping(parsed.headers);
-      } catch (e: unknown) {
-        if (e instanceof MappingError) {
-          throw new NonRetryableJobError(`mapping failed: ${e.code}`, `mapping_${e.code}`);
-        }
-        throw e;
+      // S7 / D.34: same resolver chain as parseStage (consistent
+      // semantics on retry). If the resolver can't decide, the file
+      // SHOULD have been parked in 'awaiting_mapping' at parseStage —
+      // reaching validateStage's cache-miss path means the manager
+      // already approved a mapping (set mapping_template_id). For
+      // now we re-run the resolver; Phase 7+ adds a TemplateResolver
+      // that uses mapping_template_id as a forced override.
+      const res = await this.mappingResolver.resolve(parsed.headers);
+      if (res.kind === 'resolved') {
+        mapping = res.mapping;
+      } else {
+        // Can't resolve in the rebuild path — surface NonRetryable.
+        // The original parseStage transition should have caught this;
+        // if we're here on a retry, the manager/agent hasn't completed
+        // their mapping yet.
+        throw new NonRetryableJobError(
+          `validate cache rebuild — mapping not resolvable (kind=${res.kind})`,
+          'mapping_unresolved_at_validate',
+        );
       }
     }
 

@@ -39,6 +39,20 @@ export interface ParsedHeader {
   rowCount: number;
 }
 
+/** S5 output — header (same as S3) + the data rows as an array of
+ *  string-vectors. Memory bound: ~300KB for a typical 1000-row import
+ *  at 10 cols × 30 chars/cell. Bounded ultimately by the 50MB upload
+ *  cap; the S7 perf gate will trigger a switch to streamed iteration
+ *  if real-world imports grow much past that. */
+export interface ParsedRows extends ParsedHeader {
+  /** Data rows, each as a string vector aligned with `headers`. */
+  rows: string[][];
+  /** 1-indexed Excel row numbers for each entry in `rows`. We skip
+   *  blank rows, so this isn't simply `rows.indexOf(...) + 2` — each
+   *  error needs to point at the right row in the source spreadsheet. */
+  rowNumbers: number[];
+}
+
 /** Discriminated error codes — handler maps these to
  *  NonRetryableJobError (a bad file does not "fix itself" via retry). */
 export type ParserErrorCode =
@@ -165,6 +179,91 @@ export async function parseExcelHeader(stream: Readable): Promise<ParsedHeader> 
     // Best-effort cleanup. If the stream is an R2 body, destroy()
     // releases the underlying socket so the SDK's connection pool can
     // reuse it. No-op on already-ended streams.
+    if (!stream.destroyed) stream.destroy();
+  }
+}
+
+/** S5 — Parse header + collect data rows.
+ *
+ *  Same posture as parseExcelHeader (bounded buffered read, in-memory
+ *  ExcelJS load, eachRow iteration). Captures each non-empty
+ *  non-header row into `rows`, paired with its 1-indexed Excel row
+ *  number so per-row errors can point at the right spreadsheet line.
+ *
+ *  Always destroys the stream in finally — same guarantee as
+ *  parseExcelHeader. The two functions are deliberately separate (vs
+ *  one that returns both shapes) so callers that only need headers
+ *  don't pay the row-array allocation cost. */
+export async function parseExcelFull(stream: Readable): Promise<ParsedRows> {
+  try {
+    const buffer = await readStreamBounded(stream, MAX_INPUT_BYTES);
+
+    const workbook = new Workbook();
+    try {
+      await workbook.xlsx.load(buffer as never);
+    } catch (e: unknown) {
+      throw new ExcelParserError(
+        e instanceof Error ? `xlsx parse failed: ${e.message.slice(0, 200)}` : 'xlsx parse failed',
+        'corrupt_file',
+      );
+    }
+
+    const worksheets = workbook.worksheets;
+    if (worksheets.length === 0) {
+      throw new ExcelParserError('workbook has no worksheets', 'empty_workbook');
+    }
+    const sheet = worksheets[0]!;
+
+    let headers: string[] | null = null;
+    const rows: string[][] = [];
+    const rowNumbers: number[] = [];
+    let processed = 0;
+
+    sheet.eachRow({ includeEmpty: true }, (row, excelRowNumber) => {
+      processed += 1;
+      if (processed > MAX_ROWS_SAFETY) {
+        throw new ExcelParserError(`too many rows (>${MAX_ROWS_SAFETY}); aborting`, 'corrupt_file');
+      }
+
+      const cells = extractCellValues(row);
+      const nonEmpty = cells.filter((v) => v !== '');
+
+      if (!headers) {
+        if (nonEmpty.length === 0) return;
+        if (nonEmpty.length < HEADER_MIN_NONEMPTY) {
+          throw new ExcelParserError(
+            `first non-empty row has only ${nonEmpty.length} cell(s); ` +
+              `expected at least ${HEADER_MIN_NONEMPTY}`,
+            'sparse_header',
+          );
+        }
+        if (rowHasFormula(row)) {
+          throw new ExcelParserError(
+            'header row contains a formula cell (CSV-injection guard)',
+            'formula_in_header',
+          );
+        }
+        headers = cells;
+        return;
+      }
+
+      if (nonEmpty.length === 0) return; // skip blank data rows
+      rows.push(cells);
+      rowNumbers.push(excelRowNumber);
+    });
+
+    if (!headers) {
+      throw new ExcelParserError('first worksheet has no header row', 'no_header_row');
+    }
+
+    return {
+      sheetName: sheet.name,
+      headers,
+      rowCount: rows.length,
+      rows,
+      rowNumbers,
+    };
+  } finally {
     if (!stream.destroyed) stream.destroy();
   }
 }

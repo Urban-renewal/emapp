@@ -9,7 +9,8 @@
       "@emapp/config": ["../../packages/config/src"],
       "@emapp/db": ["../../packages/db/src"],
       "@emapp/jobs": ["../../packages/jobs/src"],
-      "@emapp/shared-types": ["../../packages/shared-types/src"]
+      "@emapp/shared-types": ["../../packages/shared-types/src"],
+      "@emapp/validators": ["../../packages/validators/src"]
     }
   },
   "include": ["src/**/*.ts"],

@@ -36,6 +36,7 @@
  */
 import {
   AuditService,
+  importJobErrors,
   importJobs,
   withTenant,
   type IStorageProvider,
@@ -51,8 +52,9 @@ import {
 } from '@emapp/jobs';
 import { and, eq, sql } from 'drizzle-orm';
 
-import { MappingError, resolveMapping } from '../mapping/mapping';
-import { ExcelParserError, parseExcelHeader } from '../parser/excel.parser';
+import { MappingError, resolveMapping, type ColumnMapping } from '../mapping/mapping';
+import { ExcelParserError, parseExcelFull, parseExcelHeader } from '../parser/excel.parser';
+import { validateRow } from '../validation/row-validator';
 
 /** Domain state machine. MUST match the CHECK constraint in migration
  *  0022 (`import_jobs_status_valid`). Compile-time alignment with
@@ -224,8 +226,8 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
     // correct but practically useless. We keep this minimal: real
     // parsing/validation/persistence is large + slice-owned.
     if (to === 'parsing') await this.parseStage(payload, ctx);
-    if (to === 'validating') await this.stubValidateStage(payload);
-    if (to === 'persisting') await this.stubPersistStage(payload);
+    if (to === 'validating') await this.validateStage(payload, ctx);
+    if (to === 'persisting') await this.persistStage(payload, ctx);
   }
 
   /** S3 — real ExcelJS streaming parse. Reads `file_r2_key` from the
@@ -323,42 +325,194 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
     );
   }
 
-  /** S5 will replace this — run Luhn + dedup + per-row validators. For
-   *  S2 we increment processedRows by 0 (no real rows) so the SSE
-   *  emits a progress event for the validating state. */
-  private async stubValidateStage(payload: ImportJobPayload): Promise<void> {
-    await withTenant(
+  /** S5 — validate every data row.
+   *  Closes T6.3 (Luhn), T6.4 (in-file dedup). Iterates the file's
+   *  data rows, applies the mapping (S4), runs validateRow per row,
+   *  and inserts structured per-row errors into import_job_errors.
+   *  Updates aggregate counters (processed_rows, ok_rows, failed_rows)
+   *  on the parent import_jobs row.
+   *
+   *  No-provider path keeps the S2 stub behaviour (zero counters, no
+   *  errors) so the legacy T6.8 baseline still passes.
+   *
+   *  T6.5 dry-run is NOT handled here — persistStage early-exits when
+   *  dry_run=true. Validation always runs (dry-run shows the manager
+   *  what WOULD happen — same errors, just no persistence). */
+  private async validateStage(payload: ImportJobPayload, ctx: JobContext): Promise<void> {
+    if (!this.storage) {
+      await withTenant(
+        payload.orgId,
+        async (tx) => {
+          await tx
+            .update(importJobs)
+            .set({ updatedAt: new Date() })
+            .where(eq(importJobs.id, payload.jobId));
+        },
+        { userId: payload.createdBy },
+      );
+      return;
+    }
+
+    // Re-download + re-parse for full row data. Acceptable cost for
+    // MVP (the storage read is bounded by 50MB; ExcelJS parse already
+    // benchmarks <2s for the T6.10 100-row gate). S7 may add a cache
+    // if the perf gate fails.
+    const row = await withTenant(
       payload.orgId,
       async (tx) => {
-        // Touch updated_at to give the SSE poller a real change to
-        // detect during this stage. processed_rows stays 0 — we have
-        // no real rows to process in the stub.
-        await tx
-          .update(importJobs)
-          .set({ updatedAt: new Date() })
-          .where(eq(importJobs.id, payload.jobId));
+        const [r] = await tx
+          .select({ fileR2Key: importJobs.fileR2Key })
+          .from(importJobs)
+          .where(eq(importJobs.id, payload.jobId))
+          .limit(1);
+        return r;
       },
       { userId: payload.createdBy },
     );
-  }
+    if (!row) {
+      throw new NonRetryableJobError('import_job vanished mid-validate', 'job_not_visible');
+    }
 
-  /** S6 will replace this — batched insert under withTenant with
-   *  savepoints per docs/03 §10. For S2 we mark ok_rows / processed
-   *  consistent with totalRows = 0. */
-  private async stubPersistStage(payload: ImportJobPayload): Promise<void> {
+    let parsed;
+    try {
+      const stream = await this.storage.getObjectStream(row.fileR2Key);
+      parsed = await parseExcelFull(stream);
+    } catch (e: unknown) {
+      if (e instanceof ExcelParserError) {
+        throw new NonRetryableJobError(`parse failed: ${e.code}`, `parse_${e.code}`);
+      }
+      throw e;
+    }
+
+    let mapping: ColumnMapping;
+    try {
+      mapping = resolveMapping(parsed.headers);
+    } catch (e: unknown) {
+      if (e instanceof MappingError) {
+        throw new NonRetryableJobError(`mapping failed: ${e.code}`, `mapping_${e.code}`);
+      }
+      throw e;
+    }
+
+    // Run validation across all rows. seenIds is per-import — T6.4
+    // dedup is in-file only; cross-import duplicate detection would
+    // need a different mechanism (likely a DB query under withTenant)
+    // and is NOT part of T6.4's scope per docs/03 §10.
+    const seenIds = new Set<string>();
+    let okCount = 0;
+    let failedCount = 0;
+    const errorBatch: Array<{
+      jobId: string;
+      orgId: string;
+      rowNumber: number;
+      field: string | null;
+      code: string;
+      message: string;
+    }> = [];
+
+    for (let i = 0; i < parsed.rows.length; i += 1) {
+      const result = validateRow(parsed.rows[i]!, parsed.rowNumbers[i]!, mapping, seenIds);
+      if (result.ok) {
+        okCount += 1;
+      } else {
+        failedCount += 1;
+        for (const err of result.errors) {
+          errorBatch.push({
+            jobId: payload.jobId,
+            orgId: payload.orgId,
+            rowNumber: err.rowNumber,
+            field: err.field,
+            code: err.code,
+            message: err.message,
+          });
+        }
+      }
+    }
+
+    // Persist counters + errors atomically. Batch errors into one
+    // INSERT — for typical 100-row imports with handful of errors this
+    // is a single round-trip; for pathological all-fail cases the
+    // batch fits well within Postgres parameter limits (each row has
+    // 6 columns; 1000 rows = 6000 params, under the 65k limit).
     await withTenant(
       payload.orgId,
       async (tx) => {
         await tx
           .update(importJobs)
           .set({
-            // total_rows was 0 from stub parse → processed=0, ok=0,
-            // failed=0 is the consistent terminal state.
-            processedRows: 0,
-            okRows: 0,
-            failedRows: 0,
+            processedRows: parsed.rows.length,
+            okRows: okCount,
+            failedRows: failedCount,
             updatedAt: new Date(),
           })
+          .where(eq(importJobs.id, payload.jobId));
+        if (errorBatch.length > 0) {
+          await tx.insert(importJobErrors).values(errorBatch);
+        }
+      },
+      { userId: payload.createdBy },
+    );
+
+    ctx.log.info('validation complete', {
+      processed: parsed.rows.length,
+      ok: okCount,
+      failed: failedCount,
+    });
+  }
+
+  /** S6 will replace this — batched insert into owners/apartments/
+   *  buildings under withTenant with savepoints per docs/03 §10. For
+   *  S5 we early-exit when dry_run=true (T6.5) and otherwise no-op
+   *  (real persistence ships in S6).
+   *
+   *  T6.5 ("Dry-run no DB change"): when import_jobs.dry_run = true,
+   *  we explicitly DON'T touch the owner-domain tables. Validation
+   *  already produced errors so the manager sees exactly what WOULD
+   *  happen; the persist stage just transitions cleanly to done. */
+  private async persistStage(payload: ImportJobPayload, ctx: JobContext): Promise<void> {
+    const job = await withTenant(
+      payload.orgId,
+      async (tx) => {
+        const [r] = await tx
+          .select({ dryRun: importJobs.dryRun, okRows: importJobs.okRows })
+          .from(importJobs)
+          .where(eq(importJobs.id, payload.jobId))
+          .limit(1);
+        return r;
+      },
+      { userId: payload.createdBy },
+    );
+
+    if (!job) {
+      throw new NonRetryableJobError('import_job vanished mid-persist', 'job_not_visible');
+    }
+
+    if (job.dryRun) {
+      ctx.log.info('dry-run — persistence skipped (T6.5)', { ok: job.okRows });
+      // No domain writes. Counters already final from validateStage.
+      // Just touch updated_at so the SSE sees a tick.
+      await withTenant(
+        payload.orgId,
+        async (tx) => {
+          await tx
+            .update(importJobs)
+            .set({ updatedAt: new Date() })
+            .where(eq(importJobs.id, payload.jobId));
+        },
+        { userId: payload.createdBy },
+      );
+      return;
+    }
+
+    // S6 lands the real persistence (batched owner/apartment/
+    // building writes with savepoints). For S5 this is a no-op so
+    // the existing T6.8 baseline keeps passing.
+    await withTenant(
+      payload.orgId,
+      async (tx) => {
+        await tx
+          .update(importJobs)
+          .set({ updatedAt: new Date() })
           .where(eq(importJobs.id, payload.jobId));
       },
       { userId: payload.createdBy },

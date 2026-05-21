@@ -80,11 +80,14 @@ describe('T6.1 (integration) — ImportJobHandler with real parser', () => {
     const r2Key = `org/${org.id}/import/t61-1.xlsx`;
     storage.setObject(
       r2Key,
+      // S4 wires mapping resolution into parseStage; the fixture now
+      // includes the full required canonical set (national_id, phone,
+      // name, apartment, address) so mapping passes alongside parsing.
       await buildXlsxBuffer([
-        ['national_id', 'phone', 'name'],
-        ['123456782', '0501234567', 'Avi'],
-        ['234567894', '0512345678', 'Bob'],
-        ['345678905', '0523456789', 'Carol'],
+        ['national_id', 'phone', 'name', 'apartment', 'address'],
+        ['123456782', '0501234567', 'Avi', '1', 'Herzl 10'],
+        ['234567894', '0512345678', 'Bob', '2', 'Herzl 10'],
+        ['345678905', '0523456789', 'Carol', '3', 'Herzl 10'],
       ]),
     );
     const jobId = await createJob(org, r2Key);

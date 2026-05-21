@@ -51,6 +51,7 @@ import {
 } from '@emapp/jobs';
 import { and, eq, sql } from 'drizzle-orm';
 
+import { MappingError, resolveMapping } from '../mapping/mapping';
 import { ExcelParserError, parseExcelHeader } from '../parser/excel.parser';
 
 /** Domain state machine. MUST match the CHECK constraint in migration
@@ -282,6 +283,26 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
         throw new NonRetryableJobError(`parse failed: ${e.code}`, `parse_${e.code}`);
       }
       // I/O error from storage — retryable; the boss handles.
+      throw e;
+    }
+
+    // S4 — fail-fast mapping check (T6.2). Resolves canonical fields
+    // from headers; the file is rejected here (before validation +
+    // persistence) when required fields are missing or ambiguously
+    // mapped. The resolved mapping itself is recomputed in S5 (it's a
+    // pure function of headers; cheap to repeat) — we don't persist it
+    // on the row in this slice.
+    try {
+      const mapping = resolveMapping(parsed.headers);
+      ctx.log.info('mapping resolved', {
+        bound: Object.keys(mapping.columns).length,
+        unmapped: mapping.unmapped.length,
+        ambiguous: mapping.ambiguous.length,
+      });
+    } catch (e: unknown) {
+      if (e instanceof MappingError) {
+        throw new NonRetryableJobError(`mapping failed: ${e.code}`, `mapping_${e.code}`);
+      }
       throw e;
     }
 

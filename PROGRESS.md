@@ -6,9 +6,9 @@
 
 ## Heartbeat (latest — for the 30-second scan)
 
-- **Last slice:** S3 (ExcelJS parser + IStorageProvider.getObjectStream + handler wire-up) — closes T6.1 (Excel header detection). 11 parser unit tests + 4 handler integration tests + baseline 25 worker + 8 T6.9 SSE = **48 worker+S3 tests green**. Push pending.
-- **Next slice:** S4 (mapping templates — auto-detect by fingerprint of headers, T6.2).
-- **Audit findings (S3):** 0 Critical/High. M3 candidate (ExcelJS msg leak via audit) re-examined and rejected — layered wrapping discards raw ExcelJS messages. L3 (50MB buffered memory profile) + L4 (eachRow includeEmpty cost on wide-sparse sheets) recorded for S7 perf gate. **Architectural note:** `IStorageProvider.getObjectStream(key)` added to the interface — both Fake and R2 implementations updated; the worker is the only consumer. This is an obvious read-side extension of the existing storage abstraction (not Gate 6 — D.28 already governs the storage layer).
+- **Last slice:** S4 (mapping templates — header → canonical field via in-process alias registry; T6.2). Wired into parseStage so a file with missing required canonicals fails fast (NonRetryableJobError `mapping_<code>`). 12 mapping unit + integration parity preserved → **52 worker tests green**. Push pending.
+- **Next slice:** S5 (validation engine — Luhn for national_id, phone E.164, dedup detection, dry-run flag; closes T6.3 + T6.4 + T6.5).
+- **Audit findings (S4):** 0 Critical/High/Medium. L5 (hardcoded canonical registry — must evolve to a `mapping_templates` table when customers customize) recorded for post-MVP. Pure module, no DB, no I/O — no security surface beyond NFC-normalised header strings (which are never logged raw or SQL-interpolated).
 - **Blocked:** no.
 - **Mode:** autonomous Phase-6 progression per AUTOPILOT; one PR at S9 end.
 
@@ -109,6 +109,8 @@
 ## Task Log (newest first)
 
 <!-- Claude appends: [YYYY-MM-DD HH:MM] P0.1 ✓ — note — commit <sha> -->
+
+[2026-05-21] Phase 6 S4 ✓ — mapping templates auto-detect (T6.2). `apps/worker/src/mapping/mapping.ts` — in-process canonical field registry (6 canonicals: national*id, phone, name, apartment_number, building_address, ownership_pct) with Hebrew+English aliases. `resolveMapping(headers)` returns `{ columns, unmapped, ambiguous }` or throws `MappingError` with discriminator codes (`mapping_incomplete`, `mapping_duplicate`). `normaliseHeader(s)` NFC-normalises + lowercases + strips ASCII whitespace+punctuation → also the future fingerprint key when persisted templates land. Wired into `ImportJobHandler.parseStage` so a file that doesn't satisfy all required canonicals → NonRetryableJobError `mapping*<code>` before validation/persistence. Decision documented in module header: hardcoded registry (not DB table) appropriate for MVP — customer-customizable templates would need a UI; until then a code-resident registry is PR-reviewed + change-controlled. Tests: 12 mapping unit (English/Hebrew exact, case+ws+punct tolerated, unmapped/ambiguous/duplicate detection, optional ownership_pct, normaliseHeader idempotency + NFC defense). Integration T6.1 fixtures updated to full canonical set; 52/52 worker tests green. — commit TBD
 
 [2026-05-21] Phase 6 S3 ✓ — ExcelJS streaming parser closes T6.1. Tradeoff documented in parser comments: bounded full-buffer read (50MB cap mirrors migration 0022 CHECK) + ExcelJS in-memory load, because the streaming WorkbookReader fails to parse Readable.from(buffer) inputs ("Cannot read properties of undefined ('sheets')") even when the bytes are a valid xlsx. Streaming spirit of docs/03 §10 preserved (eachRow iterates row-by-row — never builds a giant array). Formula-injection guard on header cells (CSV/XLSX-injection vector). Defense: stream destroyed in finally + bounded read. Tests: T6.1 unit 11/11 (header shapes, sparse, formula, hebrew, blanks, dates/numbers, stream destroy on success+failure) + T6.1 integration 4/4 (real handler+FakeStorage end-to-end; parser error → NonRetryableJobError; missing key → retryable; no provider → S2-stub fallback keeps T6.8 baseline). `IStorageProvider.getObjectStream(key): Promise<Readable>` added to interface; both Fake (in-memory Map<key,Buffer>) and R2 (S3 GetObjectCommand) impls updated. New apps/worker/src/storage-provider.ts factory with same fail-fast-in-prod posture as apps/api's. — commit TBD
 

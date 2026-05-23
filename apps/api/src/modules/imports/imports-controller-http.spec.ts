@@ -52,6 +52,14 @@ import type { AccessTokenPayload } from '../auth/auth.service';
 import { ImportsController } from './imports.controller';
 import { ImportsService } from './imports.service';
 
+// S8: ImportsService now takes (storage, producer). For these
+// controller-HTTP tests neither is exercised on the read/SSE paths,
+// so we supply minimal stubs. Casting to `never` is safe — the test
+// invariants verified here never invoke storage or the producer.
+const stubStorage = {} as never;
+const stubProducer = { send: async () => ({ id: null }) } as never;
+const newService = (): ImportsService => new ImportsService(stubStorage, stubProducer);
+
 let org: TestOrg;
 let orgB: TestOrg;
 
@@ -153,7 +161,7 @@ afterAll(async () => {
 
 describe('Test #8 — SSE controller HTTP-wire contract', () => {
   it('1) writeHead receives 200 + the four SSE headers', async () => {
-    const ctrl = new ImportsController(new ImportsService());
+    const ctrl = new ImportsController(newService());
     const jobId = await createJob(org);
     await setStatus(jobId, 'done');
     const reply = makeReply();
@@ -168,7 +176,7 @@ describe('Test #8 — SSE controller HTTP-wire contract', () => {
   }, 30_000);
 
   it('2) `:stream-open` is the first byte sequence on the wire', async () => {
-    const ctrl = new ImportsController(new ImportsService());
+    const ctrl = new ImportsController(newService());
     const jobId = await createJob(org);
     await setStatus(jobId, 'done');
     const reply = makeReply();
@@ -178,7 +186,7 @@ describe('Test #8 — SSE controller HTTP-wire contract', () => {
   }, 30_000);
 
   it('3) terminal state → body contains progress + end frames (SSE format)', async () => {
-    const ctrl = new ImportsController(new ImportsService());
+    const ctrl = new ImportsController(newService());
     const jobId = await createJob(org);
     await setStatus(jobId, 'done');
     const reply = makeReply();
@@ -192,7 +200,7 @@ describe('Test #8 — SSE controller HTTP-wire contract', () => {
   }, 30_000);
 
   it('4) cross-tenant id (RLS-driven NotFound) → `gone` event', async () => {
-    const ctrl = new ImportsController(new ImportsService());
+    const ctrl = new ImportsController(newService());
     const jobId = await createJob(org);
     await setStatus(jobId, 'done');
     const reply = makeReply();
@@ -233,7 +241,7 @@ describe('Test #8 — SSE controller HTTP-wire contract', () => {
   }, 30_000);
 
   it('6) req.raw `close` event fires AbortController and ends the stream', async () => {
-    const ctrl = new ImportsController(new ImportsService());
+    const ctrl = new ImportsController(newService());
     const jobId = await createJob(org); // status='queued' — non-terminal
     const reply = makeReply();
     const req = makeReq();

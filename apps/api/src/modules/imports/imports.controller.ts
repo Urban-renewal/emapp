@@ -1,18 +1,46 @@
 /**
- * Imports controller — Phase 6 S2.
+ * Imports controller — Phase 6 S2 read surface + S8 write surface.
  *
- * Endpoints (S2 scope):
- *   - GET /imports/:id          → status snapshot (D.17 read=ALL roles)
- *   - GET /imports/:id/stream   → SSE progress stream (T6.9)
- *
- * S8 adds: POST /imports (enqueue), GET /imports (list),
- * DELETE :id (cancel), GET :id/errors (errors export).
+ * Endpoints:
+ *   GET    /imports/:id           → status snapshot (D.17 read=ALL)
+ *   GET    /imports/:id/stream    → SSE progress stream (T6.9)
+ *   POST   /imports               → create + presigned PUT URL (S8)
+ *   POST   /imports/:id/start     → enqueue pg-boss job (S8)
+ *   DELETE /imports/:id           → cancel non-terminal row (S8)
+ *   GET    /imports/:id/errors    → paginated import_job_errors (S8)
+ *   POST   /imports/:id/mapping   → D.34 wizard (S8)
  *
  * Defense-in-depth (same chain as documents/signature_requests):
  *   AuthGuard → TenantGuard → AuthorizationGuard (verb→action, policy
- *   `imports`) → service `withTenant` (RLS FORCE org-isolation).
+ *   `imports`) → service `requireManager` → withTenant (RLS FORCE
+ *   org-isolation) → service business-rule guards (state-machine
+ *   gates).
  */
-import { Controller, Get, Logger, Param, Req, Res, UseGuards } from '@nestjs/common';
+import {
+  CreateImportInput,
+  ListImportErrorsQuery,
+  StartImportInput,
+  SubmitMappingInput,
+  type CreateImport,
+  type ListImportErrorsQueryDto,
+  type StartImport,
+  type SubmitMapping,
+} from '@emapp/shared-types';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Logger,
+  Param,
+  Post,
+  Query,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
@@ -36,22 +64,73 @@ export class ImportsController {
 
   constructor(private readonly imports: ImportsService) {}
 
+  // POST /imports — create row + presigned PUT.
+  // Tighter per-route throttle than the global 100/min — uploads are
+  // expensive (R2 round-trip + audit + presign) and a malicious or
+  // misbehaving client shouldn't blast the API. Matches the documents
+  // POST/download throttle (30/min).
+  @Post()
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  async create(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body(new ZodValidationPipe(CreateImportInput)) body: CreateImport,
+  ) {
+    return { data: await this.imports.create(user, body) };
+  }
+
   @Get(':id')
   async get(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.imports.get(user, id) };
   }
 
-  /** SSE progress stream. Bypasses Nest's serialiser by writing to
-   *  `reply.raw` directly (the standard Fastify SSE pattern). Headers:
-   *    Content-Type: text/event-stream — browsers/EventSource expect it.
-   *    Cache-Control: no-cache + no-transform — disable any proxy
-   *      buffering or content rewriting that would batch our frames.
-   *    X-Accel-Buffering: no — nginx-style hint for the same reason.
-   *    Connection: keep-alive — long-lived stream.
-   *
-   *  Disconnection: we hook `req.raw.on('close')` to fire an
-   *  AbortController; the service polls cooperatively against the
-   *  signal so a closed connection ends the loop immediately. */
+  // POST /imports/:id/start — enqueue the worker job. Same throttle
+  // class as create (cheap on the API but kicks off heavy worker
+  // work; a runaway client could DoS the worker pool).
+  @Post(':id/start')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @HttpCode(200)
+  async start(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', UuidParam) id: string,
+    @Body(new ZodValidationPipe(StartImportInput)) _body: StartImport,
+  ) {
+    void _body;
+    return { data: await this.imports.start(user, id) };
+  }
+
+  // DELETE /imports/:id — cancel. 204 (no body) on success; the FE
+  // re-fetches via GET /imports/:id to render the new terminal state.
+  @Delete(':id')
+  @HttpCode(204)
+  async cancel(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
+    await this.imports.cancel(user, id);
+  }
+
+  @Get(':id/errors')
+  async listErrors(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', UuidParam) id: string,
+    @Query(new ZodValidationPipe(ListImportErrorsQuery)) query: ListImportErrorsQueryDto,
+  ) {
+    // The service returns { data, page } directly — match the list-
+    // envelope convention (D.16). Wrap is already correct shape.
+    return this.imports.listErrors(user, id, query);
+  }
+
+  // POST /imports/:id/mapping — D.34 wizard endpoint. Same tight
+  // throttle as the other mutation endpoints.
+  @Post(':id/mapping')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @HttpCode(200)
+  async submitMapping(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', UuidParam) id: string,
+    @Body(new ZodValidationPipe(SubmitMappingInput)) body: SubmitMapping,
+  ) {
+    return { data: await this.imports.submitMapping(user, id, body) };
+  }
+
+  /** SSE progress stream. See file header for full explanation. */
   @Get(':id/stream')
   async stream(
     @CurrentUser() user: AccessTokenPayload,
@@ -65,27 +144,17 @@ export class ImportsController {
       'X-Accel-Buffering': 'no',
       Connection: 'keep-alive',
     });
-    // Many clients (and reverse proxies) buffer until SOMETHING flushes.
-    // Emit a single ":stream-open" comment immediately so the connection
-    // graduates to "streaming" on the client side without waiting for
-    // the first poll's 500ms.
     reply.raw.write(': stream-open\n\n');
 
     const abort = new AbortController();
     req.raw.on('close', () => abort.abort());
 
-    // Once writeHead() has fired, headers are committed — Nest's exception
-    // filter can no longer transform a thrown error into a JSON response
-    // (the status code is already 200 on the wire). To keep the contract
-    // clean for the client AND prevent a propagation up the stack that
-    // could surface an internal error string in logs/metrics, catch ALL
-    // here, emit a generic close frame, and end the socket. (audit-pass
-    // S2 finding M2.)
     try {
       await this.imports.streamProgress({
         user,
         id,
         write: (ev) => reply.raw.write(encodeSseFrame(ev)),
+        writeComment: (line) => reply.raw.write(`${line}\n\n`),
         signal: abort.signal,
       });
     } catch (e: unknown) {
@@ -100,9 +169,6 @@ export class ImportsController {
         /* socket already dead */
       }
     } finally {
-      // Close the underlying socket. The frame writes above are best-
-      // effort; if reply.raw is already closed (client disconnected),
-      // end() is a no-op.
       reply.raw.end();
     }
   }

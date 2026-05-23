@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module';
+import { STORAGE_PROVIDER, storageProviderFactory } from '../documents/storage';
 
 import { ImportsController } from './imports.controller';
 import { ImportsService } from './imports.service';
@@ -8,13 +9,26 @@ import { ImportsService } from './imports.service';
 /**
  * Imports module — Phase 6 (docs/03 §10).
  *
- * S2 scope: GET status + SSE progress stream. The worker (apps/worker/)
- * is the consume side; this module is read-only for S2. POST/cancel/
- * errors-export land in S8 once the worker pipeline is complete.
+ * S2 ships GET status + SSE progress stream.
+ * S8 (this update) adds POST + start + cancel + errors + D.34 mapping
+ * wizard. The mutation endpoints need:
+ *   - STORAGE_PROVIDER (presigned PUT URLs, head() for upload check)
+ *   - JOB_PRODUCER     (enqueue pg-boss; provided by global QueueModule)
+ *
+ * STORAGE_PROVIDER is re-bound here (mirroring documents.module) so a
+ * test can `overrideProvider(STORAGE_PROVIDER)` without dragging
+ * DocumentsModule into the testing graph. The factory itself FAILS
+ * FAST in production until R2 is wired (Gate-5 / D.28).
  */
 @Module({
   imports: [AuthModule],
   controllers: [ImportsController],
-  providers: [ImportsService],
+  providers: [
+    ImportsService,
+    {
+      provide: STORAGE_PROVIDER,
+      useFactory: storageProviderFactory,
+    },
+  ],
 })
 export class ImportsModule {}

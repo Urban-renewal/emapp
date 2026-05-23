@@ -23,6 +23,7 @@ import { ProjectsModule } from './modules/projects/projects.module';
 import { SharesModule } from './modules/shares/shares.module';
 import { SignaturesModule } from './modules/signatures/signatures.module';
 import { TasksModule } from './modules/tasks/tasks.module';
+import { QueueModule } from './queue/queue.module';
 
 @Module({
   imports: [
@@ -83,6 +84,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
     ProjectAssignmentsModule,
     MembersModule,
     SignaturesModule,
+    QueueModule,
     ImportsModule,
   ],
   controllers: [HealthController],

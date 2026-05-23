@@ -28,7 +28,12 @@ import { encodeSseFrame, ImportsService, type SseEvent } from './imports.service
 
 let org: TestOrg;
 let orgB: TestOrg;
-const svc = new ImportsService();
+// S8: ImportsService now takes (storage, producer). The streamProgress
+// invariants tested here only exercise the read/SSE path — never
+// storage or the producer — so minimal stubs are safe.
+const stubStorage = {} as never;
+const stubProducer = { send: async () => ({ id: null }) } as never;
+const svc = new ImportsService(stubStorage, stubProducer);
 
 function makeUser(o: TestOrg): AccessTokenPayload {
   return {
@@ -229,6 +234,10 @@ describe('T6.9 — SSE delivers progress events', () => {
     // that mix REST polling with SSE.
     const allowed = new Set([
       'id',
+      // S8: shared-types ImportJobSchema added these for the
+      // canonical wire shape (mirrors document.ts pattern).
+      'organizationId',
+      'projectId',
       'status',
       'fileName',
       'fileSizeBytes',

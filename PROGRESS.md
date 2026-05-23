@@ -6,7 +6,41 @@
 
 ## Heartbeat (latest — for the 30-second scan)
 
-- **Last slice:** **v4 closure — ALL 7 cross-confirmed bugs FIXED.** Every RED `it.fails()` test in `apps/worker/test/v4-audit-invariants.spec.ts` is now green (the `.fails` markers were removed as the underlying fixes landed). 174/174 worker tests green; lint + typecheck clean across all 8 packages.
+- **Last slice:** **S8 — API mutation surface + D.34 wizard endpoint shipped.** Phase 6's customer-onboarding flow is now end-to-end reachable from the FE:
+  - **POST /api/v1/imports** — Manager creates an import (project visibility verified, file size <=50MB Zod-enforced, server-mints `r2Key` partitioned per org, presigned PUT URL returned with 300s TTL). `r2Key` NEVER on the wire. Audit row `import.created` written in the same tx as the INSERT.
+  - **POST /api/v1/imports/:id/start** — enqueues the pg-boss worker job. Defense-in-depth: row must be `status='queued'` AND `createdBy === user.sub` (one Manager can't start another Manager's draft). `IStorageProvider.head()` verifies file size matches the declared `fileSizeBytes` (in prod with R2; fake-storage returns null which we treat as "no attestation"). Producer-side `singletonKey=jobId` makes a double-click idempotent. Audit row `import.start_requested`.
+  - **DELETE /api/v1/imports/:id** — cancels a non-terminal row (queued/parsing/validating/persisting/awaiting_mapping). Race-safe guarded UPDATE; if the worker just terminated, rowCount=0 and we silently no-op. Audit row `import.cancelled` with `metadata.from` = original status.
+  - **GET /api/v1/imports/:id/errors** — paginated `import_job_errors` (keyset on row_number asc + id desc, default limit 100, max 200). Visibility gate first → cross-org returns 404 not empty list. Wire-shape `message` is non-null (fallback to `code` when worker wrote NULL).
+  - **POST /api/v1/imports/:id/mapping** — D.34 wizard. Manager supplies a column mapping for an `awaiting_mapping` row → service inserts `mapping_templates` (source='manual', approved_by=user, approved_at=now), flips status back to 'queued', re-enqueues pg-boss with the same singletonKey, writes audit row `import.mapping_submitted`. **Known deferral** (recorded in service JSDoc): the worker still uses Layer-1 alias resolution; full L2 TemplateResolver consumption of `mappingTemplateId` is Phase 7+. The TEMPLATE storage and endpoint are in place; the worker side is the missing half.
+- **What shipped (single logical commit, all S8 endpoints + tests coherent):**
+  - **New abstraction:** `@emapp/jobs/producer.ts` — `IJobProducer` interface. Same Open/Closed pattern as `IJobHandler` on the consume side: pg-boss types live in exactly one adapter file per app.
+  - **New adapter:** `apps/api/src/queue/pg-boss-producer.ts` (NestJS-injectable, lazy connect on first send, `onModuleDestroy` graceful drain).
+  - **New module:** `apps/api/src/queue/queue.module.ts` — `@Global()` provider of `JOB_PRODUCER` token.
+  - **Shared-types:** `packages/shared-types/src/import.ts` — canonical Zod schemas for `ImportJob`, `CreateImport`, `StartImport`, `ImportError`, `SubmitMapping`, `IMPORT_MAX_SIZE_BYTES`. Mirrors the documents pattern exactly so the FE has a single source of truth for the wire shape.
+  - **Service:** `apps/api/src/modules/imports/imports.service.ts` — extended with `create`, `start`, `cancel`, `listErrors`, `submitMapping`. Plus a v4 follow-up: SSE `streamProgress` now accepts `writeComment` and emits a heartbeat frame every 15s (closes the HIGH-UX SSE proxy-idle-timeout gap recorded in v4 findings).
+  - **Controller:** `apps/api/src/modules/imports/imports.controller.ts` — 5 new routes with `@Throttle({limit:30,ttl:60_000})` on every mutation (defense against upload flood + worker DoS, mirrors documents per-route throttle).
+  - **Module:** `apps/api/src/modules/imports/imports.module.ts` — re-binds `STORAGE_PROVIDER` (same factory as documents; FAILS FAST in prod until R2 wired).
+  - **App module:** `apps/api/src/app.module.ts` — imports `QueueModule` (global).
+  - **Spec:** `apps/api/src/modules/imports/imports.s8.spec.ts` — 23 service-level integration tests across 5 axes (POST create / start / cancel / errors / mapping wizard) covering security (cross-org 404, viewer/agent 403, defense-in-depth createdBy guard, confidentiality of r2Key), state-machine gates (409 for not-startable / not-cancellable / not-awaiting_mapping), audit completeness, pagination, and the FakeProducer assertion that `singletonKey=id` is passed.
+- **Verification:** 281/281 API tests green (was 264 + 17 new); 174/174 worker tests still green; lint + typecheck clean across all 8 packages.
+- **Phase 6 T-IDs closed:** T6.1–T6.10 (10 of 12). T6.11 (1000-row perf) is unblocked by v4 fixes but not yet asserted by a dedicated 1000-row test (deferred — quick follow-up). T6.12 (cancel flow E2E) is now functionally complete via the DELETE endpoint + v4 cancellation race-guard; an E2E test connecting wizard → worker → cancel would close the formal DoD.
+- **v4 follow-up closed this slice:** SSE heartbeat frame — `writeComment` now emits `: heartbeat <iso>` every 15s when there's no state change, keeping proxy idle timers happy. The Cloudflare/Railway 30-60s kill is no longer a risk.
+- **v4 follow-ups still deferred (recorded for v5/Phase 7):**
+  - SSE 500ms poll → LISTEN/NOTIFY (cuts ~600 RPM per active client to event-driven)
+  - ImportJobHandler ~1100 LOC SOLID split (state-machine + 3 stage modules)
+  - `summariseFailureForAudit` constraint-string regex hardening
+  - `findOrCreateBuilding` batched path for pathological imports
+  - Buffer/workbook RAM release in concurrent-imports scenario
+  - **D.34 follow-up:** Worker-side L2 TemplateResolver (Phase 7+) — looks up `mapping_templates` by org+fingerprint and short-circuits Layer 1. The schema + endpoint are ready; the resolver class is the missing piece.
+- **Next slice options (no blocker on any):**
+  - **Option A (recommended): T6.11 dedicated perf test** — a 1000-row import test that asserts ~30s budget. Quick (~30 lines). Validates that the v4 ownership-batching + memoized-trigger fix actually delivers vs. the prior ~400s. Closes the last Phase 6 DoD T-ID.
+  - **Option B:** v5 INDEPENDENT audit-pass on the freshly-shipped S8 surface. 3 parallel agents (SOLID/security/perf) — same pattern as v4. Likely findings: SSE LISTEN/NOTIFY, SOLID handler split, S8-specific edge cases.
+  - **Option C:** Begin Phase 7+ (D.34 L2 TemplateResolver + AgentResolver) per the recorded deferral plan.
+  - Recommended order: **A → B → C**. A is one short test that completes the Phase 6 DoD. B catches what S8 missed before Phase 7 commits us to L2/L3 work that depends on a clean S8 baseline.
+- **Blocked:** no.
+- **Mode:** Phase 6 worker + API surface complete; D.34 wizard endpoint ships the contract for Phase 7's agent resolver. Customer-onboarding flow (upload → SSE → results / awaiting_mapping → wizard → re-enqueue) is reachable from the FE for the first time.
+
+- **v4 closure — ALL 7 cross-confirmed bugs FIXED.** Every RED `it.fails()` test in `apps/worker/test/v4-audit-invariants.spec.ts` is now green (the `.fails` markers were removed as the underlying fixes landed). 174/174 worker tests green; lint + typecheck clean across all 8 packages.
 - **What shipped (single commit, all fixes intentionally coherent — same axis = same commit):**
   - **P0-perf #1 — pg-boss `newJobCheckInterval`:** moved into `boss.work({...})` options (per-worker, not constructor — v10 API constraint surfaced during fix) in `apps/worker/src/pg-boss-adapter.ts`. Value: 200ms. Customer first-byte queue-pickup latency: ~2000ms → ~200ms.
   - **P0-perf #2 — ownership bulk INSERT + memoized SUM trigger:** `apps/worker/src/handlers/import-job.handler.ts:1255-1271` collapsed N per-row `tx.insert(ownerships)` calls into a single `tx.insert(ownerships).values([...])`. Migration `0030_ownerships_sum_trigger_per_statement.sql` rewrites `trigger_check_ownership_sum` with a per-tx memo table (`_ownership_sum_checked` + `ON COMMIT DROP`) — the deferred constraint trigger still fires per-row (PG limitation: constraint triggers MUST be FOR EACH ROW; transition tables are not allowed on constraint triggers), but the function short-circuits redundant SUM checks for the same apartment via `ON CONFLICT DO NOTHING`. Net: N row-fires × O(N) SUM each → N row-fires + M (unique apartments) SUM queries. For typical urban-renewal imports M=1-10, so effectively O(1) SUM regardless of row count. Expected: T6.11 ~400s → ~30s.

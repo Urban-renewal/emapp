@@ -2,3 +2,4 @@
 export * from './handler';
 export * from './errors';
 export * from './import-job';
+export * from './producer';

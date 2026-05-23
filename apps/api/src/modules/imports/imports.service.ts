@@ -138,6 +138,23 @@ function fingerprintHeaders(headers: readonly string[]): string {
   return createHash('sha256').update(normalised).digest('hex');
 }
 
+/** Strip potential-PII substrings from a manager-supplied filename
+ *  before writing it to audit_log.afterState. Israeli national_id is
+ *  exactly 9 digits; phone is 10. A Manager who names a file
+ *  "Owner_038123456_signed_2026.xlsx" should not have that 9-digit
+ *  substring land in an audit_log row queryable by every Manager
+ *  with `audit:read`. v5 audit fix (Agent B HIGH-1).
+ *
+ *  Strategy: replace any run of 7+ consecutive digits with `[N]`
+ *  placeholder. 7 is a defensive lower bound (Israeli IDs are 9 but
+ *  truncated/zero-padded variants exist; Israeli mobiles are 10 but
+ *  short forms are 7-8). Lower than 7 would mangle dates like 2026
+ *  in real filenames; 7+ catches both PII shapes without false hits
+ *  on year/month/sequence numbers. */
+export function sanitiseFilenameForAudit(name: string): string {
+  return name.replace(/\d{7,}/g, '[N]');
+}
+
 @Injectable()
 export class ImportsService {
   private readonly logger = new Logger(ImportsService.name);
@@ -237,7 +254,12 @@ export class ImportsService {
           targetId: inserted.id,
           afterState: {
             projectId: inserted.projectId,
-            fileName: inserted.fileName,
+            // v5 audit fix (HIGH-1 PII surface): strip 7+ digit runs
+            // from the manager-supplied fileName so a name like
+            // "Owner_038123456_2026.xlsx" doesn't land that 9-digit
+            // PII-shaped substring in audit_log queryable by every
+            // Manager with audit:read.
+            fileName: sanitiseFilenameForAudit(inserted.fileName),
             sizeBytes: String(inserted.fileSizeBytes),
             dryRun: String(inserted.dryRun),
           },
@@ -507,7 +529,7 @@ export class ImportsService {
       seen.add(v);
     }
 
-    return withTenant(
+    const updated = await withTenant(
       user.orgId,
       async (tx) => {
         const row = await this.load(tx, id);
@@ -556,14 +578,19 @@ export class ImportsService {
           throw new ConflictException({ error: { code: 'mapping_template_conflict' } });
         }
 
-        // Flip the job back to 'queued' and clear progress counters
-        // so the SSE shows a fresh restart. The worker on next pickup
-        // will re-parse with the new mapping (NOT YET — L2 resolver
-        // is Phase 7+; for now the wizard sets the column map but
-        // the worker still uses L1. Recorded as a deliberate gap;
-        // closing it requires the Phase 7 TemplateResolver).
+        // v5 audit fix (P0 security/availability — Agent B): the
+        // status-flip + audit + final read MUST commit before we
+        // touch the pg-boss network. Prior shape held the withTenant
+        // tx open across `producer.send` — a stuck pg-boss producer
+        // would have blocked the import_jobs row lock + pool slot,
+        // potentially DOS'ing concurrent /mapping calls.
+        // v5 audit fix (MEDIUM correctness — Agent B): capture the
+        // UPDATE rowCount so a concurrent DELETE /imports/:id that
+        // flipped the row to 'cancelled' between our load and our
+        // UPDATE is observed cleanly (409 instead of silent insert
+        // of an orphan template + audit row for a cancelled job).
         const now = new Date();
-        await tx
+        const updResult = await tx
           .update(importJobs)
           .set({
             status: 'queued',
@@ -576,6 +603,15 @@ export class ImportsService {
             updatedAt: now,
           })
           .where(and(eq(importJobs.id, id), eq(importJobs.status, 'awaiting_mapping')));
+        const rowCount = (updResult as unknown as { rowCount?: number }).rowCount ?? 0;
+        if (rowCount === 0) {
+          throw new ConflictException({
+            error: {
+              code: 'import_status_changed',
+              message: 'row is no longer awaiting_mapping (concurrent cancel?)',
+            },
+          });
+        }
 
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
@@ -591,38 +627,48 @@ export class ImportsService {
           sessionId: user.sid,
         });
 
-        // Re-enqueue with the same singletonKey for producer-side
-        // idempotency. Done OUTSIDE the tx to keep DB tx short, but
-        // INSIDE this function so the controller sees the final view.
-        // The send is best-effort — if it errors, the audit + state
-        // are already committed and the next worker poll (or manual
-        // /start) will pick up the queued row.
-        // Note: producer.send returns a JobSendResult we don't read.
-        try {
-          await this.producer.send(
-            IMPORT_JOB_NAME,
-            { jobId: id, orgId: user.orgId, createdBy: user.sub },
-            { singletonKey: id },
-          );
-        } catch (e) {
-          this.logger.warn(
-            `re-enqueue after mapping_submitted failed (import=${id}); ` +
-              `row is queued, worker will pick up on next poll: ${
-                e instanceof Error ? e.message : 'unknown'
-              }`,
-          );
-        }
-
-        const [refreshed] = await tx
-          .select()
-          .from(importJobs)
-          .where(eq(importJobs.id, id))
-          .limit(1);
-        if (!refreshed) throw NOT_FOUND;
-        return { import: toView(refreshed), templateId };
+        // v5 audit fix (Agent C HIGH-4): construct the return view
+        // from the loaded row + known updates instead of a fresh
+        // SELECT. Saves one round-trip + avoids any READ COMMITTED
+        // staleness anomaly. (Equivalent because we just committed
+        // the exact deltas applied here.)
+        return {
+          ...row,
+          status: 'queued' as const,
+          startedAt: null as Date | null,
+          finishedAt: null as Date | null,
+          processedRows: 0,
+          okRows: 0,
+          failedRows: 0,
+          mappingTemplateId: templateId,
+          updatedAt: now,
+          _templateId: templateId,
+        };
       },
       { userId: user.sub },
     );
+
+    // v5 audit fix: producer.send OUTSIDE the withTenant tx. Best-
+    // effort — if it errors, the audit + state are already committed
+    // and the next worker poll (or manual /start) will pick up the
+    // queued row.
+    try {
+      await this.producer.send(
+        IMPORT_JOB_NAME,
+        { jobId: id, orgId: user.orgId, createdBy: user.sub },
+        { singletonKey: id },
+      );
+    } catch (e) {
+      this.logger.warn(
+        `re-enqueue after mapping_submitted failed (import=${id}); ` +
+          `row is queued, worker will pick up on next poll: ${
+            e instanceof Error ? e.message : 'unknown'
+          }`,
+      );
+    }
+
+    const { _templateId, ...rowView } = updated;
+    return { import: toView(rowView as typeof importJobs.$inferSelect), templateId: _templateId };
   }
 
   /** Stream progress over an SSE writer until the job reaches a

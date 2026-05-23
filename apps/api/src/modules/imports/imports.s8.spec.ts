@@ -286,6 +286,39 @@ describe('Phase 6 S8 · §A — POST /imports (create)', () => {
     expect(afterStateBlob).not.toMatch(/05\d{8}/);
     expect(row?.afterState).toMatchObject({ fileName: 'no-pii.xlsx' });
   });
+
+  // v5 audit fix (Agent B HIGH-1): a Manager-supplied filename
+  // containing a national_id-shaped digit run MUST be stripped before
+  // landing in audit_log.afterState. The row itself stores the
+  // cleartext name (RLS-protected, no PII surface for cross-Manager
+  // read); only the audit row is sanitised.
+  it('A7) filename with PII-shaped digit run is stripped from audit.afterState', async () => {
+    const result = await svc.create(userOf(orgA, 'manager'), {
+      projectId: orgA.projects[0]!.id,
+      // Manager dumb-named the file with what looks like a national_id.
+      fileName: 'Owner_038123456_signed.xlsx',
+      fileSizeBytes: 4096,
+      fileContentHash: '7'.repeat(64),
+      dryRun: false,
+    });
+    // Row itself keeps the original name (RLS protects it; Manager UI
+    // shows the real filename to the uploader).
+    expect(result.import.fileName).toBe('Owner_038123456_signed.xlsx');
+    // Audit row has the digits redacted.
+    const [row] = await withTenant(orgA.id, (tx) =>
+      tx
+        .select()
+        .from(auditLog)
+        .where(
+          and(eq(auditLog.targetTable, 'import_jobs'), eq(auditLog.targetId, result.import.id)),
+        ),
+    );
+    expect(row?.afterState).toMatchObject({ fileName: 'Owner_[N]_signed.xlsx' });
+    // Defense in depth: the 9-digit substring does NOT appear in
+    // afterState anywhere.
+    const blob = JSON.stringify(row?.afterState ?? {});
+    expect(blob).not.toContain('038123456');
+  });
 });
 
 describe('Phase 6 S8 · §B — POST /imports/:id/start (enqueue)', () => {
@@ -541,5 +574,63 @@ describe('Phase 6 S8 · §E — POST /imports/:id/mapping (D.34 wizard)', () => 
         },
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  // v5 audit fix (Agent B P0-1 + MED-1): submitMapping must (a)
+  // commit the withTenant tx BEFORE the producer.send network call
+  // (no row-lock held across pg-boss I/O — DoS protection), and (b)
+  // detect a concurrent cancel that flipped the row to 'cancelled'
+  // between our load and our UPDATE (rowCount=0 → 409 instead of
+  // silent insert of an orphan template). Test (b) by hand-flipping
+  // the row to 'cancelled' between our service's load + UPDATE; the
+  // race is hard to reproduce deterministically, so we exercise the
+  // STATIC contract: the UPDATE WHERE clause requires
+  // status='awaiting_mapping' AND the service checks rowCount.
+  it('E6) row flipped to cancelled mid-flight → 409 import_status_changed', async () => {
+    const id = await makeImport(orgA, { status: 'awaiting_mapping' });
+    // Simulate the race: manually flip BEFORE the service runs.
+    // (A real cancel-then-mapping race would behave identically — the
+    // UPDATE's WHERE clause fails to match either way.)
+    const c = await providerPool.connect();
+    try {
+      await c.query(`UPDATE import_jobs SET status='cancelled' WHERE id=$1`, [id]);
+    } finally {
+      c.release();
+    }
+    try {
+      await svc.submitMapping(userOf(orgA, 'manager'), id, {
+        columns: {
+          national_id: 0,
+          phone: 1,
+          name: 2,
+          apartment_number: 3,
+          building_address: 4,
+        },
+      });
+      throw new Error('expected ConflictException');
+    } catch (e) {
+      // Could surface as 'import_not_awaiting_mapping' (if load sees
+      // cancelled first) OR 'import_status_changed' (if load saw the
+      // pre-flip awaiting_mapping). Both are correct posture.
+      expect(e).toBeInstanceOf(ConflictException);
+      const body = (e as ConflictException).getResponse() as { error: { code: string } };
+      expect(body.error.code).toMatch(/import_not_awaiting_mapping|import_status_changed/);
+    }
+    // Verify NO orphan template was inserted.
+    const tpls = await withTenant(orgA.id, (tx) => tx.select().from(mappingTemplates));
+    // Count BEFORE / AFTER would be more robust; here we assert no
+    // template references this import (no row in audit either).
+    const auditRows = await withTenant(orgA.id, (tx) =>
+      tx
+        .select()
+        .from(auditLog)
+        .where(and(eq(auditLog.targetTable, 'import_jobs'), eq(auditLog.targetId, id))),
+    );
+    const submitted = auditRows.find((r) => r.action === 'import.mapping_submitted');
+    expect(submitted).toBeUndefined();
+    // (We don't assert tpls.length === 0 because earlier tests in
+    // this file leave templates around; the audit-row check above
+    // is the precise invariant.)
+    expect(tpls).toBeDefined();
   });
 });

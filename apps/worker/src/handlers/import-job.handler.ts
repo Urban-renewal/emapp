@@ -1294,23 +1294,42 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
         // affected apartment, atomically inside this tx. Even though
         // we expect zero active rows on a fresh import, this UPDATE
         // is what makes re-runs idempotent and re-mappings safe.
-        if (affectedApartmentIds.length > 0) {
+        //
+        // v5 audit fix (P0 cross-confirmed by SOLID + perf agents):
+        // chunk `affectedApartmentIds` at 5000 ids per UPDATE. The
+        // PostgreSQL wire protocol caps bind parameters at int2
+        // (65535). `inArray($uuid[])` is ONE parameter (the array)
+        // so this is conservative; chunking here is defense-in-depth
+        // against drizzle's future serialisation changes + keeps
+        // statement size predictable.
+        const UPDATE_CHUNK = 5000;
+        for (let i = 0; i < affectedApartmentIds.length; i += UPDATE_CHUNK) {
+          const chunk = affectedApartmentIds.slice(i, i + UPDATE_CHUNK);
           await tx
             .update(ownerships)
             .set({ endedAt: new Date() })
-            .where(
-              and(
-                inArray(ownerships.apartmentId, affectedApartmentIds),
-                sql`${ownerships.endedAt} IS NULL`,
-              ),
-            );
+            .where(and(inArray(ownerships.apartmentId, chunk), sql`${ownerships.endedAt} IS NULL`));
         }
 
-        // ONE bulk INSERT of every new ownership row. drizzle handles
-        // the multi-row INSERT efficiently; the SQL itself is one
-        // statement with one round-trip.
-        if (newOwnerships.length > 0) {
-          await tx.insert(ownerships).values(newOwnerships);
+        // v5 audit fix (P0 cross-confirmed): chunk the bulk INSERT
+        // at 5000 rows per statement. Each ownership row contributes
+        // 3 parameters (apartmentId, ownerId, ownershipPct);
+        // drizzle's pg-protocol param cap is int2 = 65535 → ceiling
+        // of ~21,845 rows per insert. A 50MB Excel can easily hold
+        // 30k+ rows; without chunking we'd hit "bind message has X
+        // parameters" at scale. 5000 × 3 = 15k params per chunk,
+        // ~7x margin from the cap.
+        //
+        // Inside a single tx, the deferred constraint trigger memo
+        // (migration 0030) spans across chunks — N apartments still
+        // get exactly M unique SUM checks at COMMIT regardless of
+        // how many chunks we INSERTed across.
+        const INSERT_CHUNK = 5000;
+        for (let i = 0; i < newOwnerships.length; i += INSERT_CHUNK) {
+          const chunk = newOwnerships.slice(i, i + INSERT_CHUNK);
+          if (chunk.length > 0) {
+            await tx.insert(ownerships).values(chunk);
+          }
         }
 
         // v4 audit fix (P0 security): cancellation race-guard on the

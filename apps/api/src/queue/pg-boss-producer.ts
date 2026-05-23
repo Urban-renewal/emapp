@@ -48,9 +48,15 @@ export class PgBossJobProducer implements IJobProducer, OnModuleDestroy {
       const boss = new PgBoss({
         connectionString: env.PROVIDER_DATABASE_URL ?? env.DATABASE_URL,
         schema: PG_BOSS_SCHEMA,
-        // The API is producer-only; we don't need pg-boss to apply
-        // its migrate-on-start (the worker is the owner of schema
-        // mutation). But pg-boss requires start() before send().
+        // v5 audit fix (HIGH cross-confirmed by SOLID + perf agents):
+        // pg-boss defaults migrate:true on start(). With BOTH the
+        // worker AND this api producer calling start() concurrently
+        // on first deploy, the schema migration becomes a race
+        // (pg-boss v10 documented advisory-lock guard mitigates this,
+        // but defense-in-depth: the worker is the canonical schema
+        // OWNER; the api is producer-only and MUST NOT apply DDL).
+        // This also speeds api cold-start.
+        migrate: false,
       });
       boss.on('error', (err: Error): void => {
         this.logger.error(`pg-boss producer error: ${err.message}`);

@@ -45,7 +45,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
-import { AuthzResource } from '../../common/authz/authz.decorators';
+import { AuthzAction, AuthzResource } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -86,7 +86,13 @@ export class ImportsController {
   // POST /imports/:id/start — enqueue the worker job. Same throttle
   // class as create (cheap on the API but kicks off heavy worker
   // work; a runaway client could DoS the worker pool).
+  // v5 audit fix (HIGH security): POST default-maps to `create` in
+  // the AuthorizationGuard's verb→action table, but /start mutates
+  // an EXISTING row — semantically `update`. Annotating explicitly
+  // so a future policy change that differentiates create vs update
+  // doesn't silently misroute.
   @Post(':id/start')
+  @AuthzAction('update')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @HttpCode(200)
   async start(
@@ -119,7 +125,10 @@ export class ImportsController {
 
   // POST /imports/:id/mapping — D.34 wizard endpoint. Same tight
   // throttle as the other mutation endpoints.
+  // v5 audit fix (HIGH security): POST default-maps to `create`; the
+  // wizard mutates an existing row → `update`. See start() above.
   @Post(':id/mapping')
+  @AuthzAction('update')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @HttpCode(200)
   async submitMapping(

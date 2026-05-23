@@ -758,7 +758,14 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
     //   unknown:  no strategy could resolve. Transition the row to
     //             'awaiting_mapping' and stop — the wizard (S8) or
     //             agent (Phase 7+) resolves out-of-band.
-    const resolution = await this.mappingResolver.resolve(parsed.headers);
+    // Phase 7+ — pass tenant context so L2 TemplateResolver can look
+    // up org-scoped templates via withTenant (RLS FORCE). L1
+    // (LegacyAliasResolver) ignores the ctx; same instance can serve
+    // every org concurrently with no shared state.
+    const resolution = await this.mappingResolver.resolve(parsed.headers, {
+      orgId: payload.orgId,
+      log: ctx.log,
+    });
     if (resolution.kind === 'reject') {
       throw new NonRetryableJobError(`mapping rejected: ${resolution.reason}`, 'mapping_rejected');
     }
@@ -931,7 +938,13 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
       // already approved a mapping (set mapping_template_id). For
       // now we re-run the resolver; Phase 7+ adds a TemplateResolver
       // that uses mapping_template_id as a forced override.
-      const res = await this.mappingResolver.resolve(parsed.headers);
+      // Phase 7+: pass tenant context so L2 TemplateResolver can
+      // resolve on retry (the wizard may have stored a template
+      // between the original failure and this retry).
+      const res = await this.mappingResolver.resolve(parsed.headers, {
+        orgId: payload.orgId,
+        log: ctx.log,
+      });
       if (res.kind === 'resolved') {
         mapping = res.mapping;
       } else {

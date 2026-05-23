@@ -32,6 +32,11 @@ import pino from 'pino';
 
 import { registerCrashHandlers, registerSignalHandlers, smokeTestDb } from './bootstrap';
 import { ImportJobHandler } from './handlers/import-job.handler';
+import {
+  LegacyAliasResolver,
+  MappingResolverChain,
+  TemplateResolver,
+} from './mapping/mapping-resolver';
 import { registerHandler, type BossLike } from './pg-boss-adapter';
 import { storageProviderFactory } from './storage-provider';
 
@@ -107,7 +112,22 @@ async function main(): Promise<void> {
   // Storage provider is constructed BEFORE the handler so a missing
   // R2 config in production fails the boot here (D.28 governed).
   const storage = storageProviderFactory();
-  const importHandler = new ImportJobHandler(storage);
+  // Phase 7 — production resolver chain composition. Order matters:
+  //   L2 TemplateResolver (org-saved mappings, manager-approved) FIRST,
+  //   so a Manager's existing template wins over a generic alias guess.
+  //   L1 LegacyAliasResolver (deterministic alias table) SECOND, as
+  //   the safety net for files that match canonical aliases without a
+  //   saved template (the ~80% common-case).
+  //   L3 AgentResolver — Phase 7+; not yet implemented. When it
+  //   lands, it composes AFTER L1 (lowest priority — only when both
+  //   the manager's library AND the alias table miss).
+  // D.34 layered seam — the handler holds the chain via constructor
+  // DI so tests can inject a Fake.
+  const mappingResolver = new MappingResolverChain([
+    new TemplateResolver(),
+    new LegacyAliasResolver(),
+  ]);
+  const importHandler = new ImportJobHandler(storage, mappingResolver);
   try {
     await registerHandler({
       // pg-boss v10's class shape is compatible with BossLike (we only

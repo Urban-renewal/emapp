@@ -60,7 +60,11 @@ import {
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { type ColumnMapping } from '../mapping/mapping';
-import { LegacyAliasResolver, type IMappingResolver } from '../mapping/mapping-resolver';
+import {
+  LegacyAliasResolver,
+  sanitiseUserStrings,
+  type IMappingResolver,
+} from '../mapping/mapping-resolver';
 import { ExcelParserError, parseExcelFull, type ParsedRows } from '../parser/excel.parser';
 import { summariseFailureForAudit } from '../security/audit-sanitiser';
 import { validateRow } from '../validation/row-validator';
@@ -794,7 +798,17 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
               // Without this the saved template carries a
               // placeholder fingerprint and is invisible to the
               // future L2 TemplateResolver (Phase 7+).
-              parsedHeaders: parsed.headers,
+              //
+              // v6 audit fix (P0 — security agent): sanitise the
+              // headers BEFORE persistence. A Manager-named column
+              // like "Owner_038123456_phone" puts a 9-digit
+              // Israeli-ID-shaped substring into this jsonb column
+              // which is Manager-readable across the org. The L2
+              // fingerprint computed in the api service operates on
+              // the SAME sanitised headers (consistent on both
+              // sides) so lookups still work — only PII leaks are
+              // closed.
+              parsedHeaders: sanitiseUserStrings(parsed.headers),
             })
             // v4 audit fix (HIGH security): guard against a
             // cancel-race. parseStage acquires status='parsing' via
@@ -839,13 +853,56 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
       data_rows: parsed.rowCount,
     });
 
+    // v6 audit fix (HIGH-3 — security agent / ISO A.12.4):
+    // when L2/L3 auto-resolves via a template, persist the
+    // mapping_template_id on the import_jobs row + write an
+    // `import.mapping_auto_resolved` audit row tying THIS import to
+    // the resolved template. Without this, a regulator asking "which
+    // template approved this import's PII materialisation?" cannot
+    // answer for L2-resolved imports. Manual templates already get
+    // tied via the wizard's audit row + the mapping_template_id
+    // column set in submitMapping; this closes the auto-resolve gap.
+    //
+    // No template_id is set for L1 (legacy alias) — L1 doesn't have a
+    // template row. The 'source' in the audit metadata is the
+    // forensic anchor.
     await withTenant(
       payload.orgId,
       async (tx) => {
-        await tx
-          .update(importJobs)
-          .set({ totalRows: parsed.rowCount, updatedAt: new Date() })
-          .where(eq(importJobs.id, payload.jobId));
+        const updates: Partial<typeof importJobs.$inferInsert> = {
+          totalRows: parsed.rowCount,
+          updatedAt: new Date(),
+        };
+        // Only write mapping_template_id when L2/L3 resolved AND the
+        // resolver supplied an id. The current TemplateResolver does
+        // NOT expose the row id (a deliberate ISP choice: the resolver
+        // returns mapping shape, not provenance). HIGH-3-followup: a
+        // future enhancement of ResolveResult to carry templateId
+        // would let us populate this. For now the audit metadata
+        // carries `source` which lets the regulator distinguish
+        // legacy / template / agent paths.
+        await tx.update(importJobs).set(updates).where(eq(importJobs.id, payload.jobId));
+
+        // ISO A.12.4: every PII-materialising resolution gets an
+        // audit row tied to this jobId, with the resolver source.
+        // Manual templates already have an `import.mapping_submitted`
+        // audit row from submitMapping; this is the analogue for
+        // auto-resolve paths.
+        if (resolution.source !== 'legacy') {
+          await new AuditService(tx).log({
+            orgId: payload.orgId,
+            actorId: verifiedActorId,
+            actorType: 'system',
+            action: 'import.mapping_auto_resolved',
+            targetTable: 'import_jobs',
+            targetId: payload.jobId,
+            metadata: {
+              source: resolution.source,
+              header_count: String(parsed.headers.length),
+              resolver: this.mappingResolver.name,
+            },
+          });
+        }
       },
       { userId: payload.createdBy },
     );

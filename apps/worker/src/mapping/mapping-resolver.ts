@@ -126,6 +126,47 @@ export function fingerprintHeaders(headers: readonly string[]): string {
   return createHash('sha256').update(normalised).digest('hex');
 }
 
+/** v6 audit fix (P0 cross-confirmed by security agent — SAME class as
+ *  v5's sanitiseFilenameForAudit, applied at MORE persistence boundaries).
+ *
+ *  v5 introduced `sanitiseFilenameForAudit` for the audit-log fileName
+ *  surface but missed three other Manager-supplied string boundaries that
+ *  end up in persisted, queryable columns:
+ *    1. `import_jobs.parsed_headers` — worker writes raw header strings
+ *       from the parsed Excel. Headers like "Owner_038123456_phone"
+ *       (Manager-named columns referring to specific individuals) put
+ *       9-digit Israeli-ID-shaped substrings into a Manager-readable
+ *       jsonb column with NO encryption.
+ *    2. `mapping_templates.mapping.headers` — wizard echoes parsed_headers
+ *       into the template's jsonb. Templates persist indefinitely
+ *       (soft-delete only) — a single malicious-header file would poison
+ *       the org's template library FOREVER.
+ *    3. `mapping_templates.name` — Manager-supplied (Zod-bounded to 120
+ *       chars but no content filter). A template named "Owner 038123456
+ *       mapping" lands the PII substring in a queryable column.
+ *
+ *  Strategy: same as v5's filename helper — strip any run of 7+ digits.
+ *  7 is below the Israeli national_id length (9) but above year/month/seq
+ *  number lengths (≤4) so we catch PII shapes without mangling legitimate
+ *  filenames like "2026" or "Q1_2026".
+ *
+ *  The fingerprint is computed from the LIVE headers (in memory, NOT the
+ *  sanitised copy) so L2 lookups still find templates for files with the
+ *  exact same header strings. The sanitised copy is the PERSISTED artifact.
+ *  This is the same trick v5 applied to fileName: the row keeps the
+ *  cleartext (RLS-protected; uploader UX needs it), the audit gets the
+ *  sanitised version. */
+export function sanitiseUserString(s: string): string {
+  return s.replace(/\d{7,}/g, '[N]');
+}
+
+/** Apply `sanitiseUserString` to every string in an array. Returns a new
+ *  array; original is untouched (callers MAY still need the cleartext for
+ *  fingerprint computation in the same scope). */
+export function sanitiseUserStrings(arr: readonly string[]): string[] {
+  return arr.map(sanitiseUserString);
+}
+
 /** L2 — TemplateResolver. Looks up the org's saved mapping_templates by
  *  (orgId, fingerprint) — same algorithm + same partial UNIQUE constraint
  *  the S8 wizard uses when storing manual templates. D.34 contract.

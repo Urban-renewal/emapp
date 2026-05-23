@@ -289,9 +289,12 @@ describe('Phase 6 v4 audit · §3 — Cancellation race', () => {
       await import('node:fs/promises')
     ).readFile(new URL('../src/handlers/import-job.handler.ts', import.meta.url), 'utf8');
     // Find the awaiting_mapping path and assert it has a status guard.
+    // v6 audit follow-up: window widened from 1500 -> 3000 chars
+    // because v6 added inline comments + parsed_headers sanitisation
+    // in the SET block, pushing the WHERE clause further down.
     const awaitingBlock = handlerSource.slice(
       handlerSource.indexOf("status: 'awaiting_mapping'"),
-      handlerSource.indexOf("status: 'awaiting_mapping'") + 1500,
+      handlerSource.indexOf("status: 'awaiting_mapping'") + 3000,
     );
     expect(awaitingBlock).toMatch(/eq\(importJobs\.status,\s*['"]parsing['"]\)/);
   });

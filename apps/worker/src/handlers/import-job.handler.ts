@@ -1247,14 +1247,34 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
         }
         const apartmentByKey = await resolveApartmentsBatch(tx, apartmentSpecs);
 
-        // STEP D: ownership set-replace per apartment.
+        // STEP D: ownership set-replace ACROSS ALL APARTMENTS in two
+        // bulk SQL statements. T6.11 v4 follow-up: the prior
+        // per-apartment loop (collapsed only WITHIN an apartment via
+        // bulk INSERT) still cost 500 round-trips × 2 (one UPDATE +
+        // one INSERT each) at 1000-row scale = ~100s on Neon network
+        // latency alone. Restructure into:
+        //   1. Collect every (apartmentId, ownerId, pct) tuple plus
+        //      the SET of affected apartment ids.
+        //   2. ONE big UPDATE that ends every currently-active
+        //      ownership for any of those apartments (set-replace
+        //      semantics preserved — D.25).
+        //   3. ONE big INSERT of all new ownership rows.
+        // Trigger semantics: the FOR EACH ROW deferred trigger still
+        // fires per row, but the per-tx memo (migration 0030) means
+        // each unique apartment_id runs exactly ONE SUM check at
+        // COMMIT regardless of how many rows it has.
+        const newOwnerships: Array<{
+          apartmentId: string;
+          ownerId: string;
+          ownershipPct: string;
+        }> = [];
+        const affectedApartmentIds: string[] = [];
         for (const [, rows] of apartmentGroups) {
           const first = rows[0]!;
           const buildingId = buildingByAddress.get(first.buildingAddress)!;
           const apartmentId = apartmentByKey.get(`${buildingId}\x00${first.apartmentNumber}`)!;
+          affectedApartmentIds.push(apartmentId);
 
-          // For each row, look up the owner from the batched map.
-          const ownersForApt: Array<{ ownerId: string; pct: number }> = [];
           for (const r of rows) {
             const hash = hashField(r.nationalId, env.PII_HASH_KEY);
             const ownerId = ownerByHash.get(hash);
@@ -1262,35 +1282,35 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
               throw new Error(`internal: owner not resolved for hash ${hash.slice(0, 8)}…`);
             }
             const pct = rows.length === 1 ? (r.ownershipPct ?? 100) : (r.ownershipPct ?? 0);
-            ownersForApt.push({ ownerId, pct });
+            newOwnerships.push({
+              apartmentId,
+              ownerId,
+              ownershipPct: String(pct),
+            });
           }
+        }
 
-          // Atomic set-replace (D.25): end any currently-active
-          // ownerships for this apartment, then insert the new set.
-          const now = new Date();
+        // Set-replace (D.25): end every active ownership for any
+        // affected apartment, atomically inside this tx. Even though
+        // we expect zero active rows on a fresh import, this UPDATE
+        // is what makes re-runs idempotent and re-mappings safe.
+        if (affectedApartmentIds.length > 0) {
           await tx
             .update(ownerships)
-            .set({ endedAt: now })
+            .set({ endedAt: new Date() })
             .where(
-              and(eq(ownerships.apartmentId, apartmentId), sql`${ownerships.endedAt} IS NULL`),
+              and(
+                inArray(ownerships.apartmentId, affectedApartmentIds),
+                sql`${ownerships.endedAt} IS NULL`,
+              ),
             );
-          // v4 audit fix (P0 perf): bulk-insert all ownership rows
-          // for this apartment in a single INSERT. The prior per-row
-          // loop generated N round-trips per apartment AND fired the
-          // FOR EACH ROW DEFERRED ownership-sum trigger N times at
-          // COMMIT. The trigger itself is converted to FOR EACH
-          // STATEMENT in migration 0030; this app-side change is what
-          // collapses the N round-trips. Together they restore T6.11
-          // (1000-row import) from ~400s to the ~30s budget.
-          if (ownersForApt.length > 0) {
-            await tx.insert(ownerships).values(
-              ownersForApt.map((o) => ({
-                apartmentId,
-                ownerId: o.ownerId,
-                ownershipPct: String(o.pct),
-              })),
-            );
-          }
+        }
+
+        // ONE bulk INSERT of every new ownership row. drizzle handles
+        // the multi-row INSERT efficiently; the SQL itself is one
+        // statement with one round-trip.
+        if (newOwnerships.length > 0) {
+          await tx.insert(ownerships).values(newOwnerships);
         }
 
         // v4 audit fix (P0 security): cancellation race-guard on the

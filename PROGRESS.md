@@ -6,7 +6,34 @@
 
 ## Heartbeat (latest — for the 30-second scan)
 
-- **Last slice:** **S8 — API mutation surface + D.34 wizard endpoint shipped.** Phase 6's customer-onboarding flow is now end-to-end reachable from the FE:
+- **Last slice:** **T6.11 closed — 1000-row import measures 16.4s (90s local budget, ~11x faster than pre-v4).** The final Phase 6 DoD T-ID is now pinned by an automated test. While writing the test the actual 1000-row run timed out at 180s — meaning v4's "fix" wasn't the whole story. Root cause traced to `persistStage` STEP D: even though each apartment-group's ownership inserts were now batched (within-group), the LOOP across 500 apartment-groups still did 500 round-trips of UPDATE + 500 INSERT = 1000 round-trips. At ~100ms Neon network latency that's ~100s baseline before any actual work.
+- **What shipped this slice:**
+  - **`apps/worker/src/handlers/import-job.handler.ts` STEP D rewrite:** collect all `(apartmentId, ownerId, pct)` tuples + `affectedApartmentIds` ACROSS apartments in pure JS, then ONE bulk `UPDATE ownerships SET ended_at = now() WHERE apartment_id = ANY($1) AND ended_at IS NULL` + ONE bulk `INSERT INTO ownerships VALUES (...all rows...)`. Net: 1000 round-trips → 2 round-trips. Set-replace semantics (D.25) preserved — the deferred constraint trigger still enforces SUM=100 per apartment at COMMIT, the per-tx memoization (migration 0030) collapses N row-fires into M (unique apartments) SUM checks.
+  - **`apps/worker/test/perf-t6.11.spec.ts`:** new — 1000 rows = 500 unique apartments × 2 owners (50/50 split). Asserts: status='done', okRows=1000, failedRows=0, apartments=500, ownership rows=1000, SUM=100 per apartment (D.25 invariant), wall time < 90s. Fixture deliberately stresses BOTH the bulk-INSERT path AND the SUM-trigger memoization (each apartment fires the trigger twice; second fire short-circuits).
+- **Measured numbers (Neon developer plan, local dev machine):**
+  - Pre-v4: ~400s (per audit findings)
+  - Post-v4 (within-apartment bulk INSERT only): 180s+ timeout (not enough)
+  - **Post-T6.11 (across-apartment bulk UPDATE+INSERT): 16.4s** — ~5.5x headroom under the 90s budget; ~24x faster than pre-v4.
+  - The 90s budget is intentionally generous for CI-shared-runner latency; the 16.4s number is the operational target.
+- **Verification:** 175/175 worker tests green (was 174 + 1 new T6.11); 281/281 API tests still green from S8 slice; lint + typecheck clean across all 8 packages.
+- **Phase 6 T-IDs closed:** T6.1–T6.11 — **11 of 12**. T6.12 (cancel flow E2E) is functionally complete via S8's `DELETE /imports/:id` + v4's `persistStage` cancellation guard; an end-to-end test connecting upload → SSE → cancel mid-flight → final state is the formal closure (small spec, recorded for next slice).
+- **v4 audit-pass status:** every cross-confirmed P0/HIGH bug closed AND the v4-MEDIUM perf concern (STEP D across-apartment loop, called out in the v4 perf agent's report as "the per-apartment loop is still N round-trips even after the within-apartment fix") is now also closed.
+- **Still deferred (recorded for v5/Phase 7):**
+  - ImportJobHandler ~1100 LOC SOLID split (state-machine + 3 stage modules — pre-Phase-7 hygiene)
+  - SSE 500ms poll → LISTEN/NOTIFY (event-driven cuts ~600 RPM per active client)
+  - `summariseFailureForAudit` constraint-string regex hardening
+  - `findOrCreateBuilding` batched path for pathological N-building imports
+  - Buffer/workbook RAM release for concurrent imports (>1 teamConcurrency)
+  - Phase 7+ — D.34 worker-side L2 TemplateResolver consuming `mappingTemplateId`
+- **Next slice options:**
+  - **Option A (recommended): v5 INDEPENDENT audit-pass.** S7+S8+T6.11 land a lot of code. Three independent agents in parallel (SOLID/security/perf), same pattern as v4. Customary moment for a fresh-eyes pass before declaring Phase 6 done.
+  - **Option B:** T6.12 E2E cancel-flow test — quick (~30 lines). Formal close of the last DoD.
+  - **Option C:** Begin Phase 7+ deferrals.
+  - Recommended order: **A → B → C**. v5 catches anything T6.11's STEP D rewrite + S8's queue+wizard introduced before we declare Phase 6 complete.
+- **Blocked:** no.
+- **Mode:** Phase 6 worker + API + perf all green; 11/12 DoD T-IDs closed; the customer-onboarding flow is end-to-end reachable, performant, audited.
+
+- **S8 — API mutation surface + D.34 wizard endpoint shipped.** Phase 6's customer-onboarding flow is now end-to-end reachable from the FE:
   - **POST /api/v1/imports** — Manager creates an import (project visibility verified, file size <=50MB Zod-enforced, server-mints `r2Key` partitioned per org, presigned PUT URL returned with 300s TTL). `r2Key` NEVER on the wire. Audit row `import.created` written in the same tx as the INSERT.
   - **POST /api/v1/imports/:id/start** — enqueues the pg-boss worker job. Defense-in-depth: row must be `status='queued'` AND `createdBy === user.sub` (one Manager can't start another Manager's draft). `IStorageProvider.head()` verifies file size matches the declared `fileSizeBytes` (in prod with R2; fake-storage returns null which we treat as "no attestation"). Producer-side `singletonKey=jobId` makes a double-click idempotent. Audit row `import.start_requested`.
   - **DELETE /api/v1/imports/:id** — cancels a non-terminal row (queued/parsing/validating/persisting/awaiting_mapping). Race-safe guarded UPDATE; if the worker just terminated, rowCount=0 and we silently no-op. Audit row `import.cancelled` with `metadata.from` = original status.

@@ -86,6 +86,14 @@ export const importJobs = pgTable(
 
     /** pg-boss correlation (filled when worker picks up). */
     pgBossJobId: text('pg_boss_job_id'),
+
+    /** v5 audit fix (P0 — D.34 wizard): parsed Excel headers from
+     *  parseStage. Written when the worker transitions to
+     *  `awaiting_mapping`; the S8 wizard endpoint reads them back to
+     *  compute the real headers-fingerprint when storing a manual
+     *  mapping_templates row (so the future L2 TemplateResolver can
+     *  actually find these templates). Migration 0031. */
+    parsedHeaders: jsonb('parsed_headers').$type<string[]>(),
   },
   (table) => ({
     orgStatusCreatedIdx: index('idx_import_jobs_org_status_created').on(

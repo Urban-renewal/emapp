@@ -539,15 +539,26 @@ export class ImportsService {
           });
         }
 
-        // Compute a per-org fingerprint that's stable for this
-        // particular import id. Even if two imports share headers,
-        // a manual mapping for THIS import gets its own template
-        // row (manual templates carry their job-of-origin context).
-        // The L2 TemplateResolver (Phase 7+) will use the real
-        // headers-fingerprint for lookup; this endpoint just needs
-        // the row to satisfy the partial UNIQUE (org, fingerprint)
-        // WHERE archived_at IS NULL.
-        const fingerprint = fingerprintHeaders([`manual:${id}`]);
+        // v5 audit fix (P0 — Agent A): compute the real
+        // headers-fingerprint from the parsed_headers the worker
+        // persisted when it transitioned this row to
+        // `awaiting_mapping` (migration 0031). Pre-fix the wizard
+        // used `sha256("manual:${id}")` as a placeholder which made
+        // every manual template invisible to the future L2
+        // TemplateResolver (Phase 7+). Now the template fingerprint
+        // matches the L2 lookup key.
+        //
+        // Fallback: if `parsedHeaders` is somehow missing (a row
+        // that reached awaiting_mapping via a non-parseStage path,
+        // or a pre-migration legacy row) we fall back to the old
+        // placeholder. This keeps the wizard functional but the
+        // template won't be L2-findable — acceptable since the
+        // worker always populates parsedHeaders in production.
+        const realHeaders = row.parsedHeaders ?? null;
+        const fingerprint =
+          realHeaders && realHeaders.length > 0
+            ? fingerprintHeaders(realHeaders)
+            : fingerprintHeaders([`manual:${id}`]);
 
         // INSERT template. UNIQUE may collide if the manager
         // submitted twice — let pg surface 23505, swallowed into a
@@ -560,7 +571,12 @@ export class ImportsService {
               orgId: user.orgId,
               fingerprint,
               name: input.templateName ?? `Manual mapping for import ${id.slice(0, 8)}`,
-              mapping: { columns: input.columns, headers: [] },
+              // v5 audit fix (P0 — Agent A + MED-3): store the real
+              // headers in the template's mapping jsonb so the L2
+              // resolver (Phase 7+) can verify the saved mapping
+              // against the file's headers + the audit-trail of
+              // template provenance is complete.
+              mapping: { columns: input.columns, headers: realHeaders ?? [] },
               source: 'manual',
               createdBy: user.sub,
               approvedBy: user.sub,

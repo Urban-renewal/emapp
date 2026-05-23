@@ -780,6 +780,14 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
               status: 'awaiting_mapping',
               totalRows: parsed.rowCount,
               updatedAt: now,
+              // v5 audit fix (P0 — D.34 wizard fingerprint):
+              // persist the parsed headers so the API service
+              // `submitMapping` can compute the real headers-
+              // fingerprint when storing the manual template.
+              // Without this the saved template carries a
+              // placeholder fingerprint and is invisible to the
+              // future L2 TemplateResolver (Phase 7+).
+              parsedHeaders: parsed.headers,
             })
             // v4 audit fix (HIGH security): guard against a
             // cancel-race. parseStage acquires status='parsing' via

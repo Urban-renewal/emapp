@@ -218,6 +218,13 @@
       "when": 1779045000000,
       "tag": "0030_ownerships_sum_trigger_per_statement",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1779045600000,
+      "tag": "0031_import_jobs_parsed_headers",
+      "breakpoints": true
     }
   ]
 }

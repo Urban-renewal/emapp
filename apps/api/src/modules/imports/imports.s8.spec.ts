@@ -576,6 +576,61 @@ describe('Phase 6 S8 · §E — POST /imports/:id/mapping (D.34 wizard)', () => 
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
+  // v5 audit fix (P0 — Agent A): the wizard MUST compute the
+  // mapping_templates.fingerprint from the parsed_headers the
+  // worker persisted on the row (migration 0031), NOT from a
+  // placeholder. Without this fix the future L2 TemplateResolver
+  // (Phase 7+) would never find any wizard-saved template.
+  it('E7) submitMapping uses parsed_headers from the row to compute the real fingerprint', async () => {
+    const { createHash } = await import('node:crypto');
+    const realHeaders = ['client_id', 'cellular', 'contact_name', 'unit_ref', 'street_locator'];
+    const id = await makeImport(orgA, { status: 'awaiting_mapping' });
+    // Simulate what the worker's parseStage does: persist the
+    // observed headers on the row alongside the awaiting_mapping
+    // transition.
+    const c = await providerPool.connect();
+    try {
+      await c.query(`UPDATE import_jobs SET parsed_headers=$2::jsonb WHERE id=$1`, [
+        id,
+        JSON.stringify(realHeaders),
+      ]);
+    } finally {
+      c.release();
+    }
+
+    const result = await svc.submitMapping(userOf(orgA, 'manager'), id, {
+      columns: {
+        national_id: 0,
+        phone: 1,
+        name: 2,
+        apartment_number: 3,
+        building_address: 4,
+      },
+      templateName: 'Bank export v2',
+    });
+
+    // The fingerprint stored on mapping_templates must be the
+    // sha256 of the normalised (lowercase + trim) headers joined
+    // by NUL. The L2 TemplateResolver will use the same algorithm
+    // → next file with the same headers FINDS this template.
+    const expectedFingerprint = createHash('sha256')
+      .update(realHeaders.map((h) => h.trim().toLowerCase()).join('\x00'))
+      .digest('hex');
+    const [tpl] = await withTenant(orgA.id, (tx) =>
+      tx.select().from(mappingTemplates).where(eq(mappingTemplates.id, result.templateId)).limit(1),
+    );
+    expect(tpl?.fingerprint).toBe(expectedFingerprint);
+    // Defense in depth: the placeholder "manual:" string MUST NOT
+    // appear in the fingerprint (would indicate the fallback path
+    // fired silently).
+    const placeholder = createHash('sha256').update(`manual:${id}`).digest('hex');
+    expect(tpl?.fingerprint).not.toBe(placeholder);
+    // The template's mapping jsonb MUST carry the real headers too
+    // (so the L2 resolver can verify head-match if it wants extra
+    // certainty before applying a saved mapping).
+    expect((tpl?.mapping as { headers: string[] }).headers).toEqual(realHeaders);
+  });
+
   // v5 audit fix (Agent B P0-1 + MED-1): submitMapping must (a)
   // commit the withTenant tx BEFORE the producer.send network call
   // (no row-lock held across pg-boss I/O — DoS protection), and (b)

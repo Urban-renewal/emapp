@@ -100,6 +100,19 @@ describe('D.34 — awaiting_mapping transition on Layer-1 miss', () => {
     expect(row?.totalRows).toBe(1);
     // No persistence happened — okRows stays 0.
     expect(row?.okRows).toBe(0);
+    // v5 audit fix (P0 — D.34 wizard fingerprint): the parsed
+    // headers MUST be persisted on the row so the api service
+    // `submitMapping` can compute the real headers-fingerprint
+    // when storing the manual template. Without this, every saved
+    // template carries a placeholder fingerprint and is invisible
+    // to the future L2 TemplateResolver (Phase 7+).
+    expect(row?.parsedHeaders).toEqual([
+      'client_identifier',
+      'cellular',
+      'contact_label',
+      'unit_ref',
+      'street_locator',
+    ]);
   }, 60_000);
 
   it('2) awaiting_mapping audit row written with resolver name', async () => {

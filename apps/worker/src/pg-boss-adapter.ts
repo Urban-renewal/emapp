@@ -88,8 +88,24 @@ export async function registerHandler<TPayload>(opts: {
     handler.name,
     {
       batchSize: 1,
-      includeMetadata: false,
+      // v4 audit fix (HIGH forensic observability): pg-boss only
+      // exposes `retryCount` on the job object when includeMetadata
+      // is true. Pre-fix, every audit_log row carried `attempt='1'`
+      // regardless of which retry it was — an SRE diagnosing a
+      // thrashing job from logs alone CANNOT distinguish attempt 1
+      // from attempt 5. Now we read job.retryCount per invocation
+      // and plumb it through ctx.attempt → audit_log.metadata.
+      includeMetadata: true,
       teamConcurrency: opts.concurrency ?? 1,
+      // v4 audit fix (P0 perf): pg-boss v10 defaults
+      // newJobCheckInterval to 2000ms on the worker side — every
+      // customer waits ~2s after upload before the worker reads
+      // the queue. Per Lidor's customer-onboarding posture
+      // "אם לקוח יחכה איבדנו אותו" this is the literal first 2s
+      // of avoidable wait. 200ms feels instant on the SSE side;
+      // batchSize:1 + teamConcurrency:1 bound the extra DB chatter
+      // on Free Tier.
+      newJobCheckInterval: 200,
     },
     async (jobs) => {
       // batchSize:1 guarantees `jobs.length <= 1`, but we still defend
@@ -101,8 +117,16 @@ export async function registerHandler<TPayload>(opts: {
   );
 }
 
+/** pg-boss v10 with includeMetadata: true augments the job shape with
+ *  retryCount (and other metadata fields). We narrow to what we use. */
+interface PgBossJobWithMeta {
+  id: string;
+  data: unknown;
+  retryCount?: number;
+}
+
 async function runOne<TPayload>(opts: {
-  job: { id: string; data: unknown };
+  job: PgBossJobWithMeta;
   handler: IJobHandler<TPayload>;
   payloadSchema: z.ZodType<TPayload>;
   log: JobLogger;
@@ -110,9 +134,12 @@ async function runOne<TPayload>(opts: {
 }): Promise<void> {
   const { job, handler, payloadSchema, log, signal } = opts;
   const jobId = job.id;
-  const attempt = 1; // pg-boss exposes retryCount via includeMetadata only;
-  // we keep the public surface clean (S2 doesn't surface attempt; can
-  // re-enable includeMetadata if a handler ever needs it).
+  // v4 audit fix: read the retry count pg-boss provides via
+  // includeMetadata. retryCount is 0-indexed (first run = 0) so we
+  // add 1 to match the "attempt number" mental model that the audit
+  // schema uses. Defensive fallback to 1 if pg-boss ever drops the
+  // field (cross-minor-version shape drift).
+  const attempt = typeof job.retryCount === 'number' ? job.retryCount + 1 : 1;
 
   // Per-invocation logger meta. Includes service+jobId so log aggregation
   // (Railway/Sentry) can correlate every line for a given job.

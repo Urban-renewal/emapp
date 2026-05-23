@@ -131,37 +131,35 @@ describe('Phase 6 v4 audit · §1 — ISO A.18.1.4 PII creation logging', () => 
   // v3 audit-pass claimed D1 closed. v4 grep shows zero hits for
   // 'import.materialised' in apps/worker/src. The audit row does NOT
   // exist. False-closure recorded in PROGRESS.md heartbeat v4 section.
-  it.fails(
-    '1) happy-path import writes an `import.materialised` audit row carrying ok_rows count',
-    async () => {
-      const storage = new FakeStorageProvider();
-      const handler = new ImportJobHandler(storage);
-      const r2Key = `org/${org.id}/import/v4-mat.xlsx`;
-      storage.setObject(r2Key, await buildHappyPathXlsx(3));
-      const jobId = await createJobRow(org, r2Key);
+  it('1) happy-path import writes an `import.materialised` audit row carrying ok_rows count', async () => {
+    const storage = new FakeStorageProvider();
+    const handler = new ImportJobHandler(storage);
+    const r2Key = `org/${org.id}/import/v4-mat.xlsx`;
+    storage.setObject(r2Key, await buildHappyPathXlsx(3));
+    const jobId = await createJobRow(org, r2Key);
 
-      await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
+    await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
 
-      const rows = await withTenant(org.id, (tx) =>
-        tx
-          .select()
-          .from(auditLog)
-          .where(and(eq(auditLog.targetTable, 'import_jobs'), eq(auditLog.targetId, jobId))),
-      );
-      const materialised = rows.find((r) => r.action === 'import.materialised');
-      expect(materialised, 'expected import.materialised audit row to exist').toBeDefined();
-      expect(materialised!.metadata).toMatchObject({
-        // The aggregate-count fields are what the regulator queries.
-        ok_rows: expect.any(String),
-        apartment_count: expect.any(String),
-      });
-      // No PII surface — only counts.
-      const blob = JSON.stringify(materialised);
-      expect(blob).not.toMatch(/\d{9}/); // no 9-digit national_id
-      expect(blob).not.toMatch(/05\d{8}/); // no Israeli mobile phone
-    },
-    90_000,
-  );
+    const rows = await withTenant(org.id, (tx) =>
+      tx
+        .select()
+        .from(auditLog)
+        .where(and(eq(auditLog.targetTable, 'import_jobs'), eq(auditLog.targetId, jobId))),
+    );
+    const materialised = rows.find((r) => r.action === 'import.materialised');
+    expect(materialised, 'expected import.materialised audit row to exist').toBeDefined();
+    expect(materialised!.metadata).toMatchObject({
+      // The aggregate-count fields are what the regulator queries.
+      ok_rows: expect.any(String),
+      apartment_count: expect.any(String),
+    });
+    // No PII surface — scan ONLY the metadata jsonb (not the full
+    // row, which includes UUIDs that may contain 9+ consecutive
+    // digits by chance — those are not PII).
+    const metaBlob = JSON.stringify(materialised!.metadata);
+    expect(metaBlob).not.toMatch(/\d{9}/); // no 9-digit national_id
+    expect(metaBlob).not.toMatch(/05\d{8}/); // no Israeli mobile phone
+  }, 90_000);
 
   it('1b) every PII-creating row has at least one audit_log entry with target_id=jobId', async () => {
     // This is the WEAKER invariant the v3 D1 closure actually
@@ -225,18 +223,15 @@ describe('Phase 6 v4 audit · §2 — Forensic observability (retry attempt)', (
   // does NOT hardcode attempt. This is a static-shape test: we
   // expect the source to call `boss.work` with `includeMetadata:
   // true`. Read-only; no DB.
-  it.fails(
-    '2b) pg-boss adapter requests includeMetadata=true so retryCount is observable',
-    async () => {
-      // Static-shape assertion via re-import + introspection. The
-      // adapter currently passes `includeMetadata: false` (v4 grep).
-      const adapterSource = await (
-        await import('node:fs/promises')
-      ).readFile(new URL('../src/pg-boss-adapter.ts', import.meta.url), 'utf8');
-      // Look for a configuration line that enables metadata.
-      expect(adapterSource).toMatch(/includeMetadata:\s*true/);
-    },
-  );
+  it('2b) pg-boss adapter requests includeMetadata=true so retryCount is observable', async () => {
+    // Static-shape assertion via re-import + introspection. The
+    // adapter currently passes `includeMetadata: false` (v4 grep).
+    const adapterSource = await (
+      await import('node:fs/promises')
+    ).readFile(new URL('../src/pg-boss-adapter.ts', import.meta.url), 'utf8');
+    // Look for a configuration line that enables metadata.
+    expect(adapterSource).toMatch(/includeMetadata:\s*true/);
+  });
 });
 
 describe('Phase 6 v4 audit · §3 — Cancellation race', () => {
@@ -265,47 +260,41 @@ describe('Phase 6 v4 audit · §3 — Cancellation race', () => {
   // committed but before persistStage commits gets full data
   // materialised regardless. RED — needs a status guard inside
   // persistStage (e.g. final UPDATE with WHERE status != 'cancelled').
-  it.fails(
-    '3b) persistStage aborts if status becomes `cancelled` before its UPDATE commits',
-    async () => {
-      // This invariant is impossible to test deterministically
-      // without mid-tx injection. We assert the WEAKER static
-      // contract: persistStage's final touch UPDATE includes a
-      // status guard. Read-only source inspection.
-      const handlerSource = await (
-        await import('node:fs/promises')
-      ).readFile(new URL('../src/handlers/import-job.handler.ts', import.meta.url), 'utf8');
-      // Look for the persistStage final UPDATE (currently line ~1265).
-      // The guarded form should include WHERE status != 'cancelled'
-      // or similar protective clause.
-      const persistStageBlock = handlerSource.slice(
-        handlerSource.indexOf('private async persistStage'),
-        handlerSource.indexOf('private async markFailed'),
-      );
-      expect(persistStageBlock, 'persistStage must check cancellation before committing').toMatch(
-        /status.*!=.*cancelled|status.*<>.*cancelled|ne\(importJobs\.status,\s*['"]cancelled['"]\)/i,
-      );
-    },
-  );
+  it('3b) persistStage aborts if status becomes `cancelled` before its UPDATE commits', async () => {
+    // This invariant is impossible to test deterministically
+    // without mid-tx injection. We assert the WEAKER static
+    // contract: persistStage's final touch UPDATE includes a
+    // status guard. Read-only source inspection.
+    const handlerSource = await (
+      await import('node:fs/promises')
+    ).readFile(new URL('../src/handlers/import-job.handler.ts', import.meta.url), 'utf8');
+    // Look for the persistStage final UPDATE (currently line ~1265).
+    // The guarded form should include WHERE status != 'cancelled'
+    // or similar protective clause.
+    const persistStageBlock = handlerSource.slice(
+      handlerSource.indexOf('private async persistStage'),
+      handlerSource.indexOf('private async markFailed'),
+    );
+    expect(persistStageBlock, 'persistStage must check cancellation before committing').toMatch(
+      /status.*!=.*cancelled|status.*<>.*cancelled|ne\(importJobs\.status,\s*['"]cancelled['"]\)/i,
+    );
+  });
 
   // The parseStage awaiting_mapping UPDATE at handler.ts:763-789 has
   // no `WHERE status = 'parsing'` guard. If a cancel races with
   // parseStage hitting Layer-1 miss, awaiting_mapping resurrects the
   // cancelled row. RED — needs the same guard the main runStage uses.
-  it.fails(
-    '3c) parseStage awaiting_mapping UPDATE is guarded by current status=parsing',
-    async () => {
-      const handlerSource = await (
-        await import('node:fs/promises')
-      ).readFile(new URL('../src/handlers/import-job.handler.ts', import.meta.url), 'utf8');
-      // Find the awaiting_mapping path and assert it has a status guard.
-      const awaitingBlock = handlerSource.slice(
-        handlerSource.indexOf("status: 'awaiting_mapping'"),
-        handlerSource.indexOf("status: 'awaiting_mapping'") + 1500,
-      );
-      expect(awaitingBlock).toMatch(/eq\(importJobs\.status,\s*['"]parsing['"]\)/);
-    },
-  );
+  it('3c) parseStage awaiting_mapping UPDATE is guarded by current status=parsing', async () => {
+    const handlerSource = await (
+      await import('node:fs/promises')
+    ).readFile(new URL('../src/handlers/import-job.handler.ts', import.meta.url), 'utf8');
+    // Find the awaiting_mapping path and assert it has a status guard.
+    const awaitingBlock = handlerSource.slice(
+      handlerSource.indexOf("status: 'awaiting_mapping'"),
+      handlerSource.indexOf("status: 'awaiting_mapping'") + 1500,
+    );
+    expect(awaitingBlock).toMatch(/eq\(importJobs\.status,\s*['"]parsing['"]\)/);
+  });
 });
 
 describe('Phase 6 v4 audit · §4 — Worker pickup latency', () => {
@@ -314,15 +303,16 @@ describe('Phase 6 v4 audit · §4 — Worker pickup latency', () => {
   // upload before the worker even reads the queue. "If a customer
   // waits we've lost them" (Lidor verbatim) — this is the literal
   // first 2s of wait time, easy fix.
-  it.fails('4) pg-boss is constructed with newJobCheckInterval <= 500ms', async () => {
-    const mainSource = await (
+  it('4) pg-boss worker is configured with newJobCheckInterval <= 500ms', async () => {
+    // pg-boss v10 takes newJobCheckInterval as a `work()`-side option
+    // (per-worker), not a constructor option. The adapter is the
+    // single source of truth for worker config.
+    const adapterSource = await (
       await import('node:fs/promises')
-    ).readFile(new URL('../src/main.ts', import.meta.url), 'utf8');
-    // Look for the PgBoss constructor — must include a
-    // newJobCheckInterval option (any value, but the spec wants <=500).
-    expect(mainSource, 'PgBoss({...}) must configure newJobCheckInterval').toMatch(
-      /newJobCheckInterval/,
-    );
+    ).readFile(new URL('../src/pg-boss-adapter.ts', import.meta.url), 'utf8');
+    const match = adapterSource.match(/newJobCheckInterval:\s*(\d+)/);
+    expect(match, 'boss.work({...}) must configure newJobCheckInterval').not.toBeNull();
+    expect(Number(match![1])).toBeLessThanOrEqual(500);
   });
 });
 
@@ -335,29 +325,26 @@ describe('Phase 6 v4 audit · §5 — Ownership write batching (T6.11 dominant c
   // "reasonable for production" expectation.
   //
   // Cross-confirmed by both Agent A H-5 and Agent C P0-1.
-  it.fails(
-    '5) ownership inserts in persistStage are batched (single tx.insert(ownerships).values([...])) ',
-    async () => {
-      const handlerSource = await (
-        await import('node:fs/promises')
-      ).readFile(new URL('../src/handlers/import-job.handler.ts', import.meta.url), 'utf8');
-      // STEP D currently has `for (const o of ownersForApt)` with
-      // an inline tx.insert per iteration. After the fix it should
-      // collect rows + one bulk insert.
-      const stepDStart = handlerSource.indexOf('STEP D');
-      const stepDBlock = handlerSource.slice(stepDStart, stepDStart + 2500);
-      // Heuristic: the fix collapses the per-row insert loop. The
-      // post-fix code should NOT have a literal `for (const o of
-      // ownersForApt)` containing `await tx.insert(ownerships)`.
-      const hasPerRowInsert =
-        /for\s*\(\s*const\s+o\s+of\s+ownersForApt\s*\)\s*\{[\s\S]*?await\s+tx\.insert\(ownerships\)/.test(
-          stepDBlock,
-        );
-      expect(hasPerRowInsert, 'STEP D must NOT contain a per-row tx.insert(ownerships) loop').toBe(
-        false,
+  it('5) ownership inserts in persistStage are batched (single tx.insert(ownerships).values([...])) ', async () => {
+    const handlerSource = await (
+      await import('node:fs/promises')
+    ).readFile(new URL('../src/handlers/import-job.handler.ts', import.meta.url), 'utf8');
+    // STEP D currently has `for (const o of ownersForApt)` with
+    // an inline tx.insert per iteration. After the fix it should
+    // collect rows + one bulk insert.
+    const stepDStart = handlerSource.indexOf('STEP D');
+    const stepDBlock = handlerSource.slice(stepDStart, stepDStart + 2500);
+    // Heuristic: the fix collapses the per-row insert loop. The
+    // post-fix code should NOT have a literal `for (const o of
+    // ownersForApt)` containing `await tx.insert(ownerships)`.
+    const hasPerRowInsert =
+      /for\s*\(\s*const\s+o\s+of\s+ownersForApt\s*\)\s*\{[\s\S]*?await\s+tx\.insert\(ownerships\)/.test(
+        stepDBlock,
       );
-    },
-  );
+    expect(hasPerRowInsert, 'STEP D must NOT contain a per-row tx.insert(ownerships) loop').toBe(
+      false,
+    );
+  });
 
   // The deferred trigger fires per-row at COMMIT — 1000 rows means
   // 1000 SUM queries at the COMMIT phase. Migration 0002 declares
@@ -365,25 +352,30 @@ describe('Phase 6 v4 audit · §5 — Ownership write batching (T6.11 dominant c
   // converts it to `FOR EACH STATEMENT` with a transition table.
   // The trigger lives in @emapp/db migrations — this static check
   // pins the expectation so v5 doesn't forget.
-  it.fails(
-    '5b) trg_ownerships_sum_check is FOR EACH STATEMENT (transition-table form) — perf fix',
-    async () => {
-      // Verify by reading pg_catalog at runtime — the migration
-      // file is one source of truth but the live DB is what matters.
-      const client = await providerPool.connect();
-      try {
-        const res = await client.query<{ definition: string }>(
-          `SELECT pg_get_triggerdef(oid) AS definition
-           FROM pg_trigger
-           WHERE tgname = 'trg_ownerships_sum_check'`,
-        );
-        expect(res.rows[0]?.definition).toBeDefined();
-        expect(res.rows[0]!.definition).toMatch(/FOR EACH STATEMENT/i);
-      } finally {
-        client.release();
-      }
-    },
-  );
+  it('5b) trigger_check_ownership_sum memoizes per-tx so N row-fires → M unique-apartment SUM queries', async () => {
+    // PostgreSQL CONSTRAINT TRIGGERs MUST be FOR EACH ROW (documented
+    // limitation — REFERENCING transition tables are only for
+    // non-constraint triggers). The perf win comes from inside the
+    // trigger FUNCTION: a per-tx memo via a temp table short-circuits
+    // redundant SUM checks for the same apartment.
+    const client = await providerPool.connect();
+    try {
+      const res = await client.query<{ src: string }>(
+        `SELECT prosrc AS src FROM pg_proc WHERE proname = 'trigger_check_ownership_sum'`,
+      );
+      expect(res.rows[0]?.src).toBeDefined();
+      const src = res.rows[0]!.src;
+      // Memoization pattern from migration 0030: temp table named
+      // `_ownership_sum_checked` + ON CONFLICT DO NOTHING gate.
+      expect(src, 'function must use a per-tx memo temp table').toMatch(/_ownership_sum_checked/);
+      expect(src, 'memo must use ON COMMIT DROP for natural tx-scope').toMatch(/ON COMMIT DROP/i);
+      expect(src, 'memo gate must use ON CONFLICT DO NOTHING short-circuit').toMatch(
+        /ON CONFLICT DO NOTHING/i,
+      );
+    } finally {
+      client.release();
+    }
+  });
 
   // GREEN — ownership SUM invariant still holds (D.25). Pinned so
   // any FOR EACH STATEMENT migration cannot regress correctness.
@@ -426,22 +418,19 @@ describe('Phase 6 v4 audit · §6 — Audit metadata integrity', () => {
   // createdBy === req.user.sub. Pre-S8 we pin the WEAKER
   // invariant: actor_id MUST match import_jobs.created_by from the
   // DB row, not from the payload (defense in depth).
-  it.fails(
-    '6) audit_log.actor_id is derived from import_jobs.created_by (DB) not payload.createdBy',
-    async () => {
-      const handlerSource = await (
-        await import('node:fs/promises')
-      ).readFile(new URL('../src/handlers/import-job.handler.ts', import.meta.url), 'utf8');
-      // Post-fix shape: actorId fetched alongside the status read.
-      // Heuristic: the AuditService.log call should NOT take
-      // `actorId: payload.createdBy` directly — instead, a
-      // db-fetched user id.
-      const auditCalls = handlerSource.match(/actorId:\s*payload\.createdBy/g) ?? [];
-      // After the fix, zero direct uses of payload.createdBy as
-      // actorId — all should go through a verified DB lookup.
-      expect(auditCalls.length).toBe(0);
-    },
-  );
+  it('6) audit_log.actor_id is derived from import_jobs.created_by (DB) not payload.createdBy', async () => {
+    const handlerSource = await (
+      await import('node:fs/promises')
+    ).readFile(new URL('../src/handlers/import-job.handler.ts', import.meta.url), 'utf8');
+    // Post-fix shape: actorId fetched alongside the status read.
+    // Heuristic: the AuditService.log call should NOT take
+    // `actorId: payload.createdBy` directly — instead, a
+    // db-fetched user id.
+    const auditCalls = handlerSource.match(/actorId:\s*payload\.createdBy/g) ?? [];
+    // After the fix, zero direct uses of payload.createdBy as
+    // actorId — all should go through a verified DB lookup.
+    expect(auditCalls.length).toBe(0);
+  });
 
   // GREEN — every audit row across a successful import has
   // actor_type='system'. This is enforced + already tested
@@ -484,9 +473,12 @@ describe('Phase 6 v4 audit · §6 — Audit metadata integrity', () => {
         .from(auditLog)
         .where(and(eq(auditLog.targetTable, 'import_jobs'), eq(auditLog.targetId, jobId))),
     );
-    const blob = JSON.stringify(rows);
-    expect(blob).not.toMatch(/\d{9}/); // no national_id
-    expect(blob).not.toMatch(/05\d{8}/); // no Israeli mobile
+    // Scan ONLY metadata fields — the row-level UUIDs (id, orgId,
+    // targetId, actorId) contain digits randomly and would
+    // false-positive on a 9-digit-run regex despite carrying no PII.
+    const metaBlob = JSON.stringify(rows.map((r) => r.metadata));
+    expect(metaBlob).not.toMatch(/\d{9}/); // no national_id
+    expect(metaBlob).not.toMatch(/05\d{8}/); // no Israeli mobile
   }, 60_000);
 });
 

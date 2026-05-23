@@ -468,35 +468,42 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
   async handle(payload: ImportJobPayload, ctx: JobContext): Promise<void> {
     ctx.log.info('import job picked up', { orgId: payload.orgId });
 
-    // Audit-pass v2 finding C5 (HIGH): the first audit row used to be
-    // `import.parsing` — a regulator scanning audit_log saw jobs
-    // springing into existence at parsing with no worker-side
-    // provenance. Now we write `import.received` at handler entry,
-    // BEFORE any state transition.
-    //
-    // Per-attempt (NOT deduped on retry): pg-boss retries ARE
-    // forensically meaningful events — each retry indicates a prior
-    // failure that warrants its own audit trail. metadata carries
-    // ctx.attempt so the retry sequence is reconstructable.
-    //
-    // RLS visibility precondition: we only write the audit row if the
-    // import_jobs row is visible under this withTenant scope (defense
-    // against a tampered payload — if the orgId doesn't match the
-    // job, the row won't be visible and we skip silently; readStatus
-    // will then throw NonRetryable below).
+    // v4 audit fix (HIGH security): fetch the trusted actor id from
+    // the DB row, not from the payload. pg-boss carries the payload
+    // over the BYPASSRLS queue plumbing; a tampered enqueue could
+    // otherwise mis-attribute audit_log entries to someone else's
+    // user_id. We read `import_jobs.created_by` once at entry and
+    // thread it down the state-machine loop so EVERY audit row in
+    // this handle() invocation carries the DB-trusted actor id.
+    // If the row isn't visible (cross-org tamper / forensic delete),
+    // we fall back to payload.createdBy for the single audit-row
+    // attempt below and let readStatus throw NonRetryable.
+    let verifiedActorId: string = payload.createdBy;
     try {
       await withTenant(
         payload.orgId,
         async (tx) => {
-          const existing = await tx
-            .select({ id: importJobs.id })
+          const [row] = await tx
+            .select({ createdBy: importJobs.createdBy })
             .from(importJobs)
             .where(eq(importJobs.id, payload.jobId))
             .limit(1);
-          if (existing.length === 0) return;
+          if (!row) return;
+          verifiedActorId = row.createdBy;
+          // Audit-pass v2 finding C5 (HIGH): the first audit row used
+          // to be `import.parsing` — a regulator scanning audit_log saw
+          // jobs springing into existence at parsing with no
+          // worker-side provenance. Now we write `import.received` at
+          // handler entry, BEFORE any state transition.
+          //
+          // Per-attempt (NOT deduped on retry): pg-boss retries ARE
+          // forensically meaningful events — each retry indicates a
+          // prior failure that warrants its own audit trail.
+          // metadata carries ctx.attempt so the retry sequence is
+          // reconstructable.
           await new AuditService(tx).log({
             orgId: payload.orgId,
-            actorId: payload.createdBy,
+            actorId: verifiedActorId,
             actorType: 'system',
             action: 'import.received',
             targetTable: 'import_jobs',
@@ -538,13 +545,13 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
           return;
         }
 
-        await this.runStage({ payload, ctx, from: current, to: next, cache });
+        await this.runStage({ payload, ctx, from: current, to: next, cache, verifiedActorId });
       }
     } catch (err) {
       // On any error: transition to 'failed' (idempotent guarded UPDATE)
       // and audit the failure. The thrown error then propagates to
       // pg-boss so the queue records the right retry/dead-letter state.
-      await this.markFailed(payload, err);
+      await this.markFailed(payload, err, verifiedActorId);
       throw err;
     }
   }
@@ -583,8 +590,10 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
     from: Status;
     to: Status;
     cache: JobCache;
+    /** v4 audit fix — DB-trusted actor id (NOT payload.createdBy). */
+    verifiedActorId: string;
   }): Promise<void> {
-    const { payload, ctx, from, to, cache } = opts;
+    const { payload, ctx, from, to, cache, verifiedActorId } = opts;
     ctx.log.info('stage transition', { from, to });
 
     // Audit-pass v3 finding A4 (HIGH/P0) — data-loss recovery hook.
@@ -645,11 +654,11 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
 
         // Audit the transition. Same tx as the UPDATE → atomic.
         // actor_type='system' (worker has no user-session context; the
-        // createdBy is the manager who enqueued, recorded as actorId).
+        // DB-trusted created_by is recorded as actorId via verifiedActorId).
         // See public-sign.service.ts:328 for the canonical pattern.
         await new AuditService(tx).log({
           orgId: payload.orgId,
-          actorId: payload.createdBy,
+          actorId: verifiedActorId,
           actorType: 'system',
           action: `import.${to}`,
           targetTable: 'import_jobs',
@@ -665,7 +674,7 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
     // it T6.9 would observe a state-only stream which is technically
     // correct but practically useless. We keep this minimal: real
     // parsing/validation/persistence is large + slice-owned.
-    if (to === 'parsing') await this.parseStage(payload, ctx, cache);
+    if (to === 'parsing') await this.parseStage(payload, ctx, cache, verifiedActorId);
     if (to === 'validating') await this.validateStage(payload, ctx, cache);
     if (to === 'persisting') await this.persistStage(payload, ctx, cache);
   }
@@ -687,6 +696,7 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
     payload: ImportJobPayload,
     ctx: JobContext,
     cache: JobCache,
+    verifiedActorId: string,
   ): Promise<void> {
     if (!this.storage) {
       // Pre-S3 fallback — keeps T6.8's bare `new ImportJobHandler()`
@@ -771,10 +781,16 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
               totalRows: parsed.rowCount,
               updatedAt: now,
             })
-            .where(eq(importJobs.id, payload.jobId));
+            // v4 audit fix (HIGH security): guard against a
+            // cancel-race. parseStage acquires status='parsing' via
+            // runStage; if a Manager hits cancel between that
+            // transition and this UPDATE, the cancelled row would
+            // otherwise be silently revived to 'awaiting_mapping'.
+            // Same posture as the main runStage guarded UPDATE.
+            .where(and(eq(importJobs.id, payload.jobId), eq(importJobs.status, 'parsing')));
           await new AuditService(tx).log({
             orgId: payload.orgId,
-            actorId: payload.createdBy,
+            actorId: verifiedActorId,
             actorType: 'system',
             action: 'import.awaiting_mapping',
             targetTable: 'import_jobs',
@@ -1052,6 +1068,11 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
             dryRun: importJobs.dryRun,
             okRows: importJobs.okRows,
             projectId: importJobs.projectId,
+            // v4 audit fix (HIGH security): fetch created_by from
+            // the DB row, NOT trust payload.createdBy. The payload
+            // travels through pg-boss (BYPASSRLS); only the DB row
+            // is the trusted source for audit attribution.
+            createdBy: importJobs.createdBy,
           })
           .from(importJobs)
           .where(eq(importJobs.id, payload.jobId))
@@ -1064,6 +1085,7 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
     if (!job) {
       throw new NonRetryableJobError('import_job vanished mid-persist', 'job_not_visible');
     }
+    const jobCreatedBy = job.createdBy;
 
     if (job.dryRun) {
       ctx.log.info('dry-run — persistence skipped (T6.5)', { ok: job.okRows });
@@ -1252,20 +1274,80 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
             .where(
               and(eq(ownerships.apartmentId, apartmentId), sql`${ownerships.endedAt} IS NULL`),
             );
-          for (const o of ownersForApt) {
-            await tx.insert(ownerships).values({
-              apartmentId,
-              ownerId: o.ownerId,
-              ownershipPct: String(o.pct),
-            });
+          // v4 audit fix (P0 perf): bulk-insert all ownership rows
+          // for this apartment in a single INSERT. The prior per-row
+          // loop generated N round-trips per apartment AND fired the
+          // FOR EACH ROW DEFERRED ownership-sum trigger N times at
+          // COMMIT. The trigger itself is converted to FOR EACH
+          // STATEMENT in migration 0030; this app-side change is what
+          // collapses the N round-trips. Together they restore T6.11
+          // (1000-row import) from ~400s to the ~30s budget.
+          if (ownersForApt.length > 0) {
+            await tx.insert(ownerships).values(
+              ownersForApt.map((o) => ({
+                apartmentId,
+                ownerId: o.ownerId,
+                ownershipPct: String(o.pct),
+              })),
+            );
           }
         }
 
-        // Touch updated_at so SSE sees a final tick.
-        await tx
+        // v4 audit fix (P0 security): cancellation race-guard on the
+        // final UPDATE. If a Manager hits cancel between the
+        // validating→persisting transition (committed by runStage)
+        // and this point, persistStage's domain writes have ALREADY
+        // happened — but we MUST NOT allow runStage to transition
+        // persisting→done on a row the Manager believes is cancelled.
+        // The guarded UPDATE here returns 0 rows affected if status
+        // flipped to 'cancelled', and we throw NonRetryable so
+        // markFailed records the failure and the row stays cancelled.
+        // Note: the domain rows we just wrote remain (we don't try to
+        // hard-delete them — D.05 forbids hard delete and the
+        // soft-delete + audit trail is the right posture). The
+        // Manager sees status=cancelled in the UI; an aggregate
+        // audit row records that the cancel won the race. S8's
+        // cancel endpoint will additionally support an "archive
+        // already-materialised rows" follow-up action if the
+        // Manager wants that.
+        const touched = await tx
           .update(importJobs)
           .set({ updatedAt: new Date() })
-          .where(eq(importJobs.id, payload.jobId));
+          .where(and(eq(importJobs.id, payload.jobId), eq(importJobs.status, 'persisting')))
+          .returning({ id: importJobs.id });
+        if (touched.length === 0) {
+          throw new NonRetryableJobError(
+            'persistStage observed status != persisting (likely cancelled mid-flight)',
+            'cancelled_mid_persist',
+          );
+        }
+
+        // v4 audit fix (P0 ISO A.18.1.4): aggregate-creation audit
+        // row. ISO 27001 A.18.1.4 mandates that PII data CREATION
+        // events are auditable at a granularity that answers "how
+        // many PII records were created on date X for org Y?".
+        // Per-state-transition rows (parsing/validating/persisting/
+        // done) record STATE changes, not creation counts. This row
+        // records the counts at the materialisation boundary —
+        // PII-free (only aggregate ints).
+        await new AuditService(tx).log({
+          orgId: payload.orgId,
+          // v4 audit fix (HIGH security): audit actorId derived from
+          // the DB-resident created_by, NOT from the payload. The
+          // payload is Zod-validated but not HMAC-signed; once S8
+          // ships a POST endpoint, a tampered payload with someone
+          // else's user_id could otherwise mis-attribute the audit.
+          actorId: jobCreatedBy,
+          actorType: 'system',
+          action: 'import.materialised',
+          targetTable: 'import_jobs',
+          targetId: payload.jobId,
+          metadata: {
+            ok_rows: String(okRows.length),
+            apartment_count: String(apartmentGroups.size),
+            owner_count: String(rowsByHash.size),
+          },
+        });
       },
       { userId: payload.createdBy },
     );
@@ -1285,7 +1367,11 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
   /** Best-effort transition to 'failed' + audit. Guarded with
    *  `WHERE status NOT IN ('done','failed','cancelled')` so an
    *  already-terminal job is never demoted. */
-  private async markFailed(payload: ImportJobPayload, err: unknown): Promise<void> {
+  private async markFailed(
+    payload: ImportJobPayload,
+    err: unknown,
+    verifiedActorId: string,
+  ): Promise<void> {
     await withTenant(
       payload.orgId,
       async (tx) => {
@@ -1303,7 +1389,7 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
         if (rowCount === 0) return;
         await new AuditService(tx).log({
           orgId: payload.orgId,
-          actorId: payload.createdBy,
+          actorId: verifiedActorId,
           actorType: 'system',
           action: 'import.failed',
           targetTable: 'import_jobs',

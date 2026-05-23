@@ -81,7 +81,7 @@ describe('pg-boss adapter', () => {
     });
   });
 
-  it('2) work() is called with batchSize:1 + configured concurrency', async () => {
+  it('2) work() is called with batchSize:1 + concurrency + includeMetadata + low check interval', async () => {
     const { boss, state } = makeBoss();
     const handler = makeHandler();
     await registerHandler({
@@ -95,7 +95,12 @@ describe('pg-boss adapter', () => {
     expect(state.workCalls[0]!.options).toMatchObject({
       batchSize: 1,
       teamConcurrency: 4,
-      includeMetadata: false,
+      // v4 audit fix (HIGH forensic observability): includeMetadata
+      // MUST be true so pg-boss exposes retryCount → ctx.attempt.
+      includeMetadata: true,
+      // v4 audit fix (P0 perf): newJobCheckInterval <= 500ms so the
+      // first-byte queue-pickup latency is sub-second (default is 2s).
+      newJobCheckInterval: 200,
     });
   });
 

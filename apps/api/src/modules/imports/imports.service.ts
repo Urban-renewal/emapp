@@ -138,22 +138,36 @@ function fingerprintHeaders(headers: readonly string[]): string {
   return createHash('sha256').update(normalised).digest('hex');
 }
 
-/** Strip potential-PII substrings from a manager-supplied filename
- *  before writing it to audit_log.afterState. Israeli national_id is
- *  exactly 9 digits; phone is 10. A Manager who names a file
- *  "Owner_038123456_signed_2026.xlsx" should not have that 9-digit
- *  substring land in an audit_log row queryable by every Manager
- *  with `audit:read`. v5 audit fix (Agent B HIGH-1).
+/** Strip potential-PII substrings from any Manager-supplied string
+ *  before persistence in a Manager-readable column. Israeli national_id
+ *  is exactly 9 digits; phone is 10. Per v5 audit + v6 reinforcement,
+ *  EVERY user-string-to-persistence boundary applies this:
+ *    - filename → audit_log.afterState.fileName (v5 HIGH-1)
+ *    - templateName → mapping_templates.name (v6 HIGH-4)
+ *    - headers → mapping_templates.mapping.headers (v6 P0-2 — but the
+ *      worker sanitises before persistence, so api-side reads
+ *      already-sanitised strings; we re-apply here as defense-in-depth
+ *      in case a future code path bypasses the worker write)
  *
  *  Strategy: replace any run of 7+ consecutive digits with `[N]`
  *  placeholder. 7 is a defensive lower bound (Israeli IDs are 9 but
  *  truncated/zero-padded variants exist; Israeli mobiles are 10 but
  *  short forms are 7-8). Lower than 7 would mangle dates like 2026
  *  in real filenames; 7+ catches both PII shapes without false hits
- *  on year/month/sequence numbers. */
+ *  on year/month/sequence numbers.
+ *
+ *  IMPORTANT: this function MUST stay byte-identical to the worker's
+ *  `sanitiseUserString` in `apps/worker/src/mapping/mapping-resolver.ts`.
+ *  The fingerprint algorithm depends on consistent sanitisation across
+ *  both sides — the worker writes sanitised headers into parsed_headers,
+ *  the api reads those same strings to compute the fingerprint.
+ *  v6-invariants-spec asserts byte-equality. */
 export function sanitiseFilenameForAudit(name: string): string {
   return name.replace(/\d{7,}/g, '[N]');
 }
+
+/** Alias for clarity at non-filename call sites. Same algorithm. */
+export const sanitiseUserString = sanitiseFilenameForAudit;
 
 @Injectable()
 export class ImportsService {
@@ -570,13 +584,28 @@ export class ImportsService {
             .values({
               orgId: user.orgId,
               fingerprint,
-              name: input.templateName ?? `Manual mapping for import ${id.slice(0, 8)}`,
+              // v6 audit fix (HIGH-4 — security agent): sanitise the
+              // Manager-supplied templateName so a value like
+              // "Owner 038123456 mapping" doesn't leak a PII-shaped
+              // substring into a Manager-queryable column.
+              name: sanitiseUserString(
+                input.templateName ?? `Manual mapping for import ${id.slice(0, 8)}`,
+              ),
               // v5 audit fix (P0 — Agent A + MED-3): store the real
               // headers in the template's mapping jsonb so the L2
-              // resolver (Phase 7+) can verify the saved mapping
-              // against the file's headers + the audit-trail of
-              // template provenance is complete.
-              mapping: { columns: input.columns, headers: realHeaders ?? [] },
+              // resolver can verify the saved mapping against the
+              // file's headers + the audit-trail of template
+              // provenance is complete.
+              //
+              // v6 audit fix (P0 — security agent): realHeaders comes
+              // from import_jobs.parsed_headers which the worker
+              // sanitised at write-time. Re-applying the sanitiser
+              // here is belt+suspenders against a future code path
+              // that supplies headers from a different source.
+              mapping: {
+                columns: input.columns,
+                headers: (realHeaders ?? []).map(sanitiseUserString),
+              },
               source: 'manual',
               createdBy: user.sub,
               approvedBy: user.sub,

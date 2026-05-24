@@ -6,7 +6,41 @@
 
 ## Heartbeat (latest — for the 30-second scan)
 
-- **Last slice:** **v5 INDEPENDENT audit-pass + immediate closure of cross-confirmed P0/HIGH findings.** Three independent agents reviewed S7+S8+T6.11 in parallel (SOLID/security/perf). 7 cross-confirmed findings; all closed in one coherent commit. 283/283 API tests green; 175/175 worker tests green; lint + typecheck clean across all 8 packages.
+- **Last slice:** **v6 INDEPENDENT audit-pass + 3 cross-confirmed P0/HIGH closures + 7 RED tests for deferred follow-ups.** Three independent agents reviewed Phase 6 (PR #27) + Phase 7 S1 (PR #28) in parallel (SOLID/per-prompt, security/ISO, perf/runtime). 17/17 v6 invariants test green (10 GREEN newly-pinned, 7 RED `it.fails` correctly-failing for tracked deferrals). 205/205 worker tests + 284/284 api tests green; lint + typecheck clean.
+- **v6 cross-confirmed P0/HIGH — CLOSED this slice:**
+  - **P0 (security + reinforced by SOLID) — `parsed_headers` covert PII channel + same class at `templateName` + `mapping.headers`.** v5 added `sanitiseFilenameForAudit` for the filename→audit boundary but missed THREE OTHER persistence sites for the same input class. A Manager-named column like "Owner_038123456_phone" lands a 9-digit Israeli-ID-shaped substring in a Manager-readable jsonb with NO encryption. `mapping_templates` rows persist indefinitely (soft-delete only) so one malicious-header file would poison the org's template library FOREVER. **Fix:** new `sanitiseUserString`/`sanitiseUserStrings` exported from `mapping-resolver.ts`; applied at (a) worker parseStage `parsedHeaders` write, (b) api submitMapping `templateName`, (c) api submitMapping `mapping.headers`. Same regex as v5 (7+ digit runs → `[N]`). Tests: §1a–1c GREEN.
+  - **HIGH (security) — L2 auto-resolve provenance gap (ISO A.12.4).** Manual templates got `import.mapping_submitted` from the wizard; L1 legacy is a guess with no template; but L2/L3 auto-resolved imports had NO audit row tying them to the template. **Fix:** parseStage writes `import.mapping_auto_resolved` audit row when `resolution.source !== 'legacy'`, carrying `{source, header_count, resolver}` in metadata. Tests: §3a (L2 writes) + §3b (L1 does NOT write).
+  - **HIGH (SOLID) — production resolver chain composition was structurally untested.** Every prior handler test used `new ImportJobHandler(storage)` (default = L1 alone). The runtime composition `[L2, L1]` from `main.ts` was a code path no test exercised end-to-end. A refactor that accidentally constructed with only L1 would have failed no test. **Fix:** §4 — handler-level integration test with the production-shape `[L2, L1]` chain, asserts L2 wins via the new audit row.
+- **v6 RED tests (`it.fails`) — verified open bugs for next-agent closure:**
+  - **§2c** — `fingerprintHeaders` lives in TWO copies (worker + api). v6 cross-test pins they match TODAY; the structural fix (shared package) is the open item.
+  - **§5** — `TemplateResolver` doesn't explicitly verify `tpl.orgId === ctx.orgId` after the SELECT. RLS catches it today; explicit defense is what ISO auditors look for.
+  - **§6** — workbook RAM not released after persistStage. `cache.parsed` is held for the entire handler lifetime; should be nulled after `cache.persisted = true`. Critical for 30k-row imports on Railway Free Tier 512MB.
+  - **§7** — `findOrCreateBuilding` still per-address; owners + apartments are batched (v3). Realistic urban-renewal import has 10-50 buildings → +2-10s wall time. PROMOTED MEDIUM→HIGH (SOLID inconsistency: 3 of 4 resolvers batched).
+  - **§8** — `submitMapping` producer.send orphan window. Post-v5 the tx commits before producer.send; if API crashes between, the row sits `status='queued'` forever. Fix: retry with exp backoff (3 attempts: 100/500/2000ms).
+  - **§9** — `mapping_templates` not declared as its own AuthZ resource. Forward-compat gap for the future Manager template-management UI.
+- **v6 GREEN invariants newly pinned (cross-tenant, regulator-queryability, temp-table lifecycle, fingerprint algorithm):**
+  - **§10** — cross-org orgId in ctx → RLS-driven defer (L2 multi-tenant defense)
+  - **§11** — full L2-resolved import produces all 7 expected audit actions (received → parsing → mapping_auto_resolved → validating → persisting → materialised → done)
+  - **§12** — `_ownership_sum_checked` temp table ON COMMIT DROP semantics verified
+  - **§2a–2b** — `fingerprintHeaders` byte-equality against independent algorithm + case+whitespace agnosticism
+- **v6 deferred-with-concrete-plan (in addition to RED tests):**
+  - **P0-perf** — L2 LRU cache (per-process, 60s TTL, ~500 entries). Avoids ~150ms round-trip for repeat-customer imports.
+  - **MEDIUM (security)** — `TemplateResolver` malformed-template silent defer should emit `audit_log` + archive the corrupted template.
+  - **MEDIUM (perf)** — `submitMapping` cold-start: pre-connect `getBoss()` in `onModuleInit`.
+  - **LOW** — pg-boss producer keepalive vs Neon idle disconnect.
+- **Audit-pass ledger (6 INDEPENDENT passes total):**
+  - v2 → C1/C2/C5/C7/C8/C9 + L3/L6 + Tests 4/6/8/10
+  - v3 → A4 P0 data-loss recovery (v2 self-review missed it)
+  - v4 → 7 cross-confirmed (3 agents in parallel)
+  - v5 → 7 cross-confirmed (3 agents in parallel)
+  - **v6 → 3 P0/HIGH cross-confirmed CLOSED + 7 RED-tracked** (3 agents in parallel)
+  - Every pass found bugs prior passes missed. Pattern holds across 6 passes.
+- **Phase status:**
+  - **Phase 6 PR #27** — open, awaiting user merge.
+  - **Phase 7 PR #28** — open on `phase-7-l2-template-resolver`. v6 closures landed on this branch (commits since last push).
+- **Next agent — pick from §5/§6/§7/§8/§9 RED tests** (each is a discrete slice; the RED test already shapes the fix; remove `.fails()` marker after landing the change).
+
+- **v5 INDEPENDENT audit-pass + immediate closure of cross-confirmed P0/HIGH findings.** Three independent agents reviewed S7+S8+T6.11 in parallel (SOLID/security/perf). 7 cross-confirmed findings; all closed in one coherent commit. 283/283 API tests green; 175/175 worker tests green; lint + typecheck clean across all 8 packages.
 - **v5 cross-confirmed findings — all CLOSED this slice:**
   - **P0 perf — bulk INSERT param overflow** (Agent A HIGH-3 + Agent C P0-1) — drizzle generates 3 params per ownership row; protocol cap is 65535 → silent failure at ~21,845 rows. The 50MB Excel ceiling allows 30-50k rows. Fix: chunk both the bulk UPDATE (`affectedApartmentIds`) and bulk INSERT (`newOwnerships`) at 5000 rows per statement in `handler.ts STEP D`. Single-tx → memoized SUM trigger still spans across chunks correctly. T6.11 unchanged (1 chunk = same as pre-fix).
   - **P0 security — `submitMapping` held DB tx across pg-boss network** (Agent B P0-1) — the JSDoc claimed "Done OUTSIDE the tx" but the code was INSIDE the `withTenant(...)` callback. A stuck/slow pg-boss producer would have held the `import_jobs` row-lock + connection slot → DoS on concurrent /mapping calls. Fix: commit the `withTenant` tx first (status flip + audit), then call `producer.send` outside.

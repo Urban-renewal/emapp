@@ -33,6 +33,8 @@ import { AuthModule } from '../auth/auth.module';
 
 import { ProviderAuditController } from './provider-audit.controller';
 import { ProviderAuditService } from './provider-audit.service';
+import { ProviderSystemHealthController } from './provider-system-health.controller';
+import { ProviderSystemHealthService } from './provider-system-health.service';
 import { ProviderTenantDetailController } from './provider-tenant-detail.controller';
 import { ProviderTenantDetailService } from './provider-tenant-detail.service';
 import { ProviderTenantsController } from './provider-tenants.controller';
@@ -40,9 +42,18 @@ import { ProviderTenantsService } from './provider-tenants.service';
 
 @Module({
   imports: [AuthModule],
-  // P6.5-2 + 3 + 4: tenants LIST + DETAIL + audit search.
-  // P6.5-5 will add: system health.
-  controllers: [ProviderTenantsController, ProviderTenantDetailController, ProviderAuditController],
-  providers: [ProviderTenantsService, ProviderTenantDetailService, ProviderAuditService],
+  // All 4 D.37 endpoints registered.
+  controllers: [
+    ProviderTenantsController,
+    ProviderTenantDetailController,
+    ProviderAuditController,
+    ProviderSystemHealthController,
+  ],
+  providers: [
+    ProviderTenantsService,
+    ProviderTenantDetailService,
+    ProviderAuditService,
+    ProviderSystemHealthService,
+  ],
 })
 export class ProviderModule {}

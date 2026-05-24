@@ -1,11 +1,27 @@
 import { Readable } from 'node:stream';
 
+import { recordStorageError } from '../../client';
+
 import type {
   IStorageProvider,
   UploadUrlOptions,
   DownloadUrlOptions,
   StorageObjectMeta,
 } from './storage.interface';
+
+/** D.37 / Phase 6.5 — wrap an S3 SDK call so any error increments
+ *  the storage-error counter (surfaced via getStorageErrorStats()
+ *  → GET /provider/system-health) before being rethrown. The catch
+ *  is invisible to the caller (just rethrows) — pure observability. */
+async function withErrorTelemetry<T>(op: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    const err = e as { name?: string };
+    recordStorageError({ op, errorClass: err?.name ?? 'unknown' });
+    throw e;
+  }
+}
 
 /** R2/S3 SDK error shape — we only care about the `name` discriminator
  *  (`NotFound` / `NoSuchKey`) so we can map a missing object to `null`
@@ -63,29 +79,33 @@ export class R2StorageProvider implements IStorageProvider {
   }
 
   async getUploadUrl(key: string, opts: UploadUrlOptions): Promise<string> {
-    const cmd = new this.deps.PutObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-      ContentType: opts.contentType,
-      ContentLength: opts.maxSizeBytes,
+    return withErrorTelemetry('getUploadUrl', () => {
+      const cmd = new this.deps.PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        ContentType: opts.contentType,
+        ContentLength: opts.maxSizeBytes,
+      });
+      return this.deps.getSignedUrl(this.deps.client, cmd, { expiresIn: opts.ttlSeconds });
     });
-    return this.deps.getSignedUrl(this.deps.client, cmd, { expiresIn: opts.ttlSeconds });
   }
 
   async getDownloadUrl(key: string, opts: DownloadUrlOptions): Promise<string> {
-    const cmd = new this.deps.GetObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-      ResponseContentDisposition: opts.responseFilename
-        ? `attachment; filename="${opts.responseFilename}"`
-        : undefined,
+    return withErrorTelemetry('getDownloadUrl', () => {
+      const cmd = new this.deps.GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        ResponseContentDisposition: opts.responseFilename
+          ? `attachment; filename="${opts.responseFilename}"`
+          : undefined,
+      });
+      return this.deps.getSignedUrl(this.deps.client, cmd, { expiresIn: opts.ttlSeconds });
     });
-    return this.deps.getSignedUrl(this.deps.client, cmd, { expiresIn: opts.ttlSeconds });
   }
 
   async delete(key: string): Promise<void> {
-    await this.deps.client.send(
-      new this.deps.DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+    await withErrorTelemetry('delete', () =>
+      this.deps.client.send(new this.deps.DeleteObjectCommand({ Bucket: this.bucket, Key: key })),
     );
   }
 
@@ -94,13 +114,15 @@ export class R2StorageProvider implements IStorageProvider {
    *  Node is a Readable. Caller MUST consume or destroy the stream
    *  (otherwise we leak an open R2 connection from the pool). */
   async getObjectStream(key: string): Promise<Readable> {
-    const cmd = new this.deps.GetObjectCommand({ Bucket: this.bucket, Key: key });
-    const res = (await this.deps.client.send(cmd)) as { Body?: unknown };
-    const body = res?.Body;
-    if (!body || typeof (body as Readable).pipe !== 'function') {
-      throw new Error(`R2: GetObject for ${key} returned no streamable body`);
-    }
-    return body as Readable;
+    return withErrorTelemetry('getObjectStream', async () => {
+      const cmd = new this.deps.GetObjectCommand({ Bucket: this.bucket, Key: key });
+      const res = (await this.deps.client.send(cmd)) as { Body?: unknown };
+      const body = res?.Body;
+      if (!body || typeof (body as Readable).pipe !== 'function') {
+        throw new Error(`R2: GetObject for ${key} returned no streamable body`);
+      }
+      return body as Readable;
+    });
   }
 
   /** D.28 R1/R2: storage-attested object metadata. Returns:
@@ -130,15 +152,22 @@ export class R2StorageProvider implements IStorageProvider {
       const status = err?.$metadata?.httpStatusCode;
       const name = err?.name;
       if (status === 404 || name === 'NotFound' || name === 'NoSuchKey') {
+        // 404 is a documented "object missing" outcome, NOT an error.
+        // Recording it would pollute the storage-error gauge.
         return null;
       }
+      // Real failure — record + rethrow so the counter reflects it
+      // and the caller can decide how to react.
+      recordStorageError({ op: 'head', errorClass: name ?? 'unknown' });
       throw e;
     }
   }
 
   async healthCheck(): Promise<void> {
-    await this.deps.client.send(
-      new this.deps.ListObjectsV2Command({ Bucket: this.bucket, MaxKeys: 1 }),
+    await withErrorTelemetry('healthCheck', () =>
+      this.deps.client.send(
+        new this.deps.ListObjectsV2Command({ Bucket: this.bucket, MaxKeys: 1 }),
+      ),
     );
   }
 }

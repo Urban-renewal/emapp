@@ -12,7 +12,7 @@ export {
   type PoolErrorSource,
   type PoolName,
 } from './client';
-export { env } from './env';
+export { env, reloadEnv } from './env';
 export { withTenant, type TenantTx } from './wrappers/with-tenant';
 export { withProvider } from './wrappers/with-provider';
 export { withBootstrap } from './wrappers/with-bootstrap';
@@ -55,6 +55,13 @@ export type {
   DownloadUrlOptions,
 } from './providers/storage/storage.interface';
 export { R2StorageProvider } from './providers/storage/r2.provider';
+export {
+  buildR2Provider,
+  r2EnvIsComplete,
+  type R2EnvVars,
+  type R2SdkDeps,
+  type R2ClientTuning,
+} from './providers/storage/r2-factory';
 export { FakeStorageProvider } from './providers/storage/fake.provider';
 export type { ICacheProvider } from './providers/cache/cache.interface';
 export { PostgresCacheProvider } from './providers/cache/postgres.provider';

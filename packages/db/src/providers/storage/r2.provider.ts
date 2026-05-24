@@ -16,7 +16,11 @@ interface S3LikeError {
 }
 
 interface S3ClientLike {
-  send(command: unknown): Promise<unknown>;
+  /** Second arg is the AWS SDK's optional `HttpHandlerOptions` (we
+   *  use it only for `{ abortSignal }` v8 SOLID-6). Kept loose to
+   *  avoid pulling in @smithy/* types — the real SDK accepts any
+   *  shape compatible with this. */
+  send(command: unknown, options?: { abortSignal?: AbortSignal }): Promise<unknown>;
 }
 
 interface SignedUrlFn {
@@ -106,10 +110,15 @@ export class R2StorageProvider implements IStorageProvider {
    *  problems the caller should surface, not silently treat as "no
    *  attestation". (Treating a 500 as null would let a tampered upload
    *  pass the finalize integrity gate during an R2 outage.) */
-  async head(key: string): Promise<StorageObjectMeta | null> {
+  async head(key: string, opts?: { signal?: AbortSignal }): Promise<StorageObjectMeta | null> {
     try {
+      // AWS SDK v3 client.send() accepts `{ abortSignal }` to plumb
+      // an AbortController through to the underlying request — the
+      // socket is torn down when the signal fires. v8 SOLID-6.
+      const sendOpts = opts?.signal ? { abortSignal: opts.signal } : undefined;
       const res = (await this.deps.client.send(
         new this.deps.HeadObjectCommand({ Bucket: this.bucket, Key: key }),
+        sendOpts,
       )) as HeadObjectResponse;
       if (typeof res?.ContentLength !== 'number') return null;
       return {

@@ -538,6 +538,142 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `contractor_exists`, `missing_token`, `invalid_token`, `token_expired`
 
+### POST /api/v1/imports
+
+- **Auth:** Manager
+- **Summary:** Create an import row + return a short-lived presigned PUT URL. Step 1 of 2 (step 2 is /start after the FE uploads to R2). 50MB hard cap; sha256 content-hash required.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `dryRun` | boolean | no | — |
+| `fileContentHash` | string | yes | pattern="^[0-9a-f]{64}$" |
+| `fileName` | string | yes | minLength=1, maxLength=255 |
+| `fileSizeBytes` | integer | yes | minimum=1, maximum=52428800 |
+| `idempotencyKey` | string | no | pattern="^[A-Za-z0-9_-]{16,64}$" |
+| `projectId` | string | yes | format="uuid" |
+
+
+**Response**
+
+```json
+{ "data": { "import": ImportJob, "uploadUrl": "https://…", "uploadExpiresInSeconds": 300 } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `import_conflict`, `429`
+
+### DELETE /api/v1/imports/:id
+
+- **Auth:** Manager
+- **Summary:** Cancel a non-terminal import. Wins races with the worker via guarded UPDATEs (status = expected) — terminal rows reject with import_not_cancellable.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+204 No Content
+```
+
+**Errors:** `forbidden`, `not_found`, `import_not_cancellable`
+
+### GET /api/v1/imports/:id
+
+- **Auth:** Manager
+- **Summary:** Read the current import row (status + row counters).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": ImportJob }
+```
+
+**Errors:** `not_found`
+
+### GET /api/v1/imports/:id/errors
+
+- **Auth:** Manager
+- **Summary:** Paginated keyset listing of per-row validation failures (worker validateStage). PII already scrubbed at write-time; messages length-capped at 500 chars.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1, maxLength=255 |
+| `limit` | integer | no | minimum=1, maximum=200 |
+
+
+**Response**
+
+```json
+{ "data": ImportError[], "page": { "limit", "cursor", "has_more" } }
+```
+
+**Errors:** `validation_error`, `not_found`, `invalid_cursor`
+
+### POST /api/v1/imports/:id/mapping
+
+- **Auth:** Manager
+- **Summary:** D.34 wizard — submit a column mapping for a row in awaiting_mapping. Stores a mapping_template (org-scoped) and re-enqueues the worker.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `columns` | object | yes | — |
+| `templateName` | string | no | minLength=1, maxLength=120 |
+
+
+**Response**
+
+```json
+{ "data": { "import": ImportJob, "templateId": "<uuid>" } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `import_not_in_awaiting_mapping`
+
+### POST /api/v1/imports/:id/start
+
+- **Auth:** Manager (creator only)
+- **Summary:** Enqueue the worker job AFTER the upload completes. Pre-flights a 500ms-bounded R2 head() to catch upload_size_mismatch fast; the worker is the safety net.
+
+**Request body**
+
+_(no body)_
+
+
+**Response**
+
+```json
+{ "data": ImportJob }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `import_not_startable`, `upload_size_mismatch`, `429`
+
+### GET /api/v1/imports/:id/stream
+
+- **Auth:** Manager
+- **Summary:** Server-Sent Events stream of import progress. Frames are ImportSseEvent (discriminated on `event` ∈ progress | end | gone). Heartbeat comment every 15s defeats proxy idle timeouts. Closes on terminal state, on 404 (gone), or on client abort.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+text/event-stream; one ImportSseEvent JSON object per `data:` line (see @emapp/shared-types#ImportSseEventSchema)
+```
+
+**Errors:** `forbidden`, `not_found`
+
 ### GET /api/v1/me
 
 - **Auth:** AuthGuard

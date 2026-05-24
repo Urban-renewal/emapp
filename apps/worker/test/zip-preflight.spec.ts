@@ -72,7 +72,14 @@ function buildCdEntry(opts: {
   buf.writeUInt16LE(0, 32); // file comment length
   // bytes 34-45 left as zeros
   fileName.copy(buf, 46);
-  return buf;
+  // v8 SOLID-3 / Sec-7: zip-preflight now magic-checks the first 4
+  // bytes BEFORE scanning the central directory. These hand-crafted
+  // CD-only test fixtures lack the local-file-header (50 4B 03 04)
+  // that real ZIPs start with. Prepend it so the unit tests still
+  // exercise the CD-scan / decompressed-size guard rather than
+  // tripping the new magic-byte gate.
+  const lfh = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+  return Buffer.concat([lfh, buf]);
 }
 
 describe('Test #3a — zipPreflight unit (audit-pass v2 C8)', () => {
@@ -145,11 +152,13 @@ describe('Test #3a — zipPreflight unit (audit-pass v2 C8)', () => {
     );
   });
 
-  it('6) no CD entries (non-zip buffer) → returns 0/0, lets ExcelJS surface its own error', () => {
+  it('6) non-zip buffer → rejected by v8 magic-byte gate (was: passed-through to ExcelJS)', () => {
+    // v8 SOLID-3 / Sec-7: the magic-byte gate now rejects non-ZIP
+    // input BEFORE the CD scan, with a more specific error code
+    // (`wrong_file_type`) than the previous "let ExcelJS fail with
+    // generic corrupt_file" posture.
     const buf = Buffer.from('not a zip at all, just text');
-    const out = zipPreflight(buf);
-    expect(out.entryCount).toBe(0);
-    expect(out.totalUncompressed).toBe(0);
+    expect(() => zipPreflight(buf)).toThrow(expect.objectContaining({ code: 'wrong_file_type' }));
   });
 
   it('7) MANY small entries summing to a safe total → accept', () => {

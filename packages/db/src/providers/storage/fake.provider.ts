@@ -50,7 +50,10 @@ export class FakeStorageProvider implements IStorageProvider {
    *  lands, the real provider will return actual contentLength + checksum
    *  and the same call site gains true tamper-evidence with no code
    *  change. */
-  async head(_key: string): Promise<StorageObjectMeta | null> {
+  async head(_key: string, _opts?: { signal?: AbortSignal }): Promise<StorageObjectMeta | null> {
+    // Fake doesn't make a network call so it can't be "aborted" in
+    // any meaningful way; we still accept the optional signal so the
+    // interface is unified with R2StorageProvider.head().
     return null;
   }
 

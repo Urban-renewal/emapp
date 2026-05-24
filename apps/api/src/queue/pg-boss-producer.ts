@@ -24,7 +24,7 @@
  */
 import { env } from '@emapp/db';
 import type { IJobProducer, JobSendOptions, JobSendResult } from '@emapp/jobs';
-import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import PgBoss from 'pg-boss';
 
 /** Same schema as the worker — keeps consumed + produced jobs in one
@@ -32,15 +32,43 @@ import PgBoss from 'pg-boss';
 const PG_BOSS_SCHEMA = 'pgboss' as const;
 
 @Injectable()
-export class PgBossJobProducer implements IJobProducer, OnModuleDestroy {
+export class PgBossJobProducer implements IJobProducer, OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PgBossJobProducer.name);
   private boss: PgBoss | null = null;
   private startPromise: Promise<PgBoss> | null = null;
 
+  /** v8 §v7-D / Perf-HIGH: pre-connect on module init so the first
+   *  /imports/:id/start doesn't pay ~200-400ms of pg-boss cold-start
+   *  latency on the request path. Fire-and-forget (best-effort) —
+   *  if it fails we still fall back to the lazy `send()` path. We
+   *  start asynchronously so a slow pg-boss connect can't block
+   *  Nest's bootstrap (the request handler still awaits getBoss()
+   *  before sending; if pre-connect is still in flight the first
+   *  request piggybacks on the in-flight promise).
+   *
+   *  Tests still work — unit tests typically don't bootstrap the
+   *  module via Nest; they instantiate the class directly and never
+   *  trigger onModuleInit. The Fake producer in tests has its own
+   *  noop onModuleInit. */
+  async onModuleInit(): Promise<void> {
+    if (process.env['NODE_ENV'] === 'test') return;
+    // Don't await — let Nest finish bootstrapping while pg-boss
+    // connects in the background. The first send() awaits the same
+    // startPromise.
+    void this.getBoss().catch((e) => {
+      this.logger.warn(
+        `pg-boss producer pre-connect failed (will retry on first send): ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
+      // Drop the failed startPromise so the next send() retries.
+      this.startPromise = null;
+    });
+  }
+
   /** Lazy connection. First send() triggers `boss.start()`; subsequent
-   *  sends reuse the same instance. We DON'T start in onModuleInit
-   *  because (a) unit tests inject a Fake, (b) the migrate-on-start
-   *  is best done by the worker (single ownership). */
+   *  sends reuse the same instance. Pre-connect via onModuleInit
+   *  amortises the cold-start cost off the request path (v8 §v7-D). */
   private async getBoss(): Promise<PgBoss> {
     if (this.boss) return this.boss;
     if (this.startPromise) return this.startPromise;

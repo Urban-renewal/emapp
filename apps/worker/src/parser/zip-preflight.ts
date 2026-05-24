@@ -57,6 +57,17 @@ export const MAX_DECOMPRESSED_BYTES = 50 * 1024 * 1024;
 const CD_HEADER_SIGNATURE = 0x02014b50;
 const ZIP64_SENTINEL = 0xffffffff;
 
+/** Local-file-header signature — every valid ZIP starts with this.
+ *  PKWARE APPNOTE.TXT §4.3.7. Without this check, a non-ZIP upload
+ *  (e.g. .pdf, .exe, .doc, plaintext) reaches ExcelJS, which then
+ *  throws a generic "corrupt_file" error that doesn't communicate
+ *  what actually went wrong to the user. v8 SOLID-3 / Sec-7. */
+const LOCAL_FILE_HEADER_SIGNATURE_BYTES = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+/** Empty ZIP archive end-of-central-directory record signature.
+ *  An empty .xlsx isn't a useful upload but is technically a valid
+ *  ZIP — distinguish from "not a ZIP at all". */
+const EMPTY_ZIP_EOCD_BYTES = Buffer.from([0x50, 0x4b, 0x05, 0x06]);
+
 export interface ZipPreflightResult {
   /** Sum of uncompressed sizes across all CD entries. */
   totalUncompressed: number;
@@ -70,6 +81,32 @@ export interface ZipPreflightResult {
  *
  *  Returns the totals on success — caller may log them for telemetry. */
 export function zipPreflight(buffer: Buffer): ZipPreflightResult {
+  // v8 SOLID-3 / Sec-7: magic-byte check FIRST. A presigned PUT URL
+  // doesn't bind Content-Type at signature level (AWS S3 v4 sigs only
+  // bind canonical headers), so a Manager who minted an URL via
+  // /imports can upload ANY bytes (a .pdf, a .png, ransomware, a
+  // 50MB log file). Without this check, ExcelJS's .load() throws a
+  // generic 'corrupt_file' error that doesn't tell the user what was
+  // actually wrong — they retry the upload, retry, give up.
+  //
+  // The local-file-header signature `50 4B 03 04` is at byte 0 of
+  // every valid ZIP (and therefore every valid .xlsx). An "empty
+  // ZIP" archive starts with the end-of-central-directory record
+  // `50 4B 05 06` — we accept that too (ExcelJS will fail later
+  // with 'empty_workbook', which IS a meaningful error message),
+  // because rejecting it here would mean misdiagnosing
+  // legitimately-empty workbooks.
+  if (buffer.length < 4) {
+    throw new ExcelParserError('file too small to be a valid xlsx (< 4 bytes)', 'wrong_file_type');
+  }
+  const first4 = buffer.subarray(0, 4);
+  if (!first4.equals(LOCAL_FILE_HEADER_SIGNATURE_BYTES) && !first4.equals(EMPTY_ZIP_EOCD_BYTES)) {
+    throw new ExcelParserError(
+      'not a valid xlsx file (ZIP magic bytes missing)',
+      'wrong_file_type',
+    );
+  }
+
   let totalUncompressed = 0;
   let entryCount = 0;
 

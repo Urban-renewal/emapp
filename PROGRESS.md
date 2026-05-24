@@ -25,7 +25,16 @@
   - **Changed:** `apps/web/src/lib/api-client.ts` now hits relative `/api/v1/*` with `credentials: 'same-origin'`. `NEXT_PUBLIC_API_URL` intentionally NOT read — leaks would break the cookie model.
   - **Verified:** auth.service.ts `COOKIE_BASE` is hostOnly (no Domain field); refresh/access cookie paths preserved through proxy.
   - **Env contract:** Cloudflare Pages needs `API_BACKEND_URL` (server-only, NEVER `NEXT_PUBLIC_*`).
-- **Test deltas (v8.5):** 1 spec updated (`purge-import-bytes.spec.ts` test #5 — `'not-terminal'` → `'purge-failed'` for new return code). All 223 worker / 329 API / 114 db tests green.
+- **Test deltas (v8.5):**
+  - **75 new contract tests** (one spec per closure pins its contract): `migrator-guards.spec.ts` (10), `imports-sse-cap.spec.ts` race additions (4), `imports.s8.spec.ts` §C7-C11 cancel→purge (5), `with-provider-encryption.spec.ts` (6), `load-owner-with-pii.spec.ts` (9), `purge-import-bytes.spec.ts` deadline additions (4), `owners-audit-pii.spec.ts` (8), `route.spec.ts` Pages proxy (29).
+  - **74 new adversarial tests** (user mandate: "תאתגר את המערכת"): `route-adversarial.spec.ts` (25 — SSRF / path injection / header smuggling / 50-concurrent), `owners-adversarial.spec.ts` (12 — SQL-shaped names round-tripped + audit clean), `imports.s8 §C12-C14` (3 — Promise.all cancel race + cross-tenant), `imports-sse-cap §A1-A2` (2 — 100 concurrent stream() saturating cap), `load-owner §A1-A3` (3 — corrupted ciphertext throws), `with-provider-encryption §A1-A5` (5 — SQL-shape reason parameter-bound), `purge-import-bytes §A1-A5` (5 — deadline edge values 0/NaN/Infinity/-1/120s).
+  - **Production change driven by adversarial finding:** `purgeImportBytes` now clamps `deleteTimeoutMs` to `[50ms, 60s]` (was unguarded — a typo of `0` silently disabled retry signaling).
+- **A2 (config) — DATABASE_MIGRATE_URL + Windows isCli fix (commit `31897e8`):**
+  - Migrator now uses Neon's direct (non-pooler) endpoint via `DATABASE_MIGRATE_URL` (optional, falls back to `DATABASE_URL`). Required because Neon's `-pooler` host is transaction-pooled — `SET LOCAL` GUCs the v8.5 migrator sets do NOT survive drizzle's per-migration transactions on a pooler endpoint. Migration 0033's pgcrypto backfill would silently see empty key.
+  - Dedicated 1-slot pool built locally in `migrate.ts` (does NOT touch the runtime `pool` from `src/client.ts`).
+  - **Windows fix:** the `isCli` guard hand-built `file://<path>` from `argv[1]` — produced 2 slashes on Windows vs 3 on POSIX, so the guard was always false on Windows and the script exited silently with no diagnostic. Replaced with `pathToFileURL()` — uniform across platforms.
+  - **Verified locally:** `infisical run --env=dev -- pnpm --filter @emapp/db db:migrate` → "Migrator: using DATABASE_MIGRATE_URL (direct)" + "Migrations applied successfully".
+  - Final CI run on `31897e8`: all 8 jobs green (setup, secrets-scan, audit, typecheck, lint, test, build, conformance). PR #37 `MERGEABLE` / `CLEAN`, awaiting human merge.
 
 - **Previous slice:** **§v8 P0 trio CLOSED on branch `v8-p0-closures` — R2 retention (§v8-S1) + SSE rate-limit/cap (§v8-S2) + owners.name PII encryption (§v8-S3).** All three FE-blocker-tier items the user explicitly named. 2 new migrations (0032 file_deleted_at + 0033 owners.name encryption), purge-bytes helper, 10 read sites switched to encrypted name (wire shape unchanged), 20 new tests (9 owner-name-encryption + 6 purge-import-bytes + 4 sse-cap + 1 test-fix), all green. Worker 223/223. API 329/329. lint + typecheck clean.
 - **§v8-S1 (R2 retention):** migration 0032 adds `file_deleted_at` + CHECK enforcing "terminal-only purge" + sweeper-friendly partial index. New `apps/worker/src/handlers/purge-import-bytes.ts` (idempotent at every layer). Wired in worker terminal-state check — fires for done/failed/cancelled, skips awaiting_mapping pause state. Audit rows `import.bytes_purged` / `import.bytes_purge_failed`. 6 unit tests pin every branch.
@@ -89,10 +98,10 @@
   - **v8 → 12 cross-confirmed CLOSED + 23 structured deferrals in OPEN-ITEMS-v8.md** + ALL §v7 deferrals closed (per user mandate "no half-work")
   - Every pass found bugs prior passes missed. Pattern holds across 8 passes.
 - **Phase status:**
-  - **Phase 6 PR #27** — open, awaiting user merge
-  - **Phase 7 PR #28** — open on `phase-7-l2-template-resolver`
-  - **R2 + v7+v8 PR #34** — open on `r2-wiring`. CI expected green after this push
-- **Next agent — read OPEN-ITEMS-v8.md FIRST.** Phase 4 (Frontend) is the natural next slice, but EVERY P0/HIGH there is FE-blocking-tier and should be triaged before deploying to a paying customer. Each has a concrete plan + acceptance criteria — no "we'll see."
+  - **v8.5 — `awaiting_approval`**. PR #37 (`v8.5-phase4-readiness`) is OPEN, MERGEABLE / CLEAN, all 8 CI checks green on commit `31897e8`. Awaiting human merge.
+  - Phase 4 (FE) starts AFTER #37 merges + A1 (Cloudflare Pages env `API_BACKEND_URL`) + A3 (post-deploy cookie posture check) — both ops tasks owned by the user, not Phase-4-blocking.
+  - Pending rotations (user-owned, separate from PR #37): Neon `neondb_owner` password (leaked in chat 2026-05-24), R2 dev credentials (leaked in chat in v7).
+- **Next agent — read OPEN-ITEMS-v8.md FIRST.** Phase 4 (Frontend) is the natural next slice — every P0 in OPEN-ITEMS-v8 is now closed via the v8 P0 trio + v8.5 closures. Remaining items are HIGH/MEDIUM scale-prep with concrete plans. Read ONBOARDING.md §3.1 + ARCHITECTURE-MAP.md §13 for the v8.5 D.35 topology + D.36 phase-transition protocol the next agent must follow.
 
 - **Previous slice (v7):** R2 storage live (PR #34, branch `r2-wiring`) + v7 INDEPENDENT audit-pass (3 agents) + 7 v7 cross-confirmed P0/HIGH/MEDIUM closures + 1 CI infrastructure fix. Cloudflare R2 bucket `emapp-dev` provisioned and credentials in Infisical (dev env; staging/prod pending). The 4-var presence detector + AWS-SDK-free factory ships in `@emapp/db`, so both `apps/api` and `apps/worker` boot the same R2StorageProvider from the same env without each app duplicating SDK wiring. End-to-end smoke (HeadBucket → PutObject → GetObject → DeleteObject) green against real R2. CI was failing on the `audit` job's post-run cache step (pre-existing — actual root cause was `cache: 'pnpm'` without ever running `pnpm install`); fixed in the same slice.
 - **R2 wiring SoT (this slice):**

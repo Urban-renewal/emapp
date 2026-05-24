@@ -131,3 +131,19 @@ export const providerDb = drizzle(providerPool, { schema });
 export type ProviderDatabase = NodePgDatabase<typeof schema>;
 
 attachClientErrorGuard(providerPool, 'providerPool');
+
+/**
+ * Drain both pools — used by the process-level SIGTERM/SIGINT handler
+ * in `apps/api/src/process-guards.ts` (and any future graceful-shutdown
+ * path in the worker). Per-pool `.catch(() => undefined)` swallows
+ * duplicate-`.end()` errors so the call is safe when Nest's
+ * `enableShutdownHooks()` ALSO drains via its own teardown — both can
+ * race; the second wins is a no-op.
+ *
+ * Kept inside @emapp/db so callers don't reach into `providerPool`
+ * directly (matches the D.21 "direct pool access is internal" rule).
+ */
+export async function closeAllPools(): Promise<void> {
+  await pool.end().catch(() => undefined);
+  await providerPool.end().catch(() => undefined);
+}

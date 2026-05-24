@@ -10,6 +10,7 @@ import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { resetStorageProvider } from './modules/documents/storage';
+import { installProcessGuards } from './process-guards';
 
 const CORS_ORIGINS = {
   production: ['https://app.emapp.io'],
@@ -145,6 +146,18 @@ async function bootstrap() {
   });
 
   app.enableShutdownHooks();
+
+  // Process-level safety net (from rebased PR #18 → new PR).
+  // - unhandledRejection: log + Sentry, survive (a stray fire-and-forget
+  //   promise can no longer crash the API).
+  // - uncaughtException: log + Sentry; exit(1) on unknown codes
+  //   (Railway restarts cleanly). EPIPE / ECONNRESET log-only.
+  // - SIGTERM / SIGINT: graceful drain — app.close() → closeAllPools()
+  //   → exit(0). Required for Railway zero-downtime deploys.
+  // The handler is idempotent w.r.t. Nest's enableShutdownHooks() above:
+  // both register SIGTERM/SIGINT listeners; app.close() is idempotent
+  // and closeAllPools() swallows duplicate-.end() errors.
+  installProcessGuards({ app });
 
   // P1.10: fail fast if PII encryption/HMAC keys are missing or invalid,
   // BEFORE serving any request. Skipped only in the no-accounts local path.

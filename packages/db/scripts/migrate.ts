@@ -38,11 +38,12 @@
  *   composition; no logic lives there that isn't tested through one
  *   of these helpers.
  */
+import { pathToFileURL } from 'node:url';
+
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import type { PoolClient } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 
-import { pool } from '../src/client';
 import { env } from '../src/env';
 import * as schema from '../src/schema/index';
 
@@ -156,9 +157,36 @@ async function main() {
     PII_HASH_KEY: env.PII_HASH_KEY,
   });
 
+  // v8.5 — Neon's `-pooler` host is TRANSACTION-pooled (pgbouncer-style):
+  // each statement may go to a different backend, so SET LOCAL / session
+  // GUCs do not survive across drizzle's per-migration transactions.
+  // DATABASE_MIGRATE_URL is the DIRECT endpoint (no `-pooler` in host)
+  // and is used ONLY by this script. Falls back to DATABASE_URL when
+  // unset so local-dev workflows keep working with a single env var.
+  const connectionString = env.DATABASE_MIGRATE_URL ?? env.DATABASE_URL;
+  const usingMigrateUrl = !!env.DATABASE_MIGRATE_URL;
+  process.stdout.write(
+    `Migrator: using ${usingMigrateUrl ? 'DATABASE_MIGRATE_URL (direct)' : 'DATABASE_URL'}\n`,
+  );
+
+  // Dedicated pool sized at 1 connection — the migrator only ever
+  // needs the single client held below. Tiny max prevents accidentally
+  // starving Neon's connection budget if the script is run alongside
+  // the API/worker.
+  const migratorPool = new Pool({
+    connectionString,
+    max: 1,
+    // Same resilience knobs as src/client.ts so a transient Neon
+    // disconnect during a long migration doesn't kill the run.
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
+    allowExitOnIdle: false,
+    statement_timeout: 600_000, // 10 min — migrations can take a while
+  });
+
   // Dedicated client for the whole migrate() lifecycle — no pool
   // race, no LIFO assumption.
-  const client = await pool.connect();
+  const client = await migratorPool.connect();
   try {
     await setupAndVerifyGucs(client, {
       PII_ENCRYPTION_KEY: env.PII_ENCRYPTION_KEY!,
@@ -172,15 +200,21 @@ async function main() {
     process.stdout.write('Migrations applied successfully\n');
   } finally {
     client.release();
-    await pool.end();
+    await migratorPool.end();
   }
 }
 
 // Only run as a script when this file is the CLI entrypoint.
 // Spec files import `assertPiiKeysPresent` / `setupAndVerifyGucs`
 // directly and MUST NOT trigger main().
-const isCli = import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}`;
-if (isCli) {
+//
+// v8.5 Windows fix: previous comparison hand-built `file://<path>` from
+// `process.argv[1]`, which on POSIX produces `file:///abs/path` (3
+// slashes) but on Windows produced `file://C:/path` (2 slashes) — so
+// `isCli` was always false on Windows and the migrator exited silently.
+// `pathToFileURL` handles both platforms uniformly.
+const cliHref = process.argv[1] ? pathToFileURL(process.argv[1]).href : '';
+if (import.meta.url === cliHref) {
   main().catch((err: unknown) => {
     process.stderr.write(`Migration failed: ${String(err)}\n`);
     process.exit(1);

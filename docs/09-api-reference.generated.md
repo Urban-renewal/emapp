@@ -548,10 +548,10 @@ _(no body)_
 | field | type | required | constraints |
 |---|---|---|---|
 | `dryRun` | boolean | no | — |
-| `fileContentHash` | string | yes | pattern="^(?:sha256:)?[0-9a-f]{64}$" |
+| `fileContentHash` | string | yes | pattern="^[0-9a-f]{64}$" |
 | `fileName` | string | yes | minLength=1, maxLength=255 |
 | `fileSizeBytes` | integer | yes | minimum=1, maximum=52428800 |
-| `idempotencyKey` | string | no | minLength=1, maxLength=255 |
+| `idempotencyKey` | string | no | pattern="^[A-Za-z0-9_-]{16,64}$" |
 | `projectId` | string | yes | format="uuid" |
 
 

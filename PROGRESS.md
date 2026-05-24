@@ -456,7 +456,7 @@ Where to continue:
 
 - [ ] Phase 6 — Import (docs/03 §10) — **IN PROGRESS** on branch `phase-6-s2` (S1+S1.5 merged via PR #22; audit-pass via PR #26). S2 complete locally (pg-boss adapter + ImportJobHandler state machine + audit + SSE; T6.8 10/10 + T6.9 8/8 + adapter 7/7 + 18 pre-S2 regression baseline green). Remaining: S3 (ExcelJS parser) → S4 (mapping) → S5 (validation + dry-run) → S6 (persistence + idempotency + dedup + rollback) → S7 (perf gates T6.10/T6.11) → S8 (api endpoints — POST/cancel/errors-export) → S9 (D.34 + DoD↔Test mapping).
 
-- [ ] Phase 6.5 — Provider Admin tool (docs/03 §10.5)
+- [ ] Phase 6.5 — Provider Admin BE (D.37, read-only): 4 endpoints under `/api/v1/provider/*` — tenants list, tenant detail, audit search, system health. Each call: `access_reason` header required, `withProvider` wrapper, audit row written, PII masked even at Provider tier. Writes (suspend/reset MFA/reactivate) remain Gate-6 deferred.
 
 - [ ] Phase 7 — Export (docs/03 §11)
 

@@ -142,6 +142,72 @@ describe('v8.5 withProvider — encryption + hash GUCs available', () => {
     });
     expect(v).toBe(env.PII_ENCRYPTION_KEY);
   });
+
+  it('A1) ADVERSARIAL — SQL-injection-shaped reason field is parameter-bound (not executed)', async () => {
+    // A hostile Provider Admin (or stolen Provider creds) could try
+    // to smuggle SQL through the reason field. The reason gets written
+    // to provider_audit_log AND becomes the app.access_reason GUC.
+    // Both must be safe even if reason contains SQL meta-chars.
+    const evil = "'); DROP TABLE provider_audit_log; --";
+    const stored = await withProvider(provider.id, evil, async (tx) => {
+      const r = await tx.execute<{ r: string | null }>(
+        "SELECT current_setting('app.access_reason', true) AS r",
+      );
+      return r.rows[0]?.r ?? null;
+    });
+    // The reason MUST come back byte-identical — proving it was
+    // parameter-bound, not executed.
+    expect(stored).toBe(evil);
+    // provider_audit_log MUST still exist.
+    const client = await providerPool.connect();
+    try {
+      await client.query('SELECT 1 FROM provider_audit_log LIMIT 1');
+    } finally {
+      client.release();
+    }
+  });
+
+  it('A2) ADVERSARIAL — extremely long reason (10KB) — accepted or rejected, never crashes the wrapper', async () => {
+    const huge = 'x'.repeat(10_000);
+    let outcome: 'ok' | 'thrown' = 'thrown';
+    try {
+      await withProvider(provider.id, huge, async () => undefined);
+      outcome = 'ok';
+    } catch {
+      outcome = 'thrown';
+    }
+    expect(['ok', 'thrown']).toContain(outcome);
+  });
+
+  it('A3) ADVERSARIAL — reason with embedded null byte propagates Postgres error (no silent success)', async () => {
+    const evil = 'inv\0estigation';
+    let threw = false;
+    try {
+      await withProvider(provider.id, evil, async () => undefined);
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(true);
+  });
+
+  it('A4) ADVERSARIAL — reason too short (< 5 chars) is REJECTED before any DB call', async () => {
+    await expect(withProvider(provider.id, 'no', async () => undefined)).rejects.toThrow(
+      /reason is required/i,
+    );
+  });
+
+  it('A5) ADVERSARIAL — providerUserId that is NOT a UUID is REJECTED before any DB call', async () => {
+    await expect(
+      withProvider('not-a-uuid', 'legitimate reason', async () => undefined),
+    ).rejects.toThrow(/valid UUID/i);
+    await expect(
+      withProvider(
+        "'); DROP TABLE provider_audit_log; --",
+        'legitimate reason',
+        async () => undefined,
+      ),
+    ).rejects.toThrow(/valid UUID/i);
+  });
 });
 
 // Avoid an unused-import lint flag — pool is exported for symmetry

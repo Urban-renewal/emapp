@@ -194,6 +194,91 @@ describe('ImportsController — v8.5 stream() counter-leak race', () => {
     expect(peek()).toBe(0);
   });
 
+  it('A1) ADVERSARIAL — Promise.all of 100 concurrent stream() calls saturating the cap → counter math consistent', async () => {
+    ImportsController.resetActiveStreamsForTests();
+    const peek = () => (ImportsController as unknown as { activeStreams: number }).activeStreams;
+    const max = (ImportsController as unknown as { MAX_ACTIVE_STREAMS: number }).MAX_ACTIVE_STREAMS;
+
+    // Build 100 controllers, each with a streamProgress that hangs
+    // briefly then resolves. We expect ~MAX_ACTIVE_STREAMS to be
+    // accepted, the rest 503'd. Critical: AT NO POINT does the
+    // counter exceed MAX_ACTIVE_STREAMS, AND it returns to 0 once
+    // all settle.
+    let peakObserved = 0;
+    const observer = setInterval(() => {
+      const cur = peek();
+      if (cur > peakObserved) peakObserved = cur;
+    }, 1);
+    try {
+      const calls = await Promise.all(
+        Array.from({ length: 100 }, () => {
+          const ctrl = new ImportsController({
+            streamProgress: async () => {
+              await new Promise((r) => setTimeout(r, 20));
+            },
+          } as unknown as ConstructorParameters<typeof ImportsController>[0]);
+          const reply = {
+            raw: { writeHead: vi.fn(), end: vi.fn(), write: vi.fn() },
+          } as unknown as Parameters<ImportsController['stream']>[3];
+          const req = { raw: { on: vi.fn() } } as unknown as Parameters<
+            ImportsController['stream']
+          >[2];
+          return ctrl.stream(
+            {} as unknown as Parameters<ImportsController['stream']>[0],
+            'any-id' as unknown as Parameters<ImportsController['stream']>[1],
+            req,
+            reply,
+          );
+        }),
+      );
+      void calls;
+    } finally {
+      clearInterval(observer);
+    }
+    // After all settled, counter must be 0 — no leak.
+    expect(peek()).toBe(0);
+    // Peak must not have exceeded the cap (TOCTOU defense).
+    expect(peakObserved).toBeLessThanOrEqual(max);
+  });
+
+  it('A2) ADVERSARIAL — mix of failing and succeeding streams concurrently → counter still settles to 0', async () => {
+    ImportsController.resetActiveStreamsForTests();
+    const peek = () => (ImportsController as unknown as { activeStreams: number }).activeStreams;
+
+    const calls = await Promise.allSettled(
+      Array.from({ length: 30 }, (_, i) => {
+        const ctrl = new ImportsController({
+          streamProgress: async () => {
+            if (i % 3 === 0) throw new Error('odd-third fails');
+            await new Promise((r) => setTimeout(r, 5));
+          },
+        } as unknown as ConstructorParameters<typeof ImportsController>[0]);
+        // Every other request has a writeHead that sync-throws.
+        const writeHead =
+          i % 2 === 0
+            ? vi.fn(() => {
+                throw new Error('sync-throw on writeHead');
+              })
+            : vi.fn();
+        const reply = {
+          raw: { writeHead, end: vi.fn(), write: vi.fn() },
+        } as unknown as Parameters<ImportsController['stream']>[3];
+        const req = { raw: { on: vi.fn() } } as unknown as Parameters<
+          ImportsController['stream']
+        >[2];
+        return ctrl.stream(
+          {} as unknown as Parameters<ImportsController['stream']>[0],
+          'any-id' as unknown as Parameters<ImportsController['stream']>[1],
+          req,
+          reply,
+        );
+      }),
+    );
+    // Some fulfilled, some rejected. Regardless, counter must be 0.
+    expect(peek()).toBe(0);
+    expect(calls.length).toBe(30);
+  });
+
   it('8) 50 sequential sync-throws → counter still 0 (no monotonic drift)', async () => {
     ImportsController.resetActiveStreamsForTests();
 

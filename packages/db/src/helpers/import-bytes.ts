@@ -98,7 +98,21 @@ export async function purgeImportBytes(
   opts: PurgeImportBytesOpts,
 ): Promise<'purged' | 'already' | 'not-terminal' | 'missing' | 'purge-failed'> {
   const { orgId, jobId, verifiedActorId, storage, log } = opts;
-  const deleteTimeoutMs = opts.deleteTimeoutMs ?? DEFAULT_PURGE_DELETE_TIMEOUT_MS;
+  // v8.5 ADVERSARIAL hardening: defend against misconfigured /
+  // accidentally-poisoned deleteTimeoutMs values. Without this, a
+  // caller passing 0 / NaN / negative / Infinity would either
+  // disable the deadline (Infinity → 30s SDK socketTimeout regressed)
+  // or fire the deadline before storage.delete even got a chance
+  // (0 / NaN / negative → spurious 'purge-failed'). Clamp to a sane
+  // [50ms, 60_000ms] range; fall back to default for anything
+  // non-finite. The clamp ceiling is well above any realistic R2
+  // p99 (< 500ms) but below the worker-block ceiling we care about
+  // (~5s, which is the default).
+  const rawTimeout = opts.deleteTimeoutMs ?? DEFAULT_PURGE_DELETE_TIMEOUT_MS;
+  const deleteTimeoutMs =
+    Number.isFinite(rawTimeout) && rawTimeout > 0
+      ? Math.min(Math.max(rawTimeout, 50), 60_000)
+      : DEFAULT_PURGE_DELETE_TIMEOUT_MS;
 
   // Step 1: lookup + eligibility check.
   const row = await withTenant(

@@ -276,6 +276,74 @@ describe('v8.5 SignatureRequestsService.loadOwnerWithPii — single-query in-SQL
     expect(importBlock).not.toMatch(/\bdecryptField\b/);
   });
 
+  it('A1) ADVERSARIAL — corrupted ciphertext (one byte flipped) → throws, never returns silent garbage', async () => {
+    // The worst-case PII silent corruption: an encrypted column gets
+    // a bit-flip from disk error / replication lag, and on read we
+    // either get garbled bytes returned to the wire OR pgcrypto
+    // throws. Either way must NOT be "200 OK with corrupted name."
+    const ownerId = await seedOwner({
+      name: 'בדיקת השחתה',
+      nationalId: '038123464',
+    });
+    // Read the encrypted blob, flip a byte, write it back via the
+    // BYPASSRLS pool.
+    const [pre] = await providerDb
+      .select({ nameEncrypted: owners.nameEncrypted })
+      .from(owners)
+      .where(eq(owners.id, ownerId))
+      .limit(1);
+    const corrupted = Buffer.from(pre!.nameEncrypted as Buffer);
+    // Flip the middle byte (skipping pgcrypto's framing header at
+    // the start — flipping there could cause early reject; mid-
+    // ciphertext flip exercises the integrity check).
+    const mid = Math.floor(corrupted.length / 2);
+    corrupted[mid] = corrupted[mid]! ^ 0xff;
+    await providerDb.update(owners).set({ nameEncrypted: corrupted }).where(eq(owners.id, ownerId));
+
+    // Now call loadOwnerWithPii — must throw, not silently return.
+    await expect(withTenant(orgId, (tx) => loadOwner(svc, tx, ownerId))).rejects.toThrow();
+  });
+
+  it('A2) ADVERSARIAL — ciphertext truncated to 1 byte → throws (no silent return of "")', async () => {
+    const ownerId = await seedOwner({
+      name: 'מקוטע',
+      nationalId: '038123465',
+    });
+    // Truncate to a single byte — pgp_sym_decrypt should refuse.
+    await providerDb
+      .update(owners)
+      .set({ nameEncrypted: Buffer.from([0x00]) })
+      .where(eq(owners.id, ownerId));
+    await expect(withTenant(orgId, (tx) => loadOwner(svc, tx, ownerId))).rejects.toThrow();
+  });
+
+  it('A3) ADVERSARIAL — encrypted with a DIFFERENT key (rotation mid-flight scenario) → throws, no garbage', async () => {
+    // If a future deploy rotates PII_ENCRYPTION_KEY mid-flight,
+    // any owner row encrypted with the OLD key becomes
+    // undecryptable with the NEW key. Behaviour MUST be loud-fail,
+    // not "200 with empty/garbage name field on the signature link."
+    const ownerId = await seedOwner({
+      name: 'מפתח אחר',
+      nationalId: '038123466',
+    });
+    // Encrypt the same plaintext with a wrong key (simulate rotation)
+    // via the BYPASSRLS pool, then overwrite the row's ciphertext.
+    const { pool } = await import('../../../../../packages/db/src/client');
+    const client = await pool.connect();
+    let blob: Buffer;
+    try {
+      const r = await client.query<{ enc: Buffer }>(
+        "SELECT pgp_sym_encrypt('whatever', $1) AS enc",
+        ['X'.repeat(44)],
+      );
+      blob = r.rows[0]!.enc;
+    } finally {
+      client.release();
+    }
+    await providerDb.update(owners).set({ nameEncrypted: blob }).where(eq(owners.id, ownerId));
+    await expect(withTenant(orgId, (tx) => loadOwner(svc, tx, ownerId))).rejects.toThrow();
+  });
+
   it('9) ciphertext on disk is NOT plaintext (defense-in-depth — confirms encrypt path actually encrypts)', async () => {
     const name = 'הסוד הגדול';
     const ownerId = await seedOwner({

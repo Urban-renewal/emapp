@@ -62,6 +62,9 @@
     "archiveFailed": "Failed to archive",
     "notFound": "Project not found",
     "backToList": "Back to list",
+    "buildingsSection": "Buildings",
+    "buildingsHint": "Manage the buildings in this project.",
+    "buildingsManage": "Go to buildings",
     "field": {
       "name": "Project name",
       "type": "Type",
@@ -72,6 +75,26 @@
       "tama38_1": "Tama 38/1",
       "tama38_2": "Tama 38/2",
       "pinui_binui": "Pinuy-Binuy"
+    }
+  },
+  "buildings": {
+    "listTitle": "Buildings",
+    "create": "Add Building",
+    "loading": "Loading...",
+    "empty": "No buildings in this project yet. Click \"Add Building\".",
+    "loadFailed": "Failed to load buildings",
+    "createFailed": "Failed to create building",
+    "notFound": "Building not found",
+    "archiveConfirm": "After archiving the building will be hidden. Continue?",
+    "archiveFailed": "Failed to archive",
+    "aptCountLabel": "{count, plural, =0 {no apartments} one {one apartment} other {# apartments}}",
+    "field": {
+      "address": "Address",
+      "city": "City",
+      "block": "Block",
+      "parcel": "Parcel",
+      "subparcel": "Sub-parcel",
+      "notes": "Notes"
     }
   }
 }

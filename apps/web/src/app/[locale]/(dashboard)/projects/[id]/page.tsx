@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
@@ -95,6 +96,16 @@ export default function ProjectDetailPage() {
           </p>
         </div>
       )}
+
+      <div className="rounded-md border bg-card p-4">
+        <h2 className="text-sm font-semibold">{t('buildingsSection')}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t('buildingsHint')}</p>
+        <div className="mt-3">
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/projects/${data.id}/buildings`}>{t('buildingsManage')}</Link>
+          </Button>
+        </div>
+      </div>
 
       {actionError && <p className="text-sm text-destructive">{actionError}</p>}
     </div>

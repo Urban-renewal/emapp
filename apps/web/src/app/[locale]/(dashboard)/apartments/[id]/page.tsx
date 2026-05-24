@@ -99,6 +99,16 @@ export default function ApartmentDetailPage() {
         </div>
       )}
 
+      <div className="rounded-md border bg-card p-4">
+        <h2 className="text-sm font-semibold">{t('ownershipsSection')}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t('ownershipsHint')}</p>
+        <div className="mt-3">
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/apartments/${data.id}/ownerships`}>{t('ownershipsManage')}</Link>
+          </Button>
+        </div>
+      </div>
+
       {actionError && <p className="text-sm text-destructive">{actionError}</p>}
     </div>
   );

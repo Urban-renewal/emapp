@@ -123,6 +123,22 @@
       "idExists": "This national ID is already registered in the organization"
     }
   },
+  "ownerships": {
+    "title": "Ownership shares",
+    "hint": "All shares must sum to exactly 100%. Empty list = clear all ownerships.",
+    "ownerLabel": "Owner",
+    "shareLabel": "Share",
+    "addRow": "Add row",
+    "removeRow": "Remove",
+    "emptyRows": "No active ownerships. Click \"Add row\" to add one.",
+    "sumLabel": "Total: {sum}%",
+    "sumMustBe100": "Shares must sum to exactly 100, or clear all by removing every row.",
+    "duplicate": "The same owner cannot appear twice.",
+    "clientInvalid": "Ownership data is invalid.",
+    "serverSumInvalid": "Server rejected the shares: invalid sum. Confirm 100%.",
+    "saveFailed": "Save failed. Please retry.",
+    "save": "Save"
+  },
   "apartments": {
     "listTitle": "Apartments",
     "create": "Add Apartment",
@@ -135,6 +151,9 @@
     "archiveFailed": "Failed to archive",
     "numberPrefix": "Apartment {number}",
     "statusChangedLabel": "Status changed {rel}",
+    "ownershipsSection": "Ownerships",
+    "ownershipsHint": "Atomic share assignment per D.25 — active shares sum to 100% or 0.",
+    "ownershipsManage": "Edit shares",
     "field": {
       "number": "Apartment number",
       "floor": "Floor",

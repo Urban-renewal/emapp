@@ -31,9 +31,14 @@ import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module';
 
+import { ProviderTenantsController } from './provider-tenants.controller';
+import { ProviderTenantsService } from './provider-tenants.service';
+
 @Module({
   imports: [AuthModule],
-  // Controllers are added in P6.5-2..5 (one per endpoint slice).
-  controllers: [],
+  // P6.5-2: tenants LIST.
+  // P6.5-3..5 will add: tenants DETAIL, audit search, system health.
+  controllers: [ProviderTenantsController],
+  providers: [ProviderTenantsService],
 })
 export class ProviderModule {}

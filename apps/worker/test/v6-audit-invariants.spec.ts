@@ -409,15 +409,24 @@ describe('Phase 6+7 v6 audit · §7 — findOrCreateBuilding batched', () => {
   // Promoted from MEDIUM to HIGH in v6 because the inconsistency
   // is now a SOLID concern (3 of 4 resolvers batched; the 4th
   // pattern-violates).
-  it.fails(
-    '7) handler exposes resolveBuildingsBatch (mirror of resolveApartmentsBatch)',
-    async () => {
-      const src = await (
-        await import('node:fs/promises')
-      ).readFile(new URL('../src/handlers/import-job.handler.ts', import.meta.url), 'utf8');
-      expect(src).toMatch(/resolveBuildingsBatch/);
-    },
-  );
+  it('7) handler exposes resolveBuildingsBatch (mirror of resolveApartmentsBatch)', async () => {
+    const src = await (
+      await import('node:fs/promises')
+    ).readFile(new URL('../src/handlers/import-job.handler.ts', import.meta.url), 'utf8');
+    // Function is declared.
+    expect(src).toMatch(/async function resolveBuildingsBatch/);
+    // STEP B in persistStage actually CALLS the batched resolver
+    // (not the deprecated per-record findOrCreateBuilding loop).
+    const stepBIdx = src.indexOf('STEP B:');
+    expect(stepBIdx).toBeGreaterThan(0);
+    const stepBBlock = src.slice(stepBIdx, stepBIdx + 1500);
+    expect(stepBBlock).toMatch(/await\s+resolveBuildingsBatch/);
+    // And NOT the legacy loop pattern (per-row findOrCreateBuilding
+    // inside an apartmentGroups for-loop).
+    expect(stepBBlock).not.toMatch(
+      /for\s*\([^)]*apartmentGroups[^)]*\)\s*\{[^}]*await\s+findOrCreateBuilding/s,
+    );
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────

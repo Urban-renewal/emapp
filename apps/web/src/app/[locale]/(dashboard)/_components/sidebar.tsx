@@ -25,7 +25,7 @@ export function Sidebar() {
   const items: NavItem[] = [
     { href: '/', labelKey: 'home', icon: Home, enabled: true },
     { href: '/projects', labelKey: 'projects', icon: FileText, enabled: true },
-    { href: '/owners', labelKey: 'owners', icon: Users, enabled: false },
+    { href: '/owners', labelKey: 'owners', icon: Users, enabled: true },
     { href: '/imports', labelKey: 'imports', icon: FileSpreadsheet, enabled: false },
     { href: '/documents', labelKey: 'documents', icon: FileText, enabled: false },
   ];

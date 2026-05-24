@@ -100,6 +100,29 @@
       "notes": "Notes"
     }
   },
+  "owners": {
+    "listTitle": "Owners",
+    "create": "Add Owner",
+    "loading": "Loading...",
+    "empty": "No owners yet. Click \"Add Owner\".",
+    "loadFailed": "Failed to load owners",
+    "createFailed": "Failed to create owner",
+    "notFound": "Owner not found",
+    "archiveConfirm": "After archiving the owner will be hidden. Continue?",
+    "archiveFailed": "Failed to archive",
+    "idLabel": "ID:",
+    "phoneLabel": "Tel:",
+    "emailLabel": "Email:",
+    "piiNote": "Personal data is encrypted at rest; this screen never displays clear values.",
+    "field": {
+      "name": "Full name",
+      "nationalId": "National ID (9 digits)",
+      "phone": "Phone",
+      "email": "Email",
+      "notes": "Notes",
+      "idExists": "This national ID is already registered in the organization"
+    }
+  },
   "apartments": {
     "listTitle": "Apartments",
     "create": "Add Apartment",

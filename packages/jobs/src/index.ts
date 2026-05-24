@@ -2,4 +2,5 @@
 export * from './handler';
 export * from './errors';
 export * from './import-job';
+export * from './mapping-fingerprint';
 export * from './producer';

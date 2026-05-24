@@ -30,7 +30,7 @@
  * mapping_templates row stores canonical-field→column-index (NOT row
  * values).
  */
-import { randomUUID, createHash } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 import {
   AuditService,
@@ -43,7 +43,7 @@ import {
   type IStorageProvider,
   type TenantTx,
 } from '@emapp/db';
-import { IMPORT_JOB_NAME, type IJobProducer } from '@emapp/jobs';
+import { fingerprintHeaders, IMPORT_JOB_NAME, type IJobProducer } from '@emapp/jobs';
 import {
   type CreateImport,
   type ImportError,
@@ -129,14 +129,10 @@ function normalizeHash(input: string): string {
   return input.startsWith('sha256:') ? input.slice(7) : input;
 }
 
-/** sha256 hex of the headers array — same algorithm the future
- *  TemplateResolver (L2 D.34) will use to look up saved mappings.
- *  Normalises by lowercasing + trimming before hashing so trivial
- *  whitespace/case differences don't fragment the template space. */
-function fingerprintHeaders(headers: readonly string[]): string {
-  const normalised = headers.map((h) => h.trim().toLowerCase()).join('\x00');
-  return createHash('sha256').update(normalised).digest('hex');
-}
+// v6 audit fix §2c — `fingerprintHeaders` lifted to `@emapp/jobs` so
+// worker (L2 TemplateResolver lookup) + api (S8 wizard insert) share
+// ONE implementation. Drift across the two callsites is now
+// structurally impossible. Import is above.
 
 /** Strip potential-PII substrings from any Manager-supplied string
  *  before persistence in a Manager-readable column. Israeli national_id

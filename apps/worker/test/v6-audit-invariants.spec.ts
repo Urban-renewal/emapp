@@ -185,23 +185,34 @@ describe('Phase 6+7 v6 audit · §2 — fingerprintHeaders parity worker ↔ api
   // deferred (needs new shared package). The test below pins the
   // structural expectation: the worker module SHOULD be the single
   // source of truth (or a shared package should host it).
-  it.fails(
-    '2c) STRUCTURAL FIX OPEN — fingerprintHeaders lives in a single source-of-truth module',
-    async () => {
-      // Check that the api service does NOT re-define the helper.
-      // The "right" state is for the api to import from
-      // @emapp/shared-types (or a new @emapp/mapping-core package).
-      const apiSource = await (
-        await import('node:fs/promises')
-      ).readFile(
-        new URL('../../api/src/modules/imports/imports.service.ts', import.meta.url),
-        'utf8',
-      );
-      // Post-fix: the api file should NOT contain the `function
-      // fingerprintHeaders` declaration — only an `import` of it.
-      expect(apiSource).not.toMatch(/function fingerprintHeaders/);
-    },
-  );
+  it('2c) STRUCTURAL FIX — fingerprintHeaders lives in @emapp/jobs (single source)', async () => {
+    const apiSource = await (
+      await import('node:fs/promises')
+    ).readFile(
+      new URL('../../api/src/modules/imports/imports.service.ts', import.meta.url),
+      'utf8',
+    );
+    // Post-fix: the api file does NOT define the helper — it imports
+    // from @emapp/jobs.
+    expect(apiSource).not.toMatch(/function fingerprintHeaders/);
+    expect(apiSource).toMatch(
+      /import\s*\{[^}]*fingerprintHeaders[^}]*\}\s*from\s*['"]@emapp\/jobs['"]/,
+    );
+    // Worker side re-exports from the same shared module (compat with
+    // existing imports from '../mapping/mapping-resolver').
+    const resolverSrc = await (
+      await import('node:fs/promises')
+    ).readFile(new URL('../src/mapping/mapping-resolver.ts', import.meta.url), 'utf8');
+    expect(resolverSrc).toMatch(/from\s*['"]@emapp\/jobs['"]/);
+    // The actual algorithm lives in the shared package.
+    const sharedSrc = await (
+      await import('node:fs/promises')
+    ).readFile(
+      new URL('../../../packages/jobs/src/mapping-fingerprint.ts', import.meta.url),
+      'utf8',
+    );
+    expect(sharedSrc).toMatch(/function fingerprintHeaders/);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────
@@ -359,16 +370,13 @@ describe('Phase 6+7 v6 audit · §5 — TemplateResolver defense-in-depth', () =
   // by orgId. Defense-in-depth wants an explicit `tpl.orgId ===
   // ctx.orgId` assertion. ISO auditors look for explicit defense
   // even when RLS catches it. Recorded as v6 HIGH-1 (security agent).
-  it.fails(
-    '5) TemplateResolver explicitly verifies tpl.orgId === ctx.orgId after the SELECT',
-    async () => {
-      const resolverSource = await (
-        await import('node:fs/promises')
-      ).readFile(new URL('../src/mapping/mapping-resolver.ts', import.meta.url), 'utf8');
-      // Post-fix: an explicit equality check on tpl.orgId vs ctx.orgId.
-      expect(resolverSource).toMatch(/tpl\.orgId\s*!==?\s*ctx\.orgId/);
-    },
-  );
+  it('5) TemplateResolver explicitly verifies tpl.orgId === ctx.orgId after the SELECT', async () => {
+    const resolverSource = await (
+      await import('node:fs/promises')
+    ).readFile(new URL('../src/mapping/mapping-resolver.ts', import.meta.url), 'utf8');
+    // Post-fix: an explicit equality check on tpl.orgId vs ctx.orgId.
+    expect(resolverSource).toMatch(/tpl\.orgId\s*!==?\s*ctx\.orgId/);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────
@@ -466,11 +474,15 @@ describe('Phase 6+7 v6 audit · §9 — mapping_templates as first-class AuthZ r
   // GET /api/v1/mapping-templates Manager UI would inherit the
   // 'imports' permission triple by accident; better to declare it
   // explicitly NOW so future audits have one resource per artifact.
-  it.fails('9) policy.ts declares mapping_templates as a first-class resource', async () => {
+  it('9) policy.ts declares mapping_templates as a first-class resource', async () => {
     const policySrc = await (
       await import('node:fs/promises')
     ).readFile(new URL('../../api/src/common/authz/policy.ts', import.meta.url), 'utf8');
-    expect(policySrc).toMatch(/mapping_templates/);
+    // Must appear in the Resource union AND in the POLICY matrix
+    // (not just a comment). Heuristic: both the type declaration
+    // and the `mapping_templates: { read:` matrix row.
+    expect(policySrc).toMatch(/\|\s*['"]mapping_templates['"]/);
+    expect(policySrc).toMatch(/mapping_templates:\s*\{\s*read:/);
   });
 });
 

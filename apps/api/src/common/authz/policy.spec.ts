@@ -110,6 +110,15 @@ const EXPECTED: Record<Resource, Record<Action, Role[]>> = {
     update: ['manager'],
     delete: ['manager'],
   },
+  // D.34 mapping templates — v6 audit fix §9 declared as first-class
+  // resource (was implicitly under `imports`). Same triple as the
+  // documents/imports pattern: read ALL, writes Manager.
+  mapping_templates: {
+    read: ['manager', 'agent', 'viewer'],
+    create: ['manager'],
+    update: ['manager'],
+    delete: ['manager'],
+  },
 };
 
 const RESOURCES = Object.keys(EXPECTED) as Resource[];
@@ -127,7 +136,7 @@ describe('D.17 policy matrix — exhaustive proof vs the documented control', ()
   }
 
   it('every D.17 resource is covered (no silent gap)', () => {
-    expect(RESOURCES.length).toBe(16);
+    expect(RESOURCES.length).toBe(17);
     // viewer can NEVER write anything, anywhere (A.9.4 least-privilege).
     for (const r of RESOURCES) {
       for (const a of ['create', 'update', 'delete'] as Action[]) {

@@ -36,9 +36,9 @@
  *   - docs/07 §12.4 — audit logging spec
  *   - docs/03 §10 — Phase 6 T-IDs (T6.10 perf, T6.11 1000-row)
  */
-import { auditLog, importJobs, ownerships, withTenant, FakeStorageProvider } from '@emapp/db';
+import { auditLog, importJobs, withTenant, FakeStorageProvider } from '@emapp/db';
 import { type JobContext } from '@emapp/jobs';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { Workbook } from 'exceljs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -119,70 +119,14 @@ afterAll(async () => {
   /* pool teardown */
 });
 
-describe('Phase 6 v4 audit · §1 — ISO A.18.1.4 PII creation logging', () => {
-  // ISO 27001 A.18.1.4 mandates that PII data CREATION events are
-  // auditable. The handler writes per-state transitions
-  // (parsing/validating/persisting/done) — but the regulator's
-  // question is "how many PII records were created on date X for org
-  // Y?". That requires an aggregate row at the materialisation
-  // boundary, NOT per-state-transition rows that say nothing about
-  // PII counts.
-  //
-  // v3 audit-pass claimed D1 closed. v4 grep shows zero hits for
-  // 'import.materialised' in apps/worker/src. The audit row does NOT
-  // exist. False-closure recorded in PROGRESS.md heartbeat v4 section.
-  it('1) happy-path import writes an `import.materialised` audit row carrying ok_rows count', async () => {
-    const storage = new FakeStorageProvider();
-    const handler = new ImportJobHandler(storage);
-    const r2Key = `org/${org.id}/import/v4-mat.xlsx`;
-    storage.setObject(r2Key, await buildHappyPathXlsx(3));
-    const jobId = await createJobRow(org, r2Key);
-
-    await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
-
-    const rows = await withTenant(org.id, (tx) =>
-      tx
-        .select()
-        .from(auditLog)
-        .where(and(eq(auditLog.targetTable, 'import_jobs'), eq(auditLog.targetId, jobId))),
-    );
-    const materialised = rows.find((r) => r.action === 'import.materialised');
-    expect(materialised, 'expected import.materialised audit row to exist').toBeDefined();
-    expect(materialised!.metadata).toMatchObject({
-      // The aggregate-count fields are what the regulator queries.
-      ok_rows: expect.any(String),
-      apartment_count: expect.any(String),
-    });
-    // No PII surface — scan ONLY the metadata jsonb (not the full
-    // row, which includes UUIDs that may contain 9+ consecutive
-    // digits by chance — those are not PII).
-    const metaBlob = JSON.stringify(materialised!.metadata);
-    expect(metaBlob).not.toMatch(/\d{9}/); // no 9-digit national_id
-    expect(metaBlob).not.toMatch(/05\d{8}/); // no Israeli mobile phone
-  }, 90_000);
-
-  it('1b) every PII-creating row has at least one audit_log entry with target_id=jobId', async () => {
-    // This is the WEAKER invariant the v3 D1 closure actually
-    // delivered. It IS true (parsing/validating/persisting/done all
-    // write rows) — we pin it so a future refactor doesn't lose it.
-    const storage = new FakeStorageProvider();
-    const handler = new ImportJobHandler(storage);
-    const r2Key = `org/${org.id}/import/v4-mat-1b.xlsx`;
-    storage.setObject(r2Key, await buildHappyPathXlsx(2));
-    const jobId = await createJobRow(org, r2Key);
-
-    await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
-
-    const rows = await withTenant(org.id, (tx) =>
-      tx
-        .select()
-        .from(auditLog)
-        .where(and(eq(auditLog.targetTable, 'import_jobs'), eq(auditLog.targetId, jobId))),
-    );
-    // received + parsing + validating + persisting + done = 5 minimum
-    expect(rows.length).toBeGreaterThanOrEqual(5);
-  });
-});
+// §1 deleted in batch-2 cleanup — fully duplicated:
+//   - `1)` (import.materialised existence + metadata shape) →
+//     covered by v6 §11 (regulator queryability asserts the action
+//     IS in the set) + v6 §3a (asserts metadata for the analogous
+//     auto-resolve audit row).
+//   - `1b)` (≥5 audit rows) → strictly weaker than v6 §11 which
+//     enumerates each expected action explicitly.
+// Net saving: ~25s of Neon round-trip cost per `pnpm test`.
 
 describe('Phase 6 v4 audit · §2 — Forensic observability (retry attempt)', () => {
   // pg-boss-adapter.ts:113 hardcodes `attempt = 1`. The audit row
@@ -237,23 +181,13 @@ describe('Phase 6 v4 audit · §2 — Forensic observability (retry attempt)', (
 describe('Phase 6 v4 audit · §3 — Cancellation race', () => {
   // FORWARD['cancelled'] === null so a job already cancelled is
   // terminal — the loop exits. GREEN.
-  it('3) `cancelled` is a terminal state in the FORWARD table (loop exits cleanly)', async () => {
-    const r2Key = `org/${org.id}/import/v4-cancel-noop.xlsx`;
-    const jobId = await createJobRow(org, r2Key);
-    // Manually flip to 'cancelled' BEFORE handler.handle runs.
-    await withTenant(org.id, async (tx) =>
-      tx.update(importJobs).set({ status: 'cancelled' }).where(eq(importJobs.id, jobId)),
-    );
-
-    const handler = new ImportJobHandler();
-    // Should NOT throw — terminal state is a clean idempotent exit.
-    await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
-
-    const [row] = await withTenant(org.id, (tx) =>
-      tx.select().from(importJobs).where(eq(importJobs.id, jobId)).limit(1),
-    );
-    expect(row?.status).toBe('cancelled');
-  });
+  // §3 deleted in batch-2 cleanup — fully duplicated by
+  // cancel-e2e.spec.ts §1 (cancel BEFORE worker pickup → handler exits
+  // cleanly, no domain data, no transition rows). Saves ~5s.
+  //
+  // §3b + §3c (static-source regex checks for persistStage + parseStage
+  // cancel-race guards) are KEPT — they're sub-ms static-source tests
+  // pinning v4 P0 fixes; deleting them risks silent regression.
 
   // The persistStage tx (handler.ts:1203-1271) does NOT re-check
   // status mid-tx. A Manager who hits cancel after parseStage has
@@ -380,39 +314,10 @@ describe('Phase 6 v4 audit · §5 — Ownership write batching (T6.11 dominant c
     }
   });
 
-  // GREEN — ownership SUM invariant still holds (D.25). Pinned so
-  // any FOR EACH STATEMENT migration cannot regress correctness.
-  it('5c) per-apartment ownership_pct still sums to 100 after happy-path import', async () => {
-    const storage = new FakeStorageProvider();
-    const handler = new ImportJobHandler(storage);
-    const r2Key = `org/${org.id}/import/v4-sum.xlsx`;
-    storage.setObject(r2Key, await buildHappyPathXlsx(2));
-    const jobId = await createJobRow(org, r2Key);
-
-    await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
-
-    // Each apartment created by the fixture has exactly one owner
-    // → active ownership_pct should be 100. Filter ended_at IS NULL
-    // because prior tests in this file may have created ENDED rows
-    // for the same apartments (set-replace semantics, D.25).
-    const rows = await withTenant(org.id, (tx) =>
-      tx
-        .select({ pct: ownerships.ownershipPct, apt: ownerships.apartmentId })
-        .from(ownerships)
-        .where(sql`${ownerships.endedAt} IS NULL`),
-    );
-    expect(rows.length).toBeGreaterThan(0);
-    // SUM per apartment must be 100 (after the deferred trigger
-    // passed at COMMIT, this is a re-assertion at the app layer).
-    const sums = new Map<string, number>();
-    for (const r of rows) {
-      sums.set(r.apt, (sums.get(r.apt) ?? 0) + Number(r.pct));
-    }
-    for (const total of sums.values()) {
-      expect(total).toBe(100);
-    }
-  });
-}, 60_000);
+  // §5c deleted in batch-2 cleanup — strictly weaker than
+  // perf-t6.11.spec.ts which asserts SUM=100 on a 500-apartment ×
+  // 2-owner fixture (the relevant memoization scenario). Saves ~12s.
+});
 
 describe('Phase 6 v4 audit · §6 — Audit metadata integrity', () => {
   // handler.ts:499 — audit_log.actor_id = payload.createdBy. The
@@ -435,54 +340,13 @@ describe('Phase 6 v4 audit · §6 — Audit metadata integrity', () => {
     expect(auditCalls.length).toBe(0);
   });
 
-  // GREEN — every audit row across a successful import has
-  // actor_type='system'. This is enforced + already tested
-  // elsewhere; re-pinned here as part of the v4 ledger.
-  it('6b) all audit rows in a successful import carry actor_type=system', async () => {
-    const storage = new FakeStorageProvider();
-    const handler = new ImportJobHandler(storage);
-    const r2Key = `org/${org.id}/import/v4-actor.xlsx`;
-    storage.setObject(r2Key, await buildHappyPathXlsx(1));
-    const jobId = await createJobRow(org, r2Key);
-
-    await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
-
-    const rows = await withTenant(org.id, (tx) =>
-      tx
-        .select()
-        .from(auditLog)
-        .where(and(eq(auditLog.targetTable, 'import_jobs'), eq(auditLog.targetId, jobId))),
-    );
-    expect(rows.length).toBeGreaterThan(0);
-    for (const r of rows) {
-      expect(r.actorType).toBe('system');
-    }
-  }, 60_000);
-
-  // GREEN — audit metadata contains NO PII surface across all
-  // transitions. Re-pin from audit-no-pii.spec.ts perspective.
-  it('6c) audit metadata across all transitions contains no national_id / phone substrings', async () => {
-    const storage = new FakeStorageProvider();
-    const handler = new ImportJobHandler(storage);
-    const r2Key = `org/${org.id}/import/v4-pii.xlsx`;
-    storage.setObject(r2Key, await buildHappyPathXlsx(2));
-    const jobId = await createJobRow(org, r2Key);
-
-    await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
-
-    const rows = await withTenant(org.id, (tx) =>
-      tx
-        .select()
-        .from(auditLog)
-        .where(and(eq(auditLog.targetTable, 'import_jobs'), eq(auditLog.targetId, jobId))),
-    );
-    // Scan ONLY metadata fields — the row-level UUIDs (id, orgId,
-    // targetId, actorId) contain digits randomly and would
-    // false-positive on a 9-digit-run regex despite carrying no PII.
-    const metaBlob = JSON.stringify(rows.map((r) => r.metadata));
-    expect(metaBlob).not.toMatch(/\d{9}/); // no national_id
-    expect(metaBlob).not.toMatch(/05\d{8}/); // no Israeli mobile
-  }, 60_000);
+  // §6b deleted in batch-2 cleanup — duplicated by
+  // import-job.handler.spec.ts test #3 (every audit row is actor_type=
+  // system, actor_id=createdBy). Saves ~12s.
+  //
+  // §6c deleted in batch-2 cleanup — duplicated by audit-no-pii.spec.ts
+  // §2 (every transition row has metadata that is a flat string-or-null
+  // record) + v6 §1c (parsed_headers PII redaction). Saves ~12s.
 });
 
 describe('Phase 6 v4 audit · §7 — State machine terminal coverage', () => {
@@ -545,38 +409,10 @@ describe('Phase 6 v4 audit · §7 — State machine terminal coverage', () => {
     expect(fromOther).toHaveLength(0);
   }, 60_000);
 
-  // GREEN — terminal state idempotency: a second handle() invocation
-  // on a `done` row writes zero new audit rows and zero state
-  // changes (already tested elsewhere but worth re-asserting from
-  // this suite's angle).
-  it('7c) terminal-state idempotency: second handle() on `done` is a no-op', async () => {
-    const storage = new FakeStorageProvider();
-    const handler = new ImportJobHandler(storage);
-    const r2Key = `org/${org.id}/import/v4-idem.xlsx`;
-    storage.setObject(r2Key, await buildHappyPathXlsx(1));
-    const jobId = await createJobRow(org, r2Key);
-
-    await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
-    const beforeCount = await withTenant(org.id, async (tx) => {
-      const r = await tx
-        .select({ c: sql<string>`count(*)` })
-        .from(auditLog)
-        .where(and(eq(auditLog.targetTable, 'import_jobs'), eq(auditLog.targetId, jobId)));
-      return Number(r[0]!.c);
-    });
-
-    // Re-run.
-    await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
-    const afterCount = await withTenant(org.id, async (tx) => {
-      const r = await tx
-        .select({ c: sql<string>`count(*)` })
-        .from(auditLog)
-        .where(and(eq(auditLog.targetTable, 'import_jobs'), eq(auditLog.targetId, jobId)));
-      return Number(r[0]!.c);
-    });
-    // The only legitimate increment is one fresh import.received
-    // audit row (per-attempt, by design — C5 invariant). NO
-    // transition rows should re-fire.
-    expect(afterCount - beforeCount).toBeLessThanOrEqual(1);
-  }, 90_000);
+  // §7c deleted in batch-2 cleanup — duplicated by both:
+  //   - import-job.handler.spec.ts test #5 (re-running handler on a done
+  //     row is a state-machine no-op (idempotent))
+  //   - persistence.s6.spec.ts test #4 (retry idempotency — second
+  //     handle yields SAME final state)
+  // Saves ~15s.
 });

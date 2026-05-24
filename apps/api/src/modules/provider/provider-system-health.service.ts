@@ -67,12 +67,23 @@ export class ProviderSystemHealthService {
         // same as "the queue has no jobs right now" — and let the
         // worker create the schema on its first start. Any other
         // error class re-raises (a real outage must still alert).
+        //
+        // SAVEPOINT discipline: withProvider has already INSERTed the
+        // audit row earlier in this transaction. A bare failed SELECT
+        // would poison the transaction (Postgres aborts the whole tx
+        // on ANY error), making the final COMMIT silently roll back —
+        // which would lose the audit row and break T6.5-D37-10a/10b.
+        // Wrap the speculative query in a SAVEPOINT so its failure is
+        // contained: ROLLBACK TO SAVEPOINT clears the aborted state
+        // and the outer transaction stays writable.
+        await tx.execute(sql`SAVEPOINT queue_probe`);
         try {
           const rows = await tx.execute<QueueStateRow>(sql`
             SELECT state, COUNT(*)::int AS cnt
             FROM pgboss.job
             GROUP BY state
           `);
+          await tx.execute(sql`RELEASE SAVEPOINT queue_probe`);
           const byState: Record<string, number> = {};
           for (const r of rows.rows) byState[r.state] = Number(r.cnt);
           return {
@@ -83,7 +94,17 @@ export class ProviderSystemHealthService {
             completed: byState['completed'] ?? 0,
           };
         } catch (e) {
-          const code = (e as { code?: string } | null)?.code;
+          // Roll back the savepoint to clear the aborted-tx state.
+          // Wrapped in its own try so a ROLLBACK-TO failure doesn't
+          // mask the original error.
+          await tx.execute(sql`ROLLBACK TO SAVEPOINT queue_probe`).catch(() => undefined);
+          // Drizzle wraps the pg error in `DrizzleQueryError` and puts
+          // the original PG error on `.cause` — the `code` field we
+          // want is therefore on `e.cause.code`, not on `e.code`.
+          // Check BOTH locations to be defensive against future drizzle
+          // refactors that might surface the code directly.
+          const outer = e as { code?: string; cause?: { code?: string } } | null;
+          const code = outer?.code ?? outer?.cause?.code;
           // 42P01 = undefined_table, 3F000 = invalid_schema_name.
           // Both mean "pgboss hasn't initialised yet" → empty queue.
           if (code === '42P01' || code === '3F000') {

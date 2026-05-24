@@ -1,6 +1,21 @@
 import { randomUUID } from 'node:crypto';
 
-import { FakeStorageProvider, type IStorageProvider } from '@emapp/db';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import {
+  buildR2Provider,
+  env,
+  FakeStorageProvider,
+  r2EnvIsComplete,
+  type IStorageProvider,
+} from '@emapp/db';
 
 /**
  * Phase 4 — document storage provider DI.
@@ -23,13 +38,33 @@ export const UPLOAD_URL_TTL_SECONDS = 300;
 export const DOWNLOAD_URL_TTL_SECONDS = 120;
 
 export function storageProviderFactory(): IStorageProvider {
+  // v6 R2 wiring: if the 4 R2_* env vars are present in Infisical
+  // (any env: dev/staging/prod), construct a real R2StorageProvider.
+  // Otherwise fall back per environment:
+  //   dev/test  → FakeStorageProvider (in-memory; offline-friendly)
+  //   production → FAIL FAST (same posture as the pre-R2 era; prevents
+  //               accidentally booting prod with no real storage)
+  //
+  // The AWS SDK constructors are imported at the top — only the API
+  // and worker apps depend on @aws-sdk/*; @emapp/db is SDK-free.
+  if (r2EnvIsComplete(env)) {
+    return buildR2Provider(env, {
+      S3Client,
+      getSignedUrl,
+      PutObjectCommand,
+      GetObjectCommand,
+      DeleteObjectCommand,
+      HeadObjectCommand,
+      ListObjectsV2Command,
+    });
+  }
   if (process.env['NODE_ENV'] === 'production') {
     throw new Error(
       'STORAGE_PROVIDER: refusing to boot — production requires Cloudflare ' +
-        'R2 (Phase 4 / Gate-4 SECRETS LAW). FakeStorageProvider would make ' +
-        'documents unreadable. Provision R2 (bucket + R2_* creds + S3 ' +
-        'client) and wire R2StorageProvider in storageProviderFactory ' +
-        'before deploying. See GATES Gate-5 / DECISIONS D.28.',
+        'R2 but R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET / ' +
+        'R2_ENDPOINT are not all set in the env. Provision R2 (bucket + ' +
+        'API token + 4 secrets in Infisical) before deploying. See ' +
+        'GATES Gate-5 / DECISIONS D.28.',
     );
   }
   return new FakeStorageProvider();

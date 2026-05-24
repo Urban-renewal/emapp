@@ -686,6 +686,106 @@ For a destructive migration (DROP column / NOT NULL):
 because dev is the only deployed env. Production rollout would
 require the two-phase pattern.
 
+### Phase 4 FE↔API topology (D.35 — locked v8.5)
+
+The FE at `app.emapp.io` (Cloudflare Pages) **does NOT call the
+backend directly**. All `/api/v1/*` requests go through a
+Next.js Route Handler at
+`apps/web/src/app/api/[...path]/route.ts` which proxies them
+to the private Railway API URL (`API_BACKEND_URL` — server-only
+Infisical secret, NEVER `NEXT_PUBLIC_*`).
+
+```
+ Browser ──► app.emapp.io/api/v1/...  (Cloudflare Pages CDN)
+                          │
+                          │  Route Handler proxies (same-origin)
+                          ▼
+                 Cloudflare WAF / DDoS
+                          │
+                          ▼
+              Railway @emapp/api  (private — no public DNS)
+```
+
+Why (and why not the obvious api.emapp.io + CORS pattern):
+
+- **Cookies are hostOnly.** `COOKIE_BASE` in
+  `apps/api/src/modules/auth/auth.service.ts` has NO `Domain=`
+  field — so cookies are bound to `app.emapp.io` exactly. A
+  future subdomain takeover (CNAME dangling on an old CDN
+  config) cannot steal sessions. `Domain=.emapp.io` would have
+  exposed every `*.emapp.io` to the session — a structural
+  Sev1 waiting for a misconfig.
+- **No CORS.** Same origin → no preflight OPTIONS on writes,
+  no allowlist to maintain.
+- **No public API surface.** Railway internal URL only; the
+  throttler (D.30) becomes defense-in-depth behind CF WAF.
+- **Israeli user latency.** TLV PoP terminates TLS; the proxy
+  hop is one east-west call inside the same region.
+
+What the Route Handler does:
+
+- Forwards: method, path, query, body (streamed), Cookie
+  header, Content-Type, Accept, Accept-Language, User-Agent,
+  Authorization.
+- Strips: Host, Forwarded, X-Real-IP, X-Forwarded-_ (rebuilt
+  from `CF-Connecting-IP`), every `cf-_` header (CF internals
+  stay at the edge — backend MUST NOT trust client-supplied
+  CF claims).
+- Sets on upstream: `X-Forwarded-Host`, `X-Forwarded-Proto`,
+  `X-Forwarded-For`, `X-Real-IP` (all from CF claims).
+- Passes back: status + statusText + ALL response headers
+  EXCEPT hop-by-hop (RFC 7230 §6.1) and CF-internal. **`Set-Cookie`
+  is preserved** — that's how refresh-token rotation reaches
+  the browser.
+- **SSE-safe:** response body streamed (`ReadableStream`), no
+  buffering. The API SSE controller emits
+  `X-Accel-Buffering: no` which Pages honors.
+
+Deployment env:
+
+| Where                | Variable          | Notes                                                                                   |
+| -------------------- | ----------------- | --------------------------------------------------------------------------------------- |
+| Cloudflare Pages     | `API_BACKEND_URL` | Full private URL of Railway API (no trailing slash). Server-only — NOT `NEXT_PUBLIC_*`. |
+| Cloudflare Pages     | (Infisical env)   | All FE secrets — flow `infisical run -- pnpm --filter @emapp/web build`.                |
+| Railway API + Worker | (Infisical env)   | Backend secrets; the API has NO public DNS — only Pages can reach it.                   |
+
+Reversibility: HIGH. Flip to api.emapp.io + CORS = ~30
+minutes of code + DNS + cookie config change. See D.35
+"Reversibility" for the exact 5-step revert.
+
+### Phase-transition audit (D.36 — process)
+
+Before opening a phase-N PR, run a phase-transition pass
+distinct from the per-slice 3-axis code-quality audit. The
+phase-transition pass answers, for the immediate downstream
+consumer (FE consuming BE, BE consuming DB, worker consuming
+queue, etc.):
+
+1. Does the consumer have everything it needs in dev (env,
+   secrets, fixtures, contract-suite bypass flags)?
+2. Does the consumer's deployment topology (cookies / CORS /
+   CSP / proxy / DNS) match the producer's assumptions?
+3. For every state the producer can leave the system in
+   (terminal states, errors, async deferrals), has the
+   consumer's path been verified end-to-end with real
+   producer code (not mocks)?
+4. For every external dep about to be / already / leaked-and-
+   pending rotation, is there a named owner + tracked task?
+5. For every "best-effort" / "swallowed-failure" path the
+   producer ships, is there a sweeper / retry / alert that
+   owns the failure?
+
+Cross-confirmation: gap surfaced by ≥2 fresh-eyes agents OR
+1 agent + reproducible incident = P0 (cannot ship phase).
+Single-agent observation without incident = HIGH (tracked
+closure plan required, not necessarily a fix in this PR).
+
+The bugs this would have caught earlier (v8.5 ledger):
+cancel-doesn't-purge, withProvider-missing-GUC, sequential-
+decrypts on critical path, R2-delete-blocks-worker, audit_log-
+cleartext name, throttler-bypass-missing-from-contract-suite-
+setup.
+
 ---
 
 ## §14 — What to read first if you're about to touch:

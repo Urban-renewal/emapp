@@ -206,12 +206,26 @@ export class OwnersService {
             action: 'owner.create',
             targetTable: 'owners',
             targetId: ins.id,
-            // v8 §v8-S3 follow-up: name in audit_log is acceptable —
-            // it's the Manager-supplied input value (not yet decrypted
-            // from DB) and the audit log is itself RLS-scoped + Manager-
-            // only. Future v9 may sanitise further if name is shown to
-            // contain digit-PII (sanitiseFilenameForAudit pattern).
-            afterState: { name: input.name },
+            // v8.5 HIGH FIX (Audit SOLID #7 — concrete bug, single agent):
+            //   Pre-v8.5 wrote `afterState: { name: input.name }` —
+            //   storing the cleartext Hebrew name in `audit_log` even
+            //   though §v8-S3 had just encrypted that column at rest.
+            //   Defeated the entire point of v8-S3: a DB dump or backup
+            //   contained PII names in audit_log unguarded by pgcrypto.
+            //   Parity with update() (line ~300) which already uses the
+            //   `{ changed: [...] }` field-name-only pattern. The
+            //   created row itself carries the data — afterState only
+            //   needs to enumerate WHAT changed for the audit trail,
+            //   not WHAT THE VALUE WAS.
+            afterState: {
+              changed: [
+                'name',
+                'national_id',
+                ...(phone ? (['phone'] as const) : []),
+                ...(input.email ? (['email'] as const) : []),
+                ...(input.notes ? (['notes'] as const) : []),
+              ],
+            },
             sessionId: user.sid,
           });
           const [row] = await tx

@@ -1,0 +1,233 @@
+/**
+ * Same-origin reverse proxy → backend API.
+ *
+ * v8.5 D.35 — Option A topology.
+ *
+ *   Browser  ───────►  app.emapp.io/api/v1/*  (Cloudflare Pages)
+ *                          │
+ *                          │  THIS ROUTE HANDLER
+ *                          ▼
+ *                     Cloudflare WAF / DDoS
+ *                          │
+ *                          ▼
+ *                    Railway @emapp/api  (private, no public DNS)
+ *
+ *   Net win:
+ *     1. Cookies are hostOnly on app.emapp.io — no Domain attribute
+ *        leak (matches apps/api/src/modules/auth/auth.service.ts
+ *        COOKIE_BASE which omits Domain). Frontend and API share the
+ *        same registrable domain in the browser's eyes ⇒ no CORS,
+ *        no SameSite=None complications, no subdomain takeover of
+ *        api.emapp.io.
+ *     2. Cloudflare reverse proxy gives us WAF + Bot Management +
+ *        Argo routing for free.
+ *     3. Backend doesn't need to be on the public internet —
+ *        Railway internal URL only; the only public ingress is
+ *        Pages (which has its own DDoS shield).
+ *
+ *   What we forward:
+ *     - method, path (everything after /api/), query string
+ *     - body (passthrough; Next.js Edge Runtime streams it)
+ *     - Cookie header (the session JWTs)
+ *     - Content-Type, Accept, Accept-Language, User-Agent
+ *     - X-Forwarded-For (CF-Connecting-IP → set by Cloudflare)
+ *     - Authorization (for Provider Admin paths that use header bearer)
+ *
+ *   What we strip (Critical — defense in depth):
+ *     - Host header (we rewrite to the backend's expected host)
+ *     - Forwarded / X-Real-IP (we mint our own from CF-Connecting-IP)
+ *     - Any header beginning with `cf-` (Cloudflare internal — leaking
+ *       these would let the backend trust client-supplied CF claims)
+ *
+ *   What we set on the upstream request:
+ *     - X-Forwarded-Host: app.emapp.io (so backend logs the public host)
+ *     - X-Forwarded-Proto: https
+ *     - X-Forwarded-For: CF-Connecting-IP (real client IP from CF)
+ *     - X-Real-IP: same
+ *
+ *   What we pass back to the browser:
+ *     - Status code, status text
+ *     - All response headers EXCEPT hop-by-hop (RFC 7230 §6.1)
+ *     - Set-Cookie (critical — that's how the auth flow writes
+ *       refresh-token rotation back to the browser)
+ *     - Body (streamed)
+ *
+ *   Env:
+ *     API_BACKEND_URL  — the private Railway URL (e.g.
+ *                        https://emapp-api.railway.internal). MUST be
+ *                        set in Cloudflare Pages env, NOT exposed
+ *                        via NEXT_PUBLIC_*.
+ *
+ *   This handler is intentionally Edge-incompatible (Node runtime) —
+ *   the Pages Functions adapter (@cloudflare/next-on-pages) emits a
+ *   workerd-compatible bundle that runs at the CDN edge, but we use
+ *   Node-style streaming for simplicity here. If we ever flip to the
+ *   Edge runtime, replace ReadableStream usage with the Edge
+ *   equivalents — the public contract stays identical.
+ */
+import { type NextRequest, NextResponse } from 'next/server';
+
+const HOP_BY_HOP = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+  // We strip CF-Connecting-IP from the response too — defense in
+  // depth, the browser has no business knowing the edge POP'd IP.
+  'cf-connecting-ip',
+  'cf-ray',
+  'cf-ipcountry',
+  'cf-visitor',
+]);
+
+const STRIPPED_REQUEST_HEADERS = new Set([
+  'host',
+  'forwarded',
+  'x-real-ip',
+  // We REMINT x-forwarded-* from CF claims; don't trust client values.
+  'x-forwarded-host',
+  'x-forwarded-proto',
+  'x-forwarded-for',
+]);
+
+/** v8.5 — exported for proxy.spec.ts.
+ *  Spec MUST be able to assert "missing env throws"; keeping it
+ *  module-scoped without an export would force the spec to invoke
+ *  a full proxy() to surface the throw, which couples the test to
+ *  too much shape. */
+export function getBackendBase(): string {
+  const url = process.env['API_BACKEND_URL'];
+  if (!url) {
+    // Fail loud — a misconfigured Pages deploy with no upstream is
+    // a Sev1 incident, not a degraded mode.
+    throw new Error('API_BACKEND_URL is not set — the Pages Function cannot route to the backend.');
+  }
+  return url.replace(/\/$/, '');
+}
+
+/** v8.5 — exported for proxy.spec.ts. */
+export function buildUpstreamUrl(req: NextRequest, pathSegments: string[]): string {
+  // pathSegments comes from the dynamic [...path] capture; we prepend
+  // /api/v1 because the backend (NestJS global prefix per D.10) expects
+  // it. The browser called /api/v1/<thing>; segments here are
+  // ['v1', '<thing>', ...] — so we just stitch '/api/' + join('/').
+  const path = `/api/${pathSegments.join('/')}`;
+  const search = req.nextUrl.search; // includes the leading '?'
+  return `${getBackendBase()}${path}${search}`;
+}
+
+/** v8.5 — exported for proxy.spec.ts. */
+export function buildUpstreamHeaders(req: NextRequest): Headers {
+  const out = new Headers();
+  for (const [key, value] of req.headers) {
+    const lower = key.toLowerCase();
+    if (STRIPPED_REQUEST_HEADERS.has(lower)) continue;
+    if (lower.startsWith('cf-')) continue; // CF internals stay at the edge
+    out.set(key, value);
+  }
+  // Real client IP — CF-Connecting-IP is the only header CF guarantees
+  // is the real public IP (X-Forwarded-For is appendable and can be
+  // spoofed by clients before reaching CF).
+  const realIp = req.headers.get('cf-connecting-ip') ?? req.headers.get('x-forwarded-for') ?? '';
+  if (realIp) {
+    out.set('x-forwarded-for', realIp);
+    out.set('x-real-ip', realIp);
+  }
+  out.set('x-forwarded-host', req.nextUrl.host);
+  out.set('x-forwarded-proto', req.nextUrl.protocol.replace(':', ''));
+  return out;
+}
+
+/** v8.5 — exported for proxy.spec.ts. */
+export function copyResponseHeaders(upstream: Response): Headers {
+  const out = new Headers();
+  upstream.headers.forEach((value, key) => {
+    if (HOP_BY_HOP.has(key.toLowerCase())) return;
+    out.append(key, value);
+  });
+  return out;
+}
+
+async function proxy(req: NextRequest, segments: string[]): Promise<Response> {
+  const url = buildUpstreamUrl(req, segments);
+  const headers = buildUpstreamHeaders(req);
+
+  // GET/HEAD must not carry a body (some runtimes throw); for all
+  // other methods we stream the request body straight through.
+  const init: RequestInit & { duplex?: 'half' } = {
+    method: req.method,
+    headers,
+    redirect: 'manual', // never auto-follow upstream redirects (would
+    // re-issue with original Host and leak state)
+  };
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    init.body = req.body;
+    // `duplex: 'half'` is required by the Fetch spec when sending a
+    // ReadableStream body in Node 18+. Omit and you get TypeError.
+    init.duplex = 'half';
+  }
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(url, init);
+  } catch (e) {
+    // Network-level failure — backend unreachable. Return a 502 in
+    // the {error} envelope so the FE error handler is happy (D.16).
+    return NextResponse.json(
+      {
+        error: {
+          code: 'upstream_unreachable',
+          message: 'API backend did not respond',
+        },
+      },
+      { status: 502 },
+    );
+  }
+
+  return new Response(upstream.body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers: copyResponseHeaders(upstream),
+  });
+}
+
+type Ctx = { params: Promise<{ path: string[] }> };
+
+async function segs(ctx: Ctx): Promise<string[]> {
+  return (await ctx.params).path;
+}
+
+// One handler per verb — Next.js requires named exports.
+export async function GET(req: NextRequest, ctx: Ctx) {
+  return proxy(req, await segs(ctx));
+}
+export async function POST(req: NextRequest, ctx: Ctx) {
+  return proxy(req, await segs(ctx));
+}
+export async function PUT(req: NextRequest, ctx: Ctx) {
+  return proxy(req, await segs(ctx));
+}
+export async function PATCH(req: NextRequest, ctx: Ctx) {
+  return proxy(req, await segs(ctx));
+}
+export async function DELETE(req: NextRequest, ctx: Ctx) {
+  return proxy(req, await segs(ctx));
+}
+export async function HEAD(req: NextRequest, ctx: Ctx) {
+  return proxy(req, await segs(ctx));
+}
+export async function OPTIONS(req: NextRequest, ctx: Ctx) {
+  return proxy(req, await segs(ctx));
+}
+
+// SSE / long-lived responses: Next.js streams Response.body — we
+// already pass upstream.body through unchanged, which is a
+// ReadableStream, so progress events flow back without buffering.
+// (Cloudflare Pages Functions buffer responses by default; the
+// `X-Accel-Buffering: no` header that the API SSE endpoint emits
+// disables that. Verified in the SSE controller — apps/api/src/
+// modules/imports/imports.controller.ts.)

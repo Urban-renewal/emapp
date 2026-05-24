@@ -7,6 +7,14 @@ import { z } from 'zod';
  */
 const serverSchema = {
   DATABASE_URL: z.string().url(),
+  // v8.5 — Neon's `-pooler` host is transaction-pooled; drizzle's
+  // migrator opens its OWN transactions per migration, breaking
+  // session-scoped GUCs the v8.5 migrator sets. DATABASE_MIGRATE_URL
+  // is the direct (non-pooler) endpoint, used ONLY by
+  // packages/db/scripts/migrate.ts; runtime keeps using DATABASE_URL.
+  // Optional: when unset, migrate.ts falls back to DATABASE_URL
+  // (preserving local dev / pre-deploy workflows).
+  DATABASE_MIGRATE_URL: z.string().url().optional(),
   PROVIDER_DATABASE_URL: z.string().url().optional(),
   PII_ENCRYPTION_KEY: z.string().length(44),
   PII_HASH_KEY: z.string().length(44),

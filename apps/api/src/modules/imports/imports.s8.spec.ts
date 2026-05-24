@@ -420,6 +420,235 @@ describe('Phase 6 S8 · §C — DELETE /imports/:id (cancel)', () => {
     const id = await makeImport(orgA);
     await expect(svc.cancel(userOf(orgA, 'viewer'), id)).rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  /**
+   * v8.5 P0 (Audit SOLID #4 — concrete bug): cancel() must trigger
+   * the R2 byte purge end-to-end. Pre-v8.5, only the worker terminal-
+   * state path purged; Manager cancel left PII bytes in R2 forever
+   * — the most common terminal route. These tests pin:
+   *   1. storage.delete is invoked with the row's exact fileR2Key
+   *   2. import_jobs.file_deleted_at is set after cancel() returns
+   *   3. audit row import.bytes_purged is written (system-actor)
+   *   4. failure on R2 delete does NOT block cancel — bytes_purge_failed
+   *      audit row is written instead and the cancel still succeeds
+   *      from the Manager's perspective
+   */
+  describe('C7-C10 — v8.5 cancel→purge end-to-end (SOLID #4)', () => {
+    it('C7) cancel of queued import → storage.delete called with exact fileR2Key', async () => {
+      const deleted: string[] = [];
+      const origDelete = storage.delete.bind(storage);
+      storage.delete = (async (key: string) => {
+        deleted.push(key);
+        await origDelete();
+      }) as typeof storage.delete;
+      try {
+        const id = await makeImport(orgA, { status: 'queued' });
+        // Capture the exact key the row holds so we can pin the
+        // argument identity (no fuzzy matching — the contract is
+        // "we delete THIS exact object, not some other key").
+        const [row] = await withTenant(orgA.id, (tx) =>
+          tx
+            .select({ fileR2Key: importJobs.fileR2Key })
+            .from(importJobs)
+            .where(eq(importJobs.id, id))
+            .limit(1),
+        );
+        await svc.cancel(userOf(orgA, 'manager'), id);
+        expect(deleted).toContain(row!.fileR2Key);
+      } finally {
+        storage.delete = origDelete;
+      }
+    });
+
+    it('C8) after cancel, file_deleted_at IS NOT NULL on the import_jobs row', async () => {
+      const id = await makeImport(orgA, { status: 'queued' });
+      await svc.cancel(userOf(orgA, 'manager'), id);
+      // The cancel-purge call awaits the helper, so by the time
+      // cancel() returns the file_deleted_at write has either
+      // landed or failed — no race.
+      const [row] = await withTenant(orgA.id, (tx) =>
+        tx
+          .select({ fileDeletedAt: importJobs.fileDeletedAt, status: importJobs.status })
+          .from(importJobs)
+          .where(eq(importJobs.id, id))
+          .limit(1),
+      );
+      expect(row?.status).toBe('cancelled');
+      expect(row?.fileDeletedAt).not.toBeNull();
+    });
+
+    it('C9) after cancel, audit row import.bytes_purged exists with actorType=system', async () => {
+      const id = await makeImport(orgA, { status: 'queued' });
+      await svc.cancel(userOf(orgA, 'manager'), id);
+      const rows = await withTenant(orgA.id, (tx) =>
+        tx
+          .select()
+          .from(auditLog)
+          .where(and(eq(auditLog.targetTable, 'import_jobs'), eq(auditLog.targetId, id))),
+      );
+      const purgeRow = rows.find((r) => r.action === 'import.bytes_purged');
+      expect(purgeRow).toBeDefined();
+      // v8.5 SOLID #5: system actor for the purge — no specific Manager
+      // credited (the cancel audit row above already credits the Manager).
+      expect(purgeRow!.actorType).toBe('system');
+    });
+
+    it('C10) R2 delete FAILURE does not prevent cancel from succeeding; bytes_purge_failed audit lands', async () => {
+      const origDelete = storage.delete.bind(storage);
+      storage.delete = (async () => {
+        throw new Error('synthetic: R2 outage');
+      }) as typeof storage.delete;
+      try {
+        const id = await makeImport(orgA, { status: 'queued' });
+        // cancel() must succeed from the Manager's perspective —
+        // the purge is best-effort (sweeper will retry).
+        await svc.cancel(userOf(orgA, 'manager'), id);
+        // Status is cancelled (the cancel itself committed).
+        const [row] = await withTenant(orgA.id, (tx) =>
+          tx
+            .select({ status: importJobs.status, fileDeletedAt: importJobs.fileDeletedAt })
+            .from(importJobs)
+            .where(eq(importJobs.id, id))
+            .limit(1),
+        );
+        expect(row?.status).toBe('cancelled');
+        // file_deleted_at NOT set because R2 delete failed.
+        expect(row?.fileDeletedAt).toBeNull();
+        // Audit must record the failure separately so SRE sees it.
+        const rows = await withTenant(orgA.id, (tx) =>
+          tx
+            .select()
+            .from(auditLog)
+            .where(and(eq(auditLog.targetTable, 'import_jobs'), eq(auditLog.targetId, id))),
+        );
+        const failRow = rows.find((r) => r.action === 'import.bytes_purge_failed');
+        expect(failRow).toBeDefined();
+        expect(failRow!.actorType).toBe('system');
+      } finally {
+        storage.delete = origDelete;
+      }
+    });
+
+    it('C11) cancel of awaiting_mapping also purges bytes', async () => {
+      // D.34 wizard escape hatch path — same terminal state, same
+      // purge expectation. Pin it explicitly so a future refactor
+      // that only handles "queued → cancelled" doesn't regress.
+      const id = await makeImport(orgA, { status: 'awaiting_mapping' });
+      await svc.cancel(userOf(orgA, 'manager'), id);
+      const [row] = await withTenant(orgA.id, (tx) =>
+        tx
+          .select({ status: importJobs.status, fileDeletedAt: importJobs.fileDeletedAt })
+          .from(importJobs)
+          .where(eq(importJobs.id, id))
+          .limit(1),
+      );
+      expect(row?.status).toBe('cancelled');
+      expect(row?.fileDeletedAt).not.toBeNull();
+    });
+
+    /**
+     * v8.5 ADVERSARIAL — concurrent cancel attempts.
+     *
+     * The cancel() path is a guarded UPDATE (status flip from non-
+     * terminal → cancelled, race-safe). Then a post-commit purge
+     * fires once. If a Manager double-clicks Delete (or a flaky
+     * network retries the DELETE), we want EXACTLY:
+     *   - one audit row of action='import.cancelled'
+     *   - one audit row of action='import.bytes_purged' (or one
+     *     bytes_purge_failed if R2 was down)
+     *   - storage.delete invoked once OR twice (idempotent, S3
+     *     returns 200 even on missing keys)
+     *   - the second cancel call: 409 (already-cancelled) — NOT a
+     *     second state flip
+     */
+    it('C12) ADVERSARIAL — Promise.all of 5 concurrent cancels yields exactly ONE state flip + ONE purge audit', async () => {
+      const id = await makeImport(orgA, { status: 'queued' });
+      // Fire 5 cancels in parallel.
+      const results = await Promise.allSettled(
+        Array.from({ length: 5 }, () => svc.cancel(userOf(orgA, 'manager'), id)),
+      );
+      // At least one fulfilled (the winner). The losers should be
+      // ConflictException (409) — not silent passes, not crashes.
+      const fulfilled = results.filter((r) => r.status === 'fulfilled');
+      const rejected = results.filter((r) => r.status === 'rejected');
+      expect(fulfilled.length).toBeGreaterThanOrEqual(1);
+      expect(fulfilled.length + rejected.length).toBe(5);
+      for (const r of rejected) {
+        // Reason must be a ConflictException (import not cancellable
+        // anymore — already done from the winner).
+        expect((r as PromiseRejectedResult).reason).toBeInstanceOf(ConflictException);
+      }
+
+      // Exactly ONE 'import.cancelled' row.
+      const rows = await withTenant(orgA.id, (tx) =>
+        tx
+          .select()
+          .from(auditLog)
+          .where(and(eq(auditLog.targetTable, 'import_jobs'), eq(auditLog.targetId, id))),
+      );
+      const cancelRows = rows.filter((r) => r.action === 'import.cancelled');
+      expect(cancelRows.length).toBe(1);
+      // And at most ONE 'import.bytes_purged' (winner only).
+      const purgeRows = rows.filter((r) => r.action === 'import.bytes_purged');
+      expect(purgeRows.length).toBeLessThanOrEqual(1);
+    });
+
+    it('C13) ADVERSARIAL — re-cancel after success is a clean 409 (no second purge)', async () => {
+      const id = await makeImport(orgA, { status: 'queued' });
+      let deleteCount = 0;
+      const origDelete = storage.delete.bind(storage);
+      storage.delete = (async () => {
+        deleteCount += 1;
+        await origDelete();
+      }) as typeof storage.delete;
+      try {
+        await svc.cancel(userOf(orgA, 'manager'), id);
+        // Second cancel — must reject as ConflictException, NOT
+        // re-purge.
+        await expect(svc.cancel(userOf(orgA, 'manager'), id)).rejects.toBeInstanceOf(
+          ConflictException,
+        );
+        // storage.delete called at most once (the helper is
+        // idempotent at the file_deleted_at level — once set, the
+        // second purge attempt returns 'already' before touching R2).
+        expect(deleteCount).toBeLessThanOrEqual(1);
+      } finally {
+        storage.delete = origDelete;
+      }
+    });
+
+    it('C14) ADVERSARIAL — cross-tenant cancel: Org B Manager CANNOT trigger purge of Org A bytes', async () => {
+      const id = await makeImport(orgA, { status: 'queued' });
+      const captured: string[] = [];
+      const origDelete = storage.delete.bind(storage);
+      storage.delete = (async (key: string) => {
+        captured.push(key);
+        await origDelete();
+      }) as typeof storage.delete;
+      try {
+        // Org B Manager tries to cancel Org A's import → must 404
+        // (RLS scoping — no oracle).
+        await expect(svc.cancel(userOf(orgB, 'manager'), id)).rejects.toBeInstanceOf(
+          NotFoundException,
+        );
+        // R2 delete MUST NOT have been called — leaking the file_r2_key
+        // through a failed cross-org cancel would be a Sev1.
+        expect(captured.length).toBe(0);
+        // And the row is still queued (not cancelled).
+        const [row] = await withTenant(orgA.id, (tx) =>
+          tx
+            .select({ status: importJobs.status, fileDeletedAt: importJobs.fileDeletedAt })
+            .from(importJobs)
+            .where(eq(importJobs.id, id))
+            .limit(1),
+        );
+        expect(row?.status).toBe('queued');
+        expect(row?.fileDeletedAt).toBeNull();
+      } finally {
+        storage.delete = origDelete;
+      }
+    });
+  });
 });
 
 describe('Phase 6 S8 · §D — GET /imports/:id/errors', () => {

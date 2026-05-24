@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { serverEnv } from '@emapp/config';
 import {
   AuditService,
-  decryptField,
   documents,
   owners,
   signatureRequests,
@@ -244,9 +243,33 @@ export class SignatureRequestsService {
 
   /** Load owner + decrypt phone for delivery. Email is plaintext citext;
    *  phone is pgcrypto-encrypted (D.19) and must be decrypted via
-   *  `decryptField` while the app.encryption_key GUC is set (i.e.
+   *  pgp_sym_decrypt while the app.encryption_key GUC is set (i.e.
    *  INSIDE withTenant). Returns plain phone string the delivery layer
-   *  will format into the wa.me URL. */
+   *  will format into the wa.me URL.
+   *
+   *  v8.5 P0 FIX (Audit Perf F1+F2 — concrete bug, single-agent):
+   *    Pre-v8.5 this did 3 sequential round-trips per signature-request
+   *    create:
+   *      1. SELECT … FROM owners
+   *      2. SELECT pgp_sym_decrypt(name_encrypted, $key)
+   *      3. SELECT pgp_sym_decrypt(phone_encrypted, $key)
+   *    Each round-trip is ~30–50ms against Neon's pooler from the same
+   *    region → 90–150ms of pure pgcrypto latency on the critical-path
+   *    Manager UX (signature send). Multiplied by bulk sends (FE will
+   *    fan-out from a list view) this is the dominant tail.
+   *
+   *  v8.5 fix: collapse all three into ONE round-trip using a single
+   *    SELECT that returns the already-decrypted plaintext columns,
+   *    using CASE WHEN for the optional phone. Net latency: ~30–50ms.
+   *
+   *  Failure semantics: if pgcrypto throws (key drift, ciphertext
+   *    corruption) the whole query throws — same as the pre-v8.5
+   *    name-decrypt path (which already failed loud). The pre-v8.5
+   *    "silently swallow phone decrypt error" was a UX nicety that's
+   *    deliberately retired: if phone bytes are unreadable we have a
+   *    real data-corruption incident and crashing the create lets
+   *    SRE see it (Sentry) — beats a wa.me link that silently never
+   *    sends. */
   private async loadOwnerWithPii(
     tx: TenantTx,
     ownerId: string,
@@ -257,52 +280,44 @@ export class SignatureRequestsService {
     phonePlain: string | null;
     archivedAt: Date | null;
   }> {
-    // v8 §v8-S3 — name is now pgcrypto-encrypted alongside phone.
-    // Fetch ciphertext, decrypt inside the same withTenant tx
-    // (app.encryption_key GUC available there). Failing to decrypt
-    // the name is more serious than phone (no fallback message
-    // template) — let it propagate so the signature request create
-    // fails loud rather than silently using an empty string.
-    const [row] = await tx
-      .select({
-        id: owners.id,
-        nameEncrypted: owners.nameEncrypted,
-        email: owners.email,
-        phoneEncrypted: owners.phoneEncrypted,
-        archivedAt: owners.archivedAt,
-      })
-      .from(owners)
-      .where(eq(owners.id, ownerId))
-      .limit(1);
-    if (!row || row.archivedAt) throw NOT_FOUND;
-
     const encKey = serverEnv.PII_ENCRYPTION_KEY;
     if (!encKey) {
       throw new Error('PII_ENCRYPTION_KEY is required to decrypt owner.name for delivery');
     }
-    const name = await decryptField(tx, row.nameEncrypted, encKey);
 
-    let phonePlain: string | null = null;
-    if (row.phoneEncrypted) {
-      try {
-        phonePlain = await decryptField(tx, row.phoneEncrypted, encKey);
-      } catch (e: unknown) {
-        // pgcrypto decryption failures must NOT crash the create call
-        // — the wa.me channel will simply report "unavailable".
-        this.logger.error(
-          `failed to decrypt owner phone for delivery (owner=${row.id}): ${
-            e instanceof Error ? e.message : 'unknown'
-          }`,
-        );
-      }
-    }
+    // One round-trip: SELECT + name decrypt + (optional) phone decrypt.
+    // `archived_at`/`email` come back as-is. Decrypts happen server-
+    // side; we never ship ciphertext to Node when we can decrypt in-SQL.
+    const result = await tx.execute<{
+      id: string;
+      name: string;
+      email: string | null;
+      phone_plain: string | null;
+      archived_at: Date | null;
+    }>(sql`
+      SELECT
+        ${owners.id} AS id,
+        pgp_sym_decrypt(${owners.nameEncrypted}, ${encKey}) AS name,
+        ${owners.email} AS email,
+        CASE
+          WHEN ${owners.phoneEncrypted} IS NOT NULL
+          THEN pgp_sym_decrypt(${owners.phoneEncrypted}, ${encKey})
+          ELSE NULL
+        END AS phone_plain,
+        ${owners.archivedAt} AS archived_at
+      FROM ${owners}
+      WHERE ${owners.id} = ${ownerId}
+      LIMIT 1
+    `);
+    const row = result.rows[0];
+    if (!row || row.archived_at) throw NOT_FOUND;
 
     return {
       id: row.id,
-      name,
+      name: row.name,
       email: row.email,
-      phonePlain,
-      archivedAt: row.archivedAt,
+      phonePlain: row.phone_plain,
+      archivedAt: row.archived_at,
     };
   }
 

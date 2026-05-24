@@ -123,6 +123,32 @@
       "idExists": "This national ID is already registered in the organization"
     }
   },
+  "documents": {
+    "listTitle": "Documents",
+    "upload": "Upload Document",
+    "uploading": "Uploading...",
+    "uploadHint": "The file uploads directly to secure storage via a short-lived signed URL; the storage key never crosses the browser.",
+    "loading": "Loading...",
+    "empty": "No documents yet. Click \"Upload Document\".",
+    "loadFailed": "Failed to load documents",
+    "notFound": "Document not found",
+    "archiveConfirm": "After archiving the document will be hidden. Continue?",
+    "archiveFailed": "Failed to archive",
+    "createFailed": "Failed to create document",
+    "uploadFailed": "Upload to storage failed",
+    "storageUnavailable": "Storage is temporarily unavailable. Retry shortly.",
+    "sizeMismatch": "Uploaded file size doesn't match the declared size. Try again.",
+    "mimeNotAllowed": "This file type is not allowed. Upload PDF / image / Excel / Word.",
+    "tooLarge": "File is larger than allowed (max 50MB).",
+    "pickFile": "Pick a file to upload.",
+    "download": "Download",
+    "downloading": "Preparing...",
+    "downloadFailed": "Download failed.",
+    "field": {
+      "type": "Type",
+      "file": "File"
+    }
+  },
   "ownerships": {
     "title": "Ownership shares",
     "hint": "All shares must sum to exactly 100%. Empty list = clear all ownerships.",

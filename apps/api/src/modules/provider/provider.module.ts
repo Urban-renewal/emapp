@@ -31,14 +31,16 @@ import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module';
 
+import { ProviderTenantDetailController } from './provider-tenant-detail.controller';
+import { ProviderTenantDetailService } from './provider-tenant-detail.service';
 import { ProviderTenantsController } from './provider-tenants.controller';
 import { ProviderTenantsService } from './provider-tenants.service';
 
 @Module({
   imports: [AuthModule],
-  // P6.5-2: tenants LIST.
-  // P6.5-3..5 will add: tenants DETAIL, audit search, system health.
-  controllers: [ProviderTenantsController],
-  providers: [ProviderTenantsService],
+  // P6.5-2 + P6.5-3: tenants LIST + DETAIL.
+  // P6.5-4..5 will add: audit search, system health.
+  controllers: [ProviderTenantsController, ProviderTenantDetailController],
+  providers: [ProviderTenantsService, ProviderTenantDetailService],
 })
 export class ProviderModule {}

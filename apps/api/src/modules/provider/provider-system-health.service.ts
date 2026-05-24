@@ -55,20 +55,42 @@ export class ProviderSystemHealthService {
         // ONLY the active-state-table completion count, not the
         // historical archive — the gauge is "current shape of the
         // queue", not "lifetime job count".
-        const rows = await tx.execute<QueueStateRow>(sql`
-          SELECT state, COUNT(*)::int AS cnt
-          FROM pgboss.job
-          GROUP BY state
-        `);
-        const byState: Record<string, number> = {};
-        for (const r of rows.rows) byState[r.state] = Number(r.cnt);
-        return {
-          created: byState['created'] ?? 0,
-          active: byState['active'] ?? 0,
-          retry: byState['retry'] ?? 0,
-          failed: byState['failed'] ?? 0,
-          completed: byState['completed'] ?? 0,
-        };
+        //
+        // SCHEMA-LAZINESS: pg-boss creates its schema lazily on the
+        // first `pgboss.start()` (the worker process). If the API
+        // boots BEFORE the worker has ever run — CI's fresh Postgres,
+        // a new staging DB, a dev sandbox without `pnpm dev:worker`
+        // — then `pgboss.job` simply doesn't exist yet and the query
+        // raises PG error 42P01 (undefined_table). That is NOT a
+        // failure of the health check; it is the queue being empty
+        // before the schema exists. Return zeros — semantically the
+        // same as "the queue has no jobs right now" — and let the
+        // worker create the schema on its first start. Any other
+        // error class re-raises (a real outage must still alert).
+        try {
+          const rows = await tx.execute<QueueStateRow>(sql`
+            SELECT state, COUNT(*)::int AS cnt
+            FROM pgboss.job
+            GROUP BY state
+          `);
+          const byState: Record<string, number> = {};
+          for (const r of rows.rows) byState[r.state] = Number(r.cnt);
+          return {
+            created: byState['created'] ?? 0,
+            active: byState['active'] ?? 0,
+            retry: byState['retry'] ?? 0,
+            failed: byState['failed'] ?? 0,
+            completed: byState['completed'] ?? 0,
+          };
+        } catch (e) {
+          const code = (e as { code?: string } | null)?.code;
+          // 42P01 = undefined_table, 3F000 = invalid_schema_name.
+          // Both mean "pgboss hasn't initialised yet" → empty queue.
+          if (code === '42P01' || code === '3F000') {
+            return { created: 0, active: 0, retry: 0, failed: 0, completed: 0 };
+          }
+          throw e;
+        }
       },
       {
         ip: actor.ip,

@@ -67,6 +67,7 @@ import {
 } from '../mapping/mapping-resolver';
 import { ExcelParserError, parseExcelFull, type ParsedRows } from '../parser/excel.parser';
 import { summariseFailureForAudit } from '../security/audit-sanitiser';
+import { capStreamSize, StreamSizeExceededError } from '../storage-stream-cap';
 import { validateRow } from '../validation/row-validator';
 
 /** A validated row that passed S5 row-validator. The canonical fields
@@ -829,14 +830,57 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
     // string[][], 100x cheaper than the R2 round-trip + decompression).
     let parsed: ParsedRows;
     try {
-      const stream = await this.storage.getObjectStream(row.fileR2Key);
+      // v7 P0: cap the download to IMPORT_MAX_SIZE_BYTES (50MB). API
+      // enforces the cap on upload via Zod + presigned ContentLength,
+      // but nothing stops bytes already in the bucket from being
+      // larger (out-of-band write, key collision, future bucket
+      // replication). Without this cap an oversized object would
+      // stream straight into ExcelJS's RAM-buffered streaming parser
+      // and OOM the worker.
+      const raw = await this.storage.getObjectStream(row.fileR2Key);
+      const stream = capStreamSize(raw);
       parsed = await parseExcelFull(stream);
     } catch (e: unknown) {
+      if (e instanceof StreamSizeExceededError) {
+        throw new NonRetryableJobError(`download exceeded cap: ${e.code}`, e.code);
+      }
       if (e instanceof ExcelParserError) {
         throw new NonRetryableJobError(`parse failed: ${e.code}`, `parse_${e.code}`);
       }
       throw e;
     }
+
+    // v7 HIGH-4 (security Agent B): audit the successful R2 download.
+    // ISO 27001 A.12.4 wants every credential-using fetch evidenced —
+    // we don't audit-log the bytes themselves (no PII in audit) but
+    // the FACT of the download (jobId + parsed row count + header
+    // count) so a forensic timeline can correlate worker activity
+    // with R2 access logs if Cloudflare ever flags suspicious egress.
+    // Best-effort: a failed audit row doesn't fail the job (the
+    // parse already succeeded — we have the bytes; the timeline gap
+    // is a lower-impact outcome than retrying the whole pipeline).
+    await withTenant(
+      payload.orgId,
+      async (tx) => {
+        await new AuditService(tx).log({
+          orgId: payload.orgId,
+          actorId: verifiedActorId,
+          actorType: 'system',
+          action: 'import.r2_downloaded',
+          targetTable: 'import_jobs',
+          targetId: payload.jobId,
+          metadata: {
+            row_count: String(parsed.rowCount),
+            header_count: String(parsed.headers.length),
+          },
+        });
+      },
+      { userId: payload.createdBy },
+    ).catch((e) => {
+      ctx.log.warn('audit(import.r2_downloaded) failed — proceeding', {
+        error: e instanceof Error ? e.message : 'unknown',
+      });
+    });
 
     // S7 / D.34 — layered mapping resolution. The injected resolver
     // is a chain (LegacyAliasResolver today; future: + TemplateResolver
@@ -1064,9 +1108,15 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
         throw new NonRetryableJobError('import_job vanished mid-validate', 'job_not_visible');
       }
       try {
-        const stream = await this.storage.getObjectStream(row.fileR2Key);
+        // v7 P0 byte-ceiling (see parseStage for full rationale). Same
+        // cap on the retry/validate re-download path.
+        const raw = await this.storage.getObjectStream(row.fileR2Key);
+        const stream = capStreamSize(raw);
         parsed = await parseExcelFull(stream);
       } catch (e: unknown) {
+        if (e instanceof StreamSizeExceededError) {
+          throw new NonRetryableJobError(`download exceeded cap: ${e.code}`, e.code);
+        }
         if (e instanceof ExcelParserError) {
           throw new NonRetryableJobError(`parse failed: ${e.code}`, `parse_${e.code}`);
         }

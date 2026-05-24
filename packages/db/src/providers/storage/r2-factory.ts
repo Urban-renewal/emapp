@@ -46,12 +46,19 @@ export interface R2SdkDeps {
   /** Constructor for the S3 client itself. Apps pass the real
    *  @aws-sdk/client-s3 S3Client constructor; we accept `unknown`
    *  for the instance shape because R2StorageProvider only uses
-   *  `client.send(...)` which we narrow via S3ClientLike. */
+   *  `client.send(...)` which we narrow via S3ClientLike.
+   *  `requestHandler` + `maxAttempts` are passed through verbatim —
+   *  the SDK's @smithy/node-http-handler accepts the shape we expose
+   *  via `R2ClientTuning` below. Kept untyped here so @emapp/db
+   *  doesn't depend on @smithy/* either. */
   readonly S3Client: new (config: {
     region: string;
     endpoint: string;
     credentials: { accessKeyId: string; secretAccessKey: string };
     forcePathStyle?: boolean;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    requestHandler?: any;
+    maxAttempts?: number;
   }) => S3ClientLike;
   /** Async presigned-URL signer (`@aws-sdk/s3-request-presigner`).
    *  Loose-typed because the SDK's real signature is heavily generic
@@ -59,9 +66,10 @@ export interface R2SdkDeps {
    *  @aws-sdk/* to express it precisely — which we deliberately don't.
    *  R2StorageProvider only consumes the Promise<string> return; the
    *  call site (api / worker factory) passes the real SDK function. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly getSignedUrl: (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     client: any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     command: any,
     opts: { expiresIn: number },
   ) => Promise<string>;
@@ -80,6 +88,32 @@ export interface R2SdkDeps {
   readonly DeleteObjectCommand: new (opts: { Bucket: string; Key: string }) => unknown;
   readonly HeadObjectCommand: new (opts: { Bucket: string; Key: string }) => unknown;
   readonly ListObjectsV2Command: new (opts: { Bucket: string; MaxKeys: number }) => unknown;
+  /** Optional client tuning. If omitted, the SDK's defaults apply
+   *  (30s socket timeout, infinite connection timeout, 3 attempts).
+   *  Apps MUST pass narrow values in production — `getUploadUrl` /
+   *  `head` are on the request critical path; a hanging R2 connect
+   *  must surface as 503 fast, not hold a Fastify worker for 30s.
+   *  v7 audit Agent C MEDIUM-D. */
+  readonly tuning?: R2ClientTuning;
+}
+
+/** Narrow tuning shape so call sites don't depend on @smithy/*.
+ *  The SDK's S3Client accepts `requestHandler` as a plain
+ *  `NodeHttpHandlerOptions` object literal — it will build the
+ *  NodeHttpHandler internally with these values, so we don't need
+ *  to import or instantiate one ourselves. */
+export interface R2ClientTuning {
+  /** Max ms to wait for TCP+TLS handshake. Default: 3000.
+   *  R2's eu region is sub-100ms from EU CI runners; if a connect
+   *  hasn't completed in 3s, something is broken — fail fast. */
+  readonly connectionTimeoutMs?: number;
+  /** Max ms a socket can be idle waiting for bytes. Default: 10000.
+   *  For streaming GETs the socket sees chunks regularly so the
+   *  idle clock resets per chunk; 10s is the gap BETWEEN chunks. */
+  readonly socketTimeoutMs?: number;
+  /** Total request attempts including the first. Default: 3 (one
+   *  initial + two retries on retryable errors). */
+  readonly maxAttempts?: number;
 }
 
 /** True iff all four R2_* env vars are populated (non-empty strings).
@@ -104,6 +138,18 @@ export function buildR2Provider(env: R2EnvVars, deps: R2SdkDeps): IStorageProvid
   // R2 ignores region but the SDK requires it. `forcePathStyle:false` is
   // correct for R2 — the endpoint already encodes the account-id (the
   // bucket appears as a subdomain).
+  //
+  // v7 audit Agent C MEDIUM-D: bound the SDK's default 30s socket
+  // timeout. R2 outages should surface as 503 within seconds, not hold
+  // a Fastify worker for 30s.
+  const tuning = deps.tuning ?? {};
+  const connectionTimeout = tuning.connectionTimeoutMs ?? 3_000;
+  const socketTimeout = tuning.socketTimeoutMs ?? 10_000;
+  const maxAttempts = tuning.maxAttempts ?? 3;
+  // The SDK accepts `requestHandler` as either a constructed handler
+  // OR a plain options object — when it's an object literal the SDK
+  // builds a NodeHttpHandler internally with those values. Passing the
+  // literal lets us tune timeouts without depending on @smithy/* here.
   const client = new deps.S3Client({
     region: 'auto',
     endpoint: env.R2_ENDPOINT,
@@ -112,6 +158,8 @@ export function buildR2Provider(env: R2EnvVars, deps: R2SdkDeps): IStorageProvid
       secretAccessKey: env.R2_SECRET_ACCESS_KEY,
     },
     forcePathStyle: false,
+    requestHandler: { connectionTimeout, socketTimeout },
+    maxAttempts,
   });
   return new R2StorageProvider(env.R2_BUCKET, {
     client,

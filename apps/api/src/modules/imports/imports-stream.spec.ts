@@ -186,14 +186,25 @@ describe('T6.9 — SSE delivers progress events', () => {
   it('6) SSE wire encoding is well-formed', () => {
     const frame = encodeSseFrame({
       event: 'progress',
-      data: { id: 'x', status: 'queued', processedRows: 0 },
+      data: {
+        // v7 HIGH-1: SSE event shape is now strictly typed in
+        // @emapp/shared-types (ImportSseEvent). All progress fields
+        // required so the FE never sees an undefined counter.
+        id: '00000000-0000-4000-8000-000000000000',
+        status: 'queued',
+        totalRows: null,
+        processedRows: 0,
+        okRows: 0,
+        failedRows: 0,
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
     });
     expect(frame).toMatch(/^event: progress\n/);
     expect(frame).toMatch(/\ndata: \{.*\}\n\n$/);
     // JSON parse round-trip — guarantees the payload survives the wire.
     const dataLine = frame.split('\n').find((l) => l.startsWith('data: '))!;
     const json = JSON.parse(dataLine.slice('data: '.length)) as Record<string, unknown>;
-    expect(json['id']).toBe('x');
+    expect(json['id']).toBe('00000000-0000-4000-8000-000000000000');
     expect(json['status']).toBe('queued');
   });
 

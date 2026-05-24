@@ -60,6 +60,7 @@ export {
   r2EnvIsComplete,
   type R2EnvVars,
   type R2SdkDeps,
+  type R2ClientTuning,
 } from './providers/storage/r2-factory';
 export { FakeStorageProvider } from './providers/storage/fake.provider';
 export type { ICacheProvider } from './providers/cache/cache.interface';

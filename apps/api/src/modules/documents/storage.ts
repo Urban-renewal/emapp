@@ -37,7 +37,44 @@ export const STORAGE_PROVIDER = 'STORAGE_PROVIDER';
 export const UPLOAD_URL_TTL_SECONDS = 300;
 export const DOWNLOAD_URL_TTL_SECONDS = 120;
 
+/**
+ * Process-wide singleton. v7 audit Agent A HIGH (and Agent C HIGH-1):
+ * `storageProviderFactory` is registered as a NestJS `useFactory` in
+ * THREE modules (documents, imports, signatures). Nest invokes the
+ * factory once per provider token — so without memoization we would
+ * boot ONE S3Client per module = three S3Clients per API process, each
+ * with its own HTTPS connection pool, each scheduling its own DNS
+ * resolves and TCP/TLS handshakes for what should be a shared
+ * connection to the same R2 endpoint. Multiply by the worker
+ * (1 extra) and we'd be wasting a measurable fraction of /import-mint
+ * latency on duplicated connection setup at cold start.
+ *
+ * Memoizing here costs us nothing (the factory is pure on env+SDK and
+ * never needs to vary across modules), keeps the IStorageProvider
+ * interface unchanged, and means the FakeStorageProvider's in-memory
+ * Map is also shared across modules — which is actually the right
+ * behaviour for dev (an apartment uploaded via signatures should be
+ * downloadable via documents in the same process).
+ *
+ * Tests reset by calling `resetStorageProviderForTests()`.
+ */
+let cachedProvider: IStorageProvider | null = null;
+
 export function storageProviderFactory(): IStorageProvider {
+  if (cachedProvider !== null) return cachedProvider;
+  cachedProvider = createStorageProvider();
+  return cachedProvider;
+}
+
+/** Test-only seam — drops the cached singleton so the next factory call
+ *  builds fresh. Not exported through the module's public surface; used
+ *  exclusively from vitest fixtures (e.g. when a spec needs to swap in
+ *  a Fake with a pre-populated map). */
+export function resetStorageProviderForTests(): void {
+  cachedProvider = null;
+}
+
+function createStorageProvider(): IStorageProvider {
   // v6 R2 wiring: if the 4 R2_* env vars are present in Infisical
   // (any env: dev/staging/prod), construct a real R2StorageProvider.
   // Otherwise fall back per environment:

@@ -48,6 +48,7 @@ import {
   type CreateImport,
   type ImportError,
   type ImportJob,
+  type ImportSseEvent,
   type ImportUploadResponse,
   type ListImportErrorsQueryDto,
   type SubmitMapping,
@@ -325,7 +326,10 @@ export class ImportsService {
         ttlSeconds: UPLOAD_URL_TTL_SECONDS,
       });
     } catch (e) {
-      // Compensate: archive the orphan row so it doesn't dangle.
+      // Compensate: archive the orphan row so it doesn't dangle. Also
+      // write an audit row for the presign failure (v7 HIGH-3: ISO
+      // 27001 requires the failed credential mint to be evidence-able,
+      // not just a log line).
       await withTenant(
         user.orgId,
         async (tx) => {
@@ -333,6 +337,19 @@ export class ImportsService {
             .update(importJobs)
             .set({ status: 'failed', finishedAt: new Date(), updatedAt: new Date() })
             .where(eq(importJobs.id, row.id));
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent })
+            .log({
+              orgId: user.orgId,
+              actorId: user.sub,
+              actorType: 'user',
+              action: 'import.upload_url_mint_failed',
+              targetTable: 'import_jobs',
+              targetId: row.id,
+              sessionId: user.sid,
+            })
+            // Even the audit write can fail (DB outage) — don't shadow
+            // the original presign error.
+            .catch(() => undefined);
         },
         { userId: user.sub },
       ).catch(() => undefined);
@@ -341,6 +358,41 @@ export class ImportsService {
       );
       throw new ServiceUnavailableException({ error: { code: 'storage_unavailable' } });
     }
+
+    // v7 HIGH-3 (security Agent B): write an audit row for the
+    // successful credential mint. The presigned URL is a bearer
+    // credential — ISO 27001 A.12.4.1 wants every credential issuance
+    // logged. Outside the create tx because presign is post-commit;
+    // a small consistency gap (commit succeeded, mint succeeded, audit
+    // failed) is acceptable here because the credential's exfiltration
+    // window is already minimal (5min TTL) and the row itself is
+    // bound to this exact upload (Bucket+Key+ContentLength).
+    await withTenant(
+      user.orgId,
+      async (tx) => {
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'import.upload_url_minted',
+          targetTable: 'import_jobs',
+          targetId: row.id,
+          metadata: {
+            ttl_seconds: String(UPLOAD_URL_TTL_SECONDS),
+          },
+          sessionId: user.sid,
+        });
+      },
+      { userId: user.sub },
+    ).catch((e) => {
+      // Don't fail the request on audit-write failure (the upload URL
+      // is already minted and returned). Log loud so SRE notices.
+      this.logger.error(
+        `audit(import.upload_url_minted) failed (import=${row.id}): ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
+    });
 
     return {
       import: toView(row),
@@ -394,17 +446,29 @@ export class ImportsService {
     // "no storage-attested fact" and trust the client-side flow.
     // In prod with R2, head() returns metadata so a missing object
     // surfaces as 400 ("upload not received").
+    //
+    // v7 P0 (perf Agent C): bound the head() round-trip with a 500ms
+    // race so a slow R2 region can't hold the Manager's /start
+    // request for the SDK's full socket timeout. If head() doesn't
+    // come back in time we skip attestation — the worker will fail
+    // loud at parseStage if the file truly isn't there (a
+    // NonRetryableJobError + audit row), so we lose only the
+    // "polite" upfront error, not safety.
     try {
-      const meta = await this.storage.head(row.fileR2Key);
-      if (meta === null) {
+      const meta = await this.headWithDeadline(row.fileR2Key, 500);
+      if (meta === undefined) {
+        // Deadline hit — fall through (worker fail-loud is the
+        // safety net). We log to surface chronic R2 slowness.
+        this.logger.warn(
+          `head(${row.fileR2Key}) deadline (500ms) — skipping pre-flight attestation`,
+        );
+      } else if (meta === null) {
         // Fake / not-attested — proceed. The worker will fail loud
         // if the file isn't actually there.
-      } else {
-        if (meta.contentLength !== row.fileSizeBytes) {
-          throw new BadRequestException({
-            error: { code: 'upload_size_mismatch' },
-          });
-        }
+      } else if (meta.contentLength !== row.fileSizeBytes) {
+        throw new BadRequestException({
+          error: { code: 'upload_size_mismatch' },
+        });
       }
     } catch (e) {
       if (e instanceof BadRequestException) throw e;
@@ -850,16 +914,47 @@ export class ImportsService {
     if (!row) throw NOT_FOUND;
     return row;
   }
+
+  /** Wrap storage.head() in a deadline race. Returns:
+   *   - `StorageObjectMeta` when head() resolves with metadata in time
+   *   - `null` when head() resolves with "no attestation" (Fake) in time
+   *   - `undefined` when the deadline fired first (caller logs + skips)
+   *  Rejections from head() are RETHROWN so the caller's catch can
+   *  decide (BadRequestException for size mismatch, warn-and-continue
+   *  for anything else).
+   *  v7 P0 (perf Agent C). */
+  private async headWithDeadline(
+    key: string,
+    deadlineMs: number,
+  ): Promise<Awaited<ReturnType<IStorageProvider['head']>> | undefined> {
+    const DEADLINE = Symbol('deadline');
+    let timer: NodeJS.Timeout | undefined;
+    const deadline = new Promise<typeof DEADLINE>((resolve) => {
+      timer = setTimeout(() => resolve(DEADLINE), deadlineMs);
+      // Don't keep the event loop alive solely for this timer.
+      timer.unref?.();
+    });
+    try {
+      const winner = await Promise.race([this.storage.head(key), deadline]);
+      return winner === DEADLINE ? undefined : winner;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  }
 }
 
-/** Server-sent event frame. Always a JSON-serialisable payload (no PII). */
-export interface SseEvent {
-  event: 'progress' | 'end' | 'gone';
-  data: Record<string, unknown>;
-}
-
-/** Encode an SseEvent as the over-the-wire SSE format.
+/** Server-sent event frame. Always a JSON-serialisable payload (no PII).
+ *
+ *  v7 audit Agent A HIGH-1: the canonical type is `ImportSseEvent` in
+ *  `@emapp/shared-types` — a discriminated union over event ∈
+ *  progress|end|gone. We re-export it under the old `SseEvent` name so
+ *  in-repo importers (controller + spec) keep working, but the FE will
+ *  import the union name directly. Schema is also exported so the FE
+ *  can `parse(JSON.parse(line))` defensively.
+ *
+ *  Encode/decode lives here (uses the wire format, not the shape).
  *  See https://html.spec.whatwg.org/multipage/server-sent-events.html. */
+export type SseEvent = ImportSseEvent;
 export function encodeSseFrame(ev: SseEvent): string {
   return `event: ${ev.event}\ndata: ${JSON.stringify(ev.data)}\n\n`;
 }

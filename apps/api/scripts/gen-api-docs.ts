@@ -51,6 +51,10 @@ import {
   UpdateNoteInput,
   UpdateShareInput,
   UpdateTaskInput,
+  CreateImportInput,
+  StartImportInput,
+  SubmitMappingInput,
+  ListImportErrorsQuery,
 } from '@emapp/shared-types';
 import type { ZodTypeAny } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -949,6 +953,87 @@ const ENDPOINTS: Endpoint[] = [
     request: AcceptInviteInput,
     response: '{ "data": { "ok": true } }',
     errors: ['validation_error', 'invalid_invite', '429'],
+  },
+
+  // ── Imports (Phase 6 / D.34 / v7 audit Agent A HIGH-2) ─────────
+  // The Excel-import wizard endpoints. All Manager-only (CASL: subject
+  // 'imports', action 'create'/'read'/'update'/'delete'). The SSE
+  // stream emits ImportSseEvent frames (discriminated union in
+  // @emapp/shared-types — progress | end | gone).
+  {
+    method: 'POST',
+    path: '/api/v1/imports',
+    auth: 'Manager',
+    summary:
+      'Create an import row + return a short-lived presigned PUT URL. Step 1 of 2 (step 2 is /start after the FE uploads to R2). 50MB hard cap; sha256 content-hash required.',
+    request: CreateImportInput,
+    response:
+      '{ "data": { "import": ImportJob, "uploadUrl": "https://…", "uploadExpiresInSeconds": 300 } }',
+    errors: ['validation_error', 'forbidden', 'not_found', 'import_conflict', '429'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/imports/:id/start',
+    auth: 'Manager (creator only)',
+    summary:
+      'Enqueue the worker job AFTER the upload completes. Pre-flights a 500ms-bounded R2 head() to catch upload_size_mismatch fast; the worker is the safety net.',
+    request: StartImportInput,
+    response: '{ "data": ImportJob }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'import_not_startable',
+      'upload_size_mismatch',
+      '429',
+    ],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/imports/:id',
+    auth: 'Manager',
+    summary: 'Read the current import row (status + row counters).',
+    response: '{ "data": ImportJob }',
+    errors: ['not_found'],
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/imports/:id',
+    auth: 'Manager',
+    summary:
+      'Cancel a non-terminal import. Wins races with the worker via guarded UPDATEs (status = expected) — terminal rows reject with import_not_cancellable.',
+    response: '204 No Content',
+    errors: ['forbidden', 'not_found', 'import_not_cancellable'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/imports/:id/errors',
+    auth: 'Manager',
+    summary:
+      'Paginated keyset listing of per-row validation failures (worker validateStage). PII already scrubbed at write-time; messages length-capped at 500 chars.',
+    request: ListImportErrorsQuery,
+    response: '{ "data": ImportError[], "page": { "limit", "cursor", "has_more" } }',
+    errors: ['validation_error', 'not_found', 'invalid_cursor'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/imports/:id/mapping',
+    auth: 'Manager',
+    summary:
+      'D.34 wizard — submit a column mapping for a row in awaiting_mapping. Stores a mapping_template (org-scoped) and re-enqueues the worker.',
+    request: SubmitMappingInput,
+    response: '{ "data": { "import": ImportJob, "templateId": "<uuid>" } }',
+    errors: ['validation_error', 'forbidden', 'not_found', 'import_not_in_awaiting_mapping'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/imports/:id/stream',
+    auth: 'Manager',
+    summary:
+      'Server-Sent Events stream of import progress. Frames are ImportSseEvent (discriminated on `event` ∈ progress | end | gone). Heartbeat comment every 15s defeats proxy idle timeouts. Closes on terminal state, on 404 (gone), or on client abort.',
+    response:
+      'text/event-stream; one ImportSseEvent JSON object per `data:` line (see @emapp/shared-types#ImportSseEventSchema)',
+    errors: ['forbidden', 'not_found'],
   },
 ];
 

@@ -96,7 +96,7 @@ describe('R2 factory — env presence detector', () => {
 });
 
 describe('R2 factory — buildR2Provider', () => {
-  it('2) constructs S3Client with correct R2 config (region=auto + endpoint + creds + forcePathStyle=false)', () => {
+  it('2) constructs S3Client with correct R2 config (region=auto + endpoint + creds + forcePathStyle=false + timeouts)', () => {
     const captured: { config?: unknown } = {};
     const deps = {
       ...fakeSdkDeps,
@@ -117,7 +117,32 @@ describe('R2 factory — buildR2Provider', () => {
         secretAccessKey: VALID_ENV.R2_SECRET_ACCESS_KEY,
       },
       forcePathStyle: false,
+      // v7 MEDIUM-D: default tunings applied so an R2 outage surfaces
+      // fast instead of holding a Fastify worker for the SDK's 30s
+      // default socket timeout.
+      requestHandler: { connectionTimeout: 3000, socketTimeout: 10_000 },
+      maxAttempts: 3,
     });
+  });
+
+  it('2c) caller can override default tunings via deps.tuning', () => {
+    const captured: { config?: { requestHandler?: unknown; maxAttempts?: number } } = {};
+    const deps = {
+      ...fakeSdkDeps,
+      S3Client: class extends FakeS3Client {
+        constructor(c: unknown) {
+          super(c);
+          captured.config = c as { requestHandler?: unknown; maxAttempts?: number };
+        }
+      },
+      tuning: { connectionTimeoutMs: 500, socketTimeoutMs: 2000, maxAttempts: 1 },
+    };
+    buildR2Provider(VALID_ENV, deps);
+    expect(captured.config?.requestHandler).toEqual({
+      connectionTimeout: 500,
+      socketTimeout: 2000,
+    });
+    expect(captured.config?.maxAttempts).toBe(1);
   });
 
   it('2b) returns an R2StorageProvider instance', () => {

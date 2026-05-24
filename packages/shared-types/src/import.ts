@@ -158,3 +158,70 @@ export const SubmitMappingResponseSchema = z.object({
   templateId: z.string().uuid(),
 });
 export type SubmitMappingResponse = z.infer<typeof SubmitMappingResponseSchema>;
+
+// ─────────────────────────────────────────────────────────────────────
+// SSE event contract — GET /api/v1/imports/:id/stream
+// ─────────────────────────────────────────────────────────────────────
+//
+// v7 audit Agent A HIGH-1 / Agent C HIGH-?: the SSE endpoint was
+// emitting events typed only as `{ event: 'progress'|'end'|'gone';
+// data: Record<string, unknown> }` — the FE has no way to know what
+// fields to expect for each variant without reading the API source.
+// That's exactly the FE/BE drift Doc 11 says shared-types exists to
+// prevent.
+//
+// We model the three variants as a discriminated union (Zod's
+// preferred shape) so the FE can `parse(...).event` switch and get
+// narrowed fields automatically. The status enum on `progress`/`end`
+// is the SAME ImportStatusEnum — no parallel "wire status" to drift
+// out of sync.
+
+/** Periodic progress frame — the worker has advanced to a new
+ *  status or row counters changed. The FE re-renders from this. */
+export const ImportSseProgressSchema = z.object({
+  event: z.literal('progress'),
+  data: z.object({
+    id: z.string().uuid(),
+    status: ImportStatusEnum,
+    totalRows: z.number().int().min(0).nullable(),
+    processedRows: z.number().int().min(0),
+    okRows: z.number().int().min(0),
+    failedRows: z.number().int().min(0),
+    /** ISO-8601 UTC. The FE uses this to debounce noisy re-renders
+     *  and to display "last updated Xs ago". */
+    updatedAt: z.string().datetime(),
+  }),
+});
+
+/** Terminal frame — the job reached `done`/`failed`/`cancelled`.
+ *  After this the FE should close the EventSource. */
+export const ImportSseEndSchema = z.object({
+  event: z.literal('end'),
+  data: z.object({
+    id: z.string().uuid(),
+    status: ImportStatusEnum,
+  }),
+});
+
+/** Sentinel — the import row is no longer visible (404 mid-stream).
+ *  Likely cause: the Manager cancelled+archived from a different tab.
+ *  FE should close the EventSource and surface "import gone". */
+export const ImportSseGoneSchema = z.object({
+  event: z.literal('gone'),
+  data: z.object({ id: z.string().uuid() }),
+});
+
+/** Discriminated union of all SSE frames. Used by:
+ *   - API (imports.service): `encodeSseFrame(ev: ImportSseEvent)`
+ *   - FE  (imports hook):    `ImportSseEventSchema.parse(JSON.parse(line))`
+ *  Adding a fourth variant is a contract change — both sides will
+ *  fail to compile until they handle it (intentional). */
+export const ImportSseEventSchema = z.discriminatedUnion('event', [
+  ImportSseProgressSchema,
+  ImportSseEndSchema,
+  ImportSseGoneSchema,
+]);
+export type ImportSseEvent = z.infer<typeof ImportSseEventSchema>;
+export type ImportSseProgress = z.infer<typeof ImportSseProgressSchema>;
+export type ImportSseEnd = z.infer<typeof ImportSseEndSchema>;
+export type ImportSseGone = z.infer<typeof ImportSseGoneSchema>;

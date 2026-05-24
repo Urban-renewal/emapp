@@ -23,10 +23,28 @@ import { z } from 'zod';
  *  CHECK constraint + worker zip-preflight MAX_DECOMPRESSED_BYTES. */
 export const IMPORT_MAX_SIZE_BYTES = 52_428_800;
 
-/** sha256 hex (lowercase, 64 chars). Optional `sha256:` prefix is
- *  accepted but stripped by the controller before persistence. */
-export const Sha256HexLowerSchema = z.string().regex(/^(?:sha256:)?[0-9a-f]{64}$/, {
-  message: 'must be a lowercase hex sha256 (64 chars), optionally prefixed sha256:',
+/** sha256 hex (lowercase, 64 chars).
+ *
+ *  v8 SOLID-2 — CANONICAL wire shape:
+ *    FE MUST send bare hex (no `sha256:` prefix). The historic prefix
+ *    has been removed from the contract: ambiguous shapes mean two
+ *    clients computing the "same" hash send different strings, which
+ *    breaks any future content-integrity comparison. The schema
+ *    enforces bare hex; the controller no longer normalises (there
+ *    is nothing to normalise — the regex rejects anything else
+ *    before the controller sees it).
+ *
+ *  FE recipe (per Doc 11):
+ *    `const buf = await file.arrayBuffer();`
+ *    `const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buf)))`
+ *    `  .map(b => b.toString(16).padStart(2,'0')).join('');`
+ *    `// hash is exactly 64 lowercase hex chars — pass as fileContentHash`
+ *
+ *  DB column stores `sha256:<hex>` (the prefix is a self-describing
+ *  format marker for the persisted value, not a wire-format quirk).
+ *  See `apps/api/src/modules/imports/imports.service.ts:create()`. */
+export const Sha256HexLowerSchema = z.string().regex(/^[0-9a-f]{64}$/, {
+  message: 'must be exactly 64 lowercase hex chars (sha256, no prefix)',
 });
 
 /** Status enum — MUST match migration 0022 + 0027 CHECK. */
@@ -72,7 +90,24 @@ export const CreateImportInput = z
     fileSizeBytes: z.number().int().min(1).max(IMPORT_MAX_SIZE_BYTES),
     fileContentHash: Sha256HexLowerSchema,
     dryRun: z.boolean().optional().default(false),
-    idempotencyKey: z.string().min(1).max(255).optional(),
+    // v8 Sec-15 / SOLID-1: format-constrained to make guessing /
+    // enumerating other Managers' keys infeasible. The DB's partial
+    // UNIQUE index is on (org_id, idempotency_key) — without a format
+    // constraint, a key like "1", "2", "3" could be tried by an
+    // attacker to detect prior uses (a 409 conflict leaks existence).
+    // Service-side we also scope replay-lookup to (org_id, created_by,
+    // idempotency_key) so cross-Manager probing returns the SAME 409
+    // as a real conflict from a UUID-shaped key. The format constraint
+    // is the FIRST line of defense; the service-side scope is the
+    // second. UUIDv4 is the FE-recommended shape but we accept any
+    // 16-64 char base62/base64url-safe string to leave room for the
+    // FE to use a content-derived id (e.g. `${userId}-${fileHash}`).
+    idempotencyKey: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]{16,64}$/, {
+        message: 'must be 16-64 chars of [A-Za-z0-9_-]',
+      })
+      .optional(),
   })
   .strict();
 export type CreateImport = z.infer<typeof CreateImportInput>;

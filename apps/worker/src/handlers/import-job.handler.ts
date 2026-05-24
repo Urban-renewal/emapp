@@ -43,6 +43,7 @@ import {
   env,
   importJobErrors,
   importJobs,
+  mappingTemplates,
   owners,
   ownerships,
   withTenant,
@@ -62,6 +63,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { type ColumnMapping } from '../mapping/mapping';
 import {
   LegacyAliasResolver,
+  sanitiseUserString,
   sanitiseUserStrings,
   type IMappingResolver,
 } from '../mapping/mapping-resolver';
@@ -69,6 +71,8 @@ import { ExcelParserError, parseExcelFull, type ParsedRows } from '../parser/exc
 import { summariseFailureForAudit } from '../security/audit-sanitiser';
 import { capStreamSize, StreamSizeExceededError } from '../storage-stream-cap';
 import { validateRow } from '../validation/row-validator';
+
+import { JobPayloadTamperedError, verifyJobPayload } from './verify-job-payload';
 
 /** A validated row that passed S5 row-validator. The canonical fields
  *  are extracted + trimmed; persistStage (S6) consumes this shape. */
@@ -555,43 +559,73 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
   ) {}
 
   async handle(payload: ImportJobPayload, ctx: JobContext): Promise<void> {
-    ctx.log.info('import job picked up', { orgId: payload.orgId });
+    ctx.log.info('import job picked up', { jobId: payload.jobId });
 
-    // v4 audit fix (HIGH security): fetch the trusted actor id from
-    // the DB row, not from the payload. pg-boss carries the payload
-    // over the BYPASSRLS queue plumbing; a tampered enqueue could
-    // otherwise mis-attribute audit_log entries to someone else's
-    // user_id. We read `import_jobs.created_by` once at entry and
-    // thread it down the state-machine loop so EVERY audit row in
-    // this handle() invocation carries the DB-trusted actor id.
-    // If the row isn't visible (cross-org tamper / forensic delete),
-    // we fall back to payload.createdBy for the single audit-row
-    // attempt below and let readStatus throw NonRetryable.
-    let verifiedActorId: string = payload.createdBy;
+    // v8 P0 SECURITY (§v7-A closure): verify the payload's `orgId`
+    // matches the DB row BEFORE setting RLS context to it. pg-boss
+    // carries the payload over the BYPASSRLS queue plumbing; if a
+    // tampered enqueue ever slipped through (producer bug, ops tool
+    // misuse, future Provider Admin re-queue feature), the worker
+    // would otherwise set `withTenant(<attacker-org>)` and read
+    // import_jobs row of the VICTIM org IF the RLS policy ever got
+    // weakened in a future migration. v4 already trusted createdBy
+    // from the DB row; v8 extends that to orgId. The verified pair
+    // becomes the SINGLE source of truth for everything below.
+    //
+    // Tamper / missing → NonRetryableJobError (retry won't help; a
+    // permanently-poisoned payload should die in pgboss.job for ops).
+    // We do NOT write an audit row here: with `orgId` unverified we
+    // don't know which org to scope it to, and writing to the
+    // attacker-org's audit_log would only help the attacker.
+    let verified;
     try {
+      verified = await verifyJobPayload(payload);
+    } catch (e: unknown) {
+      if (e instanceof JobPayloadTamperedError) {
+        ctx.log.error('job payload tamper-check failed — refusing to process', {
+          jobId: payload.jobId,
+          reason: e.reason,
+          // No orgId logged — payload value is untrusted; row was missing
+          // or didn't match. Sentry sees this; ops investigate via the
+          // pgboss.job row and the DB import_jobs row directly.
+        });
+        throw new NonRetryableJobError(e.message, e.code);
+      }
+      throw e;
+    }
+    // v8 §v7-A: REPLACE the payload's claim with the DB-verified
+    // values, IN PLACE. From here forward EVERY read of
+    // `payload.orgId`/`payload.createdBy` in this invocation comes
+    // from `import_jobs` (BYPASSRLS-attested), not from the queue. We
+    // mutate rather than shadow so the ~40 downstream call sites
+    // (parseStage / validateStage / persistStage / runStage / re-
+    // tenant calls) don't each need to be threaded a second arg —
+    // and so a future addition can't accidentally re-read the
+    // pre-verification payload (the original parameter no longer
+    // exists; we overwrote it).
+    Object.assign(payload, {
+      orgId: verified.orgId,
+      createdBy: verified.createdBy,
+    });
+    const verifiedActorId = verified.createdBy;
+    const verifiedOrgId = verified.orgId;
+
+    try {
+      // Audit-pass v2 finding C5 (HIGH): the first audit row used to
+      // be `import.parsing` — a regulator scanning audit_log saw jobs
+      // springing into existence at parsing with no worker-side
+      // provenance. Now we write `import.received` at handler entry,
+      // BEFORE any state transition.
+      //
+      // Per-attempt (NOT deduped on retry): pg-boss retries ARE
+      // forensically meaningful events — each retry indicates a prior
+      // failure that warrants its own audit trail. metadata carries
+      // ctx.attempt so the retry sequence is reconstructable.
       await withTenant(
-        payload.orgId,
+        verifiedOrgId,
         async (tx) => {
-          const [row] = await tx
-            .select({ createdBy: importJobs.createdBy })
-            .from(importJobs)
-            .where(eq(importJobs.id, payload.jobId))
-            .limit(1);
-          if (!row) return;
-          verifiedActorId = row.createdBy;
-          // Audit-pass v2 finding C5 (HIGH): the first audit row used
-          // to be `import.parsing` — a regulator scanning audit_log saw
-          // jobs springing into existence at parsing with no
-          // worker-side provenance. Now we write `import.received` at
-          // handler entry, BEFORE any state transition.
-          //
-          // Per-attempt (NOT deduped on retry): pg-boss retries ARE
-          // forensically meaningful events — each retry indicates a
-          // prior failure that warrants its own audit trail.
-          // metadata carries ctx.attempt so the retry sequence is
-          // reconstructable.
           await new AuditService(tx).log({
-            orgId: payload.orgId,
+            orgId: verifiedOrgId,
             actorId: verifiedActorId,
             actorType: 'system',
             action: 'import.received',
@@ -600,7 +634,7 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
             metadata: { pg_boss_job_id: ctx.jobId, attempt: String(ctx.attempt) },
           });
         },
-        { userId: payload.createdBy },
+        { userId: verifiedActorId },
       );
     } catch (e: unknown) {
       // Audit write failure is non-fatal — log + continue. Better to
@@ -1092,11 +1126,23 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
       mapping = cache.mapping;
       ctx.log.info('validateStage using cached parse result');
     } else {
+      // v8 SOLID-5: fetch BOTH fileR2Key AND mapping_template_id in
+      // the same SELECT — on a retry after the wizard has submitted a
+      // mapping, mapping_template_id is the AUTHORITATIVE choice
+      // (FK to mapping_templates.id). We must NOT re-run the resolver
+      // in that case: the fingerprint might have drifted slightly
+      // (sanitisation tweak, Unicode normalisation change, future
+      // L2 algorithm bump) and the resolver could miss the manual
+      // template the user explicitly approved → data loss
+      // (`mapping_unresolved_at_validate` → `failed`).
       const row = await withTenant(
         payload.orgId,
         async (tx) => {
           const [r] = await tx
-            .select({ fileR2Key: importJobs.fileR2Key })
+            .select({
+              fileR2Key: importJobs.fileR2Key,
+              mappingTemplateId: importJobs.mappingTemplateId,
+            })
             .from(importJobs)
             .where(eq(importJobs.id, payload.jobId))
             .limit(1);
@@ -1108,8 +1154,7 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
         throw new NonRetryableJobError('import_job vanished mid-validate', 'job_not_visible');
       }
       try {
-        // v7 P0 byte-ceiling (see parseStage for full rationale). Same
-        // cap on the retry/validate re-download path.
+        // v7 byte-ceiling: cap the download to IMPORT_MAX_SIZE_BYTES.
         const raw = await this.storage.getObjectStream(row.fileR2Key);
         const stream = capStreamSize(raw);
         parsed = await parseExcelFull(stream);
@@ -1122,31 +1167,68 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
         }
         throw e;
       }
-      // S7 / D.34: same resolver chain as parseStage (consistent
-      // semantics on retry). If the resolver can't decide, the file
-      // SHOULD have been parked in 'awaiting_mapping' at parseStage —
-      // reaching validateStage's cache-miss path means the manager
-      // already approved a mapping (set mapping_template_id). For
-      // now we re-run the resolver; Phase 7+ adds a TemplateResolver
-      // that uses mapping_template_id as a forced override.
-      // Phase 7+: pass tenant context so L2 TemplateResolver can
-      // resolve on retry (the wizard may have stored a template
-      // between the original failure and this retry).
-      const res = await this.mappingResolver.resolve(parsed.headers, {
-        orgId: payload.orgId,
-        log: ctx.log,
-      });
-      if (res.kind === 'resolved') {
-        mapping = res.mapping;
-      } else {
-        // Can't resolve in the rebuild path — surface NonRetryable.
-        // The original parseStage transition should have caught this;
-        // if we're here on a retry, the manager/agent hasn't completed
-        // their mapping yet.
-        throw new NonRetryableJobError(
-          `validate cache rebuild — mapping not resolvable (kind=${res.kind})`,
-          'mapping_unresolved_at_validate',
+
+      // v8 SOLID-5: AUTHORITATIVE template lookup. If the wizard
+      // approved a template for this row, USE IT — don't re-run the
+      // resolver (which could miss it). Falls back to the resolver
+      // chain only when no template is bound (or template-row not
+      // visible — defense in depth).
+      let mappingResolved: ColumnMapping | null = null;
+      if (row.mappingTemplateId !== null) {
+        const tpl = await withTenant(
+          payload.orgId,
+          async (tx) => {
+            const [t] = await tx
+              .select({ mapping: mappingTemplates.mapping })
+              .from(mappingTemplates)
+              .where(eq(mappingTemplates.id, row.mappingTemplateId!))
+              .limit(1);
+            return t;
+          },
+          { userId: payload.createdBy },
         );
+        if (tpl) {
+          // The wizard stores `mapping: { columns: {field→idx},
+          // headers: [...] }`. We just need the `columns` map for
+          // validation; wrap it in the ColumnMapping shape with empty
+          // unmapped/ambiguous (the wizard guarantees no ambiguity —
+          // every required canonical field is present, see
+          // SubmitMappingInput.refine).
+          mappingResolved = {
+            columns: tpl.mapping.columns as ColumnMapping['columns'],
+            unmapped: [],
+            ambiguous: [],
+          };
+          ctx.log.info('validateStage using mapping_template_id (wizard-approved)', {
+            template_id: row.mappingTemplateId,
+          });
+        } else {
+          ctx.log.warn(
+            'mapping_template_id present but template not visible — falling back to resolver',
+          );
+        }
+      }
+
+      if (mappingResolved !== null) {
+        mapping = mappingResolved;
+      } else {
+        // S7 / D.34: resolver chain — same semantics as parseStage.
+        // If the resolver can't decide, the file SHOULD have been
+        // parked in 'awaiting_mapping' at parseStage; reaching this
+        // path without mapping_template_id means a true resolver
+        // miss between then and now.
+        const res = await this.mappingResolver.resolve(parsed.headers, {
+          orgId: payload.orgId,
+          log: ctx.log,
+        });
+        if (res.kind === 'resolved') {
+          mapping = res.mapping;
+        } else {
+          throw new NonRetryableJobError(
+            `validate cache rebuild — mapping not resolvable (kind=${res.kind})`,
+            'mapping_unresolved_at_validate',
+          );
+        }
       }
     }
 
@@ -1183,7 +1265,17 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
             rowNumber: err.rowNumber,
             field: err.field,
             code: err.code,
-            message: err.message,
+            // v8 Sec-6: sanitise at the persistence boundary. Today
+            // `row-validator.ts` is careful not to embed cell content
+            // in error messages, but the contract here is "every
+            // user-derived string crossing into a Manager-readable
+            // column gets sanitised" — same posture as v6's
+            // sanitiseUserStrings(parsed.headers) write. A future
+            // validator change that adds the offending value to its
+            // message ("national_id 123456789 is invalid Luhn") would
+            // otherwise silently open a PII channel into
+            // import_job_errors.message.
+            message: sanitiseUserString(err.message),
           });
         }
       }

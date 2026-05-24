@@ -66,13 +66,26 @@ export function storageProviderFactory(): IStorageProvider {
   return cachedProvider;
 }
 
-/** Test-only seam — drops the cached singleton so the next factory call
- *  builds fresh. Not exported through the module's public surface; used
- *  exclusively from vitest fixtures (e.g. when a spec needs to swap in
- *  a Fake with a pre-populated map). */
-export function resetStorageProviderForTests(): void {
+/** Drop the cached singleton so the next factory call builds fresh.
+ *
+ *  Two use cases:
+ *    1. Tests — swap in a Fake with a pre-populated map.
+ *    2. v8 §v7-C — credential rotation. After Infisical updates the
+ *       R2_* secrets (and someone called `reloadEnv()` to re-read
+ *       process.env into the @emapp/db env object), this drops the
+ *       S3Client cached against the OLD credentials. The next factory
+ *       call rebuilds with the new ones, without a process restart.
+ *       Pair with a SIGHUP handler in main.ts.
+ *
+ *  Backwards-compat alias `resetStorageProviderForTests` kept so the
+ *  one existing test caller doesn't break — new callers should use
+ *  the unqualified name. */
+export function resetStorageProvider(): void {
   cachedProvider = null;
 }
+
+/** @deprecated use `resetStorageProvider()`. */
+export const resetStorageProviderForTests = resetStorageProvider;
 
 function createStorageProvider(): IStorageProvider {
   // v6 R2 wiring: if the 4 R2_* env vars are present in Infisical
@@ -93,6 +106,16 @@ function createStorageProvider(): IStorageProvider {
       DeleteObjectCommand,
       HeadObjectCommand,
       ListObjectsV2Command,
+      // v8 Perf-7: the API factory's clients are USER-FACING (every
+      // call holds a Fastify worker on the request critical path).
+      // Slash the SDK's default retry-on-failure budget to 1 attempt:
+      // a failed presign mint should bubble immediately to a 503
+      // (the Manager clicks Retry, which is more responsive than a
+      // 25s spinner during an R2 outage). The worker keeps the
+      // default 3 attempts via its own factory because it's batch.
+      tuning: {
+        maxAttempts: 1,
+      },
     });
   }
   if (process.env['NODE_ENV'] === 'production') {

@@ -1,6 +1,6 @@
 import './instrument';
 import { serverEnv as env } from '@emapp/config';
-import { verifyEncryptionStartup } from '@emapp/db';
+import { reloadEnv, verifyEncryptionStartup } from '@emapp/db';
 import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import { NestFactory } from '@nestjs/core';
@@ -9,6 +9,7 @@ import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
+import { resetStorageProvider } from './modules/documents/storage';
 
 const CORS_ORIGINS = {
   production: ['https://app.emapp.io'],
@@ -150,6 +151,34 @@ async function bootstrap() {
   if (!process.env['SKIP_ENV_VALIDATION']) {
     await verifyEncryptionStartup();
   }
+
+  // v8 §v7-C — SIGHUP credential reload. Ops sequence to rotate R2 keys
+  // (or any other env-driven secret) without a process restart:
+  //   1. Update Infisical → push to running process env (Railway hot-update
+  //      / kubectl set env, or external secret-manager push).
+  //   2. `kill -HUP <api-pid>` (Railway: send the SIGHUP via their CLI;
+  //      most orchestrators have a built-in "reload" verb).
+  //   3. This handler re-reads process.env, drops the cached S3Client,
+  //      and the next /imports call mints with the new credentials.
+  // Pre-rotation: no in-flight presign uses the stale creds (the
+  // process MAY have one in-flight call mid-await; that's accepted
+  // — the rotation window is sub-second).
+  process.on('SIGHUP', () => {
+    try {
+      const changed = reloadEnv();
+      resetStorageProvider();
+      // pino isn't injected at this scope; bare console for the SIGHUP
+      // event (one-off, audit-by-supervisor-record). We log only the
+      // KEYS, never the values.
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[SIGHUP] env reloaded; changed keys: ${changed.length === 0 ? '(none)' : changed.join(',')}; storage provider singleton dropped`,
+      );
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(`[SIGHUP] reload failed: ${e instanceof Error ? e.message : 'unknown'}`);
+    }
+  });
 
   const port = env.PORT_API ?? 3000;
   await app.listen(port, '0.0.0.0');

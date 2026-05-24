@@ -36,8 +36,15 @@ export interface IStorageProvider {
   /** Return object metadata, or `null` if the object isn't yet present
    *  / the provider can't attest. Callers MUST treat null as "no
    *  storage-attested fact" and fall back to the client-consistency
-   *  check (not as an integrity pass). */
-  head(key: string): Promise<StorageObjectMeta | null>;
+   *  check (not as an integrity pass).
+   *
+   *  v8 SOLID-6 / Perf-1: optional `signal` plumbs an AbortController
+   *  into the underlying SDK request. The API's /start endpoint races
+   *  head() against a 500ms deadline; passing the signal makes the
+   *  abandoned request actually terminate (closes the socket back to
+   *  the pool, instead of letting it linger until the SDK's own
+   *  socketTimeout). */
+  head(key: string, opts?: { signal?: AbortSignal }): Promise<StorageObjectMeta | null>;
   /** Return a server-side Readable for the object's bytes. Used by the
    *  worker's Excel parser (Phase 6, docs/03 §10 "ExcelJS streaming
    *  parser — לא טוען את כל הקובץ לזיכרון"). Readers MUST consume the

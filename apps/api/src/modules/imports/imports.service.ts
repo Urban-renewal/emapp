@@ -102,7 +102,14 @@ function toView(row: typeof importJobs.$inferSelect): ImportJobView {
     organizationId: row.orgId,
     projectId: row.projectId,
     status: row.status as ImportJobView['status'],
-    fileName: row.fileName,
+    // v8 SOLID-4 / Sec: sanitise the Manager-supplied fileName on the
+    // WIRE too, not just on audit_log. Without this, a fileName like
+    // "Owner_038123456_signed.xlsx" leaks the 9-digit Israeli-ID-shaped
+    // substring to every Manager-with-imports:read via GET /imports/:id
+    // and the listings. The DB column keeps the cleartext (uploader UX
+    // + audit forensics via the BYPASSRLS provider pool), but the wire
+    // representation matches the audit posture.
+    fileName: sanitiseFilenameForAudit(row.fileName),
     fileSizeBytes: row.fileSizeBytes,
     totalRows: row.totalRows,
     processedRows: row.processedRows,
@@ -123,11 +130,12 @@ function newImportKey(orgId: string): string {
   return `org/${orgId}/import/${randomUUID()}.xlsx`;
 }
 
-/** Normalize the content-hash to bare hex (strip optional sha256:
- *  prefix). The DB column stores `sha256:<hex>` so we re-add the
- *  prefix on persistence. */
-function normalizeHash(input: string): string {
-  return input.startsWith('sha256:') ? input.slice(7) : input;
+/** Prefix the canonical bare hex with the format marker before
+ *  persistence. v8 SOLID-2: the wire is now bare-hex-only (Zod
+ *  enforces); we just stamp the format marker on the DB column so
+ *  the persisted value is self-describing for forensic queries. */
+function toStoredHash(bareHex: string): string {
+  return `sha256:${bareHex}`;
 }
 
 // v6 audit fix §2c — `fingerprintHeaders` lifted to `@emapp/jobs` so
@@ -257,12 +265,51 @@ export class ImportsService {
   async create(user: AccessTokenPayload, input: CreateImport): Promise<ImportUploadResponse> {
     this.requireManager(user);
     const r2Key = newImportKey(user.orgId);
-    const fileContentHash = `sha256:${normalizeHash(input.fileContentHash)}`;
+    const fileContentHash = toStoredHash(input.fileContentHash);
 
     const row = await withTenant(
       user.orgId,
       async (tx) => {
         await this.assertProjectVisible(tx, user, input.projectId);
+
+        // v8 SOLID-1 / D.22-F: Idempotency-Key replay. If the caller
+        // supplied a key AND a row with the same (org_id, created_by,
+        // idempotency_key) already exists, RETURN that row instead of
+        // attempting a fresh INSERT. RFC-style Idempotency-Key
+        // semantics: "the second call returns the same answer as the
+        // first, not a 409." Without this, browser-resubmit /
+        // network-retry surfaces an `import_conflict` to the user even
+        // though their previous attempt succeeded.
+        //
+        // We scope by `created_by` too so a hostile Manager can't
+        // probe another Manager's idempotency keys for enumeration
+        // (the partial UNIQUE in migration 0022 is (org_id, key) only,
+        // so without this scope the prior-row lookup would leak
+        // existence cross-Manager). The migration's UNIQUE remains the
+        // backstop against true races (two concurrent identical POSTs
+        // from the same Manager → the second hits the unique and we
+        // re-fetch + return).
+        if (input.idempotencyKey !== undefined) {
+          const [existing] = await tx
+            .select()
+            .from(importJobs)
+            .where(
+              and(
+                eq(importJobs.orgId, user.orgId),
+                eq(importJobs.createdBy, user.sub),
+                eq(importJobs.idempotencyKey, input.idempotencyKey),
+              ),
+            )
+            .limit(1);
+          if (existing) {
+            // Replay — return the same row. We do NOT write a second
+            // `import.created` audit row (the original event is the
+            // canonical one); the FE will receive a fresh presigned
+            // PUT URL above so a Manager who lost the first URL can
+            // still complete the upload.
+            return existing;
+          }
+        }
 
         let inserted: typeof importJobs.$inferSelect | undefined;
         try {
@@ -280,11 +327,34 @@ export class ImportsService {
               idempotencyKey: input.idempotencyKey ?? null,
             })
             .returning();
-        } catch {
+        } catch (insertErr) {
           // SECURITY (same posture as documents.create HIGH-1): the
           // pg error detail may include the r2Key on a UNIQUE
           // violation. Swallow the cause chain → generic conflict.
           // A server-random r2Key makes a real collision astronomical.
+          //
+          // v8 SOLID-1: if the failure was the (org_id, idempotency_key)
+          // UNIQUE race (two concurrent identical POSTs from the same
+          // Manager), the FIRST POST won — re-fetch and return its row
+          // for replay-correctness. We can't tell from the swallowed
+          // error WHICH unique fired, so we just try the lookup; if it
+          // misses (different unique, or transient), fall through to
+          // the generic conflict.
+          if (input.idempotencyKey !== undefined) {
+            const [existing] = await tx
+              .select()
+              .from(importJobs)
+              .where(
+                and(
+                  eq(importJobs.orgId, user.orgId),
+                  eq(importJobs.createdBy, user.sub),
+                  eq(importJobs.idempotencyKey, input.idempotencyKey),
+                ),
+              )
+              .limit(1);
+            if (existing) return existing;
+          }
+          void insertErr;
           throw new ConflictException({ error: { code: 'import_conflict' } });
         }
         if (!inserted) {
@@ -426,6 +496,44 @@ export class ImportsService {
         if (r.createdBy !== user.sub) {
           throw FORBIDDEN;
         }
+        // v8 Sec-3: GUARDED state-flip. Pre-fix this method only wrote
+        // an audit row and relied on pg-boss's singletonKey for
+        // dedup. Two concurrent /start calls (browser-resubmit, FE
+        // bug) would each pass the status check, each write an
+        // `import.start_requested` audit row, and BOTH call
+        // producer.send. The singletonKey dedups the queue, but
+        // audit_log gets two rows AND the second producer.send burns
+        // a connection acquire.
+        //
+        // Now we move the row to `queued` → `queued` with a
+        // started_at stamp via a GUARDED UPDATE (`WHERE status =
+        // 'queued' AND started_at IS NULL`). rowCount = 0 means
+        // another concurrent call won the race — surface 409 +
+        // SKIP the audit row + SKIP the producer.send (we know the
+        // first call already enqueued). The audit_log is now exactly
+        // one row per actually-distinct /start.
+        //
+        // We use started_at (existing column) as the latch; the
+        // status itself stays `queued` (the worker still expects
+        // 'queued' as the entry status — no migration needed).
+        const stampNow = new Date();
+        const startResult = await tx
+          .update(importJobs)
+          .set({ startedAt: stampNow, updatedAt: stampNow })
+          .where(
+            and(
+              eq(importJobs.id, id),
+              eq(importJobs.status, 'queued'),
+              sql`${importJobs.startedAt} IS NULL`,
+            ),
+          );
+        const startRowCount = (startResult as unknown as { rowCount?: number }).rowCount ?? 0;
+        if (startRowCount === 0) {
+          // Another /start won — idempotent: same answer the winner got.
+          throw new ConflictException({
+            error: { code: 'import_already_starting', message: 'already started' },
+          });
+        }
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
@@ -435,7 +543,10 @@ export class ImportsService {
           targetId: id,
           sessionId: user.sid,
         });
-        return r;
+        // Return the row with the started_at we just wrote so the
+        // post-tx code uses the latched view (avoids a re-read +
+        // saves one round-trip toward Perf-1).
+        return { ...r, startedAt: stampNow, updatedAt: stampNow };
       },
       { userId: user.sub },
     );
@@ -454,6 +565,8 @@ export class ImportsService {
     // loud at parseStage if the file truly isn't there (a
     // NonRetryableJobError + audit row), so we lose only the
     // "polite" upfront error, not safety.
+    let integritySkipReason: 'deadline' | 'error' | null = null;
+    let integrityErrorClass: string | null = null;
     try {
       const meta = await this.headWithDeadline(row.fileR2Key, 500);
       if (meta === undefined) {
@@ -462,9 +575,12 @@ export class ImportsService {
         this.logger.warn(
           `head(${row.fileR2Key}) deadline (500ms) — skipping pre-flight attestation`,
         );
+        integritySkipReason = 'deadline';
       } else if (meta === null) {
         // Fake / not-attested — proceed. The worker will fail loud
-        // if the file isn't actually there.
+        // if the file isn't actually there. NOT considered a "skip"
+        // for audit purposes — this is the documented FakeStorage
+        // behaviour, not an outage.
       } else if (meta.contentLength !== row.fileSizeBytes) {
         throw new BadRequestException({
           error: { code: 'upload_size_mismatch' },
@@ -477,6 +593,43 @@ export class ImportsService {
           e instanceof Error ? e.message : 'unknown'
         }`,
       );
+      integritySkipReason = 'error';
+      integrityErrorClass = e instanceof Error ? e.name : 'unknown';
+    }
+
+    // v8 Sec-5 (ISO A.12.4.1): when we proceed WITHOUT the storage-
+    // attested ContentLength match, write a dedicated audit row so a
+    // regulator can answer "which imports skipped integrity?". Without
+    // this, the only signal of a chronic R2 slowness (or routing
+    // change) is grep-pino-warn. Best-effort — a failed audit MUST
+    // NOT block the start: the spec posture is "proceed with evidence,
+    // never proceed silently."
+    if (integritySkipReason !== null) {
+      await withTenant(
+        user.orgId,
+        async (tx) => {
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+            orgId: user.orgId,
+            actorId: user.sub,
+            actorType: 'user',
+            action: 'import.upload_integrity_unverified',
+            targetTable: 'import_jobs',
+            targetId: id,
+            metadata: {
+              reason: integritySkipReason,
+              ...(integrityErrorClass ? { error_class: integrityErrorClass } : {}),
+            },
+            sessionId: user.sid,
+          });
+        },
+        { userId: user.sub },
+      ).catch((e) => {
+        this.logger.warn(
+          `audit(import.upload_integrity_unverified) failed: ${
+            e instanceof Error ? e.message : 'unknown'
+          }`,
+        );
+      });
     }
 
     // Enqueue. singletonKey = row id → a second /start for the same
@@ -502,6 +655,16 @@ export class ImportsService {
       user.orgId,
       async (tx) => {
         const row = await this.load(tx, id);
+        // v8 Sec-8: parity with start() — owner-only. A co-Manager
+        // shouldn't be able to destroy another Manager's in-flight
+        // import (especially after the worker has materialised some
+        // rows). Same posture as start(): the route is Manager-only,
+        // but within the org we scope the destructive action to the
+        // creator. 403 (not 404) here is OK — the row IS visible to
+        // every Manager in the org, we just refuse the action.
+        if (row.createdBy !== user.sub) {
+          throw FORBIDDEN;
+        }
         if (TERMINAL.has(row.status as ImportJobView['status'])) {
           // Cancel after terminal is meaningless. 409 (not 400) —
           // the request was well-formed; the state machine rejects.
@@ -515,6 +678,10 @@ export class ImportsService {
           });
         }
         const now = new Date();
+        // v8 SOLID-14: derive the SQL IN clause from CANCELLABLE so
+        // adding a new cancellable status doesn't silently desync this
+        // guard from the in-memory Set.
+        const cancellableSqlList = sql.raw([...CANCELLABLE].map((s) => `'${s}'`).join(','));
         const result = await tx
           .update(importJobs)
           .set({ status: 'cancelled', finishedAt: now, updatedAt: now })
@@ -523,7 +690,7 @@ export class ImportsService {
               eq(importJobs.id, id),
               // Race-safe — the worker MAY have just transitioned;
               // we only flip from a cancellable status.
-              sql`${importJobs.status} IN ('queued','parsing','validating','persisting','awaiting_mapping')`,
+              sql`${importJobs.status} IN (${cancellableSqlList})`,
             ),
           );
         const rowCount = (result as unknown as { rowCount?: number }).rowCount ?? 0;
@@ -641,6 +808,14 @@ export class ImportsService {
       user.orgId,
       async (tx) => {
         const row = await this.load(tx, id);
+        // v8 Sec-8: parity with start() / cancel() — owner-only. The
+        // mapping decision substantively reshapes downstream
+        // persistence; only the creator should make it. (Future:
+        // delegate to a "co-owner Manager" role if a project assigns
+        // multiple. Today, scope to creator.)
+        if (row.createdBy !== user.sub) {
+          throw FORBIDDEN;
+        }
         if (row.status !== 'awaiting_mapping') {
           throw new ConflictException({
             error: { code: 'import_not_awaiting_mapping', message: `status is ${row.status}` },
@@ -922,20 +1097,37 @@ export class ImportsService {
    *  Rejections from head() are RETHROWN so the caller's catch can
    *  decide (BadRequestException for size mismatch, warn-and-continue
    *  for anything else).
+   *
+   *  v8 SOLID-6 / Perf-1: pass an AbortController.signal into the
+   *  SDK call so the deadline ACTUALLY cancels the network request
+   *  (closes the socket back to the pool) instead of leaving it
+   *  lingering until the SDK's own socketTimeout fires. The race is
+   *  still observational for the API's response — the abort is
+   *  observational for the SDK's connection pool.
+   *
    *  v7 P0 (perf Agent C). */
   private async headWithDeadline(
     key: string,
     deadlineMs: number,
   ): Promise<Awaited<ReturnType<IStorageProvider['head']>> | undefined> {
     const DEADLINE = Symbol('deadline');
+    const abort = new AbortController();
     let timer: NodeJS.Timeout | undefined;
     const deadline = new Promise<typeof DEADLINE>((resolve) => {
-      timer = setTimeout(() => resolve(DEADLINE), deadlineMs);
-      // Don't keep the event loop alive solely for this timer.
+      timer = setTimeout(() => {
+        // Fire the abort FIRST so the in-flight SDK request tears
+        // down its socket; then resolve the race so the caller sees
+        // `undefined` and proceeds.
+        abort.abort();
+        resolve(DEADLINE);
+      }, deadlineMs);
       timer.unref?.();
     });
     try {
-      const winner = await Promise.race([this.storage.head(key), deadline]);
+      const winner = await Promise.race([
+        this.storage.head(key, { signal: abort.signal }),
+        deadline,
+      ]);
       return winner === DEADLINE ? undefined : winner;
     } finally {
       if (timer !== undefined) clearTimeout(timer);

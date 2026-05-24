@@ -38,7 +38,27 @@ import {
   type IStorageProvider,
 } from '@emapp/db';
 
+// v8 §v7-C: memoize so SIGHUP can drop the cached singleton and the
+// next call rebuilds against rotated R2 credentials. Without this,
+// every invocation would already rebuild (the worker only calls the
+// factory once at boot) — but exposing `resetStorageProvider()` keeps
+// the symmetry with the API factory and enables hot reload without a
+// process restart.
+let cached: IStorageProvider | null = null;
+
 export function storageProviderFactory(): IStorageProvider {
+  if (cached !== null) return cached;
+  cached = createWorkerStorageProvider();
+  return cached;
+}
+
+/** v8 §v7-C — drop the cached singleton (used by the SIGHUP handler
+ *  after a credential rotation). */
+export function resetStorageProvider(): void {
+  cached = null;
+}
+
+function createWorkerStorageProvider(): IStorageProvider {
   if (r2EnvIsComplete(env)) {
     return buildR2Provider(env, {
       S3Client,
@@ -48,6 +68,9 @@ export function storageProviderFactory(): IStorageProvider {
       DeleteObjectCommand,
       HeadObjectCommand,
       ListObjectsV2Command,
+      // v8 Perf-7 (mirror): the worker keeps the default maxAttempts=3
+      // (it's batch — a transient R2 hiccup deserves the retry), but
+      // we pass tuning explicitly to make the policy auditable.
     });
   }
   if (process.env['NODE_ENV'] === 'production') {

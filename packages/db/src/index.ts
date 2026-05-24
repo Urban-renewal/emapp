@@ -12,7 +12,7 @@ export {
   type PoolErrorSource,
   type PoolName,
 } from './client';
-export { env } from './env';
+export { env, reloadEnv } from './env';
 export { withTenant, type TenantTx } from './wrappers/with-tenant';
 export { withProvider } from './wrappers/with-provider';
 export { withBootstrap } from './wrappers/with-bootstrap';

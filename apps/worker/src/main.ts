@@ -24,7 +24,7 @@
  * testable. main.ts wires real `process.exit`, real `pool`, real
  * pg-boss, and real IJobHandler instances.
  */
-import { env, pool } from '@emapp/db';
+import { env, pool, reloadEnv } from '@emapp/db';
 // eslint-disable-next-line import/no-named-as-default
 import PgBoss from 'pg-boss';
 // eslint-disable-next-line import/no-named-as-default
@@ -38,11 +38,36 @@ import {
   TemplateResolver,
 } from './mapping/mapping-resolver';
 import { registerHandler, type BossLike } from './pg-boss-adapter';
-import { storageProviderFactory } from './storage-provider';
+import { resetStorageProvider, storageProviderFactory } from './storage-provider';
 
 const log = pino({
   level: process.env['LOG_LEVEL'] ?? 'info',
   base: { service: 'emapp-worker' },
+  // v8 Sec-16 — defense-in-depth PII redaction. The handler is
+  // careful not to log row content, but a future change that logs a
+  // payload field (e.g. for a debug breakpoint) would otherwise leak
+  // PII to the worker log. Mirrors the API's pino redact list.
+  // `*.*` syntax catches any nesting depth; pino's path matcher
+  // walks both arrays and objects.
+  redact: {
+    paths: [
+      '*.national_id',
+      '*.nationalId',
+      '*.phone',
+      '*.password',
+      '*.signature',
+      '*.signatureBlob',
+      '*.pii',
+      // The Excel parsed row arrays — if anyone ever logs a row,
+      // its cells contain PII.
+      '*.row',
+      '*.rows',
+      // Nested via headers metadata.
+      'parsed.row',
+      'parsed.rows',
+    ],
+    remove: true,
+  },
 });
 
 /** Drain window after boss.stop() before exiting. 1500ms = enough for
@@ -129,6 +154,26 @@ async function main(): Promise<void> {
   ]);
   const importHandler = new ImportJobHandler(storage, mappingResolver);
   try {
+    // v8 Perf-4: worker concurrency from env. Default 2 (calibrated:
+    //   - Excel parse RAM ≈ 150MB worst-case per concurrent import
+    //     (50MB zip × 2-3× decompression × ExcelJS overhead, see
+    //     zip-preflight.ts:43-54).
+    //   - Railway Free Tier RSS budget ≈ 512MB; baseline (node + pg
+    //     pool + pino + handler code) ≈ 100-150MB.
+    //   - 2 concurrent imports = ~150MB × 2 + 150MB baseline ≈ 450MB,
+    //     fits with headroom.
+    // Ops can bump WORKER_CONCURRENCY to 4 on the paid plan (>1GB
+    // RSS). Going past 2 on Free Tier risks OOMKill — keep the
+    // default conservative.
+    const workerConcurrency = Number.parseInt(process.env['WORKER_CONCURRENCY'] ?? '2', 10);
+    if (!Number.isFinite(workerConcurrency) || workerConcurrency < 1 || workerConcurrency > 16) {
+      log.error(
+        { value: process.env['WORKER_CONCURRENCY'] },
+        'WORKER_CONCURRENCY must be an integer in [1, 16]',
+      );
+      process.exit(1);
+    }
+    log.info({ workerConcurrency }, 'registering handler with concurrency');
     await registerHandler({
       // pg-boss v10's class shape is compatible with BossLike (we only
       // touch the four methods declared on the interface).
@@ -137,6 +182,7 @@ async function main(): Promise<void> {
         handler: importHandler,
         payloadSchema: importHandler.payloadSchema,
       },
+      concurrency: workerConcurrency,
       log: {
         info: (msg, meta) => log.info(meta ?? {}, msg),
         warn: (msg, meta) => log.warn(meta ?? {}, msg),
@@ -151,6 +197,26 @@ async function main(): Promise<void> {
   }
 
   log.info('worker ready');
+
+  // v8 §v7-C — SIGHUP credential reload (mirror of API main.ts). Re-
+  // reads process.env into @emapp/db's env object and drops the
+  // worker's storage provider singleton so the next R2 fetch uses
+  // rotated credentials. The worker process keeps running; in-flight
+  // jobs keep their current S3Client (rotation window is sub-second
+  // so this is acceptable). Logs only the KEYS that changed, never
+  // the values.
+  process.on('SIGHUP', () => {
+    try {
+      const changed = reloadEnv();
+      resetStorageProvider();
+      log.warn(
+        { changed_keys: changed },
+        'SIGHUP: env reloaded; storage provider singleton dropped',
+      );
+    } catch (e) {
+      log.error({ err: e instanceof Error ? e.message : 'unknown' }, 'SIGHUP: reload failed');
+    }
+  });
 
   // Signal handlers AFTER boss + handlers are live, so a SIGTERM during
   // boot doesn't try to stop a boss that never started. The shutdown

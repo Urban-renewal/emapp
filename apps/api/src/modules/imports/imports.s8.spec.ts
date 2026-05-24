@@ -292,7 +292,7 @@ describe('Phase 6 S8 · §A — POST /imports (create)', () => {
   // landing in audit_log.afterState. The row itself stores the
   // cleartext name (RLS-protected, no PII surface for cross-Manager
   // read); only the audit row is sanitised.
-  it('A7) filename with PII-shaped digit run is stripped from audit.afterState', async () => {
+  it('A7) filename with PII-shaped digit run is stripped from BOTH audit.afterState AND the wire (v8 SOLID-4 reinforcement)', async () => {
     const result = await svc.create(userOf(orgA, 'manager'), {
       projectId: orgA.projects[0]!.id,
       // Manager dumb-named the file with what looks like a national_id.
@@ -301,9 +301,14 @@ describe('Phase 6 S8 · §A — POST /imports (create)', () => {
       fileContentHash: '7'.repeat(64),
       dryRun: false,
     });
-    // Row itself keeps the original name (RLS protects it; Manager UI
-    // shows the real filename to the uploader).
-    expect(result.import.fileName).toBe('Owner_038123456_signed.xlsx');
+    // v8 SOLID-4 (Agent A): the wire `fileName` is now sanitised too,
+    // not just the audit. Pre-v8 the row's wire representation kept
+    // the cleartext (every Manager-with-imports:read could see the
+    // 9-digit substring of every other Manager's filenames cross-
+    // Manager within the org); v8 closes that by running
+    // sanitiseFilenameForAudit in toView() too. The DB column keeps
+    // the cleartext (uploader UX + forensic audit via BYPASSRLS).
+    expect(result.import.fileName).toBe('Owner_[N]_signed.xlsx');
     // Audit row has the digits redacted.
     const [row] = await withTenant(orgA.id, (tx) =>
       tx

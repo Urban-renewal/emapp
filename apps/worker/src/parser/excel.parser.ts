@@ -64,6 +64,7 @@ export type ParserErrorCode =
   | 'formula_in_header' // CSV-injection guard (header row)
   | 'formula_in_data' // CSV-injection guard (any data row) — audit-pass v2 C1
   | 'decompressed_too_large' // zip-bomb guard — audit-pass v2 C8
+  | 'wrong_file_type' // v8 SOLID-3 / Sec-7 — bytes don't start with ZIP magic
   | 'corrupt_file'; // ExcelJS threw
 
 export class ExcelParserError extends Error {

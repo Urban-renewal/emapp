@@ -23,7 +23,6 @@ import { and, asc, eq } from 'drizzle-orm';
 import { Workbook } from 'exceljs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { providerPool } from '../../../packages/db/src/client';
 import { createTestOrg, type TestOrg } from '../../../packages/db/test/factories';
 import { setupTestDatabase } from '../../../packages/db/test/setup';
 import { ImportJobHandler } from '../src/handlers/import-job.handler';
@@ -115,20 +114,10 @@ describe('Audit-pass v2 C5 — import.received audit row', () => {
     expect(rows[1]!.action).toBe('import.parsing');
   });
 
-  it('3) metadata carries pg_boss_job_id + attempt as strings', async () => {
-    const storage = new FakeStorageProvider();
-    const handler = new ImportJobHandler(storage);
-    const key = `org/${org.id}/import/c5-3.xlsx`;
-    storage.setObject(key, await buildXlsx());
-    const jobId = await createJob(org, key);
-    await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
-    const rows = await getAuditRowsOrdered(org, jobId);
-    const received = rows.find((r) => r.action === 'import.received')!;
-    expect(received.metadata).toMatchObject({
-      pg_boss_job_id: 'pg-boss-tid',
-      attempt: '1',
-    });
-  });
+  // Test #3 deleted in batch-2 cleanup — duplicated by
+  // v4-audit-invariants §2 (ctx.attempt is faithfully written to
+  // audit_log.metadata.attempt — same assertion against pg_boss_job_id
+  // + attempt). Saves ~13s.
 
   it('4) cross-org payload → NO leakage of import.received to the other org', async () => {
     const storage = new FakeStorageProvider();
@@ -149,47 +138,16 @@ describe('Audit-pass v2 C5 — import.received audit row', () => {
     expect(bRows).toHaveLength(0);
   });
 
-  it('5) handler invoked twice → import.received appears twice (per-attempt)', async () => {
-    const storage = new FakeStorageProvider();
-    const handler = new ImportJobHandler(storage);
-    const key = `org/${org.id}/import/c5-5.xlsx`;
-    storage.setObject(key, await buildXlsx());
-    const jobId = await createJob(org, key);
-
-    await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
-
-    // Reset to 'queued' to simulate a real pg-boss retry that re-enters
-    // the handler before terminal state is reached.
-    const provClient = await providerPool.connect();
-    try {
-      await provClient.query(
-        `UPDATE import_jobs SET status='queued', processed_rows=0, ok_rows=0, failed_rows=0, started_at=NULL, finished_at=NULL WHERE id=$1`,
-        [jobId],
-      );
-    } finally {
-      provClient.release();
-    }
-
-    await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
-    const rows = await getAuditRowsOrdered(org, jobId);
-    const received = rows.filter((r) => r.action === 'import.received');
-    // Per-attempt: each handler.handle writes its own import.received.
-    expect(received.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('6) metadata is flat string|null — no PII surface', async () => {
-    const storage = new FakeStorageProvider();
-    const handler = new ImportJobHandler(storage);
-    const key = `org/${org.id}/import/c5-6.xlsx`;
-    storage.setObject(key, await buildXlsx());
-    const jobId = await createJob(org, key);
-    await handler.handle({ jobId, orgId: org.id, createdBy: org.users[0]!.id }, makeCtx());
-    const rows = await getAuditRowsOrdered(org, jobId);
-    const received = rows.find((r) => r.action === 'import.received')!;
-    const meta = (received.metadata ?? {}) as Record<string, unknown>;
-    for (const [, v] of Object.entries(meta)) {
-      if (v === null) continue;
-      expect(typeof v).toBe('string');
-    }
-  });
+  // Test #5 deleted in batch-2 cleanup — per-attempt re-receive
+  // semantics are already pinned by:
+  //   - import-job.handler.spec.ts test #5 (retry idempotency, state
+  //     stays correct across re-handle())
+  //   - the v4 §2 attempt-propagation test verifies the per-attempt
+  //     metadata distinguishes 1st vs 3rd invocation
+  // Saves ~25s.
+  //
+  // Test #6 deleted in batch-2 cleanup — duplicated by audit-no-pii
+  // spec.ts §2 (every transition row has metadata that is a flat
+  // string-or-null record) — same predicate, broader scope.
+  // Saves ~13s.
 });

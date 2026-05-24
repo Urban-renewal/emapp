@@ -31,6 +31,8 @@ import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module';
 
+import { ProviderAuditController } from './provider-audit.controller';
+import { ProviderAuditService } from './provider-audit.service';
 import { ProviderTenantDetailController } from './provider-tenant-detail.controller';
 import { ProviderTenantDetailService } from './provider-tenant-detail.service';
 import { ProviderTenantsController } from './provider-tenants.controller';
@@ -38,9 +40,9 @@ import { ProviderTenantsService } from './provider-tenants.service';
 
 @Module({
   imports: [AuthModule],
-  // P6.5-2 + P6.5-3: tenants LIST + DETAIL.
-  // P6.5-4..5 will add: audit search, system health.
-  controllers: [ProviderTenantsController, ProviderTenantDetailController],
-  providers: [ProviderTenantsService, ProviderTenantDetailService],
+  // P6.5-2 + 3 + 4: tenants LIST + DETAIL + audit search.
+  // P6.5-5 will add: system health.
+  controllers: [ProviderTenantsController, ProviderTenantDetailController, ProviderAuditController],
+  providers: [ProviderTenantsService, ProviderTenantDetailService, ProviderAuditService],
 })
 export class ProviderModule {}

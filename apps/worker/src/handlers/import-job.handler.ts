@@ -160,7 +160,13 @@ function extractValidatedRow(
 
 /** Find-or-create a building row keyed by (project, address). Caches
  *  results in `cache` so a multi-row import that all targets one
- *  building does one SELECT + one INSERT (max) across all rows. */
+ *  building does one SELECT + one INSERT (max) across all rows.
+ *
+ *  DEPRECATED — replaced by `resolveBuildingsBatch` (v6 audit fix §7).
+ *  Kept for the rare single-record callers + as documentation of the
+ *  pre-batched shape. eslint-disable below silences the no-unused-vars
+ *  warning. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function findOrCreateBuilding(
   tx: TenantTx,
   projectId: string,
@@ -236,6 +242,84 @@ async function findOrCreateApartment(
   if (!created) throw new Error('failed to insert apartment');
   cache.set(key, created.id);
   return created.id;
+}
+
+/** Batch resolve buildings — find-or-create one per (projectId, address)
+ *  pair. Same pattern as resolveApartmentsBatch / resolveOwnersBatch:
+ *  ~3 round-trips total regardless of N unique addresses.
+ *
+ *  v6 audit fix (§7 — HIGH perf, cross-confirmed by perf + SOLID agents):
+ *  PROMOTED MEDIUM→HIGH because owners + apartments + ownerships are
+ *  already batched (v3/v4 fixes); leaving buildings unbatched is now a
+ *  SOLID inconsistency, not just perf debt. Pre-fix: N round-trips per
+ *  unique building (typical urban-renewal import has 10-50 buildings →
+ *  +2-10s wall time, masked in T6.11 fixture which has 1 building).
+ *
+ *  Relies on the partial UNIQUE index `buildings_project_address_active`
+ *  (migration 0029) for the ON CONFLICT DO NOTHING race-recovery path.
+ *
+ *  Map key = the address string (one project per import, so projectId
+ *  is constant within a call → no need to compose it into the key). */
+async function resolveBuildingsBatch(
+  tx: TenantTx,
+  projectId: string,
+  addresses: readonly string[],
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  if (addresses.length === 0) return result;
+
+  // Dedupe input — multiple rows commonly target the same building.
+  const unique = [...new Set(addresses)];
+
+  // STEP 1 — bulk SELECT existing active buildings.
+  const existing = await tx
+    .select({ id: buildings.id, address: buildings.address })
+    .from(buildings)
+    .where(
+      and(
+        eq(buildings.projectId, projectId),
+        inArray(buildings.address, unique),
+        sql`${buildings.archivedAt} IS NULL`,
+      ),
+    );
+  for (const r of existing) result.set(r.address, r.id);
+
+  // STEP 2 — bulk INSERT missing. City is required NOT NULL on the
+  // table; the import file has no city column in the MVP mapping so
+  // we default to a sentinel that the Manager can edit later via
+  // the buildings UI. Same posture as the pre-batched single-record
+  // path (findOrCreateBuilding, kept around as a sentinel for any
+  // legacy caller — eslint-disabled below).
+  const toCreate = unique.filter((a) => !result.has(a));
+  if (toCreate.length === 0) return result;
+
+  const inserted = await tx
+    .insert(buildings)
+    .values(toCreate.map((address) => ({ projectId, address, city: '-' })))
+    .onConflictDoNothing({
+      target: [buildings.projectId, buildings.address],
+      where: sql`archived_at IS NULL`,
+    })
+    .returning({ id: buildings.id, address: buildings.address });
+  for (const r of inserted) result.set(r.address, r.id);
+
+  // STEP 3 — race recovery (concurrent import beat us to insert).
+  const stillMissing = toCreate.filter((a) => !result.has(a));
+  if (stillMissing.length > 0) {
+    const recovered = await tx
+      .select({ id: buildings.id, address: buildings.address })
+      .from(buildings)
+      .where(
+        and(
+          eq(buildings.projectId, projectId),
+          inArray(buildings.address, stillMissing),
+          sql`${buildings.archivedAt} IS NULL`,
+        ),
+      );
+    for (const r of recovered) result.set(r.address, r.id);
+  }
+
+  return result;
 }
 
 /** Batch resolve apartments — find-or-create one per (building, number)
@@ -1307,13 +1391,17 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
         // fix). ~4 round-trips for ANY number of owners.
         const ownerByHash = await resolveOwnersBatch(tx, payload.orgId, rowsByHash);
 
-        // STEP B: buildings (find-or-create per unique address —
-        // typically 1-3 buildings per import, so per-record is cheap).
-        const buildingByAddress = new Map<string, string>();
+        // STEP B: batched buildings (v6 audit fix §7 — HIGH perf).
+        // Was a per-address loop (N round-trips × N unique addresses).
+        // Realistic urban-renewal import has 10-50 buildings → +2-10s
+        // wall-clock pre-fix. Now ~3 round-trips total regardless of N,
+        // matching the pattern of resolveApartmentsBatch + resolve
+        // OwnersBatch.
+        const allAddresses: string[] = [];
         for (const [, rows] of apartmentGroups) {
-          const first = rows[0]!;
-          await findOrCreateBuilding(tx, projectId, first.buildingAddress, buildingByAddress);
+          allAddresses.push(rows[0]!.buildingAddress);
         }
+        const buildingByAddress = await resolveBuildingsBatch(tx, projectId, allAddresses);
 
         // STEP C: batched apartments (E1/E2 perf fix). ~3 round-trips
         // for ANY number of apartments.
@@ -1474,6 +1562,31 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
     // forward path's persisting→done transition checks this flag to
     // avoid running persistStage twice in one handle().
     cache.persisted = true;
+
+    // v6 audit fix (§6 — P0 perf, cross-confirmed by perf agent):
+    // null the parse+mapping cache so V8 can reclaim the workbook +
+    // parsed-rows arrays before the handler returns. For a 50MB
+    // Excel with 30k rows the workbook + parsed string[][] together
+    // hold ~100-150MB; on Railway Free Tier (512MB total RSS for
+    // node + pg pool + pg-boss + pino + workbook), keeping them
+    // pinned across the lifetime of the handler invocation is the
+    // single biggest OOM risk for production-scale imports.
+    //
+    // Safety: we set persisted=true ABOVE so the A4 recovery hook
+    // (runStage persisting→done) skips re-running persistStage in
+    // the same handle() invocation. The cache.parsed / cache.mapping
+    // / cache.okRows are only consumed by validateStage (cache-miss
+    // rebuild path) and by persistStage itself — both already ran.
+    // Nothing downstream in the state machine consults them.
+    //
+    // The handler returns shortly after; the next iteration of the
+    // outer state-machine loop reads status='done' (terminal) and
+    // exits. The cache object goes out of scope then; nulling here
+    // just lets GC start ~tens of ms earlier — a small but
+    // meaningful margin on Free Tier under burst load.
+    cache.parsed = undefined;
+    cache.mapping = undefined;
+    cache.okRows = undefined;
 
     ctx.log.info('persistence complete', {
       apartments: apartmentGroups.size,

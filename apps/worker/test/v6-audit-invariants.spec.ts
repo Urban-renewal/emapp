@@ -379,22 +379,25 @@ describe('Phase 6+7 v6 audit · §6 — workbook RAM release after persistStage'
   // persistStage commits, it should be nulled so V8 can reclaim the
   // ~100-150MB workbook before the handler returns. Free Tier
   // (512MB) makes this critical for 30k-row imports.
-  it.fails(
-    '6) persistStage nulls cache.parsed + cache.mapping after cache.persisted=true',
-    async () => {
-      const src = await (
-        await import('node:fs/promises')
-      ).readFile(new URL('../src/handlers/import-job.handler.ts', import.meta.url), 'utf8');
-      // Look for the cleanup pattern right after `cache.persisted = true`.
-      // Acceptable patterns: `cache.parsed = undefined`, `delete cache.parsed`.
-      const persistedIdx = src.indexOf('cache.persisted = true');
-      expect(persistedIdx).toBeGreaterThan(0);
-      const window = src.slice(persistedIdx, persistedIdx + 400);
-      expect(window).toMatch(
-        /cache\.parsed\s*=\s*undefined|delete\s+cache\.parsed|cache\.parsed\s*=\s*null/,
-      );
-    },
-  );
+  it('6) persistStage nulls cache.parsed + cache.mapping after cache.persisted=true', async () => {
+    const src = await (
+      await import('node:fs/promises')
+    ).readFile(new URL('../src/handlers/import-job.handler.ts', import.meta.url), 'utf8');
+    // Look for the cleanup pattern after `cache.persisted = true`.
+    // Acceptable patterns: `cache.parsed = undefined`, `delete cache.parsed`.
+    // Window widened to 2500 chars (was 400) to allow for the
+    // explanatory comment block the v6 closure added between the
+    // `persisted = true` marker and the actual cache-null lines.
+    const persistedIdx = src.indexOf('cache.persisted = true');
+    expect(persistedIdx).toBeGreaterThan(0);
+    const window = src.slice(persistedIdx, persistedIdx + 2500);
+    expect(window).toMatch(
+      /cache\.parsed\s*=\s*undefined|delete\s+cache\.parsed|cache\.parsed\s*=\s*null/,
+    );
+    // Also pin the v6 closure's nulling of mapping + okRows.
+    expect(window).toMatch(/cache\.mapping\s*=\s*undefined/);
+    expect(window).toMatch(/cache\.okRows\s*=\s*undefined/);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────
@@ -406,15 +409,24 @@ describe('Phase 6+7 v6 audit · §7 — findOrCreateBuilding batched', () => {
   // Promoted from MEDIUM to HIGH in v6 because the inconsistency
   // is now a SOLID concern (3 of 4 resolvers batched; the 4th
   // pattern-violates).
-  it.fails(
-    '7) handler exposes resolveBuildingsBatch (mirror of resolveApartmentsBatch)',
-    async () => {
-      const src = await (
-        await import('node:fs/promises')
-      ).readFile(new URL('../src/handlers/import-job.handler.ts', import.meta.url), 'utf8');
-      expect(src).toMatch(/resolveBuildingsBatch/);
-    },
-  );
+  it('7) handler exposes resolveBuildingsBatch (mirror of resolveApartmentsBatch)', async () => {
+    const src = await (
+      await import('node:fs/promises')
+    ).readFile(new URL('../src/handlers/import-job.handler.ts', import.meta.url), 'utf8');
+    // Function is declared.
+    expect(src).toMatch(/async function resolveBuildingsBatch/);
+    // STEP B in persistStage actually CALLS the batched resolver
+    // (not the deprecated per-record findOrCreateBuilding loop).
+    const stepBIdx = src.indexOf('STEP B:');
+    expect(stepBIdx).toBeGreaterThan(0);
+    const stepBBlock = src.slice(stepBIdx, stepBIdx + 1500);
+    expect(stepBBlock).toMatch(/await\s+resolveBuildingsBatch/);
+    // And NOT the legacy loop pattern (per-row findOrCreateBuilding
+    // inside an apartmentGroups for-loop).
+    expect(stepBBlock).not.toMatch(
+      /for\s*\([^)]*apartmentGroups[^)]*\)\s*\{[^}]*await\s+findOrCreateBuilding/s,
+    );
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────
@@ -425,24 +437,25 @@ describe('Phase 6+7 v6 audit · §8 — submitMapping producer.send retry', () =
   // single Neon blip the job is orphaned (status='queued' forever, no
   // pg-boss row exists). The catch block only logs; should retry with
   // exponential backoff.
-  it.fails(
-    '8) submitMapping retries producer.send with exponential backoff before logging',
-    async () => {
-      const src = await (
-        await import('node:fs/promises')
-      ).readFile(
-        new URL('../../api/src/modules/imports/imports.service.ts', import.meta.url),
-        'utf8',
-      );
-      // Look for a retry loop or a retry helper around producer.send
-      // in the submitMapping function. Heuristic: 3 sends OR
-      // exponential terms like '100, 500, 2000' OR 'retry' nearby.
-      const submitMappingIdx = src.indexOf('async submitMapping');
-      const blockEnd = src.indexOf('private ', submitMappingIdx);
-      const block = src.slice(submitMappingIdx, blockEnd > 0 ? blockEnd : submitMappingIdx + 5000);
-      expect(block).toMatch(/retry|attempt|backoff/i);
-    },
-  );
+  it('8) submitMapping retries producer.send with exponential backoff before logging', async () => {
+    const src = await (
+      await import('node:fs/promises')
+    ).readFile(
+      new URL('../../api/src/modules/imports/imports.service.ts', import.meta.url),
+      'utf8',
+    );
+    // The v6 fix introduces a `sendWithRetry` helper (exp backoff
+    // 100/500/2000ms) and calls it from submitMapping wrapping
+    // producer.send. Assert the helper exists + is used.
+    expect(src).toMatch(/function sendWithRetry|sendWithRetry\s*=/);
+    // The helper must use the documented backoff schedule.
+    expect(src).toMatch(/\[100,\s*500,\s*2000\]/);
+    // submitMapping must invoke it (not call producer.send directly).
+    const submitMappingIdx = src.indexOf('async submitMapping');
+    const blockEnd = src.indexOf('private ', submitMappingIdx);
+    const block = src.slice(submitMappingIdx, blockEnd > 0 ? blockEnd : submitMappingIdx + 5000);
+    expect(block).toMatch(/sendWithRetry/);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────

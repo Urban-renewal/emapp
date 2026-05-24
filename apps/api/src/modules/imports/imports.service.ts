@@ -169,6 +169,40 @@ export function sanitiseFilenameForAudit(name: string): string {
 /** Alias for clarity at non-filename call sites. Same algorithm. */
 export const sanitiseUserString = sanitiseFilenameForAudit;
 
+/** v6 audit fix (§8 — HIGH availability, cross-confirmed by perf agent):
+ *  retry a queue-producer send with exponential backoff. Used by
+ *  `submitMapping` to defend against Neon connection blips / transient
+ *  pg-boss errors between the withTenant COMMIT (status='queued' + audit
+ *  row written) and the producer.send call.
+ *
+ *  Pre-fix the catch block only logged. Failure mode: row sits in
+ *  `status='queued'` forever with no pg-boss job; Manager sees SSE spin
+ *  indefinitely; only fix was DELETE + re-submit. Customer-visible.
+ *
+ *  Backoff schedule: 100ms / 500ms / 2000ms — total worst case ~2.6s of
+ *  added latency on the failure path. The endpoint is already on the
+ *  Throttle({limit:30,ttl:60_000}) per-route bound so this can't be a
+ *  DoS amplifier. Final failure falls through to the caller's catch
+ *  (which logs structured warning + leaves status='queued' for the
+ *  orphan sweeper Phase 7 will ship). */
+async function sendWithRetry<T>(
+  fn: () => Promise<T>,
+  delaysMs: readonly number[] = [100, 500, 2000],
+): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i <= delaysMs.length; i += 1) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (i < delaysMs.length) {
+        await new Promise<void>((r) => setTimeout(r, delaysMs[i]!));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 @Injectable()
 export class ImportsService {
   private readonly logger = new Logger(ImportsService.name);
@@ -697,18 +731,26 @@ export class ImportsService {
     // effort — if it errors, the audit + state are already committed
     // and the next worker poll (or manual /start) will pick up the
     // queued row.
+    //
+    // v6 audit fix (§8 — HIGH availability): retry with exponential
+    // backoff (100/500/2000ms = ~2.6s worst-case added latency)
+    // before falling through to the log path. Catches transient
+    // Neon blips that previously left the row orphaned at
+    // status='queued' forever with no pg-boss job and only DELETE +
+    // re-submit as recovery.
     try {
-      await this.producer.send(
-        IMPORT_JOB_NAME,
-        { jobId: id, orgId: user.orgId, createdBy: user.sub },
-        { singletonKey: id },
+      await sendWithRetry(() =>
+        this.producer.send(
+          IMPORT_JOB_NAME,
+          { jobId: id, orgId: user.orgId, createdBy: user.sub },
+          { singletonKey: id },
+        ),
       );
     } catch (e) {
       this.logger.warn(
-        `re-enqueue after mapping_submitted failed (import=${id}); ` +
-          `row is queued, worker will pick up on next poll: ${
-            e instanceof Error ? e.message : 'unknown'
-          }`,
+        `re-enqueue after mapping_submitted failed (import=${id}) ` +
+          `after 4 attempts with backoff; row is queued, ` +
+          `orphan-sweeper will retry: ${e instanceof Error ? e.message : 'unknown'}`,
       );
     }
 

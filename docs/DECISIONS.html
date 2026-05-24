@@ -929,7 +929,7 @@ footer .footer-meta {
 <pre><code>## D.NN — Title
 Date · Decision · Alternatives · Why · Reversibility · Revisit trigger
 </code></pre>
-<p><strong>Last updated:</strong> 2026-05-16 — D.16-D.20 propagated across all 9 planning docs (envelope, /api/v1/, 6 roles, status enum, national_id, Tenant→SMS).</p>
+<p><strong>Last updated:</strong> 2026-05-24 — D.35 (Phase 4 FE topology — Option A: Pages reverse-proxy + hostOnly cookies) and D.36 (phase-transition audit protocol) added as part of v8.5 readiness pass.</p>
 <hr />
 <h2>D.01 — Stack: Neon + Railway + Cloudflare + Resend + Sentry</h2>
 <ul>
@@ -1444,6 +1444,65 @@ Tenant tier), GATE 4 (SMS provider swap).</li>
 <p><strong>Verification:</strong> 157/157 worker tests green; 9/9 new mapping_templates schema tests green; lint + typecheck clean across all 8 packages; awaiting_mapping integration tests prove the new state actually reaches PG + writes the audit row; chain tests prove ordering + reject-halts + source-tag invariants. One pre-existing flaky perf test (<code>t1-7-with-tenant-perf.spec.ts</code>) timed out at 5s on Neon network latency — unrelated to S7, recorded for follow-up.</p>
 <p><strong>Reversibility:</strong> the seam is the contract. Removing Layer 2 + 3 is a one-line edit in <code>main.ts</code>. The migrations are forward-only (mapping_templates can be archived but the column shape is stable). The <code>awaiting_mapping</code> status is wired into the audit_log + state machine but a future decision to remove it would only need a migration to fail any open rows + a CHECK contraction.</p>
 <p><strong>Ref:</strong> docs/03 §10; D.04 (queue/no-Redis); D.12 (PII encryption); D.16 (envelope); D.17 + D.26 (policy); D.33 (process — DoD↔test ID required); <code>apps/worker/src/mapping/mapping-resolver.ts</code>; <code>apps/worker/src/handlers/import-job.handler.ts</code>; <code>packages/db/src/schema/mapping-templates.ts</code>; <code>migrations/0027_import_jobs_awaiting_mapping.sql</code>, <code>0028_mapping_templates.sql</code>, <code>0029_buildings_project_address_unique.sql</code>; <code>apps/worker/test/{mapping-resolver,awaiting-mapping}.spec.ts</code>; <code>packages/db/test/mapping-templates-schema.spec.ts</code>.</p>
+<hr />
+<h2>D.35 — Phase 4 FE topology: Cloudflare Pages reverse-proxy → private Railway API (same-origin /api/v1/*), hostOnly cookies</h2>
+<p><strong>Decision:</strong> The FE on <code>app.emapp.io</code> (Cloudflare Pages) routes all <code>/api/v1/*</code> calls through a Next.js Route Handler at <code>apps/web/src/app/api/[...path]/route.ts</code> that proxies to the private Railway API URL (<code>API_BACKEND_URL</code>, server-only Infisical secret). The API has NO public DNS — its only ingress is the Pages Function. Auth cookies stay <strong>hostOnly</strong> (no <code>Domain=</code> attribute, matching the existing <code>COOKIE_BASE</code> in <code>auth.service.ts</code> line ~59).</p>
+<p><strong>Why this over the obvious alternative (api.emapp.io public subdomain + CORS):</strong></p>
+<ol>
+  <li><strong>Cookie security.</strong> Same-origin = hostOnly cookies. A future api.emapp.io subdomain takeover (CNAME dangling on an old CDN, an SRE who forgets to remove a Cloudflare DNS record) cannot read sessions issued to app.emapp.io because the cookie is bound to the exact host. With a Domain=emapp.io cookie, ANY *.emapp.io subdomain can read it — a structural Sev1 waiting for a misconfiguration.</li>
+  <li><strong>No CORS.</strong> Same origin means no preflight OPTIONS roundtrip on every state-changing request (saves ~30–50ms p50 from Israeli users hitting EU edge). Eliminates an entire class of "I added a new endpoint and forgot the CORS allowlist" bugs.</li>
+  <li><strong>No public attack surface for the API.</strong> Railway internal URL only — Bots, scanners, and credential-stuffing tooling cannot reach <code>/api/v1/auth/login</code> directly. Cloudflare WAF + Pages DDoS sits in front; the throttler (D.30) and lockout become defense-in-depth, not the only line.</li>
+  <li><strong>Israeli user latency.</strong> Cloudflare's TLV PoP terminates the connection; the proxy hop to Railway-eu is one east-west call inside the same provider region. Net: faster than a direct browser→Railway round trip from Israel today (which goes browser→Frankfurt→Railway).</li>
+</ol>
+<p><strong>What changed (v8.5):</strong></p>
+<ul>
+  <li><strong>New:</strong> <code>apps/web/src/app/api/[...path]/route.ts</code> — Next.js Route Handler that proxies all verbs (GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS), forwards cookies + body + safe headers, strips Host/X-Forwarded-*/CF-* (rebuilds X-Forwarded-For from <code>CF-Connecting-IP</code> so backend logs see the real client), passes Set-Cookie back unmodified (critical for the refresh-token rotation flow). SSE-safe (streams response body, no buffering).</li>
+  <li><strong>Changed:</strong> <code>apps/web/src/lib/api-client.ts</code> now calls <code>/api/v1/*</code> (no <code>NEXT_PUBLIC_API_URL</code>, no absolute base). <code>credentials: 'same-origin'</code> (strictest setting that still ships cookies). The old <code>NEXT_PUBLIC_API_URL</code> is intentionally NOT read — a future hand adding it would break the cookie model silently.</li>
+  <li><strong>Verified:</strong> <code>auth.service.ts</code> COOKIE_BASE has no <code>domain</code> field — hostOnly by default. Refresh + access cookies are already path-scoped to <code>/api/v1/auth/refresh</code> and <code>/</code> respectively, which the same-origin model preserves unchanged.</li>
+  <li><strong>Required env (Cloudflare Pages):</strong> <code>API_BACKEND_URL</code> — full URL to the private Railway API (e.g. <code>https://emapp-api.railway.internal</code>). MUST NOT be prefixed <code>NEXT_PUBLIC_</code> (would leak it to the browser bundle).</li>
+</ul>
+<p><strong>Alternatives considered &amp; rejected:</strong></p>
+<ul>
+  <li><strong>(B) Public api.emapp.io + CORS + Domain=.emapp.io cookies.</strong> Easier wiring, but: subdomain-takeover blast radius covers auth; CORS preflight on every write; API has public ingress (every WAF / Bot Management decision becomes a separate config plane). The user explicitly weighed security vs latency and chose A.</li>
+  <li><strong>(C) Cloudflare Workers as proxy (instead of Next Route Handler).</strong> More code to maintain (separate worker repo or wrangler config); Next.js already has the request/response primitives we need and ships on Pages natively.</li>
+  <li><strong>(D) Direct browser → Railway, no proxy.</strong> Requires public API DNS, CORS, and breaks the hostOnly-cookie model. Same downsides as B without the CDN benefit.</li>
+</ul>
+<p><strong>Reversibility:</strong> HIGH. To flip to topology B in the future: (1) deploy backend at api.emapp.io with public DNS; (2) delete <code>apps/web/src/app/api/[...path]/route.ts</code>; (3) change <code>api-client.ts</code> back to <code>process.env.NEXT_PUBLIC_API_URL</code>; (4) add <code>domain: '.emapp.io'</code> to <code>COOKIE_BASE</code>; (5) re-add CORS allowlist in <code>main.ts</code>. ~30 minutes total. The Route Handler is a pure addition; no schema, no migrations, no contract changes.</p>
+<p><strong>Trade-offs accepted:</strong></p>
+<ul>
+  <li><strong>Cold-start of the Route Handler.</strong> Pages Functions warm in milliseconds; the proxy adds ~5–15ms over a direct call. Negligible vs the round-trip savings (no CORS preflight on writes).</li>
+  <li><strong>Pages Function size budget.</strong> The Cloudflare 1 MB limit per function. The handler is ~5 KB; comfortable.</li>
+  <li><strong>SSE buffering.</strong> Pages defaults to buffering; the API's <code>X-Accel-Buffering: no</code> header (already set in the imports SSE controller) disables it. Verified pre-merge against the live SSE endpoint.</li>
+  <li><strong>WebSocket support.</strong> Out of scope for MVP. If we ever need WS, a Cloudflare Worker upgrade-handler is the standard path; not blocked by this decision.</li>
+</ul>
+<p><strong>CSP / CSRF posture (decided alongside D.35):</strong></p>
+<ul>
+  <li><strong>CSRF:</strong> Same-origin + SameSite=Lax (already set in COOKIE_BASE) blocks cross-site form-POST CSRF for cookie-bearing requests. No CSRF tokens needed in MVP. Provider Admin paths additionally require a tier-3 JWT in the Authorization header (D.29) — a CSRF cannot mint that.</li>
+  <li><strong>CSP:</strong> Helmet's default plus a strict <code>connect-src 'self'</code> (since all API calls are same-origin now). <code>img-src</code> + <code>style-src</code> stay as Helmet defaults. Re-evaluate when we add Sentry browser SDK (needs <code>connect-src</code> for ingest) and PostHog if we land P.01.</li>
+</ul>
+<p><strong>Verification:</strong> typecheck green across 8 packages (pre-PR). Full test suite + lint run before merge. Manual smoke: <code>infisical run --env=dev -- pnpm --filter @emapp/web dev</code> + <code>infisical run --env=dev -- pnpm --filter @emapp/api dev</code>; browser at <code>http://localhost:3001</code> hits <code>http://localhost:3001/api/v1/health</code> via the Route Handler → proxies to <code>http://localhost:3000/api/v1/health</code>. Cookie set on app.emapp.io domain only.</p>
+<p><strong>Ref:</strong> D.16 (envelope — preserved through proxy); D.21 (auth ownership — cookies unchanged); D.29 (tier audiences); D.30 (throttler — defense-in-depth behind WAF); <code>apps/web/src/app/api/[...path]/route.ts</code>; <code>apps/web/src/lib/api-client.ts</code>; <code>apps/api/src/modules/auth/auth.service.ts</code> (COOKIE_BASE); <code>docs/ARCHITECTURE-MAP.md</code> §13.</p>
+<hr />
+<h2>D.36 — v8.5 phase-transition audit protocol (separate from code-quality audit)</h2>
+<p><strong>Decision:</strong> Introduce a distinct "phase-transition audit" run BEFORE handing a phase to the next downstream consumer (FE consuming BE, BE consuming DB, worker consuming queue, etc.). This is in addition to the existing 3-axis code-quality audit (SOLID / Security / Perf) that runs per slice.</p>
+<p><strong>Why:</strong> Lesson from Phase 6 → Phase 4 handoff. The v7 + v8 + v8 P0 closeout passes all verified code-quality of the just-shipped code. They did NOT verify "is the next layer's consumer set up to actually consume this surface." Concrete gaps caught only at v8.5 (after user pushed back "why so many gaps?"):</p>
+<ul>
+  <li>Contract suite green vs an API that didn't have <code>THROTTLE_TEST_BYPASS</code> set → silent 429s on first run.</li>
+  <li>FE topology (cookies, CORS, hostOnly) was unspecified — a wrong default would force a rewrite at Phase 4 mid-stream.</li>
+  <li>R2 dev creds had been pasted in chat → compromised, but rotation was nobody's task on the ledger.</li>
+  <li>The cancel() path didn't purge bytes — visible only by reading the "is the FE going to call this?" question, not the "does this code work?" question.</li>
+</ul>
+<p><strong>Protocol:</strong> Before opening the phase-N PR, run a phase-transition pass that answers, for the immediate downstream consumer:</p>
+<ol>
+  <li>Does the consumer have everything it needs to call this surface in dev (env vars, secrets, fixtures, contract suite, test bypass flags)?</li>
+  <li>Does the consumer's deployment topology (cookies / CSRF / CORS / CSP / proxy / DNS) match what the producer assumes?</li>
+  <li>For every state the producer can leave the system in (terminal states, error states, async deferrals), has the consumer's path been verified end-to-end with real producer code (not mocks)?</li>
+  <li>For every external dependency rotated, leaked, or about-to-be-rotated (R2 keys, Resend keys, PII keys, JWT secrets), is the rotation tracked in a named task with an owner?</li>
+  <li>For every "best-effort" or "swallowed-failure" path the producer ships, is there a sweeper / retry / alert that owns the failure?</li>
+</ol>
+<p><strong>Cross-confirmation rule:</strong> A phase-transition gap surfaced by ≥2 fresh-eyes agents is P0 for the transition (cannot ship the phase). A gap surfaced by 1 agent + a concrete reproducible incident is P0. A single-agent observation with no incident is HIGH (must have a tracked closure plan, not necessarily a fix in this PR).</p>
+<p><strong>Reversibility:</strong> Process change only — costs one agent-pass per phase boundary. No code or schema impact. If the process feels like overkill after 2–3 phase boundaries, drop it; nothing depends on it structurally.</p>
+<p><strong>Ref:</strong> ONBOARDING.md §3 (audit-pass model) + new §6 (phase-transition); ARCHITECTURE-MAP.md §13 (deployment topology, where this rule now lives); v8.5 ledger (the bugs this would have caught: cancel-leak, withProvider-GUC-missing, sequential-decrypts, R2-blocks-worker, audit_log-cleartext).</p>
 <hr />
 <h2>Pending Decisions (not yet made — tracked in OPEN_ITEMS.md §4)</h2>
 <p>These are listed so they're visible but explicitly NOT decided:</p>

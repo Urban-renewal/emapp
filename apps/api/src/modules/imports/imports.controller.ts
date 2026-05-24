@@ -179,41 +179,63 @@ export class ImportsController {
       );
       return;
     }
+
+    // v8.5 P0 FIX (Audit SOLID #3 + Sec HIGH-6 — cross-confirmed):
+    //   Pre-v8.5 the `activeStreams += 1` lived OUTSIDE the try/finally.
+    //   Any synchronous throw between the increment and try-entry (e.g.
+    //   `writeHead` failing because the socket was already closed by
+    //   the client during the cap-check window) would leak the counter
+    //   forever — finally never runs because we never entered try.
+    //   Repeated under load, a single pod's counter monotonically
+    //   climbs to MAX_ACTIVE_STREAMS and ALL subsequent SSE requests
+    //   get a permanent 503 until the pod is restarted (per-pod DoS).
+    //
+    //   v8.5 fix: increment FIRST (so the cap is honored — TOCTOU-safe
+    //   with the check immediately above), then wrap EVERY subsequent
+    //   side-effect (writeHead, write, streamProgress) in the single
+    //   try/finally. The finally is now the only path that touches
+    //   the counter, so a leak is structurally impossible.
     ImportsController.activeStreams += 1;
-
-    reply.raw.writeHead(200, {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform',
-      'X-Accel-Buffering': 'no',
-      Connection: 'keep-alive',
-    });
-    reply.raw.write(': stream-open\n\n');
-
-    const abort = new AbortController();
-    req.raw.on('close', () => abort.abort());
-
     try {
-      await this.imports.streamProgress({
-        user,
-        id,
-        write: (ev) => reply.raw.write(encodeSseFrame(ev)),
-        writeComment: (line) => reply.raw.write(`${line}\n\n`),
-        signal: abort.signal,
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'X-Accel-Buffering': 'no',
+        Connection: 'keep-alive',
       });
-    } catch (e: unknown) {
-      this.logger.error(
-        `SSE stream errored after headers-sent (import=${id}): ${
-          e instanceof Error ? e.message : 'unknown'
-        }`,
-      );
+      reply.raw.write(': stream-open\n\n');
+
+      const abort = new AbortController();
+      req.raw.on('close', () => abort.abort());
+
       try {
-        reply.raw.write(encodeSseFrame({ event: 'end', data: { id, status: 'failed' } }));
-      } catch {
-        /* socket already dead */
+        await this.imports.streamProgress({
+          user,
+          id,
+          write: (ev) => reply.raw.write(encodeSseFrame(ev)),
+          writeComment: (line) => reply.raw.write(`${line}\n\n`),
+          signal: abort.signal,
+        });
+      } catch (e: unknown) {
+        this.logger.error(
+          `SSE stream errored after headers-sent (import=${id}): ${
+            e instanceof Error ? e.message : 'unknown'
+          }`,
+        );
+        try {
+          reply.raw.write(encodeSseFrame({ event: 'end', data: { id, status: 'failed' } }));
+        } catch {
+          /* socket already dead */
+        }
+      } finally {
+        try {
+          reply.raw.end();
+        } catch {
+          /* socket already dead */
+        }
       }
     } finally {
       ImportsController.activeStreams -= 1;
-      reply.raw.end();
     }
   }
 

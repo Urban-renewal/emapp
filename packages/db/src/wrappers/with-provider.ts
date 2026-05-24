@@ -1,6 +1,7 @@
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { providerPool } from '../client';
+import { env } from '../env';
 import * as schema from '../schema/index';
 import { providerAuditLog } from '../schema/provider';
 
@@ -47,10 +48,32 @@ export async function withProvider<T>(
   try {
     await client.query('BEGIN');
 
-    // Both provider session GUCs in one round trip (parameter-bound).
+    // All four session GUCs in one round trip (parameter-bound).
+    //
+    // v8.5 P0 FIX (Audit Sec P0-2): pre-v8.5 only the two provider-
+    // identity GUCs were set. app.encryption_key + app.pii_hash_key
+    // were silently absent, so the moment ANY Provider Admin code
+    // path read a pgcrypto-decrypted column (e.g. owners.national_id
+    // for a customer-data audit) `current_setting('app.encryption_key')`
+    // would throw `unrecognized configuration parameter` OR — worse,
+    // depending on PostgreSQL config — return an empty string and the
+    // decrypt would silently yield garbage. Mirrors withTenant's
+    // contract; the same env.PII_ENCRYPTION_KEY is enforced at boot
+    // by verifyEncryptionStartup().
     await client.query({
-      text: 'SELECT set_config($1, $2, true), set_config($3, $4, true)',
-      values: ['app.provider_user_id', providerUserId, 'app.access_reason', reason.trim()],
+      text:
+        'SELECT set_config($1, $2, true), set_config($3, $4, true), ' +
+        'set_config($5, $6, true), set_config($7, $8, true)',
+      values: [
+        'app.provider_user_id',
+        providerUserId,
+        'app.access_reason',
+        reason.trim(),
+        'app.encryption_key',
+        env.PII_ENCRYPTION_KEY,
+        'app.pii_hash_key',
+        env.PII_HASH_KEY,
+      ],
     });
 
     await client.query({

@@ -39,6 +39,7 @@ import {
   mappingTemplates,
   projectAssignments,
   projects,
+  purgeImportBytes,
   withTenant,
   type IStorageProvider,
   type TenantTx,
@@ -648,9 +649,22 @@ export class ImportsService {
   /** DELETE /imports/:id — cancel a non-terminal row. The worker's
    *  state-machine loop re-reads status before each transition (and
    *  v4 added a mid-persistStage guard); a cancel here wins the race
-   *  any time the worker hasn't yet committed the next transition. */
+   *  any time the worker hasn't yet committed the next transition.
+   *
+   *  v8.5 SOLID #4 (cross-confirmed P0): also purges the R2 bytes
+   *  after a successful cancel. Pre-fix, this was the most common
+   *  terminal path that BYPASSED the purge — bytes leaked forever.
+   *  The worker terminal-state check only fires when the WORKER
+   *  drives the state machine; cancel-via-API skips the worker
+   *  entirely if no pg-boss job has picked up the row.
+   *
+   *  Purge is best-effort (a failure leaves file_deleted_at NULL
+   *  and the future sweeper retries — same semantic as the worker
+   *  path).
+   */
   async cancel(user: AccessTokenPayload, id: string): Promise<void> {
     this.requireManager(user);
+    let didCancel = false;
     await withTenant(
       user.orgId,
       async (tx) => {
@@ -709,9 +723,38 @@ export class ImportsService {
           metadata: { from: row.status as string },
           sessionId: user.sid,
         });
+        didCancel = true;
       },
       { userId: user.sub },
     );
+
+    // v8.5 SOLID #4 — fire purge AFTER the cancel tx commits. Doing
+    // it inside the tx would hold a pg client during an R2 round-
+    // trip; doing it before would race with a worker that might
+    // still be processing. Post-commit is safe + idempotent
+    // (purgeImportBytes checks file_deleted_at IS NULL).
+    if (didCancel) {
+      await purgeImportBytes({
+        orgId: user.orgId,
+        jobId: id,
+        verifiedActorId: user.sub,
+        storage: this.storage,
+        log: {
+          info: (msg, meta) => this.logger.log(`${msg} ${JSON.stringify(meta ?? {})}`),
+          warn: (msg, meta) => this.logger.warn(`${msg} ${JSON.stringify(meta ?? {})}`),
+          error: (msg, meta) => this.logger.error(`${msg} ${JSON.stringify(meta ?? {})}`),
+        },
+      }).catch((e: unknown) => {
+        // Don't fail the cancel response on a purge failure — the
+        // status flip + audit row are already committed. Sweeper
+        // (or worker on next pickup) will retry.
+        this.logger.warn(
+          `purgeImportBytes after cancel (id=${id}) threw — sweeper will retry: ${
+            e instanceof Error ? e.message : 'unknown'
+          }`,
+        );
+      });
+    }
   }
 
   /** GET /imports/:id/errors — keyset pagination on (rowNumber asc,

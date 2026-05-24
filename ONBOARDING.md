@@ -149,6 +149,51 @@ with no plan."** Every deferred item gets severity + agent ref +
 concrete plan + acceptance criteria. See `OPEN-ITEMS-v8.md` for the
 shape. Hand-wave deferrals get rejected on review.
 
+### 3.1 Phase-transition audit (D.36 — separate pass)
+
+**Lesson from v8.5:** the 3-axis code-quality audit verifies
+"is this code good?" It does NOT verify "is the next layer's
+consumer set up to actually consume this surface?" Bugs that
+slipped past 8 code-quality passes and were caught only at v8.5:
+
+- `cancel()` didn't purge R2 bytes → PII leak forever on the
+  most common terminal route (visible only by reading "is the
+  FE going to call cancel?")
+- `withProvider` was missing the `app.encryption_key` GUC →
+  every Provider Admin owner-read would throw (only visible
+  when you ask "what will the consumer actually call?")
+- Sequential decrypts in signature-requests → 100ms+ latency
+  on critical-path Manager UX (only visible when you simulate
+  the consumer's call pattern)
+- Contract suite ran with API missing `THROTTLE_TEST_BYPASS` →
+  146 false 429s (only visible when you actually run the
+  consumer)
+
+**Run a phase-transition pass before opening the phase-N PR**,
+distinct from the per-slice 3-axis audit. It answers, for the
+immediate downstream consumer:
+
+1. Does the consumer have everything it needs in dev (env vars,
+   secrets, fixtures, contract-suite bypass flags)?
+2. Does the consumer's deployment topology (cookies / CORS /
+   CSP / proxy / DNS) match the producer's assumptions?
+3. For every state the producer can leave the system in
+   (terminal states, errors, async deferrals), has the
+   consumer's path been verified end-to-end with REAL producer
+   code (not mocks)?
+4. For every external dep rotated, leaked, or pending rotation
+   (R2 keys, Resend, PII keys, JWT secrets), is the rotation
+   tracked in a named task with an owner?
+5. For every "best-effort" / "swallowed-failure" path the
+   producer ships, is there a sweeper / retry / alert that
+   owns the failure?
+
+Cross-confirmation rule (same as code-quality audit):
+≥2 fresh-eyes agents OR 1 agent + reproducible incident = P0
+(cannot ship the phase). Single agent without incident = HIGH
+(tracked closure plan required, not necessarily a fix in this
+PR). See D.36 and ARCHITECTURE-MAP §13 for the locked spec.
+
 ---
 
 ## 4. Hidden context the docs don't tell you
@@ -308,13 +353,22 @@ Build the customer-facing web app:
 2. Read `apps/web/CLAUDE.md` if it exists (per-package overrides).
 3. Read `docs/05-frontend-sync.html` + `docs/06-fe-be-integration-contract.html`
    for the patterns the BE expects.
-4. **Highest-value first feature: the imports wizard.** It's the
+4. **Read D.35 + ARCHITECTURE-MAP §13 (Phase 4 FE topology).** The
+   FE talks to the BE through a same-origin Route Handler at
+   `apps/web/src/app/api/[...path]/route.ts` (the Pages Function
+   reverse-proxy). Cookies are hostOnly on `app.emapp.io`. **Do
+   NOT** add `NEXT_PUBLIC_API_URL` or call the backend directly —
+   the proxy is the contract. `apps/web/src/lib/api-client.ts`
+   already uses `/api/v1/*` (relative) — keep it that way.
+5. **Highest-value first feature: the imports wizard.** It's the
    most contract-stable BE surface (typed SSE in shared-types, full
    audit, R2 verified end-to-end).
-5. The flow: `POST /imports` → upload Excel to `uploadUrl` (XHR
-   directly, NOT through API) → `POST /imports/:id/start` → open
-   `EventSource('/imports/:id/stream')` → render `ImportSseEvent`
-   frames live → terminal frame closes the stream and shows results.
+6. The flow: `POST /imports` → upload Excel to `uploadUrl` (XHR
+   directly to R2, NOT through API — that's why `/imports` mints a
+   presigned PUT) → `POST /imports/:id/start` → open
+   `EventSource('/api/v1/imports/:id/stream')` (same-origin → goes
+   through the proxy) → render `ImportSseEvent` frames live →
+   terminal frame closes the stream and shows results.
 
 ### 5.4 What NOT to touch in this slice
 

@@ -39,6 +39,11 @@ export {
   encryptField,
   decryptField,
 } from './helpers/owners';
+export {
+  purgeImportBytes,
+  type PurgeImportBytesOpts,
+  type PurgeLogger,
+} from './helpers/import-bytes';
 export type { IEncryptionService } from './providers/encryption/encryption.interface';
 export { PgcryptoEncryptionService } from './providers/encryption/pgcrypto.provider';
 export { FakeEncryptionService } from './providers/encryption/fake.provider';

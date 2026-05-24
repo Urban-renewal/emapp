@@ -184,7 +184,11 @@ describe('purgeImportBytes (v8 §v8-S1)', () => {
       storage: failingStorage,
       log: silentLog,
     });
-    expect(result).toBe('not-terminal'); // signals "will retry"
+    // v8.5: was 'not-terminal' (overloaded code); now 'purge-failed'
+    // — distinct return so a future sweeper can tell "retry needed"
+    // apart from "skip, not eligible." See packages/db/src/helpers/
+    // import-bytes.ts JSDoc.
+    expect(result).toBe('purge-failed');
     const [row] = await providerDb
       .select({ fileDeletedAt: importJobs.fileDeletedAt })
       .from(importJobs)

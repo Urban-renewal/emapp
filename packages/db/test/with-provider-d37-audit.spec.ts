@@ -156,4 +156,150 @@ describe('D.37 withProvider — audit row contract', () => {
       client.release();
     }
   });
+
+  // ───────────────────────────────────────────────────────────────────
+  // Adversarial battery (P6.5-1 hardening): pin every input-validation
+  // path. Without these, the wrapper would silently accept attacker-
+  // controlled bytes into audit_log / GUC / row size.
+  // ───────────────────────────────────────────────────────────────────
+
+  it('T6.5-D37-0h) action with control chars rejected (provider_action_invalid)', async () => {
+    await expect(
+      withProvider(provider.id, 'valid reason for action test', async () => undefined, {
+        // \n is a control char + not in the allowed regex class
+        action: 'provider.tenant.viewed\n',
+      }),
+    ).rejects.toThrow(/provider_action_invalid/);
+  });
+
+  it('T6.5-D37-0h2) action with SQL-shape rejected — parameter binding makes injection impossible, but regex catches POLLUTION', async () => {
+    await expect(
+      withProvider(provider.id, 'valid reason for SQL-shape action', async () => undefined, {
+        action: "'); DROP TABLE provider_audit_log; --",
+      }),
+    ).rejects.toThrow(/provider_action_invalid/);
+    // owners table still intact (defense-in-depth — parameter binding
+    // would have stopped SQL anyway).
+    const client = await providerPool.connect();
+    try {
+      await client.query('SELECT 1 FROM provider_audit_log LIMIT 1');
+    } finally {
+      client.release();
+    }
+  });
+
+  it('T6.5-D37-0h3) action exceeding 128 chars rejected', async () => {
+    const tooLong = 'a.'.repeat(70); // 140 chars, all valid regex chars
+    await expect(
+      withProvider(provider.id, 'valid reason for long action test', async () => undefined, {
+        action: tooLong,
+      }),
+    ).rejects.toThrow(/exceeds maximum 128/);
+  });
+
+  it('T6.5-D37-0h4) action empty string rejected (action=undefined is OK; "" is not)', async () => {
+    await expect(
+      withProvider(provider.id, 'valid reason for empty action', async () => undefined, {
+        action: '',
+      }),
+    ).rejects.toThrow(/non-empty string/);
+  });
+
+  it('T6.5-D37-0i) reason with CRLF stripped — stored value is clean', async () => {
+    // CRLF injection attempt — without stripping, audit log greppers
+    // would split this into two log lines.
+    const dirty = 'investigating ticket\r\nX-Injected: pwned';
+    await withProvider(provider.id, dirty, async () => undefined);
+    const row = await latestAuditRowFor(provider.id);
+    expect(row!.reason).not.toMatch(/[\r\n]/);
+    expect(row!.reason).toBe('investigating ticketX-Injected: pwned');
+    // metadata.reason must match exactly the stripped column value.
+    expect((row!.metadata as { reason?: string }).reason).toBe(row!.reason);
+  });
+
+  it('T6.5-D37-0i2) reason that is ALL control chars rejected as too short', async () => {
+    // Pre-strip looks like 10 chars; post-strip looks like 0 chars.
+    // The hardened check strips FIRST, then min-length-checks.
+    await expect(
+      withProvider(provider.id, '\r\n\r\n\r\n\r\n\r\n', async () => undefined),
+    ).rejects.toThrow(/minimum 5 chars after control-char strip/);
+  });
+
+  it('T6.5-D37-0i3) reason > 512 chars rejected', async () => {
+    const tooLong = 'a'.repeat(513);
+    await expect(withProvider(provider.id, tooLong, async () => undefined)).rejects.toThrow(
+      /exceeds maximum 512/,
+    );
+  });
+
+  it('T6.5-D37-0j) metadata > 8 KB rejected (provider_metadata_too_large)', async () => {
+    // Build a payload that comfortably exceeds 8 KB after stringify.
+    const big = { blob: 'A'.repeat(10 * 1024) };
+    await expect(
+      withProvider(provider.id, 'metadata size cap test', async () => undefined, {
+        metadata: big,
+      }),
+    ).rejects.toThrow(/provider_metadata_too_large/);
+  });
+
+  it('T6.5-D37-0j2) metadata exactly at the 8 KB limit accepted (boundary test)', async () => {
+    // Build a payload that lands close to but UNDER 8 KB after the
+    // reason overlay + JSON encoding overhead.
+    const padding = 'B'.repeat(7 * 1024);
+    await expect(
+      withProvider(provider.id, 'metadata boundary test', async () => undefined, {
+        metadata: { padding },
+      }),
+    ).resolves.toBeUndefined();
+    const row = await latestAuditRowFor(provider.id);
+    expect((row!.metadata as { padding?: string }).padding).toBe(padding);
+  });
+
+  it('T6.5-D37-0k) circular ref in metadata → provider_metadata_invalid (caught, not unhandled)', async () => {
+    interface Circular {
+      self?: unknown;
+    }
+    const cyclic: Circular = {};
+    cyclic.self = cyclic;
+    await expect(
+      withProvider(provider.id, 'circular ref test', async () => undefined, {
+        metadata: cyclic as unknown as Record<string, unknown>,
+      }),
+    ).rejects.toThrow(/provider_metadata_invalid/);
+  });
+
+  it('T6.5-D37-0k2) BigInt in metadata → provider_metadata_invalid (JSON.stringify throws on bigint)', async () => {
+    await expect(
+      withProvider(provider.id, 'bigint metadata test', async () => undefined, {
+        metadata: { count: BigInt(123) as unknown as number },
+      }),
+    ).rejects.toThrow(/provider_metadata_invalid/);
+  });
+
+  it('T6.5-D37-0l) 5 concurrent withProvider calls all succeed with 5 distinct audit rows', async () => {
+    // No mutex / shared state in the wrapper — the providerPool serves
+    // up to DB_PROVIDER_POOL_MAX (5) clients concurrently. Each call
+    // writes ONE audit row; we must see 5, all with our reason marker.
+    const MARKER = `concurrent-${Date.now()}`;
+    const reasons = Array.from({ length: 5 }, (_, i) => `${MARKER}-call-${i}`);
+    await Promise.all(
+      reasons.map((r) =>
+        withProvider(provider.id, r, async () => undefined, {
+          action: 'provider.tenant.viewed',
+        }),
+      ),
+    );
+    const client = await providerPool.connect();
+    try {
+      const result = await client.query<{ reason: string }>(
+        `SELECT reason FROM provider_audit_log WHERE reason LIKE $1 ORDER BY reason ASC`,
+        [`${MARKER}-%`],
+      );
+      const stored = result.rows.map((r) => r.reason).sort();
+      expect(stored.length).toBe(5);
+      expect(stored).toEqual(reasons.slice().sort());
+    } finally {
+      client.release();
+    }
+  });
 });

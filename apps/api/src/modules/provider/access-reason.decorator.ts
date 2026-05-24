@@ -28,41 +28,60 @@ export const ACCESS_REASON_HEADER = 'access_reason' as const;
 const MIN_LEN = 5;
 const MAX_LEN = 512;
 
+// D.37 hardening — strip control characters from the header value
+// BEFORE length/content checks. Order matters: a value like
+// `"   \r\n   "` looks valid pre-strip (length 9, trim is empty); we
+// must strip → trim → check, not trim → check (which would let
+// embedded `\r\n` poison the audit row).
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS_REGEX = /[\x00-\x1f\x7f]/g;
+
+function bail(reason: string): never {
+  throw new BadRequestException({
+    error: {
+      code: 'reason_required',
+      message: reason,
+    },
+  });
+}
+
+/**
+ * Pure parsing/validation function — exported for unit testing.
+ * The createParamDecorator wrapper below is a thin shim that pulls
+ * the header out of the Fastify request and forwards to this.
+ * Keeps the validation logic testable without a Nest runtime.
+ */
+export function parseAccessReasonHeader(rawHeader: string | string[] | undefined): string {
+  // A header sent twice arrives as string[]; defense — refuse
+  // ambiguity rather than guess which value to audit.
+  if (Array.isArray(rawHeader)) {
+    bail(`Header "${ACCESS_REASON_HEADER}" must appear at most once per request`);
+  }
+  if (typeof rawHeader !== 'string' || rawHeader.length === 0) {
+    bail(`Header "${ACCESS_REASON_HEADER}" is required on every /provider/* call`);
+  }
+  // Strip control chars FIRST, then trim. Order matters: a value of
+  // `"   \r\n   "` (length 9) looks valid pre-strip but cleans to "".
+  const cleaned = rawHeader.replace(CONTROL_CHARS_REGEX, '').trim();
+  if (cleaned.length < MIN_LEN) {
+    bail(
+      `Header "${ACCESS_REASON_HEADER}" must be at least ${MIN_LEN} characters after control-char strip`,
+    );
+  }
+  if (cleaned.length > MAX_LEN) {
+    // Truncate-at-the-edge would silently lose forensic context;
+    // explicit rejection forces the caller to summarise.
+    bail(`Header "${ACCESS_REASON_HEADER}" must be at most ${MAX_LEN} characters`);
+  }
+  return cleaned;
+}
+
 export const AccessReason = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): string => {
     const req = ctx.switchToHttp().getRequest<FastifyRequest>();
     // Fastify lowercases header names. The header name is itself
     // intentionally snake_case (mirrors `app.access_reason` GUC + the
     // audit row column) — readability over HTTP convention.
-    const raw = req.headers[ACCESS_REASON_HEADER];
-    const value = Array.isArray(raw) ? raw[0] : raw;
-    if (typeof value !== 'string' || value.trim().length === 0) {
-      throw new BadRequestException({
-        error: {
-          code: 'reason_required',
-          message: `Header "${ACCESS_REASON_HEADER}" is required on every /provider/* call`,
-        },
-      });
-    }
-    const trimmed = value.trim();
-    if (trimmed.length < MIN_LEN) {
-      throw new BadRequestException({
-        error: {
-          code: 'reason_required',
-          message: `Header "${ACCESS_REASON_HEADER}" must be at least ${MIN_LEN} characters`,
-        },
-      });
-    }
-    if (trimmed.length > MAX_LEN) {
-      // Truncate-at-the-edge would silently lose forensic context;
-      // explicit rejection forces the caller to summarise.
-      throw new BadRequestException({
-        error: {
-          code: 'reason_required',
-          message: `Header "${ACCESS_REASON_HEADER}" must be at most ${MAX_LEN} characters`,
-        },
-      });
-    }
-    return trimmed;
+    return parseAccessReasonHeader(req.headers[ACCESS_REASON_HEADER]);
   },
 );

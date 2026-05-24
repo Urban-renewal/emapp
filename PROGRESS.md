@@ -6,7 +6,62 @@
 
 ## Heartbeat (latest — for the 30-second scan)
 
-- **Last slice:** **R2 storage live (PR #34, branch `r2-wiring`) + v7 INDEPENDENT audit-pass (3 agents) + 7 v7 cross-confirmed P0/HIGH/MEDIUM closures + 1 CI infrastructure fix.** Cloudflare R2 bucket `emapp-dev` provisioned and credentials in Infisical (dev env; staging/prod pending). The 4-var presence detector + AWS-SDK-free factory ships in `@emapp/db`, so both `apps/api` and `apps/worker` boot the same R2StorageProvider from the same env without each app duplicating SDK wiring. End-to-end smoke (HeadBucket → PutObject → GetObject → DeleteObject) green against real R2. CI was failing on the `audit` job's post-run cache step (pre-existing — actual root cause was `cache: 'pnpm'` without ever running `pnpm install`); fixed in the same slice.
+- **Last slice:** **v8 INDEPENDENT audit-pass (3 fresh-eyes agents — no prior history) + 12 cross-confirmed P0/HIGH/MEDIUM closures + ALL 4 §v7 deferrals closed + 50 new tests + 1 structured deferral doc (`OPEN-ITEMS-v8.md`).** Branch `r2-wiring`. The user explicitly rejected v7-style "deferred with no plan" — every remaining item now has severity + agent ref + concrete plan + acceptance criteria. v8 follows the same independent-3-agent pattern that's found new bugs through 7 prior passes. Three agents (SOLID/security/perf) reviewed Phase 6 + R2 wiring; 35 findings; 12 closed in this slice; 23 documented for next agent.
+- **v8 P0 closures:**
+  - **SOLID-1 (HIGH user-facing — T6.6 was structurally broken)** — `idempotencyKey` was accepted by the schema + persisted to DB but NEVER enforced as a replay key. A Manager's browser-resubmit got a 409 `import_conflict` instead of the same row back. **Fix:** pre-INSERT lookup scoped to `(org_id, created_by, idempotency_key)` returns the existing row on match. Same lookup on the INSERT-catch path handles the race. The DB partial UNIQUE on `(org_id, key)` is the race backstop.
+  - **SOLID-5 (HIGH data-loss on retry)** — `validateStage` cache-miss path (pg-boss retries between wizard submit and validation) re-ran the resolver chain instead of consulting `mapping_template_id`. If L2's fingerprint drifted vs the wizard's stored one, the manager-approved template was MISSED → `mapping_unresolved_at_validate` → `failed`. **Fix:** when `mapping_template_id IS NOT NULL`, SELECT that exact template by id and skip the resolver. FK is authoritative for RESUME; resolver chain stays as DISCOVERY.
+  - **§v7-A (HIGH defense-in-depth)** — worker trusted `payload.orgId` unverified. New `apps/worker/src/handlers/verify-job-payload.ts` reads `(org_id, created_by)` via the BYPASSRLS provider pool, cross-checks against the payload, NonRetryable on mismatch. `Object.assign(payload, verified)` mutates the parameter in-place so all ~40 downstream call sites automatically use the trusted values without a refactor. 5 unit tests against real DB rows.
+  - **Sec-3 (HIGH audit-log integrity)** — `start()` only wrote audit without a guarded state-flip. Concurrent /start calls each wrote `import.start_requested` + each called `producer.send` (pg-boss singletonKey dedupes the queue but audit_log accumulated). **Fix:** GUARDED UPDATE on the `started_at` latch (`WHERE status='queued' AND started_at IS NULL`); rowCount=0 → 409 `import_already_starting` + skip audit + skip producer.send. Now exactly one audit row per truly-distinct /start.
+  - **Sec-7 / SOLID-3 (HIGH security — spec gate)** — presigned PUT URL doesn't bind Content-Type at signature level. A Manager could upload a .pdf / .exe / ransomware into the bucket via the minted URL. **Fix:** worker's `zipPreflight` now magic-byte-checks the first 4 bytes (`50 4B 03 04` LFH or `50 4B 05 06` empty-EOCD) BEFORE the CD scan; new `wrong_file_type` error code. Magic check runs first so non-ZIP doesn't waste CD-scan / ExcelJS cycles. 7 magic-byte unit tests + 11 excel.parser tests + 19 zip-preflight tests.
+- **v8 HIGH closures:**
+  - **SOLID-4** — wire `fileName` kept cleartext while audit redacted; every Manager-with-imports:read saw cross-Manager PII-shaped filenames. **Fix:** `toView()` applies `sanitiseFilenameForAudit` to wire too; DB column stays cleartext (uploader UX + audit forensics via BYPASSRLS).
+  - **Sec-8 (authorization parity)** — `cancel()` and `submitMapping()` allowed any Manager to act on another Manager's import; `start()` already required `createdBy === user.sub`. **Fix:** same guard applied to both.
+  - **Sec-5 (ISO A.12.4 evidence gap)** — `head()` deadline/error silently proceeded. **Fix:** new `import.upload_integrity_unverified` audit row with `{reason: 'deadline'|'error', error_class?}` metadata.
+  - **Sec-6 (potential PII channel)** — worker wrote `err.message` verbatim into `import_job_errors`. **Fix:** `sanitiseUserString(err.message)` at the persistence boundary (defense-in-depth — current validator is careful, but future change couldn't open the channel).
+  - **Sec-15 / SOLID-1 (info-disclosure)** — `idempotencyKey` schema accepted any 1-255 chars → 409-by-probe enumerated other Managers' keys. **Fix:** Zod regex tightens to `[A-Za-z0-9_-]{16,64}` (UUID-ish shape); service-layer scope to `created_by` complements.
+  - **Sec-16 (worker PII log defense-in-depth)** — pino in worker had no redact list. **Fix:** redact paths for _.national_id / _.phone / _.password / _.signature / _.row / _.rows.
+  - **SOLID-2 (wire ambiguity)** — `Sha256HexLowerSchema` accepted both `sha256:<hex>` and bare hex; ambiguous shapes mean future hash-verification silently fails. **Fix:** schema rejects the prefix; FE recipe documented in JSDoc; controller's `normalizeHash` replaced with one-line `toStoredHash` (just stamps the DB format marker).
+  - **SOLID-6 / Perf-1 (resource leak)** — `headWithDeadline` won the race observationally but the SDK request lingered until SDK's own socketTimeout. **Fix:** `IStorageProvider.head(key, { signal? })` exposes AbortSignal; `R2StorageProvider.head` plumbs into `client.send(cmd, { abortSignal })`; deadline now actually tears down the socket.
+  - **Perf-7 (P99 latency cliff)** — API factory used SDK default 3-attempt retries → /imports create could hold for ~25s during R2 outage. **Fix:** API factory passes `tuning: { maxAttempts: 1 }`; failed presign bubbles to 503 fast. Worker keeps default 3 (batch).
+  - **SOLID-14 (drift bait)** — `CANCELLABLE` Set duplicated as in-memory + hardcoded SQL IN literal. **Fix:** SQL list now derived from the Set at runtime via `sql.raw`.
+- **v8 MEDIUM + §v7 deferrals (the rest):**
+  - **§v7-C (credential rotation without restart)** — new `reloadEnv()` in `@emapp/db` re-reads `process.env` into a stable mutable env Record (rewrote env.ts to escape T3-env's test-mode no-op). SIGHUP handlers in API + worker main.ts call `reloadEnv()` then `resetStorageProvider()` so the next R2 call rebuilds the S3Client with rotated keys; no process restart. Logs only KEY NAMES that changed, never values. 5 unit tests.
+  - **§v7-D (perf cold start)** — pg-boss producer now has `onModuleInit` that pre-connects in the background (best-effort, non-blocking). First /imports/:id/start no longer pays ~200-400ms of cold-start.
+  - **Perf-4 (concurrency ceiling)** — worker hardcoded `teamConcurrency: 1`. **Fix:** `WORKER_CONCURRENCY` env (1-16, default 2). 2 fits Free Tier 512MB with the documented Excel RAM math.
+  - **§v7-E (ExcelJS true streaming)** — investigated; buffered approach is CORRECT given a documented ExcelJS bug with R2-body streams. RAM peaks at ~150-300MB per concurrent import which fits Free Tier with the new concurrency=2 cap. Documented for future library swap (`OPEN-ITEMS-v8.md §v8-M2`).
+- **v8 deferred (in `OPEN-ITEMS-v8.md` — 23 items with concrete plans):**
+  - **P0 §v8-S1**: R2 retention + lifecycle (uploaded PII stored forever; right-to-erasure fails)
+  - **P0 §v8-S2**: SSE rate-limit + LISTEN/NOTIFY (DoS via 10 EventSource connections)
+  - **P0 §v8-S3**: `owners.name` PII encryption (half-encrypted with `national_id` is worst of both)
+  - HIGH §v8-H1..H8: pg-boss pool sharing, fatal critical-state audit, audit_log WITH CHECK, withProvider audit-first, name-shaped PII sanitiser, R2 file lifetime, withBootstrap audit enforcement, ImportJobHandler decomposition
+  - MEDIUM §v8-M1..M5: withTenant overhead, ExcelJS true streaming, audit logMany batching, idempotencyKey UNIQUE widening, ownership trigger search_path
+- **Test deltas (+50 tests, all green):**
+  - `apps/worker/test/verify-job-payload.spec.ts` (5 tests)
+  - `apps/worker/test/zip-preflight-magic-bytes.spec.ts` (7 tests)
+  - `apps/api/src/modules/imports/imports-v8-closures.spec.ts` (20 tests)
+  - `packages/db/test/env-reload.spec.ts` (5 tests)
+  - `apps/worker/test/zip-preflight.spec.ts` updated (LFH prepend, test #6 flipped)
+  - `apps/worker/test/excel.parser.spec.ts` updated (test #7 → wrong_file_type)
+  - `apps/api/src/modules/imports/imports.s8.spec.ts` A7 updated (wire+audit both sanitised)
+- **Local verification (all green):**
+  - lint + typecheck clean across all 8 packages
+  - `@emapp/db`: 9 r2-factory + 5 env-reload = 14 tests green
+  - `@emapp/worker`: 217/217 tests green (was 216/217 → fixed excel.parser #7)
+  - `@emapp/api`: 325/325 tests green (199 skipped = contract specs needing running API)
+- **Audit-pass ledger (8 INDEPENDENT passes total):**
+  - v2 → C1/C2/C5/C7/C8/C9 + L3/L6 + Tests 4/6/8/10
+  - v3 → A4 P0 data-loss recovery (v2 self-review missed it)
+  - v4-v6 → 7+7+3 cross-confirmed (3 agents in parallel each)
+  - v7 → 7 cross-confirmed CLOSED + 5 HIGH deferred + 1 CI fix
+  - **v8 → 12 cross-confirmed CLOSED + 23 structured deferrals in OPEN-ITEMS-v8.md** + ALL §v7 deferrals closed (per user mandate "no half-work")
+  - Every pass found bugs prior passes missed. Pattern holds across 8 passes.
+- **Phase status:**
+  - **Phase 6 PR #27** — open, awaiting user merge
+  - **Phase 7 PR #28** — open on `phase-7-l2-template-resolver`
+  - **R2 + v7+v8 PR #34** — open on `r2-wiring`. CI expected green after this push
+- **Next agent — read OPEN-ITEMS-v8.md FIRST.** Phase 4 (Frontend) is the natural next slice, but EVERY P0/HIGH there is FE-blocking-tier and should be triaged before deploying to a paying customer. Each has a concrete plan + acceptance criteria — no "we'll see."
+
+- **Previous slice (v7):** R2 storage live (PR #34, branch `r2-wiring`) + v7 INDEPENDENT audit-pass (3 agents) + 7 v7 cross-confirmed P0/HIGH/MEDIUM closures + 1 CI infrastructure fix. Cloudflare R2 bucket `emapp-dev` provisioned and credentials in Infisical (dev env; staging/prod pending). The 4-var presence detector + AWS-SDK-free factory ships in `@emapp/db`, so both `apps/api` and `apps/worker` boot the same R2StorageProvider from the same env without each app duplicating SDK wiring. End-to-end smoke (HeadBucket → PutObject → GetObject → DeleteObject) green against real R2. CI was failing on the `audit` job's post-run cache step (pre-existing — actual root cause was `cache: 'pnpm'` without ever running `pnpm install`); fixed in the same slice.
 - **R2 wiring SoT (this slice):**
   - `@emapp/db/src/providers/storage/r2-factory.ts` — `r2EnvIsComplete()` type-guard + `buildR2Provider(env, deps)` dependency-injected factory. Apps inject the SDK; `@emapp/db` stays SDK-free (transitive-dep slim + lets each app pin its own SDK version).
   - Decision tree in BOTH `apps/api/src/modules/documents/storage.ts` AND `apps/worker/src/storage-provider.ts` (mirrored so neither app drifts):

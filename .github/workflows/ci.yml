@@ -170,5 +170,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
+          # NOTE: deliberately NO `cache: 'pnpm'` here.
+          # `pnpm audit` reads only pnpm-lock.yaml — it does NOT run `pnpm install`,
+          # so the post-run cache step would error with `Path Validation Error` and
+          # mark the job failed (the audit command itself exits 0 with only moderate
+          # findings under --audit-level=high). v7 audit Agent A HIGH-3.
       - run: pnpm audit --audit-level=high

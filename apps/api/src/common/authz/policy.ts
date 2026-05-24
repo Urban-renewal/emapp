@@ -30,7 +30,8 @@ export type Resource =
   | 'members'
   | 'documents'
   | 'signature_requests'
-  | 'imports';
+  | 'imports'
+  | 'mapping_templates';
 
 type Matrix = Record<Resource, Record<Action, readonly Role[]>>;
 
@@ -85,6 +86,17 @@ export const POLICY: Matrix = {
   // verb→action mapping. The actual file content stays in R2 keyed
   // off the import_jobs row — never on the wire.
   imports: { read: ALL, create: MGR, update: MGR, delete: MGR },
+  // D.34 mapping templates (saved column→canonical mappings). v6 audit
+  // fix §9: declared as a FIRST-CLASS resource (was implicitly under
+  // `imports` via the wizard endpoint). Forward-compat: when the
+  // future Manager UI ships `GET /api/v1/mapping-templates` + archive,
+  // it inherits this triple cleanly instead of hard-coding under
+  // `imports`. Read = ALL (any org role can see the library — useful
+  // for Viewer auditability of which template processed which import);
+  // writes Manager-only (create/update/delete via wizard or future
+  // dedicated UI). The actual mapping content is per-org via RLS on
+  // mapping_templates (migration 0028 tenant_isolation FORCE).
+  mapping_templates: { read: ALL, create: MGR, update: MGR, delete: MGR },
 };
 
 /** Pure decision: is this role coarsely permitted this action on this resource? */

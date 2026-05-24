@@ -42,6 +42,7 @@ import { and, eq } from 'drizzle-orm';
 import { Workbook } from 'exceljs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { providerPool } from '../../../packages/db/src/client';
 import { createTestOrg, type TestOrg } from '../../../packages/db/test/factories';
 import { setupTestDatabase } from '../../../packages/db/test/setup';
 import { ImportJobHandler } from '../src/handlers/import-job.handler';

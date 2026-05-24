@@ -31,9 +31,8 @@
  * IMappingResolver contract is fixed so the chain composition stays
  * additive (Open/Closed Principle).
  */
-import { createHash } from 'node:crypto';
-
 import { mappingTemplates, withTenant } from '@emapp/db';
+import { fingerprintHeaders as sharedFingerprintHeaders } from '@emapp/jobs';
 import { and, eq, sql } from 'drizzle-orm';
 
 import { MappingError, resolveMapping, type ColumnMapping } from './mapping';
@@ -106,25 +105,13 @@ export class LegacyAliasResolver implements IMappingResolver {
   }
 }
 
-/** Compute the canonical headers-fingerprint used by L2 lookups + the
- *  S8 wizard's template insertion. Single source of truth for the
- *  algorithm so worker + api never drift.
- *
- *  Normalisation: trim + lowercase each header, join with NUL.
- *    - Trim: tolerates trailing whitespace in pasted-from-PDF headers.
- *    - Lowercase: tolerates case drift (Hebrew letters are
- *      case-invariant so this is a no-op there; English aliases like
- *      "National_ID" vs "national_id" collapse to one fingerprint).
- *    - NUL separator: guaranteed not to appear in any legal header
- *      (Excel forbids NUL in cell text). Prevents "ab"+"c" colliding
- *      with "a"+"bc" if we used a printable separator.
- *
- *  The api service's `submitMapping` MUST call this same function to
- *  keep the L2 lookup key consistent. */
-export function fingerprintHeaders(headers: readonly string[]): string {
-  const normalised = headers.map((h) => h.trim().toLowerCase()).join('\x00');
-  return createHash('sha256').update(normalised).digest('hex');
-}
+/** Re-export from `@emapp/jobs` (v6 audit fix §2c — single source of
+ *  truth across worker + api). The actual algorithm lives in
+ *  packages/jobs/src/mapping-fingerprint.ts; both apps import from
+ *  there. Existing tests + main.ts wiring keep importing
+ *  `fingerprintHeaders` from this resolver module — the re-export
+ *  keeps that surface stable. */
+export const fingerprintHeaders = sharedFingerprintHeaders;
 
 /** v6 audit fix (P0 cross-confirmed by security agent — SAME class as
  *  v5's sanitiseFilenameForAudit, applied at MORE persistence boundaries).
@@ -231,6 +218,24 @@ export class TemplateResolver implements IMappingResolver {
       return { kind: 'unknown' };
     }
     const tpl = rows[0]!;
+
+    // v6 audit fix (§5 — HIGH security, security agent): explicit
+    // assertion that the row's orgId matches ctx.orgId. RLS FORCE
+    // on mapping_templates already prevents cross-tenant reads via
+    // the tenant_isolation policy + `withTenant` setting
+    // `app.organization_id`. This belt-and-suspenders check is what
+    // ISO auditors look for: defense-in-depth that does not rely
+    // on RLS alone (which is the LAST line of defense, not the
+    // only line). Cheap: 1 line, refuses to apply if the GUC was
+    // ever tampered, bypassed (e.g. accidental `withProvider` use
+    // by a future maintainer), or if drizzle's SELECT ever changed
+    // to include a JOIN that bypasses the policy.
+    if (tpl.orgId !== ctx.orgId) {
+      ctx.log?.warn?.('TemplateResolver — tpl.orgId mismatch; refusing', {
+        template_id: tpl.id,
+      });
+      return { kind: 'unknown' };
+    }
 
     // Refuse unapproved agent rows. The table's CHECK constraint
     // enforces approval pairing for manual rows; for agent rows the

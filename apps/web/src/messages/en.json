@@ -2,12 +2,23 @@
   "home": {
     "title": "Urban Renewal Project Management",
     "subtitle": "Apartment owner signature collection — Tama 38 & Pinuy-Binuy",
+    "welcome": "Welcome. Pick an action from the menu.",
     "getStarted": "Get Started"
   },
   "nav": {
+    "home": "Home",
     "projects": "Projects",
     "owners": "Owners",
-    "settings": "Settings"
+    "imports": "Imports",
+    "documents": "Documents",
+    "settings": "Settings",
+    "logout": "Sign Out",
+    "loggingOut": "Signing out...",
+    "role": {
+      "manager": "Manager",
+      "agent": "Agent",
+      "viewer": "Viewer"
+    }
   },
   "auth": {
     "loginTitle": "Sign In",
@@ -30,6 +41,6 @@
     "signupError": "Failed to create account, please try again",
     "emailInvalid": "Invalid email address",
     "required": "Required",
-    "passwordRequirements": "Password must be at least 12 characters with uppercase, lowercase, and a number"
+    "passwordRequirements": "Password must be at least 12 characters"
   }
 }

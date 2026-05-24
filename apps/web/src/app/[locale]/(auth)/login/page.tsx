@@ -1,20 +1,15 @@
 'use client';
 
+import { LoginSchema, type LoginDto } from '@emapp/shared-types';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { z } from 'zod';
 
 import { Button } from '@/components/ui/button';
 import { apiClient, isOk } from '@/lib/api-client';
-
-const LoginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-});
-type LoginForm = z.infer<typeof LoginSchema>;
+import { applyValidationErrors } from '@/lib/errors';
 
 export default function LoginPage() {
   const t = useTranslations('auth');
@@ -24,16 +19,27 @@ export default function LoginPage() {
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting },
-  } = useForm<LoginForm>({ resolver: zodResolver(LoginSchema) });
+  } = useForm<LoginDto>({ resolver: zodResolver(LoginSchema) });
 
-  async function onSubmit(data: LoginForm) {
+  async function onSubmit(data: LoginDto) {
     setServerError(null);
     const res = await apiClient.post<{ user: object }>('/auth/login', data);
     if (isOk(res)) {
       router.push('/');
       router.refresh();
+      return;
+    }
+    // D.16 — switch on error.code, never on message.
+    const code = res.error.code;
+    if (code === 'validation_error') {
+      const applied = applyValidationErrors(res.error, (field, message) => {
+        setError(field as keyof LoginDto, { type: 'server', message });
+      });
+      if (applied.length === 0) setServerError(t('invalidCredentials'));
     } else {
+      // invalid_credentials / locked / etc. — anti-enumeration: same message.
       setServerError(t('invalidCredentials'));
     }
   }
@@ -58,7 +64,11 @@ export default function LoginPage() {
               className="w-full rounded-md border px-3 py-2 text-sm"
               {...register('email')}
             />
-            {errors.email && <p className="text-xs text-destructive">{t('emailInvalid')}</p>}
+            {errors.email && (
+              <p className="text-xs text-destructive">
+                {errors.email.message ?? t('emailInvalid')}
+              </p>
+            )}
           </div>
 
           <div className="space-y-1">
@@ -72,7 +82,9 @@ export default function LoginPage() {
               className="w-full rounded-md border px-3 py-2 text-sm"
               {...register('password')}
             />
-            {errors.password && <p className="text-xs text-destructive">{t('required')}</p>}
+            {errors.password && (
+              <p className="text-xs text-destructive">{errors.password.message ?? t('required')}</p>
+            )}
           </div>
 
           {serverError && <p className="text-sm text-destructive">{serverError}</p>}

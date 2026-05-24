@@ -327,6 +327,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@node-rs/argon2':
+        specifier: ^2.0.2
+        version: 2.0.2
       '@t3-oss/env-core':
         specifier: ^0.11.0
         version: 0.11.1(typescript@5.9.3)(zod@3.25.76)

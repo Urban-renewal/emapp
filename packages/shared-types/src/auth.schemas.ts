@@ -60,3 +60,22 @@ export const OtpVerifySchema = z.object({
   code: z.string().regex(/^\d{6}$/, 'OTP must be 6 digits'),
 });
 export type OtpVerifyDto = z.infer<typeof OtpVerifySchema>;
+
+/** GET /api/v1/me response body. Mirrors `UserProfile` in
+ *  apps/api/src/modules/auth/auth.service.ts:37 (verbatim shape).
+ *  Org `slug` is the public URL-safe identifier (D.31 G1a) — zero PII.
+ *  FE imports this and `.parse()`s the proxied `{ data: ... }` response
+ *  (Phase 4a S1). */
+export const UserProfileSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  email: z.string().email(),
+  role: z.string().min(1),
+  avatarColor: z.string().nullable(),
+  organization: z.object({
+    id: z.string().uuid(),
+    name: z.string().min(1),
+    slug: z.string().min(1),
+  }),
+});
+export type UserProfile = z.infer<typeof UserProfileSchema>;

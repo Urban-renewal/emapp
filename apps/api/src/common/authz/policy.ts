@@ -29,7 +29,8 @@ export type Resource =
   | 'project_assignments'
   | 'members'
   | 'documents'
-  | 'signature_requests';
+  | 'signature_requests'
+  | 'imports';
 
 type Matrix = Record<Resource, Record<Action, readonly Role[]>>;
 
@@ -78,6 +79,12 @@ export const POLICY: Matrix = {
   // signing endpoint /sign/:token is PUBLIC (no auth, JWT is the
   // credential) and therefore bypasses this matrix entirely.
   signature_requests: { read: ALL, create: MGR, update: MGR, delete: MGR },
+  // Imports (Phase 6, docs/03 §10): any org role may read job status/stream
+  // (record-scoping is org-direct via RLS — same shape as projects). Writes
+  // (enqueue / cancel) are manager-only; the SSE stream is a read, gated by
+  // verb→action mapping. The actual file content stays in R2 keyed
+  // off the import_jobs row — never on the wire.
+  imports: { read: ALL, create: MGR, update: MGR, delete: MGR },
 };
 
 /** Pure decision: is this role coarsely permitted this action on this resource? */

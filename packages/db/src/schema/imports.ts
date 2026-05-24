@@ -13,6 +13,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
+import { projects } from './projects';
 import { organizations, users } from './tenancy';
 
 /**
@@ -62,6 +63,16 @@ export const importJobs = pgTable(
     /** Future-mapping templates (S4). Nullable until then. */
     mappingTemplateId: uuid('mapping_template_id'),
 
+    /** Phase 6 S6 — the project this import populates. Migration 0026
+     *  adds the column nullable; the API layer (S8 wizard endpoint)
+     *  enforces non-null on insert via the create-import Zod DTO. The
+     *  worker's persistStage refuses to advance without it. Nullable
+     *  here so the older tests + dev fixtures that don't set it can
+     *  keep working through the validate stage. */
+    projectId: uuid('project_id').references(() => projects.id, {
+      onDelete: 'restrict',
+    }),
+
     /** D.22 F idempotency. UNIQUE per (org, key) when non-null. */
     idempotencyKey: text('idempotency_key'),
 
@@ -75,6 +86,14 @@ export const importJobs = pgTable(
 
     /** pg-boss correlation (filled when worker picks up). */
     pgBossJobId: text('pg_boss_job_id'),
+
+    /** v5 audit fix (P0 — D.34 wizard): parsed Excel headers from
+     *  parseStage. Written when the worker transitions to
+     *  `awaiting_mapping`; the S8 wizard endpoint reads them back to
+     *  compute the real headers-fingerprint when storing a manual
+     *  mapping_templates row (so the future L2 TemplateResolver can
+     *  actually find these templates). Migration 0031. */
+    parsedHeaders: jsonb('parsed_headers').$type<string[]>(),
   },
   (table) => ({
     orgStatusCreatedIdx: index('idx_import_jobs_org_status_created').on(
@@ -135,6 +154,18 @@ export const importJobErrors = pgTable(
   },
   (table) => ({
     jobRowIdx: index('idx_import_job_errors_job_row').on(table.jobId, table.rowNumber),
+    // Audit-pass v2 C9 (MEDIUM, migration 0025): UNIQUE prevents
+    // duplicate error rows on pg-boss retry. The handler's batched
+    // INSERT uses ON CONFLICT (job_id, row_number, code) DO NOTHING.
+    // Composite — a single row can fail multiple ways (invalid_luhn
+    // AND invalid_phone) and produce two error entries with the same
+    // row_number but different code; the composite preserves this
+    // legitimate multiplicity while preventing exact duplicates.
+    jobRowCodeUnique: uniqueIndex('import_job_errors_unique').on(
+      table.jobId,
+      table.rowNumber,
+      table.code,
+    ),
   }),
 );
 

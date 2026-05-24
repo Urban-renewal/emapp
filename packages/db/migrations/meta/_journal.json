@@ -176,6 +176,55 @@
       "when": 1779041400000,
       "tag": "0024_import_jobs_revoke_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1779042000000,
+      "tag": "0025_import_job_errors_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1779042600000,
+      "tag": "0026_import_jobs_project_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1779043200000,
+      "tag": "0027_import_jobs_awaiting_mapping",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1779043800000,
+      "tag": "0028_mapping_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1779044400000,
+      "tag": "0029_buildings_project_address_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1779045000000,
+      "tag": "0030_ownerships_sum_trigger_per_statement",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1779045600000,
+      "tag": "0031_import_jobs_parsed_headers",
+      "breakpoints": true
     }
   ]
 }

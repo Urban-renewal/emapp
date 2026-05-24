@@ -94,7 +94,12 @@ const STRIPPED_REQUEST_HEADERS = new Set([
   'x-forwarded-for',
 ]);
 
-function getBackendBase(): string {
+/** v8.5 — exported for proxy.spec.ts.
+ *  Spec MUST be able to assert "missing env throws"; keeping it
+ *  module-scoped without an export would force the spec to invoke
+ *  a full proxy() to surface the throw, which couples the test to
+ *  too much shape. */
+export function getBackendBase(): string {
   const url = process.env['API_BACKEND_URL'];
   if (!url) {
     // Fail loud — a misconfigured Pages deploy with no upstream is
@@ -104,7 +109,8 @@ function getBackendBase(): string {
   return url.replace(/\/$/, '');
 }
 
-function buildUpstreamUrl(req: NextRequest, pathSegments: string[]): string {
+/** v8.5 — exported for proxy.spec.ts. */
+export function buildUpstreamUrl(req: NextRequest, pathSegments: string[]): string {
   // pathSegments comes from the dynamic [...path] capture; we prepend
   // /api/v1 because the backend (NestJS global prefix per D.10) expects
   // it. The browser called /api/v1/<thing>; segments here are
@@ -114,7 +120,8 @@ function buildUpstreamUrl(req: NextRequest, pathSegments: string[]): string {
   return `${getBackendBase()}${path}${search}`;
 }
 
-function buildUpstreamHeaders(req: NextRequest): Headers {
+/** v8.5 — exported for proxy.spec.ts. */
+export function buildUpstreamHeaders(req: NextRequest): Headers {
   const out = new Headers();
   for (const [key, value] of req.headers) {
     const lower = key.toLowerCase();
@@ -135,7 +142,8 @@ function buildUpstreamHeaders(req: NextRequest): Headers {
   return out;
 }
 
-function copyResponseHeaders(upstream: Response): Headers {
+/** v8.5 — exported for proxy.spec.ts. */
+export function copyResponseHeaders(upstream: Response): Headers {
   const out = new Headers();
   upstream.headers.forEach((value, key) => {
     if (HOP_BY_HOP.has(key.toLowerCase())) return;

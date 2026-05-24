@@ -88,12 +88,36 @@
     "archiveConfirm": "לאחר ארכוב הבניין לא יוצג. להמשיך?",
     "archiveFailed": "ארכוב הבניין נכשל",
     "aptCountLabel": "{count, plural, =0 {אין דירות} one {דירה אחת} two {שתי דירות} other {# דירות}}",
+    "apartmentsSection": "דירות",
+    "apartmentsHint": "ניהול דירות הבניין ושינוי סטטוס לכל דירה.",
+    "apartmentsManage": "לרשימת הדירות",
     "field": {
       "address": "כתובת",
       "city": "עיר",
       "block": "גוש",
       "parcel": "חלקה",
       "subparcel": "תת-חלקה",
+      "notes": "הערות"
+    }
+  },
+  "apartments": {
+    "listTitle": "דירות",
+    "create": "הוספת דירה",
+    "loading": "טוען...",
+    "empty": "אין עדיין דירות בבניין. הקלק על \"הוספת דירה\".",
+    "loadFailed": "טעינת הדירות נכשלה",
+    "createFailed": "יצירת הדירה נכשלה",
+    "notFound": "הדירה לא נמצאה",
+    "archiveConfirm": "לאחר ארכוב הדירה לא תוצג. להמשיך?",
+    "archiveFailed": "ארכוב הדירה נכשל",
+    "numberPrefix": "דירה {number}",
+    "statusChangedLabel": "סטטוס שונה {rel}",
+    "field": {
+      "number": "מספר דירה",
+      "floor": "קומה",
+      "rooms": "חדרים",
+      "sizeSqm": "מ\"ר",
+      "status": "סטטוס",
       "notes": "הערות"
     }
   }

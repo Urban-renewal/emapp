@@ -88,12 +88,36 @@
     "archiveConfirm": "After archiving the building will be hidden. Continue?",
     "archiveFailed": "Failed to archive",
     "aptCountLabel": "{count, plural, =0 {no apartments} one {one apartment} other {# apartments}}",
+    "apartmentsSection": "Apartments",
+    "apartmentsHint": "Manage the building's apartments and per-apartment status.",
+    "apartmentsManage": "Go to apartments",
     "field": {
       "address": "Address",
       "city": "City",
       "block": "Block",
       "parcel": "Parcel",
       "subparcel": "Sub-parcel",
+      "notes": "Notes"
+    }
+  },
+  "apartments": {
+    "listTitle": "Apartments",
+    "create": "Add Apartment",
+    "loading": "Loading...",
+    "empty": "No apartments in this building yet. Click \"Add Apartment\".",
+    "loadFailed": "Failed to load apartments",
+    "createFailed": "Failed to create apartment",
+    "notFound": "Apartment not found",
+    "archiveConfirm": "After archiving the apartment will be hidden. Continue?",
+    "archiveFailed": "Failed to archive",
+    "numberPrefix": "Apartment {number}",
+    "statusChangedLabel": "Status changed {rel}",
+    "field": {
+      "number": "Apartment number",
+      "floor": "Floor",
+      "rooms": "Rooms",
+      "sizeSqm": "m²",
+      "status": "Status",
       "notes": "Notes"
     }
   }

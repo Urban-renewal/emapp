@@ -28,24 +28,38 @@
    you don't understand WHY we do independent fresh-eyes audits,
    you'll skip them and ship enterprise-grade-looking code that
    doesn't pass enterprise review.
-4. **`OPEN-ITEMS-v8.md`** (5 min) — 23 deferred items with concrete
+4. **`docs/ARCHITECTURE-MAP.md`** (20-30 min) — **the layered-system
+   sync map.** This is the LONGEST read but the most important
+   reference. The system has ~10 cross-cutting layers that all have
+   to stay synchronized (wire schemas ↔ DB schemas ↔ migrations ↔
+   worker payloads ↔ SSE events ↔ FE consumers; PII fields × 6
+   layers of handling; state machine across 5 places; role enum
+   across 5 places; etc.). When you're about to change something
+   that spans more than one file, ARCHITECTURE-MAP tells you what
+   else you have to touch. Every rule there is grounded in an
+   actual bug from the 8 audit passes.
+5. **`OPEN-ITEMS-v8.md`** (5 min) — 23 deferred items with concrete
    plans. **NONE are FE-blockers.** You need to know they exist so
    you don't accidentally re-discover and re-fix them. Some are
    scale-prep (close in a Phase 7+ slice); some are operational.
-5. **`docs/03-mvp-roadmap.html` §11** — Phase 4 spec. The product
+6. **`docs/03-mvp-roadmap.html` §11** — Phase 4 spec. The product
    requirements (which screens, what behavior, what permissions).
-6. **`docs/10-frontend-security.html`** — FE security DoD. CSP,
+7. **`docs/10-frontend-security.html`** — FE security DoD. CSP,
    XSS, CSRF posture, what NEVER appears in URLs.
-7. **`docs/11-sync-mechanism.html`** — the FE↔BE contract pattern.
+8. **`docs/11-sync-mechanism.html`** — the FE↔BE contract pattern.
    The contract IS `@emapp/shared-types`; Zod schemas are the
    single source of truth on both sides.
-8. **`docs/09-api-reference.generated.md`** — every API endpoint with
+9. **`docs/09-api-reference.generated.md`** — every API endpoint with
    request/response shapes. Auto-generated from the Zod schemas;
    re-run via `pnpm --filter @emapp/api gen:api-docs` if you change
    the BE.
 
 Don't read the other `docs/*.html` upfront — pull them in only when
 you hit a specific question. They're reference, not flow.
+
+**ARCHITECTURE-MAP.md is the document you'll come back to most
+often.** ONBOARDING is what you read on day 1; ARCHITECTURE-MAP is
+what you open every time you're about to commit a multi-file change.
 
 ---
 

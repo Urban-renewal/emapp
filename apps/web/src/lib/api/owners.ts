@@ -49,7 +49,8 @@ export async function getOwner(id: string): Promise<Owner> {
 }
 
 export async function createOwner(body: CreateOwner): Promise<Owner> {
-  const res = await apiClient.post<unknown>(`/owners`, body);
+  // §v9-P0-3 — idempotent create POST.
+  const res = await apiClient.postIdempotent<unknown>(`/owners`, body);
   if (!isOk(res)) throw new ApiClientError(res.error);
   return OwnerDataSchema.parse({ data: res.data }).data;
 }

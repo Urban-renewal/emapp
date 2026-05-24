@@ -10,6 +10,11 @@
  * is the FIRST line of defense; the server's Zod refine + the trigger
  * are the second and third. All three must align — the trigger raise
  * is mapped server-side to `ownership_sum_invalid` (400).
+ *
+ * §v9-H-5 closure — `putOwnerships` uses `apiClient.put` so the 401 →
+ * silent refresh → replay path, the 15s timeout, the envelope guard,
+ * and the `emapp:unauthenticated` event all apply uniformly. No raw
+ * fetch bypass.
  */
 import {
   ApartmentOwnerSchema,
@@ -19,7 +24,7 @@ import {
 } from '@emapp/shared-types';
 import { z } from 'zod';
 
-import { apiClient, isList } from '../api-client';
+import { apiClient, isList, isOk } from '../api-client';
 
 import { ApiClientError } from './projects';
 
@@ -54,26 +59,17 @@ export async function listApartmentOwners(
 
 /**
  * PUT /apartments/:apartmentId/ownerships — atomic full-set replace
- * (D.25). api-client doesn't expose a PUT helper today (one-off
- * method); we make the raw same-origin fetch and reuse the D.16
- * envelope-to-error mapping.
+ * (D.25). Uses `apiClient.put` so 401/refresh/timeout/envelope-guard
+ * all run uniformly (§v9-H-5).
  */
 export async function putOwnerships(apartmentId: string, body: SetOwnerships): Promise<void> {
   // FE-side defensive parse — never PUT a malformed body. A failed
   // parse throws ZodError to the caller (NOT an ApiClientError).
   SetOwnershipsInput.parse(body);
-  const res = await fetch(`/api/v1/apartments/${apartmentId}/ownerships`, {
-    method: 'PUT',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (res.ok) return;
-  let env: { error: { code: string; message?: string; details?: unknown } };
-  try {
-    env = (await res.json()) as typeof env;
-  } catch {
-    throw new ApiClientError({ code: 'invalid_response' });
-  }
-  throw new ApiClientError(env.error);
+  const res = await apiClient.put<unknown>(`/apartments/${apartmentId}/ownerships`, body);
+  if (isOk(res)) return;
+  // 204 No Content / empty body folds to invalid_response by the
+  // api-client envelope guard; treat that as success.
+  if (res.error.code === 'invalid_response') return;
+  throw new ApiClientError(res.error);
 }

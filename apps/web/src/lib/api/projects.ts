@@ -63,7 +63,9 @@ export async function getProject(id: string): Promise<Project> {
 }
 
 export async function createProject(body: CreateProject): Promise<Project> {
-  const res = await apiClient.post<unknown>(`/projects`, body);
+  // §v9-P0-3 — create POSTs carry an Idempotency-Key so a
+  // double-clicked Submit creates ONE project, not two.
+  const res = await apiClient.postIdempotent<unknown>(`/projects`, body);
   const data = unwrap(res);
   return ProjectDataSchema.parse({ data }).data;
 }

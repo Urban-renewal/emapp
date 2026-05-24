@@ -2,6 +2,7 @@
 
 import { SignupSchema, type SignupDto } from '@emapp/shared-types';
 import { zodResolver } from '@hookform/resolvers/zod';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
@@ -134,9 +135,9 @@ export default function SignupPage() {
 
         <p className="text-center text-sm">
           {t('hasAccount')}{' '}
-          <a href="/login" className="font-medium underline">
+          <Link href="/login" className="font-medium underline">
             {t('login')}
-          </a>
+          </Link>
         </p>
       </div>
     </div>

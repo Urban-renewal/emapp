@@ -2,6 +2,7 @@
 
 import type { CreateProject } from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLocale } from 'next-intl';
 
 import { toProjectViewModel, toProjectViewModels } from '@/adapters/project';
 import {
@@ -19,36 +20,44 @@ import type { ProjectViewModel } from '@/models/project.vm';
  * `ProjectViewModel[]` directly; React Query memoizes by reference, so
  * the adapter only re-runs when the underlying data changes.
  *
+ * v9-post-audit-SOLID-3 — the active next-intl locale is now threaded
+ * to the adapter so its locale-aware label code paths reach the UI.
+ *
  * Per docs/03 Phase 8 perf rules: `staleTime: 30_000` — 30s is a safe
  * compromise (the API list is cursor-paginated and indexed; refetches
  * happen on focus + invalidation after mutations anyway).
  */
 
 const PROJECTS_KEY = ['projects'] as const;
+function he_or_en(loc: string): 'he' | 'en' {
+  return loc === 'en' ? 'en' : 'he';
+}
 
 export function useProjectList(query: { limit?: number; cursor?: string } = {}) {
+  const locale = he_or_en(useLocale());
   return useQuery<
     ProjectListPage,
     Error,
     { items: ProjectViewModel[]; page: ProjectListPage['page'] }
   >({
-    queryKey: [...PROJECTS_KEY, 'list', query],
+    queryKey: [...PROJECTS_KEY, 'list', query, locale],
     queryFn: () => listProjects(query),
     staleTime: 30_000,
-    select: (data) => ({ items: toProjectViewModels(data.items), page: data.page }),
+    select: (data) => ({ items: toProjectViewModels(data.items, locale), page: data.page }),
   });
 }
 
 export function useProject(id: string | undefined) {
+  const locale = he_or_en(useLocale());
   return useQuery({
-    queryKey: [...PROJECTS_KEY, 'one', id],
+    queryKey: [...PROJECTS_KEY, 'one', id, locale],
     queryFn: () => {
       if (!id) throw new Error('useProject requires an id');
       return getProject(id);
     },
     enabled: Boolean(id),
     staleTime: 30_000,
-    select: (data) => toProjectViewModel(data),
+    select: (data) => toProjectViewModel(data, locale),
   });
 }
 

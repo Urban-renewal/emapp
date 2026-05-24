@@ -61,11 +61,13 @@ export async function getDocument(id: string): Promise<Document> {
   return DocumentDataSchema.parse({ data: res.data }).data;
 }
 
-/** POST /documents — declare metadata, get back a presigned PUT URL. */
+/** POST /documents — declare metadata, get back a presigned PUT URL.
+ *  §v9-P0-3 idempotent (a double-clicked Upload should not mint two
+ *  presigned URLs / two DB rows). */
 export async function createDocument(
   body: CreateDocument,
 ): Promise<{ document: Document; uploadUrl: string; uploadExpiresInSeconds: number }> {
-  const res = await apiClient.post<unknown>(`/documents`, body);
+  const res = await apiClient.postIdempotent<unknown>(`/documents`, body);
   if (!isOk(res)) throw new ApiClientError(res.error);
   return UploadResponseDataSchema.parse({ data: res.data }).data;
 }
@@ -100,12 +102,41 @@ export async function archiveDocument(id: string): Promise<void> {
  * (the URL is bound to R2's origin); we send Content-Type +
  * Content-Length. No cookies, no Authorization — the URL signature IS
  * the credential.
+ *
+ * §v9-M-3 — Content-Type pinning. R2 signs the presigned PUT with the
+ * exact `mimeType` the FE sent in createDocument. macOS / Windows
+ * browsers sometimes report `file.type` as a non-canonical alias
+ * (`image/jpg` instead of `image/jpeg`, `application/x-zip-compressed`
+ * vs `application/zip`). If the PUT's Content-Type drifts from the
+ * signed value, R2 rejects with 403 SignatureDoesNotMatch. We
+ * canonicalize on BOTH the create-call mimeType (the caller does it)
+ * and the upload-call mimeType (here) using the same map.
  */
+const MIME_CANONICALIZATION: Record<string, string> = {
+  'image/jpg': 'image/jpeg',
+  'image/pjpeg': 'image/jpeg',
+  'application/x-zip-compressed': 'application/zip',
+  'text/comma-separated-values': 'text/csv',
+};
+
+/** Public — call BOTH in the upload hook (before createDocument) AND
+ *  by uploadToPresigned (defense in depth). */
+export function canonicalMime(raw: string): string {
+  return MIME_CANONICALIZATION[raw] ?? raw;
+}
+
 export async function uploadToPresigned(url: string, blob: Blob, mimeType: string): Promise<void> {
+  const canonical = canonicalMime(mimeType);
   const res = await fetch(url, {
     method: 'PUT',
     body: blob,
-    headers: { 'Content-Type': mimeType },
+    headers: { 'Content-Type': canonical },
+    // §v9-post-audit-CRITICAL — presigned URLs are signature-bound;
+    // sending cookies / Authorization to R2 would (a) corrupt the
+    // signature on some configurations, and (b) leak a bearer token
+    // if the URL is ever attacker-controlled (cache poisoning, XSS).
+    // `credentials: 'omit'` is the only safe default here.
+    credentials: 'omit',
   });
   if (!res.ok) {
     throw new ApiClientError({

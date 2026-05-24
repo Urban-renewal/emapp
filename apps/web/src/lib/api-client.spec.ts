@@ -64,34 +64,25 @@ afterEach(() => {
 });
 
 describe('api-client envelope handling — adversarial', () => {
-  it('A1) server returns { foo: "bar" } (NEITHER data NOR error) — isOk() returns false but body has no `error` key', async () => {
+  it('A1) server returns { foo: "bar" } (neither data nor error) — folded to invalid_response (CLOSED §v9-H-7)', async () => {
     globalThis.fetch = stubFetch(() => ({
       status: 200,
       body: { foo: 'bar' },
     })) as unknown as typeof fetch;
     const res = await apiClient.get<unknown>('/anything');
-    // Today: isOk(res) is false (no `data` key). Caller then does res.error
-    // → undefined, which causes a runtime TypeError downstream.
-    // GAP: api-client SHOULD reject any shape that isn't `{data}` or `{error}`.
     expect(isOk(res)).toBe(false);
-    expect((res as { error?: unknown }).error).toBeUndefined();
+    if (!isOk(res)) expect(res.error.code).toBe('invalid_response');
   });
 
-  it.fails(
-    'A2) defensive envelope guard rejects non-D.16 shapes (currently MISSING — FE consumes garbage as a valid response)',
-    async () => {
-      globalThis.fetch = stubFetch(() => ({
-        status: 200,
-        body: { foo: 'bar' },
-      })) as unknown as typeof fetch;
-      const res = await apiClient.get<unknown>('/anything');
-      // Expected behavior: api-client should fold non-envelope responses
-      // into `{ error: { code: 'invalid_response' } }` — same as it does
-      // for non-JSON bodies. Today it does NOT.
-      expect(isOk(res)).toBe(false);
-      expect((res as { error: { code: string } }).error.code).toBe('invalid_response');
-    },
-  );
+  it('A2) defensive envelope guard rejects non-D.16 shapes (CLOSED §v9-H-7 — folds to invalid_response)', async () => {
+    globalThis.fetch = stubFetch(() => ({
+      status: 200,
+      body: { foo: 'bar' },
+    })) as unknown as typeof fetch;
+    const res = await apiClient.get<unknown>('/anything');
+    expect(isOk(res)).toBe(false);
+    if (!isOk(res)) expect(res.error.code).toBe('invalid_response');
+  });
 
   it('A3) malformed JSON → folded into invalid_response envelope', async () => {
     globalThis.fetch = stubFetch(() => ({
@@ -130,33 +121,68 @@ describe('api-client 401 handling — adversarial', () => {
     expect(dispatchedEvents.filter((e) => e === UNAUTHENTICATED_EVENT)).toHaveLength(1);
   });
 
-  it('A7) 401 with code=token_expired SHOULD trigger silent refresh, NOT a logout event (D.31 G2 / Doc 10 §2) — currently boots user to login', async () => {
-    globalThis.fetch = stubFetch(() => ({
-      status: 401,
-      body: { error: { code: 'token_expired' } },
-    })) as unknown as typeof fetch;
+  it('A7) 401 with code=token_expired triggers silent refresh (CLOSED §v9-P0-4); when refresh succeeds, NO logout event fires', async () => {
+    // refresh succeeds (first call to /auth/refresh returns 200), then
+    // the replay of /projects also returns 200.
+    let callCount = 0;
+    globalThis.fetch = vi.fn(() => {
+      callCount += 1;
+      if (callCount === 1) {
+        // The original /projects call → 401 token_expired
+        return Promise.resolve({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ error: { code: 'token_expired' } }),
+        } as unknown as Response);
+      }
+      if (callCount === 2) {
+        // /auth/refresh succeeds
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ data: { ok: true } }),
+        } as unknown as Response);
+      }
+      // Replay of /projects succeeds.
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ data: [] }),
+      } as unknown as Response);
+    }) as unknown as typeof fetch;
+
     await apiClient.get<unknown>('/projects');
-    // GAP — today api-client treats every 401 the same: emit event →
-    // auth-guard pushes /login. token_expired SHOULD pre-empt that
-    // and queue a single-flight POST /auth/refresh + replay the
-    // original request. Tracked here so the next agent that wires
-    // refresh flips this assertion.
-    expect(dispatchedEvents).toContain(UNAUTHENTICATED_EVENT);
+    expect(callCount).toBe(3); // original + refresh + replay
+    expect(dispatchedEvents).not.toContain(UNAUTHENTICATED_EVENT);
   });
 
-  it.fails(
-    'A8) once silent refresh exists: token_expired → refresh attempted → only on refresh failure does the unauthenticated event fire',
-    async () => {
-      // Sentinel test pinning the future contract. flipping `.fails`
-      // is the only diff the refresh-flow PR needs to make.
-      globalThis.fetch = stubFetch(() => ({
+  it('A8) when silent refresh FAILS, the unauthenticated event fires (CLOSED §v9-P0-4)', async () => {
+    let callCount = 0;
+    globalThis.fetch = vi.fn(() => {
+      callCount += 1;
+      if (callCount === 1) {
+        return Promise.resolve({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ error: { code: 'token_expired' } }),
+        } as unknown as Response);
+      }
+      // /auth/refresh fails — refresh token expired / revoked
+      return Promise.resolve({
+        ok: false,
         status: 401,
-        body: { error: { code: 'token_expired' } },
-      })) as unknown as typeof fetch;
-      await apiClient.get<unknown>('/projects');
-      expect(dispatchedEvents).not.toContain(UNAUTHENTICATED_EVENT);
-    },
-  );
+        json: () => Promise.resolve({ error: { code: 'invalid_refresh' } }),
+      } as unknown as Response);
+    }) as unknown as typeof fetch;
+
+    await apiClient.get<unknown>('/projects');
+    // The original call's body is the 401 token_expired; after refresh
+    // fails we DO emit the event (no replay, no second refresh attempt).
+    // The post-refresh fall-through emits the event because the
+    // outermost call's response was 401 + token_expired (not in
+    // SUPPRESS_EVENT set).
+    expect(dispatchedEvents).toContain(UNAUTHENTICATED_EVENT);
+  });
 
   it('A9) 403 does NOT dispatch UNAUTHENTICATED_EVENT (forbidden is a permissions error, not an auth error)', async () => {
     globalThis.fetch = stubFetch(() => ({
@@ -210,20 +236,35 @@ describe('api-client request shape — adversarial', () => {
     expect(String(spy.mock.calls[0]?.[0])).toBe('/api/v1/projects');
   });
 
-  it.fails(
-    'A15) POST CREATE endpoints should send an Idempotency-Key header (Doc 06 §5.7 / Doc 10 §6) — currently MISSING',
-    async () => {
-      const spy = stubFetch(() => ({ status: 200, body: { data: { ok: true } } }));
-      globalThis.fetch = spy as unknown as typeof fetch;
-      await apiClient.post('/projects', { name: 'X' });
-      const init = spy.mock.calls[0]?.[1];
-      const idem = (init?.headers as Record<string, string>)['Idempotency-Key'];
-      // GAP — Doc 06 mandates Idempotency-Key on POSTs that create.
-      // Currently NOT sent. Flip when api-client grows an idempotency
-      // helper.
-      expect(idem).toMatch(/^[A-Za-z0-9_-]{16,64}$/);
-    },
-  );
+  it('A15) postIdempotent sends an Idempotency-Key header (CLOSED §v9-P0-3)', async () => {
+    const spy = stubFetch(() => ({ status: 200, body: { data: { ok: true } } }));
+    globalThis.fetch = spy as unknown as typeof fetch;
+    await apiClient.postIdempotent('/projects', { name: 'X' });
+    const init = spy.mock.calls[0]?.[1];
+    const idem = (init?.headers as Record<string, string>)['Idempotency-Key'];
+    // UUIDv4 shape: 36 chars with hyphens. Allow either 36-char UUID
+    // OR a 32-char fallback (no-hyphen). Mostly UUID.
+    expect(idem).toMatch(/^[0-9a-f-]{32,36}$/i);
+  });
+
+  it('A15b) plain post() does NOT add Idempotency-Key (call site opts in)', async () => {
+    const spy = stubFetch(() => ({ status: 200, body: { data: { ok: true } } }));
+    globalThis.fetch = spy as unknown as typeof fetch;
+    await apiClient.post('/projects', { name: 'X' });
+    const init = spy.mock.calls[0]?.[1];
+    const idem = (init?.headers as Record<string, string>)['Idempotency-Key'];
+    expect(idem).toBeUndefined();
+  });
+
+  it('A15c) two postIdempotent calls produce DIFFERENT keys (each user action = unique key)', async () => {
+    const spy = stubFetch(() => ({ status: 200, body: { data: { ok: true } } }));
+    globalThis.fetch = spy as unknown as typeof fetch;
+    await apiClient.postIdempotent('/projects', { name: 'A' });
+    await apiClient.postIdempotent('/projects', { name: 'B' });
+    const k1 = (spy.mock.calls[0]?.[1]?.headers as Record<string, string>)['Idempotency-Key'];
+    const k2 = (spy.mock.calls[1]?.[1]?.headers as Record<string, string>)['Idempotency-Key'];
+    expect(k1).not.toBe(k2);
+  });
 });
 
 describe('api-client list envelope discrimination — adversarial', () => {

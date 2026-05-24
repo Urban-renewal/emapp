@@ -129,7 +129,10 @@ describe('Documents upload — presigned URL handling', () => {
       .calls[0]?.[1];
     // The presigned URL signature IS the credential; we must NOT
     // attach cookies (cross-origin) or Authorization header.
-    expect(init?.credentials).toBeUndefined();
+    // v9-post-audit-CRITICAL closure — credentials: 'omit' is required
+    // (not undefined) to defensively block any browser-default cookie
+    // attachment or middleware Authorization injection.
+    expect(init?.credentials).toBe('omit');
     expect((init?.headers as Record<string, string>)['Authorization']).toBeUndefined();
     expect((init?.headers as Record<string, string>)['Cookie']).toBeUndefined();
   });
@@ -150,18 +153,25 @@ describe('Documents upload — presigned URL handling', () => {
     ).rejects.toMatchObject({ code: 'upload_failed' });
   });
 
-  it.fails(
-    'D10) GAP — uploadToPresigned should bind Content-Type EXACTLY to the value declared at create time, refusing if local file.type drifted',
-    async () => {
-      // GAP: today uploadToPresigned takes whatever mimeType the caller
-      // passes (typically file.type from the picker). The server-side
-      // presigned PUT is signed with the declared mimeType from the
-      // create request. If they differ (e.g. macOS sends image/jpg vs
-      // image/jpeg), R2 rejects with 403. The FE has no defense in
-      // depth that catches this BEFORE the upload attempt.
-      expect(true).toBe(false);
-    },
-  );
+  it('D10) canonicalMime normalizes file.type aliases (CLOSED §v9-M-3)', async () => {
+    const { canonicalMime } = await import('./documents');
+    expect(canonicalMime('image/jpg')).toBe('image/jpeg');
+    expect(canonicalMime('image/pjpeg')).toBe('image/jpeg');
+    expect(canonicalMime('application/x-zip-compressed')).toBe('application/zip');
+    expect(canonicalMime('text/comma-separated-values')).toBe('text/csv');
+    // Canonical values are passed through:
+    expect(canonicalMime('application/pdf')).toBe('application/pdf');
+  });
+
+  it('D10b) uploadToPresigned uses the canonical mime, NOT the raw input', async () => {
+    const spy = vi.fn(() => Promise.resolve(jsonResp(200, ''))) as unknown as typeof fetch;
+    globalThis.fetch = spy as unknown as typeof fetch;
+    await uploadToPresigned('https://r2/x', new Blob(['x']), 'image/jpg');
+    const init = (spy as unknown as { mock: { calls: [string, RequestInit][] } }).mock
+      .calls[0]?.[1];
+    // Caller said image/jpg, R2 sees image/jpeg.
+    expect((init?.headers as Record<string, string>)['Content-Type']).toBe('image/jpeg');
+  });
 });
 
 describe('Documents sha256 + finalize', () => {
@@ -209,13 +219,16 @@ describe('Documents download URL — adversarial', () => {
     await expect(getDownloadUrl(SAMPLE_DOC.id)).rejects.toMatchObject({ code: 'not_found' });
   });
 
-  it.fails(
-    'D16) GAP — getDownloadUrl response handler should NEVER log the presigned URL anywhere (currently no log; pin the rule)',
-    () => {
-      // GAP framing — the FE doesn't log the URL today, but there is
-      // no STATIC test that it cannot. A future agent who adds debug
-      // logging could leak the URL. Document the contract.
-      expect(false).toBe(true);
-    },
-  );
+  it('D16) static-grep — documents.ts source does NOT contain console.log of the presigned URL', async () => {
+    // Doc 07 §7.11 — presigned URLs are bearer credentials and must
+    // not appear in logs. A future agent adding debug `console.log(url)`
+    // would silently leak. This test grep-asserts the file source.
+    const { readFileSync } = await import('fs');
+    const { fileURLToPath } = await import('url');
+    const { dirname, join } = await import('path');
+    const here = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(here, 'documents.ts'), 'utf8');
+    expect(src).not.toMatch(/console\.(log|warn|error)\([^)]*url/i);
+    expect(src).not.toMatch(/console\.(log|warn|error)\([^)]*uploadUrl/i);
+  });
 });

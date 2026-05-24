@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 
+import { NameDisplay } from '@/components/ui/name-display';
 import type { UserProfile } from '@/lib/auth';
 
 import { LogoutButton } from './logout-button';
@@ -20,10 +21,14 @@ export async function Topbar({ user }: TopbarProps) {
 
   return (
     <header className="flex h-14 items-center justify-between border-b bg-background px-6">
-      <div className="text-sm font-semibold text-foreground">{user.organization.name}</div>
+      <div className="text-sm font-semibold text-foreground">
+        <NameDisplay name={user.organization.name} />
+      </div>
       <div className="flex items-center gap-4">
         <div className="text-end">
-          <div className="text-sm font-medium leading-tight">{user.name}</div>
+          <div className="text-sm font-medium leading-tight">
+            <NameDisplay name={user.name} />
+          </div>
           <div className="text-xs text-muted-foreground">{t(`role.${user.role}`)}</div>
         </div>
         <LogoutButton />

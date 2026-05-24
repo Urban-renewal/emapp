@@ -2,11 +2,14 @@
  * Building API client — nested under `/projects/:projectId/buildings`
  * for list+create, top-level `/buildings/:id` for view+archive+update
  * (mirrors apps/api/src/modules/buildings/buildings.controller.ts).
+ *
+ * v9-post-audit-SOLID-4 — all branching uses `isOk()` consistently
+ * (no mixed `'data' in res` / `isOk(res)` patterns).
  */
 import { BuildingSchema, type Building, type CreateBuilding } from '@emapp/shared-types';
 import { z } from 'zod';
 
-import { apiClient, isList } from '../api-client';
+import { apiClient, isList, isOk } from '../api-client';
 
 import { ApiClientError } from './projects';
 
@@ -41,19 +44,20 @@ export async function listBuildings(
 
 export async function getBuilding(id: string): Promise<Building> {
   const res = await apiClient.get<unknown>(`/buildings/${id}`);
-  if (!('data' in res)) throw new ApiClientError(res.error);
+  if (!isOk(res)) throw new ApiClientError(res.error);
   return BuildingDataSchema.parse({ data: res.data }).data;
 }
 
 export async function createBuilding(projectId: string, body: CreateBuilding): Promise<Building> {
-  const res = await apiClient.post<unknown>(`/projects/${projectId}/buildings`, body);
-  if (!('data' in res)) throw new ApiClientError(res.error);
+  // §v9-P0-3 — idempotent create POST.
+  const res = await apiClient.postIdempotent<unknown>(`/projects/${projectId}/buildings`, body);
+  if (!isOk(res)) throw new ApiClientError(res.error);
   return BuildingDataSchema.parse({ data: res.data }).data;
 }
 
 export async function archiveBuilding(id: string): Promise<void> {
   const res = await apiClient.delete<unknown>(`/buildings/${id}`);
-  if ('data' in res) return;
+  if (isOk(res)) return;
   if (res.error.code === 'invalid_response') return;
   throw new ApiClientError(res.error);
 }

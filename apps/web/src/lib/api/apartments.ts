@@ -1,7 +1,12 @@
+/**
+ * Apartment API client.
+ *
+ * v9-post-audit-SOLID-4 — branching uses `isOk()` consistently.
+ */
 import { ApartmentSchema, type Apartment, type CreateApartment } from '@emapp/shared-types';
 import { z } from 'zod';
 
-import { apiClient, isList } from '../api-client';
+import { apiClient, isList, isOk } from '../api-client';
 
 import { ApiClientError } from './projects';
 
@@ -36,7 +41,7 @@ export async function listApartments(
 
 export async function getApartment(id: string): Promise<Apartment> {
   const res = await apiClient.get<unknown>(`/apartments/${id}`);
-  if (!('data' in res)) throw new ApiClientError(res.error);
+  if (!isOk(res)) throw new ApiClientError(res.error);
   return ApartmentDataSchema.parse({ data: res.data }).data;
 }
 
@@ -44,14 +49,15 @@ export async function createApartment(
   buildingId: string,
   body: CreateApartment,
 ): Promise<Apartment> {
-  const res = await apiClient.post<unknown>(`/buildings/${buildingId}/apartments`, body);
-  if (!('data' in res)) throw new ApiClientError(res.error);
+  // §v9-P0-3 — idempotent create POST.
+  const res = await apiClient.postIdempotent<unknown>(`/buildings/${buildingId}/apartments`, body);
+  if (!isOk(res)) throw new ApiClientError(res.error);
   return ApartmentDataSchema.parse({ data: res.data }).data;
 }
 
 export async function archiveApartment(id: string): Promise<void> {
   const res = await apiClient.delete<unknown>(`/apartments/${id}`);
-  if ('data' in res) return;
+  if (isOk(res)) return;
   if (res.error.code === 'invalid_response') return;
   throw new ApiClientError(res.error);
 }

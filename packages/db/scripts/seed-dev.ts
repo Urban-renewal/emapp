@@ -83,13 +83,43 @@ const BUILDINGS = [
   { address: 'בן יהודה 25', city: 'תל אביב', aptNumbers: ['3', '4'] },
 ];
 
-// PII is FICTITIOUS — Israeli national IDs use a Luhn-like checksum;
-// these are pure dev fixtures and do NOT collide with any real ID
-// (the leading sequence keeps them out of the real-issuance space).
+/**
+ * Compute the Israeli national-ID check digit (closes §v9-M-2).
+ * Spec: weights 1,2,1,2,1,2,1,2,1; if product ≥ 10, sum its digits;
+ * check digit = (10 − (sum mod 10)) mod 10.
+ *
+ * Without this, the seed wrote IDs that PASSED the FE regex
+ * (`/^\d{9}$/`) but would have FAILED the API DTO's MOD-10 refine,
+ * so future API-side test fixtures regenerating these owners would
+ * 400 with `validation_error`.
+ */
+function israeliCheckDigit(first8: string): string {
+  let sum = 0;
+  for (let i = 0; i < 8; i += 1) {
+    const d = Number(first8[i]);
+    const w = (i % 2) + 1;
+    const p = d * w;
+    sum += p >= 10 ? Math.floor(p / 10) + (p % 10) : p;
+  }
+  return String((10 - (sum % 10)) % 10);
+}
+function luhnId(first8: string): string {
+  if (!/^\d{8}$/.test(first8)) throw new Error(`luhnId: expected 8 digits, got ${first8}`);
+  return first8 + israeliCheckDigit(first8);
+}
+
+// PII is FICTITIOUS — IDs pass the Israeli Luhn checksum so future
+// API-DTO smoke tests that recreate these owners via the real BE
+// path are not rejected with validation_error.
 const OWNERS: Array<PiiFields & { email?: string }> = [
-  { name: 'דנה כהן', nationalId: '999000111', phone: '0501234567', email: 'dana@example.dev' },
-  { name: 'יוסי לוי', nationalId: '999000222', phone: '0509876543' },
-  { name: 'שרה פרץ', nationalId: '999000333' },
+  {
+    name: 'דנה כהן',
+    nationalId: luhnId('99900011'),
+    phone: '0501234567',
+    email: 'dana@example.dev',
+  },
+  { name: 'יוסי לוי', nationalId: luhnId('99900022'), phone: '0509876543' },
+  { name: 'שרה פרץ', nationalId: luhnId('99900033') },
 ];
 
 async function main(): Promise<number> {

@@ -2,6 +2,7 @@
 
 import type { CreateOwner } from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLocale } from 'next-intl';
 
 import { toOwnerViewModel, toOwnerViewModels } from '@/adapters/owner';
 import {
@@ -14,26 +15,31 @@ import {
 import type { OwnerViewModel } from '@/models/owner.vm';
 
 const OWNERS_KEY = ['owners'] as const;
+function he_or_en(loc: string): 'he' | 'en' {
+  return loc === 'en' ? 'en' : 'he';
+}
 
 export function useOwnerList(query: { limit?: number; cursor?: string } = {}) {
+  const locale = he_or_en(useLocale());
   return useQuery<OwnerListPage, Error, { items: OwnerViewModel[]; page: OwnerListPage['page'] }>({
-    queryKey: [...OWNERS_KEY, 'list', query],
+    queryKey: [...OWNERS_KEY, 'list', query, locale],
     queryFn: () => listOwners(query),
     staleTime: 30_000,
-    select: (data) => ({ items: toOwnerViewModels(data.items), page: data.page }),
+    select: (data) => ({ items: toOwnerViewModels(data.items, locale), page: data.page }),
   });
 }
 
 export function useOwner(id: string | undefined) {
+  const locale = he_or_en(useLocale());
   return useQuery({
-    queryKey: [...OWNERS_KEY, 'one', id],
+    queryKey: [...OWNERS_KEY, 'one', id, locale],
     queryFn: () => {
       if (!id) throw new Error('useOwner requires an id');
       return getOwner(id);
     },
     enabled: Boolean(id),
     staleTime: 30_000,
-    select: toOwnerViewModel,
+    select: (data) => toOwnerViewModel(data, locale),
   });
 }
 

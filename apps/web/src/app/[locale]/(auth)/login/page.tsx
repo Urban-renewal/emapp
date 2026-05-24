@@ -2,6 +2,7 @@
 
 import { LoginSchema, type LoginDto } from '@emapp/shared-types';
 import { zodResolver } from '@hookform/resolvers/zod';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
@@ -96,9 +97,9 @@ export default function LoginPage() {
 
         <p className="text-center text-sm">
           {t('noAccount')}{' '}
-          <a href="/signup" className="font-medium underline">
+          <Link href="/signup" className="font-medium underline">
             {t('signup')}
-          </a>
+          </Link>
         </p>
       </div>
     </div>

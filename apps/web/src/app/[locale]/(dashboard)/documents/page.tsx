@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { NameDisplay } from '@/components/ui/name-display';
 import { useDocumentList } from '@/hooks/use-documents';
 
 export default function DocumentsPage() {
@@ -46,7 +47,9 @@ export default function DocumentsPage() {
               <Link href={`/documents/${d.id}`} className="block">
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-base font-semibold">{d.name}</h2>
+                    <h2 className="truncate text-base font-semibold">
+                      <NameDisplay name={d.name} />
+                    </h2>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {d.typeLabel} · {d.sizeLabel} · {d.createdRelative}
                     </p>

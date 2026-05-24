@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { NameDisplay } from '@/components/ui/name-display';
 import { useProjectList } from '@/hooks/use-projects';
 import { cn } from '@/lib/utils';
 
@@ -56,7 +57,9 @@ export default function ProjectsPage() {
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-3">
-                      <h2 className="truncate text-base font-semibold">{p.name}</h2>
+                      <h2 className="truncate text-base font-semibold">
+                        <NameDisplay name={p.name} />
+                      </h2>
                       <span
                         className={cn(
                           'rounded-full px-2 py-0.5 text-xs font-medium',

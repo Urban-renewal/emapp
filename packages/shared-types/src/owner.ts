@@ -15,6 +15,21 @@ import { z } from 'zod';
 // @emapp/validators — kept out of here to preserve shared-types purity;
 // the FE composes the same validators on top.
 
+/**
+ * Mask alphabet — bullet, asterisk, hyphen, digit, space. AND must
+ * contain at least one mask character (bullet or asterisk). Closes
+ * §v9-M-4: a future server bug that returned the CLEAR 9-digit
+ * value would have passed the old `z.string()` permissive schema;
+ * with this regex, the FE rejects it at parse time and surfaces an
+ * invalid_response error instead of rendering cleartext PII.
+ */
+const MaskedPii = z
+  .string()
+  .min(1)
+  .max(32)
+  .regex(/^[•*\-\s\d]+$/, 'must use only mask characters [•*\\-\\s\\d]')
+  .regex(/[•*]/, 'must contain at least one mask character (bullet or asterisk)');
+
 /** Owner resource as returned by the API — PII is masked, never clear. */
 export const OwnerSchema = z.object({
   id: z.string().uuid(),
@@ -22,9 +37,9 @@ export const OwnerSchema = z.object({
   name: z.string().min(1).max(100),
   email: z.string().email().nullable(),
   /** e.g. "•••••••82" — 7 bullets + last 2 digits. */
-  nationalIdMasked: z.string(),
-  /** e.g. "••••• 1234" suffix, or null when no phone on file. */
-  phoneMasked: z.string().nullable(),
+  nationalIdMasked: MaskedPii,
+  /** e.g. "•••••1234" suffix, or null when no phone on file. */
+  phoneMasked: MaskedPii.nullable(),
   notes: z.string().max(2000).nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),

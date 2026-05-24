@@ -131,7 +131,7 @@ export default function ApartmentOwnershipsPage() {
                 >
                   {availableOwners.map((o) => (
                     <option key={o.id} value={o.id}>
-                      {o.name}
+                      {o.name /* <option> can't host bdi; option text is innerText only */}
                     </option>
                   ))}
                   {owner === undefined && <option value={r.ownerId}>{r.ownerId}</option>}

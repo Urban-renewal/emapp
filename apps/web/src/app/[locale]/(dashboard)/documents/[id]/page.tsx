@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { NameDisplay } from '@/components/ui/name-display';
 import { useArchiveDocument, useDocument, useDownloadDocument } from '@/hooks/use-documents';
 import { ApiClientError } from '@/lib/api/projects';
 
@@ -69,7 +70,9 @@ export default function DocumentDetailPage() {
 
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold">{data.name}</h1>
+          <h1 className="text-2xl font-bold">
+            <NameDisplay name={data.name} />
+          </h1>
           <p className="text-xs text-muted-foreground">
             {data.typeLabel} · {data.sizeLabel} · {data.createdRelative}
           </p>

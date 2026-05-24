@@ -129,16 +129,20 @@ describe('Owner wire shape — adversarial schema probes', () => {
     ).toBe(false);
   });
 
-  it.fails(
-    'O9) GAP — wire schema should pin nationalIdMasked length so a future server bug returning the clear 9-digit value would FAIL parse (today any string accepted)',
-    () => {
-      // GAP — `nationalIdMasked: z.string()` accepts ANYTHING.
-      // A future server bug that sends the clear "012345678" passes
-      // parse, FE renders it as "ID: 012345678". Defense-in-depth
-      // would .regex(/^[•*0-9]{1,12}$/) (mask alphabet only).
-      const r = OwnerSchema.safeParse({ ...SAMPLE_OWNER, nationalIdMasked: '012345678' });
-      // We WANT this to fail; it currently passes:
-      expect(r.success).toBe(false);
-    },
-  );
+  it('O9) wire schema rejects nationalIdMasked = clear 9 digits (CLOSED §v9-M-4 — MaskedPii regex)', () => {
+    const r = OwnerSchema.safeParse({ ...SAMPLE_OWNER, nationalIdMasked: '012345678' });
+    expect(r.success).toBe(false);
+  });
+
+  it('O9b) MaskedPii requires at least one bullet/asterisk character', () => {
+    expect(OwnerSchema.safeParse({ ...SAMPLE_OWNER, nationalIdMasked: '•••••••' }).success).toBe(
+      true,
+    );
+    expect(OwnerSchema.safeParse({ ...SAMPLE_OWNER, nationalIdMasked: '****82' }).success).toBe(
+      true,
+    );
+    expect(OwnerSchema.safeParse({ ...SAMPLE_OWNER, nationalIdMasked: '12345678' }).success).toBe(
+      false,
+    );
+  });
 });

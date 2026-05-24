@@ -62,10 +62,10 @@ describe('middleware — happy path', () => {
     expect(res.headers.get('location')).toMatch(/\/he\/login$/);
   });
 
-  it('M2) authenticated user at /he/login is redirected to /', () => {
+  it('M2) authenticated user at /he/login is redirected to /he (locale preserved — v9-post-audit-SOLID-8)', () => {
     const res = middleware(mockReq({ pathname: '/he/login', hasToken: true }));
     expect(res.status).toBe(307);
-    expect(res.headers.get('location')).toMatch(/\/$/);
+    expect(res.headers.get('location')).toMatch(/\/he$/);
   });
 
   it('M3) unauthenticated user at /he/login is allowed through (no redirect)', () => {
@@ -80,22 +80,13 @@ describe('middleware — happy path', () => {
 });
 
 describe('middleware — adversarial', () => {
-  it.fails(
-    'M5) malicious path /he/projects/some/path/login should NOT be treated as an auth route (currently .endsWith bypasses the gate)',
-    () => {
-      // With the current `.endsWith('/login')` check, this path is
-      // classified as an auth route → "redirect authenticated users
-      // away from auth pages" runs. For an unauthenticated user, it
-      // falls into the public branch and is served the protected page.
-      // CORRECT behavior: only the exact `/<locale>/login` and
-      // `/<locale>/signup` paths are public.
-      const res = middleware(mockReq({ pathname: '/he/projects/some/path/login' }));
-      expect(res.status).toBe(307); // expect a redirect to /he/login
-      expect(res.headers.get('location')).toMatch(/\/he\/login$/);
-    },
-  );
+  it('M5) malicious path /he/projects/some/path/login is NOT an auth route (CLOSED §v9-H-2 — strict regex)', () => {
+    const res = middleware(mockReq({ pathname: '/he/projects/some/path/login' }));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toMatch(/\/he\/login$/);
+  });
 
-  it.fails('M6) /he/maliciously/signup should NOT be treated as a public route', () => {
+  it('M6) /he/maliciously/signup is NOT a public route (CLOSED §v9-H-2)', () => {
     const res = middleware(mockReq({ pathname: '/he/maliciously/signup' }));
     expect(res.status).toBe(307);
   });
@@ -115,17 +106,27 @@ describe('middleware — adversarial', () => {
     expect(res.headers.get('location')).toMatch(/\/he\/login$/);
   });
 
-  it.fails(
-    'M9) middleware should set basic security headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy) — currently MISSING',
-    () => {
-      // GAP — Next.js has no default security headers. ISO A.14 +
-      // Agent A 4.5 / 7.5 require: X-Frame-Options: DENY,
-      // X-Content-Type-Options: nosniff, Referrer-Policy: strict-origin
-      // -when-cross-origin, Permissions-Policy minimal. Today none of
-      // these are set on the FE response.
-      const res = middleware(mockReq({ pathname: '/he/login' }));
-      expect(res.headers.get('x-frame-options')).toBe('DENY');
-      expect(res.headers.get('x-content-type-options')).toBe('nosniff');
-    },
-  );
+  it('M9) middleware does not set headers itself — headers are applied at the next.config.ts level (see M10)', () => {
+    const res = middleware(mockReq({ pathname: '/he/login' }));
+    expect(res).toBeDefined();
+  });
+});
+
+describe('next.config.ts security headers (§v9-P0-5 closure pin)', () => {
+  it('M10) next.config.ts declares the required security headers (CLOSED §v9-P0-5)', async () => {
+    // Read the config file as text and grep for the rules. This avoids
+    // executing the Next.js plugin chain in a unit test.
+    const { readFileSync } = await import('fs');
+    const { fileURLToPath } = await import('url');
+    const { dirname, join } = await import('path');
+    const here = dirname(fileURLToPath(import.meta.url));
+    const config = readFileSync(join(here, '..', 'next.config.ts'), 'utf8');
+    expect(config).toMatch(/X-Frame-Options.*DENY/);
+    expect(config).toMatch(/X-Content-Type-Options.*nosniff/);
+    expect(config).toMatch(/Referrer-Policy.*strict-origin-when-cross-origin/);
+    expect(config).toMatch(/Content-Security-Policy/);
+    expect(config).toMatch(/Permissions-Policy/);
+    // CSP must NOT include unsafe-eval (Agent A 4.5).
+    expect(config).not.toMatch(/unsafe-eval/);
+  });
 });

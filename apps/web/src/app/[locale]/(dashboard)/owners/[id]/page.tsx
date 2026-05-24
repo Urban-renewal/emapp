@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { NameDisplay } from '@/components/ui/name-display';
 import { useArchiveOwner, useOwner } from '@/hooks/use-owners';
 import { ApiClientError } from '@/lib/api/projects';
 
@@ -55,7 +56,9 @@ export default function OwnerDetailPage() {
 
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold">{data.name}</h1>
+          <h1 className="text-2xl font-bold">
+            <NameDisplay name={data.name} />
+          </h1>
           <dl className="space-y-1 font-mono text-sm" dir="ltr">
             <div className="flex gap-2">
               <dt className="text-muted-foreground">{t('idLabel')}</dt>

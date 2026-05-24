@@ -5,7 +5,7 @@
     "ecmaVersion": 2022,
     "sourceType": "module"
   },
-  "plugins": ["@typescript-eslint", "import", "security", "unicorn"],
+  "plugins": ["@typescript-eslint", "import", "security", "unicorn", "react-hooks"],
   "extends": [
     "eslint:recommended",
     "plugin:@typescript-eslint/recommended",
@@ -37,7 +37,9 @@
     ],
     "import/no-unresolved": "off",
     "security/detect-object-injection": "off",
-    "security/detect-non-literal-fs-filename": "off"
+    "security/detect-non-literal-fs-filename": "off",
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn"
   },
   "overrides": [
     {

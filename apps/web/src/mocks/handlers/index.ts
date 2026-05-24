@@ -1,0 +1,235 @@
+/**
+ * MSW handlers — mock the BE wire surface for offline FE dev.
+ *
+ * Doc 05 §10.4 + Doc 11 §2 closure (§v9-P0-1).
+ *
+ * Convention: handlers ONLY orchestrate the SAMPLE_* fixtures. They
+ * don't define data. Same Zod schemas the BE enforces are used at
+ * the request-input boundary so form bugs surface in offline mode.
+ */
+import {
+  ApartmentSchema,
+  BuildingSchema,
+  CreateApartmentInput,
+  CreateBuildingInput,
+  CreateDocumentInput,
+  CreateOwnerInput,
+  CreateProjectInput,
+  DocumentSchema,
+  OwnerSchema,
+  ProjectSchema,
+  SetOwnershipsInput,
+} from '@emapp/shared-types';
+import { http, HttpResponse } from 'msw';
+
+import { SAMPLE_APARTMENTS } from '../samples/apartments';
+import { SAMPLE_BUILDINGS } from '../samples/buildings';
+import { SAMPLE_DOCUMENTS } from '../samples/documents';
+import { SAMPLE_OWNERS } from '../samples/owners';
+import { SAMPLE_APARTMENT_OWNERS } from '../samples/ownerships';
+import { SAMPLE_PROJECTS } from '../samples/projects';
+import { SAMPLE_ME } from '../samples/users';
+
+const API = '/api/v1';
+const PAGE_25 = { limit: 25, cursor: null, has_more: false };
+
+/** Build a D.16 list envelope. */
+function listEnvelope<T>(items: T[]) {
+  return { data: items, page: PAGE_25 };
+}
+/** Build a D.16 single envelope. */
+function dataEnvelope<T>(item: T) {
+  return { data: item };
+}
+/** Build a D.16 error envelope. */
+function errorEnvelope(code: string, status: number, details?: unknown) {
+  return HttpResponse.json({ error: { code, ...(details ? { details } : {}) } }, { status });
+}
+
+export const handlers = [
+  // /me + auth
+  http.get(`${API}/me`, () => HttpResponse.json(dataEnvelope(SAMPLE_ME))),
+  http.post(`${API}/auth/logout`, () => HttpResponse.json(dataEnvelope({ ok: true }))),
+  http.post(`${API}/auth/refresh`, () => HttpResponse.json(dataEnvelope({ ok: true }))),
+
+  // projects
+  http.get(`${API}/projects`, () => HttpResponse.json(listEnvelope(SAMPLE_PROJECTS))),
+  http.post(`${API}/projects`, async ({ request }) => {
+    const body = await request.json();
+    const parsed = CreateProjectInput.safeParse(body);
+    if (!parsed.success) {
+      return errorEnvelope('validation_error', 400, parsed.error.flatten().fieldErrors);
+    }
+    const project = ProjectSchema.parse({
+      ...SAMPLE_PROJECTS[0],
+      id: 'zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzz1',
+      name: parsed.data.name,
+      type: parsed.data.type,
+      status: parsed.data.status ?? 'planning',
+      description: parsed.data.description ?? null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    return HttpResponse.json(dataEnvelope(project), { status: 201 });
+  }),
+  http.get(`${API}/projects/:id`, ({ params }) => {
+    const p = SAMPLE_PROJECTS.find((x) => x.id === params['id']);
+    return p ? HttpResponse.json(dataEnvelope(p)) : errorEnvelope('not_found', 404);
+  }),
+  http.delete(`${API}/projects/:id`, () => new HttpResponse(null, { status: 204 })),
+
+  // buildings (nested under project)
+  http.get(`${API}/projects/:projectId/buildings`, ({ params }) => {
+    const items = SAMPLE_BUILDINGS.filter((b) => b.projectId === params['projectId']);
+    return HttpResponse.json(listEnvelope(items));
+  }),
+  http.post(`${API}/projects/:projectId/buildings`, async ({ request, params }) => {
+    const body = await request.json();
+    const parsed = CreateBuildingInput.safeParse(body);
+    if (!parsed.success) {
+      return errorEnvelope('validation_error', 400, parsed.error.flatten().fieldErrors);
+    }
+    const b = BuildingSchema.parse({
+      ...SAMPLE_BUILDINGS[0],
+      id: 'zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzb1',
+      projectId: String(params['projectId']),
+      address: parsed.data.address,
+      city: parsed.data.city,
+      block: parsed.data.block ?? null,
+      parcel: parsed.data.parcel ?? null,
+      subparcel: parsed.data.subparcel ?? null,
+      aptCount: parsed.data.aptCount ?? 0,
+      notes: parsed.data.notes ?? null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    return HttpResponse.json(dataEnvelope(b), { status: 201 });
+  }),
+  http.get(`${API}/buildings/:id`, ({ params }) => {
+    const b = SAMPLE_BUILDINGS.find((x) => x.id === params['id']);
+    return b ? HttpResponse.json(dataEnvelope(b)) : errorEnvelope('not_found', 404);
+  }),
+  http.delete(`${API}/buildings/:id`, () => new HttpResponse(null, { status: 204 })),
+
+  // apartments (nested under building)
+  http.get(`${API}/buildings/:buildingId/apartments`, ({ params }) => {
+    const items = SAMPLE_APARTMENTS.filter((a) => a.buildingId === params['buildingId']);
+    return HttpResponse.json(listEnvelope(items));
+  }),
+  http.post(`${API}/buildings/:buildingId/apartments`, async ({ request, params }) => {
+    const body = await request.json();
+    const parsed = CreateApartmentInput.safeParse(body);
+    if (!parsed.success) {
+      return errorEnvelope('validation_error', 400, parsed.error.flatten().fieldErrors);
+    }
+    const a = ApartmentSchema.parse({
+      ...SAMPLE_APARTMENTS[0],
+      id: 'zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzza1',
+      buildingId: String(params['buildingId']),
+      number: parsed.data.number,
+      floor: parsed.data.floor ?? null,
+      sizeSqm: parsed.data.sizeSqm ?? null,
+      rooms: parsed.data.rooms ?? null,
+      status: parsed.data.status ?? 'pending',
+      notes: parsed.data.notes ?? null,
+      statusChangedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    return HttpResponse.json(dataEnvelope(a), { status: 201 });
+  }),
+  http.get(`${API}/apartments/:id`, ({ params }) => {
+    const a = SAMPLE_APARTMENTS.find((x) => x.id === params['id']);
+    return a ? HttpResponse.json(dataEnvelope(a)) : errorEnvelope('not_found', 404);
+  }),
+  http.delete(`${API}/apartments/:id`, () => new HttpResponse(null, { status: 204 })),
+
+  // owners
+  http.get(`${API}/owners`, () => HttpResponse.json(listEnvelope(SAMPLE_OWNERS))),
+  http.post(`${API}/owners`, async ({ request }) => {
+    const body = await request.json();
+    const parsed = CreateOwnerInput.safeParse(body);
+    if (!parsed.success) {
+      return errorEnvelope('validation_error', 400, parsed.error.flatten().fieldErrors);
+    }
+    const o = OwnerSchema.parse({
+      ...SAMPLE_OWNERS[0],
+      id: 'zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzo1',
+      name: parsed.data.name,
+      // Mask the national_id with bullets + last 2 chars (mimic the
+      // server's masking exactly so the wire shape is faithful).
+      nationalIdMasked: `${'•'.repeat(7)}${parsed.data.national_id.slice(-2)}`,
+      phoneMasked: parsed.data.phone ? `${'•'.repeat(5)}${parsed.data.phone.slice(-4)}` : null,
+      email: parsed.data.email ?? null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    return HttpResponse.json(dataEnvelope(o), { status: 201 });
+  }),
+  http.post(`${API}/owners/search`, () => HttpResponse.json(dataEnvelope(SAMPLE_OWNERS[0]))),
+  http.get(`${API}/owners/:id`, ({ params }) => {
+    const o = SAMPLE_OWNERS.find((x) => x.id === params['id']);
+    return o ? HttpResponse.json(dataEnvelope(o)) : errorEnvelope('not_found', 404);
+  }),
+  http.delete(`${API}/owners/:id`, () => new HttpResponse(null, { status: 204 })),
+
+  // ownerships
+  http.get(`${API}/apartments/:apartmentId/owners`, () =>
+    HttpResponse.json(listEnvelope(SAMPLE_APARTMENT_OWNERS)),
+  ),
+  http.put(`${API}/apartments/:apartmentId/ownerships`, async ({ request }) => {
+    const body = await request.json();
+    const parsed = SetOwnershipsInput.safeParse(body);
+    if (!parsed.success) {
+      return errorEnvelope('ownership_sum_invalid', 400, parsed.error.flatten().fieldErrors);
+    }
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  // documents
+  http.get(`${API}/documents`, () => HttpResponse.json(listEnvelope(SAMPLE_DOCUMENTS))),
+  http.post(`${API}/documents`, async ({ request }) => {
+    const body = await request.json();
+    // v9-post-audit-SOLID-6 closure — parse against the same schema
+    // the BE pipe enforces so form bugs surface in offline mode.
+    const parsed = CreateDocumentInput.safeParse(body);
+    if (!parsed.success) {
+      return errorEnvelope('validation_error', 400, parsed.error.flatten().fieldErrors);
+    }
+    const doc = DocumentSchema.parse({
+      ...SAMPLE_DOCUMENTS[0],
+      id: 'zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzd1',
+      name: parsed.data.name,
+      type: parsed.data.type,
+      mimeType: parsed.data.mimeType,
+      sizeBytes: parsed.data.sizeBytes,
+      contentHash: parsed.data.contentHash,
+      projectId: parsed.data.projectId ?? null,
+      apartmentId: parsed.data.apartmentId ?? null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    return HttpResponse.json(
+      dataEnvelope({
+        document: doc,
+        uploadUrl: 'https://r2.mock/upload?sig=MOCK',
+        uploadExpiresInSeconds: 300,
+      }),
+      { status: 201 },
+    );
+  }),
+  http.get(`${API}/documents/:id`, ({ params }) => {
+    const d = SAMPLE_DOCUMENTS.find((x) => x.id === params['id']);
+    return d ? HttpResponse.json(dataEnvelope(d)) : errorEnvelope('not_found', 404);
+  }),
+  http.get(`${API}/documents/:id/download`, () =>
+    HttpResponse.json(
+      dataEnvelope({ url: 'https://r2.mock/download?sig=MOCK', expiresInSeconds: 120 }),
+    ),
+  ),
+  http.post(`${API}/documents/:id/finalize`, ({ params }) => {
+    const d = SAMPLE_DOCUMENTS.find((x) => x.id === params['id']);
+    return d ? HttpResponse.json(dataEnvelope(d)) : errorEnvelope('not_found', 404);
+  }),
+  http.delete(`${API}/documents/:id`, () => new HttpResponse(null, { status: 204 })),
+];

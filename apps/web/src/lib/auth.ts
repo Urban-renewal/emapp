@@ -6,20 +6,18 @@ import { cookies, headers } from 'next/headers';
 export type { UserProfile };
 
 /**
- * Server-side `/me` fetch. Routes through the SAME Pages Function reverse-
- * proxy that the browser uses (D.35) — single env var (`API_BACKEND_URL`),
- * one place where the backend hostname lives. Reads `access_token` from
- * the incoming request's cookie jar (Next App Router Server Component
- * context) and forwards it on the upstream Cookie header.
+ * Server-side `/me` fetch. Routes through the same Pages Function
+ * reverse-proxy that the browser uses (D.35) — single env var
+ * (`API_BACKEND_URL`), one place where the backend hostname lives.
  *
- * v8.5 follow-up (Phase 4a S1): the older second env-var direct call
- * (read by this module before unification) was inconsistent with D.35
- * and lived behind a separate hostname knob. Unified — only
- * `API_BACKEND_URL` matters now; this function reaches the backend by
- * hitting its own host's `/api/v1/me`, which is routed by
- * `apps/web/src/app/api/[...path]/route.ts`. Guarded by
- * `apps/web/src/lib/auth.spec.ts` (no `process.env` of the legacy name
- * may reappear anywhere in apps/web).
+ * Closes §v9-H-1 — Host-header SSRF / token-exfiltration vector.
+ * `selfOrigin()` no longer trusts the client-supplied Host verbatim;
+ * an allowlist (`SELF_ORIGIN_ALLOWLIST`) drops anything not on the
+ * known-good list. If a non-allowlisted Host arrives, the helper
+ * returns null and the call is refused (getMe returns null, logout
+ * performs only the local cookie-clear). This is defense-in-depth
+ * on top of Cloudflare Pages' Host normalization — a future CF
+ * misconfiguration cannot weaponize the Server Action.
  */
 export async function getMe(): Promise<UserProfile | null> {
   const cookieStore = await cookies();
@@ -33,6 +31,9 @@ export async function getMe(): Promise<UserProfile | null> {
     const res = await fetch(`${origin}/api/v1/me`, {
       headers: { Cookie: `access_token=${accessToken}` },
       cache: 'no-store',
+      // Defense against a hung backend (closes a server-side variant
+      // of §v9-H-6 — fetch timeout).
+      signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) return null;
     const body = (await res.json()) as { data: unknown };
@@ -45,15 +46,8 @@ export async function getMe(): Promise<UserProfile | null> {
 
 /**
  * Server Action — revoke the org session in the API and clear cookies.
- * The same-origin proxy passes the upstream `Set-Cookie` clears through;
- * we additionally `cookieStore.delete()` the names locally so the very
- * next render in this same request — before the browser has processed
- * the upstream Set-Cookie — also sees a missing token (defense-in-depth
- * for the middleware-driven /login redirect).
- *
- * Returns `{ ok }` so the caller can show a toast on failure if it wants
- * to; today we treat any failure as "logout still proceeds locally" —
- * worst case the DB session expires on its 30-day TTL.
+ * If `selfOrigin` rejects the Host (allowlist), we still clear the
+ * cookies locally so the user is at least signed-out client-side.
  */
 export async function logout(): Promise<{ ok: boolean }> {
   const cookieStore = await cookies();
@@ -71,6 +65,7 @@ export async function logout(): Promise<{ ok: boolean }> {
       method: 'POST',
       headers: accessToken ? { Cookie: `access_token=${accessToken}` } : {},
       cache: 'no-store',
+      signal: AbortSignal.timeout(15_000),
     });
     upstreamOk = upstream.ok;
   } catch {
@@ -81,10 +76,48 @@ export async function logout(): Promise<{ ok: boolean }> {
   return { ok: upstreamOk };
 }
 
+/**
+ * Allowed hosts for the Server-Action self-fetch (closes §v9-H-1 +
+ * v9-post-audit-HIGH-3 — dev port regression).
+ *
+ * Production: `app.emapp.io` (the canonical FE hostname per D.35).
+ * Dev: any `localhost:<port>` / `127.0.0.1:<port>` — supports a
+ * developer using port 3002, 8080, or a Pages-emulator port without
+ * editing this file.
+ * Extension: `EMAPP_ALLOWED_ORIGINS` (Infisical-only, comma-
+ * separated) lets ops add staging hostnames without code changes
+ * (e.g. `app-staging.emapp.io,emapp-pr-42.pages.dev`).
+ *
+ * Any other Host value is REFUSED — the Server Action returns null
+ * and the caller treats it as unauthenticated.
+ *
+ * Cloudflare Pages normalizes Host to the deployed hostname; this
+ * allowlist is defense-in-depth, not the primary protection.
+ */
+const LOCALHOST_REGEX = /^(localhost|127\.0\.0\.1):\d{1,5}$/;
+const STATIC_ALLOWLIST = new Set<string>(['app.emapp.io']);
+
+function isAllowedHost(host: string): boolean {
+  if (STATIC_ALLOWLIST.has(host)) return true;
+  if (LOCALHOST_REGEX.test(host)) return true;
+  const extra = process.env['EMAPP_ALLOWED_ORIGINS'];
+  if (extra) {
+    const list = extra
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (list.includes(host)) return true;
+  }
+  return false;
+}
+
 async function selfOrigin(): Promise<string | null> {
   const h = await headers();
   const host = h.get('host');
   if (!host) return null;
-  const protocol = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https');
+  if (!isAllowedHost(host)) return null;
+  const protocol =
+    h.get('x-forwarded-proto') ??
+    (host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https');
   return `${protocol}://${host}`;
 }

@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { NameDisplay } from '@/components/ui/name-display';
 import { useArchiveProject, useProject } from '@/hooks/use-projects';
 import { ApiClientError } from '@/lib/api/projects';
 import { cn } from '@/lib/utils';
@@ -62,7 +63,9 @@ export default function ProjectDetailPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold">{data.name}</h1>
+          <h1 className="text-2xl font-bold">
+            <NameDisplay name={data.name} />
+          </h1>
           <div className="flex items-center gap-2">
             <span
               className={cn(

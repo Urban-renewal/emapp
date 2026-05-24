@@ -126,7 +126,7 @@ describe('verifyJobPayload — v8 §v7-A', () => {
     });
   });
 
-  it('4) error message is PII-free (only UUIDs + the reason)', async () => {
+  it('4) error message is PII-free (only UUIDs + the reason; UUIDs are not PII)', async () => {
     try {
       await verifyJobPayload({
         jobId: seeded!.importId,
@@ -136,8 +136,15 @@ describe('verifyJobPayload — v8 §v7-A', () => {
     } catch (e) {
       expect(e).toBeInstanceOf(JobPayloadTamperedError);
       const msg = (e as Error).message;
-      // No phone-shaped or ID-shaped digit runs leaked.
-      expect(msg).not.toMatch(/\d{7,}/);
+      // Strip the (random) UUID before the digit-run check — UUIDs
+      // are not PII but their hex segments can incidentally include
+      // 7+ contiguous digits. After UUID removal, NO Israeli-ID-shaped
+      // (9-digit) or phone-shaped (10-digit) run should remain.
+      const msgSansUuids = msg.replace(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g,
+        '<UUID>',
+      );
+      expect(msgSansUuids).not.toMatch(/\d{7,}/);
       // No org name or email leaked.
       expect(msg).not.toContain('@test.local');
       expect(msg).not.toContain('v8-verify');

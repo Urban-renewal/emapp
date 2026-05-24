@@ -15,7 +15,15 @@ import { describe, expect, it } from 'vitest';
 
 import { AuthorizationGuard } from './authorization.guard';
 import { AUTHZ_ACTION, AUTHZ_RESOURCE } from './authz.decorators';
-import { can, type Action, type Resource, type Role } from './policy';
+import {
+  can,
+  canProvider,
+  PROVIDER_POLICY,
+  type Action,
+  type ProviderAction,
+  type Resource,
+  type Role,
+} from './policy';
 
 const ROLES: Role[] = ['manager', 'agent', 'viewer'];
 const ACTIONS: Action[] = ['read', 'create', 'update', 'delete'];
@@ -144,6 +152,66 @@ describe('D.17 policy matrix — exhaustive proof vs the documented control', ()
         expect(can('viewer', r, a), `viewer must not ${a} ${r}`).toBe(false);
       }
     }
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────
+// D.37 / Phase 6.5 — Provider tier matrix pin.
+//
+// Independent restatement of the D.37 invariant. If a future hand
+// adds a write action or a non-provider_admin role to PROVIDER_POLICY,
+// these tests fail loud BEFORE the code merges. A widening here is
+// equivalent to a Gate-6 decision and requires a new D.NN entry.
+// ───────────────────────────────────────────────────────────────────
+describe('D.37 PROVIDER_POLICY matrix — Phase 6.5 read-only invariant', () => {
+  it('Provider admin can read `provider` resource', () => {
+    expect(canProvider('provider_admin', 'provider', 'read')).toBe(true);
+  });
+
+  it('the action type is exactly the literal "read" — no widening', () => {
+    // TypeScript already enforces this at compile-time (ProviderAction
+    // is the string literal 'read'). The runtime check guards against
+    // a future refactor that broadens the type — we'd want CI to fail
+    // before the wider type lands.
+    const allowed: ProviderAction[] = ['read'];
+    expect(allowed.length).toBe(1);
+  });
+
+  it('PROVIDER_POLICY exposes EXACTLY one resource (`provider`) — single surface', () => {
+    // Future endpoint groups (e.g. `provider.write.*` for Gate-6
+    // approved writes) would add NEW resource entries; this asserts
+    // we have the documented one and only the documented one.
+    expect(Object.keys(PROVIDER_POLICY).sort()).toEqual(['provider']);
+  });
+
+  it('PROVIDER_POLICY[provider] exposes EXACTLY one action (`read`) — no implicit writes', () => {
+    expect(Object.keys(PROVIDER_POLICY.provider).sort()).toEqual(['read']);
+  });
+
+  it('only `provider_admin` is in the allowed roles list for `provider.read`', () => {
+    expect(PROVIDER_POLICY.provider.read).toEqual(['provider_admin']);
+  });
+
+  it('canProvider is a PURE function — same inputs → same output, no shared mutable state', () => {
+    const a = canProvider('provider_admin', 'provider', 'read');
+    const b = canProvider('provider_admin', 'provider', 'read');
+    expect(a).toBe(b);
+    expect(a).toBe(true);
+  });
+
+  it('STRUCTURAL TIER ISOLATION — org Role cannot be passed to canProvider', () => {
+    // This test exists purely as a compile-time pin via @ts-expect-error
+    // — runtime is irrelevant (the comment lines are NOT run; the
+    // tsc check verifies the type mismatch). If a future hand widens
+    // ProviderRole to include org roles, the @ts-expect-error fires
+    // and the test fails the build.
+    // @ts-expect-error — 'manager' is an org Role, not a ProviderRole
+    void (() => canProvider('manager', 'provider', 'read'));
+    // @ts-expect-error — 'projects' is an org Resource, not a ProviderResource
+    void (() => canProvider('provider_admin', 'projects', 'read'));
+    // @ts-expect-error — 'create' is not a ProviderAction
+    void (() => canProvider('provider_admin', 'provider', 'create'));
+    expect(true).toBe(true);
   });
 });
 

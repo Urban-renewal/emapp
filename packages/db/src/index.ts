@@ -4,6 +4,7 @@ export {
   pool,
   db,
   providerDb,
+  closeAllPools,
   setPoolErrorObserver,
   type Database,
   type ProviderDatabase,

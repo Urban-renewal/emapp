@@ -929,7 +929,7 @@ footer .footer-meta {
 <pre><code>## D.NN — Title
 Date · Decision · Alternatives · Why · Reversibility · Revisit trigger
 </code></pre>
-<p><strong>Last updated:</strong> 2026-05-24 — D.35 (Phase 4 FE topology — Option A: Pages reverse-proxy + hostOnly cookies) and D.36 (phase-transition audit protocol) added as part of v8.5 readiness pass.</p>
+<p><strong>Last updated:</strong> 2026-05-25 — D.37 (Phase 6.5: Provider Admin BE, read-only) added to formalize the Phase 6.5 / Phase 8 naming inconsistency between PROGRESS.md and docs/03; unblocks BE/FE parallel work for Phase 4a + Phase 6.5.</p>
 <hr />
 <h2>D.01 — Stack: Neon + Railway + Cloudflare + Resend + Sentry</h2>
 <ul>
@@ -1503,6 +1503,37 @@ Tenant tier), GATE 4 (SMS provider swap).</li>
 <p><strong>Cross-confirmation rule:</strong> A phase-transition gap surfaced by ≥2 fresh-eyes agents is P0 for the transition (cannot ship the phase). A gap surfaced by 1 agent + a concrete reproducible incident is P0. A single-agent observation with no incident is HIGH (must have a tracked closure plan, not necessarily a fix in this PR).</p>
 <p><strong>Reversibility:</strong> Process change only — costs one agent-pass per phase boundary. No code or schema impact. If the process feels like overkill after 2–3 phase boundaries, drop it; nothing depends on it structurally.</p>
 <p><strong>Ref:</strong> ONBOARDING.md §3 (audit-pass model) + new §6 (phase-transition); ARCHITECTURE-MAP.md §13 (deployment topology, where this rule now lives); v8.5 ledger (the bugs this would have caught: cancel-leak, withProvider-GUC-missing, sequential-decrypts, R2-blocks-worker, audit_log-cleartext).</p>
+<hr />
+<h2>D.37 — Phase 6.5: Provider Admin BE (read-only)</h2>
+<p><strong>Date:</strong> 2026-05-25 · <strong>Status:</strong> Locked</p>
+<p><strong>Decision:</strong> Provider Admin data endpoints (cross-tenant read, audit search, system health) ship as an explicit <strong>Phase 6.5</strong>, slotted between Phase 6 (Import) and Phase 7 (Export) in the roadmap. Scope is <strong>read-only</strong>; all write actions (suspend tenant, reset MFA, reactivate) remain Gate-6 deferred per docs/03 §10.5 and require a separate D.NN entry before implementation.</p>
+<p><strong>Why between 6 and 7:</strong> Provider Admin needs to monitor production health of imports (Phase 6 — the highest-blast-radius BE surface we've shipped) <em>while</em> Export (Phase 7) is being built. Slotting Provider BE here also unblocks Phase 4b (Provider Admin FE) to run in parallel with the org Phase 4a, collapsing the FE timeline by ~1 week.</p>
+<p><strong>Why not Phase 8:</strong> Phase 8 is FE Polish (designer pass + accessibility + i18n + motion). Bundling Provider Admin BE there muddies a frontend-only phase and delays the operations team's ability to observe production until very late.</p>
+<p><strong>Scope (4 endpoints under <code>/api/v1/provider/*</code>):</strong></p>
+<ol>
+  <li><code>GET /provider/tenants</code> — list orgs (cursor pagination, PII masked).</li>
+  <li><code>GET /provider/tenants/:id</code> — tenant detail (PII masked: name <code>•••••••XX</code>, phone <code>•••••XXXX</code>, national_id never).</li>
+  <li><code>GET /provider/audit</code> — cross-tenant audit search (filter by org_id + date range + action; pagination).</li>
+  <li><code>GET /provider/system-health</code> — pg-boss queue depth, pool stats, R2 error rate (read-only gauges).</li>
+</ol>
+<p><strong>Hard invariants for every call:</strong></p>
+<ul>
+  <li><code>access_reason</code> header required → 400 <code>reason_required</code> if missing.</li>
+  <li>Wrapped in <code>withProvider(uid, reason, fn)</code> — RLS BYPASS via the dedicated pool; never <code>db.query</code> directly.</li>
+  <li>Audit row written: <code>action = 'provider.tenant.viewed' | 'provider.audit.searched' | 'provider.health.read'</code> with <code>metadata.reason</code>.</li>
+  <li>PII masked in the response — yes, also at Provider tier. Provider Admin is privileged but is <em>not</em> exempt from D.19 PII masking (only DPO + court orders unmask, which is out-of-scope for MVP).</li>
+  <li>policy.ts gains a <code>provider</code> resource gated to the <code>provider_admin</code> role (existing tier from D.20); policy.spec.ts pins the matrix.</li>
+</ul>
+<p><strong>Out of scope (Gate-6 — separate D.NN required):</strong> any write action on a tenant (suspend / reset MFA / reactivate / impersonate / mutate audit). The "Provider controls everything" UX from earlier discussions is sequenced: read-only first (D.37), writes only after observing real usage and writing a 4-eyes / dual-control design.</p>
+<p><strong>Alternatives considered:</strong></p>
+<ul>
+  <li><em>Skip Phase 6.5, do Provider Admin inside Phase 8</em> — rejected: pushes operability past Phase 7 launch.</li>
+  <li><em>Ship read + write together</em> — rejected: writes are a regulatory surface (ISO A.6.1 segregation of duties, A.9.4 access control) that needs a real design pass, not a sprint.</li>
+  <li><em>Defer Provider Admin entirely to post-MVP</em> — rejected: without it we have no production observability of multi-tenant state.</li>
+</ul>
+<p><strong>Reversibility:</strong> Cheap. Four read endpoints + a policy.ts entry + four spec files. If we later decide to consolidate with Phase 8, the endpoints stay; only the phase label moves.</p>
+<p><strong>Revisit trigger:</strong> First time a Provider Admin asks for a write action in production. At that point, open the Gate-6 review for writes.</p>
+<p><strong>Ref:</strong> docs/03 §10.5 (original Provider Admin scope, read-only); D.17 (policy matrix); D.20 (role tiers); D.21 (auth ownership, MFA mandatory for Provider); D.29 (tier-isolated JWT audiences); ARCHITECTURE-MAP.md (withProvider wrapper); <code>packages/db/src/wrappers/with-provider.ts</code>; <code>apps/api/src/modules/auth/provider/</code> (auth already exists; data endpoints are this phase).</p>
 <hr />
 <h2>Pending Decisions (not yet made — tracked in OPEN_ITEMS.md §4)</h2>
 <p>These are listed so they're visible but explicitly NOT decided:</p>

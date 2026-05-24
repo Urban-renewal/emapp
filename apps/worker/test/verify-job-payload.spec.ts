@@ -29,11 +29,13 @@ async function seed() {
   const orgId = randomUUID();
   const userId = randomUUID();
   const importId = randomUUID();
+  const slug = `v8verify${orgId.slice(0, 8)}`;
   // Minimal columns — org/user have many NOT NULLs but only what we
   // need for FK satisfaction.
   await providerDb.insert(organizations).values({
     id: orgId,
     name: `v8-verify-${orgId.slice(0, 8)}`,
+    slug,
   });
   await providerDb.insert(users).values({
     id: userId,
@@ -54,41 +56,53 @@ async function seed() {
   return { orgId, userId, importId };
 }
 
-async function cleanup(orgId: string, userId: string, importId: string) {
-  await providerDb.delete(importJobs).where(eq(importJobs.id, importId));
-  await providerDb.delete(users).where(eq(users.id, userId));
-  await providerDb.delete(organizations).where(eq(organizations.id, orgId));
+async function cleanup(
+  seeded: { orgId: string; userId: string; importId: string } | undefined,
+): Promise<void> {
+  if (!seeded) return;
+  await providerDb
+    .delete(importJobs)
+    .where(eq(importJobs.id, seeded!.importId))
+    .catch(() => undefined);
+  await providerDb
+    .delete(users)
+    .where(eq(users.id, seeded!.userId))
+    .catch(() => undefined);
+  await providerDb
+    .delete(organizations)
+    .where(eq(organizations.id, seeded!.orgId))
+    .catch(() => undefined);
 }
 
 describe('verifyJobPayload — v8 §v7-A', () => {
-  let seeded: { orgId: string; userId: string; importId: string };
+  let seeded: { orgId: string; userId: string; importId: string } | undefined;
 
   beforeAll(async () => {
     seeded = await seed();
   });
 
   afterAll(async () => {
-    await cleanup(seeded.orgId, seeded.userId, seeded.importId);
+    await cleanup(seeded);
   });
 
   it('1) correct payload returns the DB-attested values', async () => {
     const v = await verifyJobPayload({
-      jobId: seeded.importId,
-      orgId: seeded.orgId,
-      createdBy: seeded.userId,
+      jobId: seeded!.importId,
+      orgId: seeded!.orgId,
+      createdBy: seeded!.userId,
     });
     expect(v.verified).toBe(true);
-    expect(v.orgId).toBe(seeded.orgId);
-    expect(v.createdBy).toBe(seeded.userId);
+    expect(v.orgId).toBe(seeded!.orgId);
+    expect(v.createdBy).toBe(seeded!.userId);
   });
 
   it('2) mismatched payload.orgId throws JobPayloadTamperedError(org_mismatch)', async () => {
     const attackerOrgId = randomUUID();
     await expect(
       verifyJobPayload({
-        jobId: seeded.importId,
+        jobId: seeded!.importId,
         orgId: attackerOrgId, // does NOT match the DB row
-        createdBy: seeded.userId,
+        createdBy: seeded!.userId,
       }),
     ).rejects.toMatchObject({
       name: 'JobPayloadTamperedError',
@@ -102,8 +116,8 @@ describe('verifyJobPayload — v8 §v7-A', () => {
     await expect(
       verifyJobPayload({
         jobId: ghostId,
-        orgId: seeded.orgId,
-        createdBy: seeded.userId,
+        orgId: seeded!.orgId,
+        createdBy: seeded!.userId,
       }),
     ).rejects.toMatchObject({
       name: 'JobPayloadTamperedError',
@@ -115,9 +129,9 @@ describe('verifyJobPayload — v8 §v7-A', () => {
   it('4) error message is PII-free (only UUIDs + the reason)', async () => {
     try {
       await verifyJobPayload({
-        jobId: seeded.importId,
+        jobId: seeded!.importId,
         orgId: randomUUID(),
-        createdBy: seeded.userId,
+        createdBy: seeded!.userId,
       });
     } catch (e) {
       expect(e).toBeInstanceOf(JobPayloadTamperedError);
@@ -132,14 +146,14 @@ describe('verifyJobPayload — v8 §v7-A', () => {
 
   it('5) does NOT touch the row (it is a read-only verification)', async () => {
     await verifyJobPayload({
-      jobId: seeded.importId,
-      orgId: seeded.orgId,
-      createdBy: seeded.userId,
+      jobId: seeded!.importId,
+      orgId: seeded!.orgId,
+      createdBy: seeded!.userId,
     });
     const [after] = await providerDb
       .select({ updatedAt: importJobs.updatedAt })
       .from(importJobs)
-      .where(eq(importJobs.id, seeded.importId))
+      .where(eq(importJobs.id, seeded!.importId))
       .limit(1);
     // The row's updated_at MUST be the seed-time value — verification
     // is a SELECT only, no UPDATE.

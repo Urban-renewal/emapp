@@ -120,12 +120,17 @@ describe('T6.1 — parseExcelHeader', () => {
     });
   });
 
-  it('7) empty workbook → corrupt_file (no sheets to iterate)', async () => {
+  it('7) empty workbook → wrong_file_type (v8 SOLID-3: zero-byte → magic-byte gate, was corrupt_file)', async () => {
     // ExcelJS refuses to write a workbook without sheets, so simulate
-    // an empty/corrupt file with a zero-byte stream.
+    // an empty/corrupt file with a zero-byte stream. v8 SOLID-3
+    // tightened the discrimination: a 0-byte upload can't even fail
+    // the ZIP magic check (no bytes to compare), so the new gate
+    // raises `wrong_file_type` with the more specific "file too
+    // small" message rather than the generic ExcelJS-thrown
+    // `corrupt_file`. Better signal for the FE.
     await expect(parseExcelHeader(Readable.from(Buffer.alloc(0)))).rejects.toMatchObject({
       name: 'ExcelParserError',
-      code: 'corrupt_file',
+      code: 'wrong_file_type',
     });
   });
 

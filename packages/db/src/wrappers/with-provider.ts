@@ -12,6 +12,24 @@ interface ProviderContext {
   userAgent?: string;
   targetTable?: string;
   targetRecordId?: string;
+  /**
+   * D.37 / Phase 6.5 — explicit action label for the audit row.
+   * Defaults to `'session'` (back-compat for pre-D.37 callers).
+   * Phase 6.5 endpoints pass their specific action
+   * (`'provider.tenant.viewed'` / `'provider.audit.searched'` /
+   * `'provider.health.read'`).
+   */
+  action?: string;
+  /**
+   * D.37 — additional structured metadata merged INTO
+   * `provider_audit_log.metadata` (the JSONB column). The wrapper
+   * ALWAYS overlays `{ reason }` on top so queries against
+   * `metadata.reason` work uniformly; caller-supplied keys with the
+   * literal name `reason` are intentionally overwritten (no way for
+   * a caller to spoof a different reason in metadata than the one
+   * recorded in the dedicated `reason` column).
+   */
+  metadata?: Record<string, unknown>;
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -76,23 +94,38 @@ export async function withProvider<T>(
       ],
     });
 
+    // D.37 / Phase 6.5 fix (foundational invariant T6.5-D37-0):
+    // populate `metadata.reason` in addition to the dedicated `reason`
+    // column. Pre-Phase-6.5 the metadata jsonb was always `{}`; every
+    // search/filter pattern in the rest of the codebase queries via
+    // `metadata.<field>` so requiring callers to pivot through the
+    // top-level reason column would be a special-case in audit search.
+    // Caller-supplied metadata keys are merged in BENEATH the reason
+    // overlay — a caller cannot smuggle a fake `reason` into metadata.
+    const metadataPayload: Record<string, unknown> = {
+      ...(context?.metadata ?? {}),
+      reason: reason.trim(),
+    };
+    const actionType = context?.action ?? 'session';
+
     await client.query({
       text: `
         INSERT INTO provider_audit_log
           (provider_user_id, reason, action_type, started_at, ip, user_agent,
-           target_table, target_record_id)
+           target_table, target_record_id, metadata)
         VALUES
-          ($1, $2, $3, $4, $5, $6, $7, $8)
+          ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       `,
       values: [
         providerUserId,
         reason.trim(),
-        'session',
+        actionType,
         startedAt.toISOString(),
         context?.ip ?? null,
         context?.userAgent ?? null,
         context?.targetTable ?? null,
         context?.targetRecordId ?? null,
+        JSON.stringify(metadataPayload),
       ],
     });
 

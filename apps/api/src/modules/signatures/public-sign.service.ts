@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { serverEnv } from '@emapp/config';
 import {
   AuditService,
+  decryptOwnerName,
   documents,
   encryptField,
   owners,
@@ -136,12 +137,19 @@ export class PublicSignService {
           .limit(1);
         if (!doc || doc.archivedAt) throw INVALID_TOKEN;
 
+        // v8 §v8-S3 — name now pgcrypto-encrypted; decrypt inside
+        // the same tx (app.encryption_key GUC is set by withTenant).
         const [own] = await tx
-          .select({ id: owners.id, name: owners.name, archivedAt: owners.archivedAt })
+          .select({
+            id: owners.id,
+            nameEncrypted: owners.nameEncrypted,
+            archivedAt: owners.archivedAt,
+          })
           .from(owners)
           .where(eq(owners.id, req.ownerId))
           .limit(1);
         if (!own || own.archivedAt) throw INVALID_TOKEN;
+        const ownerName = await decryptOwnerName(tx, own.nameEncrypted);
 
         // Short-lived presigned GET for the document. Same pattern as
         // documents.getDownloadUrl — forced attachment + sanitized
@@ -177,7 +185,7 @@ export class PublicSignService {
 
         return {
           document: { name: doc.name, downloadUrl },
-          owner: { name: own.name },
+          owner: { name: ownerName },
           expiresAt: req.expiresAt,
         };
       });
@@ -286,11 +294,33 @@ export class PublicSignService {
         // T5.7 notification). Neither blocks the sign — if either lookup
         // returns nothing, the matching channel is skipped. RLS is in
         // effect (withTenant), so these reads are org-scoped.
+        //
+        // v8 §v8-S3 — owner.name is encrypted; we read the ciphertext
+        // and decrypt below (best-effort, since this is a notification
+        // path that already tolerates a missing owner).
         const [own] = await tx
-          .select({ id: owners.id, name: owners.name, email: owners.email })
+          .select({
+            id: owners.id,
+            nameEncrypted: owners.nameEncrypted,
+            email: owners.email,
+          })
           .from(owners)
           .where(eq(owners.id, req.ownerId))
           .limit(1);
+        let ownerNameSign: string | null = null;
+        if (own) {
+          try {
+            ownerNameSign = await decryptOwnerName(tx, own.nameEncrypted);
+          } catch (e: unknown) {
+            // Notification name is best-effort; fall back to the
+            // default below if decryption fails (logged for SRE).
+            this.logger.error(
+              `failed to decrypt owner.name for post-sign notify (owner=${own.id}): ${
+                e instanceof Error ? e.message : 'unknown'
+              }`,
+            );
+          }
+        }
         const [mgr] = await tx
           .select({ id: users.id, name: users.name, email: users.email })
           .from(users)
@@ -350,7 +380,7 @@ export class PublicSignService {
           notify: {
             managerEmail: mgr?.email ?? null,
             residentEmail: own?.email ?? null,
-            ownerName: own?.name ?? 'בעל דירה',
+            ownerName: ownerNameSign ?? 'בעל דירה',
             documentName: doc.name,
           },
         };

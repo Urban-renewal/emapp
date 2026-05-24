@@ -174,7 +174,9 @@ export class OwnershipsService {
             role: ownerships.role,
             id: owners.id,
             organizationId: owners.orgId,
-            name: owners.name,
+            // v8 §v8-S3 — decrypt inside SQL (same pattern as
+            // NID_MASK / PHONE_MASK); never expose ciphertext.
+            name: sql<string>`pgp_sym_decrypt(${owners.nameEncrypted}, current_setting('app.encryption_key'))::text`,
             email: owners.email,
             nationalIdMasked: NID_MASK,
             phoneMasked: PHONE_MASK,

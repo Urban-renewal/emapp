@@ -117,10 +117,27 @@ describe('T1.4 — CHECK constraints and immutable triggers', () => {
     const client = await pool.connect();
     try {
       // Spec model: signature → document + owner (+ forensic fields).
+      // v8 §v8-S3: owners.name moved to name_encrypted + name_hash
+      // (migration 0033). Encrypt the name inline via pgp_sym_encrypt
+      // same way as national_id; hash with hmac to match the bytea
+      // column type.
       const owner = await client.query<{ id: string }>(
-        `INSERT INTO owners (org_id, name, national_id_encrypted, national_id_hash)
-         VALUES ($1, $2, pgp_sym_encrypt($3, $4), $5) RETURNING id`,
-        [taskOrgId, 'T14 Owner', '123456789', 'test-key', `t14-natid-${Date.now()}`],
+        `INSERT INTO owners (org_id, name_encrypted, name_hash, national_id_encrypted, national_id_hash)
+         VALUES (
+           $1,
+           pgp_sym_encrypt($2, $3),
+           hmac($2::bytea, $4::bytea, 'sha256'),
+           pgp_sym_encrypt($5, $3),
+           $6
+         ) RETURNING id`,
+        [
+          taskOrgId,
+          'T14 Owner',
+          'test-key',
+          'test-hash-key',
+          '123456789',
+          `t14-natid-${Date.now()}`,
+        ],
       );
       const ownerId = owner.rows[0]!.id;
 

@@ -1,6 +1,7 @@
 import {
   AuditService,
   encryptField,
+  encryptOwnerName,
   encryptOwnerPii,
   env as dbEnv,
   hashField,
@@ -41,10 +42,15 @@ const PHONE_MASK = sql<
   string | null
 >`case when ${owners.phoneEncrypted} is null then null else '•••••' || right(pgp_sym_decrypt(${owners.phoneEncrypted}, current_setting('app.encryption_key'))::text, 4) end`;
 
+// v8 §v8-S3 — name decrypted INSIDE SQL (same approach as the masks
+// above) so we never pull the ciphertext over the wire to userland.
+// app.encryption_key is set by withTenant via set_config.
+const NAME_DECRYPTED = sql<string>`pgp_sym_decrypt(${owners.nameEncrypted}, current_setting('app.encryption_key'))::text`;
+
 const ownerCols = {
   id: owners.id,
   organizationId: owners.orgId,
-  name: owners.name,
+  name: NAME_DECRYPTED,
   email: owners.email,
   nationalIdMasked: NID_MASK,
   phoneMasked: PHONE_MASK,
@@ -171,12 +177,19 @@ export class OwnersService {
       return await withTenant(
         user.orgId,
         async (tx) => {
-          const pii = await encryptOwnerPii(tx, { nationalId: input.national_id, phone });
+          // v8 §v8-S3 — encryptOwnerPii now folds name encryption in
+          // (3 fields encrypted in one helper call, 3 round-trips).
+          const pii = await encryptOwnerPii(tx, {
+            nationalId: input.national_id,
+            phone,
+            name: input.name,
+          });
           const [ins] = await tx
             .insert(owners)
             .values({
               orgId: user.orgId,
-              name: input.name,
+              nameEncrypted: pii.nameEncrypted,
+              nameHash: pii.nameHash,
               email: input.email ?? null,
               notes: input.notes ?? null,
               nationalIdEncrypted: pii.nationalIdEncrypted,
@@ -193,7 +206,11 @@ export class OwnersService {
             action: 'owner.create',
             targetTable: 'owners',
             targetId: ins.id,
-            // NO PII in audit — name only.
+            // v8 §v8-S3 follow-up: name in audit_log is acceptable —
+            // it's the Manager-supplied input value (not yet decrypted
+            // from DB) and the audit log is itself RLS-scoped + Manager-
+            // only. Future v9 may sanitise further if name is shown to
+            // contain digit-PII (sanitiseFilenameForAudit pattern).
             afterState: { name: input.name },
             sessionId: user.sid,
           });
@@ -223,21 +240,36 @@ export class OwnersService {
       return await withTenant(
         user.orgId,
         async (tx) => {
+          // v8 §v8-S3: presence-only SELECT (name is encrypted; we
+          // don't need to read it here — only to confirm visibility).
           const [before] = await tx
-            .select({ id: owners.id, name: owners.name })
+            .select({ id: owners.id })
             .from(owners)
             .where(eq(owners.id, id))
             .limit(1);
           if (!before) throw NOT_FOUND;
 
           const patch: Record<string, unknown> = { updatedAt: new Date() };
-          if (input.name !== undefined) patch['name'] = input.name;
+          if (input.name !== undefined) {
+            // v8 §v8-S3 — name updates go through encryptOwnerName
+            // (single-field). No DB round-trip waste for unused
+            // national_id / phone ciphertexts.
+            const enc = await encryptOwnerName(tx, input.name);
+            patch['nameEncrypted'] = enc.nameEncrypted;
+            patch['nameHash'] = enc.nameHash;
+          }
           if (input.email !== undefined) patch['email'] = input.email;
           if (input.notes !== undefined) patch['notes'] = input.notes;
           if (input.national_id !== undefined) {
-            const enc = await encryptOwnerPii(tx, { nationalId: input.national_id });
-            patch['nationalIdEncrypted'] = enc.nationalIdEncrypted;
-            patch['nationalIdHash'] = enc.nationalIdHash;
+            // v8 §v8-S3 — encryptOwnerPii now REQUIRES name. For a
+            // national_id-only patch, use the field-level helpers
+            // directly (same pattern as the phone branch below).
+            patch['nationalIdEncrypted'] = await encryptField(
+              tx,
+              input.national_id,
+              dbEnv.PII_ENCRYPTION_KEY as string,
+            );
+            patch['nationalIdHash'] = hashField(input.national_id, dbEnv.PII_HASH_KEY as string);
           }
           if (input.phone !== undefined) {
             if (input.phone === null) {

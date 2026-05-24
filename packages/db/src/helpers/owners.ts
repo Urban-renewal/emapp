@@ -43,6 +43,9 @@ export async function decryptField(
 export interface PiiFields {
   nationalId: string;
   phone?: string;
+  /** v8 §v8-S3: name is now pgcrypto-encrypted alongside the
+   *  national_id + phone. Required (every owner has a name). */
+  name: string;
 }
 
 export interface EncryptedPiiFields {
@@ -50,6 +53,40 @@ export interface EncryptedPiiFields {
   nationalIdHash: string;
   phoneEncrypted: Buffer | null;
   phoneHash: string | null;
+  /** v8 §v8-S3 — encrypted name bytea + HMAC hash for exact-match. */
+  nameEncrypted: Buffer;
+  nameHash: Buffer;
+}
+
+/** v8 §v8-S3 — single-name encrypt for the API write path. The bulk
+ *  worker path uses encryptOwnerPiiBatch which folds this in. */
+export async function encryptOwnerName(
+  db: Database,
+  name: string,
+): Promise<{ nameEncrypted: Buffer; nameHash: Buffer }> {
+  const { encKey, hashKey } = requirePiiKeys();
+  const nameEncrypted = await encryptField(db, name, encKey);
+  // Hash is bytea (matches the column type) — HMAC-SHA256 raw bytes,
+  // not hex. We store bytea to avoid the hex/utf8 conversion cost on
+  // every lookup; consumers compare via byte equality.
+  const nameHash = Buffer.from(createHmac('sha256', hashKey).update(name).digest());
+  return { nameEncrypted, nameHash };
+}
+
+/** v8 §v8-S3 — decrypt a single owner's name. Used by the API
+ *  read sites; the helper takes the encrypted bytea and the
+ *  current `Database` (drizzle/tenant tx). */
+export async function decryptOwnerName(db: Database, encrypted: Buffer): Promise<string> {
+  const { encKey } = requirePiiKeys();
+  return decryptField(db, encrypted, encKey);
+}
+
+/** v8 §v8-S3 — compute the name HMAC without DB round-trip. Used by
+ *  the search path / replay-style lookups. Returns bytea-equivalent
+ *  Buffer so callers can compare against `owners.name_hash` directly. */
+export function hashOwnerName(name: string): Buffer {
+  const { hashKey } = requirePiiKeys();
+  return Buffer.from(createHmac('sha256', hashKey).update(name).digest());
 }
 
 export async function encryptOwnerPii(db: Database, pii: PiiFields): Promise<EncryptedPiiFields> {
@@ -65,7 +102,18 @@ export async function encryptOwnerPii(db: Database, pii: PiiFields): Promise<Enc
     phoneHash = hashField(pii.phone, hashKey);
   }
 
-  return { nationalIdEncrypted, nationalIdHash, phoneEncrypted, phoneHash };
+  // v8 §v8-S3 — name encryption (mandatory).
+  const nameEncrypted = await encryptField(db, pii.name, encKey);
+  const nameHash = Buffer.from(createHmac('sha256', hashKey).update(pii.name).digest());
+
+  return {
+    nationalIdEncrypted,
+    nationalIdHash,
+    phoneEncrypted,
+    phoneHash,
+    nameEncrypted,
+    nameHash,
+  };
 }
 
 /**
@@ -101,6 +149,12 @@ export async function encryptOwnerPiiBatch(
 
   const nationalIds = inputs.map((p) => p.nationalId);
   const phones = inputs.map((p) => p.phone ?? null);
+  // v8 §v8-S3: also batch-encrypt names. SAME round-trip discipline
+  // (one SELECT per column, jsonb_array_elements_text WITH ORDINALITY
+  // preserves order). With the per-statement memoization plus this,
+  // the worker now does THREE pgcrypto round-trips per 5000-row chunk
+  // instead of the pre-batching N×3.
+  const names = inputs.map((p) => p.name);
 
   // Drizzle's sql template inlines a JS array as a parameter that
   // pg-node serialises as text[] automatically; explicit ::text[]
@@ -129,10 +183,22 @@ export async function encryptOwnerPiiBatch(
     `,
   );
 
+  // v8 §v8-S3 — same pattern for names; name is REQUIRED so no
+  // NULL handling.
+  const nameRes = await db.execute<{ enc: Buffer; idx: number }>(
+    sql`
+      SELECT pgp_sym_encrypt(t.val, ${encKey}) AS enc, t.idx::int AS idx
+      FROM jsonb_array_elements_text(${JSON.stringify(names)}::jsonb) WITH ORDINALITY AS t(val, idx)
+      ORDER BY t.idx
+    `,
+  );
+
   const out: EncryptedPiiFields[] = [];
   for (let i = 0; i < inputs.length; i += 1) {
     const idEnc = idRes.rows[i]?.enc;
     if (!idEnc) throw new Error('encryptOwnerPiiBatch: missing national_id ciphertext');
+    const nameEnc = nameRes.rows[i]?.enc;
+    if (!nameEnc) throw new Error('encryptOwnerPiiBatch: missing name ciphertext');
     const phoneEnc = phoneRes.rows[i]?.enc ?? null;
     const input = inputs[i]!;
     out.push({
@@ -140,6 +206,11 @@ export async function encryptOwnerPiiBatch(
       nationalIdHash: hashField(input.nationalId, hashKey),
       phoneEncrypted: phoneEnc,
       phoneHash: input.phone ? hashField(input.phone, hashKey) : null,
+      nameEncrypted: nameEnc,
+      // v8 §v8-S3: hashOwnerName output (Buffer, raw SHA256 bytes)
+      // matches the bytea column type. Computed locally — no DB
+      // round-trip.
+      nameHash: Buffer.from(createHmac('sha256', hashKey).update(input.name).digest()),
     });
   }
   return out;

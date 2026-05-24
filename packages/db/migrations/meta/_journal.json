@@ -225,6 +225,20 @@
       "when": 1779045600000,
       "tag": "0031_import_jobs_parsed_headers",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1779046200000,
+      "tag": "0032_import_jobs_file_deleted_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1779046800000,
+      "tag": "0033_owners_name_encryption",
+      "breakpoints": true
     }
   ]
 }

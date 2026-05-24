@@ -94,15 +94,18 @@ export class SignatureRequestsService {
   }
 
   /** Validate the owner exists in the manager's org. Returns the row or
-   *  throws no-oracle 404. */
+   *  throws no-oracle 404.
+   *
+   *  v8 §v8-S3: dropped `name` from the SELECT — this presence-only
+   *  helper has no caller that needs the name; `loadOwnerWithPii`
+   *  is the path that fetches PII (name + phone) for delivery. */
   private async loadOwner(
     tx: TenantTx,
     ownerId: string,
-  ): Promise<{ id: string; name: string; archivedAt: Date | null }> {
+  ): Promise<{ id: string; archivedAt: Date | null }> {
     const [row] = await tx
       .select({
         id: owners.id,
-        name: owners.name,
         archivedAt: owners.archivedAt,
       })
       .from(owners)
@@ -254,10 +257,16 @@ export class SignatureRequestsService {
     phonePlain: string | null;
     archivedAt: Date | null;
   }> {
+    // v8 §v8-S3 — name is now pgcrypto-encrypted alongside phone.
+    // Fetch ciphertext, decrypt inside the same withTenant tx
+    // (app.encryption_key GUC available there). Failing to decrypt
+    // the name is more serious than phone (no fallback message
+    // template) — let it propagate so the signature request create
+    // fails loud rather than silently using an empty string.
     const [row] = await tx
       .select({
         id: owners.id,
-        name: owners.name,
+        nameEncrypted: owners.nameEncrypted,
         email: owners.email,
         phoneEncrypted: owners.phoneEncrypted,
         archivedAt: owners.archivedAt,
@@ -267,27 +276,30 @@ export class SignatureRequestsService {
       .limit(1);
     if (!row || row.archivedAt) throw NOT_FOUND;
 
+    const encKey = serverEnv.PII_ENCRYPTION_KEY;
+    if (!encKey) {
+      throw new Error('PII_ENCRYPTION_KEY is required to decrypt owner.name for delivery');
+    }
+    const name = await decryptField(tx, row.nameEncrypted, encKey);
+
     let phonePlain: string | null = null;
     if (row.phoneEncrypted) {
-      const encKey = serverEnv.PII_ENCRYPTION_KEY;
-      if (encKey) {
-        try {
-          phonePlain = await decryptField(tx, row.phoneEncrypted, encKey);
-        } catch (e: unknown) {
-          // pgcrypto decryption failures must NOT crash the create call
-          // — the wa.me channel will simply report "unavailable".
-          this.logger.error(
-            `failed to decrypt owner phone for delivery (owner=${row.id}): ${
-              e instanceof Error ? e.message : 'unknown'
-            }`,
-          );
-        }
+      try {
+        phonePlain = await decryptField(tx, row.phoneEncrypted, encKey);
+      } catch (e: unknown) {
+        // pgcrypto decryption failures must NOT crash the create call
+        // — the wa.me channel will simply report "unavailable".
+        this.logger.error(
+          `failed to decrypt owner phone for delivery (owner=${row.id}): ${
+            e instanceof Error ? e.message : 'unknown'
+          }`,
+        );
       }
     }
 
     return {
       id: row.id,
-      name: row.name,
+      name,
       email: row.email,
       phonePlain,
       archivedAt: row.archivedAt,

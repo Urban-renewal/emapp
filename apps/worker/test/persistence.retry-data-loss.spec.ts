@@ -109,7 +109,13 @@ async function getStatus(o: TestOrg, jobId: string): Promise<string | null> {
 async function forceStatus(jobId: string, status: string): Promise<void> {
   const c = await providerPool.connect();
   try {
-    await c.query(`UPDATE import_jobs SET status=$2 WHERE id=$1`, [jobId, status]);
+    // v8 §v8-S1: also clear file_deleted_at — reverting from terminal
+    // (where purge may have set it) to non-terminal would otherwise
+    // violate the CHECK constraint.
+    await c.query(`UPDATE import_jobs SET status=$2, file_deleted_at=NULL WHERE id=$1`, [
+      jobId,
+      status,
+    ]);
   } finally {
     c.release();
   }
@@ -190,6 +196,13 @@ describe('A4 data-loss recovery — persisting-state retry materialises rows', (
     // retry). The second handle() should find-or-create the
     // existing owner — no new row materialises.
     await forceStatus(jobId, 'persisting');
+    // v8 §v8-S1: re-set the bytes — the first handle() reached
+    // terminal `done` and purged R2. This synthetic retry needs
+    // bytes available.
+    storage.setObject(
+      r2Key,
+      await buildXlsx([['222222226', '0501234567', 'Idem', '888', 'Idem Addr', '']]),
+    );
     await handler.handle(payload, makeCtx());
     const ownersAfter2 = await countOwners(org);
 

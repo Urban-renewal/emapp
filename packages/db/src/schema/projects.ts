@@ -117,7 +117,13 @@ export const owners = pgTable(
     orgId: uuid('org_id')
       .notNull()
       .references(() => organizations.id, { onDelete: 'restrict' }),
-    name: text('name').notNull(),
+    // v8 §v8-S3: `name` moved to pgcrypto-encrypted bytea + a hashed
+    // form for future exact-match lookup. Cleartext column dropped in
+    // migration 0033. Every read goes through decryptOwnerName() /
+    // every write through encryptOwnerName() (helpers in
+    // packages/db/src/helpers/owners.ts).
+    nameEncrypted: bytea('name_encrypted').notNull(),
+    nameHash: bytea('name_hash').notNull(),
     email: citext('email'),
     nationalIdEncrypted: bytea('national_id_encrypted').notNull(),
     nationalIdHash: text('national_id_hash').notNull(),
@@ -135,6 +141,10 @@ export const owners = pgTable(
       .where(sql`phone_hash IS NOT NULL`),
     uniqueNationalIdPerOrg: uniqueIndex('owners_org_natid_unique_active')
       .on(table.orgId, table.nationalIdHash)
+      .where(sql`archived_at IS NULL`),
+    // v8 §v8-S3 — supports future exact-match owner lookup by name.
+    orgNameHashIdx: index('idx_owners_org_name_hash')
+      .on(table.orgId, table.nameHash)
       .where(sql`archived_at IS NULL`),
   }),
 );

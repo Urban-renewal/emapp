@@ -92,7 +92,13 @@ async function createJob(o: TestOrg, r2Key: string, status?: string): Promise<st
   if (status && status !== 'queued') {
     const c = await providerPool.connect();
     try {
-      await c.query(`UPDATE import_jobs SET status=$2 WHERE id=$1`, [row!.id, status]);
+      // v8 §v8-S1: also clear file_deleted_at so reverting a row
+      // from a terminal state (where purge may have set it) to a
+      // non-terminal state stays consistent with the CHECK constraint.
+      await c.query(`UPDATE import_jobs SET status=$2, file_deleted_at=NULL WHERE id=$1`, [
+        row!.id,
+        status,
+      ]);
     } finally {
       c.release();
     }
@@ -180,13 +186,18 @@ describe('T6.12 — cancel flow E2E', () => {
         .where(and(eq(auditLog.targetTable, 'import_jobs'), eq(auditLog.targetId, jobId))),
     );
     const actions = auditRows.map((r) => r.action).sort();
-    // Allow either zero transition rows OR just 'import.received'
-    // (the visibility-gated audit at line 487-508 of the handler).
+    // Allow:
+    //   - 'import.received' (the visibility-gated entry audit)
+    //   - 'import.bytes_purged' (v8 §v8-S1 — worker purges R2 on
+    //     terminal-state detection; this row's status is 'cancelled'
+    //     so purge fires)
+    // Anything else (e.g. import.parsing) WOULD indicate the worker
+    // wrongly advanced past the cancellation guard.
+    const allowed = new Set(['import.received', 'import.bytes_purged']);
     for (const a of actions) {
-      expect(
-        ['import.received'].includes(a),
-        `unexpected transition audit ${a} for cancelled-before-pickup`,
-      ).toBe(true);
+      expect(allowed.has(a), `unexpected transition audit ${a} for cancelled-before-pickup`).toBe(
+        true,
+      );
     }
   }, 60_000);
 

@@ -72,6 +72,7 @@ import { summariseFailureForAudit } from '../security/audit-sanitiser';
 import { capStreamSize, StreamSizeExceededError } from '../storage-stream-cap';
 import { validateRow } from '../validation/row-validator';
 
+import { purgeImportBytes } from './purge-import-bytes';
 import { JobPayloadTamperedError, verifyJobPayload } from './verify-job-payload';
 
 /** A validated row that passed S5 row-validator. The canonical fields
@@ -450,10 +451,15 @@ async function resolveOwnersBatch(
   }
   if (toCreate.length === 0) return result;
 
-  // Step 3: batch-encrypt PII for all new rows. 2 round-trips.
+  // Step 3: batch-encrypt PII for all new rows. v8 §v8-S3: now also
+  // encrypts name → 3 round-trips total (national_id + phone + name).
   const enc = await encryptOwnerPiiBatch(
     tx,
-    toCreate.map((t) => ({ nationalId: t.row.nationalId, phone: t.row.phone })),
+    toCreate.map((t) => ({
+      nationalId: t.row.nationalId,
+      phone: t.row.phone,
+      name: t.row.name,
+    })),
   );
 
   // Step 4: batch INSERT new owners. ONE round-trip.
@@ -463,7 +469,9 @@ async function resolveOwnersBatch(
   // insert is a no-op, and we re-SELECT to recover the existing id.
   const values = toCreate.map((t, i) => ({
     orgId,
-    name: t.row.name,
+    // v8 §v8-S3 — name is encrypted; the cleartext column is gone.
+    nameEncrypted: enc[i]!.nameEncrypted,
+    nameHash: enc[i]!.nameHash,
     nationalIdEncrypted: enc[i]!.nationalIdEncrypted,
     nationalIdHash: enc[i]!.nationalIdHash,
     phoneEncrypted: enc[i]!.phoneEncrypted,
@@ -662,9 +670,34 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
         const current = await this.readStatus(payload);
         const next = FORWARD[current];
         if (next === null) {
-          // Terminal state reached — done, failed, or cancelled. Nothing
-          // more to do. Idempotent across retries.
+          // Terminal state reached — done, failed, or cancelled.
+          // Nothing more to do for the state machine; idempotent
+          // across retries.
+          //
+          // v8 §v8-S1 (R2 retention): for true terminals (NOT
+          // awaiting_mapping which is a pause state), purge the R2
+          // bytes. purgeImportBytes is idempotent at every layer:
+          // it checks file_deleted_at IS NULL before touching R2,
+          // and the guarded UPDATE handles concurrent purge attempts.
           ctx.log.info('terminal state reached', { status: current });
+          if (
+            this.storage &&
+            (current === 'done' || current === 'failed' || current === 'cancelled')
+          ) {
+            await purgeImportBytes({
+              orgId: payload.orgId,
+              jobId: payload.jobId,
+              verifiedActorId,
+              storage: this.storage,
+              log: ctx.log,
+            }).catch((e: unknown) => {
+              // Best-effort — a purge failure mustn't fail the job;
+              // the scheduled sweeper picks it up next cycle.
+              ctx.log.warn('purgeImportBytes threw — will retry via sweeper', {
+                error: e instanceof Error ? e.message : 'unknown',
+              });
+            });
+          }
           return;
         }
 

@@ -138,10 +138,23 @@ describe('Audit-pass v2 L6 — handler-scoped parse cache', () => {
     // the second handle() (it's a fresh local var).
     const provClient = await providerPool.connect();
     try {
-      await provClient.query(`UPDATE import_jobs SET status='parsing' WHERE id=$1`, [jobId]);
+      // v8 §v8-S1: clear file_deleted_at — reverting from terminal
+      // (where purge may have set it) to non-terminal violates the
+      // CHECK constraint unless cleared in the same UPDATE.
+      await provClient.query(
+        `UPDATE import_jobs SET status='parsing', file_deleted_at=NULL WHERE id=$1`,
+        [jobId],
+      );
     } finally {
       provClient.release();
     }
+    // v8 §v8-S1: the first handle() reached `done` → terminal-state
+    // purge called storage.delete which removed the bytes from the
+    // Fake's in-memory Map. Re-setObject simulates "operator
+    // restored the bytes from cold storage" — a synthetic scenario
+    // needed because this test runs the handler twice for a retry-
+    // idempotency proof.
+    storage.setObject(key, await buildXlsx(2));
 
     // Second attempt — runs parsing→validating, validateStage cache
     // miss → falls back to one fresh download. (Note: in this contrived

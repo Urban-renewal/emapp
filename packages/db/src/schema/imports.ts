@@ -94,6 +94,13 @@ export const importJobs = pgTable(
      *  mapping_templates row (so the future L2 TemplateResolver can
      *  actually find these templates). Migration 0031. */
     parsedHeaders: jsonb('parsed_headers').$type<string[]>(),
+
+    /** v8 §v8-S1 — R2 bytes purge timestamp. Set when the worker
+     *  (or API cancel path) deletes the R2 object after a terminal
+     *  state. Migration 0032's CHECK enforces "non-null only when
+     *  status ∈ done/failed/cancelled." The sweeper + worker terminal
+     *  check use `file_deleted_at IS NULL` as the eligibility guard. */
+    fileDeletedAt: timestamp('file_deleted_at', { withTimezone: true }),
   },
   (table) => ({
     orgStatusCreatedIdx: index('idx_import_jobs_org_status_created').on(

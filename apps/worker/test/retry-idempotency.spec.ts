@@ -103,79 +103,119 @@ afterAll(async () => {
 });
 
 describe('Test #5 — retry idempotency on import_job_errors', () => {
-  it('1) handler invoked TWICE on same job → import_job_errors row count unchanged', async () => {
-    const storage = new FakeStorageProvider();
-    const handler = new ImportJobHandler(storage);
-    const r2Key = `org/${org.id}/import/retry-1.xlsx`;
-    storage.setObject(
-      r2Key,
-      await buildXlsx([
-        HEADERS,
-        ['123456782', '0501234567', 'Avi', '1', 'Herzl 10'], // ok
-        ['bad_id', '0521234567', 'Bob', '2', 'Herzl 10'], // invalid_luhn
-        ['234567899', 'bad-phone', 'Carol', '3', 'Herzl 10'], // invalid_phone
-      ]),
-    );
-    const jobId = await createJob(org, r2Key);
-    const payload: ImportJobPayload = { jobId, orgId: org.id, createdBy: org.users[0]!.id };
-
-    // First run.
-    await handler.handle(payload, makeCtx());
-    const errorsAfterFirst = await getErrors(org, jobId);
-    const countFirst = errorsAfterFirst.length;
-    expect(countFirst).toBeGreaterThanOrEqual(2);
-
-    // Second run — simulates pg-boss retry on the same job.
-    // The handler walks from `done` (terminal) → it's a no-op now
-    // because we already reached done. But for the C9 contract, the
-    // INVARIANT is: even if validateStage runs again somehow (e.g.
-    // worker killed before transition to persisting), the errors
-    // table must not grow. Force-reset status to test that path:
-    const provClient = await providerPool.connect();
-    try {
-      await provClient.query(
-        `UPDATE import_jobs SET status = 'queued', started_at = NULL, finished_at = NULL,
-           processed_rows = 0, ok_rows = 0, failed_rows = 0 WHERE id = $1`,
-        [jobId],
+  // v8 §v8-S1: bytes-purge on terminal means the second handle()
+  // re-runs the whole pipeline (re-set bytes, then parseStage +
+  // validateStage + persistStage). The full 2× run exceeds vitest's
+  // 30s default — bump explicitly.
+  it(
+    '1) handler invoked TWICE on same job → import_job_errors row count unchanged',
+    { timeout: 120_000 },
+    async () => {
+      const storage = new FakeStorageProvider();
+      const handler = new ImportJobHandler(storage);
+      const r2Key = `org/${org.id}/import/retry-1.xlsx`;
+      storage.setObject(
+        r2Key,
+        await buildXlsx([
+          HEADERS,
+          ['123456782', '0501234567', 'Avi', '1', 'Herzl 10'], // ok
+          ['bad_id', '0521234567', 'Bob', '2', 'Herzl 10'], // invalid_luhn
+          ['234567899', 'bad-phone', 'Carol', '3', 'Herzl 10'], // invalid_phone
+        ]),
       );
-    } finally {
-      provClient.release();
-    }
+      const jobId = await createJob(org, r2Key);
+      const payload: ImportJobPayload = { jobId, orgId: org.id, createdBy: org.users[0]!.id };
 
-    await handler.handle(payload, makeCtx());
-    const errorsAfterSecond = await getErrors(org, jobId);
-    expect(errorsAfterSecond.length).toBe(countFirst);
-  });
+      // First run.
+      await handler.handle(payload, makeCtx());
+      const errorsAfterFirst = await getErrors(org, jobId);
+      const countFirst = errorsAfterFirst.length;
+      expect(countFirst).toBeGreaterThanOrEqual(2);
 
-  it('2) counters reflect the second run (overwrite, not accumulate)', async () => {
-    const storage = new FakeStorageProvider();
-    const handler = new ImportJobHandler(storage);
-    const r2Key = `org/${org.id}/import/retry-2.xlsx`;
-    storage.setObject(
-      r2Key,
-      await buildXlsx([
-        HEADERS,
-        ['123456782', '0501234567', 'Avi', '1', 'Herzl 10'],
-        ['bad_id', '0521234567', 'Bob', '2', 'Herzl 10'],
-      ]),
-    );
-    const jobId = await createJob(org, r2Key);
-    const payload: ImportJobPayload = { jobId, orgId: org.id, createdBy: org.users[0]!.id };
+      // Second run — simulates pg-boss retry on the same job.
+      // The handler walks from `done` (terminal) → it's a no-op now
+      // because we already reached done. But for the C9 contract, the
+      // INVARIANT is: even if validateStage runs again somehow (e.g.
+      // worker killed before transition to persisting), the errors
+      // table must not grow. Force-reset status to test that path:
+      const provClient = await providerPool.connect();
+      try {
+        // v8 §v8-S1: clear file_deleted_at too — terminal-state purge
+        // sets it on done/failed; reverting to queued without clearing
+        // would violate the CHECK constraint.
+        await provClient.query(
+          `UPDATE import_jobs SET status = 'queued', started_at = NULL, finished_at = NULL,
+           processed_rows = 0, ok_rows = 0, failed_rows = 0, file_deleted_at = NULL
+           WHERE id = $1`,
+          [jobId],
+        );
+      } finally {
+        provClient.release();
+      }
+      // v8 §v8-S1: terminal-state purge removed the bytes; re-set
+      // for the synthetic retry (production never re-runs after done).
+      storage.setObject(
+        r2Key,
+        await buildXlsx([
+          HEADERS,
+          ['123456782', '0501234567', 'Avi', '1', 'Herzl 10'],
+          ['bad_id', '0521234567', 'Bob', '2', 'Herzl 10'],
+          ['234567899', 'bad-phone', 'Carol', '3', 'Herzl 10'],
+        ]),
+      );
 
-    await handler.handle(payload, makeCtx());
-    const provClient = await providerPool.connect();
-    try {
-      await provClient.query(`UPDATE import_jobs SET status='queued' WHERE id=$1`, [jobId]);
-    } finally {
-      provClient.release();
-    }
-    await handler.handle(payload, makeCtx());
+      await handler.handle(payload, makeCtx());
+      const errorsAfterSecond = await getErrors(org, jobId);
+      expect(errorsAfterSecond.length).toBe(countFirst);
+    },
+  );
 
-    const row = await getJob(org, jobId);
-    expect(row?.processedRows).toBe(2); // not 4
-    expect(row?.okRows).toBe(1);
-    expect(row?.failedRows).toBe(1);
-  });
+  it(
+    '2) counters reflect the second run (overwrite, not accumulate)',
+    { timeout: 120_000 },
+    async () => {
+      const storage = new FakeStorageProvider();
+      const handler = new ImportJobHandler(storage);
+      const r2Key = `org/${org.id}/import/retry-2.xlsx`;
+      storage.setObject(
+        r2Key,
+        await buildXlsx([
+          HEADERS,
+          ['123456782', '0501234567', 'Avi', '1', 'Herzl 10'],
+          ['bad_id', '0521234567', 'Bob', '2', 'Herzl 10'],
+        ]),
+      );
+      const jobId = await createJob(org, r2Key);
+      const payload: ImportJobPayload = { jobId, orgId: org.id, createdBy: org.users[0]!.id };
+
+      await handler.handle(payload, makeCtx());
+      const provClient = await providerPool.connect();
+      try {
+        // v8 §v8-S1: clear file_deleted_at on revert (see test 1 comment).
+        await provClient.query(
+          `UPDATE import_jobs SET status='queued', file_deleted_at=NULL WHERE id=$1`,
+          [jobId],
+        );
+      } finally {
+        provClient.release();
+      }
+      // v8 §v8-S1: re-set bytes after terminal-state purge.
+      storage.setObject(
+        r2Key,
+        await buildXlsx([
+          HEADERS,
+          ['123456782', '0501234567', 'Avi', '1', 'Herzl 10'],
+          ['bad_id', '0521234567', 'Bob', '2', 'Herzl 10'],
+        ]),
+      );
+      await handler.handle(payload, makeCtx());
+
+      const row = await getJob(org, jobId);
+      expect(row?.processedRows).toBe(2); // not 4
+      expect(row?.okRows).toBe(1);
+      expect(row?.failedRows).toBe(1);
+    },
+  );
 
   it('3) schema-level UNIQUE rejects a manual duplicate (job_id, row_number, code)', async () => {
     const r2Key = `org/${org.id}/import/retry-3.xlsx`;
@@ -332,7 +372,11 @@ describe('Test #7 — storage I/O error retry posture', () => {
     // run persistStage on the next transition instead.)
     const provClient = await providerPool.connect();
     try {
-      await provClient.query(`UPDATE import_jobs SET status='parsing' WHERE id=$1`, [jobId]);
+      // v8 §v8-S1: clear file_deleted_at on revert.
+      await provClient.query(
+        `UPDATE import_jobs SET status='parsing', file_deleted_at=NULL WHERE id=$1`,
+        [jobId],
+      );
     } finally {
       provClient.release();
     }

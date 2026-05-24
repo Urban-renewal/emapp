@@ -31,7 +31,15 @@
  *      fallback path)
  *   8. dry_run=true → no domain writes (T6.5 reasserted post-S6)
  */
-import { decryptField, env, FakeStorageProvider, importJobs, owners, withTenant } from '@emapp/db';
+import {
+  decryptField,
+  env,
+  FakeStorageProvider,
+  hashOwnerName,
+  importJobs,
+  owners,
+  withTenant,
+} from '@emapp/db';
 import { NonRetryableJobError, type JobContext } from '@emapp/jobs';
 import { and, eq, sql } from 'drizzle-orm';
 import { Workbook } from 'exceljs';
@@ -193,13 +201,16 @@ describe('S6 persistence — T6.6 + T6.7', () => {
 
     // Decrypt via the same key the worker used.
     const decrypted = await withTenant(org.id, async (tx) => {
+      // v8 §v8-S3: name moved to encrypted column. Look up via
+      // name_hash (HMAC) — same lookup pattern future search will use.
+      const nameHash = hashOwnerName('PII-Test');
       const [r] = await tx
         .select({
           nationalIdEncrypted: owners.nationalIdEncrypted,
           nationalIdHash: owners.nationalIdHash,
         })
         .from(owners)
-        .where(and(eq(owners.orgId, org.id), eq(owners.name, 'PII-Test')))
+        .where(and(eq(owners.orgId, org.id), eq(owners.nameHash, nameHash)))
         .limit(1);
       if (!r) return null;
       const enc = r.nationalIdEncrypted as unknown as Buffer;
@@ -276,10 +287,24 @@ describe('S6 persistence — T6.6 + T6.7', () => {
     // observable count is the same.
     const c = await providerPool.connect();
     try {
-      await c.query(`UPDATE import_jobs SET status='persisting' WHERE id=$1`, [jobId]);
+      // v8 §v8-S1: terminal-state purge sets file_deleted_at on
+      // 'done'. Force-flipping to 'persisting' (a non-terminal
+      // state) would violate the CHECK constraint. Clear
+      // file_deleted_at in the same UPDATE so the artificial
+      // revert is internally consistent.
+      await c.query(
+        `UPDATE import_jobs SET status='persisting', file_deleted_at=NULL WHERE id=$1`,
+        [jobId],
+      );
     } finally {
       c.release();
     }
+    // v8 §v8-S1: terminal-state purge cleared the bytes; re-set for
+    // the synthetic retry (production never reads bytes after done).
+    storage.setObject(
+      r2Key,
+      await buildXlsx([[VALID_IDS[3]!, '0501234567', 'Retry', '500', 'Retry Address', '']]),
+    );
     await handler.handle(payload, makeCtx());
     const after2 = await countAll(org);
 

@@ -1,5 +1,12 @@
 # OPEN ITEMS — v8 deferrals (post-Phase-6 / pre-Phase-4 FE)
 
+> **Status update (this commit):** the three §v8-S1/S2/S3 **P0** items
+> below are now **CLOSED** on branch `v8-p0-closures` (migration 0032
+>
+> - 0033, +20 new tests, full test suite green). They remain documented
+>   here for posterity and to mark the deferred-but-paired sub-items
+>   (e.g. §v8-S2 Phase 2 LISTEN/NOTIFY).
+
 > Items the v8 audit pass (3 independent agents) surfaced that we
 > CHOSE not to close in this slice, each with a concrete plan + the
 > reason. The next agent should pick from this list, NOT invent new

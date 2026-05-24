@@ -139,14 +139,48 @@ export class ImportsController {
     return { data: await this.imports.submitMapping(user, id, body) };
   }
 
-  /** SSE progress stream. See file header for full explanation. */
+  /** SSE progress stream. See file header for full explanation.
+   *
+   *  v8-S2 (security/perf P0): @Throttle bounds NEW stream opens per
+   *  Manager so a malicious script can't fan out N EventSources to
+   *  saturate the pg pool (every active stream polls every 500ms).
+   *  5 opens / 60s is generous for legit UIs (one open per import
+   *  detail view) while bounding the per-IP DoS surface to a
+   *  predictable ceiling. The per-process MAX_ACTIVE_STREAMS cap
+   *  (below) is the second line of defense: even if many distinct
+   *  IPs each fire 5 opens, this Fastify worker refuses past N
+   *  concurrent active streams with a 503 (back-pressure rather
+   *  than degradation).
+   *
+   *  Note: the @Throttle key is route+IP; behind a trustproxy the
+   *  real client IP is used. For browser tabs that legitimately want
+   *  more than 5 imports open at once, the FE should reuse one
+   *  EventSource per import (the polling state shares cleanly). */
   @Get(':id/stream')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async stream(
     @CurrentUser() user: AccessTokenPayload,
     @Param('id', UuidParam) id: string,
     @Req() req: FastifyRequest,
     @Res() reply: FastifyReply,
   ): Promise<void> {
+    // Per-process max-concurrent-streams cap. Reject EARLY (before
+    // writing the 200 / SSE headers) so the FE sees a real 503 it
+    // can handle, not a half-open SSE stream. We MUST decrement on
+    // every exit path — try/finally below.
+    if (ImportsController.activeStreams >= ImportsController.MAX_ACTIVE_STREAMS) {
+      reply.raw.writeHead(503, {
+        'Content-Type': 'application/json; charset=utf-8',
+      });
+      reply.raw.end(
+        JSON.stringify({
+          error: { code: 'too_many_concurrent_streams', message: 'try again in a moment' },
+        }),
+      );
+      return;
+    }
+    ImportsController.activeStreams += 1;
+
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
@@ -178,7 +212,41 @@ export class ImportsController {
         /* socket already dead */
       }
     } finally {
+      ImportsController.activeStreams -= 1;
       reply.raw.end();
     }
+  }
+
+  /** v8-S2: per-process bound on active SSE streams.
+   *
+   *  Math: each active stream calls `this.get()` every 500ms via
+   *  withTenant, which acquires a pg client for ~4 round-trips.
+   *  With DB_POOL_MAX=20 (apps/api default), 5 active streams hold
+   *  ~4 round-trips/500ms × 5 = 40 RT/s but at most 5 in-flight pool
+   *  clients at any instant (the cycle is fast). 50 active streams
+   *  saturates the pool; 100 will queue beyond pool's
+   *  connectionTimeoutMillis and 503 new requests on OTHER endpoints.
+   *  Cap at 30 active streams per process — leaves plenty of room
+   *  for non-SSE traffic and is well above any realistic FE need
+   *  (one Manager open on multiple tabs = ~5; an org with several
+   *  active import wizards = ~10).
+   *
+   *  Across-process cap (multi-pod) is naturally bounded by
+   *  `pods × MAX_ACTIVE_STREAMS`. Document in OPEN-ITEMS-v8 §v8-S2
+   *  Phase 2 (LISTEN/NOTIFY) for the real fix that eliminates the
+   *  per-stream pg client churn entirely. */
+  private static readonly MAX_ACTIVE_STREAMS = 30;
+  /** Mutable per-process counter. Static so it's shared across
+   *  controller instances (Nest creates one per request scope by
+   *  default — even though this controller is request-scoped, the
+   *  static field is module-scoped). */
+  private static activeStreams = 0;
+
+  /** Test-only seam — reset the counter between specs so cross-spec
+   *  state doesn't leak. Intentionally NOT prefixed `_test` so any
+   *  production code that wants to reset (e.g. for health-check
+   *  recovery) can call it; the cost is one assignment. */
+  static resetActiveStreamsForTests(): void {
+    ImportsController.activeStreams = 0;
   }
 }

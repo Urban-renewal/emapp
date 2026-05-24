@@ -50,10 +50,13 @@ describe('T1.3 — Foreign key constraints enforced', () => {
   });
 
   it('owner with non-existent org_id is rejected', async () => {
+    // v8 §v8-S3: owners.name moved to encrypted bytea + hash bytea
+    // (migration 0033). Test inserts use the new columns directly;
+    // the actual byte values don't matter for the FK-violation check.
     await expectFkViolation(
-      `INSERT INTO owners (org_id, name, national_id_encrypted, national_id_hash)
-       VALUES ($1, $2, $3, $4)`,
-      [FAKE_UUID, 'Test Owner', Buffer.from('enc'), 'hash'],
+      `INSERT INTO owners (org_id, name_encrypted, name_hash, national_id_encrypted, national_id_hash)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [FAKE_UUID, Buffer.from('enc-name'), Buffer.from('hash-name'), Buffer.from('enc'), 'hash'],
     );
   });
 

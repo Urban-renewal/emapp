@@ -25,10 +25,18 @@
  * Type / helper consolidation: `ApiResponse<T>` + `isOk` come from
  * `@emapp/shared-types` (D.16 envelope SoT). Don't redefine here.
  */
-import { type ApiResponse, isOk } from '@emapp/shared-types';
+import { type ApiResponse, isOk, type ApiList, type ApiError } from '@emapp/shared-types';
 
 export { isOk };
-export type { ApiResponse };
+export type { ApiResponse, ApiList, ApiError };
+
+/** Discriminator for list envelopes — `{ data: T[], page }`. */
+function isList<T>(res: ApiListResponse<T>): res is ApiList<T> {
+  return 'data' in res && Array.isArray((res as { data: unknown }).data) && 'page' in res;
+}
+export { isList };
+
+export type ApiListResponse<T> = ApiList<T> | ApiError;
 
 export const UNAUTHENTICATED_EVENT = 'emapp:unauthenticated';
 
@@ -59,10 +67,16 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<ApiRespons
   return body;
 }
 
+/** List-aware variant — preserves the `page` envelope alongside `data[]`. */
+async function apiFetchList<T>(path: string, init?: RequestInit): Promise<ApiListResponse<T>> {
+  return (await apiFetch<T[]>(path, init)) as unknown as ApiListResponse<T>;
+}
+
 export const apiClient = {
   post: <T>(path: string, body: unknown) =>
     apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body) }),
   get: <T>(path: string) => apiFetch<T>(path, { method: 'GET' }),
+  getList: <T>(path: string) => apiFetchList<T>(path),
   patch: <T>(path: string, body: unknown) =>
     apiFetch<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: <T>(path: string) => apiFetch<T>(path, { method: 'DELETE' }),

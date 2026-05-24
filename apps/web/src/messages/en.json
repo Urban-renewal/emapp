@@ -42,5 +42,36 @@
     "emailInvalid": "Invalid email address",
     "required": "Required",
     "passwordRequirements": "Password must be at least 12 characters"
+  },
+  "projects": {
+    "listTitle": "Projects",
+    "create": "Create Project",
+    "creating": "Creating...",
+    "cancel": "Cancel",
+    "loading": "Loading...",
+    "empty": "No projects yet. Click \"Create Project\" to add one.",
+    "loadFailed": "Failed to load list",
+    "createFailed": "Failed to create project",
+    "retry": "Retry",
+    "next": "Next",
+    "resetToFirstPage": "Back to first page",
+    "archived": "Archived",
+    "archive": "Archive",
+    "archiving": "Archiving...",
+    "archiveConfirm": "After archiving the project won't appear in the list. Continue?",
+    "archiveFailed": "Failed to archive",
+    "notFound": "Project not found",
+    "backToList": "Back to list",
+    "field": {
+      "name": "Project name",
+      "type": "Type",
+      "description": "Description",
+      "required": "Required"
+    },
+    "types": {
+      "tama38_1": "Tama 38/1",
+      "tama38_2": "Tama 38/2",
+      "pinui_binui": "Pinuy-Binuy"
+    }
   }
 }

@@ -42,5 +42,36 @@
     "emailInvalid": "אימייל לא תקין",
     "required": "שדה חובה",
     "passwordRequirements": "הסיסמה חייבת להכיל לפחות 12 תווים"
+  },
+  "projects": {
+    "listTitle": "פרויקטים",
+    "create": "צור פרויקט",
+    "creating": "יוצר...",
+    "cancel": "ביטול",
+    "loading": "טוען...",
+    "empty": "אין עדיין פרויקטים. הקלק על \"צור פרויקט\" להוספה.",
+    "loadFailed": "טעינת הרשימה נכשלה",
+    "createFailed": "יצירת הפרויקט נכשלה",
+    "retry": "נסה שוב",
+    "next": "הבא",
+    "resetToFirstPage": "חזרה לעמוד הראשון",
+    "archived": "מאורכב",
+    "archive": "ארכוב",
+    "archiving": "מארכב...",
+    "archiveConfirm": "לאחר ארכוב לא יוצג הפרויקט ברשימה. להמשיך?",
+    "archiveFailed": "ארכוב הפרויקט נכשל",
+    "notFound": "הפרויקט לא נמצא",
+    "backToList": "חזרה לרשימה",
+    "field": {
+      "name": "שם הפרויקט",
+      "type": "סוג",
+      "description": "תיאור",
+      "required": "שדה חובה"
+    },
+    "types": {
+      "tama38_1": "תמ\"א 38/1",
+      "tama38_2": "תמ\"א 38/2",
+      "pinui_binui": "פינוי-בינוי"
+    }
   }
 }

@@ -428,24 +428,25 @@ describe('Phase 6+7 v6 audit · §8 — submitMapping producer.send retry', () =
   // single Neon blip the job is orphaned (status='queued' forever, no
   // pg-boss row exists). The catch block only logs; should retry with
   // exponential backoff.
-  it.fails(
-    '8) submitMapping retries producer.send with exponential backoff before logging',
-    async () => {
-      const src = await (
-        await import('node:fs/promises')
-      ).readFile(
-        new URL('../../api/src/modules/imports/imports.service.ts', import.meta.url),
-        'utf8',
-      );
-      // Look for a retry loop or a retry helper around producer.send
-      // in the submitMapping function. Heuristic: 3 sends OR
-      // exponential terms like '100, 500, 2000' OR 'retry' nearby.
-      const submitMappingIdx = src.indexOf('async submitMapping');
-      const blockEnd = src.indexOf('private ', submitMappingIdx);
-      const block = src.slice(submitMappingIdx, blockEnd > 0 ? blockEnd : submitMappingIdx + 5000);
-      expect(block).toMatch(/retry|attempt|backoff/i);
-    },
-  );
+  it('8) submitMapping retries producer.send with exponential backoff before logging', async () => {
+    const src = await (
+      await import('node:fs/promises')
+    ).readFile(
+      new URL('../../api/src/modules/imports/imports.service.ts', import.meta.url),
+      'utf8',
+    );
+    // The v6 fix introduces a `sendWithRetry` helper (exp backoff
+    // 100/500/2000ms) and calls it from submitMapping wrapping
+    // producer.send. Assert the helper exists + is used.
+    expect(src).toMatch(/function sendWithRetry|sendWithRetry\s*=/);
+    // The helper must use the documented backoff schedule.
+    expect(src).toMatch(/\[100,\s*500,\s*2000\]/);
+    // submitMapping must invoke it (not call producer.send directly).
+    const submitMappingIdx = src.indexOf('async submitMapping');
+    const blockEnd = src.indexOf('private ', submitMappingIdx);
+    const block = src.slice(submitMappingIdx, blockEnd > 0 ? blockEnd : submitMappingIdx + 5000);
+    expect(block).toMatch(/sendWithRetry/);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────

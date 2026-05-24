@@ -1475,6 +1475,31 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
     // avoid running persistStage twice in one handle().
     cache.persisted = true;
 
+    // v6 audit fix (§6 — P0 perf, cross-confirmed by perf agent):
+    // null the parse+mapping cache so V8 can reclaim the workbook +
+    // parsed-rows arrays before the handler returns. For a 50MB
+    // Excel with 30k rows the workbook + parsed string[][] together
+    // hold ~100-150MB; on Railway Free Tier (512MB total RSS for
+    // node + pg pool + pg-boss + pino + workbook), keeping them
+    // pinned across the lifetime of the handler invocation is the
+    // single biggest OOM risk for production-scale imports.
+    //
+    // Safety: we set persisted=true ABOVE so the A4 recovery hook
+    // (runStage persisting→done) skips re-running persistStage in
+    // the same handle() invocation. The cache.parsed / cache.mapping
+    // / cache.okRows are only consumed by validateStage (cache-miss
+    // rebuild path) and by persistStage itself — both already ran.
+    // Nothing downstream in the state machine consults them.
+    //
+    // The handler returns shortly after; the next iteration of the
+    // outer state-machine loop reads status='done' (terminal) and
+    // exits. The cache object goes out of scope then; nulling here
+    // just lets GC start ~tens of ms earlier — a small but
+    // meaningful margin on Free Tier under burst load.
+    cache.parsed = undefined;
+    cache.mapping = undefined;
+    cache.okRows = undefined;
+
     ctx.log.info('persistence complete', {
       apartments: apartmentGroups.size,
       ok_rows: okRows.length,

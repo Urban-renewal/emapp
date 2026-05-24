@@ -379,22 +379,25 @@ describe('Phase 6+7 v6 audit · §6 — workbook RAM release after persistStage'
   // persistStage commits, it should be nulled so V8 can reclaim the
   // ~100-150MB workbook before the handler returns. Free Tier
   // (512MB) makes this critical for 30k-row imports.
-  it.fails(
-    '6) persistStage nulls cache.parsed + cache.mapping after cache.persisted=true',
-    async () => {
-      const src = await (
-        await import('node:fs/promises')
-      ).readFile(new URL('../src/handlers/import-job.handler.ts', import.meta.url), 'utf8');
-      // Look for the cleanup pattern right after `cache.persisted = true`.
-      // Acceptable patterns: `cache.parsed = undefined`, `delete cache.parsed`.
-      const persistedIdx = src.indexOf('cache.persisted = true');
-      expect(persistedIdx).toBeGreaterThan(0);
-      const window = src.slice(persistedIdx, persistedIdx + 400);
-      expect(window).toMatch(
-        /cache\.parsed\s*=\s*undefined|delete\s+cache\.parsed|cache\.parsed\s*=\s*null/,
-      );
-    },
-  );
+  it('6) persistStage nulls cache.parsed + cache.mapping after cache.persisted=true', async () => {
+    const src = await (
+      await import('node:fs/promises')
+    ).readFile(new URL('../src/handlers/import-job.handler.ts', import.meta.url), 'utf8');
+    // Look for the cleanup pattern after `cache.persisted = true`.
+    // Acceptable patterns: `cache.parsed = undefined`, `delete cache.parsed`.
+    // Window widened to 2500 chars (was 400) to allow for the
+    // explanatory comment block the v6 closure added between the
+    // `persisted = true` marker and the actual cache-null lines.
+    const persistedIdx = src.indexOf('cache.persisted = true');
+    expect(persistedIdx).toBeGreaterThan(0);
+    const window = src.slice(persistedIdx, persistedIdx + 2500);
+    expect(window).toMatch(
+      /cache\.parsed\s*=\s*undefined|delete\s+cache\.parsed|cache\.parsed\s*=\s*null/,
+    );
+    // Also pin the v6 closure's nulling of mapping + okRows.
+    expect(window).toMatch(/cache\.mapping\s*=\s*undefined/);
+    expect(window).toMatch(/cache\.okRows\s*=\s*undefined/);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────

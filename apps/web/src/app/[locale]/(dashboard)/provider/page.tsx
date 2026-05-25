@@ -64,12 +64,16 @@ export default function ProviderDashboardPage() {
         )}
       </section>
 
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <Button asChild variant="outline">
           <Link href="/provider/tenants">{tNav('tenants')}</Link>
         </Button>
-        <Button asChild variant="outline" disabled>
+        {/* Phase 4b extension — audit + system-health pages now live. */}
+        <Button asChild variant="outline">
           <Link href="/provider/audit">{tNav('audit')}</Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link href="/provider/system-health">{tNav('systemHealth')}</Link>
         </Button>
       </section>
     </div>

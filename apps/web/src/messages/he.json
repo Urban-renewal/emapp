@@ -388,6 +388,72 @@
       "loadFailed": "טעינת רשימת הלקוחות נכשלה.",
       "empty": "אין לקוחות.",
       "countsLine": "{users} משתמשים · {projects} פרויקטים · {owners} בעלי דירות"
+    },
+    "tenantDetail": {
+      "notFound": "הלקוח לא נמצא.",
+      "backToList": "חזרה לרשימה",
+      "countsSection": "סטטיסטיקות לקוח",
+      "counts": {
+        "users": "משתמשים",
+        "projects": "פרויקטים",
+        "owners": "בעלי דירות",
+        "importJobs": "ייבואים",
+        "signatureRequests": "בקשות חתימה"
+      },
+      "sampleOwnersSection": "דוגמת בעלי דירות (PII ממוסך)",
+      "sampleOwnersHint": "עד 5 בעלי דירות אחרונים. השם והטלפון ממוסכים בצד השרת (•••••••XX / •••••XXXX); ת.ז. אינה חוצה את ה-wire.",
+      "noSampleOwners": "אין בעלי דירות לתצוגה.",
+      "phoneLabel": "טל'",
+      "viewAuditForTenant": "צפה ביומן הביקורת של הלקוח הזה"
+    },
+    "audit": {
+      "title": "חיפוש ביומן ביקורת (בין-לקוחי)",
+      "hint": "כל חיפוש נדרש או לפרט מזהה לקוח, או חלון תאריכים של עד 31 ימים (Audit v1.1 SA-4). הכל מתועד.",
+      "search": "חפש",
+      "reset": "איפוס סינון",
+      "loadFailed": "טעינת תוצאות יומן הביקורת נכשלה.",
+      "empty": "אין תוצאות לסינון הנוכחי.",
+      "errorSa4": "יש להזין מזהה לקוח, או טווח תאריכים של עד 31 ימים.",
+      "errorFromAfterTo": "תאריך התחלה חייב להיות לפני תאריך הסיום.",
+      "field": {
+        "orgId": "מזהה לקוח (UUID)",
+        "orgIdPlaceholder": "00000000-0000-0000-0000-000000000000",
+        "action": "תחילית פעולה",
+        "actionPlaceholder": "import.   /   member.   /   signature.",
+        "fromDate": "מתאריך",
+        "toDate": "עד תאריך"
+      }
+    },
+    "systemHealth": {
+      "title": "בריאות מערכת — מבט מפורט",
+      "hint": "מדדים חיים של תור עבודה, חיבורי DB ו-R2. הצגה בלבד. רענון אוטומטי כל 30 שניות.",
+      "refresh": "רענן",
+      "refreshing": "מרענן...",
+      "loadFailed": "טעינת נתוני הבריאות נכשלה.",
+      "overall": "סטטוס כללי: {severity}",
+      "asOf": "תקף ל: {when}",
+      "queue": {
+        "title": "תור עבודה (pg-boss)",
+        "active": "פעיל",
+        "created": "ממתין",
+        "retry": "מנסה שוב",
+        "failed": "נכשל",
+        "completed": "הושלם"
+      },
+      "pool": {
+        "title": "חיבורי DB",
+        "app": "App pool (RLS)",
+        "provider": "Provider pool (BYPASSRLS)",
+        "total": "סה\"כ",
+        "idle": "פנויים",
+        "waiting": "ממתינים"
+      },
+      "r2": {
+        "title": "אחסון R2",
+        "errorsSinceBoot": "שגיאות מאז עליית התהליך",
+        "lastErrorAt": "שגיאה אחרונה",
+        "noErrors": "אין שגיאות"
+      }
     }
   },
   "members": {

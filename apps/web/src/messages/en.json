@@ -388,6 +388,72 @@
       "loadFailed": "Failed to load tenants.",
       "empty": "No tenants.",
       "countsLine": "{users} users · {projects} projects · {owners} owners"
+    },
+    "tenantDetail": {
+      "notFound": "Tenant not found.",
+      "backToList": "Back to list",
+      "countsSection": "Tenant statistics",
+      "counts": {
+        "users": "Users",
+        "projects": "Projects",
+        "owners": "Owners",
+        "importJobs": "Imports",
+        "signatureRequests": "Signature requests"
+      },
+      "sampleOwnersSection": "Sample owners (PII masked)",
+      "sampleOwnersHint": "Up to 5 most-recent owners. Name and phone are masked server-side (•••••••XX / •••••XXXX); national_id never crosses the wire.",
+      "noSampleOwners": "No owners to show.",
+      "phoneLabel": "Tel:",
+      "viewAuditForTenant": "View this tenant's audit log"
+    },
+    "audit": {
+      "title": "Cross-tenant audit search",
+      "hint": "Every search must specify a tenant id OR a date window of at most 31 days (Audit v1.1 SA-4). Every action is recorded.",
+      "search": "Search",
+      "reset": "Reset filters",
+      "loadFailed": "Failed to load audit results.",
+      "empty": "No results for the current filters.",
+      "errorSa4": "Enter a tenant id, or a date range of at most 31 days.",
+      "errorFromAfterTo": "From-date must be on or before the to-date.",
+      "field": {
+        "orgId": "Tenant id (UUID)",
+        "orgIdPlaceholder": "00000000-0000-0000-0000-000000000000",
+        "action": "Action prefix",
+        "actionPlaceholder": "import.   /   member.   /   signature.",
+        "fromDate": "From",
+        "toDate": "To"
+      }
+    },
+    "systemHealth": {
+      "title": "System health — detailed view",
+      "hint": "Live gauges for the job queue, DB pools, and R2 storage. Read-only. Auto-refreshes every 30 seconds.",
+      "refresh": "Refresh",
+      "refreshing": "Refreshing...",
+      "loadFailed": "Failed to load system health.",
+      "overall": "Overall: {severity}",
+      "asOf": "As of: {when}",
+      "queue": {
+        "title": "Job queue (pg-boss)",
+        "active": "Active",
+        "created": "Created",
+        "retry": "Retrying",
+        "failed": "Failed",
+        "completed": "Completed"
+      },
+      "pool": {
+        "title": "DB pools",
+        "app": "App pool (RLS)",
+        "provider": "Provider pool (BYPASSRLS)",
+        "total": "Total",
+        "idle": "Idle",
+        "waiting": "Waiting"
+      },
+      "r2": {
+        "title": "R2 storage",
+        "errorsSinceBoot": "Errors since boot",
+        "lastErrorAt": "Last error at",
+        "noErrors": "No errors"
+      }
     }
   },
   "members": {

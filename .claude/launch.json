@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "infisical",
+      "runtimeArgs": ["run", "--env=dev", "--", "pnpm", "--filter", "@emapp/api", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "infisical",
+      "runtimeArgs": ["run", "--env=dev", "--", "pnpm", "--filter", "@emapp/web", "dev"],
+      "port": 3001
+    }
+  ]
+}

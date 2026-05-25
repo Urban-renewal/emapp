@@ -3,10 +3,20 @@ import createNextIntlPlugin from 'next-intl/plugin';
 
 const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 
-// §P0-3 — Next.js dev mode requires 'unsafe-eval' for react-refresh
-// (react-devtools + @next/react-refresh-utils use eval() for hot-reload).
-// Without it, the CSP blocks all JS in dev → forms fall back to native
-// HTML GET → credentials in URL. PROD stays strict (no unsafe-eval).
+// §P0-3 — Next.js dev mode requires BOTH 'unsafe-inline' AND 'unsafe-eval'
+// in script-src:
+//   - 'unsafe-inline' — Next.js dev injects inline bootstrap scripts for
+//     React Fast Refresh + chunk loading manifest. Without it, the inline
+//     <script> tags in the SSR HTML are blocked and JS never starts.
+//   - 'unsafe-eval' — @next/react-refresh-utils uses eval() for HMR.
+// Combined effect when blocked: CSP rejects all inline scripts, JS never
+// loads, forms fall back to native HTML GET, credentials end up in URL.
+// PROD stays strict (script-src 'self'; no unsafe-* keywords).
+//
+// SECURITY POSTURE: dev mode is local-machine-only or CI sandbox. The
+// unsafe-* keywords here are NEVER on production traffic. The M10 test
+// (apps/web/src/middleware.spec.ts) enforces that any `unsafe-*` keyword
+// in this file is behind the IS_DEV guard, never unconditional.
 const IS_DEV = process.env['NODE_ENV'] !== 'production';
 
 /**
@@ -60,7 +70,7 @@ const securityHeaders = [
     key: 'Content-Security-Policy',
     value: [
       "default-src 'self'",
-      IS_DEV ? "script-src 'self' 'unsafe-eval'" : "script-src 'self'",
+      IS_DEV ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'" : "script-src 'self'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data:",
       // §PERF-M3 — `next/font/google` self-hosts; gstatic allowance is dead.

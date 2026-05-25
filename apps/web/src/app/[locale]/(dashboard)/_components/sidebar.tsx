@@ -5,6 +5,7 @@ import {
   FileSignature,
   FileSpreadsheet,
   FileText,
+  History,
   Home,
   Lock,
   Shield,
@@ -28,6 +29,7 @@ interface NavItem {
     | 'signatureRequests'
     | 'members'
     | 'notifications'
+    | 'audit'
     | 'provider';
   icon: typeof Home;
   enabled: boolean;
@@ -77,6 +79,10 @@ export function Sidebar({ role }: Props) {
   // clicking into a list that can only show them an error. Phase 4c S1.
   if (role === 'manager') {
     items.push({ href: '/members', labelKey: 'members', icon: UserPlus, enabled: true });
+    // §D.17 — Audit is Manager-only (policy.ts:68 + service role check
+    // at audit-read.service.ts:28). Same cosmetic-gate rationale as
+    // Members. Phase 4c S4.
+    items.push({ href: '/audit', labelKey: 'audit', icon: History, enabled: true });
   }
 
   // §D.37 — Provider Admin nav item appears ONLY for the provider tier.

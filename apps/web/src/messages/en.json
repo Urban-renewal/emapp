@@ -22,6 +22,7 @@
     "signatureRequests": "Signature Requests",
     "members": "Members",
     "notifications": "Notifications",
+    "audit": "Audit log",
     "provider": "Provider"
   },
   "auth": {
@@ -427,6 +428,13 @@
       "name": "Full name",
       "role": "Role"
     }
+  },
+  "audit": {
+    "listTitle": "Audit log",
+    "hint": "Every meaningful action in the system is recorded append-only. The view here shows the who / what / when / target only; before/after diffs, IP and User-Agent are stored but deliberately not surfaced on this screen.",
+    "loadFailed": "Failed to load the audit log.",
+    "empty": "No audit entries.",
+    "targetLabel": "target"
   },
   "notifications": {
     "listTitle": "Notifications",

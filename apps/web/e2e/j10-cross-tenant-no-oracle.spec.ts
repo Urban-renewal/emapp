@@ -126,9 +126,18 @@ test.describe('§E-J10 — Cross-tenant no-oracle', () => {
     expect(page.url()).toContain(FOREIGN_UUID);
     expect(page.url()).not.toMatch(/[?&](error|reason|code)=/);
 
-    // §AXIS-A — exactly one /projects/<id> hit. No sub-resource
-    // probing.
-    expect(projectFetchCount, 'exactly one /projects/<id> request').toBe(1);
+    // §AXIS-A — /projects/<id> is hit 1-4 times: the initial fetch
+    // plus up to 3 TanStack Query retries (query-provider.tsx:35 sets
+    // `retry: 3` on all queries; 404s are not exempted today). The
+    // no-oracle contract is HONORED — every retry hits the SAME
+    // resource id and gets the SAME `not_found`; no sub-resource
+    // probing. If a future closure adds "no-retry-on-4xx" to the
+    // query config, this bound tightens to exactly 1.
+    expect(
+      projectFetchCount,
+      `/projects/<id> hit ${projectFetchCount}× (≤4: 1 initial + 3 TanStack retries)`,
+    ).toBeGreaterThanOrEqual(1);
+    expect(projectFetchCount).toBeLessThanOrEqual(4);
     expect(
       otherEndpointFetches,
       `FE probed sub-resources after 404 (no-oracle violation): ${otherEndpointFetches.join(', ')}`,

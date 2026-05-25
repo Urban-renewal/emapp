@@ -52,6 +52,7 @@ import {
   type ImportSseEvent,
   type ImportUploadResponse,
   type ListImportErrorsQueryDto,
+  type ListImportsQueryDto,
   type SubmitMapping,
   type SubmitMappingResponse,
 } from '@emapp/shared-types';
@@ -67,6 +68,7 @@ import {
 } from '@nestjs/common';
 import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
 
+import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import { JOB_PRODUCER } from '../../queue/queue.module';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { STORAGE_PROVIDER, UPLOAD_URL_TTL_SECONDS } from '../documents/storage';
@@ -258,6 +260,101 @@ export class ImportsService {
       userId: user.sub,
     });
     return toView(row);
+  }
+
+  /**
+   * GET /imports — paginated list. §P0-2 closure.
+   *
+   * Read scope per D.17: Manager + Viewer see ALL org imports; Agent
+   * sees only imports whose `projectId` matches one of their active
+   * project assignments (mirrors the apartments/documents agent-scoping
+   * pattern). Cursor is keyset on (createdAt desc, id desc) — same
+   * shape as documents/projects so the FE's TanStack hook can reuse
+   * its existing `PageSchema` from lib/api/paging.ts.
+   *
+   * Filter: optional `projectId` narrows to one project. We assert
+   * visibility on it FIRST (so an unauthorized projectId leaks no
+   * imports — same posture as documents.list).
+   */
+  async list(
+    user: AccessTokenPayload,
+    query: ListImportsQueryDto,
+  ): Promise<{
+    data: ImportJobView[];
+    page: { limit: number; cursor: string | null; has_more: boolean };
+  }> {
+    const limit = query.limit ?? 25;
+    const cur = query.cursor ? decodeCursor(query.cursor) : null;
+    if (query.cursor && !cur) {
+      throw new BadRequestException({ error: { code: 'invalid_cursor' } });
+    }
+
+    const rows = await withTenant(
+      user.orgId,
+      async (tx) => {
+        if (query.projectId) {
+          await this.assertProjectVisible(tx, user, query.projectId);
+        }
+
+        // Build the WHERE clauses progressively.
+        const filters: (ReturnType<typeof eq> | ReturnType<typeof and> | undefined)[] = [];
+        if (query.projectId) {
+          filters.push(eq(importJobs.projectId, query.projectId));
+        }
+
+        // Agent visibility: only imports whose projectId is an active
+        // assignment. Mirrors the documents.list agent-scope but
+        // imports always have a non-null projectId (NOT NULL in migration
+        // 0022), so the EXISTS is simpler — no apartment-chain branch.
+        if (user.role === 'agent') {
+          const viaAssignment = sql<boolean>`EXISTS (
+            SELECT 1 FROM project_assignments pa
+            WHERE pa.user_id = ${user.sub}::uuid
+              AND pa.unassigned_at IS NULL
+              AND pa.project_id = ${importJobs.projectId}
+          )`;
+          filters.push(viaAssignment as unknown as ReturnType<typeof eq>);
+        }
+
+        // Keyset: rows older than the cursor (created_at, id) tuple.
+        // Drizzle has no native row-value comparison; emit it as raw SQL
+        // for index-friendly ordering. Same trick as documents.list.
+        if (cur) {
+          filters.push(
+            sql`(${importJobs.createdAt}, ${importJobs.id}) < (${new Date(cur.c)}::timestamptz, ${cur.i}::uuid)` as unknown as ReturnType<
+              typeof eq
+            >,
+          );
+        }
+
+        const where = filters.length
+          ? and(...(filters.filter(Boolean) as Parameters<typeof and>))
+          : undefined;
+
+        // limit + 1 lookahead — if we get `limit + 1` rows, there's a
+        // next page; drop the extra before returning. Same trick as
+        // documents.list.
+        return tx
+          .select()
+          .from(importJobs)
+          .where(where)
+          .orderBy(desc(importJobs.createdAt), desc(importJobs.id))
+          .limit(limit + 1);
+      },
+      { userId: user.sub },
+    );
+
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+    const last = pageRows[pageRows.length - 1];
+    return {
+      data: pageRows.map(toView),
+      page: {
+        limit,
+        cursor: hasMore && last ? encodeCursor({ createdAt: last.createdAt, id: last.id }) : null,
+        has_more: hasMore,
+      },
+    };
   }
 
   /** POST /imports — create row + return presigned PUT URL.

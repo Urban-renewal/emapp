@@ -95,6 +95,18 @@ async function bootstrap() {
     }
   });
 
+  // §M-1 — 404 envelope normalization happens in GlobalExceptionFilter
+  // (see common/filters/http-exception.filter.ts). NestJS+Fastify will
+  // throw a NotFoundException for unmatched routes; the filter rewrites
+  // it to the D.16 `{error:{code:'not_found'}}` envelope.
+  //
+  // Why not Fastify's `setNotFoundHandler` directly: NestJS's
+  // RoutesResolver.registerNotFoundHandler ALSO calls setNotFoundHandler
+  // during app.listen() initialization, and Fastify allows only ONE
+  // handler — collisions throw "Not found handler already set for
+  // Fastify instance with prefix: '/'". Routing through the filter is
+  // the only approach compatible with NestJS+Fastify.
+
   // D.10: every endpoint under /api/v1/
   app.setGlobalPrefix('api/v1');
 

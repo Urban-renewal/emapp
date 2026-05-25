@@ -159,7 +159,34 @@ describe('next.config.ts security headers (§v9-P0-5 closure pin)', () => {
     expect(config).toMatch(/Referrer-Policy.*strict-origin-when-cross-origin/);
     expect(config).toMatch(/Content-Security-Policy/);
     expect(config).toMatch(/Permissions-Policy/);
-    // CSP must NOT include unsafe-eval (Agent A 4.5).
-    expect(config).not.toMatch(/unsafe-eval/);
+    // §P0-3 — CSP `unsafe-inline` AND `unsafe-eval` on SCRIPT-src are
+    // DEV-ONLY (Next.js dev inline bootstrap + react-refresh require
+    // both). They MUST be inside an IS_DEV ternary that falls back to
+    // strict `script-src 'self'` in prod. A bare unconditional unsafe-*
+    // on script-src would mean prod is running with it (security
+    // violation).
+    //
+    // Approach: extract every DOUBLE-QUOTED literal in the file that
+    // STARTS WITH "script-src ". These are the actual CSP directive
+    // values (comments / docstrings use other quoting). Any such
+    // literal with unsafe-* must coexist with a `:` (ternary) AND a
+    // strict `"script-src 'self'"` literal — the prod fallback.
+    const scriptSrcLiterals = [...config.matchAll(/"(script-src [^"]*)"/g)].map((m) => m[1] ?? '');
+    expect(scriptSrcLiterals.length).toBeGreaterThanOrEqual(2); // dev + prod
+    let sawProdStrict = false;
+    let sawDevUnsafe = false;
+    for (const lit of scriptSrcLiterals) {
+      if (lit === "script-src 'self'") sawProdStrict = true;
+      if (/unsafe-(inline|eval)/.test(lit)) sawDevUnsafe = true;
+    }
+    expect(sawProdStrict).toBe(true);
+    if (sawDevUnsafe) {
+      // The ternary structure: `IS_DEV ? <unsafe> : <strict>`.
+      expect(config).toMatch(
+        /IS_DEV\s*\?\s*"script-src[^"]*unsafe-[^"]*"\s*:\s*"script-src 'self'"/,
+      );
+    }
+    // Verify IS_DEV is defined as a NODE_ENV !== 'production' check.
+    expect(config).toMatch(/IS_DEV\s*=\s*process\.env\[.NODE_ENV.\]\s*!==\s*['"]production['"]/);
   });
 });

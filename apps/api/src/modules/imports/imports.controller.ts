@@ -19,10 +19,12 @@
 import {
   CreateImportInput,
   ListImportErrorsQuery,
+  ListImportsQuery,
   StartImportInput,
   SubmitMappingInput,
   type CreateImport,
   type ListImportErrorsQueryDto,
+  type ListImportsQueryDto,
   type StartImport,
   type SubmitMapping,
 } from '@emapp/shared-types';
@@ -76,6 +78,18 @@ export class ImportsController {
     @Body(new ZodValidationPipe(CreateImportInput)) body: CreateImport,
   ) {
     return { data: await this.imports.create(user, body) };
+  }
+
+  // GET /imports — §P0-2 closure (post-S11 manual smoke catch).
+  // Read = ALL per D.17 (Manager + Viewer see org-wide; Agent
+  // restricted to imports whose projectId is in their assignments).
+  // Returns { data, page } directly — the D.16 list envelope shape.
+  @Get()
+  async list(
+    @CurrentUser() user: AccessTokenPayload,
+    @Query(new ZodValidationPipe(ListImportsQuery)) query: ListImportsQueryDto,
+  ) {
+    return this.imports.list(user, query);
   }
 
   @Get(':id')

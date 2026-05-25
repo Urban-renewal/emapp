@@ -156,19 +156,44 @@ async function proxy(req: NextRequest, segments: string[]): Promise<Response> {
   const url = buildUpstreamUrl(req, segments);
   const headers = buildUpstreamHeaders(req);
 
-  // GET/HEAD must not carry a body (some runtimes throw); for all
-  // other methods we stream the request body straight through.
-  const init: RequestInit & { duplex?: 'half' } = {
+  const init: RequestInit = {
     method: req.method,
     headers,
     redirect: 'manual', // never auto-follow upstream redirects (would
     // re-issue with original Host and leak state)
   };
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    init.body = req.body;
-    // `duplex: 'half'` is required by the Fetch spec when sending a
-    // ReadableStream body in Node 18+. Omit and you get TypeError.
-    init.duplex = 'half';
+    // §P0-1 closure (post-S11 manual smoke catch) — BUFFER the body
+    // instead of streaming with `duplex: 'half'`.
+    //
+    // The streaming variant (`init.body = req.body; init.duplex = 'half'`)
+    // has a deterministic failure mode against fast-rejecting upstream
+    // endpoints (e.g. POST /auth/login with wrong password — the API
+    // returns 401 before any DB hit, immediately closing its side of
+    // the HTTP connection). Node 20.x undici sees the connection close
+    // while the half-duplex stream is still mid-write and throws
+    // `TypeError: fetch failed` → caught below as `upstream_unreachable`
+    // → 502 surfaced to the user as "server not available", when the
+    // real story is a valid 401.
+    //
+    // Buffering the body fixes this: undici sends the full body first,
+    // THEN reads the response — the standard request/response cycle.
+    // All proxy traffic is small JSON (R2 file uploads bypass the
+    // proxy entirely via presigned URLs — they go browser → R2 direct,
+    // not through this route handler), so buffering is cheap.
+    //
+    // Tradeoff: we lose the ability to stream multi-GB upload bodies
+    // through this proxy. That's deliberate — the architecture says
+    // large uploads ALWAYS go through R2 presigned URLs, NEVER
+    // through the proxy. If a future endpoint needs request streaming
+    // (rare — most APIs accept ≤1MB bodies), it would need a dedicated
+    // route handler.
+    const buffer = await req.arrayBuffer();
+    // Empty body: don't set init.body at all (some upstreams treat
+    // ArrayBuffer of length 0 differently from no body).
+    if (buffer.byteLength > 0) {
+      init.body = buffer;
+    }
   }
 
   let upstream: Response;
@@ -177,6 +202,20 @@ async function proxy(req: NextRequest, segments: string[]): Promise<Response> {
   } catch (e) {
     // Network-level failure — backend unreachable. Return a 502 in
     // the {error} envelope so the FE error handler is happy (D.16).
+    //
+    // §P0-1 — log the underlying error to server stderr so an
+    // operator inspecting the Pages Function logs sees WHY the
+    // upstream is unreachable (DNS? TLS? connect timeout? half-duplex
+    // race?). The previous catch swallowed the error silently, which
+    // is why the bug took manual smoke-testing to find.
+    if (process.env['NODE_ENV'] !== 'test') {
+      // eslint-disable-next-line no-console -- operator-facing debug log; never reaches the browser
+      console.error('[proxy] upstream fetch threw', {
+        url,
+        method: req.method,
+        error: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
+      });
+    }
     return NextResponse.json(
       {
         error: {

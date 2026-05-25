@@ -155,6 +155,20 @@ export const ListImportErrorsQuery = z
   .strict();
 export type ListImportErrorsQueryDto = z.infer<typeof ListImportErrorsQuery>;
 
+/** GET /api/v1/imports — paginated list. §P0-2 closure (post-S11
+ *  manual smoke caught the FE→BE mismatch: FE was calling this endpoint
+ *  but BE had no @Get() handler, so the proxy 404'd). Keyset cursor
+ *  on (createdAt desc, id desc) — same pattern as documents/projects. */
+export const ListImportsQuery = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).optional().default(25),
+    cursor: z.string().min(1).max(255).optional(),
+    /** Optional filter — list only imports for one project. */
+    projectId: z.string().uuid().optional(),
+  })
+  .strict();
+export type ListImportsQueryDto = z.infer<typeof ListImportsQuery>;
+
 /** D.34 — wizard endpoint: POST /api/v1/imports/:id/mapping.
  *  Used to provide a manual column mapping when a row sat in
  *  `awaiting_mapping`. The body is the same `ColumnMapping` shape

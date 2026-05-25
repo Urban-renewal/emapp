@@ -110,6 +110,39 @@ describe('middleware — adversarial', () => {
     const res = middleware(mockReq({ pathname: '/he/login' }));
     expect(res).toBeDefined();
   });
+
+  // ─── S10 — locale-agnostic public route (/sign/<jwt>) ───
+  it('M11) /sign/<jwt> is public — no redirect even without access_token (CLOSED S10)', () => {
+    // valid JWT-shape: three base64url segments separated by `.`
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.aGVsbG8td29ybGQtc2lnbg';
+    const res = middleware(mockReq({ pathname: `/sign/${jwt}` }));
+    expect(res.status).not.toBe(307);
+  });
+
+  it('M12) /sign/<jwt> still bypasses when authenticated (no surprising redirect)', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.aGVsbG8td29ybGQtc2lnbg';
+    const res = middleware(mockReq({ pathname: `/sign/${jwt}`, hasToken: true }));
+    expect(res.status).not.toBe(307);
+  });
+
+  it('M13) /sign/not-a-jwt-shape is NOT a public route — falls through to auth gate', () => {
+    // Single segment (no dots) → does NOT match the JWT shape regex
+    // → must redirect to login as a normal protected route.
+    const res = middleware(mockReq({ pathname: '/sign/notajwt' }));
+    expect(res.status).toBe(307);
+  });
+
+  it('M14) /sign/foo.bar (only 2 segments) is NOT a JWT shape — falls through to auth gate', () => {
+    const res = middleware(mockReq({ pathname: '/sign/header.payload' }));
+    expect(res.status).toBe(307);
+  });
+
+  it('M15) /sign/<jwt>/extra is NOT a public route — anchoring prevents path injection', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.aGVsbG8td29ybGQtc2lnbg';
+    const res = middleware(mockReq({ pathname: `/sign/${jwt}/dashboard` }));
+    // Should redirect to login (the regex requires end-anchor `$`)
+    expect(res.status).toBe(307);
+  });
 });
 
 describe('next.config.ts security headers (§v9-P0-5 closure pin)', () => {

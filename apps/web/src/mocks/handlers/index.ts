@@ -374,4 +374,34 @@ export const handlers = [
     const cancelled = { ...r, status: 'cancelled' as const, cancelledAt: new Date() };
     return HttpResponse.json(dataEnvelope(cancelled));
   }),
+
+  // S10 — public sign endpoints (D.12 LAW). Anti-enumeration: every
+  // failure returns generic 401 invalid_token. In MSW we return the
+  // preview for ANY token-shaped path so the offline page renders.
+  http.get(`${API}/sign/:token`, ({ params }) => {
+    const token = String(params['token']);
+    // Lazy JWT-shape check — three base64url segments separated by `.`.
+    if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)) {
+      return errorEnvelope('invalid_token', 401);
+    }
+    return HttpResponse.json(
+      dataEnvelope({
+        document: {
+          name: 'הסכם רוב 80% — תמ"א 38/2.pdf',
+          downloadUrl: 'https://r2.mock/sign/preview?sig=MOCK',
+        },
+        owner: { name: 'ישראל ישראלי' },
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      }),
+    );
+  }),
+  http.post(`${API}/sign/:token`, async ({ request }) => {
+    const body = (await request.json()) as { signatureSvg?: unknown };
+    // Mirror BE bounds: 50-262144, starts with <svg ends with </svg>.
+    const svg = typeof body.signatureSvg === 'string' ? body.signatureSvg : '';
+    if (svg.length < 50 || svg.length > 262_144 || !/^<svg[\s\S]*<\/svg>$/i.test(svg)) {
+      return errorEnvelope('invalid_token', 401);
+    }
+    return HttpResponse.json(dataEnvelope({ signedAt: new Date() }));
+  }),
 ];

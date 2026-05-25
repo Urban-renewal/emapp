@@ -17,19 +17,41 @@ const intlMiddleware = createMiddleware(routing);
  */
 const PUBLIC_ROUTE_REGEX = /^\/[a-z]{2}\/(login|signup)$/;
 const AUTH_ROUTE_REGEX = PUBLIC_ROUTE_REGEX; // same surface today; separate const
-// keeps room for future "public but not an auth page" routes (e.g.
-// `/sign/:token` in S10).
+
+/**
+ * Routes that bypass BOTH the auth gate AND next-intl locale routing.
+ * S10 — `/sign/<token>` is the public residents' signing surface:
+ *  - It's locale-agnostic (the JWT carries everything we need; URL has
+ *    no locale prefix so SMS/WhatsApp links stay short + opaque).
+ *  - It's auth-bearer (JWT in the path); no cookie required.
+ *  - We deliberately do NOT 302-redirect to /login if there's no cookie
+ *    — the resident is anonymous by design.
+ * The token shape is JWT (header.payload.signature, base64url segments
+ * separated by `.`). Pinning the shape with a regex prevents a stray
+ * `/sign/foo` from bypassing the auth gate for arbitrary paths.
+ */
+const PUBLIC_LOCALE_AGNOSTIC_REGEX = /^\/sign\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 
 function isAuthRoute(pathname: string): boolean {
   return AUTH_ROUTE_REGEX.test(pathname);
 }
 function isPublicRoute(pathname: string): boolean {
-  return PUBLIC_ROUTE_REGEX.test(pathname);
+  return PUBLIC_ROUTE_REGEX.test(pathname) || PUBLIC_LOCALE_AGNOSTIC_REGEX.test(pathname);
+}
+function isLocaleAgnosticPublic(pathname: string): boolean {
+  return PUBLIC_LOCALE_AGNOSTIC_REGEX.test(pathname);
 }
 
 export default function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const hasToken = req.cookies.has('access_token');
+
+  // Locale-agnostic public routes (/sign/<jwt>): skip both gates and
+  // next-intl so the URL stays short + the JWT-bearer flow is the only
+  // auth mechanism.
+  if (isLocaleAgnosticPublic(pathname)) {
+    return NextResponse.next();
+  }
 
   // Redirect authenticated users away from auth pages.
   // v9-post-audit-SOLID-8 — preserve the locale prefix on the redirect

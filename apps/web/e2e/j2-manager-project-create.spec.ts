@@ -1,0 +1,193 @@
+/**
+ * §E-J2a — Manager creates a project (first step of the hierarchy).
+ *
+ * Wave 1 slice 6 — covers the CREATE-PROJECT step of MATRIX-V2 §7
+ * item #2: "Manager — hierarchy (project → building → apt → owners
+ * → ownerships sum=100)".
+ *
+ * Scope note: the full hierarchy is a 5-step BE-stateful flow; pinning
+ * each step end-to-end requires either real seed-dev data or a stateful
+ * mock-backend extension. Slice 6 ships the FIRST step (J2a) — proves
+ * the create-form contract + redirect on success. J2b–J2e land in
+ * later slices alongside the corresponding mock-backend extensions.
+ *
+ * D.17 cells exercised:
+ *   - `projects.create` (Manager-only per policy.ts).
+ *
+ * Threat-model linkage:
+ *   - I3 (PII never in URL): the project name + description are
+ *     org-internal; not PII per se, but the same SSR `method="post"`
+ *     defense from §S1-SEC1 applies. Field values MUST NOT appear
+ *     in the URL bar.
+ *   - I4 (envelope): success returns `{ data: Project }`; redirect to
+ *     `/he/projects/<id>` happens client-side via router.push.
+ *
+ * 5-axis TUVAS:
+ *   T — pre-seed Manager cookies; fill name + select type; submit.
+ *   U — URL stays on /he/projects/new during submit, then navigates
+ *       to /he/projects/<id> after success. NO field values in URL.
+ *   V — `<form method="post">` (SSR defense); error pill hidden on
+ *       success.
+ *   A — exactly one POST /projects; body matches
+ *       CreateProjectInput.strict() (name + type required).
+ *   S — Idempotency-Key header present on the POST (api-client
+ *       postIdempotent helper per §v9-P0-3); console clean.
+ */
+import { test, expect } from './fixtures';
+
+const NEW_PROJECT_ID = '00000000-0000-4000-8000-000040040001';
+const MANAGER_USER_ID = '00000000-0000-4000-8000-000000000001';
+const ORG_ID = '00000000-0000-4000-8000-000000000002';
+
+const FORM_VALUES = {
+  name: 'תמ"א 38 — דוגמה',
+  type: 'tama38_2',
+  description: 'פיילוט להרצת הבדיקה האוטומטית.',
+} as const;
+
+test.describe('§E-J2a — Manager creates a project', () => {
+  test('1) submit form → POST + redirect to /projects/<id>', async ({
+    page,
+    context,
+    consoleErrors,
+  }) => {
+    await context.addCookies([
+      {
+        name: 'access_token',
+        value: 'e2e-manager-access-jwt',
+        domain: 'localhost',
+        path: '/',
+        httpOnly: true,
+        sameSite: 'Lax',
+        secure: false,
+      },
+    ]);
+
+    let postCount = 0;
+    let capturedBody: string | null = null;
+    let idempotencyKey: string | null = null;
+    let getDetailCount = 0;
+
+    // Benign catch-all (notifications etc).
+    await page.route('**/api/v1/**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [], page: { limit: 25, cursor: null, has_more: false } }),
+      });
+    });
+
+    // POST /projects — the call we OWN.
+    await page.route('**/api/v1/projects', async (route) => {
+      if (route.request().method() !== 'POST') {
+        await route.fallback();
+        return;
+      }
+      postCount += 1;
+      capturedBody = route.request().postData();
+      idempotencyKey = await route.request().headerValue('Idempotency-Key');
+      const now = new Date().toISOString();
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: NEW_PROJECT_ID,
+            organizationId: ORG_ID,
+            name: FORM_VALUES.name,
+            type: FORM_VALUES.type,
+            status: 'planning',
+            description: FORM_VALUES.description,
+            targetSignaturePct: null,
+            startedAt: null,
+            createdBy: MANAGER_USER_ID,
+            createdAt: now,
+            updatedAt: now,
+            archivedAt: null,
+          },
+        }),
+      });
+    });
+
+    // GET /projects/<NEW_ID> — the detail page that router.push lands
+    // on. Stub a minimal successful response so the detail page
+    // renders without 404'ing.
+    await page.route(`**/api/v1/projects/${NEW_PROJECT_ID}`, async (route) => {
+      getDetailCount += 1;
+      const now = new Date().toISOString();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: NEW_PROJECT_ID,
+            organizationId: ORG_ID,
+            name: FORM_VALUES.name,
+            type: FORM_VALUES.type,
+            status: 'planning',
+            description: FORM_VALUES.description,
+            targetSignaturePct: null,
+            startedAt: null,
+            createdBy: MANAGER_USER_ID,
+            createdAt: now,
+            updatedAt: now,
+            archivedAt: null,
+          },
+        }),
+      });
+    });
+
+    await page.goto('/he/projects/new');
+    await expect(page).toHaveURL(/\/he\/projects\/new$/);
+
+    // §AXIS-V — SSR HTML must carry method="post" (defense in depth).
+    const form = page.locator('form').first();
+    await expect(form).toBeVisible({ timeout: 10_000 });
+    expect((await form.getAttribute('method'))?.toLowerCase()).toBe('post');
+
+    // §AXIS-T — fill required fields. Type has default value 'tama38_2'.
+    await page.locator('input#name').fill(FORM_VALUES.name);
+    await page.locator('select#type').selectOption(FORM_VALUES.type);
+    await page.locator('textarea#description').fill(FORM_VALUES.description);
+
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().endsWith('/api/v1/projects') && r.request().method() === 'POST',
+        { timeout: 10_000 },
+      ),
+      page.locator('button[type="submit"]').click(),
+    ]);
+
+    // §AXIS-A — wire-level assertions.
+    expect(postCount, 'exactly one POST /projects').toBe(1);
+    const body = JSON.parse(capturedBody ?? '{}') as Record<string, unknown>;
+    expect(body['name']).toBe(FORM_VALUES.name);
+    expect(body['type']).toBe(FORM_VALUES.type);
+    expect(body['description']).toBe(FORM_VALUES.description);
+
+    // §AXIS-S — Idempotency-Key header MUST be present and shaped
+    // as a UUIDv4 per api-client.ts:262-269.
+    expect(idempotencyKey, 'Idempotency-Key header set by postIdempotent').not.toBeNull();
+    expect(idempotencyKey).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+
+    // §AXIS-V/U — navigated to detail page.
+    await page.waitForURL(new RegExp(`/he/projects/${NEW_PROJECT_ID}$`), { timeout: 10_000 });
+    expect(page.url()).toMatch(new RegExp(`/he/projects/${NEW_PROJECT_ID}$`));
+    expect(getDetailCount, 'detail page fetched after redirect').toBeGreaterThanOrEqual(1);
+
+    // §AXIS-U — URL bar must not carry any of the field values.
+    expect(page.url(), 'no name in URL').not.toContain(encodeURIComponent(FORM_VALUES.name));
+    expect(page.url()).not.toContain(encodeURIComponent(FORM_VALUES.description));
+    expect(page.url()).not.toMatch(/[?&](name|type|description)=/);
+
+    // §AXIS-V — detail page renders the created project's heading.
+    await expect(page.getByRole('heading', { name: FORM_VALUES.name })).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // §AXIS-S (console) — fixture auto-asserts.
+    expect(consoleErrors.count, 'no console errors during create').toBe(0);
+  });
+});

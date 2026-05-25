@@ -20,6 +20,7 @@
       "viewer": "Viewer"
     },
     "signatureRequests": "Signature Requests",
+    "members": "Members",
     "provider": "Provider"
   },
   "auth": {
@@ -383,5 +384,57 @@
       "empty": "No tenants.",
       "countsLine": "{users} users · {projects} projects · {owners} owners"
     }
+  },
+  "members": {
+    "listTitle": "Organization members",
+    "invite": "Invite member",
+    "inviting": "Inviting...",
+    "inviteFailed": "Failed to send invite. Please retry.",
+    "loading": "Loading...",
+    "empty": "No additional members yet. Click \"Invite member\".",
+    "loadFailed": "Failed to load members",
+    "notFound": "Member not found",
+    "primary": "Org owner",
+    "cancel": "Cancel",
+    "backToList": "Back to list",
+    "emailExists": "This email is already registered in the organization",
+    "createdTitle": "Invite sent",
+    "createdHint": "An email with the join link has been sent. In dev the token is shown below (single-use, 7 days). In production the token is delivered via email only.",
+    "createdMember": "Member created",
+    "inviteTokenLabel": "Invite token (single-use, 7 days — dev only)",
+    "inviteTokenWarning": "This token lets the invitee set a password for their account. Do not share publicly. If leaked, revoke the member and create a fresh invite.",
+    "inviteTokenEmailOnly": "Token delivered via email only (D.27).",
+    "copy": "Copy",
+    "copied": "Copied",
+    "roleSection": "Change role",
+    "save": "Save",
+    "saving": "Saving...",
+    "updateFailed": "Failed to update role",
+    "cannotModifySelf": "You cannot change your own role",
+    "cannotRemoveLastManager": "Cannot demote the last manager — promote another manager first",
+    "revokeSection": "Revoke membership",
+    "revokeHint": "Revoking blocks this member from accessing the organization. The action is recorded in the audit log. The org owner cannot be revoked.",
+    "revoke": "Revoke membership",
+    "revoking": "Revoking...",
+    "revokeConfirm": "Revoke this member's organization access? They will lose access immediately.",
+    "revokeFailed": "Failed to revoke membership",
+    "field": {
+      "email": "Email",
+      "name": "Full name",
+      "role": "Role"
+    }
+  },
+  "acceptInvite": {
+    "title": "Complete your invitation",
+    "subtitle": "Set a password for your account to join the organization.",
+    "password": "New password",
+    "confirmPassword": "Confirm password",
+    "passwordRequirements": "Password must be at least 12 characters",
+    "passwordsMismatch": "Passwords do not match",
+    "submit": "Complete invitation",
+    "submitting": "Submitting...",
+    "doneTitle": "Invitation accepted ✓",
+    "doneBody": "Redirecting you to the login page...",
+    "invalidInvite": "This invitation link is no longer valid. It may have expired, been used, or been revoked. Contact your organization admin for a new link."
   }
 }

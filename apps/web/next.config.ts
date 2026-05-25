@@ -51,7 +51,16 @@ if (process.env['NODE_ENV'] === 'production' && process.env['NEXT_PUBLIC_MSW'] =
  *  - `style-src 'self' 'unsafe-inline'` — Tailwind generates inline
  *    style attributes via Heebo font + Next.js dev-mode HMR. The
  *    risk surface is bounded (style attrs cannot execute code).
- *  - `connect-src 'self'` — every API call is same-origin (D.35).
+ *  - `connect-src 'self' https://*.r2.cloudflarestorage.com` — every
+ *    API call is same-origin (D.35), BUT the document/import upload
+ *    flows hit R2 DIRECTLY from the browser via a presigned PUT URL
+ *    (see `apps/web/src/lib/api/documents.ts:uploadToPresigned` and
+ *    the §v9-CRITICAL note in same file). Without R2 in connect-src
+ *    the browser blocks the PUT with no JS-visible error other than
+ *    a generic `TypeError: Failed to fetch` — every upload silently
+ *    breaks in production. Caught by browser smoke 2026-05-25.
+ *    Matches the API's helmet `connectSrc` in apps/api/src/main.ts
+ *    so the two CSPs stay in lock-step.
  *  - `frame-ancestors 'none'` — superset of X-Frame-Options: DENY
  *    (clickjacking).
  *  - `form-action 'self'` — only our own forms; no cross-origin
@@ -75,7 +84,10 @@ const securityHeaders = [
       "img-src 'self' data:",
       // §PERF-M3 — `next/font/google` self-hosts; gstatic allowance is dead.
       "font-src 'self' data:",
-      "connect-src 'self'",
+      // §csp-r2 — see doc-comment above the `securityHeaders` const for
+      // the rationale. R2 is the upload destination; without it every
+      // browser-side PUT to the presigned URL fails with a CSP block.
+      "connect-src 'self' https://*.r2.cloudflarestorage.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",

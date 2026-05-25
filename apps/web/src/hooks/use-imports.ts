@@ -1,8 +1,8 @@
 'use client';
 
-import type { CreateImport, SubmitMapping } from '@emapp/shared-types';
+import type { CreateImport, ImportJob, SubmitMapping } from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocale } from 'next-intl';
+import { useCallback } from 'react';
 
 import { toImportViewModel, toImportViewModels } from '@/adapters/import';
 import {
@@ -18,15 +18,20 @@ import {
   type ImportErrorListPage,
   type ImportListPage,
 } from '@/lib/api/imports';
+import { useDisplayLocale } from '@/lib/locale';
 import type { ImportViewModel } from '@/models/import.vm';
 
 const IMPORTS_KEY = ['imports'] as const;
-function he_or_en(loc: string): 'he' | 'en' {
-  return loc === 'en' ? 'en' : 'he';
-}
 
 export function useImportList(query: { limit?: number; cursor?: string; projectId?: string } = {}) {
-  const locale = he_or_en(useLocale());
+  const locale = useDisplayLocale();
+  const select = useCallback(
+    (data: ImportListPage) => ({
+      items: toImportViewModels(data.items, locale),
+      page: data.page,
+    }),
+    [locale],
+  );
   return useQuery<
     ImportListPage,
     Error,
@@ -35,12 +40,13 @@ export function useImportList(query: { limit?: number; cursor?: string; projectI
     queryKey: [...IMPORTS_KEY, 'list', query, locale],
     queryFn: () => listImports(query),
     staleTime: 30_000,
-    select: (data) => ({ items: toImportViewModels(data.items, locale), page: data.page }),
+    select,
   });
 }
 
 export function useImport(id: string | undefined) {
-  const locale = he_or_en(useLocale());
+  const locale = useDisplayLocale();
+  const select = useCallback((data: ImportJob) => toImportViewModel(data, locale), [locale]);
   return useQuery({
     queryKey: [...IMPORTS_KEY, 'one', id, locale],
     queryFn: () => {
@@ -49,7 +55,7 @@ export function useImport(id: string | undefined) {
     },
     enabled: Boolean(id),
     staleTime: 30_000,
-    select: (data) => toImportViewModel(data, locale),
+    select,
   });
 }
 
@@ -80,9 +86,6 @@ export function useUploadImport() {
       onProgress?: (loaded: number, total: number) => void;
     }) => {
       const contentHash = await sha256OfBlob(args.file);
-      // CreateImportInput requires fileContentHash to match
-      // /^[0-9a-f]{64}$/ — bare hex (v8 SOLID-2). sha256OfBlob
-      // produces that exact shape.
       const body: CreateImport = {
         projectId: args.projectId,
         fileName: args.file.name,
@@ -91,13 +94,9 @@ export function useUploadImport() {
         dryRun: args.dryRun ?? false,
       };
       const created = await createImport(body);
-      // R2-bound mime — Excel files report
-      // application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
-      // on modern browsers; older may use application/vnd.ms-excel.
       const mime =
         args.file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       await uploadToPresignedXhr(created.uploadUrl, args.file, mime, args.onProgress);
-      // Now enqueue the worker job.
       const started = await startImport(created.import.id);
       return started;
     },

@@ -39,16 +39,12 @@ import { z } from 'zod';
 
 import { apiClient, isList, isOk } from '../api-client';
 
-import { ApiClientError } from './projects';
+import { ApiClientError } from './errors';
+import { PageSchema } from './paging';
 
 const ImportDataSchema = z.object({ data: ImportJobSchema });
 const ImportUploadDataSchema = z.object({ data: ImportUploadResponseSchema });
 const SubmitMappingDataSchema = z.object({ data: SubmitMappingResponseSchema });
-const PageSchema = z.object({
-  limit: z.number().int().positive(),
-  cursor: z.string().nullable(),
-  has_more: z.boolean(),
-});
 
 export interface ImportListPage {
   items: ImportJob[];

@@ -6,9 +6,10 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useArchiveOwner, useOwner } from '@/hooks/use-owners';
-import { ApiClientError } from '@/lib/api/projects';
+import { ApiClientError } from '@/lib/api/errors';
 
 export default function OwnerDetailPage() {
   const t = useTranslations('owners');
@@ -20,7 +21,7 @@ export default function OwnerDetailPage() {
   const archive = useArchiveOwner();
   const [actionError, setActionError] = useState<string | null>(null);
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">{t('loading')}</p>;
+  if (isLoading) return <ListSkeleton withRows={false} />;
   if (isError) {
     const notFound = error instanceof ApiClientError && error.code === 'not_found';
     return (

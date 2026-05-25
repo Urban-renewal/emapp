@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { Heebo } from 'next/font/google';
+import { NextIntlClientProvider } from 'next-intl';
 
+import heMessages from '@/messages/he.json';
 import { MswInit } from '@/mocks/msw-init';
 import '../globals.css';
 
@@ -24,16 +26,23 @@ export const metadata: Metadata = {
 /**
  * S10 — public residents' signing surface (D.12 LAW).
  *
- * Hebrew RTL hardcoded (no next-intl) — residents always sign in
- * Hebrew; the URL is JWT-only and carries no locale. Layout is
- * deliberately minimal so the resident's focus stays on the document
- * + the canvas.
+ * §SOLID-H2 closure — i18n via `next-intl` (HE messages). The route
+ * is outside `[locale]` (residents always sign in Hebrew, no locale
+ * prefix in URL), but we still pipe the HE messages through
+ * `NextIntlClientProvider` so the page uses the same `useTranslations`
+ * shape as the dashboard (no hardcoded strings, no Hebrew literals in
+ * the .tsx file).
+ *
+ * Layout is deliberately minimal so the resident's focus stays on the
+ * document + the canvas.
  */
 export default function SignLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="he" dir="rtl" className={heebo.variable}>
       <body className="font-sans antialiased">
-        <MswInit>{children}</MswInit>
+        <NextIntlClientProvider locale="he" messages={heMessages}>
+          <MswInit>{children}</MswInit>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

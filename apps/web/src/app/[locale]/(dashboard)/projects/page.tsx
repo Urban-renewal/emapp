@@ -6,15 +6,8 @@ import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { NameDisplay } from '@/components/ui/name-display';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { useProjectList } from '@/hooks/use-projects';
-import { cn } from '@/lib/utils';
-
-const STATUS_BADGE: Record<'gray' | 'amber' | 'emerald' | 'red', string> = {
-  gray: 'bg-gray-100 text-gray-700',
-  amber: 'bg-amber-100 text-amber-800',
-  emerald: 'bg-emerald-100 text-emerald-800',
-  red: 'bg-red-100 text-red-800',
-};
 
 export default function ProjectsPage() {
   const t = useTranslations('projects');
@@ -60,14 +53,7 @@ export default function ProjectsPage() {
                       <h2 className="truncate text-base font-semibold">
                         <NameDisplay name={p.name} />
                       </h2>
-                      <span
-                        className={cn(
-                          'rounded-full px-2 py-0.5 text-xs font-medium',
-                          STATUS_BADGE[p.statusColor],
-                        )}
-                      >
-                        {p.statusLabel}
-                      </span>
+                      <StatusBadge color={p.statusColor}>{p.statusLabel}</StatusBadge>
                       {p.isArchived && (
                         <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
                           {t('archived')}

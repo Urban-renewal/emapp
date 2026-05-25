@@ -5,19 +5,15 @@ import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
+import { computeImportProgressPct } from '@/adapters/import';
 import { Button } from '@/components/ui/button';
+import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { useImportProgress } from '@/hooks/use-import-progress';
 import { useCancelImport, useImport } from '@/hooks/use-imports';
-import { ApiClientError } from '@/lib/api/projects';
+import { ApiClientError } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
-
-const STATUS_BADGE: Record<'gray' | 'amber' | 'emerald' | 'red', string> = {
-  gray: 'bg-gray-100 text-gray-700',
-  amber: 'bg-amber-100 text-amber-800',
-  emerald: 'bg-emerald-100 text-emerald-800',
-  red: 'bg-red-100 text-red-800',
-};
 
 export default function ImportDetailPage() {
   const t = useTranslations('imports');
@@ -35,7 +31,7 @@ export default function ImportDetailPage() {
   const cancel = useCancelImport();
   const [actionError, setActionError] = useState<string | null>(null);
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">{t('loading')}</p>;
+  if (isLoading) return <ListSkeleton withRows={false} />;
   if (isError) {
     const notFound = error instanceof ApiClientError && error.code === 'not_found';
     return (
@@ -68,10 +64,9 @@ export default function ImportDetailPage() {
           okRows: data.okRows,
           failedRows: data.failedRows,
         };
-  const progressPct =
-    counters.totalRows !== null && counters.totalRows > 0
-      ? Math.min(100, Math.round((counters.processedRows / counters.totalRows) * 100))
-      : null;
+  // §SOLID-L9 — use the single source of truth from the adapter so the
+  // live-SSE merge path and the adapter never diverge.
+  const progressPct = computeImportProgressPct(counters);
 
   async function onCancel() {
     if (!id) return;
@@ -102,17 +97,12 @@ export default function ImportDetailPage() {
             <NameDisplay name={data.fileName} />
           </h1>
           <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                'rounded-full px-2 py-0.5 text-xs font-medium',
-                STATUS_BADGE[data.statusColor],
-              )}
-            >
+            <StatusBadge color={data.statusColor}>
               {data.statusLabel}
               {live && live.event !== 'gone' && status !== data.status && (
                 <span className="opacity-75"> → {status}</span>
               )}
-            </span>
+            </StatusBadge>
             <span className="text-xs text-muted-foreground">{data.fileSizeLabel}</span>
             <span className="text-xs text-muted-foreground">· {data.createdRelative}</span>
             {data.dryRun && (

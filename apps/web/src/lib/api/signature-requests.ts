@@ -32,15 +32,11 @@ import { z } from 'zod';
 
 import { apiClient, isList, isOk } from '../api-client';
 
-import { ApiClientError } from './projects';
+import { ApiClientError } from './errors';
+import { PageSchema } from './paging';
 
 const SignatureRequestDataSchema = z.object({ data: SignatureRequestSchema });
 const CreateResponseDataSchema = z.object({ data: SignatureRequestCreateResponseSchema });
-const PageSchema = z.object({
-  limit: z.number().int().positive(),
-  cursor: z.string().nullable(),
-  has_more: z.boolean(),
-});
 
 export interface SignatureRequestListPage {
   items: SignatureRequest[];

@@ -3,10 +3,11 @@
 import type {
   CreateSignatureRequest,
   ListSignatureRequestsQueryDto,
+  SignatureRequest,
   SignatureRequestCreateResponse,
 } from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocale } from 'next-intl';
+import { useCallback } from 'react';
 
 import {
   toSignatureRequestViewModel,
@@ -19,16 +20,20 @@ import {
   listSignatureRequests,
   type SignatureRequestListPage,
 } from '@/lib/api/signature-requests';
+import { useDisplayLocale } from '@/lib/locale';
 import type { SignatureRequestViewModel } from '@/models/signature-request.vm';
 
 const SIGREQ_KEY = ['signature-requests'] as const;
 
-function he_or_en(loc: string): 'he' | 'en' {
-  return loc === 'en' ? 'en' : 'he';
-}
-
 export function useSignatureRequestList(query: Partial<ListSignatureRequestsQueryDto> = {}) {
-  const locale = he_or_en(useLocale());
+  const locale = useDisplayLocale();
+  const select = useCallback(
+    (data: SignatureRequestListPage) => ({
+      items: toSignatureRequestViewModels(data.items, locale),
+      page: data.page,
+    }),
+    [locale],
+  );
   return useQuery<
     SignatureRequestListPage,
     Error,
@@ -37,15 +42,16 @@ export function useSignatureRequestList(query: Partial<ListSignatureRequestsQuer
     queryKey: [...SIGREQ_KEY, 'list', query, locale],
     queryFn: () => listSignatureRequests(query),
     staleTime: 30_000,
-    select: (data) => ({
-      items: toSignatureRequestViewModels(data.items, locale),
-      page: data.page,
-    }),
+    select,
   });
 }
 
 export function useSignatureRequest(id: string | undefined) {
-  const locale = he_or_en(useLocale());
+  const locale = useDisplayLocale();
+  const select = useCallback(
+    (data: SignatureRequest) => toSignatureRequestViewModel(data, locale),
+    [locale],
+  );
   return useQuery({
     queryKey: [...SIGREQ_KEY, 'one', id, locale],
     queryFn: () => {
@@ -54,7 +60,7 @@ export function useSignatureRequest(id: string | undefined) {
     },
     enabled: Boolean(id),
     staleTime: 30_000,
-    select: (data) => toSignatureRequestViewModel(data, locale),
+    select,
   });
 }
 

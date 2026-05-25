@@ -26,16 +26,12 @@ import { z } from 'zod';
 
 import { apiClient, isList, isOk } from '../api-client';
 
-import { ApiClientError } from './projects';
+import { ApiClientError } from './errors';
+import { PageSchema } from './paging';
 
 const DocumentDataSchema = z.object({ data: DocumentSchema });
 const UploadResponseDataSchema = z.object({ data: DocumentUploadResponseSchema });
 const DownloadResponseDataSchema = z.object({ data: DocumentDownloadResponseSchema });
-const PageSchema = z.object({
-  limit: z.number().int().positive(),
-  cursor: z.string().nullable(),
-  has_more: z.boolean(),
-});
 
 export interface DocumentListPage {
   items: Document[];

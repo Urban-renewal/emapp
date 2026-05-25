@@ -58,12 +58,32 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * §SOLID-L9 closure — single source of truth for "what percent of rows
+ * have been processed". The detail page used to recompute this in the
+ * live-SSE merge branch — duplicating the adapter logic. If one path
+ * changed (e.g. floor vs round) the live counter and the persisted
+ * counter would diverge.
+ *
+ * Contract:
+ *  - totalRows null OR 0 → null (early state; UI shows indeterminate bar)
+ *  - processedRows > totalRows → clamped to 100 (stale-SSE-frame defense)
+ *  - Math.round (not floor) so 51.5% shows as 52% not 51%
+ */
+export function computeImportProgressPct(input: {
+  totalRows: number | null;
+  processedRows: number;
+}): number | null {
+  if (input.totalRows === null || input.totalRows <= 0) return null;
+  return Math.min(100, Math.round((input.processedRows / input.totalRows) * 100));
+}
+
 export function toImportViewModel(i: ImportJob, locale: 'he' | 'en' = 'he'): ImportViewModel {
   const labels = locale === 'he' ? STATUS_LABELS_HE : STATUS_LABELS_EN;
-  const progressPct =
-    i.totalRows !== null && i.totalRows > 0
-      ? Math.min(100, Math.round((i.processedRows / i.totalRows) * 100))
-      : null;
+  const progressPct = computeImportProgressPct({
+    totalRows: i.totalRows,
+    processedRows: i.processedRows,
+  });
   return {
     id: i.id,
     fileName: i.fileName,

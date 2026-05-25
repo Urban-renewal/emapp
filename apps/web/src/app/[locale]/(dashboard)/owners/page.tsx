@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ListPageShell } from '@/components/ui/list-page-shell';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useOwnerList } from '@/hooks/use-owners';
 
@@ -13,21 +14,7 @@ export default function OwnersPage() {
   const tp = useTranslations('projects');
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const { data, isLoading, isError, refetch } = useOwnerList({ limit: 25, cursor });
-
-  if (isLoading) return <p className="text-sm text-muted-foreground">{t('loading')}</p>;
-  if (isError) {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-destructive">{t('loadFailed')}</p>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
-          {tp('retry')}
-        </Button>
-      </div>
-    );
-  }
-
   const items = data?.items ?? [];
-  const page = data?.page;
 
   return (
     <div className="space-y-6">
@@ -38,9 +25,21 @@ export default function OwnersPage() {
         </Button>
       </div>
 
-      {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t('empty')}</p>
-      ) : (
+      <ListPageShell
+        isLoading={isLoading}
+        isError={isError}
+        itemCount={items.length}
+        page={data?.page}
+        cursor={cursor}
+        loadFailedLabel={t('loadFailed')}
+        emptyLabel={t('empty')}
+        retryLabel={tp('retry')}
+        nextLabel={tp('next')}
+        resetLabel={tp('resetToFirstPage')}
+        onRetry={() => refetch()}
+        onNext={(next) => setCursor(next)}
+        onReset={() => setCursor(undefined)}
+      >
         <ul className="space-y-2">
           {items.map((o) => (
             <li key={o.id} className="rounded-md border bg-card p-4">
@@ -72,18 +71,7 @@ export default function OwnersPage() {
             </li>
           ))}
         </ul>
-      )}
-
-      {page?.has_more && page.cursor && (
-        <Button variant="outline" size="sm" onClick={() => setCursor(page.cursor ?? undefined)}>
-          {tp('next')}
-        </Button>
-      )}
-      {cursor && (
-        <Button variant="ghost" size="sm" onClick={() => setCursor(undefined)}>
-          {tp('resetToFirstPage')}
-        </Button>
-      )}
+      </ListPageShell>
     </div>
   );
 }

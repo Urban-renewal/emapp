@@ -8,14 +8,10 @@ import { z } from 'zod';
 
 import { apiClient, isList, isOk } from '../api-client';
 
-import { ApiClientError } from './projects';
+import { ApiClientError } from './errors';
+import { PageSchema } from './paging';
 
 const ApartmentDataSchema = z.object({ data: ApartmentSchema });
-const ApartmentPageSchema = z.object({
-  limit: z.number().int().positive(),
-  cursor: z.string().nullable(),
-  has_more: z.boolean(),
-});
 
 export interface ApartmentListPage {
   items: Apartment[];
@@ -35,7 +31,7 @@ export async function listApartments(
   );
   if (!isList<unknown>(res)) throw new ApiClientError(res.error);
   const items = z.array(ApartmentSchema).parse(res.data);
-  const page = ApartmentPageSchema.parse(res.page);
+  const page = PageSchema.parse(res.page);
   return { items, page };
 }
 

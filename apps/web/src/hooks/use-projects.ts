@@ -2,7 +2,7 @@
 
 import type { CreateProject } from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocale } from 'next-intl';
+import { useCallback } from 'react';
 
 import { toProjectViewModel, toProjectViewModels } from '@/adapters/project';
 import {
@@ -12,29 +12,35 @@ import {
   listProjects,
   type ProjectListPage,
 } from '@/lib/api/projects';
+import { useDisplayLocale } from '@/lib/locale';
 import type { ProjectViewModel } from '@/models/project.vm';
 
 /**
- * Project data hooks — TanStack Query as the single cache. The adapter
- * (Wire → ViewModel) runs in `select` so components consume
- * `ProjectViewModel[]` directly; React Query memoizes by reference, so
- * the adapter only re-runs when the underlying data changes.
+ * Project data hooks — TanStack Query as the single cache.
  *
- * v9-post-audit-SOLID-3 — the active next-intl locale is now threaded
- * to the adapter so its locale-aware label code paths reach the UI.
+ * §SOLID-M6 — `useDisplayLocale()` from `lib/locale` (was a duplicated
+ * `he_or_en` helper in 7 hook files).
  *
- * Per docs/03 Phase 8 perf rules: `staleTime: 30_000` — 30s is a safe
- * compromise (the API list is cursor-paginated and indexed; refetches
- * happen on focus + invalidation after mutations anyway).
+ * §PERF-H3 closure — `select` callbacks are now memoised via
+ * `useCallback` keyed on `locale`. Without this, TanStack v5's
+ * `structuralSharing` cannot dedupe because the inline arrow allocates
+ * a new function identity AND a new wrapper object literal on every
+ * render, defeating the focus-driven re-fetch dedupe. The memoised
+ * variant means components only re-render when the wire row count or
+ * an item's stable id changes.
  */
 
 const PROJECTS_KEY = ['projects'] as const;
-function he_or_en(loc: string): 'he' | 'en' {
-  return loc === 'en' ? 'en' : 'he';
-}
 
 export function useProjectList(query: { limit?: number; cursor?: string } = {}) {
-  const locale = he_or_en(useLocale());
+  const locale = useDisplayLocale();
+  const select = useCallback(
+    (data: ProjectListPage) => ({
+      items: toProjectViewModels(data.items, locale),
+      page: data.page,
+    }),
+    [locale],
+  );
   return useQuery<
     ProjectListPage,
     Error,
@@ -43,12 +49,16 @@ export function useProjectList(query: { limit?: number; cursor?: string } = {}) 
     queryKey: [...PROJECTS_KEY, 'list', query, locale],
     queryFn: () => listProjects(query),
     staleTime: 30_000,
-    select: (data) => ({ items: toProjectViewModels(data.items, locale), page: data.page }),
+    select,
   });
 }
 
 export function useProject(id: string | undefined) {
-  const locale = he_or_en(useLocale());
+  const locale = useDisplayLocale();
+  const select = useCallback(
+    (data: import('@emapp/shared-types').Project) => toProjectViewModel(data, locale),
+    [locale],
+  );
   return useQuery({
     queryKey: [...PROJECTS_KEY, 'one', id, locale],
     queryFn: () => {
@@ -57,7 +67,7 @@ export function useProject(id: string | undefined) {
     },
     enabled: Boolean(id),
     staleTime: 30_000,
-    select: (data) => toProjectViewModel(data, locale),
+    select,
   });
 }
 

@@ -4,20 +4,17 @@ import { CreateOwnerInput, type CreateOwner } from '@emapp/shared-types';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
+import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
 import { useCreateOwner } from '@/hooks/use-owners';
-import { ApiClientError } from '@/lib/api/projects';
-import { applyValidationErrors } from '@/lib/errors';
 
 export default function NewOwnerPage() {
   const t = useTranslations('owners');
   const tp = useTranslations('projects');
   const router = useRouter();
   const mutation = useCreateOwner();
-  const [serverError, setServerError] = useState<string | null>(null);
 
   const {
     register,
@@ -28,24 +25,25 @@ export default function NewOwnerPage() {
     resolver: zodResolver(CreateOwnerInput),
   });
 
+  // §SOLID-M7 — owner_exists override sets the field-level error on
+  // national_id (BE returns 409 on (org_id, national_id_hash) collide).
+  const { serverError, handle, reset } = useApiErrorHandler<CreateOwner>({
+    setError,
+    codeOverrides: {
+      owner_exists: (set) => {
+        set?.('national_id', { type: 'server', message: t('field.idExists') });
+      },
+    },
+    fallback: () => t('createFailed'),
+  });
+
   async function onSubmit(values: CreateOwner) {
-    setServerError(null);
+    reset();
     try {
       const owner = await mutation.mutateAsync(values);
       router.push(`/owners/${owner.id}`);
     } catch (e) {
-      if (e instanceof ApiClientError && e.code === 'validation_error') {
-        const env = { code: e.code, message: e.message, details: e.details };
-        const applied = applyValidationErrors(env, (field, message) => {
-          setError(field as keyof CreateOwner, { type: 'server', message });
-        });
-        if (applied.length === 0) setServerError(t('createFailed'));
-      } else if (e instanceof ApiClientError && e.code === 'owner_exists') {
-        // BE returns this when (org_id, national_id_hash) collides.
-        setError('national_id', { type: 'server', message: t('field.idExists') });
-      } else {
-        setServerError(t('createFailed'));
-      }
+      handle(e);
     }
   }
 

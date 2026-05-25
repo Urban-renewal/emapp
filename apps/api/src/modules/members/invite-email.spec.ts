@@ -34,14 +34,23 @@ describe('D.27 · invite-email', () => {
     expect(() => emailProviderFactory()).toThrowError(/refusing to boot/i);
   });
 
-  it('email embeds the token in an /accept-invite link, Hebrew subject', () => {
+  it('email embeds the token in a path-style /he/accept-invite/<token> link, Hebrew subject', () => {
     const token = 'TOK.EN.value-123';
     const m = buildInviteEmail({ to: 'dana@example.com', name: 'דנה', token, orgName: 'אלפא' });
     expect(m.to).toBe('dana@example.com');
     expect(m.subject).toContain('הוזמנת');
     expect(m.subject).toContain('אלפא');
-    expect(m.html).toContain(`/accept-invite?token=${encodeURIComponent(token)}`);
-    expect(m.text).toContain(`/accept-invite?token=${encodeURIComponent(token)}`);
+    // Phase 4c S1 — path-style invite URL (token in path, not query
+    // string). Locale prefix `/he/` is the Hebrew-first default; the
+    // invitee can switch locale after accepting. Matches the FE route
+    // `apps/web/src/app/[locale]/(auth)/accept-invite/[token]/page.tsx`.
+    expect(m.html).toContain(`/he/accept-invite/${encodeURIComponent(token)}`);
+    expect(m.text).toContain(`/he/accept-invite/${encodeURIComponent(token)}`);
+    // Regression guard: the old query-string shape (`?token=...`) must
+    // NOT reappear — a future "helpful" change that re-introduces it
+    // would break the FE route + the middleware whitelist.
+    expect(m.html).not.toContain('/accept-invite?token=');
+    expect(m.text).not.toContain('/accept-invite?token=');
     expect(JSON.stringify(m.tags)).not.toContain(token); // token never in metadata
     expect(m.subject).not.toContain(token);
     expect(m.tags['kind']).toBe('org_invite');
@@ -76,6 +85,6 @@ describe('D.27 · invite-email', () => {
   it('invite URL honours APP_BASE_URL and strips trailing slashes', () => {
     process.env['APP_BASE_URL'] = 'https://app.example.co.il///';
     const m = buildInviteEmail({ to: 'x@y.z', name: 'X', token: 'abc' });
-    expect(m.html).toContain('https://app.example.co.il/accept-invite?token=abc');
+    expect(m.html).toContain('https://app.example.co.il/he/accept-invite/abc');
   });
 });

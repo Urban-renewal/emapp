@@ -69,7 +69,16 @@ function headerSafe(s: string): string {
 
 function inviteUrl(token: string): string {
   const base = (process.env['APP_BASE_URL'] ?? 'https://app.emapp.co.il').replace(/\/+$/, '');
-  return `${base}/accept-invite?token=${encodeURIComponent(token)}`;
+  // Phase 4c S1 — path-style invite URL (token in the path, not a
+  // query string). Defaults to Hebrew (`/he/`) since EMAPP is
+  // Hebrew-first; the invitee can switch locale via the in-app
+  // selector after accepting. Matches the FE route
+  // `apps/web/src/app/[locale]/(auth)/accept-invite/[token]/page.tsx`
+  // + the middleware whitelist regex (PUBLIC_ROUTE_REGEX). Encoding
+  // is preserved because the JWT alphabet (`A-Za-z0-9_-` + `.`) is
+  // URL-safe but `encodeURIComponent` is defense-in-depth for any
+  // future signing-key change that widens the alphabet.
+  return `${base}/he/accept-invite/${encodeURIComponent(token)}`;
 }
 
 export interface InviteEmailInput {

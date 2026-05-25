@@ -11,7 +11,11 @@
       "Bash(echo \"EXIT=$?\")",
       "Bash(git config *)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(rm -rf C:/emapp-audit)",
+      "Bash(rm -rf C:/emapp-d37)",
+      "Bash(git worktree *)",
+      "Bash(git branch *)"
     ]
   }
 }

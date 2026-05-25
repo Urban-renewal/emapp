@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { useImport, useSubmitMapping } from '@/hooks/use-imports';
 import { ApiClientError } from '@/lib/api/projects';
 import { cn } from '@/lib/utils';
@@ -62,7 +63,7 @@ export default function MappingWizardPage() {
   const [templateName, setTemplateName] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">{t('loading')}</p>;
+  if (isLoading) return <ListSkeleton withRows={false} />;
   if (isError || !data) {
     return (
       <div className="space-y-3">

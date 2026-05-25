@@ -9,14 +9,12 @@ import {
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { APARTMENT_STATUS_LABELS_HE } from '@/adapters/apartment';
 import { Button } from '@/components/ui/button';
 import { useCreateApartment } from '@/hooks/use-apartments';
-import { ApiClientError } from '@/lib/api/projects';
-import { applyValidationErrors } from '@/lib/errors';
+import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
 
 const STATUS_OPTIONS: ApartmentStatus[] = [...ApartmentStatusEnum.options];
 
@@ -27,7 +25,6 @@ export default function NewApartmentPage() {
   const buildingId = params?.id ?? '';
   const router = useRouter();
   const mutation = useCreateApartment(buildingId);
-  const [serverError, setServerError] = useState<string | null>(null);
 
   const {
     register,
@@ -39,21 +36,18 @@ export default function NewApartmentPage() {
     defaultValues: { status: 'pending' },
   });
 
+  const { serverError, handle, reset } = useApiErrorHandler<CreateApartment>({
+    setError,
+    fallback: () => t('createFailed'),
+  });
+
   async function onSubmit(values: CreateApartment) {
-    setServerError(null);
+    reset();
     try {
       const apt = await mutation.mutateAsync(values);
       router.push(`/apartments/${apt.id}`);
     } catch (e) {
-      if (e instanceof ApiClientError && e.code === 'validation_error') {
-        const env = { code: e.code, message: e.message, details: e.details };
-        const applied = applyValidationErrors(env, (field, message) => {
-          setError(field as keyof CreateApartment, { type: 'server', message });
-        });
-        if (applied.length === 0) setServerError(t('createFailed'));
-      } else {
-        setServerError(t('createFailed'));
-      }
+      handle(e);
     }
   }
 

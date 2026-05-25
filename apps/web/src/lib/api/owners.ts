@@ -14,14 +14,10 @@ import { z } from 'zod';
 
 import { apiClient, isList, isOk } from '../api-client';
 
-import { ApiClientError } from './projects';
+import { ApiClientError } from './errors';
+import { PageSchema } from './paging';
 
 const OwnerDataSchema = z.object({ data: OwnerSchema });
-const OwnerPageSchema = z.object({
-  limit: z.number().int().positive(),
-  cursor: z.string().nullable(),
-  has_more: z.boolean(),
-});
 
 export interface OwnerListPage {
   items: Owner[];
@@ -38,7 +34,7 @@ export async function listOwners(
   const res = await apiClient.getList<unknown>(`/owners${qs ? `?${qs}` : ''}`);
   if (!isList<unknown>(res)) throw new ApiClientError(res.error);
   const items = z.array(OwnerSchema).parse(res.data);
-  const page = OwnerPageSchema.parse(res.page);
+  const page = PageSchema.parse(res.page);
   return { items, page };
 }
 

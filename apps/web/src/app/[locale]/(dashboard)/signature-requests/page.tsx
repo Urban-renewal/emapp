@@ -6,15 +6,9 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ListSkeleton } from '@/components/ui/list-skeleton';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { useSignatureRequestList } from '@/hooks/use-signature-requests';
-import { cn } from '@/lib/utils';
-
-const STATUS_BADGE: Record<'gray' | 'amber' | 'emerald' | 'red', string> = {
-  gray: 'bg-gray-100 text-gray-700',
-  amber: 'bg-amber-100 text-amber-800',
-  emerald: 'bg-emerald-100 text-emerald-800',
-  red: 'bg-red-100 text-red-800',
-};
 
 const STATUS_FILTERS: (SignatureRequestStatus | 'all')[] = [
   'all',
@@ -34,7 +28,7 @@ export default function SignatureRequestsPage() {
     ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
   });
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">{t('loading')}</p>;
+  if (isLoading) return <ListSkeleton rows={6} />;
   if (isError) {
     return (
       <div className="space-y-3">
@@ -85,14 +79,7 @@ export default function SignatureRequestsPage() {
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-3">
-                      <span
-                        className={cn(
-                          'rounded-full px-2 py-0.5 text-xs font-medium',
-                          STATUS_BADGE[r.statusColor],
-                        )}
-                      >
-                        {r.statusLabel}
-                      </span>
+                      <StatusBadge color={r.statusColor}>{r.statusLabel}</StatusBadge>
                       {r.isExpired && (
                         <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
                           {t('expired')}

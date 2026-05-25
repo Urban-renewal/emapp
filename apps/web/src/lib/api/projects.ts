@@ -14,13 +14,9 @@ import { z } from 'zod';
 import { apiClient, isList, isOk, type ApiResponse } from '../api-client';
 
 import { ApiClientError } from './errors';
+import { PageSchema } from './paging';
 
 const ProjectDataSchema = z.object({ data: ProjectSchema });
-const ProjectPageSchema = z.object({
-  limit: z.number().int().positive(),
-  cursor: z.string().nullable(),
-  has_more: z.boolean(),
-});
 
 export interface ProjectListPage {
   items: Project[];
@@ -48,7 +44,7 @@ export async function listProjects(query: {
   const res = await apiClient.getList<unknown>(`/projects${qs ? `?${qs}` : ''}`);
   if (!isList<unknown>(res)) throw new ApiClientError(res.error);
   const items = z.array(ProjectSchema).parse(res.data);
-  const page = ProjectPageSchema.parse(res.page);
+  const page = PageSchema.parse(res.page);
   return { items, page };
 }
 

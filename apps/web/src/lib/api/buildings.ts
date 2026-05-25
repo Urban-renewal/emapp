@@ -11,14 +11,10 @@ import { z } from 'zod';
 
 import { apiClient, isList, isOk } from '../api-client';
 
-import { ApiClientError } from './projects';
+import { ApiClientError } from './errors';
+import { PageSchema } from './paging';
 
 const BuildingDataSchema = z.object({ data: BuildingSchema });
-const BuildingPageSchema = z.object({
-  limit: z.number().int().positive(),
-  cursor: z.string().nullable(),
-  has_more: z.boolean(),
-});
 
 export interface BuildingListPage {
   items: Building[];
@@ -38,7 +34,7 @@ export async function listBuildings(
   );
   if (!isList<unknown>(res)) throw new ApiClientError(res.error);
   const items = z.array(BuildingSchema).parse(res.data);
-  const page = BuildingPageSchema.parse(res.page);
+  const page = PageSchema.parse(res.page);
   return { items, page };
 }
 

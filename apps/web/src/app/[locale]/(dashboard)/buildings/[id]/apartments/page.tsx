@@ -6,15 +6,9 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ListSkeleton } from '@/components/ui/list-skeleton';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { useApartmentList } from '@/hooks/use-apartments';
-import { cn } from '@/lib/utils';
-
-const STATUS_BADGE: Record<'gray' | 'amber' | 'emerald' | 'red', string> = {
-  gray: 'bg-gray-100 text-gray-700',
-  amber: 'bg-amber-100 text-amber-800',
-  emerald: 'bg-emerald-100 text-emerald-800',
-  red: 'bg-red-100 text-red-800',
-};
 
 export default function ApartmentsPage() {
   const t = useTranslations('apartments');
@@ -27,7 +21,7 @@ export default function ApartmentsPage() {
     cursor,
   });
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">{t('loading')}</p>;
+  if (isLoading) return <ListSkeleton rows={6} />;
   if (isError) {
     return (
       <div className="space-y-3">
@@ -70,14 +64,7 @@ export default function ApartmentsPage() {
                       <h2 className="truncate text-base font-semibold">
                         {t('numberPrefix', { number: a.number })}
                       </h2>
-                      <span
-                        className={cn(
-                          'rounded-full px-2 py-0.5 text-xs font-medium',
-                          STATUS_BADGE[a.statusColor],
-                        )}
-                      >
-                        {a.statusLabel}
-                      </span>
+                      <StatusBadge color={a.statusColor}>{a.statusLabel}</StatusBadge>
                       {a.isArchived && (
                         <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
                           {tp('archived')}

@@ -10,17 +10,26 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * expects: starts with `<svg`, ends with `</svg>`, 50-262144 bytes
  * (shared-types: `PUBLIC_SIGN_SVG_MAX_BYTES`).
  *
- * Pen behavior:
- *  - mousedown / touchstart begins a new path
- *  - mousemove / touchmove appends a point (with a small distance
- *    threshold to skip noise)
- *  - mouseup / touchend closes the path
+ * §PERF-H2 closure — the previous implementation called `setStrokes`
+ * on EVERY pointermove (~60Hz), which re-rendered the entire stroke
+ * tree + rebuilt the imperative handle via `useEffect`. With 5+
+ * completed strokes that's 300+ reconciliations/sec — visible jank on
+ * mid-tier Android.
+ *
+ * New design (imperative DOM mutation):
+ *  - Completed strokes live in React state but are rendered as one
+ *    `<path d=...>` per stroke; React renders this tree ONCE per
+ *    finished stroke (not per pointer event).
+ *  - The in-progress stroke is a dedicated `<path>` whose `d` attribute
+ *    is updated imperatively via `pathRef.current.setAttribute('d', ...)`.
+ *    No React reconciliation on the hot path.
+ *  - The imperative handle (toSvg/clear/isEmpty) reads from refs so its
+ *    identity is stable across renders.
  *
  * Touch defenses:
  *  - `touch-action: none` on the canvas so the browser doesn't
  *    interpret the drag as a scroll/zoom gesture.
- *  - We listen on both pointer AND touch APIs because some Android
- *    browsers fire only one of them.
+ *  - Pointer Events API covers mouse + touch + pen uniformly.
  */
 
 interface Point {
@@ -45,13 +54,13 @@ interface Props {
  *  Filters out hand-shake without making strokes blocky. */
 const MIN_DELTA = 1.5;
 
-function rdpDist(a: Point, b: Point): number {
+function dist(a: Point, b: Point): number {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-function pathFromPoints(pts: Point[]): string {
+function pathFromPoints(pts: readonly Point[]): string {
   const first = pts[0];
   if (!first) return '';
   const head = `M${first.x.toFixed(1)},${first.y.toFixed(1)}`;
@@ -67,9 +76,32 @@ function pathFromPoints(pts: Point[]): string {
 
 export function SignatureCanvas({ width, height, onChange, canvasRef }: Props) {
   const svgElRef = useRef<SVGSVGElement | null>(null);
-  const [strokes, setStrokes] = useState<Point[][]>([]);
-  const currentRef = useRef<Point[] | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  // The in-progress <path> element — we mutate its `d` attribute
+  // imperatively on every pointermove for 60Hz pen feel without React
+  // re-renders.
+  const inProgressPathRef = useRef<SVGPathElement | null>(null);
+  // Completed strokes (frozen). React renders one <path> per entry —
+  // this state only changes when a stroke is finished or all are cleared.
+  const [completedStrokes, setCompletedStrokes] = useState<readonly (readonly Point[])[]>([]);
+  // The CURRENT (in-progress) stroke is held in a ref — no React state
+  // until the pointer-up event lifts it into `completedStrokes`.
+  const currentRef = useRef<Point[]>([]);
+  const isDrawingRef = useRef(false);
+
+  // onChange tracking: we notify when isEmpty flips. Computed from
+  // completedStrokes (the in-progress stroke doesn't count as content
+  // until released, but for the Submit-button-enable signal we treat
+  // any committed stroke as "not empty").
+  const isEmpty = completedStrokes.length === 0;
+
+  // Notify parent when emptiness changes.
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+  useEffect(() => {
+    onChangeRef.current?.(isEmpty);
+  }, [isEmpty]);
 
   const point = useCallback(
     (clientX: number, clientY: number): Point | null => {
@@ -84,59 +116,64 @@ export function SignatureCanvas({ width, height, onChange, canvasRef }: Props) {
     [width, height],
   );
 
-  const begin = useCallback((p: Point) => {
+  function beginStroke(p: Point) {
     currentRef.current = [p];
-    setIsDrawing(true);
-  }, []);
+    isDrawingRef.current = true;
+    // Imperatively update the dedicated in-progress path element.
+    const el = inProgressPathRef.current;
+    if (el) el.setAttribute('d', pathFromPoints(currentRef.current));
+  }
 
-  const extend = useCallback((p: Point) => {
+  function extendStroke(p: Point) {
     const cur = currentRef.current;
-    if (!cur || cur.length === 0) return;
+    if (cur.length === 0) return;
     const last = cur[cur.length - 1];
-    if (last && rdpDist(last, p) < MIN_DELTA) return;
+    if (last && dist(last, p) < MIN_DELTA) return;
     cur.push(p);
-    // Trigger re-render via a shallow strokes copy so the in-progress
-    // path becomes visible.
-    setStrokes((prev) => prev.slice());
-  }, []);
+    // §PERF-H2 — imperative DOM update; NO setState, NO React reconcile.
+    const el = inProgressPathRef.current;
+    if (el) el.setAttribute('d', pathFromPoints(cur));
+  }
 
-  const finish = useCallback(() => {
+  function finishStroke() {
+    if (!isDrawingRef.current) return;
     const cur = currentRef.current;
-    if (cur && cur.length > 0) {
-      setStrokes((prev) => {
-        const next = [...prev, cur];
-        onChange?.(next.length === 0);
-        return next;
-      });
+    isDrawingRef.current = false;
+    if (cur.length > 0) {
+      // Lift the in-progress stroke into completed state; this is the
+      // ONE React render per stroke.
+      setCompletedStrokes((prev) => [...prev, cur]);
     }
-    currentRef.current = null;
-    setIsDrawing(false);
-  }, [onChange]);
+    currentRef.current = [];
+    const el = inProgressPathRef.current;
+    if (el) el.setAttribute('d', '');
+  }
 
   // Pointer events (covers mouse + most touch devices)
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
     const p = point(e.clientX, e.clientY);
     if (!p) return;
     (e.target as SVGSVGElement).setPointerCapture(e.pointerId);
-    begin(p);
+    beginStroke(p);
   }
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
-    if (!isDrawing) return;
+    if (!isDrawingRef.current) return;
     const p = point(e.clientX, e.clientY);
     if (!p) return;
-    extend(p);
+    extendStroke(p);
   }
   function onPointerUp() {
-    if (isDrawing) finish();
+    if (isDrawingRef.current) finishStroke();
   }
 
-  // Wire the imperative handle to the parent.
+  // Imperative handle — stable identity via refs. We expose toSvg/clear/
+  // isEmpty so the parent can compose them into form submission.
   useEffect(() => {
     const handle: SignatureCanvasHandle = {
       toSvg: () => {
         // Build a self-contained SVG (no namespace prefixes; xmlns set
         // so the BE/storage can render it standalone).
-        const paths = strokes
+        const paths = completedStrokes
           .map(
             (s) =>
               `<path d="${pathFromPoints(s)}" fill="none" stroke="#111" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`,
@@ -145,16 +182,17 @@ export function SignatureCanvas({ width, height, onChange, canvasRef }: Props) {
         return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">${paths}</svg>`;
       },
       clear: () => {
-        setStrokes([]);
-        currentRef.current = null;
-        setIsDrawing(false);
-        onChange?.(true);
+        setCompletedStrokes([]);
+        currentRef.current = [];
+        isDrawingRef.current = false;
+        const el = inProgressPathRef.current;
+        if (el) el.setAttribute('d', '');
       },
-      isEmpty: () => strokes.length === 0,
+      isEmpty: () => completedStrokes.length === 0,
     };
     canvasRef(handle);
     return () => canvasRef(null);
-  }, [strokes, width, height, canvasRef, onChange]);
+  }, [completedStrokes, width, height, canvasRef]);
 
   return (
     <svg
@@ -167,7 +205,9 @@ export function SignatureCanvas({ width, height, onChange, canvasRef }: Props) {
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerUp}
     >
-      {strokes.map((s, i) => (
+      {/* Completed strokes — re-rendered only when a stroke is finished
+          (not on every pointer event). One <path> per stroke. */}
+      {completedStrokes.map((s, i) => (
         <path
           key={i}
           d={pathFromPoints(s)}
@@ -178,17 +218,17 @@ export function SignatureCanvas({ width, height, onChange, canvasRef }: Props) {
           strokeLinejoin="round"
         />
       ))}
-      {/* In-progress stroke — re-rendered live as the user drags. */}
-      {isDrawing && currentRef.current && currentRef.current.length > 0 && (
-        <path
-          d={pathFromPoints(currentRef.current)}
-          fill="none"
-          stroke="#111"
-          strokeWidth={2.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      )}
+      {/* In-progress stroke — dedicated <path> mutated imperatively in
+          extendStroke(). No React reconcile on the hot path. */}
+      <path
+        ref={inProgressPathRef}
+        d=""
+        fill="none"
+        stroke="#111"
+        strokeWidth={2.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

@@ -1,7 +1,8 @@
 'use client';
 
+import type { Document } from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocale } from 'next-intl';
+import { useCallback } from 'react';
 
 import { toDocumentViewModel, toDocumentViewModels } from '@/adapters/document';
 import {
@@ -16,12 +17,10 @@ import {
   uploadToPresigned,
   type DocumentListPage,
 } from '@/lib/api/documents';
+import { useDisplayLocale } from '@/lib/locale';
 import type { DocumentViewModel } from '@/models/document.vm';
 
 const DOCUMENTS_KEY = ['documents'] as const;
-function he_or_en(loc: string): 'he' | 'en' {
-  return loc === 'en' ? 'en' : 'he';
-}
 
 export function useDocumentList(
   query: {
@@ -31,7 +30,14 @@ export function useDocumentList(
     apartmentId?: string;
   } = {},
 ) {
-  const locale = he_or_en(useLocale());
+  const locale = useDisplayLocale();
+  const select = useCallback(
+    (data: DocumentListPage) => ({
+      items: toDocumentViewModels(data.items, locale),
+      page: data.page,
+    }),
+    [locale],
+  );
   return useQuery<
     DocumentListPage,
     Error,
@@ -40,12 +46,13 @@ export function useDocumentList(
     queryKey: [...DOCUMENTS_KEY, 'list', query, locale],
     queryFn: () => listDocuments({ limit: query.limit ?? 25, ...query }),
     staleTime: 30_000,
-    select: (data) => ({ items: toDocumentViewModels(data.items, locale), page: data.page }),
+    select,
   });
 }
 
 export function useDocument(id: string | undefined) {
-  const locale = he_or_en(useLocale());
+  const locale = useDisplayLocale();
+  const select = useCallback((data: Document) => toDocumentViewModel(data, locale), [locale]);
   return useQuery({
     queryKey: [...DOCUMENTS_KEY, 'one', id, locale],
     queryFn: () => {
@@ -54,7 +61,7 @@ export function useDocument(id: string | undefined) {
     },
     enabled: Boolean(id),
     staleTime: 30_000,
-    select: (data) => toDocumentViewModel(data, locale),
+    select,
   });
 }
 

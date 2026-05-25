@@ -1,8 +1,8 @@
 'use client';
 
-import type { CreateApartment } from '@emapp/shared-types';
+import type { Apartment, CreateApartment } from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocale } from 'next-intl';
+import { useCallback } from 'react';
 
 import { toApartmentViewModel, toApartmentViewModels } from '@/adapters/apartment';
 import {
@@ -12,18 +12,23 @@ import {
   listApartments,
   type ApartmentListPage,
 } from '@/lib/api/apartments';
+import { useDisplayLocale } from '@/lib/locale';
 import type { ApartmentViewModel } from '@/models/apartment.vm';
 
 const APARTMENTS_KEY = ['apartments'] as const;
-function he_or_en(loc: string): 'he' | 'en' {
-  return loc === 'en' ? 'en' : 'he';
-}
 
 export function useApartmentList(
   buildingId: string | undefined,
   query: { limit?: number; cursor?: string } = {},
 ) {
-  const locale = he_or_en(useLocale());
+  const locale = useDisplayLocale();
+  const select = useCallback(
+    (data: ApartmentListPage) => ({
+      items: toApartmentViewModels(data.items, locale),
+      page: data.page,
+    }),
+    [locale],
+  );
   return useQuery<
     ApartmentListPage,
     Error,
@@ -36,12 +41,13 @@ export function useApartmentList(
     },
     enabled: Boolean(buildingId),
     staleTime: 30_000,
-    select: (data) => ({ items: toApartmentViewModels(data.items, locale), page: data.page }),
+    select,
   });
 }
 
 export function useApartment(id: string | undefined) {
-  const locale = he_or_en(useLocale());
+  const locale = useDisplayLocale();
+  const select = useCallback((data: Apartment) => toApartmentViewModel(data, locale), [locale]);
   return useQuery({
     queryKey: [...APARTMENTS_KEY, 'one', id, locale],
     queryFn: () => {
@@ -50,7 +56,7 @@ export function useApartment(id: string | undefined) {
     },
     enabled: Boolean(id),
     staleTime: 30_000,
-    select: (data) => toApartmentViewModel(data, locale),
+    select,
   });
 }
 

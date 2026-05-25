@@ -5,16 +5,10 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { useImportList } from '@/hooks/use-imports';
-import { cn } from '@/lib/utils';
-
-const STATUS_BADGE: Record<'gray' | 'amber' | 'emerald' | 'red', string> = {
-  gray: 'bg-gray-100 text-gray-700',
-  amber: 'bg-amber-100 text-amber-800',
-  emerald: 'bg-emerald-100 text-emerald-800',
-  red: 'bg-red-100 text-red-800',
-};
 
 export default function ImportsPage() {
   const t = useTranslations('imports');
@@ -22,7 +16,7 @@ export default function ImportsPage() {
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const { data, isLoading, isError, refetch } = useImportList({ limit: 25, cursor });
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">{t('loading')}</p>;
+  if (isLoading) return <ListSkeleton rows={6} />;
   if (isError) {
     return (
       <div className="space-y-3">
@@ -59,14 +53,7 @@ export default function ImportsPage() {
                       <h2 className="truncate text-base font-semibold">
                         <NameDisplay name={imp.fileName} />
                       </h2>
-                      <span
-                        className={cn(
-                          'rounded-full px-2 py-0.5 text-xs font-medium',
-                          STATUS_BADGE[imp.statusColor],
-                        )}
-                      >
-                        {imp.statusLabel}
-                      </span>
+                      <StatusBadge color={imp.statusColor}>{imp.statusLabel}</StatusBadge>
                       {imp.dryRun && (
                         <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
                           {t('dryRun')}

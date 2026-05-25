@@ -4,12 +4,12 @@ import { SetOwnershipsInput } from '@emapp/shared-types';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { useOwnerList } from '@/hooks/use-owners';
 import { useApartmentOwners, useSetOwnerships } from '@/hooks/use-ownerships';
-import { ApiClientError } from '@/lib/api/projects';
+import { ApiClientError } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
 
 interface Row {
@@ -29,20 +29,33 @@ export default function ApartmentOwnershipsPage() {
   const current = useApartmentOwners(apartmentId);
   const ownerCatalog = useOwnerList({ limit: 100 });
   const mutation = useSetOwnerships(apartmentId ?? '');
-  const [rows, setRows] = useState<Row[]>([]);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  // Seed rows from current state once it loads (seed-once; further
-  // edits are user-driven).
-  useEffect(() => {
-    if (current.data && rows.length === 0) {
-      // §SOLID-H1 — VM now exposes `ownerId` cleanly (was `id` on the
-      // raw wire shape; the original page bypassed the adapter pattern).
-      setRows(
-        current.data.items.map((o) => ({ ownerId: o.ownerId, ownershipPct: o.ownershipPct })),
-      );
-    }
-  }, [current.data, rows.length]);
+  // §SOLID-L10 closure — seed-from-server pattern, refactored from a
+  // brittle `if (rows.length === 0) setRows(...)` heuristic (which
+  // would re-seed if the user cleared all rows, masking real "reset"
+  // intent). Pattern now:
+  //  - `seedRows` is derived from the server payload (useMemo).
+  //  - Local `rowsOverride` starts as `null` (use server seed).
+  //  - User edits go into `rowsOverride` (no longer null).
+  //  - "Reset to server" sets `rowsOverride` back to null.
+  //  - `rows` is `rowsOverride ?? seedRows`.
+  const seedRows: Row[] = useMemo(
+    () =>
+      current.data?.items.map((o) => ({
+        ownerId: o.ownerId,
+        ownershipPct: o.ownershipPct,
+      })) ?? [],
+    [current.data],
+  );
+  const [rowsOverride, setRowsOverride] = useState<Row[] | null>(null);
+  const rows = rowsOverride ?? seedRows;
+  const setRows = useCallback(
+    (next: Row[] | ((prev: Row[]) => Row[])): void => {
+      setRowsOverride((prev) => (typeof next === 'function' ? next(prev ?? seedRows) : next));
+    },
+    [seedRows],
+  );
 
   const sum = useMemo(() => rows.reduce((a, r) => a + (r.ownershipPct || 0), 0), [rows]);
   const sumValid = rows.length === 0 || Math.abs(sum - 100) <= SUM_EPSILON;

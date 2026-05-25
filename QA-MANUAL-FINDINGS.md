@@ -75,7 +75,11 @@ The `db:connected` field implies an actual DB ping on the request thread. That's
 
 ---
 
-## F-UX-1 — Session ambiguity after server restart
+## F-UX-1 — Session ambiguity after server restart — RESOLVED (measurement artifact)
+
+**Post-investigation note:** `apps/web/src/middleware.ts` lines 60-66 redirect authenticated users from `/he/login` to `/he`. My JS measurement caught `location.pathname` at `/he/login` BEFORE the redirect fired; the screenshot caught the AFTER state (`/he` dashboard with the legitimately-logged-in "Alpha / מיכל" pre-existing dev session). The topbar/body mismatch was a timing artifact, not a layout boundary bug. The `(auth)` and `(dashboard)` route groups have separate layouts and cannot leak across each other.
+
+**Original observation (preserved for the record):**
 
 **What I saw:**
 

@@ -334,4 +334,3 @@ describe('GET /provider/audit — P6.5-4 cross-tenant audit search', () => {
 });
 
 // Lint-quiet — `eq` used in seedAudit, but kept here too for symmetry.
-void eq;

@@ -30,7 +30,7 @@ import type { TenantDetail, TenantSampleOwner } from '@emapp/shared-types';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 
-import type { ProviderPrincipal } from './current-provider.decorator';
+import type { ProviderActor } from './current-provider.decorator';
 
 // Use a type alias (not interface) so drizzle's `tx.execute<T>` accepts
 // it — its constraint is `Record<string, unknown>` and interface
@@ -59,7 +59,7 @@ type SampleOwnerRow = {
 
 @Injectable()
 export class ProviderTenantDetailService {
-  async get(actor: ProviderPrincipal, reason: string, tenantId: string): Promise<TenantDetail> {
+  async get(actor: ProviderActor, reason: string, tenantId: string): Promise<TenantDetail> {
     const result = await withProvider(
       actor.sub,
       reason,

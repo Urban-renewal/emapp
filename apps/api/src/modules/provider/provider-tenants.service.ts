@@ -23,7 +23,7 @@ import { and, desc, eq, lt, or, sql } from 'drizzle-orm';
 
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 
-import type { ProviderPrincipal } from './current-provider.decorator';
+import type { ProviderActor } from './current-provider.decorator';
 
 @Injectable()
 export class ProviderTenantsService {
@@ -37,7 +37,7 @@ export class ProviderTenantsService {
    * via the org-id indexes on each child table.
    */
   async list(
-    actor: ProviderPrincipal,
+    actor: ProviderActor,
     reason: string,
     query: ListTenantsQuery,
   ): Promise<ApiList<TenantListItem>> {

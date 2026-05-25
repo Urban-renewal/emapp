@@ -37,7 +37,7 @@ import { and, desc, eq, gte, like, lt, lte, or, type SQL } from 'drizzle-orm';
 
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 
-import type { ProviderPrincipal } from './current-provider.decorator';
+import type { ProviderActor } from './current-provider.decorator';
 
 /**
  * **Audit v1.1 SA-5 (MEDIUM) closure.** The Provider audit-search
@@ -72,7 +72,7 @@ export const PROVIDER_AUDIT_SELECT_KEYS = [
 @Injectable()
 export class ProviderAuditService {
   async search(
-    actor: ProviderPrincipal,
+    actor: ProviderActor,
     reason: string,
     query: ProviderAuditQuery,
   ): Promise<ApiList<ProviderAuditItem>> {

@@ -156,7 +156,7 @@ export default function NewApartmentPage() {
             {tp('cancel')}
           </Button>
           <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? tp('creating') : tp('create')}
+            {isSubmitting ? t('creating') : t('create')}
           </Button>
         </div>
       </form>

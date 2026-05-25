@@ -164,6 +164,7 @@
   "buildings": {
     "listTitle": "Buildings",
     "create": "Add Building",
+    "creating": "Adding...",
     "loading": "Loading...",
     "empty": "No buildings in this project yet. Click \"Add Building\".",
     "loadFailed": "Failed to load buildings",
@@ -187,6 +188,7 @@
   "owners": {
     "listTitle": "Owners",
     "create": "Add Owner",
+    "creating": "Adding...",
     "loading": "Loading...",
     "empty": "No owners yet. Click \"Add Owner\".",
     "loadFailed": "Failed to load owners",
@@ -252,6 +254,7 @@
   "apartments": {
     "listTitle": "Apartments",
     "create": "Add Apartment",
+    "creating": "Adding...",
     "loading": "Loading...",
     "empty": "No apartments in this building yet. Click \"Add Apartment\".",
     "loadFailed": "Failed to load apartments",

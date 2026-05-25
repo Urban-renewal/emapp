@@ -1,5 +1,6 @@
 import type { Project, ProjectStatus, ProjectType } from '@emapp/shared-types';
 
+import { stripBidiOverrides } from '@/lib/bidi';
 import { formatRelative } from '@/lib/format';
 import type { ProjectViewModel } from '@/models/project.vm';
 
@@ -43,13 +44,15 @@ const STATUS_COLORS: Record<ProjectStatus, ProjectViewModel['statusColor']> = {
 export function toProjectViewModel(p: Project, locale: 'he' | 'en' = 'he'): ProjectViewModel {
   return {
     id: p.id,
-    name: p.name,
+    // §SEC-M4 — strip bidi codepoints. Project name is shown in
+    // <option dir="auto"> on the imports/new page (project picker).
+    name: stripBidiOverrides(p.name),
     type: p.type,
     typeLabel: TYPE_LABELS[p.type],
     status: p.status,
     statusLabel: STATUS_LABELS[p.status],
     statusColor: STATUS_COLORS[p.status],
-    description: p.description ?? null,
+    description: p.description ? stripBidiOverrides(p.description) : null,
     isArchived: p.archivedAt !== null,
     createdRelative: formatRelative(p.createdAt, locale),
     createdAtIso: p.createdAt instanceof Date ? p.createdAt.toISOString() : String(p.createdAt),

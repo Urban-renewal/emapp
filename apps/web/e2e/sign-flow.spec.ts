@@ -194,7 +194,20 @@ test.describe('§sign-flow — D.12 resident signing UI flow', () => {
     // but the owner name should disappear (it's only in preview).
     await expect(page.getByText('דנה כהן')).toBeHidden({ timeout: 5_000 });
     expect(submitAttempts).toBe(1);
-    expect(consoleErrors.count).toBe(0);
+    // The stubbed 401 above is INTENTIONAL — Chromium logs the failed
+    // fetch as "console.error: Failed to load resource: 401" purely
+    // from the network panel, NOT from our page code (the page does
+    // `if (!res.ok) setStage('invalid')` and never throws). Filter the
+    // expected 401 console-error out before the fixture's afterEach
+    // auto-asserts. Bugs not related to the stub still trip the
+    // guardrail because we count BEFORE clearing.
+    const allErrors = consoleErrors.all;
+    const unexpected = allErrors.filter((e) => !/401/.test(e));
+    expect(
+      unexpected,
+      `unexpected console errors (not the stubbed 401): ${unexpected.join(' | ')}`,
+    ).toEqual([]);
+    consoleErrors.clear();
   });
 
   test('3) preview failure (401 invalid_token) → invalid stage; no canvas rendered', async ({
@@ -212,7 +225,11 @@ test.describe('§sign-flow — D.12 resident signing UI flow', () => {
     // The signature canvas must NOT render — the user shouldn't even
     // see the draw surface for an invalid link.
     await expect(page.locator('svg path').first()).toBeHidden({ timeout: 5_000 });
-    expect(consoleErrors.count).toBe(0);
+    // Same intentional-401 carve-out as test 2 — Chromium logs the
+    // stubbed 401 from the network layer; everything else must be clean.
+    const unexpected = consoleErrors.all.filter((e) => !/401/.test(e));
+    expect(unexpected, `unexpected console errors: ${unexpected.join(' | ')}`).toEqual([]);
+    consoleErrors.clear();
   });
 
   test('4) JWT never leaks into non-/sign request URLs (no prefetch / referer / link)', async ({

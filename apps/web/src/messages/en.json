@@ -628,6 +628,38 @@
       "team": "Team"
     }
   },
+  "notes": {
+    "listTitle": "Notes",
+    "create": "Create note",
+    "creating": "Creating...",
+    "createFailed": "Failed to create the note",
+    "forbiddenCreate": "You are not allowed to create notes (Viewer is read-only).",
+    "loading": "Loading...",
+    "empty": "No notes to show.",
+    "loadFailed": "Failed to load notes",
+    "notFound": "Note not found",
+    "backToList": "Back to list",
+    "cancel": "Cancel",
+    "detailTitle": "Note details",
+    "pinned": "Pinned",
+    "byUser": "User",
+    "updatedAt": "updated {rel}",
+    "archivedBadge": "Archived",
+    "save": "Save",
+    "saving": "Saving...",
+    "updateFailed": "Failed to update the note",
+    "forbiddenEdit": "Only a Manager or the original author may edit this note.",
+    "archiveSection": "Archive note",
+    "archiveHint": "After archiving the note is hidden and can no longer be edited.",
+    "archive": "Archive note",
+    "archiving": "Archiving...",
+    "archiveConfirm": "Archive this note? You will not be able to edit it afterwards.",
+    "field": {
+      "body": "Note body",
+      "pinned": "Pin to top of the list",
+      "required": "Required"
+    }
+  },
   "audit": {
     "listTitle": "Audit log",
     "hint": "Every meaningful action in the system is recorded append-only. The view here shows the who / what / when / target only; before/after diffs, IP and User-Agent are stored but deliberately not surfaced on this screen.",

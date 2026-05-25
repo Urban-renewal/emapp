@@ -83,9 +83,13 @@ export const test = base.extend<{ consoleErrors: ConsoleErrorCollector }>({
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
         const text = msg.text();
-        if (!isBenign(text)) {
-          collector.push(`console.error: ${text}`);
-        }
+        if (isBenign(text)) return;
+        // Chromium's "Failed to load resource" entries don't include
+        // the URL in `text()` — pull it from `location()` so the
+        // captured string is actually diagnostic on CI.
+        const loc = msg.location();
+        const detail = loc?.url ? ` (at ${loc.url})` : '';
+        collector.push(`console.error: ${text}${detail}`);
       }
     });
 

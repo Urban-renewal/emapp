@@ -69,21 +69,26 @@ describe('T1.6 — Provider tier access and audit', () => {
     expect(privileges).not.toContain('DELETE');
   });
 
-  it('Scenario 4: withProvider rejects empty reason', async () => {
+  it('Scenario 4: withProvider rejects empty reason (Audit v1.1 CC-2: reason_required)', async () => {
     await expect(withProvider(provider.id, '', async () => 'done')).rejects.toThrow(
-      'withProvider: reason is required',
+      /reason_required/,
     );
   });
 
-  it('Scenario 4: withProvider rejects whitespace-only reason', async () => {
+  it('Scenario 4: withProvider rejects whitespace-only reason (Audit v1.1 CC-2: reason_required)', async () => {
     await expect(withProvider(provider.id, '    ', async () => 'done')).rejects.toThrow(
-      'withProvider: reason is required',
+      /reason_required/,
     );
   });
 
-  it('Scenario 4: withProvider rejects reason shorter than 5 chars', async () => {
+  it('Scenario 4: withProvider rejects reason below the quality floor (Audit v1.1 CC-2)', async () => {
+    // Pre-closure: rejected because length < 5. Post-closure: rejected
+    // either as reason_required (length < 10) or reason_low_quality
+    // (length passes but fails substantive-text rule). Either code is
+    // an acceptable rejection — the contract is "this reason is unfit
+    // for an ISO 27001 audit log."
     await expect(withProvider(provider.id, 'hi', async () => 'done')).rejects.toThrow(
-      'withProvider: reason is required',
+      /reason_required|reason_low_quality/,
     );
   });
 

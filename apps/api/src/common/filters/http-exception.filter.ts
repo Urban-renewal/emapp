@@ -75,9 +75,32 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       const body = exception.getResponse();
       if (typeof body === 'object' && body !== null && 'error' in body) {
-        reply.status(status).send(body);
+        // Some bodies already have the D.16 envelope shape — pass through.
+        // (NestJS's default NotFoundException body has `error: 'Not Found'`
+        // as a STRING — not the D.16 `error: {code,message}` OBJECT — so
+        // fall through to the per-status normalization below.)
+        const errVal = (body as { error: unknown }).error;
+        if (typeof errVal === 'object' && errVal !== null) {
+          reply.status(status).send(body);
+          return;
+        }
+      }
+      // §M-1 — 404 NotFoundException (unmatched route) → D.16 envelope.
+      // NestJS's default body for NotFoundException is
+      //   { statusCode: 404, message: 'Cannot GET /api/v1/foo', error: 'Not Found' }
+      // which leaks the Fastify "Not Found" string AND the requested path.
+      // Rewrite to the D.16 shape with a generic code.
+      if (status === HttpStatus.NOT_FOUND) {
+        reply.status(404).send({ error: { code: 'not_found' } });
         return;
       }
+      // Other HttpException shapes (e.g. NestJS's default 400 body) — pass
+      // the status through but normalize the body to D.16. Use the lowercase
+      // discriminator from the exception (most internal throws set it).
+      const codeFromExc = (exception as { code?: unknown }).code;
+      const code = typeof codeFromExc === 'string' ? codeFromExc : `http_${status}`;
+      reply.status(status).send({ error: { code } });
+      return;
     }
 
     // The pg-cause chain can echo column values / schema internals. It is

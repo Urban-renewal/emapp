@@ -50,6 +50,28 @@ class ConsoleErrorCollector {
   }
 }
 
+/**
+ * Known-benign error patterns that DO NOT indicate the kind of bug we're
+ * guarding against (CSP eval-block, React hydration failure, missing
+ * chunks). Filtered out so they don't drown the signal.
+ *
+ *  - "Connection closed" / "WebSocket" — Next.js HMR socket churn when
+ *    dev server is starting/stopping between tests.
+ *  - "ResizeObserver loop limit exceeded" — benign browser quirk.
+ *  - "HMR" / "Hot Module" — dev-only refresh logs.
+ */
+const BENIGN_PATTERNS: readonly RegExp[] = [
+  /Connection closed/i,
+  /WebSocket connection/i,
+  /ResizeObserver loop limit exceeded/i,
+  /\bHMR\b/i,
+  /Hot Module/i,
+];
+
+function isBenign(msg: string): boolean {
+  return BENIGN_PATTERNS.some((p) => p.test(msg));
+}
+
 export const test = base.extend<{ consoleErrors: ConsoleErrorCollector }>({
   // eslint-disable-next-line no-empty-pattern
   consoleErrors: async ({ page }, provide) => {
@@ -58,13 +80,18 @@ export const test = base.extend<{ consoleErrors: ConsoleErrorCollector }>({
     // Capture console.error() calls.
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
-        collector.push(`console.error: ${msg.text()}`);
+        const text = msg.text();
+        if (!isBenign(text)) {
+          collector.push(`console.error: ${text}`);
+        }
       }
     });
 
     // Capture uncaught JS exceptions (EvalError, SyntaxError, etc.).
     page.on('pageerror', (err) => {
-      collector.push(`pageerror: ${err.message}`);
+      if (!isBenign(err.message)) {
+        collector.push(`pageerror: ${err.message}`);
+      }
     });
 
     await provide(collector);

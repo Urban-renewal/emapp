@@ -81,31 +81,17 @@ async function bootstrap() {
     }
   });
 
-  // §M-1 closure (post-S11 manual smoke catch) — Fastify-level 404
-  // handler wraps unknown-route responses in the D.16 envelope.
+  // §M-1 — 404 envelope normalization happens in GlobalExceptionFilter
+  // (see common/filters/http-exception.filter.ts). NestJS+Fastify will
+  // throw a NotFoundException for unmatched routes; the filter rewrites
+  // it to the D.16 `{error:{code:'not_found'}}` envelope.
   //
-  // Background: Nest's GlobalExceptionFilter only catches exceptions
-  // thrown INSIDE the Nest pipeline. When no route matches, Fastify's
-  // built-in 404 handler runs BEFORE Nest sees the request, returning
-  // the raw `{message,error,statusCode}` shape. Smoke-testing caught
-  // this on `GET /api/v1/imports` (before §P0-2 added the list endpoint
-  // — even with that fixed, ANY unknown path needs the envelope).
-  //
-  // Defense in depth — any future BE that drops a route or any typo'd
-  // client path still returns a valid D.16 error the FE can parse.
-  const fastifyForNotFound = app.getHttpAdapter().getInstance() as unknown as {
-    setNotFoundHandler: (
-      h: (
-        req: { url?: string; method?: string },
-        reply: { status: (n: number) => { send: (b: unknown) => void } },
-      ) => void,
-    ) => void;
-  };
-  fastifyForNotFound.setNotFoundHandler((_req, reply) => {
-    reply.status(404).send({
-      error: { code: 'not_found', message: 'Route not found' },
-    });
-  });
+  // Why not Fastify's `setNotFoundHandler` directly: NestJS's
+  // RoutesResolver.registerNotFoundHandler ALSO calls setNotFoundHandler
+  // during app.listen() initialization, and Fastify allows only ONE
+  // handler — collisions throw "Not found handler already set for
+  // Fastify instance with prefix: '/'". Routing through the filter is
+  // the only approach compatible with NestJS+Fastify.
 
   // D.10: every endpoint under /api/v1/
   app.setGlobalPrefix('api/v1');

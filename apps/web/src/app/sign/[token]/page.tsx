@@ -187,9 +187,22 @@ export default function SignPage() {
         <p className="text-sm text-muted-foreground">
           {/* §RED-2 / §SEC-M2 / §SOLID-H2 — greeting uses next-intl rich
               messages so the owner-name (wrapped in NameDisplay for bidi
-              defense) can be interpolated into the localised string. */}
+              defense) can be interpolated into the localised string.
+              The callback MUST accept a `chunks` parameter so next-intl
+              treats it as a rich-text tag function (it inspects arity
+              via fn.length === 1 to distinguish tag callbacks from
+              plain value callbacks). With `() =>` the function was
+              passed to React as a raw value, triggering the
+              "Functions are not valid as a React child" runtime error
+              and breaking the entire signing-preview render (caught by
+              the §P0-3 console-clean Playwright guardrail in PR #57).
+              The `chunks` arg is the inner content of the `<name>`
+              tag from the i18n message; we intentionally drop it
+              because NameDisplay renders its own text from the
+              `name` prop. */}
           {t.rich('greeting', {
-            name: () => <NameDisplay name={preview.owner.name} />,
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required for next-intl arity detection
+            name: (_chunks) => <NameDisplay name={preview.owner.name} />,
           })}
         </p>
       </header>

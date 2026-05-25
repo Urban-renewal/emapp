@@ -19,7 +19,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
 
@@ -31,7 +31,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
@@ -44,7 +44,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
@@ -70,7 +70,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
@@ -93,7 +93,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
@@ -134,7 +134,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @emapp/db db:migrate
@@ -165,7 +165,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - name: Install Playwright browser (chromium only)
@@ -196,7 +196,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           # NOTE: deliberately NO `cache: 'pnpm'` here.
           # `pnpm audit` reads only pnpm-lock.yaml — it does NOT run `pnpm install`,
           # so the post-run cache step would error with `Path Validation Error` and

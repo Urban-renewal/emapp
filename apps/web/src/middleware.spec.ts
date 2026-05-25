@@ -143,6 +143,45 @@ describe('middleware — adversarial', () => {
     // Should redirect to login (the regex requires end-anchor `$`)
     expect(res.status).toBe(307);
   });
+
+  // ─── Phase 4c S1 — locale-aware public accept-invite ───
+  it('M16) /he/accept-invite/<jwt> is public — unauthenticated visitor reaches the page', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.aGVsbG8td29ybGQtc2lnbg';
+    const res = middleware(mockReq({ pathname: `/he/accept-invite/${jwt}` }));
+    expect(res.status).not.toBe(307);
+  });
+
+  it('M17) authenticated visitor at /he/accept-invite/<jwt> is NOT bounced away (multi-org invite)', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.aGVsbG8td29ybGQtc2lnbg';
+    const res = middleware(mockReq({ pathname: `/he/accept-invite/${jwt}`, hasToken: true }));
+    // AUTH_ROUTE_REGEX intentionally excludes accept-invite — a user
+    // logged into org A may be accepting an invite to org B; bouncing
+    // them away would break that flow.
+    expect(res.status).not.toBe(307);
+  });
+
+  it('M18) /he/accept-invite/notajwt is NOT a public route — falls through to auth gate', () => {
+    // Single segment (no dots) → does NOT match the JWT shape regex
+    // → middleware treats it as a normal protected path and bounces.
+    const res = middleware(mockReq({ pathname: '/he/accept-invite/notajwt' }));
+    expect(res.status).toBe(307);
+  });
+
+  it('M19) /he/accept-invite/<jwt>/extra is NOT a public route — anchoring prevents path injection', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.aGVsbG8td29ybGQtc2lnbg';
+    const res = middleware(mockReq({ pathname: `/he/accept-invite/${jwt}/x` }));
+    expect(res.status).toBe(307);
+  });
+
+  it('M20) /xx/accept-invite/<jwt> with malformed locale still routes (regex captures locale liberally)', () => {
+    // PUBLIC_ROUTE_REGEX only checks 2-letter locale shape; next-intl
+    // downstream further validates. Acceptable degradation — the
+    // route is allowed through; next-intl decides whether to render
+    // or 404.
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.aGVsbG8td29ybGQtc2lnbg';
+    const res = middleware(mockReq({ pathname: `/xx/accept-invite/${jwt}` }));
+    expect(res.status).not.toBe(307);
+  });
 });
 
 describe('next.config.ts security headers (§v9-P0-5 closure pin)', () => {

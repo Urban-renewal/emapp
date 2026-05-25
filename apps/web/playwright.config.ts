@@ -19,15 +19,48 @@ import { defineConfig, devices } from '@playwright/test';
  *    viewport. Mobile / WebKit can come later once the responsive
  *    polish slice lands.
  */
+/**
+ * §Phase-E — wave 1 infra additions:
+ *
+ *  1. `globalSetup` / `globalTeardown` — start/stop a Node-side mock
+ *     backend (apps/web/e2e/mock-backend.ts). It listens on
+ *     127.0.0.1:9999 and serves the server-side proxy traffic that
+ *     Playwright's `page.route()` cannot intercept (the dashboard
+ *     layout's getMe() call goes Server Component → Next proxy →
+ *     this mock). Without it any post-auth journey would
+ *     redirect-loop in SSR.
+ *
+ *  2. `webServer.env.API_BACKEND_URL` — pin the upstream the proxy
+ *     calls to the mock backend. `global-setup.ts` also writes this
+ *     to process.env so subprocess inheritance is bullet-proof.
+ *
+ *  3. `webServer.env.SKIP_ENV_VALIDATION=true` — without this the
+ *     `@emapp/config` T3-env chain rejects the empty/partial environ-
+ *     ment that Playwright provides; the dev server "starts" but
+ *     then hangs every HTTP request mid-flight (instrumentation
+ *     hook never resolves). Locally-without-Infisical and CI both
+ *     hit this; one flag covers both.
+ *
+ *  4. `reporter: 'list'` always — the 'github' reporter buffers all
+ *     output until the run completes, which makes long-running CI
+ *     hangs invisible. 'list' gives streaming feedback.
+ */
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 2 : 0,
   workers: 1,
-  reporter: process.env['CI'] ? 'github' : 'list',
+  reporter: process.env['CI']
+    ? [
+        ['list'],
+        ['github'],
+      ]
+    : 'list',
   timeout: 30_000,
   expect: { timeout: 5_000 },
+  globalSetup: './e2e/global-setup.ts',
+  globalTeardown: './e2e/global-teardown.ts',
   use: {
     baseURL: 'http://localhost:3001',
     trace: 'on-first-retry',
@@ -41,19 +74,27 @@ export default defineConfig({
     },
   ],
   webServer: {
-    // Dev server WITHOUT MSW — we stub /api/v1/* per-test via
-    // Playwright's `page.route()`. The MSW service worker added a
-    // first-paint timing race (SW registration vs first fetch) that
-    // is unnecessary when Playwright is itself the interceptor.
-    // MSW remains wired into the app for `pnpm dev` offline-mode
-    // (NEXT_PUBLIC_MSW=1), just not for E2E.
+    // §Phase-E — plain `pnpm dev` works on both CI + local once
+    // SKIP_ENV_VALIDATION=true is set (see env block below). No
+    // Infisical dependency. Verified locally: dev server responds
+    // to /he/signup in ~180ms.
     command: 'pnpm dev',
     cwd: '.',
-    url: 'http://localhost:3001',
+    url: 'http://localhost:3001/he/signup',
     env: {
       NODE_ENV: 'development',
+      // §dev-server-boot — without this the @emapp/config T3-env
+      // chain rejects the partial env Playwright provides and the
+      // Sentry/OTEL instrumentation hook hangs every HTTP request
+      // mid-flight. With it the dev server boots in ~9s and serves
+      // /he/signup in <200ms.
+      SKIP_ENV_VALIDATION: 'true',
+      // §E2E — server-side proxy upstream points at the mock backend
+      // started by ./e2e/global-setup.ts. The mock listens on 9999
+      // by default; override via E2E_MOCK_BACKEND_PORT.
+      API_BACKEND_URL: `http://127.0.0.1:${process.env['E2E_MOCK_BACKEND_PORT'] ?? '9999'}`,
     },
     reuseExistingServer: !process.env['CI'],
-    timeout: 120_000,
+    timeout: 180_000,
   },
 });

@@ -28,6 +28,8 @@
  */
 import { test as base, expect } from '@playwright/test';
 
+import { resetMockHandlers } from './mock-backend';
+
 export { expect };
 
 class ConsoleErrorCollector {
@@ -95,6 +97,13 @@ export const test = base.extend<{ consoleErrors: ConsoleErrorCollector }>({
     });
 
     await provide(collector);
+
+    // §Phase-E — reset mock-backend handlers between tests so a per-
+    // test override (e.g. "return 401 from /me to simulate session
+    // expiry") doesn't leak into the next spec. Runs BEFORE the
+    // console-errors assertion so a leak-induced failure surfaces
+    // distinctly from a console-error failure.
+    resetMockHandlers();
 
     // §CI — after every test, assert zero console errors.
     // CSP eval-blocks, React hydration mismatches, missing chunks: all

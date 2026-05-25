@@ -27,7 +27,6 @@ import { randomUUID } from 'node:crypto';
 
 import { encryptOwnerPii, owners, withTenant } from '@emapp/db';
 import { NotFoundException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { providerPool } from '../../../../../packages/db/src/client';
@@ -360,6 +359,3 @@ describe('GET /provider/tenants/:id — P6.5-3 service integration', () => {
     }
   });
 });
-
-// Suppress unused-import lint — `eq` retained for future PATCH-like queries.
-void eq;

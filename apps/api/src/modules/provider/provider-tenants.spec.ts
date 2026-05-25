@@ -19,9 +19,8 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import { owners, providerAuditLog, encryptOwnerPii, withTenant } from '@emapp/db';
+import { owners, encryptOwnerPii, withTenant } from '@emapp/db';
 import { BadRequestException } from '@nestjs/common';
-import { and, eq, gt } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { providerPool } from '../../../../../packages/db/src/client';
@@ -283,9 +282,3 @@ describe('GET /provider/tenants — P6.5-2 service integration', () => {
     expect(big.data.length).toBeLessThanOrEqual(100);
   });
 });
-
-// Lint quietener — fields used inside the cursor predicate test only.
-void and;
-void eq;
-void gt;
-void providerAuditLog;

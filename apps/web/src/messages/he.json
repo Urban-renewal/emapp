@@ -67,6 +67,9 @@
     "buildingsSection": "בניינים",
     "buildingsHint": "ניהול הבניינים השייכים לפרויקט.",
     "buildingsManage": "לרשימת הבניינים",
+    "assignmentsSection": "שיוך אגנטים",
+    "assignmentsHint": "ניהול הרשאות הצוות לפרויקט. אגנטים רואים רק את הפרויקטים אליהם הם משויכים.",
+    "assignmentsManage": "ניהול שיוכים",
     "field": {
       "name": "שם הפרויקט",
       "type": "סוג",
@@ -422,6 +425,31 @@
       "email": "אימייל",
       "name": "שם מלא",
       "role": "תפקיד"
+    }
+  },
+  "assignments": {
+    "title": "שיוך אגנטים לפרויקט",
+    "assignSection": "שייך משתמש לפרויקט",
+    "assign": "שייך",
+    "assigning": "משייך...",
+    "assignmentExists": "המשתמש כבר משויך לפרויקט זה.",
+    "invalidAssignee": "המשתמש שנבחר אינו חבר פעיל בארגון.",
+    "forbidden": "אין הרשאה לפעולה זו.",
+    "createFailed": "השיוך נכשל. נסה שנית.",
+    "noEligibleMembers": "אין משתמשים זמינים לשיוך. הזמן חברים חדשים מ\"חברי הארגון\" או הסר שיוך קיים.",
+    "unassign": "בטל שיוך",
+    "unassigning": "מבטל...",
+    "unassignConfirm": "לבטל את שיוך המשתמש לפרויקט? המשתמש לא יראה עוד את הפרויקט ברשימה שלו.",
+    "unassignFailed": "ביטול השיוך נכשל.",
+    "loadFailed": "טעינת השיוכים נכשלה",
+    "empty": "אין שיוכים פעילים לפרויקט.",
+    "assignedAt": "שויך {rel}",
+    "userIdPrefix": "משתמש",
+    "lookupFailedHint": "פרטי המשתמשים לא נטענו (תקלה זמנית). הרשימה מציגה מזהים מקוצרים.",
+    "field": {
+      "user": "משתמש לשיוך",
+      "userPlaceholder": "בחר משתמש...",
+      "roleInProject": "תפקיד בפרויקט"
     }
   },
   "acceptInvite": {

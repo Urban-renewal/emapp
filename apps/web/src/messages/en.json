@@ -67,6 +67,9 @@
     "buildingsSection": "Buildings",
     "buildingsHint": "Manage the buildings in this project.",
     "buildingsManage": "Go to buildings",
+    "assignmentsSection": "Agent assignments",
+    "assignmentsHint": "Manage which org members are assigned to this project. Agents see only the projects they are assigned to.",
+    "assignmentsManage": "Manage assignments",
     "field": {
       "name": "Project name",
       "type": "Type",
@@ -422,6 +425,31 @@
       "email": "Email",
       "name": "Full name",
       "role": "Role"
+    }
+  },
+  "assignments": {
+    "title": "Project agent assignments",
+    "assignSection": "Assign a member to this project",
+    "assign": "Assign",
+    "assigning": "Assigning...",
+    "assignmentExists": "This member is already assigned to the project.",
+    "invalidAssignee": "The selected user is not an active organization member.",
+    "forbidden": "You are not allowed to perform this action.",
+    "createFailed": "Failed to assign. Please retry.",
+    "noEligibleMembers": "No members available to assign. Invite new members from \"Members\" or remove an existing assignment.",
+    "unassign": "Unassign",
+    "unassigning": "Unassigning...",
+    "unassignConfirm": "Unassign this member from the project? They will no longer see it in their list.",
+    "unassignFailed": "Failed to unassign.",
+    "loadFailed": "Failed to load assignments",
+    "empty": "No active assignments for this project.",
+    "assignedAt": "assigned {rel}",
+    "userIdPrefix": "User",
+    "lookupFailedHint": "Member details did not load (transient error). The list shows short IDs.",
+    "field": {
+      "user": "Member to assign",
+      "userPlaceholder": "Pick a member...",
+      "roleInProject": "Role on this project"
     }
   },
   "acceptInvite": {

@@ -67,6 +67,31 @@ updates:
       - dependency-name: 'drizzle-kit'
         update-types: ['version-update:semver-major']
 
+      # Runtime libraries — each major is its own migration story (added
+      # after PR #45 / #65 reopened the same 5 runtime majors grouped
+      # together with no isolated revert path).
+      # • zod 3→4    — ZodIssue shape changed ({origin,...}); every test
+      #                asserting on the issue payload would need updating.
+      # • pg-boss 10→12 — worker queue behavior, transactional retry
+      #                semantics change between majors (Doc 03 §9).
+      # • @sentry/node 8→10 — SDK v10 reworks transport + integrations API.
+      # • @fastify/helmet 12→13 — CSP directive shape can change between
+      #                majors; we treat header config as a security gate
+      #                and want manual review on any bump.
+      # • pino-http 10→11 — request/response serializer API surface changes.
+      - dependency-name: 'zod'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'pg-boss'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@sentry/*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@fastify/*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'pino-http'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'pino'
+        update-types: ['version-update:semver-major']
+
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:

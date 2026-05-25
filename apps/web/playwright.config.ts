@@ -34,11 +34,12 @@ import { defineConfig, devices } from '@playwright/test';
  *     calls to the mock backend. `global-setup.ts` also writes this
  *     to process.env so subprocess inheritance is bullet-proof.
  *
- *  3. `webServer.command` — `infisical run --env=dev -- pnpm dev`.
- *     Without Infisical-loaded secrets the Next dev server's Sentry
- *     instrumentation hook hangs every HTTP request (observed
- *     2026-05-25). Infisical's dev env carries the minimal secrets
- *     needed for the dev server to actually respond.
+ *  3. `webServer.env.SKIP_ENV_VALIDATION=true` — without this the
+ *     `@emapp/config` T3-env chain rejects the empty/partial environ-
+ *     ment that Playwright provides; the dev server "starts" but
+ *     then hangs every HTTP request mid-flight (instrumentation
+ *     hook never resolves). Locally-without-Infisical and CI both
+ *     hit this; one flag covers both.
  *
  *  4. `reporter: 'list'` always — the 'github' reporter buffers all
  *     output until the run completes, which makes long-running CI
@@ -73,17 +74,21 @@ export default defineConfig({
     },
   ],
   webServer: {
-    // §Phase-E — Infisical-loaded dev server. Without `infisical run`
-    // the dev server hangs every HTTP request mid-flight (the Sentry
-    // instrumentation hook never resolves). API_BACKEND_URL is
-    // overridden in `env` below to point at the mock backend started
-    // by global-setup; Infisical's dev value (if any) is preempted
-    // by the explicit env entry here.
-    command: 'infisical run --env=dev -- pnpm dev',
+    // §Phase-E — plain `pnpm dev` works on both CI + local once
+    // SKIP_ENV_VALIDATION=true is set (see env block below). No
+    // Infisical dependency. Verified locally: dev server responds
+    // to /he/signup in ~180ms.
+    command: 'pnpm dev',
     cwd: '.',
     url: 'http://localhost:3001/he/signup',
     env: {
       NODE_ENV: 'development',
+      // §dev-server-boot — without this the @emapp/config T3-env
+      // chain rejects the partial env Playwright provides and the
+      // Sentry/OTEL instrumentation hook hangs every HTTP request
+      // mid-flight. With it the dev server boots in ~9s and serves
+      // /he/signup in <200ms.
+      SKIP_ENV_VALIDATION: 'true',
       // §E2E — server-side proxy upstream points at the mock backend
       // started by ./e2e/global-setup.ts. The mock listens on 9999
       // by default; override via E2E_MOCK_BACKEND_PORT.

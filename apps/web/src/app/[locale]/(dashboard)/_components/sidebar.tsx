@@ -1,6 +1,17 @@
 'use client';
 
-import { FileSignature, FileSpreadsheet, FileText, Home, Lock, Shield, Users } from 'lucide-react';
+import {
+  Bell,
+  FileSignature,
+  FileSpreadsheet,
+  FileText,
+  History,
+  Home,
+  Lock,
+  Shield,
+  UserPlus,
+  Users,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 
@@ -16,6 +27,9 @@ interface NavItem {
     | 'imports'
     | 'documents'
     | 'signatureRequests'
+    | 'members'
+    | 'notifications'
+    | 'audit'
     | 'provider';
   icon: typeof Home;
   enabled: boolean;
@@ -55,7 +69,21 @@ export function Sidebar({ role }: Props) {
       icon: FileSignature,
       enabled: true,
     },
+    // Notifications: self-scoped by RLS — any org role sees their own.
+    { href: '/notifications', labelKey: 'notifications', icon: Bell, enabled: true },
   ];
+
+  // §D.17 — Members admin is Manager-only (policy.ts:71). The BE's
+  // AuthorizationGuard returns 403 for non-Manager calls regardless,
+  // but cosmetically hiding the link keeps Agents / Viewers from
+  // clicking into a list that can only show them an error. Phase 4c S1.
+  if (role === 'manager') {
+    items.push({ href: '/members', labelKey: 'members', icon: UserPlus, enabled: true });
+    // §D.17 — Audit is Manager-only (policy.ts:68 + service role check
+    // at audit-read.service.ts:28). Same cosmetic-gate rationale as
+    // Members. Phase 4c S4.
+    items.push({ href: '/audit', labelKey: 'audit', icon: History, enabled: true });
+  }
 
   // §D.37 — Provider Admin nav item appears ONLY for the provider tier.
   // Org-tier roles (manager/agent/viewer/contractor/tenant) never see

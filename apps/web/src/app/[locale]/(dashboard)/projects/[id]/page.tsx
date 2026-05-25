@@ -97,6 +97,19 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
+      {/* §Phase 4c S2 — Project Assignments entry. Read=ALL so the
+          card is visible to every org role; the BE enforces write-MGR
+          on the linked page. */}
+      <div className="rounded-md border bg-card p-4">
+        <h2 className="text-sm font-semibold">{t('assignmentsSection')}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t('assignmentsHint')}</p>
+        <div className="mt-3">
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/projects/${data.id}/assignments`}>{t('assignmentsManage')}</Link>
+          </Button>
+        </div>
+      </div>
+
       {actionError && <p className="text-sm text-destructive">{actionError}</p>}
     </div>
   );

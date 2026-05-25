@@ -14,9 +14,20 @@ const intlMiddleware = createMiddleware(routing);
  * pin the exact public surface: `/<locale>/login` and
  * `/<locale>/signup` only, where `<locale>` is two lowercase letters
  * (the next-intl locale shape).
+ *
+ * Phase 4c S1 — extend with `/<locale>/accept-invite/<jwt>` (D.27
+ * member-invite landing). The JWT shape (3 base64url segments joined
+ * by `.`) is pinned so a path like `/he/accept-invite/whatever` cannot
+ * masquerade as the public surface. AUTH_ROUTE_REGEX stays narrow
+ * (login|signup only) so authenticated users are NOT bounced away
+ * from /accept-invite — they may be accepting an invite to a
+ * different org with their existing session intact.
  */
-const PUBLIC_ROUTE_REGEX = /^\/[a-z]{2}\/(login|signup)$/;
-const AUTH_ROUTE_REGEX = PUBLIC_ROUTE_REGEX; // same surface today; separate const
+const JWT_SHAPE = '[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+';
+const PUBLIC_ROUTE_REGEX = new RegExp(
+  `^\\/[a-z]{2}\\/(login|signup|accept-invite\\/${JWT_SHAPE})$`,
+);
+const AUTH_ROUTE_REGEX = /^\/[a-z]{2}\/(login|signup)$/;
 
 /**
  * Routes that bypass BOTH the auth gate AND next-intl locale routing.

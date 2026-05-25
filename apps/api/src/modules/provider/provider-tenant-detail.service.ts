@@ -28,7 +28,7 @@
 import { organizations, withProvider } from '@emapp/db';
 import type { TenantDetail, TenantSampleOwner } from '@emapp/shared-types';
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 import type { ProviderPrincipal } from './current-provider.decorator';
 
@@ -178,7 +178,3 @@ export class ProviderTenantDetailService {
     };
   }
 }
-
-// Suppress unused-import lint flag — `eq` is the canonical drizzle
-// helper for FKs; retained for future variant queries.
-void eq;

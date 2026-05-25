@@ -39,6 +39,36 @@ import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 
 import type { ProviderPrincipal } from './current-provider.decorator';
 
+/**
+ * **Audit v1.1 SA-5 (MEDIUM) closure.** The Provider audit-search
+ * SELECT MUST stay an explicit per-column allowlist. The org-tier
+ * `audit_log` table includes `before_state`, `after_state`,
+ * `actor_email`, `ip`, `user_agent` columns — the v8.5 SOLID #7 fix
+ * sanitises `metadata` of cleartext PII, but the same was NEVER
+ * enforced systematically for `before_state` / `after_state` (any
+ * future writer could spill PII there). A single refactor that
+ * widens this projection (e.g. `select()` → `selectAll`) would leak
+ * cross-tenant PII.
+ *
+ * The frozen-allowlist below is asserted by
+ * `provider-audit-projection.spec.ts` (SA-5 pin): CI fails the
+ * moment a contributor adds a key to the SELECT without updating
+ * the allowlist + reviewing the PII surface.
+ *
+ * Exported so tests can compare against the source of truth without
+ * re-parsing the service file.
+ */
+export const PROVIDER_AUDIT_SELECT_KEYS = [
+  'id',
+  'organizationId',
+  'actorId',
+  'actorType',
+  'action',
+  'targetTable',
+  'targetId',
+  'createdAt',
+] as const;
+
 @Injectable()
 export class ProviderAuditService {
   async search(

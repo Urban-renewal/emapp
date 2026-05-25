@@ -34,6 +34,7 @@ import { AuthModule } from '../auth/auth.module';
 import { ProviderAuditController } from './provider-audit.controller';
 import { ProviderAuditService } from './provider-audit.service';
 import { ProviderAuthorizationGuard } from './provider-authorization.guard';
+import { ProviderRequestAuditInterceptor } from './provider-request-audit.interceptor';
 import { ProviderSystemHealthController } from './provider-system-health.controller';
 import { ProviderSystemHealthService } from './provider-system-health.service';
 import { ProviderTenantDetailController } from './provider-tenant-detail.controller';
@@ -61,6 +62,11 @@ import { ProviderTenantsService } from './provider-tenants.service';
     // be `new`d inline, but DI keeps the test pattern uniform with
     // the rest of the codebase.
     ProviderAuthorizationGuard,
+    // Audit v1.1 SA-6 — module-scoped interceptor that writes a
+    // `provider.request.received` row in an autonomous tx BEFORE
+    // ZodValidationPipe runs. Closes the "rejected requests leave
+    // no audit trace" gap (ISO 27001 A.12.4.1).
+    ProviderRequestAuditInterceptor,
   ],
 })
 export class ProviderModule {}

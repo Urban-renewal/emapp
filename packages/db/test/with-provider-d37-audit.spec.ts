@@ -76,13 +76,13 @@ describe('D.37 withProvider — audit row contract', () => {
   });
 
   it('T6.5-D37-0b) action_type defaults to "session" when no action provided (back-compat)', async () => {
-    await withProvider(provider.id, 'back-compat default test', async () => undefined);
+    await withProvider(provider.id, 'TKT-1100: back-compat default test', async () => undefined);
     const row = await latestAuditRowFor(provider.id);
     expect(row!.action_type).toBe('session');
   });
 
   it('T6.5-D37-0c) action_type respects caller override (Phase 6.5 needs this)', async () => {
-    await withProvider(provider.id, 'tenant viewed', async () => undefined, {
+    await withProvider(provider.id, 'TKT-1100: tenant viewed', async () => undefined, {
       action: 'provider.tenant.viewed',
     });
     const row = await latestAuditRowFor(provider.id);
@@ -117,7 +117,7 @@ describe('D.37 withProvider — audit row contract', () => {
   });
 
   it('T6.5-D37-0f) ip / userAgent / targetTable / targetRecordId all pass through unchanged', async () => {
-    await withProvider(provider.id, 'context fields passthrough', async () => undefined, {
+    await withProvider(provider.id, 'TKT-1100: context fields passthrough', async () => undefined, {
       ip: '203.0.113.5',
       userAgent: 'Mozilla/5.0 (X11; Linux x86_64) Provider-Admin/1.0',
       targetTable: 'organizations',
@@ -132,26 +132,31 @@ describe('D.37 withProvider — audit row contract', () => {
     expect(row!.action_type).toBe('provider.tenant.viewed');
   });
 
-  it('T6.5-D37-0g) rollback on fn() throw — NO audit row left behind (tx integrity)', async () => {
-    // The wrapper runs INSERT inside the BEGIN/COMMIT. If fn() throws,
-    // ROLLBACK must take the audit row with it. This pins that the
-    // pre-D.37 contract (tx-bound audit) still holds AFTER the
-    // metadata change.
-    const REASON = 'rollback-test-' + Date.now();
+  it('T6.5-D37-0g) Audit v1.1 SA-7 — fn() throw leaves audit row PERSISTED (autonomous tx)', async () => {
+    // **Contract change post-Audit v1.1 SA-7 (ISO A.12.4.3):** the
+    // audit INSERT now runs in an AUTONOMOUS transaction on a separate
+    // pool connection, committed BEFORE the work tx starts. A crafted-
+    // failure input that makes fn() throw can NO LONGER suppress the
+    // audit row. This was a fresh-eyes finding from the v1.1 audit —
+    // pre-closure the same-tx coupling allowed pre-commit audit
+    // suppression, which an ISO 27001 A.12.4.3 review would flag.
+    //
+    // This test inverts the pre-SA-7 assertion: count MUST be 1.
+    const REASON = `TKT-1100: rollback-test-${Date.now()}`;
     await expect(
       withProvider(provider.id, REASON, async () => {
         throw new Error('synthetic failure');
       }),
     ).rejects.toThrow(/synthetic failure/);
 
-    // Search the audit log for our distinctive reason — must be 0 rows.
+    // Audit row MUST persist — SA-7 invariant.
     const client = await providerPool.connect();
     try {
       const r = await client.query<{ count: string }>(
         `SELECT COUNT(*)::text AS count FROM provider_audit_log WHERE reason = $1`,
         [REASON],
       );
-      expect(Number(r.rows[0]!.count)).toBe(0);
+      expect(Number(r.rows[0]!.count)).toBe(1);
     } finally {
       client.release();
     }
@@ -165,7 +170,7 @@ describe('D.37 withProvider — audit row contract', () => {
 
   it('T6.5-D37-0h) action with control chars rejected (provider_action_invalid)', async () => {
     await expect(
-      withProvider(provider.id, 'valid reason for action test', async () => undefined, {
+      withProvider(provider.id, 'TKT-1100: valid reason for action test', async () => undefined, {
         // \n is a control char + not in the allowed regex class
         action: 'provider.tenant.viewed\n',
       }),
@@ -174,9 +179,14 @@ describe('D.37 withProvider — audit row contract', () => {
 
   it('T6.5-D37-0h2) action with SQL-shape rejected — parameter binding makes injection impossible, but regex catches POLLUTION', async () => {
     await expect(
-      withProvider(provider.id, 'valid reason for SQL-shape action', async () => undefined, {
-        action: "'); DROP TABLE provider_audit_log; --",
-      }),
+      withProvider(
+        provider.id,
+        'TKT-1100: valid reason for SQL-shape action',
+        async () => undefined,
+        {
+          action: "'); DROP TABLE provider_audit_log; --",
+        },
+      ),
     ).rejects.toThrow(/provider_action_invalid/);
     // owners table still intact (defense-in-depth — parameter binding
     // would have stopped SQL anyway).
@@ -191,15 +201,20 @@ describe('D.37 withProvider — audit row contract', () => {
   it('T6.5-D37-0h3) action exceeding 128 chars rejected', async () => {
     const tooLong = 'a.'.repeat(70); // 140 chars, all valid regex chars
     await expect(
-      withProvider(provider.id, 'valid reason for long action test', async () => undefined, {
-        action: tooLong,
-      }),
+      withProvider(
+        provider.id,
+        'TKT-1100: valid reason for long action test',
+        async () => undefined,
+        {
+          action: tooLong,
+        },
+      ),
     ).rejects.toThrow(/exceeds maximum 128/);
   });
 
   it('T6.5-D37-0h4) action empty string rejected (action=undefined is OK; "" is not)', async () => {
     await expect(
-      withProvider(provider.id, 'valid reason for empty action', async () => undefined, {
+      withProvider(provider.id, 'TKT-1100: valid reason for empty action', async () => undefined, {
         action: '',
       }),
     ).rejects.toThrow(/non-empty string/);
@@ -217,18 +232,19 @@ describe('D.37 withProvider — audit row contract', () => {
     expect((row!.metadata as { reason?: string }).reason).toBe(row!.reason);
   });
 
-  it('T6.5-D37-0i2) reason that is ALL control chars rejected as too short', async () => {
+  it('T6.5-D37-0i2) reason that is ALL control chars rejected (Audit v1.1 CC-2: reason_required)', async () => {
     // Pre-strip looks like 10 chars; post-strip looks like 0 chars.
-    // The hardened check strips FIRST, then min-length-checks.
+    // The hardened check strips FIRST, then min-length-checks. Post
+    // Audit v1.1 CC-2 the stable code is `reason_required`.
     await expect(
       withProvider(provider.id, '\r\n\r\n\r\n\r\n\r\n', async () => undefined),
-    ).rejects.toThrow(/minimum 5 chars after control-char strip/);
+    ).rejects.toThrow(/reason_required/);
   });
 
-  it('T6.5-D37-0i3) reason > 512 chars rejected', async () => {
+  it('T6.5-D37-0i3) reason > 512 chars rejected (Audit v1.1 CC-2: reason_too_long)', async () => {
     const tooLong = 'a'.repeat(513);
     await expect(withProvider(provider.id, tooLong, async () => undefined)).rejects.toThrow(
-      /exceeds maximum 512/,
+      /reason_too_long/,
     );
   });
 
@@ -236,7 +252,7 @@ describe('D.37 withProvider — audit row contract', () => {
     // Build a payload that comfortably exceeds 8 KB after stringify.
     const big = { blob: 'A'.repeat(10 * 1024) };
     await expect(
-      withProvider(provider.id, 'metadata size cap test', async () => undefined, {
+      withProvider(provider.id, 'TKT-1100: metadata size cap test', async () => undefined, {
         metadata: big,
       }),
     ).rejects.toThrow(/provider_metadata_too_large/);
@@ -247,7 +263,7 @@ describe('D.37 withProvider — audit row contract', () => {
     // reason overlay + JSON encoding overhead.
     const padding = 'B'.repeat(7 * 1024);
     await expect(
-      withProvider(provider.id, 'metadata boundary test', async () => undefined, {
+      withProvider(provider.id, 'TKT-1100: metadata boundary test', async () => undefined, {
         metadata: { padding },
       }),
     ).resolves.toBeUndefined();
@@ -262,7 +278,7 @@ describe('D.37 withProvider — audit row contract', () => {
     const cyclic: Circular = {};
     cyclic.self = cyclic;
     await expect(
-      withProvider(provider.id, 'circular ref test', async () => undefined, {
+      withProvider(provider.id, 'TKT-1100: circular ref test', async () => undefined, {
         metadata: cyclic as unknown as Record<string, unknown>,
       }),
     ).rejects.toThrow(/provider_metadata_invalid/);
@@ -270,7 +286,7 @@ describe('D.37 withProvider — audit row contract', () => {
 
   it('T6.5-D37-0k2) BigInt in metadata → provider_metadata_invalid (JSON.stringify throws on bigint)', async () => {
     await expect(
-      withProvider(provider.id, 'bigint metadata test', async () => undefined, {
+      withProvider(provider.id, 'TKT-1100: bigint metadata test', async () => undefined, {
         metadata: { count: BigInt(123) as unknown as number },
       }),
     ).rejects.toThrow(/provider_metadata_invalid/);
@@ -280,7 +296,9 @@ describe('D.37 withProvider — audit row contract', () => {
     // No mutex / shared state in the wrapper — the providerPool serves
     // up to DB_PROVIDER_POOL_MAX (5) clients concurrently. Each call
     // writes ONE audit row; we must see 5, all with our reason marker.
-    const MARKER = `concurrent-${Date.now()}`;
+    // Audit v1.1 CC-2 — reasons must pass quality bar. Ticket prefix
+    // makes short markers valid.
+    const MARKER = `TKT-1100: concurrent-${Date.now()}`;
     const reasons = Array.from({ length: 5 }, (_, i) => `${MARKER}-call-${i}`);
     await Promise.all(
       reasons.map((r) =>

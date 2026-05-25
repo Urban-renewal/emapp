@@ -85,6 +85,32 @@ export type TenantDetail = z.infer<typeof TenantDetailSchema>;
 // Filters: org_id (optional, repeatable in query), action prefix, date
 // range. Cursor-paginated.
 // ───────────────────────────────────────────────────────────────────
+/**
+ * **Audit v1.1 SA-4 (HIGH, ISO A.12.1.3) closure** — bound the
+ * cross-tenant audit search.
+ *
+ * Pre-closure the query accepted ANY combination of filters,
+ * including "no filters at all". With `idx_audit_org_time` keyed
+ * `(org_id, created_at desc)`, the absence of an `orgId` predicate
+ * degenerated to a sequential scan of `audit_log` across every
+ * tenant. Limit=100 capped the rows RETURNED but not the rows
+ * SCANNED — at 30M rows + 60s `statement_timeout`, a Provider Admin
+ * (or a compromised account) could pin a Provider-pool slot for the
+ * full minute with a single unfiltered request.
+ *
+ * Rule: at least ONE of these must hold:
+ *   - `orgId` set (planner uses the per-org index), OR
+ *   - `fromDate` set AND `(toDate ?? now) - fromDate <= 31 days`
+ *     (planner uses the new CC-6 `(action text_pattern_ops,
+ *     created_at DESC)` index when `action` is also set; otherwise
+ *     uses the `created_at DESC, id DESC` keyset bounded by date).
+ *
+ * 31 days is the bookkeeping period most ops investigations need;
+ * widening requires `orgId`. Auditors who need a longer window can
+ * paginate via cursor across multiple 31-day chunks.
+ */
+const PROVIDER_AUDIT_MAX_DATE_SPAN_MS = 31 * 24 * 60 * 60 * 1000;
+
 export const ProviderAuditQuerySchema = z
   .object({
     orgId: z.string().uuid().optional(),
@@ -103,7 +129,21 @@ export const ProviderAuditQuerySchema = z
     limit: z.coerce.number().int().min(1).max(100).default(25),
     cursor: z.string().min(1).optional(),
   })
-  .refine((q) => !(q.fromDate && q.toDate) || q.fromDate <= q.toDate, 'fromDate must be <= toDate');
+  .refine((q) => !(q.fromDate && q.toDate) || q.fromDate <= q.toDate, 'fromDate must be <= toDate')
+  .refine(
+    (q) => {
+      if (q.orgId) return true;
+      // No orgId → require fromDate AND a bounded span.
+      if (!q.fromDate) return false;
+      const upper = q.toDate ?? new Date();
+      const spanMs = upper.getTime() - q.fromDate.getTime();
+      return spanMs >= 0 && spanMs <= PROVIDER_AUDIT_MAX_DATE_SPAN_MS;
+    },
+    {
+      message:
+        'audit search must filter by orgId, OR set fromDate with a date span <= 31 days (Audit v1.1 SA-4)',
+    },
+  );
 export type ProviderAuditQuery = z.infer<typeof ProviderAuditQuerySchema>;
 
 export const ProviderAuditItemSchema = z.object({

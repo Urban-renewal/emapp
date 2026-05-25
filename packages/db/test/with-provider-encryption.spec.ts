@@ -36,7 +36,7 @@ describe('v8.5 withProvider — encryption + hash GUCs available', () => {
   });
 
   it('1) app.encryption_key is set inside withProvider AND matches env.PII_ENCRYPTION_KEY', async () => {
-    const value = await withProvider(provider.id, 'v8.5 GUC smoke test', async (tx) => {
+    const value = await withProvider(provider.id, 'TKT-1100: v8.5 GUC smoke test', async (tx) => {
       const r = await tx.execute<{ k: string | null }>(
         // sql.raw not needed — current_setting is a built-in
         // function, parameter-bound `false` means "no error if unset"
@@ -53,7 +53,7 @@ describe('v8.5 withProvider — encryption + hash GUCs available', () => {
   });
 
   it('2) app.pii_hash_key is set inside withProvider AND matches env.PII_HASH_KEY', async () => {
-    const value = await withProvider(provider.id, 'v8.5 hash GUC smoke', async (tx) => {
+    const value = await withProvider(provider.id, 'TKT-1100: v8.5 hash GUC smoke', async (tx) => {
       const r = await tx.execute<{ k: string | null }>(
         "SELECT current_setting('app.pii_hash_key', true) AS k",
       );
@@ -86,14 +86,18 @@ describe('v8.5 withProvider — encryption + hash GUCs available', () => {
     // or return garbage. This test proves the GUC-bound decrypt
     // matches the env-bound decrypt byte-for-byte.
     const plaintext = '038123456';
-    const result = await withProvider(provider.id, 'v8.5 decrypt round-trip', async (tx) => {
-      // Encrypt with env value, decrypt with current_setting — they
-      // MUST agree because v8.5 sets the GUC from the same env.
-      const r = await tx.execute<{ matches: boolean }>(
-        `SELECT pgp_sym_decrypt(pgp_sym_encrypt('${plaintext}', '${env.PII_ENCRYPTION_KEY}'), current_setting('app.encryption_key')) = '${plaintext}' AS matches`,
-      );
-      return r.rows[0]?.matches ?? false;
-    });
+    const result = await withProvider(
+      provider.id,
+      'TKT-1100: v8.5 decrypt round-trip',
+      async (tx) => {
+        // Encrypt with env value, decrypt with current_setting — they
+        // MUST agree because v8.5 sets the GUC from the same env.
+        const r = await tx.execute<{ matches: boolean }>(
+          `SELECT pgp_sym_decrypt(pgp_sym_encrypt('${plaintext}', '${env.PII_ENCRYPTION_KEY}'), current_setting('app.encryption_key')) = '${plaintext}' AS matches`,
+        );
+        return r.rows[0]?.matches ?? false;
+      },
+    );
     expect(result).toBe(true);
   });
 
@@ -102,7 +106,7 @@ describe('v8.5 withProvider — encryption + hash GUCs available', () => {
     // GUCs revert on tx commit/rollback. A bare providerPool checkout
     // outside withProvider must NOT see the encryption key — otherwise
     // we'd have a cross-call leak.
-    await withProvider(provider.id, 'v8.5 leak test setup', async (tx) => {
+    await withProvider(provider.id, 'TKT-1100: v8.5 leak test setup', async (tx) => {
       await tx.execute("SELECT current_setting('app.encryption_key', true)");
     });
     // After the wrapper returns, the connection is back in the pool.
@@ -128,13 +132,13 @@ describe('v8.5 withProvider — encryption + hash GUCs available', () => {
     // If fn() throws, withProvider must ROLLBACK; the SET LOCAL GUCs
     // revert. The next call sees its own values.
     await expect(
-      withProvider(provider.id, 'v8.5 rollback test', async () => {
+      withProvider(provider.id, 'TKT-1100: v8.5 rollback test', async () => {
         throw new Error('synthetic failure');
       }),
     ).rejects.toThrow(/synthetic failure/);
 
     // Now a fresh call — the GUCs must work normally.
-    const v = await withProvider(provider.id, 'v8.5 post-rollback check', async (tx) => {
+    const v = await withProvider(provider.id, 'TKT-1100: v8.5 post-rollback check', async (tx) => {
       const r = await tx.execute<{ k: string | null }>(
         "SELECT current_setting('app.encryption_key', true) AS k",
       );
@@ -186,13 +190,21 @@ describe('v8.5 withProvider — encryption + hash GUCs available', () => {
     // call succeeds with a clean stored reason. This is a behavior
     // improvement (sanitize > reject) verified more thoroughly by the
     // T6.5-D37-0i battery in with-provider-d37-audit.spec.ts.
-    const evil = 'inv\0estigation';
+    // Audit v1.1 CC-2 — ticket prefix lets the substantive part be
+    // short while still proving the strip-then-validate ordering.
+    const evil = 'TKT-1100: inv\0estigation';
     await expect(withProvider(provider.id, evil, async () => undefined)).resolves.toBeUndefined();
   });
 
-  it('A4) ADVERSARIAL — reason too short (< 5 chars) is REJECTED before any DB call', async () => {
+  it('A4) ADVERSARIAL — reason too short is REJECTED before any DB call (Audit v1.1 CC-2)', async () => {
+    // Pre-CC-2: rejected with "reason is required" at length < 5.
+    // Post-CC-2: rejected with stable code reason_required (no ticket
+    // and length < 10) or reason_low_quality (length passes but not
+    // substantive). The bare reason "no" (2 chars) trips
+    // reason_required because it's below MIN_LEN even WITH a ticket
+    // prefix the length check fires when no ticket-pattern matches.
     await expect(withProvider(provider.id, 'no', async () => undefined)).rejects.toThrow(
-      /reason is required/i,
+      /reason_required|reason_low_quality/,
     );
   });
 

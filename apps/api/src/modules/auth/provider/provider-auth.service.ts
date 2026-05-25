@@ -28,9 +28,44 @@ const JWT_AUD = 'emapp-provider';
 const MAX_FAILED = 5;
 const LOCK_MS = 15 * 60 * 1000;
 
+/**
+ * The set of JWT role literals that the Provider tier accepts on
+ * issuance + verification. Today: only `'provider_admin'`. Widening
+ * (e.g. `'provider_viewer'`) is a Gate-6 / D.NN decision per D.37 —
+ * adding a new literal here requires also adding it to:
+ *   - PROVIDER_POLICY in apps/api/src/common/authz/policy.ts
+ *   - ProviderAuthorizationGuard's canProvider call
+ *   - ProviderAuthGuard's payload.role check
+ *   - DB_TO_JWT_ROLE mapping below
+ */
+export type ProviderJwtRole = 'provider_admin';
+
+/**
+ * **Audit v1.1 SA-3 (HIGH) closure.** Pre-closure the JWT role was
+ * literal `'provider_admin'` regardless of what `providerUsers.role`
+ * contained — meaning the DB column was decorative and PR #41's new
+ * `ProviderAuthorizationGuard` matrix was theoretical (an Ops attempt
+ * to demote a user via SQL had zero runtime effect).
+ *
+ * Mapping is intentionally explicit: short DB values map to
+ * tier-prefixed JWT values. Unknown DB values map to `null` and
+ * cause login rejection — defence-in-depth against a corrupted /
+ * typo'd column ("admn", "Admin", "manager").
+ */
+const DB_TO_JWT_ROLE: Record<string, ProviderJwtRole> = {
+  admin: 'provider_admin',
+  // Future widenings land HERE (and only here) once Gate-6 + D.NN approve:
+  //   viewer: 'provider_viewer',
+};
+
+function mapProviderDbRole(dbRole: unknown): ProviderJwtRole | null {
+  if (typeof dbRole !== 'string') return null;
+  return DB_TO_JWT_ROLE[dbRole] ?? null;
+}
+
 export interface ProviderTokenPayload {
   sub: string;
-  role: 'provider_admin';
+  role: ProviderJwtRole;
   sid: string;
   type: 'provider_access';
 }
@@ -59,6 +94,9 @@ export class ProviderAuthService {
     const [p] = await db
       .select({
         id: providerUsers.id,
+        // Audit v1.1 SA-3 — pull the role too so signAccess can sign
+        // the LOADED value instead of a hardcoded literal.
+        role: providerUsers.role,
         passwordHash: providerUsers.passwordHash,
         mfaSecretEncrypted: providerUsers.mfaSecretEncrypted,
         recoveryCodesHash: providerUsers.recoveryCodesHash,
@@ -71,6 +109,18 @@ export class ProviderAuthService {
       .limit(1);
 
     if (!p || p.disabledAt) {
+      await dummyVerify(dto.password);
+      throw invalid;
+    }
+
+    // Audit v1.1 SA-3 — reject unknown DB role values BEFORE checking
+    // credentials. Keeps the failure indistinguishable from "wrong
+    // password" (no oracle) while ensuring a corrupted column can
+    // never mint a JWT. Done after dummyVerify(?) — no: do it AFTER
+    // the password check to preserve timing parity. We use the same
+    // generic `invalid` exception.
+    const jwtRole = mapProviderDbRole(p.role);
+    if (!jwtRole) {
       await dummyVerify(dto.password);
       throw invalid;
     }
@@ -152,7 +202,7 @@ export class ProviderAuthService {
       });
     });
 
-    return { accessToken: this.signAccess(p.id, sid), refreshToken: rawRefresh };
+    return { accessToken: this.signAccess(p.id, jwtRole, sid), refreshToken: rawRefresh };
   }
 
   async refresh(rawToken: string): Promise<{ accessToken: string; refreshToken: string }> {
@@ -198,6 +248,22 @@ export class ProviderAuthService {
     }
     if (s.expiresAt.getTime() < Date.now()) throw expired;
 
+    // Audit v1.1 SA-3 — refresh must also re-load the role from the
+    // DB so a role change (Gate-6 widening / revocation) takes effect
+    // on the next refresh window WITHOUT requiring the user to log
+    // out and back in.
+    const [refreshUser] = await db
+      .select({ role: providerUsers.role })
+      .from(providerUsers)
+      .where(eq(providerUsers.id, s.providerUserId))
+      .limit(1);
+    const refreshJwtRole = mapProviderDbRole(refreshUser?.role);
+    if (!refreshJwtRole) {
+      // Corrupted / removed user → fail like an expired session
+      // (no oracle distinguishing the cause).
+      throw expired;
+    }
+
     const rawNew = randomBytes(32).toString('hex');
     let newSid = '';
     await db.transaction(async (tx) => {
@@ -218,7 +284,10 @@ export class ProviderAuthService {
       if (flipped.length === 0) throw expired;
     });
 
-    return { accessToken: this.signAccess(s.providerUserId, newSid), refreshToken: rawNew };
+    return {
+      accessToken: this.signAccess(s.providerUserId, refreshJwtRole, newSid),
+      refreshToken: rawNew,
+    };
   }
 
   async logout(providerUserId: string): Promise<void> {
@@ -242,9 +311,16 @@ export class ProviderAuthService {
     flushSessionCache();
   }
 
-  private signAccess(sub: string, sid: string): string {
+  /**
+   * **Audit v1.1 SA-3 (HIGH) closure.** Signs the JWT with the role
+   * LOADED from the DB (mapped through DB_TO_JWT_ROLE) instead of a
+   * hardcoded literal. Caller is responsible for already having
+   * validated the role via `mapProviderDbRole` and rejected nulls
+   * — this method assumes a valid role.
+   */
+  private signAccess(sub: string, role: ProviderJwtRole, sid: string): string {
     return this.jwt.sign(
-      { sub, role: 'provider_admin', sid, type: 'provider_access' },
+      { sub, role, sid, type: 'provider_access' },
       { expiresIn: ACCESS_TTL_SEC, issuer: JWT_ISS, audience: JWT_AUD, algorithm: 'HS256' },
     );
   }

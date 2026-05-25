@@ -1,6 +1,6 @@
 import './instrument';
 import { serverEnv as env } from '@emapp/config';
-import { reloadEnv, verifyEncryptionStartup } from '@emapp/db';
+import { reloadEnv, verifyEncryptionStartup, verifyProviderPoolRole } from '@emapp/db';
 import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import { NestFactory } from '@nestjs/core';
@@ -28,7 +28,21 @@ async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({
-      trustProxy: true,
+      // Audit v1.1 CC-1 (ISO A.12.4.1) — `trustProxy: true` honoured ANY
+      // `X-Forwarded-For`, so a caller could spoof the IP recorded in
+      // `provider_audit_log.ip` (the single forensic "where" attribution
+      // for cross-tenant access). Trust exactly ONE hop — the immediate
+      // upstream proxy. Railway + Cloudflare each add a single hop; the
+      // real client IP lands in `X-Forwarded-For[0]` and Fastify pulls
+      // it correctly with `trustProxy: 1`. Any future ingress change
+      // (extra hop, direct-Railway URL) should re-verify this number
+      // before merging.
+      //
+      // Note: an explicit CIDR list (`trustProxy: ['<railway-cidr>', ...]`)
+      // would be even stronger but requires tracking Railway's edge CIDRs
+      // which change. `1` is the conservative choice that defends the
+      // most likely attack (header forgery from a single attacker).
+      trustProxy: 1,
       // Phase 5 (docs/03 §9): the public-link signing flow puts a JWT in
       // the path (`/sign/:token`). HS256 JWTs with our claim shape are
       // ~600-800 chars; Fastify's default maxParamLength is 100, which
@@ -141,7 +155,19 @@ async function bootstrap() {
     // allow-list or browsers silently block every mutating POST that sets
     // it (Phase 3 hardening contract). Server-side tests pass without it
     // (no preflight); real browsers would 0-request the endpoint.
-    allowedHeaders: ['Authorization', 'Content-Type', 'X-Reason', 'Idempotency-Key'],
+    // Audit v1.1 SA-15 — `access_reason` (D.37 mandatory header on every
+    // /provider/* call) was missing from the CORS allowlist. A FE on a
+    // different origin would see preflight strip it and the BE would
+    // 400 `reason_required`. `X-Reason` is kept for back-compat but is
+    // not the live header name. Folded into one allowlist; future
+    // headers should be added here in alphabetical order.
+    allowedHeaders: [
+      'Authorization',
+      'Content-Type',
+      'Idempotency-Key',
+      'X-Reason',
+      'access_reason',
+    ],
     maxAge: 86400,
   });
 
@@ -163,6 +189,10 @@ async function bootstrap() {
   // BEFORE serving any request. Skipped only in the no-accounts local path.
   if (!process.env['SKIP_ENV_VALIDATION']) {
     await verifyEncryptionStartup();
+    // Audit v1.1 SA-1 — also verify the Provider pool is connected as
+    // a BYPASSRLS role (and that PROVIDER_DATABASE_URL is set in
+    // production). Skipped automatically in test/test-DB scenarios.
+    await verifyProviderPoolRole();
   }
 
   // v8 §v7-C — SIGHUP credential reload. Ops sequence to rotate R2 keys

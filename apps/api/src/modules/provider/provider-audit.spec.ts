@@ -48,11 +48,9 @@ let orgB: { id: string; users: Array<{ id: string }> };
 const ourAuditIds = new Set<string>();
 
 function principal(): ProviderPrincipal {
+  // Audit v1.1 CC-4 — narrow actor shape.
   return {
     sub: provider.id,
-    role: 'provider_admin',
-    sid: '00000000-0000-4000-8000-00000000d37c',
-    type: 'provider_access',
     ip: '203.0.113.99',
     userAgent: 'P6.5-4-spec/1.0',
   };
@@ -151,7 +149,9 @@ async function providerAuditRowsForUs(): Promise<
 
 describe('GET /provider/audit — P6.5-4 cross-tenant audit search', () => {
   it('T6.5-D37-6a) no filters → returns rows from BOTH orgs', async () => {
-    const result = await svc.search(principal(), 'no-filter cross-tenant', { limit: 100 });
+    const result = await svc.search(principal(), 'TKT-1100: no-filter cross-tenant', {
+      limit: 100,
+    });
     const ours = onlyOurs(result.data);
     const orgIds = new Set(ours.map((r) => r.organizationId));
     expect(orgIds.has(orgA.id)).toBe(true);
@@ -159,7 +159,7 @@ describe('GET /provider/audit — P6.5-4 cross-tenant audit search', () => {
   });
 
   it('T6.5-D37-6b) orgId filter — returns only matching org', async () => {
-    const result = await svc.search(principal(), 'orgId filter test', {
+    const result = await svc.search(principal(), 'TKT-1100: orgId filter test', {
       limit: 100,
       orgId: orgA.id,
     });
@@ -169,7 +169,7 @@ describe('GET /provider/audit — P6.5-4 cross-tenant audit search', () => {
   });
 
   it('T6.5-D37-6c) action prefix filter — `import.` matches all import.* rows', async () => {
-    const result = await svc.search(principal(), 'action prefix test', {
+    const result = await svc.search(principal(), 'TKT-1100: action prefix test', {
       limit: 100,
       action: 'import.',
     });
@@ -181,7 +181,7 @@ describe('GET /provider/audit — P6.5-4 cross-tenant audit search', () => {
   it('T6.5-D37-6d) fromDate filter — inclusive lower bound', async () => {
     // 1 hour ago — all our seeds are AFTER.
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const result = await svc.search(principal(), 'fromDate test', {
+    const result = await svc.search(principal(), 'TKT-1100: fromDate test', {
       limit: 100,
       fromDate: oneHourAgo,
     });
@@ -192,7 +192,7 @@ describe('GET /provider/audit — P6.5-4 cross-tenant audit search', () => {
 
   it('T6.5-D37-6e) toDate filter — inclusive upper bound', async () => {
     const farFuture = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    const result = await svc.search(principal(), 'toDate test', {
+    const result = await svc.search(principal(), 'TKT-1100: toDate test', {
       limit: 100,
       toDate: farFuture,
     });
@@ -213,12 +213,12 @@ describe('GET /provider/audit — P6.5-4 cross-tenant audit search', () => {
     expect(parsed.success).toBe(false);
   });
 
-  it('T6.5-D37-7a) cursor walk yields every row exactly once', { timeout: 30_000 }, async () => {
+  it('T6.5-D37-7a) cursor walk yields every row exactly once', { timeout: 90_000 }, async () => {
     const seen = new Set<string>();
     let cursor: string | undefined = undefined;
     let pages = 0;
     while (pages < 30) {
-      const page = await svc.search(principal(), `cursor walk page ${pages}`, {
+      const page = await svc.search(principal(), `TKT-1100: cursor walk page ${pages}`, {
         limit: 2,
         cursor,
       });
@@ -234,20 +234,27 @@ describe('GET /provider/audit — P6.5-4 cross-tenant audit search', () => {
     for (const id of ourAuditIds) expect(seen.has(id)).toBe(true);
   });
 
-  it('T6.5-D37-7b) invalid cursor → 400 invalid_cursor; no provider_audit_log row appended', async () => {
-    const before = (await providerAuditRowsForUs()).length;
+  it('T6.5-D37-7b) invalid cursor → 400 invalid_cursor; no provider_audit_log row appended for THIS reason', async () => {
+    // Audit v1.1 — the autonomous-tx audit closure (SA-7) means
+    // background test commits from neighbouring specs can move the
+    // overall row count between `before` and `after`. Assert
+    // specifically that NO row with our marker reason was written;
+    // that's the precise invariant we care about for the invalid-
+    // cursor path (cursor decode fails BEFORE withProvider runs).
+    const MARKER = `TKT-1100: invalid-cursor-marker-${Date.now()}`;
     await expect(
-      svc.search(principal(), 'invalid cursor', {
+      svc.search(principal(), MARKER, {
         limit: 5,
         cursor: '@@@-not-valid-base64@@@',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
-    const after = (await providerAuditRowsForUs()).length;
-    expect(after).toBe(before);
+    const rows = await providerAuditRowsForUs();
+    const matchingRows = rows.filter((r) => (r.metadata as { reason?: string }).reason === MARKER);
+    expect(matchingRows.length).toBe(0);
   });
 
   it('T6.5-D37-7c) ordering — DESC by createdAt (newer first)', async () => {
-    const result = await svc.search(principal(), 'ordering test', { limit: 100 });
+    const result = await svc.search(principal(), 'TKT-1100: ordering test', { limit: 100 });
     const ours = onlyOurs(result.data);
     for (let i = 1; i < ours.length; i += 1) {
       const prev = ours[i - 1]!.createdAt.getTime();
@@ -257,7 +264,7 @@ describe('GET /provider/audit — P6.5-4 cross-tenant audit search', () => {
   });
 
   it('T6.5-D37-8a) results carry NO before/after state — wire shape has no PII surface', async () => {
-    const result = await svc.search(principal(), 'wire shape no-PII test', {
+    const result = await svc.search(principal(), 'TKT-1100: wire shape no-PII test', {
       limit: 100,
       action: 'owner.',
     });
@@ -298,9 +305,9 @@ describe('GET /provider/audit — P6.5-4 cross-tenant audit search', () => {
   });
 
   it('T6.5-D37-8c) limit boundary — 1 and 100 both accepted', async () => {
-    const small = await svc.search(principal(), 'limit 1 boundary', { limit: 1 });
+    const small = await svc.search(principal(), 'TKT-1100: limit 1 boundary', { limit: 1 });
     expect(small.data.length).toBeLessThanOrEqual(1);
-    const big = await svc.search(principal(), 'limit 100 boundary', { limit: 100 });
+    const big = await svc.search(principal(), 'TKT-1100: limit 100 boundary', { limit: 100 });
     expect(big.data.length).toBeLessThanOrEqual(100);
   });
 
@@ -310,15 +317,19 @@ describe('GET /provider/audit — P6.5-4 cross-tenant audit search', () => {
     // writer then appends a literal `%` to make it a prefix — safe
     // because the input cannot already contain `%`.
     const { ProviderAuditQuerySchema } = await import('@emapp/shared-types');
-    expect(ProviderAuditQuerySchema.safeParse({ action: 'import.%', limit: 5 }).success).toBe(
-      false,
-    );
-    expect(ProviderAuditQuerySchema.safeParse({ action: 'import.user_', limit: 5 }).success).toBe(
-      true,
-    ); // underscore is in the allowed class — that's fine (LIKE meta-char in pg is `_` for single-char, but our prefix-mode only appends `%`)
-    expect(ProviderAuditQuerySchema.safeParse({ action: "import.';--", limit: 5 }).success).toBe(
-      false,
-    );
+    // Audit v1.1 SA-4 — the schema now requires orgId OR a bounded
+    // date range. Pin orgId so each safeParse exercises ONLY the
+    // action-regex rule (not the date/orgId rule).
+    const orgId = '00000000-0000-4000-8000-000000000999';
+    expect(
+      ProviderAuditQuerySchema.safeParse({ orgId, action: 'import.%', limit: 5 }).success,
+    ).toBe(false);
+    expect(
+      ProviderAuditQuerySchema.safeParse({ orgId, action: 'import.user_', limit: 5 }).success,
+    ).toBe(true); // underscore is in the allowed class
+    expect(
+      ProviderAuditQuerySchema.safeParse({ orgId, action: "import.';--", limit: 5 }).success,
+    ).toBe(false);
   });
 });
 

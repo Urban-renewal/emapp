@@ -27,18 +27,20 @@ import {
 import { setupTestDatabase } from '../../../../../packages/db/test/setup';
 
 import type { ProviderPrincipal } from './current-provider.decorator';
-import { ProviderSystemHealthService } from './provider-system-health.service';
+import {
+  ProviderSystemHealthService,
+  resetSystemHealthCacheForTests,
+} from './provider-system-health.service';
 
 let provider: TestProviderUser;
 let svc: ProviderSystemHealthService;
 let auditStartMarker: Date;
 
 function principal(): ProviderPrincipal {
+  // Audit v1.1 CC-4 — narrow actor shape; role / sid / type are not
+  // service inputs.
   return {
     sub: provider.id,
-    role: 'provider_admin',
-    sid: '00000000-0000-4000-8000-00000000d37e',
-    type: 'provider_access',
     ip: '203.0.113.77',
     userAgent: 'P6.5-5-spec/1.0',
   };
@@ -55,6 +57,10 @@ beforeEach(() => {
   // Test seam — reset the storage-error counter so each test starts
   // from a known baseline. Production code never calls this.
   resetStorageErrorStatsForTests();
+  // Audit v1.1 CC-5 — also reset the 30-s in-process system-health
+  // cache. Otherwise tests that mutate the r2 counter between two
+  // svc.read() calls would see the cached pre-mutation value.
+  resetSystemHealthCacheForTests();
 });
 
 afterAll(() => {
@@ -80,14 +86,14 @@ async function ourAuditRows(): Promise<
 
 describe('GET /provider/system-health — P6.5-5 service integration', () => {
   it('T6.5-D37-9a) response shape — top-level keys are exactly {queue, pool, r2, timestamp}', async () => {
-    const health = await svc.read(principal(), 'shape sanity');
+    const health = await svc.read(principal(), 'TKT-1100: shape sanity');
     const topKeys = Object.keys(health).sort();
     expect(topKeys).toEqual(['pool', 'queue', 'r2', 'timestamp']);
     expect(health.timestamp).toBeInstanceOf(Date);
   });
 
   it('T6.5-D37-9b) queue gauges all non-negative integers', async () => {
-    const { queue } = await svc.read(principal(), 'queue shape');
+    const { queue } = await svc.read(principal(), 'TKT-1100: queue shape');
     expect(Number.isInteger(queue.created)).toBe(true);
     expect(queue.created).toBeGreaterThanOrEqual(0);
     expect(queue.active).toBeGreaterThanOrEqual(0);
@@ -97,7 +103,7 @@ describe('GET /provider/system-health — P6.5-5 service integration', () => {
   });
 
   it('T6.5-D37-9c) pool gauges shape — both pools, ONLY {total, idle, waiting}', async () => {
-    const { pool } = await svc.read(principal(), 'pool shape');
+    const { pool } = await svc.read(principal(), 'TKT-1100: pool shape');
     expect(Object.keys(pool).sort()).toEqual(['app', 'provider']);
     for (const name of ['app', 'provider'] as const) {
       const p = pool[name];
@@ -110,7 +116,7 @@ describe('GET /provider/system-health — P6.5-5 service integration', () => {
   });
 
   it('T6.5-D37-9d) r2 counter starts at 0 after reset; recordStorageError increments', async () => {
-    const before = await svc.read(principal(), 'r2 counter before');
+    const before = await svc.read(principal(), 'TKT-1100: r2 counter before');
     expect(before.r2.errorsSinceBoot).toBe(0);
     expect(before.r2.lastErrorAt).toBeNull();
 
@@ -118,26 +124,34 @@ describe('GET /provider/system-health — P6.5-5 service integration', () => {
     recordStorageError({ op: 'get', errorClass: 'TimeoutError' });
     recordStorageError({ op: 'delete', errorClass: 'NoSuchBucket' });
 
-    const after = await svc.read(principal(), 'r2 counter after');
+    // Audit v1.1 CC-5 — bust the 30-s cache so the next read fetches
+    // fresh stats. In production the cache absorbs polls within a 30-s
+    // window; here we explicitly want the post-recordStorageError
+    // snapshot, not the pre-mutation cached one.
+    resetSystemHealthCacheForTests();
+
+    const after = await svc.read(principal(), 'TKT-1100: r2 counter after');
     expect(after.r2.errorsSinceBoot).toBe(3);
     expect(after.r2.lastErrorAt).toBeInstanceOf(Date);
   });
 
   it('T6.5-D37-9e) r2 lastErrorAt is populated on first error and advances on subsequent errors', async () => {
     recordStorageError({ op: 'put', errorClass: 'X' });
-    const a = await svc.read(principal(), 'lastErrorAt a');
+    resetSystemHealthCacheForTests();
+    const a = await svc.read(principal(), 'TKT-1100: lastErrorAt a');
     const firstTimestamp = a.r2.lastErrorAt;
     expect(firstTimestamp).toBeInstanceOf(Date);
     // Wait a tick to guarantee the next Date.now() is different (Windows
     // can have ~16ms resolution; 25ms is safe).
     await new Promise((r) => setTimeout(r, 25));
     recordStorageError({ op: 'put', errorClass: 'X' });
-    const b = await svc.read(principal(), 'lastErrorAt b');
+    resetSystemHealthCacheForTests();
+    const b = await svc.read(principal(), 'TKT-1100: lastErrorAt b');
     expect(b.r2.lastErrorAt!.getTime()).toBeGreaterThan(firstTimestamp!.getTime());
   });
 
   it('T6.5-D37-9f) wire-shape leaf values are ONLY numbers / Date / null (no string PII surface)', async () => {
-    const health = await svc.read(principal(), 'leaf-type scan');
+    const health = await svc.read(principal(), 'TKT-1100: leaf-type scan');
     function assertLeaves(obj: unknown, path = '$'): void {
       if (obj === null) return;
       if (typeof obj === 'number') return;
@@ -171,7 +185,12 @@ describe('GET /provider/system-health — P6.5-5 service integration', () => {
   });
 
   it('T6.5-D37-10b) 5 concurrent calls all succeed → 5 distinct audit rows; no shared state corruption', async () => {
-    const markers = Array.from({ length: 5 }, (_, i) => `concurrent-health-${Date.now()}-${i}`);
+    // Audit v1.1 CC-2 — reasons must pass the quality bar. Use a
+    // ticket prefix so the validator accepts even short markers.
+    const markers = Array.from(
+      { length: 5 },
+      (_, i) => `TKT-1100: concurrent-health-${Date.now()}-${i}`,
+    );
     const results = await Promise.all(markers.map((m) => svc.read(principal(), m)));
     // All 5 succeed.
     expect(results.length).toBe(5);

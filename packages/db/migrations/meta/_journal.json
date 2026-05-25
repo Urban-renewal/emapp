@@ -239,6 +239,13 @@
       "when": 1779046800000,
       "tag": "0033_owners_name_encryption",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1779047400000,
+      "tag": "0034_audit_v1_1_indexes",
+      "breakpoints": false
     }
   ]
 }

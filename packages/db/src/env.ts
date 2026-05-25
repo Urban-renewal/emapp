@@ -15,6 +15,21 @@ const serverSchema = {
   // Optional: when unset, migrate.ts falls back to DATABASE_URL
   // (preserving local dev / pre-deploy workflows).
   DATABASE_MIGRATE_URL: z.string().url().optional(),
+  // **Audit v1.1 SA-1 (HIGH) closure.** Pre-closure this was unconditionally
+  // optional and client.ts:121 silently fell back to DATABASE_URL —
+  // meaning a production deploy without `PROVIDER_DATABASE_URL` would
+  // connect the "provider" pool as `app_user` (no BYPASSRLS). The
+  // INSERT into provider_audit_log would die loudly (REVOKE in 0009),
+  // but the real risk was the WRONG fix (GRANT app_user instead of
+  // setting the env var) permanently destroying role separation.
+  //
+  // Validation here PLUS the startup role probe in
+  // `packages/db/src/startup-check.ts#verifyProviderPoolRole` (called
+  // from apps/api/src/main.ts) gives belt-and-suspenders defence.
+  // `superRefine` is used because we need access to the sibling
+  // `NODE_ENV` field — t3-env doesn't expose object-level cross-field
+  // refinement, so we cheat by registering an issue at parse time
+  // when production lacks the URL.
   PROVIDER_DATABASE_URL: z.string().url().optional(),
   PII_ENCRYPTION_KEY: z.string().length(44),
   PII_HASH_KEY: z.string().length(44),

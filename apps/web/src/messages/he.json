@@ -332,7 +332,7 @@
     "doneBody": "תודה. החתימה נשמרה במערכת. ניתן לסגור את החלון.",
     "doneSavedAt": "זמן שמירה: {when}",
     "pageTitle": "חתימה על מסמך",
-    "greeting": "שלום {name}, אנא קרא את המסמך וחתום למטה.",
+    "greeting": "שלום <name>שם בעל הדירה</name>, אנא קרא את המסמך וחתום למטה.",
     "documentSectionTitle": "המסמך לחתימה",
     "openDocument": "פתח את המסמך לצפייה",
     "linkExpires": "תוקף קישור החתימה: {when}",

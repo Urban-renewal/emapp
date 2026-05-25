@@ -332,7 +332,7 @@
     "doneBody": "Thank you. The signature has been saved. You can close this window.",
     "doneSavedAt": "Saved at: {when}",
     "pageTitle": "Document signature",
-    "greeting": "Hello {name}, please read the document and sign below.",
+    "greeting": "Hello <name>owner name</name>, please read the document and sign below.",
     "documentSectionTitle": "Document to sign",
     "openDocument": "Open document for review",
     "linkExpires": "Link expires: {when}",

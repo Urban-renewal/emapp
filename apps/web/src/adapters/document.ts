@@ -1,5 +1,6 @@
 import type { Document, DocumentType } from '@emapp/shared-types';
 
+import { stripBidiOverrides } from '@/lib/bidi';
 import { formatRelative } from '@/lib/format';
 import type { DocumentViewModel } from '@/models/document.vm';
 
@@ -25,7 +26,11 @@ export function toDocumentViewModel(d: Document, locale: 'he' | 'en' = 'he'): Do
   const labels = locale === 'he' ? TYPE_LABELS_HE : TYPE_LABELS_EN;
   return {
     id: d.id,
-    name: d.name,
+    // §SEC-M4 — strip bidi-override codepoints. Document name is shown
+    // in <option dir="auto"> on the signature-requests/new page; that
+    // element cannot contain <bdi>, so the text-level strip is the
+    // ONLY line of defense for that view.
+    name: stripBidiOverrides(d.name),
     type: d.type,
     typeLabel: labels[d.type],
     mimeType: d.mimeType,

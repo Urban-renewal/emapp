@@ -18,28 +18,13 @@
  * entered, Excel imported, OTP-authenticated tenant typed). NOT
  * needed for hard-coded labels from i18n messages.
  */
+import { BIDI_OVERRIDE_REGEX, stripBidiOverrides } from '@/lib/bidi';
 import { cn } from '@/lib/utils';
 
-/**
- * Strip Unicode bidi/embedding override code points that an attacker
- * could use to spoof rendering:
- *  - U+202A LRE, U+202B RLE, U+202C PDF, U+202D LRO, U+202E RLO
- *  - U+2066 LRI, U+2067 RLI, U+2068 FSI, U+2069 PDI
- *  - U+200E LRM, U+200F RLM (less dangerous but rarely intended)
- *
- * Exported so adapters and tests can use the same definition.
- *
- * Written with `\u` escapes (NOT literal code points) so the file
- * itself doesn't trigger eslint-plugin-security/detect-bidi-characters
- * (and so a code reviewer reading this file sees ranges, not invisible
- * characters).
- */
-// eslint-disable-next-line security/detect-bidi-characters -- intentional: stripper definition
-export const BIDI_OVERRIDE_REGEX = /[‪-‮⁦-⁩‎‏]/g;
-
-export function stripBidiOverrides(s: string): string {
-  return s.replace(BIDI_OVERRIDE_REGEX, '');
-}
+// Re-export the bidi utilities for back-compat — adapters + tests
+// historically imported them from this component file. New code should
+// prefer `@/lib/bidi` directly (no React dependency).
+export { BIDI_OVERRIDE_REGEX, stripBidiOverrides };
 
 export interface NameDisplayProps {
   name: string;

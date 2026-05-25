@@ -11,22 +11,60 @@ updates:
         dependency-type: 'development'
       production-dependencies:
         dependency-type: 'production'
-    # Major-version bumps of build/test/lint tooling commonly require Node-version
-    # bumps and codemod work — too risky for an automated PR. Track them manually.
+    # Major-version bumps of build/test/lint tooling commonly require codemods,
+    # config rewrites, or Node-version bumps — too risky for an automated PR.
+    # Track them manually and apply via dedicated single-tool PRs.
+    #
+    # Coverage expanded after PR #60 (dev-deps weekly bundle) failed build + e2e
+    # by including tailwindcss 3→4 (full config API rewrite), eslint-plugin-unicorn
+    # 55→64, eslint-plugin-security 3→4, eslint-config-prettier 9→10, lint-staged
+    # 15→17 in a single grouped commit with no isolated revert path. Wildcard
+    # patterns added so future tooling-major bumps land in their own PRs.
     ignore:
+      # TypeScript core
       - dependency-name: 'typescript'
         update-types: ['version-update:semver-major']
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+
+      # ESLint ecosystem — every plugin major reshuffles rule names
       - dependency-name: 'eslint'
         update-types: ['version-update:semver-major']
+      - dependency-name: '@typescript-eslint/*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'eslint-config-*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'eslint-plugin-*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'eslint-import-resolver-*'
+        update-types: ['version-update:semver-major']
+
+      # Test runners
       - dependency-name: 'vitest'
         update-types: ['version-update:semver-major']
       - dependency-name: '@vitest/*'
         update-types: ['version-update:semver-major']
-      - dependency-name: '@typescript-eslint/*'
-        update-types: ['version-update:semver-major']
-      - dependency-name: '@types/node'
-        update-types: ['version-update:semver-major']
+
+      # Commit / lint tooling — config shape changes between majors
       - dependency-name: '@commitlint/*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'lint-staged'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'husky'
+        update-types: ['version-update:semver-major']
+
+      # CSS framework — tailwind 3→4 is a full config-API migration
+      - dependency-name: 'tailwindcss'
+        update-types: ['version-update:semver-major']
+
+      # Framework majors — each is a Phase-level decision, never auto-bumped
+      - dependency-name: 'next'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@nestjs/*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'drizzle-orm'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'drizzle-kit'
         update-types: ['version-update:semver-major']
 
   - package-ecosystem: 'github-actions'

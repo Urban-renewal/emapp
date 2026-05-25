@@ -4,13 +4,11 @@ import { CreateBuildingInput, type CreateBuilding } from '@emapp/shared-types';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
+import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
 import { useCreateBuilding } from '@/hooks/use-buildings';
-import { ApiClientError } from '@/lib/api/projects';
-import { applyValidationErrors } from '@/lib/errors';
 
 export default function NewBuildingPage() {
   const t = useTranslations('buildings');
@@ -19,7 +17,6 @@ export default function NewBuildingPage() {
   const projectId = params?.id ?? '';
   const router = useRouter();
   const mutation = useCreateBuilding(projectId);
-  const [serverError, setServerError] = useState<string | null>(null);
 
   const {
     register,
@@ -30,21 +27,18 @@ export default function NewBuildingPage() {
     resolver: zodResolver(CreateBuildingInput),
   });
 
+  const { serverError, handle, reset } = useApiErrorHandler<CreateBuilding>({
+    setError,
+    fallback: () => t('createFailed'),
+  });
+
   async function onSubmit(values: CreateBuilding) {
-    setServerError(null);
+    reset();
     try {
       const building = await mutation.mutateAsync(values);
       router.push(`/buildings/${building.id}`);
     } catch (e) {
-      if (e instanceof ApiClientError && e.code === 'validation_error') {
-        const env = { code: e.code, message: e.message, details: e.details };
-        const applied = applyValidationErrors(env, (field, message) => {
-          setError(field as keyof CreateBuilding, { type: 'server', message });
-        });
-        if (applied.length === 0) setServerError(t('createFailed'));
-      } else {
-        setServerError(t('createFailed'));
-      }
+      handle(e);
     }
   }
 

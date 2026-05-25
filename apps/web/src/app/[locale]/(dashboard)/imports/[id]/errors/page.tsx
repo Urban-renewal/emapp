@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
+import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { useImportErrors } from '@/hooks/use-imports';
 
 export default function ImportErrorsPage() {
@@ -14,7 +15,7 @@ export default function ImportErrorsPage() {
   const importId = params?.id;
   const { data, isLoading, isError, refetch } = useImportErrors(importId);
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">{t('loading')}</p>;
+  if (isLoading) return <ListSkeleton rows={6} />;
   if (isError) {
     return (
       <div className="space-y-3">

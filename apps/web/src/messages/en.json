@@ -323,5 +323,26 @@
       "documentId": "Document ID",
       "ownerId": "Owner ID"
     }
+  },
+  "sign": {
+    "loading": "Loading...",
+    "invalidTitle": "Link no longer valid",
+    "invalidBody": "This signing link is no longer available. It may have expired, been signed, or been cancelled. Contact your project manager for a new link.",
+    "doneTitle": "Signature received ✓",
+    "doneBody": "Thank you. The signature has been saved. You can close this window.",
+    "doneSavedAt": "Saved at: {when}",
+    "pageTitle": "Document signature",
+    "greeting": "Hello {name}, please read the document and sign below.",
+    "documentSectionTitle": "Document to sign",
+    "openDocument": "Open document for review",
+    "linkExpires": "Link expires: {when}",
+    "signatureSectionTitle": "Signature",
+    "signatureHint": "Sign with mouse or finger in the white area below. (max {kb}KB)",
+    "clear": "Clear",
+    "submit": "Submit signature",
+    "submitting": "Submitting...",
+    "errorTooShort": "Signature is too short. Try a fuller signature.",
+    "errorTooLarge": "Signature is too large. Try a simpler signature.",
+    "errorInvalid": "Signature is invalid."
   }
 }

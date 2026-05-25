@@ -1,8 +1,8 @@
 'use client';
 
-import type { CreateBuilding } from '@emapp/shared-types';
+import type { Building, CreateBuilding } from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocale } from 'next-intl';
+import { useCallback } from 'react';
 
 import { toBuildingViewModel, toBuildingViewModels } from '@/adapters/building';
 import {
@@ -12,18 +12,23 @@ import {
   listBuildings,
   type BuildingListPage,
 } from '@/lib/api/buildings';
+import { useDisplayLocale } from '@/lib/locale';
 import type { BuildingViewModel } from '@/models/building.vm';
 
 const BUILDINGS_KEY = ['buildings'] as const;
-function he_or_en(loc: string): 'he' | 'en' {
-  return loc === 'en' ? 'en' : 'he';
-}
 
 export function useBuildingList(
   projectId: string | undefined,
   query: { limit?: number; cursor?: string } = {},
 ) {
-  const locale = he_or_en(useLocale());
+  const locale = useDisplayLocale();
+  const select = useCallback(
+    (data: BuildingListPage) => ({
+      items: toBuildingViewModels(data.items, locale),
+      page: data.page,
+    }),
+    [locale],
+  );
   return useQuery<
     BuildingListPage,
     Error,
@@ -36,12 +41,13 @@ export function useBuildingList(
     },
     enabled: Boolean(projectId),
     staleTime: 30_000,
-    select: (data) => ({ items: toBuildingViewModels(data.items, locale), page: data.page }),
+    select,
   });
 }
 
 export function useBuilding(id: string | undefined) {
-  const locale = he_or_en(useLocale());
+  const locale = useDisplayLocale();
+  const select = useCallback((data: Building) => toBuildingViewModel(data, locale), [locale]);
   return useQuery({
     queryKey: [...BUILDINGS_KEY, 'one', id, locale],
     queryFn: () => {
@@ -50,7 +56,7 @@ export function useBuilding(id: string | undefined) {
     },
     enabled: Boolean(id),
     staleTime: 30_000,
-    select: (data) => toBuildingViewModel(data, locale),
+    select,
   });
 }
 

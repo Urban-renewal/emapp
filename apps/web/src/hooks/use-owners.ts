@@ -1,8 +1,8 @@
 'use client';
 
-import type { CreateOwner } from '@emapp/shared-types';
+import type { CreateOwner, Owner } from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocale } from 'next-intl';
+import { useCallback } from 'react';
 
 import { toOwnerViewModel, toOwnerViewModels } from '@/adapters/owner';
 import {
@@ -12,25 +12,31 @@ import {
   listOwners,
   type OwnerListPage,
 } from '@/lib/api/owners';
+import { useDisplayLocale } from '@/lib/locale';
 import type { OwnerViewModel } from '@/models/owner.vm';
 
 const OWNERS_KEY = ['owners'] as const;
-function he_or_en(loc: string): 'he' | 'en' {
-  return loc === 'en' ? 'en' : 'he';
-}
 
 export function useOwnerList(query: { limit?: number; cursor?: string } = {}) {
-  const locale = he_or_en(useLocale());
+  const locale = useDisplayLocale();
+  const select = useCallback(
+    (data: OwnerListPage) => ({
+      items: toOwnerViewModels(data.items, locale),
+      page: data.page,
+    }),
+    [locale],
+  );
   return useQuery<OwnerListPage, Error, { items: OwnerViewModel[]; page: OwnerListPage['page'] }>({
     queryKey: [...OWNERS_KEY, 'list', query, locale],
     queryFn: () => listOwners(query),
     staleTime: 30_000,
-    select: (data) => ({ items: toOwnerViewModels(data.items, locale), page: data.page }),
+    select,
   });
 }
 
 export function useOwner(id: string | undefined) {
-  const locale = he_or_en(useLocale());
+  const locale = useDisplayLocale();
+  const select = useCallback((data: Owner) => toOwnerViewModel(data, locale), [locale]);
   return useQuery({
     queryKey: [...OWNERS_KEY, 'one', id, locale],
     queryFn: () => {
@@ -39,7 +45,7 @@ export function useOwner(id: string | undefined) {
     },
     enabled: Boolean(id),
     staleTime: 30_000,
-    select: (data) => toOwnerViewModel(data, locale),
+    select,
   });
 }
 

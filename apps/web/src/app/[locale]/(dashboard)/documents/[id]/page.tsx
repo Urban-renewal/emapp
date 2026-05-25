@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useArchiveDocument, useDocument, useDownloadDocument } from '@/hooks/use-documents';
 import { ApiClientError } from '@/lib/api/projects';
@@ -21,7 +22,7 @@ export default function DocumentDetailPage() {
   const download = useDownloadDocument();
   const [actionError, setActionError] = useState<string | null>(null);
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">{t('loading')}</p>;
+  if (isLoading) return <ListSkeleton withRows={false} />;
   if (isError) {
     const notFound = error instanceof ApiClientError && error.code === 'not_found';
     return (

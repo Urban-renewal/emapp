@@ -6,17 +6,11 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { useArchiveProject, useProject } from '@/hooks/use-projects';
-import { ApiClientError } from '@/lib/api/projects';
-import { cn } from '@/lib/utils';
-
-const STATUS_BADGE: Record<'gray' | 'amber' | 'emerald' | 'red', string> = {
-  gray: 'bg-gray-100 text-gray-700',
-  amber: 'bg-amber-100 text-amber-800',
-  emerald: 'bg-emerald-100 text-emerald-800',
-  red: 'bg-red-100 text-red-800',
-};
+import { ApiClientError } from '@/lib/api/errors';
 
 export default function ProjectDetailPage() {
   const t = useTranslations('projects');
@@ -27,7 +21,7 @@ export default function ProjectDetailPage() {
   const archive = useArchiveProject();
   const [actionError, setActionError] = useState<string | null>(null);
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">{t('loading')}</p>;
+  if (isLoading) return <ListSkeleton withRows={false} />;
 
   if (isError) {
     const notFound = error instanceof ApiClientError && error.code === 'not_found';
@@ -67,14 +61,7 @@ export default function ProjectDetailPage() {
             <NameDisplay name={data.name} />
           </h1>
           <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                'rounded-full px-2 py-0.5 text-xs font-medium',
-                STATUS_BADGE[data.statusColor],
-              )}
-            >
-              {data.statusLabel}
-            </span>
+            <StatusBadge color={data.statusColor}>{data.statusLabel}</StatusBadge>
             <span className="text-xs text-muted-foreground">{data.typeLabel}</span>
             <span className="text-xs text-muted-foreground">· {data.createdRelative}</span>
             {data.isArchived && (

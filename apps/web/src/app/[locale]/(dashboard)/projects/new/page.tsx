@@ -4,13 +4,11 @@ import { CreateProjectInput, type CreateProject, type ProjectType } from '@emapp
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
+import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
 import { useCreateProject } from '@/hooks/use-projects';
-import { ApiClientError } from '@/lib/api/projects';
-import { applyValidationErrors } from '@/lib/errors';
 
 const PROJECT_TYPES: ProjectType[] = ['tama38_1', 'tama38_2', 'pinui_binui'];
 
@@ -19,7 +17,6 @@ export default function NewProjectPage() {
   const tt = useTranslations('projects.types');
   const router = useRouter();
   const mutation = useCreateProject();
-  const [serverError, setServerError] = useState<string | null>(null);
 
   const {
     register,
@@ -31,23 +28,21 @@ export default function NewProjectPage() {
     defaultValues: { type: 'tama38_2' },
   });
 
+  // §SOLID-M7 — centralised API-error handling. Per-field validation
+  // errors flow via setError; non-validation BE codes fall back to the
+  // localized create-failed message.
+  const { serverError, handle, reset } = useApiErrorHandler<CreateProject>({
+    setError,
+    fallback: () => t('createFailed'),
+  });
+
   async function onSubmit(values: CreateProject) {
-    setServerError(null);
+    reset();
     try {
       const project = await mutation.mutateAsync(values);
       router.push(`/projects/${project.id}`);
     } catch (e) {
-      if (e instanceof ApiClientError && e.code === 'validation_error') {
-        const env = { code: e.code, message: e.message, details: e.details };
-        const applied = applyValidationErrors(env, (field, message) => {
-          setError(field as keyof CreateProject, { type: 'server', message });
-        });
-        if (applied.length === 0) setServerError(t('createFailed'));
-      } else if (e instanceof ApiClientError) {
-        setServerError(t('createFailed'));
-      } else {
-        setServerError(t('createFailed'));
-      }
+      handle(e);
     }
   }
 

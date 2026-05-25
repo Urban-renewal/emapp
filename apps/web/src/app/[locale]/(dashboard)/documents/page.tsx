@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useDocumentList } from '@/hooks/use-documents';
 
@@ -14,7 +15,7 @@ export default function DocumentsPage() {
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const { data, isLoading, isError, refetch } = useDocumentList({ limit: 25, cursor });
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">{t('loading')}</p>;
+  if (isLoading) return <ListSkeleton rows={6} />;
   if (isError) {
     return (
       <div className="space-y-3">

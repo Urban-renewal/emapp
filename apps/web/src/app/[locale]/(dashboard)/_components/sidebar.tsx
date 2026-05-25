@@ -1,6 +1,15 @@
 'use client';
 
-import { FileSignature, FileSpreadsheet, FileText, Home, Lock, Shield, Users } from 'lucide-react';
+import {
+  FileSignature,
+  FileSpreadsheet,
+  FileText,
+  Home,
+  Lock,
+  Shield,
+  UserPlus,
+  Users,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 
@@ -16,6 +25,7 @@ interface NavItem {
     | 'imports'
     | 'documents'
     | 'signatureRequests'
+    | 'members'
     | 'provider';
   icon: typeof Home;
   enabled: boolean;
@@ -56,6 +66,14 @@ export function Sidebar({ role }: Props) {
       enabled: true,
     },
   ];
+
+  // §D.17 — Members admin is Manager-only (policy.ts:71). The BE's
+  // AuthorizationGuard returns 403 for non-Manager calls regardless,
+  // but cosmetically hiding the link keeps Agents / Viewers from
+  // clicking into a list that can only show them an error. Phase 4c S1.
+  if (role === 'manager') {
+    items.push({ href: '/members', labelKey: 'members', icon: UserPlus, enabled: true });
+  }
 
   // §D.37 — Provider Admin nav item appears ONLY for the provider tier.
   // Org-tier roles (manager/agent/viewer/contractor/tenant) never see

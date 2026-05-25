@@ -276,6 +276,7 @@
   "signatureRequests": {
     "listTitle": "Signature Requests",
     "create": "New request",
+    "createHint": "Pick a document and an owner to generate a single-use signing link (valid 7 days). The link is emailed to the resident and exposed as a WhatsApp deep-link when a phone number is on file.",
     "creating": "Creating...",
     "createdTitle": "Signature request created",
     "createdHint": "Copy the signing link and send it to the resident via your preferred channel (WhatsApp / email). The link is single-use and valid for 7 days.",

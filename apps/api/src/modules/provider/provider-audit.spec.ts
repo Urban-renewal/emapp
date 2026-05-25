@@ -90,10 +90,21 @@ async function seedAudit(input: {
   );
 }
 
+// Audit v1.1 verify-cleanup — capture the timestamp BEFORE seeding so
+// the cursor-walk test (T6.5-D37-7a) can use it as a `fromDate` floor.
+// In CI the audit_log table has more pollution from parallel tests, so
+// without a date floor the 30-page walk may not reach our 5 seeded
+// rows. Using a date floor confines the walk to "rows added during
+// this spec's lifetime" — finds our 5 rows regardless of pollution
+// volume. Set just before the `await` so the floor catches every
+// seeded row.
+let auditSpecStartTime: Date;
+
 beforeAll(async () => {
   await setupTestDatabase();
   provider = await createTestProviderUser();
   svc = new ProviderAuditService();
+  auditSpecStartTime = new Date();
 
   // Two orgs, each with a manager whose id we can pivot on.
   orgA = await createTestOrg(`${TEST_PREFIX}-A`, `${TEST_PREFIX}-a`);
@@ -214,6 +225,12 @@ describe('GET /provider/audit — P6.5-4 cross-tenant audit search', () => {
   });
 
   it('T6.5-D37-7a) cursor walk yields every row exactly once', { timeout: 90_000 }, async () => {
+    // Audit v1.1 verify-cleanup — bound the walk to rows added during
+    // this spec's lifetime. Without a date floor, parallel test
+    // pollution in CI's audit_log can crowd out our 5 seeded rows
+    // past the 30-page walk window. The floor is `auditSpecStartTime`
+    // (captured in beforeAll BEFORE seedAudit ran), so every one of
+    // `ourAuditIds` IS within the bound.
     const seen = new Set<string>();
     let cursor: string | undefined = undefined;
     let pages = 0;
@@ -221,6 +238,7 @@ describe('GET /provider/audit — P6.5-4 cross-tenant audit search', () => {
       const page = await svc.search(principal(), `TKT-1100: cursor walk page ${pages}`, {
         limit: 2,
         cursor,
+        fromDate: auditSpecStartTime,
       });
       for (const r of page.data) {
         expect(seen.has(r.id)).toBe(false);

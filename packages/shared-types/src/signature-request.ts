@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { HttpsUrlSchema, WhatsAppDeepLinkSchema } from './safe-url';
+
 // Canonical SignatureRequest contract — Phase 5 (docs/03 §9, D.12 LAW).
 //
 // Locked-schema alignment: the `signature_requests` table (migration 0021)
@@ -64,7 +66,8 @@ export const SignatureDeliveryChannelResultSchema = z.object({
   to: z.string().optional(),
   /** Whatsapp deep-link `wa.me/<phone>?text=...` — present ONLY for the
    *  whatsapp channel. Manager taps to send via their own WhatsApp. */
-  deepLink: z.string().url().optional(),
+  // §RED-1 — scheme allowlist: deep link goes to https://wa.me/... only.
+  deepLink: WhatsAppDeepLinkSchema.optional(),
   /** Generic reason for unavailability (e.g. `'no_email_on_file'`,
    *  `'sms_provider_not_configured'`). NEVER a provider-internal code. */
   reason: z.string().optional(),
@@ -82,7 +85,8 @@ export type SignatureDeliveryReport = z.infer<typeof SignatureDeliveryReportSche
  * a bearer credential — short TTL (7d), single-use, never logged. */
 export const SignatureRequestCreateResponseSchema = z.object({
   request: SignatureRequestSchema,
-  signUrl: z.string().url(),
+  // §RED-1 — bearer credential URL; pin to https.
+  signUrl: HttpsUrlSchema,
   delivery: SignatureDeliveryReportSchema,
 });
 export type SignatureRequestCreateResponse = z.infer<typeof SignatureRequestCreateResponseSchema>;
@@ -107,7 +111,8 @@ export type ListSignatureRequestsQueryDto = z.infer<typeof ListSignatureRequests
 export const PublicSignPreviewSchema = z.object({
   document: z.object({
     name: z.string(),
-    downloadUrl: z.string().url(),
+    // §RED-1 — public sign page renders this in <a href>; pin to https.
+    downloadUrl: HttpsUrlSchema,
   }),
   owner: z.object({
     name: z.string(),

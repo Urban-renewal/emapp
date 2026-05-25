@@ -12,6 +12,7 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
+    "seed:dev": "tsx scripts/seed-dev.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:rls": "vitest run test/rls-isolation.spec.ts",
@@ -19,6 +20,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@node-rs/argon2": "^2.0.2",
     "@t3-oss/env-core": "^0.11.0",
     "drizzle-orm": "^0.45.2",
     "pg": "^8.13.0",

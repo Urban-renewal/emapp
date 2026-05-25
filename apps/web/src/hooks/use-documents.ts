@@ -1,0 +1,112 @@
+'use client';
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLocale } from 'next-intl';
+
+import { toDocumentViewModel, toDocumentViewModels } from '@/adapters/document';
+import {
+  archiveDocument,
+  canonicalMime,
+  createDocument,
+  finalizeDocument,
+  getDocument,
+  getDownloadUrl,
+  listDocuments,
+  sha256OfBlob,
+  uploadToPresigned,
+  type DocumentListPage,
+} from '@/lib/api/documents';
+import type { DocumentViewModel } from '@/models/document.vm';
+
+const DOCUMENTS_KEY = ['documents'] as const;
+function he_or_en(loc: string): 'he' | 'en' {
+  return loc === 'en' ? 'en' : 'he';
+}
+
+export function useDocumentList(
+  query: {
+    limit?: number;
+    cursor?: string;
+    projectId?: string;
+    apartmentId?: string;
+  } = {},
+) {
+  const locale = he_or_en(useLocale());
+  return useQuery<
+    DocumentListPage,
+    Error,
+    { items: DocumentViewModel[]; page: DocumentListPage['page'] }
+  >({
+    queryKey: [...DOCUMENTS_KEY, 'list', query, locale],
+    queryFn: () => listDocuments({ limit: query.limit ?? 25, ...query }),
+    staleTime: 30_000,
+    select: (data) => ({ items: toDocumentViewModels(data.items, locale), page: data.page }),
+  });
+}
+
+export function useDocument(id: string | undefined) {
+  const locale = he_or_en(useLocale());
+  return useQuery({
+    queryKey: [...DOCUMENTS_KEY, 'one', id, locale],
+    queryFn: () => {
+      if (!id) throw new Error('useDocument requires an id');
+      return getDocument(id);
+    },
+    enabled: Boolean(id),
+    staleTime: 30_000,
+    select: (data) => toDocumentViewModel(data, locale),
+  });
+}
+
+/** Orchestrates the 3-phase upload: create → PUT to R2 → finalize. */
+export function useUploadDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: {
+      file: File;
+      type: import('@emapp/shared-types').DocumentType;
+      mimeType: import('@emapp/shared-types').DocumentMime;
+      projectId?: string;
+      apartmentId?: string;
+    }) => {
+      const contentHash = await sha256OfBlob(args.file);
+      // §v9-M-3 — canonicalize the mime ONCE so the signed Content-
+      // Type at create-time matches what we PUT to R2.
+      const mimeType = canonicalMime(args.mimeType) as typeof args.mimeType;
+      const created = await createDocument({
+        name: args.file.name,
+        type: args.type,
+        mimeType,
+        sizeBytes: args.file.size,
+        contentHash,
+        projectId: args.projectId ?? null,
+        apartmentId: args.apartmentId ?? null,
+      });
+      await uploadToPresigned(created.uploadUrl, args.file, mimeType);
+      const finalized = await finalizeDocument(created.document.id, {
+        sizeBytes: args.file.size,
+        contentHash,
+      });
+      return finalized;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: DOCUMENTS_KEY });
+    },
+  });
+}
+
+export function useArchiveDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => archiveDocument(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: DOCUMENTS_KEY });
+    },
+  });
+}
+
+export function useDownloadDocument() {
+  return useMutation({
+    mutationFn: (id: string) => getDownloadUrl(id),
+  });
+}

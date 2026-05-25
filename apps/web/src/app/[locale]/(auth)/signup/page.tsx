@@ -1,22 +1,16 @@
 'use client';
 
+import { SignupSchema, type SignupDto } from '@emapp/shared-types';
 import { zodResolver } from '@hookform/resolvers/zod';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { z } from 'zod';
 
 import { Button } from '@/components/ui/button';
 import { apiClient, isOk } from '@/lib/api-client';
-
-const SignupSchema = z.object({
-  org_name: z.string().min(2).max(120),
-  name: z.string().min(2).max(120),
-  email: z.string().email(),
-  password: z.string().min(12).regex(/[A-Z]/).regex(/[a-z]/).regex(/[0-9]/),
-});
-type SignupForm = z.infer<typeof SignupSchema>;
+import { applyValidationErrors } from '@/lib/errors';
 
 export default function SignupPage() {
   const t = useTranslations('auth');
@@ -26,22 +20,39 @@ export default function SignupPage() {
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting },
-  } = useForm<SignupForm>({ resolver: zodResolver(SignupSchema) });
+  } = useForm<SignupDto>({ resolver: zodResolver(SignupSchema) });
 
-  async function onSubmit(data: SignupForm) {
+  async function onSubmit(data: SignupDto) {
     setServerError(null);
+    // D.14 anti-enumeration: the server returns the SAME 201 envelope on
+    // duplicate-email signups (no `email_taken` is ever emitted today). The
+    // `email_taken` branch below stays as defense-in-depth in case the
+    // contract drifts; today's signup-with-duplicate-email leads to a
+    // success envelope without cookies, the next render bounces to /login.
     const res = await apiClient.post<{ user: object }>('/auth/signup', data);
     if (isOk(res)) {
       router.push('/');
       router.refresh();
+      return;
+    }
+    // §SEC-M3 — D.14 anti-enumeration contract: the server returns
+    // the SAME 201 envelope on duplicate-email signups (no `email_taken`
+    // is ever emitted). The previous defensive `else if (code ===
+    // 'email_taken')` branch (with `t('emailTaken')` Hebrew string)
+    // was a contract leak: it shipped a string that hinted at the
+    // hidden contract and created a trivial regression vector. We
+    // collapse every non-validation error to the generic message —
+    // defense in depth IS the BE invariant + spec, not FE retention.
+    const code = res.error.code;
+    if (code === 'validation_error') {
+      const applied = applyValidationErrors(res.error, (field, message) => {
+        setError(field as keyof SignupDto, { type: 'server', message });
+      });
+      if (applied.length === 0) setServerError(t('signupError'));
     } else {
-      const err = res.error;
-      if (err.code === 'email_taken') {
-        setServerError(t('emailTaken'));
-      } else {
-        setServerError(t('signupError'));
-      }
+      setServerError(t('signupError'));
     }
   }
 
@@ -53,7 +64,16 @@ export default function SignupPage() {
           <p className="mt-1 text-sm text-muted-foreground">{t('signupSubtitle')}</p>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" dir="rtl">
+        {/* §S1-SEC1 — see login/page.tsx for rationale: method="post"
+            is defense in depth against the GET-fallback URL credential
+            leak (JS-disabled, pre-hydration, hydration failure). */}
+        <form
+          method="post"
+          action=""
+          onSubmit={handleSubmit(onSubmit)}
+          className="space-y-4"
+          dir="rtl"
+        >
           <div className="space-y-1">
             <label className="text-sm font-medium" htmlFor="org_name">
               {t('orgName')}
@@ -64,7 +84,9 @@ export default function SignupPage() {
               className="w-full rounded-md border px-3 py-2 text-sm"
               {...register('org_name')}
             />
-            {errors.org_name && <p className="text-xs text-destructive">{t('required')}</p>}
+            {errors.org_name && (
+              <p className="text-xs text-destructive">{errors.org_name.message ?? t('required')}</p>
+            )}
           </div>
 
           <div className="space-y-1">
@@ -78,7 +100,9 @@ export default function SignupPage() {
               className="w-full rounded-md border px-3 py-2 text-sm"
               {...register('name')}
             />
-            {errors.name && <p className="text-xs text-destructive">{t('required')}</p>}
+            {errors.name && (
+              <p className="text-xs text-destructive">{errors.name.message ?? t('required')}</p>
+            )}
           </div>
 
           <div className="space-y-1">
@@ -92,7 +116,11 @@ export default function SignupPage() {
               className="w-full rounded-md border px-3 py-2 text-sm"
               {...register('email')}
             />
-            {errors.email && <p className="text-xs text-destructive">{t('emailInvalid')}</p>}
+            {errors.email && (
+              <p className="text-xs text-destructive">
+                {errors.email.message ?? t('emailInvalid')}
+              </p>
+            )}
           </div>
 
           <div className="space-y-1">
@@ -107,7 +135,9 @@ export default function SignupPage() {
               {...register('password')}
             />
             {errors.password && (
-              <p className="text-xs text-destructive">{t('passwordRequirements')}</p>
+              <p className="text-xs text-destructive">
+                {errors.password.message ?? t('passwordRequirements')}
+              </p>
             )}
           </div>
 
@@ -120,9 +150,9 @@ export default function SignupPage() {
 
         <p className="text-center text-sm">
           {t('hasAccount')}{' '}
-          <a href="/login" className="font-medium underline">
+          <Link href="/login" className="font-medium underline">
             {t('login')}
-          </a>
+          </Link>
         </p>
       </div>
     </div>

@@ -1,5 +1,6 @@
 // @emapp/shared-types — FE/BE contract source of truth (Doc 11).
 export * from './envelope';
+export * from './safe-url';
 export * from './auth.schemas';
 export * from './project';
 export * from './building';

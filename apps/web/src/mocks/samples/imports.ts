@@ -1,0 +1,80 @@
+import type { ImportError, ImportJob } from '@emapp/shared-types';
+
+/** SAMPLE_IMPORTS — three rows that exercise the locked status enum
+ *  (D.34): one in-progress (parsing), one terminal-done, one
+ *  awaiting_mapping for the mapping wizard. */
+export const SAMPLE_IMPORTS: ImportJob[] = [
+  {
+    id: 'aaaaaaaa-1111-1111-1111-aaaaaaaaaaaa',
+    organizationId: '22222222-2222-2222-2222-222222222222',
+    projectId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1',
+    status: 'parsing',
+    fileName: 'owners-2026-Q1.xlsx',
+    fileSizeBytes: 524_288,
+    totalRows: 142,
+    processedRows: 84,
+    okRows: 84,
+    failedRows: 0,
+    dryRun: false,
+    createdBy: '11111111-1111-1111-1111-111111111111',
+    createdAt: new Date('2026-05-25T10:00:00Z'),
+    updatedAt: new Date('2026-05-25T10:01:30Z'),
+    startedAt: new Date('2026-05-25T10:00:05Z'),
+    finishedAt: null,
+  },
+  {
+    id: 'aaaaaaaa-2222-2222-2222-aaaaaaaaaaaa',
+    organizationId: '22222222-2222-2222-2222-222222222222',
+    projectId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1',
+    status: 'done',
+    fileName: 'pilot-batch.xlsx',
+    fileSizeBytes: 312_456,
+    totalRows: 78,
+    processedRows: 78,
+    okRows: 76,
+    failedRows: 2,
+    dryRun: false,
+    createdBy: '11111111-1111-1111-1111-111111111111',
+    createdAt: new Date('2026-05-20T08:00:00Z'),
+    updatedAt: new Date('2026-05-20T08:00:45Z'),
+    startedAt: new Date('2026-05-20T08:00:02Z'),
+    finishedAt: new Date('2026-05-20T08:00:45Z'),
+  },
+  {
+    id: 'aaaaaaaa-3333-3333-3333-aaaaaaaaaaaa',
+    organizationId: '22222222-2222-2222-2222-222222222222',
+    projectId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1',
+    status: 'awaiting_mapping',
+    fileName: 'non-standard-headers.xlsx',
+    fileSizeBytes: 218_112,
+    totalRows: null,
+    processedRows: 0,
+    okRows: 0,
+    failedRows: 0,
+    dryRun: false,
+    createdBy: '11111111-1111-1111-1111-111111111111',
+    createdAt: new Date('2026-05-25T09:30:00Z'),
+    updatedAt: new Date('2026-05-25T09:30:10Z'),
+    startedAt: new Date('2026-05-25T09:30:02Z'),
+    finishedAt: null,
+  },
+];
+
+export const SAMPLE_IMPORT_ERRORS: ImportError[] = [
+  {
+    id: 'ee000001-0000-0000-0000-000000000001',
+    rowNumber: 12,
+    code: 'invalid_national_id',
+    message: 'national_id failed MOD-10 checksum',
+    field: 'national_id',
+    createdAt: new Date('2026-05-20T08:00:30Z'),
+  },
+  {
+    id: 'ee000002-0000-0000-0000-000000000002',
+    rowNumber: 47,
+    code: 'invalid_phone',
+    message: 'phone must be a valid Israeli mobile number',
+    field: 'phone',
+    createdAt: new Date('2026-05-20T08:00:32Z'),
+  },
+];

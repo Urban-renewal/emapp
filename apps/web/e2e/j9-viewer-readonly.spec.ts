@@ -76,10 +76,15 @@ test.describe('§E-J9 — Sidebar role gating (Members + Audit are Manager-only)
 
     await page.goto('/he/');
 
-    // §AXIS-V — the home heading "ברוכים הבאים" (or similar) renders.
-    // We assert the role badge to prove getMe() resolved to a viewer.
-    // The role-label comes from t(`nav.role.${user.role}`) = "צופה".
-    await expect(page.getByText('צופה')).toBeVisible({ timeout: 15_000 });
+    // §AXIS-V — the role badge in the topbar proves getMe() resolved
+    // to a viewer. Scope to the <banner> landmark — the word "צופה"
+    // appears elsewhere on the PR-merge CI build (e.g. via members
+    // role filter / phase 4c additions), so an unscoped getByText
+    // hits a Playwright strict-mode violation. The topbar is the
+    // canonical role-badge surface.
+    await expect(page.getByRole('banner').getByText('צופה')).toBeVisible({
+      timeout: 15_000,
+    });
 
     // Members + Audit are Manager-only — must NOT appear.
     // Use the locale label (Hebrew) anchored to the navigation
@@ -117,8 +122,10 @@ test.describe('§E-J9 — Sidebar role gating (Members + Audit are Manager-only)
     });
 
     await page.goto('/he/');
-    // The agent role label is "אגנט" (per messages/he.json nav.role.agent).
-    await expect(page.getByText('אגנט')).toBeVisible({ timeout: 15_000 });
+    // Scope to topbar (see test 1 comment).
+    await expect(page.getByRole('banner').getByText('אגנט')).toBeVisible({
+      timeout: 15_000,
+    });
 
     const sidebar = page.getByRole('navigation');
     await expect(sidebar.getByRole('link', { name: 'חברי ארגון' })).toBeHidden();
@@ -143,7 +150,10 @@ test.describe('§E-J9 — Sidebar role gating (Members + Audit are Manager-only)
     });
 
     await page.goto('/he/');
-    await expect(page.getByText('מנהל')).toBeVisible({ timeout: 15_000 });
+    // Scope to topbar (see test 1 comment).
+    await expect(page.getByRole('banner').getByText('מנהל')).toBeVisible({
+      timeout: 15_000,
+    });
 
     const sidebar = page.getByRole('navigation');
     // The positive control: Manager IS supposed to see these. If

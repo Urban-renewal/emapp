@@ -76,10 +76,16 @@ export const ImportJobSchema = z.object({
   failedRows: z.number().int().min(0),
   dryRun: z.boolean(),
   createdBy: z.string().uuid(),
-  createdAt: z.date(),
-  updatedAt: z.date(),
-  startedAt: z.date().nullable(),
-  finishedAt: z.date().nullable(),
+  // §P0-4 — dates traverse the wire as ISO strings (JSON.stringify of a
+  // Date emits ISO 8601). `z.date()` is STRICT (expects a Date instance)
+  // → FE `.parse(res.data)` throws on every list item that has a date,
+  // turning the imports page into an error overlay even on empty seed
+  // state when the BE returns ANY non-empty list. Document/Owner schemas
+  // use `z.coerce.date()` for the same reason. Aligning here.
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  startedAt: z.coerce.date().nullable(),
+  finishedAt: z.coerce.date().nullable(),
 });
 export type ImportJob = z.infer<typeof ImportJobSchema>;
 
@@ -141,7 +147,8 @@ export const ImportErrorSchema = z.object({
   // already strips PII; defense in depth: length cap on the wire.
   message: z.string().min(1).max(500),
   field: z.string().max(64).nullable(),
-  createdAt: z.date(),
+  // §P0-4 — same fix as ImportJobSchema: dates over the wire are ISO strings.
+  createdAt: z.coerce.date(),
 });
 export type ImportError = z.infer<typeof ImportErrorSchema>;
 

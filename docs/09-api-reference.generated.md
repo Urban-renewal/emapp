@@ -1285,6 +1285,31 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `contractor_invalid`, `share_exists`, `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/provider/audit
+
+- **Auth:** ProviderAuthGuard + ProviderAuthorizationGuard
+- **Summary:** Cross-tenant audit_log search (orgId / action prefix / date range / cursor). action regex `^[a-z][a-z0-9_.-]*$`; LIKE wildcards rejected at Zod.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `action` | string | no | minLength=1, maxLength=128, pattern="^[a-z][a-z0-9_.-]*$" |
+| `cursor` | string | no | minLength=1 |
+| `fromDate` | string | no | format="date-time" |
+| `limit` | integer | no | minimum=1, maximum=100 |
+| `orgId` | string | no | format="uuid" |
+| `toDate` | string | no | format="date-time" |
+
+
+**Response**
+
+```json
+{ "data": [ {ProviderAuditItem} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `reason_required`, `missing_token`, `invalid_token`, `token_expired`, `session_revoked`, `forbidden`
+
 ### POST /api/v1/provider/auth/login
 
 - **Auth:** Public (MFA mandatory)
@@ -1340,6 +1365,61 @@ _(no body)_
 ```
 
 **Errors:** `missing_refresh_token`, `invalid_refresh`
+
+### GET /api/v1/provider/system-health
+
+- **Auth:** ProviderAuthGuard + ProviderAuthorizationGuard
+- **Summary:** Read-only gauges for the ops dashboard. Leaves are numbers / Date / null only — structurally no PII surface (proven by recursive leaf-type scan in spec).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { queue:{}, pool:{ app:{}, provider:{} }, r2:{}, timestamp } }
+```
+
+**Errors:** `reason_required`, `missing_token`, `invalid_token`, `token_expired`, `session_revoked`, `forbidden`
+
+### GET /api/v1/provider/tenants
+
+- **Auth:** ProviderAuthGuard + ProviderAuthorizationGuard
+- **Summary:** List orgs (cross-tenant, BYPASSRLS via withProvider), cursor-paginated. Counts (users / projects / owners) inlined via correlated subqueries. No PII.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {TenantListItem} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `reason_required`, `missing_token`, `invalid_token`, `token_expired`, `session_revoked`, `forbidden`
+
+### GET /api/v1/provider/tenants/:id
+
+- **Auth:** ProviderAuthGuard + ProviderAuthorizationGuard
+- **Summary:** Tenant detail + extended counts + up to 5 sample owners (PII masked in-SQL: name `•••••••XX`, phone `•••••XXXX`; national_id NEVER returned).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...TenantDetail (masked) } }
+```
+
+**Errors:** `reason_required`, `not_found`, `missing_token`, `invalid_token`, `token_expired`, `session_revoked`, `forbidden`
 
 ### DELETE /api/v1/shares/:id
 
@@ -1574,5 +1654,6 @@ _(no body)_
 | `invalid_assignee` | 400 | Task assignee is not an active member of the org. |
 | `assignee_exists` | 409 | That user is already assigned to the task. |
 | `assignment_exists` | 409 | That user already has an active assignment on this project. |
+| `reason_required` | 400 | Provider Admin endpoint called without the `access_reason` header (D.37). 5-512 chars after control-char strip. |
 | `429` | 429 | Per-IP throttle exceeded (signup/login dedicated limits). |
 | `500` | 500 | Unexpected. Generic body; cause logged server-side only. |

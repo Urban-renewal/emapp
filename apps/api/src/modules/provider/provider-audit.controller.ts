@@ -21,9 +21,11 @@ import { ProviderAuthGuard } from '../auth/provider/provider-auth.guard';
 import { AccessReason } from './access-reason.decorator';
 import { CurrentProvider, type ProviderPrincipal } from './current-provider.decorator';
 import { ProviderAuditService } from './provider-audit.service';
+import { ProviderAuthorizationGuard } from './provider-authorization.guard';
 
 @Controller('provider/audit')
-@UseGuards(ProviderAuthGuard)
+// Two-layer gate — see ProviderTenantsController for the rationale.
+@UseGuards(ProviderAuthGuard, ProviderAuthorizationGuard)
 export class ProviderAuditController {
   constructor(private readonly svc: ProviderAuditService) {}
 

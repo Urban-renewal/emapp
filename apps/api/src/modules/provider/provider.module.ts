@@ -33,6 +33,7 @@ import { AuthModule } from '../auth/auth.module';
 
 import { ProviderAuditController } from './provider-audit.controller';
 import { ProviderAuditService } from './provider-audit.service';
+import { ProviderAuthorizationGuard } from './provider-authorization.guard';
 import { ProviderSystemHealthController } from './provider-system-health.controller';
 import { ProviderSystemHealthService } from './provider-system-health.service';
 import { ProviderTenantDetailController } from './provider-tenant-detail.controller';
@@ -54,6 +55,12 @@ import { ProviderTenantsService } from './provider-tenants.service';
     ProviderTenantDetailService,
     ProviderAuditService,
     ProviderSystemHealthService,
+    // D.37 closeout gap #3 — PROVIDER_POLICY runtime enforcement.
+    // Registered as a class-provider so the 4 controllers' `@UseGuards`
+    // can resolve it from DI. Pure (no constructor deps) so it could
+    // be `new`d inline, but DI keeps the test pattern uniform with
+    // the rest of the codebase.
+    ProviderAuthorizationGuard,
   ],
 })
 export class ProviderModule {}

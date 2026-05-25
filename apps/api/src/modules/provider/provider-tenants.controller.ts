@@ -21,10 +21,17 @@ import { ProviderAuthGuard } from '../auth/provider/provider-auth.guard';
 
 import { AccessReason } from './access-reason.decorator';
 import { CurrentProvider, type ProviderPrincipal } from './current-provider.decorator';
+import { ProviderAuthorizationGuard } from './provider-authorization.guard';
 import { ProviderTenantsService } from './provider-tenants.service';
 
 @Controller('provider/tenants')
-@UseGuards(ProviderAuthGuard)
+// Two-layer gate (D.37 closeout gap #3):
+//   1. ProviderAuthGuard            — JWT audience + session live
+//   2. ProviderAuthorizationGuard   — consults PROVIDER_POLICY via
+//      canProvider(role,'provider','read'). Today equivalent to the
+//      inner role check in #1; future-proofs the "second provider role"
+//      widening without a code change beyond the matrix.
+@UseGuards(ProviderAuthGuard, ProviderAuthorizationGuard)
 export class ProviderTenantsController {
   constructor(private readonly svc: ProviderTenantsService) {}
 

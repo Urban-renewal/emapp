@@ -176,6 +176,20 @@ function installDefaultHandlers(): void {
     body: { data: { ok: true } },
   }));
 
+  // §Phase-4c — notifications bell polls /api/v1/notifications on
+  // every dashboard render (apps/web/src/hooks/use-notifications.ts).
+  // Without this handler, /he/ navigation 404s on every E2E test and
+  // the §P0-3 guardrail fires. Return an empty list so the bell
+  // renders with zero unread — the relevant FE state is the same
+  // whether the list is empty or has items.
+  setMockHandler('GET', '/api/v1/notifications', () => ({
+    status: 200,
+    body: {
+      data: [],
+      page: { limit: 5, cursor: null, has_more: false },
+    },
+  }));
+
   // §J14 — refresh: succeeds by default (covers silent-refresh test
   // by per-test override that returns 401 first then OK).
   setMockHandler('POST', '/api/v1/auth/refresh', () => ({

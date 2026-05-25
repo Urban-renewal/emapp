@@ -20,6 +20,7 @@ import { OwnersModule } from './modules/owners/owners.module';
 import { OwnershipsModule } from './modules/ownerships/ownerships.module';
 import { ProjectAssignmentsModule } from './modules/project-assignments/project-assignments.module';
 import { ProjectsModule } from './modules/projects/projects.module';
+import { ProviderModule } from './modules/provider/provider.module';
 import { SharesModule } from './modules/shares/shares.module';
 import { SignaturesModule } from './modules/signatures/signatures.module';
 import { TasksModule } from './modules/tasks/tasks.module';
@@ -86,6 +87,10 @@ import { QueueModule } from './queue/queue.module';
     SignaturesModule,
     QueueModule,
     ImportsModule,
+    // D.37 — Phase 6.5 Provider Admin BE (read-only). Tier-isolated:
+    // ProviderAuthGuard rejects org JWTs structurally (audience
+    // mismatch per D.29). NO write endpoints — Gate-6 deferred.
+    ProviderModule,
   ],
   controllers: [HealthController],
   // Rate limiting ENFORCED globally; the configurable guard adds a

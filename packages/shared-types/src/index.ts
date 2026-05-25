@@ -18,3 +18,9 @@ export * from './member';
 export * from './document';
 export * from './signature-request';
 export * from './import';
+// D.37 — Phase 6.5 Provider Admin BE (read-only). Tier-isolated wire
+// shapes for /api/v1/provider/* endpoints. NEVER share fields with the
+// org-tier audit / member schemas: provider tier is BYPASSRLS + masked-
+// always, and conflating the two shapes risks a future change leaking
+// org-cleartext through a "shared" type.
+export * from './provider';

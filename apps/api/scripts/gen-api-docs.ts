@@ -55,6 +55,9 @@ import {
   StartImportInput,
   SubmitMappingInput,
   ListImportErrorsQuery,
+  // D.37 / Phase 6.5 — Provider Admin BE read-only surface.
+  ListTenantsQuerySchema,
+  ProviderAuditQuerySchema,
 } from '@emapp/shared-types';
 import type { ZodTypeAny } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -1025,6 +1028,88 @@ const ENDPOINTS: Endpoint[] = [
     response: '{ "data": { "import": ImportJob, "templateId": "<uuid>" } }',
     errors: ['validation_error', 'forbidden', 'not_found', 'import_not_in_awaiting_mapping'],
   },
+  // ── Provider Admin BE (D.37 / Phase 6.5) ───────────────────────
+  // Read-only surface for the EMAPP ops team. Tier-isolated:
+  // ProviderAuthGuard (JWT audience 'emapp-provider', D.29) +
+  // ProviderAuthorizationGuard (PROVIDER_POLICY matrix). Every call
+  // requires `access_reason` header (400 reason_required if missing)
+  // and writes a provider_audit_log row. PII is masked even at the
+  // Provider tier (national_id NEVER on wire; name/phone bullet-masked).
+  // Gate-6: any write requires a separate D.NN entry before code review
+  // accepts it — this surface stays GET-only by design.
+  {
+    method: 'GET',
+    path: '/api/v1/provider/tenants',
+    auth: 'ProviderAuthGuard + ProviderAuthorizationGuard',
+    summary:
+      'List orgs (cross-tenant, BYPASSRLS via withProvider), cursor-paginated. Counts (users / projects / owners) inlined via correlated subqueries. No PII.',
+    request: ListTenantsQuerySchema,
+    response:
+      '{ "data": [ {TenantListItem} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'reason_required',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+      'session_revoked',
+      'forbidden',
+    ],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/provider/tenants/:id',
+    auth: 'ProviderAuthGuard + ProviderAuthorizationGuard',
+    summary:
+      'Tenant detail + extended counts + up to 5 sample owners (PII masked in-SQL: name `•••••••XX`, phone `•••••XXXX`; national_id NEVER returned).',
+    response: '{ "data": { ...TenantDetail (masked) } }',
+    errors: [
+      'reason_required',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+      'session_revoked',
+      'forbidden',
+    ],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/provider/audit',
+    auth: 'ProviderAuthGuard + ProviderAuthorizationGuard',
+    summary:
+      'Cross-tenant audit_log search (orgId / action prefix / date range / cursor). action regex `^[a-z][a-z0-9_.-]*$`; LIKE wildcards rejected at Zod.',
+    request: ProviderAuditQuerySchema,
+    response:
+      '{ "data": [ {ProviderAuditItem} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'reason_required',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+      'session_revoked',
+      'forbidden',
+    ],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/provider/system-health',
+    auth: 'ProviderAuthGuard + ProviderAuthorizationGuard',
+    summary:
+      'Read-only gauges for the ops dashboard. Leaves are numbers / Date / null only — structurally no PII surface (proven by recursive leaf-type scan in spec).',
+    response: '{ "data": { queue:{}, pool:{ app:{}, provider:{} }, r2:{}, timestamp } }',
+    errors: [
+      'reason_required',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+      'session_revoked',
+      'forbidden',
+    ],
+  },
   {
     method: 'GET',
     path: '/api/v1/imports/:id/stream',
@@ -1078,6 +1163,11 @@ const ERROR_CATALOG: Array<[string, string, string]> = [
   ['invalid_assignee', '400', 'Task assignee is not an active member of the org.'],
   ['assignee_exists', '409', 'That user is already assigned to the task.'],
   ['assignment_exists', '409', 'That user already has an active assignment on this project.'],
+  [
+    'reason_required',
+    '400',
+    'Provider Admin endpoint called without the `access_reason` header (D.37). 5-512 chars after control-char strip.',
+  ],
   ['429', '429', 'Per-IP throttle exceeded (signup/login dedicated limits).'],
   ['500', '500', 'Unexpected. Generic body; cause logged server-side only.'],
 ];

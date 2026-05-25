@@ -21,6 +21,7 @@
     },
     "signatureRequests": "Signature Requests",
     "members": "Members",
+    "notifications": "Notifications",
     "provider": "Provider"
   },
   "auth": {
@@ -426,6 +427,18 @@
       "name": "Full name",
       "role": "Role"
     }
+  },
+  "notifications": {
+    "listTitle": "Notifications",
+    "loadFailed": "Failed to load notifications.",
+    "empty": "No notifications.",
+    "markRead": "Mark as read",
+    "markAllRead": "Mark all as read ({count})",
+    "markingAllRead": "Marking...",
+    "unreadAria": "Unread notification",
+    "open": "Open",
+    "bellAria": "Notifications",
+    "viewAll": "View all"
   },
   "assignments": {
     "title": "Project agent assignments",

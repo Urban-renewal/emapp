@@ -21,6 +21,7 @@
     },
     "signatureRequests": "בקשות חתימה",
     "members": "חברי ארגון",
+    "notifications": "התראות",
     "provider": "מטה Provider"
   },
   "auth": {
@@ -426,6 +427,18 @@
       "name": "שם מלא",
       "role": "תפקיד"
     }
+  },
+  "notifications": {
+    "listTitle": "התראות",
+    "loadFailed": "טעינת ההתראות נכשלה.",
+    "empty": "אין התראות.",
+    "markRead": "סמן כנקרא",
+    "markAllRead": "סמן הכל כנקרא ({count})",
+    "markingAllRead": "מסמן...",
+    "unreadAria": "התראה שלא נקראה",
+    "open": "פתח",
+    "bellAria": "התראות",
+    "viewAll": "הצג הכל"
   },
   "assignments": {
     "title": "שיוך אגנטים לפרויקט",

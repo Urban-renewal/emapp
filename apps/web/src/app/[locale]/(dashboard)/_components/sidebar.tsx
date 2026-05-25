@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Bell,
   FileSignature,
   FileSpreadsheet,
   FileText,
@@ -26,6 +27,7 @@ interface NavItem {
     | 'documents'
     | 'signatureRequests'
     | 'members'
+    | 'notifications'
     | 'provider';
   icon: typeof Home;
   enabled: boolean;
@@ -65,6 +67,8 @@ export function Sidebar({ role }: Props) {
       icon: FileSignature,
       enabled: true,
     },
+    // Notifications: self-scoped by RLS — any org role sees their own.
+    { href: '/notifications', labelKey: 'notifications', icon: Bell, enabled: true },
   ];
 
   // §D.17 — Members admin is Manager-only (policy.ts:71). The BE's

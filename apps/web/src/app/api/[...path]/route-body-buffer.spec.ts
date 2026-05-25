@@ -52,7 +52,8 @@ function makeRequest(opts: {
 }
 
 describe('§P0-1 — proxy body buffering (not streaming)', () => {
-  let fetchSpy: ReturnType<typeof vi.spyOn> | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let fetchSpy: any = null;
 
   beforeEach(() => {
     process.env['API_BACKEND_URL'] = 'http://localhost:3000';

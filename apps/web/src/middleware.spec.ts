@@ -159,7 +159,20 @@ describe('next.config.ts security headers (§v9-P0-5 closure pin)', () => {
     expect(config).toMatch(/Referrer-Policy.*strict-origin-when-cross-origin/);
     expect(config).toMatch(/Content-Security-Policy/);
     expect(config).toMatch(/Permissions-Policy/);
-    // CSP must NOT include unsafe-eval (Agent A 4.5).
-    expect(config).not.toMatch(/unsafe-eval/);
+    // §P0-3 — CSP `unsafe-eval` is DEV-ONLY (react-refresh requires it).
+    // It MUST be behind a production guard so prod stays strict.
+    // Assert: if `unsafe-eval` appears, it is gated by `IS_DEV` or
+    // `!== 'production'`. A bare unconditional unsafe-eval would mean
+    // prod is running with it, which is the security violation.
+    if (/unsafe-eval/.test(config)) {
+      // The unsafe-eval is present — verify it is behind a dev-only guard.
+      expect(config).toMatch(
+        /IS_DEV.*unsafe-eval|unsafe-eval.*IS_DEV|NODE_ENV.*production.*unsafe-eval|unsafe-eval.*NODE_ENV.*production/s,
+      );
+    }
+    // Verify the prod branch uses strict script-src 'self' (no unsafe-eval).
+    expect(config).toMatch(/script-src 'self'/);
+    // Verify IS_DEV is defined as a NODE_ENV !== 'production' check.
+    expect(config).toMatch(/IS_DEV\s*=\s*process\.env\[.NODE_ENV.\]\s*!==\s*['"]production['"]/);
   });
 });

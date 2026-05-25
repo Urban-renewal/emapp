@@ -37,8 +37,13 @@ function mockReq(opts: {
   host?: string;
   protocol?: 'http:' | 'https:';
   search?: string;
+  body?: string;
 }): NextRequest {
   const headers = new Headers(opts.headers ?? {});
+  // §P0-1 — proxy now calls req.arrayBuffer() (body-buffering fix).
+  // Mock must implement it so tests don't throw "req.arrayBuffer is not
+  // a function". Returns empty buffer if no body is specified.
+  const bodyBytes = opts.body ? new TextEncoder().encode(opts.body).buffer : new ArrayBuffer(0);
   return {
     method: opts.method ?? 'GET',
     headers,
@@ -47,6 +52,7 @@ function mockReq(opts: {
       protocol: opts.protocol ?? 'https:',
       search: opts.search ?? '',
     },
+    arrayBuffer: async () => bodyBytes,
   } as unknown as NextRequest;
 }
 
@@ -312,9 +318,14 @@ describe('v8.5 D.35 proxy — full end-to-end with mocked fetch (integration)', 
     globalThis.fetch = origFetch;
   });
 
-  it('25) POST handler: forwards body, sets duplex:half, redirect:manual', async () => {
-    let captured: { url: string; init: RequestInit & { duplex?: 'half' } } | null = null;
-    globalThis.fetch = (async (url: string, init: RequestInit & { duplex?: 'half' }) => {
+  it('25) POST handler: buffers body as ArrayBuffer (no duplex:half), redirect:manual', async () => {
+    // §P0-1 closure pin — the proxy MUST buffer body to ArrayBuffer.
+    // The old code used `req.body` (ReadableStream) + `duplex:'half'`.
+    // That caused a race: undici closed the connection before the proxy
+    // finished writing when upstream rejected fast (argon2 not reached).
+    // Fix: req.arrayBuffer() → full buffer in memory → no duplex option.
+    let captured: { url: string; init: RequestInit & { duplex?: string } } | null = null;
+    globalThis.fetch = (async (url: string, init: RequestInit & { duplex?: string }) => {
       captured = { url, init };
       return new Response('{"data":{"ok":true}}', {
         status: 201,
@@ -326,11 +337,8 @@ describe('v8.5 D.35 proxy — full end-to-end with mocked fetch (integration)', 
     const req = mockReq({
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: 'em_at=x' },
+      body: JSON.stringify({ email: 'u@x.com', password: 'pw' }),
     });
-    // The body is read via req.body in the proxy — but our mock req
-    // doesn't have one, which is fine: fetch accepts a missing body
-    // for POST in this synthetic test. The contract we're pinning
-    // is "duplex:'half' is set" and "redirect:'manual'".
     const ctx = { params: Promise.resolve({ path: ['v1', 'imports'] }) };
     const res = await POST(req, ctx);
     expect(res.status).toBe(201);
@@ -338,7 +346,10 @@ describe('v8.5 D.35 proxy — full end-to-end with mocked fetch (integration)', 
     expect(captured!.url).toBe('https://api.internal.railway/api/v1/imports');
     expect(captured!.init.method).toBe('POST');
     expect(captured!.init.redirect).toBe('manual');
-    expect(captured!.init.duplex).toBe('half');
+    // THE KEY ASSERTION: duplex must NOT be set (body is a buffer, not a stream).
+    expect(captured!.init.duplex).toBeUndefined();
+    // Body must be an ArrayBuffer, not a ReadableStream.
+    expect(captured!.init.body).toBeInstanceOf(ArrayBuffer);
     // Cookie passes through.
     const fwd = captured!.init.headers as Headers;
     expect(fwd.get('cookie')).toBe('em_at=x');

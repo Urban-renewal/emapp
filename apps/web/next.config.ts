@@ -3,6 +3,12 @@ import createNextIntlPlugin from 'next-intl/plugin';
 
 const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 
+// §P0-3 — Next.js dev mode requires 'unsafe-eval' for react-refresh
+// (react-devtools + @next/react-refresh-utils use eval() for hot-reload).
+// Without it, the CSP blocks all JS in dev → forms fall back to native
+// HTML GET → credentials in URL. PROD stays strict (no unsafe-eval).
+const IS_DEV = process.env['NODE_ENV'] !== 'production';
+
 /**
  * §RED-3 closure — refuse production build with NEXT_PUBLIC_MSW=1.
  *
@@ -54,7 +60,7 @@ const securityHeaders = [
     key: 'Content-Security-Policy',
     value: [
       "default-src 'self'",
-      "script-src 'self'",
+      IS_DEV ? "script-src 'self' 'unsafe-eval'" : "script-src 'self'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data:",
       // §PERF-M3 — `next/font/google` self-hosts; gstatic allowance is dead.

@@ -1,6 +1,6 @@
 'use client';
 
-import { FileSpreadsheet, FileText, Home, Lock, Users } from 'lucide-react';
+import { FileSignature, FileSpreadsheet, FileText, Home, Lock, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 
@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 interface NavItem {
   href: string;
   /** Key under the `nav` next-intl namespace. */
-  labelKey: 'home' | 'projects' | 'owners' | 'imports' | 'documents';
+  labelKey: 'home' | 'projects' | 'owners' | 'imports' | 'documents' | 'signatureRequests';
   icon: typeof Home;
   enabled: boolean;
 }
@@ -33,6 +33,12 @@ export function Sidebar() {
     { href: '/owners', labelKey: 'owners', icon: Users, enabled: true },
     { href: '/imports', labelKey: 'imports', icon: FileSpreadsheet, enabled: true },
     { href: '/documents', labelKey: 'documents', icon: FileText, enabled: true },
+    {
+      href: '/signature-requests',
+      labelKey: 'signatureRequests',
+      icon: FileSignature,
+      enabled: true,
+    },
   ];
 
   return (

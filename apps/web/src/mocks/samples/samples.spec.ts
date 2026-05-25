@@ -17,6 +17,8 @@ import {
   ImportJobSchema,
   OwnerSchema,
   ProjectSchema,
+  SignatureDeliveryReportSchema,
+  SignatureRequestSchema,
   UserProfileSchema,
 } from '@emapp/shared-types';
 import { describe, expect, it } from 'vitest';
@@ -28,6 +30,7 @@ import { SAMPLE_IMPORT_ERRORS, SAMPLE_IMPORTS } from './imports';
 import { SAMPLE_OWNERS } from './owners';
 import { SAMPLE_APARTMENT_OWNERS } from './ownerships';
 import { SAMPLE_PROJECTS } from './projects';
+import { SAMPLE_SIGNATURE_DELIVERY, SAMPLE_SIGNATURE_REQUESTS } from './signature-requests';
 import { SAMPLE_ME, SAMPLE_USERS } from './users';
 
 describe('SAMPLE_* — schema-parse gate (drift detector)', () => {
@@ -66,7 +69,26 @@ describe('SAMPLE_* — schema-parse gate (drift detector)', () => {
     SAMPLE_IMPORT_ERRORS.forEach((e) => expect(() => ImportErrorSchema.parse(e)).not.toThrow());
   });
 
-  it('10) SAMPLE_OWNERS pass the new MaskedPii regex (closes §v9-M-4 + §v9-P0-1)', () => {
+  it('10) SAMPLE_SIGNATURE_REQUESTS parse against SignatureRequestSchema (D.12 3-state)', () => {
+    SAMPLE_SIGNATURE_REQUESTS.forEach((r) =>
+      expect(() => SignatureRequestSchema.parse(r)).not.toThrow(),
+    );
+    // Spot-check all three states are present so the manager UI has
+    // pending/signed/cancelled fixtures to render against.
+    const statuses = SAMPLE_SIGNATURE_REQUESTS.map((r) => r.status).sort();
+    expect(statuses).toEqual(['cancelled', 'pending', 'signed']);
+  });
+  it('11) SAMPLE_SIGNATURE_DELIVERY parses against SignatureDeliveryReportSchema', () => {
+    expect(() => SignatureDeliveryReportSchema.parse(SAMPLE_SIGNATURE_DELIVERY)).not.toThrow();
+  });
+  it('12) SAMPLE_SIGNATURE_REQUESTS never carry a `jti` or raw JWT (D.12 security invariant)', () => {
+    SAMPLE_SIGNATURE_REQUESTS.forEach((r) => {
+      expect(r).not.toHaveProperty('jti');
+      expect(r).not.toHaveProperty('token');
+    });
+  });
+
+  it('13) SAMPLE_OWNERS pass the new MaskedPii regex (closes §v9-M-4 + §v9-P0-1)', () => {
     // The owners sample uses bullet-masked forms; if a future fixture
     // tried clear digits the regex would reject it.
     SAMPLE_OWNERS.forEach((o) => {

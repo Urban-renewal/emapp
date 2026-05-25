@@ -18,7 +18,8 @@
       "manager": "מנהל",
       "agent": "אגנט",
       "viewer": "צופה"
-    }
+    },
+    "signatureRequests": "בקשות חתימה"
   },
   "auth": {
     "loginTitle": "כניסה למערכת",
@@ -271,6 +272,57 @@
       "sizeSqm": "מ\"ר",
       "status": "סטטוס",
       "notes": "הערות"
+    }
+  },
+  "signatureRequests": {
+    "listTitle": "בקשות חתימה",
+    "create": "צור בקשה חדשה",
+    "creating": "יוצר...",
+    "createdTitle": "בקשת חתימה נוצרה",
+    "createdHint": "העתק את קישור החתימה ושלח אותו לבעל הדירה בערוץ המועדף עליך (וואטסאפ / אימייל). הקישור תקף 7 ימים ומיועד לשימוש חד-פעמי.",
+    "signUrlLabel": "קישור חתימה (חד-פעמי, 7 ימים)",
+    "signUrlWarning": "הקישור מכיל אסימון בלעדי. אל תשתף ברשתות חברתיות. אם הוא דלף, בטל את הבקשה וצור חדשה.",
+    "copy": "העתק",
+    "copied": "הועתק",
+    "viewRequest": "פתח את הבקשה",
+    "loading": "טוען...",
+    "loadFailed": "טעינת הבקשות נכשלה",
+    "notFound": "הבקשה לא נמצאה",
+    "empty": "אין עדיין בקשות חתימה.",
+    "createFailed": "יצירת הבקשה נכשלה",
+    "pendingExists": "קיימת כבר בקשה ממתינה לאותו מסמך ובעל דירה.",
+    "storageUnavailable": "האחסון אינו זמין כרגע. נסה שוב מאוחר יותר.",
+    "validationError": "נתוני הבקשה אינם תקינים.",
+    "forbidden": "אין הרשאה ליצור בקשת חתימה.",
+    "pickDocument": "בחר מסמך לחתימה.",
+    "pickOwner": "בחר בעל דירה.",
+    "detailTitle": "פרטי בקשת חתימה",
+    "cancel": "בטל בקשה",
+    "cancelling": "מבטל...",
+    "cancelConfirm": "לבטל את הבקשה? הקישור יהפוך לא תקף מיידית.",
+    "cancelFailed": "ביטול הבקשה נכשל.",
+    "alreadySigned": "הבקשה כבר נחתמה ולא ניתן לבטלה.",
+    "expired": "פג תוקף",
+    "createdAt": "נוצר {rel}",
+    "expiresAt": "יפוג {rel}",
+    "signedAt": "נחתם {rel}",
+    "cancelledAt": "בוטל {rel}",
+    "statusFilter": {
+      "all": "הכל",
+      "pending": "ממתין",
+      "signed": "חתום",
+      "cancelled": "בוטל"
+    },
+    "field": {
+      "document": "מסמך",
+      "documentPlaceholder": "בחר מסמך...",
+      "owner": "בעל דירה",
+      "ownerPlaceholder": "בחר בעל דירה...",
+      "expiresAt": "תוקף",
+      "signedAt": "נחתם",
+      "cancelledAt": "בוטל",
+      "documentId": "מזהה מסמך",
+      "ownerId": "מזהה בעל דירה"
     }
   }
 }

@@ -16,11 +16,13 @@ import {
   CreateImportInput,
   CreateOwnerInput,
   CreateProjectInput,
+  CreateSignatureRequestInput,
   DocumentSchema,
   ImportJobSchema,
   OwnerSchema,
   ProjectSchema,
   SetOwnershipsInput,
+  SignatureRequestSchema,
   SubmitMappingInput,
 } from '@emapp/shared-types';
 import { http, HttpResponse } from 'msw';
@@ -32,6 +34,10 @@ import { SAMPLE_IMPORT_ERRORS, SAMPLE_IMPORTS } from '../samples/imports';
 import { SAMPLE_OWNERS } from '../samples/owners';
 import { SAMPLE_APARTMENT_OWNERS } from '../samples/ownerships';
 import { SAMPLE_PROJECTS } from '../samples/projects';
+import {
+  SAMPLE_SIGNATURE_DELIVERY,
+  SAMPLE_SIGNATURE_REQUESTS,
+} from '../samples/signature-requests';
 import { SAMPLE_ME } from '../samples/users';
 
 const API = '/api/v1';
@@ -318,5 +324,54 @@ export const handlers = [
         Connection: 'keep-alive',
       },
     });
+  }),
+
+  // signature-requests (D.12 LAW) — Manager side
+  http.get(`${API}/signature-requests`, ({ request }) => {
+    const url = new URL(request.url);
+    const status = url.searchParams.get('status');
+    const items = status
+      ? SAMPLE_SIGNATURE_REQUESTS.filter((r) => r.status === status)
+      : SAMPLE_SIGNATURE_REQUESTS;
+    return HttpResponse.json(listEnvelope(items));
+  }),
+  http.get(`${API}/signature-requests/:id`, ({ params }) => {
+    const r = SAMPLE_SIGNATURE_REQUESTS.find((x) => x.id === params['id']);
+    return r ? HttpResponse.json(dataEnvelope(r)) : errorEnvelope('not_found', 404);
+  }),
+  http.post(`${API}/signature-requests`, async ({ request }) => {
+    const body = await request.json();
+    const parsed = CreateSignatureRequestInput.safeParse(body);
+    if (!parsed.success) {
+      return errorEnvelope('validation_error', 400, parsed.error.flatten().fieldErrors);
+    }
+    const requestRow = SignatureRequestSchema.parse({
+      ...SAMPLE_SIGNATURE_REQUESTS[0],
+      id: 'zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzs1',
+      documentId: parsed.data.documentId,
+      ownerId: parsed.data.ownerId,
+      status: 'pending',
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      createdAt: new Date(),
+      signedAt: null,
+      signedSignatureId: null,
+      cancelledAt: null,
+      cancelledBy: null,
+    });
+    return HttpResponse.json(
+      dataEnvelope({
+        request: requestRow,
+        signUrl: `https://app.mock/sign/MOCK_JWT_${requestRow.id}`,
+        delivery: SAMPLE_SIGNATURE_DELIVERY,
+      }),
+      { status: 201 },
+    );
+  }),
+  http.post(`${API}/signature-requests/:id/cancel`, ({ params }) => {
+    const r = SAMPLE_SIGNATURE_REQUESTS.find((x) => x.id === params['id']);
+    if (!r) return errorEnvelope('not_found', 404);
+    if (r.status === 'signed') return errorEnvelope('signature_request_already_signed', 409);
+    const cancelled = { ...r, status: 'cancelled' as const, cancelledAt: new Date() };
+    return HttpResponse.json(dataEnvelope(cancelled));
   }),
 ];

@@ -34,9 +34,15 @@ export interface AuditEntryViewModel {
   /** Locale-bound category caption; unknown categories pass the raw
    *  prefix through. */
   categoryLabel: string;
-  /** Suffix after the first `.` — kept raw in Phase 4c (curated HE/EN
-   *  translation deferred to Phase 4g). */
+  /** Raw suffix after the first `.` — kept verbatim (forensic
+   *  searchability + cursor-style audit grep). */
   actionSuffix: string;
+  /** Curated HE/EN label for the action verb (Phase 4g — closes the
+   *  4c "raw + category prefix" deferral). Resolution chain:
+   *   (1) category-specific override (e.g. `import.received`)
+   *   (2) universal verb map (`create` → "Created", …)
+   *   (3) fall through to the raw suffix. */
+  actionSuffixLabel: string;
   /** Target table name (e.g. `import_jobs`) — raw, server-controlled. */
   targetTable: string | null;
   targetId: string | null;

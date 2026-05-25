@@ -215,6 +215,23 @@ Things only a teammate carries. They cost an outsider hours.
 - **API runs on :3000, FE will run on :3001.** CORS already
   allow-listed (`apps/api/src/main.ts`).
 
+### 4.1a Bootstrapping the first Provider Admin (fresh env)
+
+Org-tier users sign up through the normal `POST /auth/signup` flow. The Provider tier (D.37 cross-tenant admin) has no UI for self-registration — the first row in `provider_users` has to be inserted out-of-band. Closes the audit-v1.1 H3 gap.
+
+The tool: `packages/db/scripts/bootstrap-provider-admin.ts`. It hashes the password with the same argon2id params as the production login path, generates a base32 TOTP secret + 8 recovery codes, pgcrypto-encrypts the secret with `PII_ENCRYPTION_KEY`, and HMAC-SHA256-hashes the recovery codes with `PII_HASH_KEY`. The plaintext secret + codes print to stdout **once**.
+
+```bash
+BOOTSTRAP_ADMIN_EMAIL=admin@emapp.io \
+BOOTSTRAP_ADMIN_PASSWORD='<≥12 char strong password>' \
+BOOTSTRAP_ADMIN_NAME='Lidor Provider Admin' \
+infisical run --env=dev -- pnpm --filter @emapp/db provider:bootstrap
+```
+
+Outputs the `otpauth://` provisioning URI (scan into Google Authenticator / 1Password / Authy) and 8 recovery codes (store in a vault). Closing the terminal without saving = re-run the script after deleting the row via psql. The script refuses if a row already exists for that email — no auto-update.
+
+For staging / prod: same command, just `--env=staging` or `--env=prod`. The script obeys whichever DB the Infisical env points at; it doesn't gate on `NODE_ENV` because operational bootstraps run in every environment.
+
 ### 4.2 Testing
 
 - **`pnpm test` runs `vitest run` across the workspace via Turbo.**

@@ -210,6 +210,44 @@ describe('api-client 401 handling — adversarial', () => {
     await apiClient.post<unknown>('/auth/login', {});
     expect(dispatchedEvents).not.toContain(UNAUTHENTICATED_EVENT);
   });
+
+  // §v9-P0-4 SUPPRESS_EVENT coverage (D.31 G2 — form-level 401 codes
+  // MUST NOT fire the global unauthenticated event; they belong to the
+  // calling form's field-error UI). The api-client maintains the set
+  // `SUPPRESS_EVENT = { invalid_credentials, invalid_otp, not_member }`
+  // — each MUST be runtime-suppressed. A12-suppress-N covers them
+  // generically (table-driven) so a future addition to the SUPPRESS
+  // set is auto-tested.
+  const SUPPRESSED_CODES = ['invalid_credentials', 'invalid_otp', 'not_member'] as const;
+  for (const code of SUPPRESSED_CODES) {
+    it(`A12-suppress-${code}) 401 with code=${code} does NOT fire UNAUTHENTICATED_EVENT (form-level error)`, async () => {
+      globalThis.fetch = stubFetch(() => ({
+        status: 401,
+        body: { error: { code } },
+      })) as unknown as typeof fetch;
+      // Wide call site — works for login, otp/verify, org/switch.
+      await apiClient.post<unknown>('/auth/login', {});
+      expect(
+        dispatchedEvents,
+        `${code} leaked the global unauthenticated event — would force-redirect the user away from the form mid-submit`,
+      ).not.toContain(UNAUTHENTICATED_EVENT);
+    });
+  }
+
+  it('A12-suppress-symmetry) every 401 code NOT in the suppress set DOES fire the event', async () => {
+    // Adversarial complement: a brand-new 401 code (e.g. one introduced
+    // by a future feature) MUST default to firing the event — the
+    // suppress set is opt-in, not opt-out. Tests a representative
+    // non-suppressed code; the SUPPRESS_EVENT set has to be amended
+    // explicitly for new form-level codes.
+    const newCode = 'session_revoked_by_admin'; // hypothetical future code
+    globalThis.fetch = stubFetch(() => ({
+      status: 401,
+      body: { error: { code: newCode } },
+    })) as unknown as typeof fetch;
+    await apiClient.get<unknown>('/me');
+    expect(dispatchedEvents.filter((e) => e === UNAUTHENTICATED_EVENT)).toHaveLength(1);
+  });
 });
 
 describe('api-client request shape — adversarial', () => {

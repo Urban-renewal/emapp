@@ -32,10 +32,10 @@
  */
 import { auditLog, withProvider } from '@emapp/db';
 import type { ApiList, ProviderAuditItem, ProviderAuditQuery } from '@emapp/shared-types';
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { and, desc, eq, gte, like, lt, lte, or, type SQL } from 'drizzle-orm';
 
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import { decodeCursorOrThrow, encodeCursor } from '../../common/keyset-cursor';
 
 import type { ProviderActor } from './current-provider.decorator';
 
@@ -77,14 +77,10 @@ export class ProviderAuditService {
     query: ProviderAuditQuery,
   ): Promise<ApiList<ProviderAuditItem>> {
     // Decode cursor BEFORE entering withProvider — fail fast on bad input.
+    // SA-11: `decodeCursorOrThrow` centralises the decode+throw pattern.
     let cursorDecoded: { createdAt: Date; id: string } | null = null;
     if (query.cursor) {
-      const dec = decodeCursor(query.cursor);
-      if (!dec) {
-        throw new BadRequestException({
-          error: { code: 'invalid_cursor', message: 'Cursor is malformed' },
-        });
-      }
+      const dec = decodeCursorOrThrow(query.cursor);
       cursorDecoded = { createdAt: new Date(dec.c), id: dec.i };
     }
 

@@ -81,6 +81,32 @@ async function bootstrap() {
     }
   });
 
+  // §M-1 closure (post-S11 manual smoke catch) — Fastify-level 404
+  // handler wraps unknown-route responses in the D.16 envelope.
+  //
+  // Background: Nest's GlobalExceptionFilter only catches exceptions
+  // thrown INSIDE the Nest pipeline. When no route matches, Fastify's
+  // built-in 404 handler runs BEFORE Nest sees the request, returning
+  // the raw `{message,error,statusCode}` shape. Smoke-testing caught
+  // this on `GET /api/v1/imports` (before §P0-2 added the list endpoint
+  // — even with that fixed, ANY unknown path needs the envelope).
+  //
+  // Defense in depth — any future BE that drops a route or any typo'd
+  // client path still returns a valid D.16 error the FE can parse.
+  const fastifyForNotFound = app.getHttpAdapter().getInstance() as unknown as {
+    setNotFoundHandler: (
+      h: (
+        req: { url?: string; method?: string },
+        reply: { status: (n: number) => { send: (b: unknown) => void } },
+      ) => void,
+    ) => void;
+  };
+  fastifyForNotFound.setNotFoundHandler((_req, reply) => {
+    reply.status(404).send({
+      error: { code: 'not_found', message: 'Route not found' },
+    });
+  });
+
   // D.10: every endpoint under /api/v1/
   app.setGlobalPrefix('api/v1');
 

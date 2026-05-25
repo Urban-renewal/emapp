@@ -171,10 +171,21 @@ describe('CONTRACT · Global envelope & headers', () => {
     expect(r.status).toBe(404);
   });
 
-  ct('G3 error envelope shape on a 404', async () => {
+  ct('G3 error envelope shape on a 404 — strict D.16 (§M-1 closure)', async () => {
     const r = await call('/nope');
-    // D.16: errors must be an object; either {error:{code}} or a framework 404 body.
+    // §M-1 closure (post-S11 manual smoke catch): the raw Fastify
+    // {message,error,statusCode} body escaped the D.16 envelope on
+    // unknown routes. Fixed via setNotFoundHandler in main.ts. This
+    // test pins the strict shape so a future framework upgrade can't
+    // silently regress.
     expect(typeof r.body).toBe('object');
+    expect(r.body).toHaveProperty('error');
+    expect((r.body as Record<string, unknown>)['error']).toMatchObject({
+      code: 'not_found',
+    });
+    // Fastify's raw 404 body keys MUST NOT leak into the response.
+    expect(r.body).not.toHaveProperty('message');
+    expect(r.body).not.toHaveProperty('statusCode');
   });
 
   ct('G7 security headers present on a public endpoint', async () => {

@@ -2,6 +2,7 @@
 
 import {
   Bell,
+  CheckSquare,
   FileSignature,
   FileSpreadsheet,
   FileText,
@@ -29,6 +30,7 @@ interface NavItem {
     | 'signatureRequests'
     | 'members'
     | 'notifications'
+    | 'tasks'
     | 'audit'
     | 'provider';
   icon: typeof Home;
@@ -71,6 +73,9 @@ export function Sidebar({ role }: Props) {
     },
     // Notifications: self-scoped by RLS — any org role sees their own.
     { href: '/notifications', labelKey: 'notifications', icon: Bell, enabled: true },
+    // Tasks: D.17 read=ALL (Agent sees ONLY own assignments via BE
+    // service-layer scoping; the FE doesn't need to gate the link).
+    { href: '/tasks', labelKey: 'tasks', icon: CheckSquare, enabled: true },
   ];
 
   // §D.17 — Members admin is Manager-only (policy.ts:71). The BE's

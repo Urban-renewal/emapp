@@ -22,6 +22,7 @@
     "signatureRequests": "Signature Requests",
     "members": "Members",
     "notifications": "Notifications",
+    "tasks": "Tasks",
     "audit": "Audit log",
     "provider": "Provider"
   },
@@ -493,6 +494,63 @@
       "email": "Email",
       "name": "Full name",
       "role": "Role"
+    }
+  },
+  "tasks": {
+    "listTitle": "Tasks",
+    "create": "Create task",
+    "creating": "Creating...",
+    "createFailed": "Failed to create the task",
+    "forbiddenCreate": "You are not allowed to create tasks.",
+    "loading": "Loading...",
+    "empty": "No tasks to show.",
+    "loadFailed": "Failed to load tasks",
+    "notFound": "Task not found",
+    "backToList": "Back to list",
+    "cancel": "Cancel",
+    "overdue": "Overdue",
+    "dueAt": "due {rel}",
+    "editSection": "Update status & description",
+    "save": "Save",
+    "saving": "Saving...",
+    "updateFailed": "Failed to update the task",
+    "forbiddenEdit": "You are not allowed to edit this field.",
+    "assigneesSection": "Assignees",
+    "assigneesLoadFailed": "Failed to load assignees",
+    "noAssignees": "No assignees for this task yet.",
+    "userIdPrefix": "User",
+    "addAssignee": "Add assignee",
+    "pickAssignee": "Pick a member...",
+    "assign": "Assign",
+    "assigning": "Assigning...",
+    "assignFailed": "Failed to assign. Please retry.",
+    "assigneeExists": "This member is already assigned to the task.",
+    "invalidAssignee": "The selected user is not an active organization member.",
+    "noEligibleAssignees": "No additional members available to assign.",
+    "removeAssignee": "Remove",
+    "removeAssigneeConfirm": "Remove this assignee from the task?",
+    "archiveSection": "Archive task",
+    "archiveHint": "After archiving the task is hidden and can no longer be edited.",
+    "archive": "Archive task",
+    "archiving": "Archiving...",
+    "archiveConfirm": "Archive this task? You will not be able to edit it afterwards.",
+    "field": {
+      "title": "Title",
+      "description": "Description",
+      "priority": "Priority",
+      "status": "Status",
+      "required": "Required"
+    },
+    "status": {
+      "pending": "Pending",
+      "in_progress": "In progress",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "priority": {
+      "1": "Low",
+      "2": "Normal",
+      "3": "High"
     }
   },
   "audit": {

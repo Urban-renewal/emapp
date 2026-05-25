@@ -31,7 +31,7 @@ export function Sidebar() {
     { href: '/', labelKey: 'home', icon: Home, enabled: true },
     { href: '/projects', labelKey: 'projects', icon: FileText, enabled: true },
     { href: '/owners', labelKey: 'owners', icon: Users, enabled: true },
-    { href: '/imports', labelKey: 'imports', icon: FileSpreadsheet, enabled: false },
+    { href: '/imports', labelKey: 'imports', icon: FileSpreadsheet, enabled: true },
     { href: '/documents', labelKey: 'documents', icon: FileText, enabled: true },
   ];
 

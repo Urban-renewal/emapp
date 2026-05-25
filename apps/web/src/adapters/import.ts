@@ -1,0 +1,101 @@
+import type { ImportJob, ImportStatus } from '@emapp/shared-types';
+
+import { formatRelative } from '@/lib/format';
+import type { ImportViewModel } from '@/models/import.vm';
+
+/**
+ * D.34 import status enum — locked 8-state set. Labels mirror the
+ * ARCHITECTURE-MAP §5 Hebrew set verbatim so the FE never drifts
+ * from the documented state machine.
+ */
+const STATUS_LABELS_HE: Record<ImportStatus, string> = {
+  queued: 'ממתין',
+  parsing: 'מנתח',
+  validating: 'מאמת',
+  persisting: 'כותב',
+  awaiting_mapping: 'ממתין למיפוי',
+  done: 'הושלם',
+  failed: 'נכשל',
+  cancelled: 'בוטל',
+};
+
+const STATUS_LABELS_EN: Record<ImportStatus, string> = {
+  queued: 'Queued',
+  parsing: 'Parsing',
+  validating: 'Validating',
+  persisting: 'Persisting',
+  awaiting_mapping: 'Awaiting Mapping',
+  done: 'Done',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+};
+
+const STATUS_COLORS: Record<ImportStatus, ImportViewModel['statusColor']> = {
+  queued: 'gray',
+  parsing: 'amber',
+  validating: 'amber',
+  persisting: 'amber',
+  awaiting_mapping: 'amber',
+  done: 'emerald',
+  failed: 'red',
+  cancelled: 'gray',
+};
+
+const TERMINAL_STATES = new Set<ImportStatus>(['done', 'failed', 'cancelled']);
+/** Matches `apps/api/src/modules/imports/imports.service.ts:CANCELLABLE`
+ *  (ARCHITECTURE-MAP §5 — derived from the worker FORWARD table). */
+const CANCELLABLE_STATES = new Set<ImportStatus>([
+  'queued',
+  'parsing',
+  'validating',
+  'persisting',
+  'awaiting_mapping',
+]);
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function toImportViewModel(i: ImportJob, locale: 'he' | 'en' = 'he'): ImportViewModel {
+  const labels = locale === 'he' ? STATUS_LABELS_HE : STATUS_LABELS_EN;
+  const progressPct =
+    i.totalRows !== null && i.totalRows > 0
+      ? Math.min(100, Math.round((i.processedRows / i.totalRows) * 100))
+      : null;
+  return {
+    id: i.id,
+    fileName: i.fileName,
+    fileSizeBytes: i.fileSizeBytes,
+    fileSizeLabel: formatBytes(i.fileSizeBytes),
+    status: i.status,
+    statusLabel: labels[i.status],
+    statusColor: STATUS_COLORS[i.status],
+    isTerminal: TERMINAL_STATES.has(i.status),
+    isCancellable: CANCELLABLE_STATES.has(i.status),
+    isAwaitingMapping: i.status === 'awaiting_mapping',
+    totalRows: i.totalRows,
+    processedRows: i.processedRows,
+    okRows: i.okRows,
+    failedRows: i.failedRows,
+    progressPct,
+    dryRun: i.dryRun,
+    createdRelative: formatRelative(i.createdAt, locale),
+    startedRelative: i.startedAt ? formatRelative(i.startedAt, locale) : null,
+    finishedRelative: i.finishedAt ? formatRelative(i.finishedAt, locale) : null,
+  };
+}
+
+export function toImportViewModels(
+  items: ImportJob[],
+  locale: 'he' | 'en' = 'he',
+): ImportViewModel[] {
+  return items.map((i) => toImportViewModel(i, locale));
+}
+
+export const IMPORT_STATUS_LABELS_HE = STATUS_LABELS_HE;
+export const IMPORT_STATUS_LABELS_EN = STATUS_LABELS_EN;
+export const IMPORT_STATUS_COLORS = STATUS_COLORS;
+export const IMPORT_TERMINAL_STATES = TERMINAL_STATES;
+export const IMPORT_CANCELLABLE_STATES = CANCELLABLE_STATES;

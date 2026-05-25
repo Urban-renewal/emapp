@@ -13,6 +13,8 @@ import {
   ApartmentSchema,
   BuildingSchema,
   DocumentSchema,
+  ImportErrorSchema,
+  ImportJobSchema,
   OwnerSchema,
   ProjectSchema,
   UserProfileSchema,
@@ -22,6 +24,7 @@ import { describe, expect, it } from 'vitest';
 import { SAMPLE_APARTMENTS } from './apartments';
 import { SAMPLE_BUILDINGS } from './buildings';
 import { SAMPLE_DOCUMENTS } from './documents';
+import { SAMPLE_IMPORT_ERRORS, SAMPLE_IMPORTS } from './imports';
 import { SAMPLE_OWNERS } from './owners';
 import { SAMPLE_APARTMENT_OWNERS } from './ownerships';
 import { SAMPLE_PROJECTS } from './projects';
@@ -53,7 +56,17 @@ describe('SAMPLE_* — schema-parse gate (drift detector)', () => {
     SAMPLE_DOCUMENTS.forEach((d) => expect(() => DocumentSchema.parse(d)).not.toThrow());
   });
 
-  it('8) SAMPLE_OWNERS pass the new MaskedPii regex (closes §v9-M-4 + §v9-P0-1)', () => {
+  it('8) SAMPLE_IMPORTS parse against ImportJobSchema (D.34 — 8-state enum)', () => {
+    SAMPLE_IMPORTS.forEach((i) => expect(() => ImportJobSchema.parse(i)).not.toThrow());
+    // Spot-check that the awaiting_mapping variant is present so the
+    // mapping wizard has a fixture to render against.
+    expect(SAMPLE_IMPORTS.some((i) => i.status === 'awaiting_mapping')).toBe(true);
+  });
+  it('9) SAMPLE_IMPORT_ERRORS parse against ImportErrorSchema', () => {
+    SAMPLE_IMPORT_ERRORS.forEach((e) => expect(() => ImportErrorSchema.parse(e)).not.toThrow());
+  });
+
+  it('10) SAMPLE_OWNERS pass the new MaskedPii regex (closes §v9-M-4 + §v9-P0-1)', () => {
     // The owners sample uses bullet-masked forms; if a future fixture
     // tried clear digits the regex would reject it.
     SAMPLE_OWNERS.forEach((o) => {

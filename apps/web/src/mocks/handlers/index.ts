@@ -13,18 +13,22 @@ import {
   CreateApartmentInput,
   CreateBuildingInput,
   CreateDocumentInput,
+  CreateImportInput,
   CreateOwnerInput,
   CreateProjectInput,
   DocumentSchema,
+  ImportJobSchema,
   OwnerSchema,
   ProjectSchema,
   SetOwnershipsInput,
+  SubmitMappingInput,
 } from '@emapp/shared-types';
 import { http, HttpResponse } from 'msw';
 
 import { SAMPLE_APARTMENTS } from '../samples/apartments';
 import { SAMPLE_BUILDINGS } from '../samples/buildings';
 import { SAMPLE_DOCUMENTS } from '../samples/documents';
+import { SAMPLE_IMPORT_ERRORS, SAMPLE_IMPORTS } from '../samples/imports';
 import { SAMPLE_OWNERS } from '../samples/owners';
 import { SAMPLE_APARTMENT_OWNERS } from '../samples/ownerships';
 import { SAMPLE_PROJECTS } from '../samples/projects';
@@ -232,4 +236,87 @@ export const handlers = [
     return d ? HttpResponse.json(dataEnvelope(d)) : errorEnvelope('not_found', 404);
   }),
   http.delete(`${API}/documents/:id`, () => new HttpResponse(null, { status: 204 })),
+
+  // imports (D.34) — 3-phase create→upload→start + SSE stream + mapping
+  http.get(`${API}/imports`, () => HttpResponse.json(listEnvelope(SAMPLE_IMPORTS))),
+  http.get(`${API}/imports/:id`, ({ params }) => {
+    const i = SAMPLE_IMPORTS.find((x) => x.id === params['id']);
+    return i ? HttpResponse.json(dataEnvelope(i)) : errorEnvelope('not_found', 404);
+  }),
+  http.post(`${API}/imports`, async ({ request }) => {
+    const body = await request.json();
+    const parsed = CreateImportInput.safeParse(body);
+    if (!parsed.success) {
+      return errorEnvelope('validation_error', 400, parsed.error.flatten().fieldErrors);
+    }
+    const importRow = ImportJobSchema.parse({
+      ...SAMPLE_IMPORTS[0],
+      id: 'zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzi1',
+      projectId: parsed.data.projectId,
+      fileName: parsed.data.fileName,
+      fileSizeBytes: parsed.data.fileSizeBytes,
+      status: 'queued',
+      dryRun: parsed.data.dryRun ?? false,
+      totalRows: null,
+      processedRows: 0,
+      okRows: 0,
+      failedRows: 0,
+      startedAt: null,
+      finishedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    return HttpResponse.json(
+      dataEnvelope({
+        import: importRow,
+        uploadUrl: 'https://r2.mock/imports/upload?sig=MOCK',
+        uploadExpiresInSeconds: 300,
+      }),
+      { status: 201 },
+    );
+  }),
+  http.post(`${API}/imports/:id/start`, ({ params }) => {
+    const i = SAMPLE_IMPORTS.find((x) => x.id === params['id']);
+    return i
+      ? HttpResponse.json(dataEnvelope(i), { status: 202 })
+      : errorEnvelope('not_found', 404);
+  }),
+  http.post(`${API}/imports/:id/mapping`, async ({ request, params }) => {
+    const body = await request.json();
+    const parsed = SubmitMappingInput.safeParse(body);
+    if (!parsed.success) {
+      return errorEnvelope('validation_error', 400, parsed.error.flatten().fieldErrors);
+    }
+    const i = SAMPLE_IMPORTS.find((x) => x.id === params['id']);
+    if (!i) return errorEnvelope('not_found', 404);
+    return HttpResponse.json(
+      dataEnvelope({
+        import: { ...i, status: 'queued' as const, updatedAt: new Date() },
+        templateId: 'zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzt1',
+      }),
+    );
+  }),
+  http.delete(`${API}/imports/:id`, ({ params }) => {
+    const i = SAMPLE_IMPORTS.find((x) => x.id === params['id']);
+    return i ? HttpResponse.json(dataEnvelope(i)) : errorEnvelope('not_found', 404);
+  }),
+  http.get(`${API}/imports/:id/errors`, () =>
+    HttpResponse.json(listEnvelope(SAMPLE_IMPORT_ERRORS)),
+  ),
+  // SSE — single 'end' frame is enough for offline UI; the live
+  // wire produces many 'progress' frames in real-time.
+  http.get(`${API}/imports/:id/stream`, ({ params }) => {
+    const id = String(params['id']);
+    const i = SAMPLE_IMPORTS.find((x) => x.id === id);
+    if (!i) return errorEnvelope('not_found', 404);
+    const frame = `data: ${JSON.stringify({ event: 'end', data: { id, status: i.status } })}\n\n`;
+    return new HttpResponse(frame, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+    });
+  }),
 ];

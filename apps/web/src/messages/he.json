@@ -22,6 +22,7 @@
     "signatureRequests": "בקשות חתימה",
     "members": "חברי ארגון",
     "notifications": "התראות",
+    "tasks": "משימות",
     "audit": "יומן ביקורת",
     "provider": "מטה Provider"
   },
@@ -493,6 +494,63 @@
       "email": "אימייל",
       "name": "שם מלא",
       "role": "תפקיד"
+    }
+  },
+  "tasks": {
+    "listTitle": "משימות",
+    "create": "צור משימה",
+    "creating": "יוצר...",
+    "createFailed": "יצירת המשימה נכשלה",
+    "forbiddenCreate": "אין הרשאה ליצור משימה.",
+    "loading": "טוען...",
+    "empty": "אין משימות להציג.",
+    "loadFailed": "טעינת המשימות נכשלה",
+    "notFound": "המשימה לא נמצאה",
+    "backToList": "חזרה לרשימה",
+    "cancel": "ביטול",
+    "overdue": "באיחור",
+    "dueAt": "יעד {rel}",
+    "editSection": "עדכון סטטוס ותיאור",
+    "save": "שמור",
+    "saving": "שומר...",
+    "updateFailed": "עדכון המשימה נכשל",
+    "forbiddenEdit": "אין הרשאה לעדכן שדה זה.",
+    "assigneesSection": "משויכים למשימה",
+    "assigneesLoadFailed": "טעינת רשימת המשויכים נכשלה",
+    "noAssignees": "אין משויכים למשימה כרגע.",
+    "userIdPrefix": "משתמש",
+    "addAssignee": "הוסף משויך",
+    "pickAssignee": "בחר משתמש...",
+    "assign": "שייך",
+    "assigning": "משייך...",
+    "assignFailed": "השיוך נכשל. נסה שנית.",
+    "assigneeExists": "המשתמש כבר משויך למשימה זו.",
+    "invalidAssignee": "המשתמש שנבחר אינו חבר פעיל בארגון.",
+    "noEligibleAssignees": "אין משתמשים זמינים לשיוך נוסף.",
+    "removeAssignee": "הסר",
+    "removeAssigneeConfirm": "להסיר את המשתמש מהמשימה?",
+    "archiveSection": "ארכוב משימה",
+    "archiveHint": "לאחר הארכוב המשימה לא תוצג ברשימה ולא ניתן יהיה לעדכן אותה.",
+    "archive": "ארכב משימה",
+    "archiving": "מארכב...",
+    "archiveConfirm": "לארכב את המשימה? לא ניתן יהיה לעדכן אותה לאחר מכן.",
+    "field": {
+      "title": "כותרת",
+      "description": "תיאור",
+      "priority": "עדיפות",
+      "status": "סטטוס",
+      "required": "שדה חובה"
+    },
+    "status": {
+      "pending": "ממתין",
+      "in_progress": "בביצוע",
+      "completed": "הושלם",
+      "cancelled": "בוטל"
+    },
+    "priority": {
+      "1": "נמוכה",
+      "2": "רגילה",
+      "3": "דחופה"
     }
   },
   "audit": {

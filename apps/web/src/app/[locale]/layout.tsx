@@ -5,6 +5,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 
 import { routing } from '@/i18n/routing';
+import { MswInit } from '@/mocks/msw-init';
 import '../globals.css';
 
 const heebo = Heebo({
@@ -38,7 +39,9 @@ export default async function LocaleLayout({
   return (
     <html lang={locale} dir={dir} className={heebo.variable}>
       <body className="font-sans antialiased">
-        <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
+        <NextIntlClientProvider messages={messages}>
+          <MswInit>{children}</MswInit>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

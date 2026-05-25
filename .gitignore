@@ -11,3 +11,8 @@ coverage/
 .env.*.local
 .infisical.json
 .claude/scheduled_tasks.lock
+
+# Playwright (Phase 4a S11)
+test-results/
+playwright-report/
+playwright/.cache/

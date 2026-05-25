@@ -77,6 +77,21 @@ export default function middleware(req: NextRequest) {
   return intlMiddleware(req);
 }
 
+/**
+ * Matcher invariant — defense in depth.
+ *
+ * The default Next.js matcher excludes any path containing a `.` so
+ * that static assets (`/favicon.ico`, `/_next/static/foo.js`, etc.)
+ * don't pay the middleware cost. But JWT path segments (`/sign/<jwt>`)
+ * DO contain dots — without an explicit allow-list we would skip the
+ * middleware for the public-sign surface entirely, leaving it
+ * un-gated. We add a second matcher entry that explicitly matches
+ * `/sign/*` so isLocaleAgnosticPublic / fall-through logic runs there
+ * too. The BE's atomic single-use guard is the source of truth, but
+ * the middleware still gets to enforce the JWT-shape regex client-side
+ * (anti-enumeration: malformed token → /he/login redirect, not a
+ * page-render attempt).
+ */
 export const config = {
-  matcher: ['/((?!api|_next|_vercel|.*\\..*).*)'],
+  matcher: ['/((?!api|_next|_vercel|.*\\..*).*)', '/sign/:path*'],
 };

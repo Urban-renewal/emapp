@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useTransition } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -20,13 +20,16 @@ import { logout } from '@/lib/auth';
 export function LogoutButton() {
   const t = useTranslations('nav');
   const router = useRouter();
+  const locale = useLocale();
   const [pending, startTransition] = useTransition();
 
   function onClick() {
     startTransition(async () => {
       await logout();
       router.refresh();
-      router.replace('/login');
+      // §RED-10 — preserve locale on the post-logout redirect (was
+      // `/login` → middleware → `/${locale}/login` double-307).
+      router.replace(`/${locale}/login`);
     });
   }
 

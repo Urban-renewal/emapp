@@ -118,7 +118,8 @@ export default function NewImportPage() {
               {t('field.projectPlaceholder')}
             </option>
             {projectItems.map((p) => (
-              <option key={p.id} value={p.id}>
+              // §SEC-M4 — dir="auto" for partial bidi isolation in <option>.
+              <option key={p.id} value={p.id} dir="auto">
                 {p.name}
               </option>
             ))}

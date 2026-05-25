@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { NameDisplay } from '@/components/ui/name-display';
 import { useArchiveBuilding, useBuilding } from '@/hooks/use-buildings';
 import { ApiClientError } from '@/lib/api/projects';
 
@@ -56,7 +57,9 @@ export default function BuildingDetailPage() {
 
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold">{data.addressLine}</h1>
+          <h1 className="text-2xl font-bold">
+            <NameDisplay name={data.addressLine} />
+          </h1>
           <p className="text-xs text-muted-foreground">
             {t('aptCountLabel', { count: data.aptCount })}
             {data.parcelSummary && <> · {data.parcelSummary}</>}
@@ -78,7 +81,9 @@ export default function BuildingDetailPage() {
       {data.notes && (
         <div className="rounded-md border bg-card p-4">
           <h2 className="text-sm font-semibold">{t('field.notes')}</h2>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{data.notes}</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+            <NameDisplay name={data.notes} />
+          </p>
         </div>
       )}
 

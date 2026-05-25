@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useLocale } from 'next-intl';
 import { useEffect } from 'react';
 
 import { UNAUTHENTICATED_EVENT } from '@/lib/api-client';
@@ -16,12 +17,17 @@ import { UNAUTHENTICATED_EVENT } from '@/lib/api-client';
  */
 export function AuthGuard() {
   const router = useRouter();
+  const locale = useLocale();
   useEffect(() => {
     function onUnauth() {
-      router.replace('/login');
+      // §RED-10 — preserve locale on the redirect so the user lands
+      // on `/he/login` directly (no `/login` → middleware → `/he/login`
+      // double-307 round-trip; also prevents a brief flash of a 404
+      // page during the redirect chain).
+      router.replace(`/${locale}/login`);
     }
     window.addEventListener(UNAUTHENTICATED_EVENT, onUnauth);
     return () => window.removeEventListener(UNAUTHENTICATED_EVENT, onUnauth);
-  }, [router]);
+  }, [router, locale]);
   return null;
 }

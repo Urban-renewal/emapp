@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { HttpOrHttpsUrlSchema, HttpsUrlSchema } from './safe-url';
+
 // Canonical Document contract (Doc 11 SoT; Phase 4 Slice D1).
 //
 // Locked-schema alignment: the `documents` table (Phase 1, Gate-2) has
@@ -117,18 +119,27 @@ export const ListDocumentsQuery = z
 export type ListDocumentsQueryDto = z.infer<typeof ListDocumentsQuery>;
 
 /** POST /documents response — the document + a short-lived presigned PUT.
- * `uploadUrl` is a bearer credential: never logged, short TTL. */
+ * `uploadUrl` is a bearer credential: never logged, short TTL.
+ *
+ * §RED-1 closure — `HttpOrHttpsUrlSchema` instead of `z.string().url()`.
+ * The default Zod url() accepts ANY scheme including `javascript:` and
+ * `data:`, which is an XSS vector when the URL hits `<a href>` or
+ * `window.open`. We pin to http/https only; the BE always produces
+ * https for R2 in prod, but http is allowed for offline/mock dev. */
 export const DocumentUploadResponseSchema = z.object({
   document: DocumentSchema,
-  uploadUrl: z.string().url(),
+  uploadUrl: HttpOrHttpsUrlSchema,
   uploadExpiresInSeconds: z.number().int().positive(),
 });
 export type DocumentUploadResponse = z.infer<typeof DocumentUploadResponseSchema>;
 
 /** GET /documents/:id/download response — a short-lived presigned GET.
- * Minted ONLY after the row is authorized for the caller. */
+ * Minted ONLY after the row is authorized for the caller.
+ *
+ * §RED-1 — `HttpsUrlSchema` (stricter than upload URL because download
+ * URLs reach `window.open` directly; we require https in all envs). */
 export const DocumentDownloadResponseSchema = z.object({
-  url: z.string().url(),
+  url: HttpsUrlSchema,
   expiresInSeconds: z.number().int().positive(),
 });
 export type DocumentDownloadResponse = z.infer<typeof DocumentDownloadResponseSchema>;

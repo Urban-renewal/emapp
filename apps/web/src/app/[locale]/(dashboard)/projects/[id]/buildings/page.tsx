@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { NameDisplay } from '@/components/ui/name-display';
 import { useBuildingList } from '@/hooks/use-buildings';
 
 export default function BuildingsPage() {
@@ -55,7 +56,9 @@ export default function BuildingsPage() {
               <Link href={`/buildings/${b.id}`} className="block">
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-base font-semibold">{b.addressLine}</h2>
+                    <h2 className="truncate text-base font-semibold">
+                      <NameDisplay name={b.addressLine} />
+                    </h2>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {t('aptCountLabel', { count: b.aptCount })}
                       {b.parcelSummary && <> · {b.parcelSummary}</>}

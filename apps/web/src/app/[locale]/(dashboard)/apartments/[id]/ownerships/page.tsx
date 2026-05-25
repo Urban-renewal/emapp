@@ -36,7 +36,11 @@ export default function ApartmentOwnershipsPage() {
   // edits are user-driven).
   useEffect(() => {
     if (current.data && rows.length === 0) {
-      setRows(current.data.items.map((o) => ({ ownerId: o.id, ownershipPct: o.ownershipPct })));
+      // §SOLID-H1 — VM now exposes `ownerId` cleanly (was `id` on the
+      // raw wire shape; the original page bypassed the adapter pattern).
+      setRows(
+        current.data.items.map((o) => ({ ownerId: o.ownerId, ownershipPct: o.ownershipPct })),
+      );
     }
   }, [current.data, rows.length]);
 
@@ -130,8 +134,9 @@ export default function ApartmentOwnershipsPage() {
                   aria-label={t('ownerLabel')}
                 >
                   {availableOwners.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name /* <option> can't host bdi; option text is innerText only */}
+                    // §SEC-M4 — dir="auto" for partial bidi isolation in <option>.
+                    <option key={o.id} value={o.id} dir="auto">
+                      {o.name}
                     </option>
                   ))}
                   {owner === undefined && <option value={r.ownerId}>{r.ownerId}</option>}

@@ -40,6 +40,16 @@ export default function DocumentDetailPage() {
     setActionError(null);
     try {
       const { url } = await download.mutateAsync(id);
+      // §RED-1 defense-in-depth — schema-level scheme allowlist is the
+      // primary defense (DocumentDownloadResponseSchema.url is
+      // HttpsUrlSchema), but we re-verify the protocol here before
+      // calling window.open. A javascript:/data: URL that somehow
+      // slipped past would otherwise execute attacker JS in the
+      // opener's brief about:blank inheritance window.
+      if (!/^https:\/\//i.test(url)) {
+        setActionError(t('downloadFailed'));
+        return;
+      }
       // Open in a new tab — the URL is a short-lived presigned GET,
       // honored by R2 as `Content-Disposition: attachment` server-side.
       window.open(url, '_blank', 'noopener,noreferrer');

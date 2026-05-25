@@ -38,7 +38,6 @@
     "noAccount": "אין לך חשבון?",
     "hasAccount": "יש לך חשבון?",
     "invalidCredentials": "אימייל או סיסמה שגויים",
-    "emailTaken": "האימייל כבר רשום במערכת",
     "signupError": "שגיאה ביצירת החשבון, נסה שנית",
     "emailInvalid": "אימייל לא תקין",
     "required": "שדה חובה",

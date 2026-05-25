@@ -115,7 +115,10 @@ export default function NewSignatureRequestPage() {
               {t('field.documentPlaceholder')}
             </option>
             {documentItems.map((d) => (
-              <option key={d.id} value={d.id}>
+              // §SEC-M4 — dir="auto" gives <option> partial bidi
+              // isolation (HTML5; valid; no JS). NameDisplay can't be
+              // a child of <option>.
+              <option key={d.id} value={d.id} dir="auto">
                 {d.name}
               </option>
             ))}
@@ -137,10 +140,11 @@ export default function NewSignatureRequestPage() {
               {t('field.ownerPlaceholder')}
             </option>
             {ownerItems.map((o) => (
-              <option key={o.id} value={o.id}>
-                {/* NameDisplay can't go in <option>; use plain text. The
-                    name list is fetched server-side from an org-scoped
-                    endpoint — RLS guarantees no cross-org leakage. */}
+              // §SEC-M4 — dir="auto" gives <option> partial bidi
+              // isolation. NameDisplay can't be a child of <option>;
+              // RLS guarantees no cross-org leakage of names but
+              // intra-org bidi spoofing is still possible.
+              <option key={o.id} value={o.id} dir="auto">
                 {o.name}
               </option>
             ))}

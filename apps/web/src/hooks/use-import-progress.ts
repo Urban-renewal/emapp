@@ -49,6 +49,15 @@ export function useImportProgress(importId: string | undefined): ImportProgressS
 
   useEffect(() => {
     if (!importId) return;
+    // §RED-6 closure — UUID-validate the importId before opening the
+    // EventSource. The id comes from `useParams()` which is URL-
+    // controlled; a path-traversal payload (`..%2fadmin`) or a
+    // mistyped url would otherwise open a useless SSE that ties up
+    // a per-process slot until backend rejection. Pin shape early.
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(importId)) {
+      setError('invalid_id_shape');
+      return;
+    }
     // Reset on id change
     setEvent(null);
     setTerminal(false);

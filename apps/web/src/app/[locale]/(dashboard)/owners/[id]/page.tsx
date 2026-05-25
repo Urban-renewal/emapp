@@ -73,7 +73,9 @@ export default function OwnerDetailPage() {
             {data.email && (
               <div className="flex gap-2">
                 <dt className="text-muted-foreground">{t('emailLabel')}</dt>
-                <dd>{data.email}</dd>
+                <dd>
+                  <NameDisplay name={data.email} />
+                </dd>
               </div>
             )}
           </dl>
@@ -93,7 +95,9 @@ export default function OwnerDetailPage() {
       {data.notes && (
         <div className="rounded-md border bg-card p-4">
           <h2 className="text-sm font-semibold">{t('field.notes')}</h2>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{data.notes}</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+            <NameDisplay name={data.notes} />
+          </p>
         </div>
       )}
 

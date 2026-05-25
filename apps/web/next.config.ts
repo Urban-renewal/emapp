@@ -4,6 +4,27 @@ import createNextIntlPlugin from 'next-intl/plugin';
 const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 
 /**
+ * §RED-3 closure — refuse production build with NEXT_PUBLIC_MSW=1.
+ *
+ * MSW is wired in `apps/web/src/mocks/msw-init.tsx` behind an env-flag
+ * gate. NEXT_PUBLIC_* values are INLINED at build time, so a Cloudflare
+ * Pages build that accidentally sets this flag would ship the MSW
+ * worker live in production — silently intercepting every /api/v1/*
+ * call with SAMPLE_* fixtures and breaking auth + persisting nothing.
+ *
+ * This fail-fast assertion is the second line of defense (the first is
+ * the .gitignore'd `public/mockServiceWorker.js` — if the worker file
+ * isn't in the build, registration fails). Together they make accidental
+ * MSW-in-prod a hard build error rather than a silent runtime corruption.
+ */
+if (process.env['NODE_ENV'] === 'production' && process.env['NEXT_PUBLIC_MSW'] === '1') {
+  throw new Error(
+    '[next.config] §RED-3 — refusing production build with NEXT_PUBLIC_MSW=1. ' +
+      'MSW is dev-only; unset the env flag for production builds.',
+  );
+}
+
+/**
  * Security headers (closes §v9-P0-5 + Doc 07 §6.13 + ISO A.14).
  *
  * Trade-offs:
@@ -36,7 +57,8 @@ const securityHeaders = [
       "script-src 'self'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data:",
-      "font-src 'self' data: https://fonts.gstatic.com",
+      // §PERF-M3 — `next/font/google` self-hosts; gstatic allowance is dead.
+      "font-src 'self' data:",
       "connect-src 'self'",
       "frame-ancestors 'none'",
       "base-uri 'self'",

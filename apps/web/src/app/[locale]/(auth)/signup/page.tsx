@@ -37,14 +37,20 @@ export default function SignupPage() {
       router.refresh();
       return;
     }
+    // §SEC-M3 — D.14 anti-enumeration contract: the server returns
+    // the SAME 201 envelope on duplicate-email signups (no `email_taken`
+    // is ever emitted). The previous defensive `else if (code ===
+    // 'email_taken')` branch (with `t('emailTaken')` Hebrew string)
+    // was a contract leak: it shipped a string that hinted at the
+    // hidden contract and created a trivial regression vector. We
+    // collapse every non-validation error to the generic message —
+    // defense in depth IS the BE invariant + spec, not FE retention.
     const code = res.error.code;
     if (code === 'validation_error') {
       const applied = applyValidationErrors(res.error, (field, message) => {
         setError(field as keyof SignupDto, { type: 'server', message });
       });
       if (applied.length === 0) setServerError(t('signupError'));
-    } else if (code === 'email_taken') {
-      setServerError(t('emailTaken'));
     } else {
       setServerError(t('signupError'));
     }

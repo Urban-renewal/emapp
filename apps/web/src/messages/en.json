@@ -38,7 +38,6 @@
     "noAccount": "Don't have an account?",
     "hasAccount": "Already have an account?",
     "invalidCredentials": "Invalid email or password",
-    "emailTaken": "This email is already registered",
     "signupError": "Failed to create account, please try again",
     "emailInvalid": "Invalid email address",
     "required": "Required",

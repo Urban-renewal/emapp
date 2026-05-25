@@ -12,6 +12,8 @@ import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
+import { NameDisplay } from '@/components/ui/name-display';
+
 import { SignatureCanvas, type SignatureCanvasHandle } from './_signature-canvas';
 
 /**
@@ -183,28 +185,33 @@ export default function SignPage() {
       <header className="space-y-1">
         <h1 className="text-2xl font-bold">חתימה על מסמך</h1>
         <p className="text-sm text-muted-foreground">
-          {/* preview.owner.name is wire-supplied; the bidi risk is real,
-              but in this minimal layout we render it as a span without
-              the dashboard's <NameDisplay> wrapper since the public
-              page is a single-purpose surface. Server-side, owner
-              names are sanitised before delivery. */}
-          שלום <span dir="auto">{preview.owner.name}</span>, אנא קרא את המסמך וחתום למטה.
+          {/* §RED-2 / §SEC-M2 closure — wrap owner name in <NameDisplay>
+              (bdi) for bidi spoofing defense. Original "single-purpose
+              surface" comment was wrong: the public sign page is the
+              most user-trust-sensitive surface in the product. */}
+          שלום <NameDisplay name={preview.owner.name} />, אנא קרא את המסמך וחתום למטה.
         </p>
       </header>
 
       <section className="space-y-2 rounded-md border bg-card p-4">
         <h2 className="text-sm font-semibold">המסמך לחתימה</h2>
-        <p className="text-sm" dir="auto">
-          {preview.document.name}
+        <p className="text-sm">
+          <NameDisplay name={preview.document.name} />
         </p>
-        <a
-          href={preview.document.downloadUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-block text-sm font-medium underline"
-        >
-          פתח את המסמך לצפייה
-        </a>
+        {/* §RED-1 defense-in-depth — `PublicSignPreviewSchema.document.downloadUrl`
+            is `HttpsUrlSchema` (scheme allowlist), but we re-verify the
+            protocol here before rendering the href. A javascript:/data:
+            URL that slipped past would XSS via the click target. */}
+        {/^https:\/\//i.test(preview.document.downloadUrl) ? (
+          <a
+            href={preview.document.downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block text-sm font-medium underline"
+          >
+            פתח את המסמך לצפייה
+          </a>
+        ) : null}
         <p className="text-xs text-muted-foreground">
           תוקף קישור החתימה:{' '}
           {new Date(preview.expiresAt).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}

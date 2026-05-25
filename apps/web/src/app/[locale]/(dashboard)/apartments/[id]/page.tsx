@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { NameDisplay } from '@/components/ui/name-display';
 import { useApartment, useArchiveApartment } from '@/hooks/use-apartments';
 import { ApiClientError } from '@/lib/api/projects';
 import { cn } from '@/lib/utils';
@@ -95,7 +96,9 @@ export default function ApartmentDetailPage() {
       {data.notes && (
         <div className="rounded-md border bg-card p-4">
           <h2 className="text-sm font-semibold">{t('field.notes')}</h2>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{data.notes}</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+            <NameDisplay name={data.notes} />
+          </p>
         </div>
       )}
 

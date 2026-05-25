@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { HttpOrHttpsUrlSchema } from './safe-url';
+
 // Canonical Import contract (Doc 11 SoT; Phase 6 S8).
 //
 // SECURITY (information-confidentiality + ISO A.18.1.4):
@@ -115,7 +117,9 @@ export type CreateImport = z.infer<typeof CreateImportInput>;
 /** Response shape — the row + a short-lived PUT URL. */
 export const ImportUploadResponseSchema = z.object({
   import: ImportJobSchema,
-  uploadUrl: z.string().url(),
+  // §RED-1 — scheme allowlist: prevents `javascript:` / `data:` URLs
+  // from reaching `<a href>` or `window.open` if the BE ever drifts.
+  uploadUrl: HttpOrHttpsUrlSchema,
   uploadExpiresInSeconds: z.number().int().positive(),
 });
 export type ImportUploadResponse = z.infer<typeof ImportUploadResponseSchema>;

@@ -13,6 +13,8 @@ import { z } from 'zod';
 
 import { apiClient, isList, isOk, type ApiResponse } from '../api-client';
 
+import { ApiClientError } from './errors';
+
 const ProjectDataSchema = z.object({ data: ProjectSchema });
 const ProjectPageSchema = z.object({
   limit: z.number().int().positive(),
@@ -25,16 +27,10 @@ export interface ProjectListPage {
   page: { limit: number; cursor: string | null; has_more: boolean };
 }
 
-export class ApiClientError extends Error {
-  readonly code: string;
-  readonly details: unknown;
-  constructor(env: { code: string; message?: string; details?: unknown }) {
-    super(env.message ?? env.code);
-    this.code = env.code;
-    this.details = env.details;
-    this.name = 'ApiClientError';
-  }
-}
+// §SOLID-M5 — ApiClientError now lives in `./errors`. This re-export
+// keeps the 8 sibling entity files (and tests) working without an
+// import sweep; new code should import from `./errors` directly.
+export { ApiClientError } from './errors';
 
 function unwrap<T>(res: ApiResponse<T>): T {
   if (isOk(res)) return res.data;

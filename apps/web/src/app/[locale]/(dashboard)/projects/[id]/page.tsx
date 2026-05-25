@@ -95,7 +95,7 @@ export default function ProjectDetailPage() {
         <div className="rounded-md border bg-card p-4">
           <h2 className="text-sm font-semibold">{t('field.description')}</h2>
           <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
-            {data.description}
+            <NameDisplay name={data.description} />
           </p>
         </div>
       )}

@@ -34,15 +34,17 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@
 import type { FastifyRequest } from 'fastify';
 
 import { canProvider, type ProviderRole } from '../../common/authz/policy';
-
-import type { ProviderPrincipal } from './current-provider.decorator';
+import type { ProviderTokenPayload } from '../auth/provider/provider-auth.service';
 
 @Injectable()
 export class ProviderAuthorizationGuard implements CanActivate {
   canActivate(ctx: ExecutionContext): boolean {
+    // The authorization guard reads the FULL JWT payload (role lives
+    // there, not on the narrowed ProviderActor that the decorator
+    // produces for services — Audit v1.1 CC-4).
     const req = ctx
       .switchToHttp()
-      .getRequest<FastifyRequest & { providerUser?: ProviderPrincipal }>();
+      .getRequest<FastifyRequest & { providerUser?: ProviderTokenPayload }>();
     const role = req.providerUser?.role as ProviderRole | undefined;
     // Fail-CLOSED: no principal (would only happen if a future refactor
     // wires this guard without ProviderAuthGuard upstream — defense-in-

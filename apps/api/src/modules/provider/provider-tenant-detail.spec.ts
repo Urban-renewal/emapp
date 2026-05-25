@@ -56,11 +56,9 @@ const SECRET_NID_B = '038987654';
 const SECRET_PHONE_A = '0541234567';
 
 function principal(): ProviderPrincipal {
+  // Audit v1.1 CC-4 — narrow actor shape.
   return {
     sub: provider.id,
-    role: 'provider_admin',
-    sid: '00000000-0000-4000-8000-00000000d37b',
-    type: 'provider_access',
     ip: '203.0.113.42',
     userAgent: 'P6.5-3-spec/1.0',
   };
@@ -197,7 +195,7 @@ async function ourAuditRows(): Promise<
 
 describe('GET /provider/tenants/:id — P6.5-3 service integration', () => {
   it('T6.5-D37-4a) name is masked — pattern starts with 7 bullets and ends with 2 chars', async () => {
-    const detail = await svc.get(principal(), 'PII shape test — name mask', orgA.id);
+    const detail = await svc.get(principal(), 'TKT-1100: PII shape test — name mask', orgA.id);
     expect(detail.sampleOwners.length).toBeGreaterThan(0);
     for (const owner of detail.sampleOwners) {
       // Pattern: 7 bullets + 2 visible chars
@@ -210,7 +208,7 @@ describe('GET /provider/tenants/:id — P6.5-3 service integration', () => {
   });
 
   it('T6.5-D37-4b) phone is masked OR null — pattern 5 bullets + 4 chars, or null when no phone', async () => {
-    const detail = await svc.get(principal(), 'PII shape test — phone mask', orgA.id);
+    const detail = await svc.get(principal(), 'TKT-1100: PII shape test — phone mask', orgA.id);
     for (const owner of detail.sampleOwners) {
       if (owner.phoneMasked === null) continue;
       expect(owner.phoneMasked.startsWith('•••••')).toBe(true);
@@ -224,7 +222,7 @@ describe('GET /provider/tenants/:id — P6.5-3 service integration', () => {
     // cross-tenant Org B NID + the full phone. Phone-masking shape is
     // pinned in T6.5-D37-4b (per-owner check); this test is exclusively
     // about leak absence.
-    const detail = await svc.get(principal(), 'NID leak scan', orgA.id);
+    const detail = await svc.get(principal(), 'TKT-1100: NID leak scan', orgA.id);
     const blob = JSON.stringify(detail);
     expect(blob).not.toContain(SECRET_NID_A);
     expect(blob).not.toContain('038111000');
@@ -254,8 +252,8 @@ describe('GET /provider/tenants/:id — P6.5-3 service integration', () => {
   });
 
   it('T6.5-D37-5a) cross-tenant isolation — Org A detail does NOT include Org B owners', async () => {
-    const detailA = await svc.get(principal(), 'cross-tenant isolation A', orgA.id);
-    const detailB = await svc.get(principal(), 'cross-tenant isolation B', orgB.id);
+    const detailA = await svc.get(principal(), 'TKT-1100: cross-tenant isolation A', orgA.id);
+    const detailB = await svc.get(principal(), 'TKT-1100: cross-tenant isolation B', orgB.id);
     // No overlap in owner ids.
     const idsA = new Set(detailA.sampleOwners.map((o) => o.id));
     const idsB = new Set(detailB.sampleOwners.map((o) => o.id));
@@ -296,7 +294,7 @@ describe('GET /provider/tenants/:id — P6.5-3 service integration', () => {
   });
 
   it('T6.5-D37-5d) counts: all 5 dimensions present and non-negative', async () => {
-    const detail = await svc.get(principal(), 'counts shape test', orgA.id);
+    const detail = await svc.get(principal(), 'TKT-1100: counts shape test', orgA.id);
     expect(detail.counts.users).toBeGreaterThanOrEqual(1);
     expect(detail.counts.projects).toBeGreaterThanOrEqual(2);
     // 9 owners + 1 archived (3 active + 1 archived + 5 extra = 9 active, 1 archived)
@@ -308,7 +306,7 @@ describe('GET /provider/tenants/:id — P6.5-3 service integration', () => {
   });
 
   it('T6.5-D37-5e) sample owners capped at 5 even when org has more', async () => {
-    const detail = await svc.get(principal(), 'sample cap test', orgA.id);
+    const detail = await svc.get(principal(), 'TKT-1100: sample cap test', orgA.id);
     expect(detail.sampleOwners.length).toBeLessThanOrEqual(5);
     expect(detail.sampleOwners.length).toBe(5); // we seeded 9 active owners
   });
@@ -326,13 +324,17 @@ describe('GET /provider/tenants/:id — P6.5-3 service integration', () => {
       nationalId: '038777111',
       archived: true,
     });
-    const detail = await svc.get(principal(), 'archived owner in sample test', onlyArchivedOrg.id);
+    const detail = await svc.get(
+      principal(),
+      'TKT-1100: archived owner in sample test',
+      onlyArchivedOrg.id,
+    );
     expect(detail.sampleOwners.length).toBe(1);
     expect(detail.sampleOwners[0]!.archivedAt).not.toBeNull();
   });
 
   it('T6.5-D37-5g) org with 0 owners → empty sampleOwners array (not undefined)', async () => {
-    const detail = await svc.get(principal(), 'empty org test', orgEmpty.id);
+    const detail = await svc.get(principal(), 'TKT-1100: empty org test', orgEmpty.id);
     expect(detail.sampleOwners).toEqual([]);
     expect(Array.isArray(detail.sampleOwners)).toBe(true);
     expect(detail.counts.owners).toBe(0);
@@ -346,7 +348,7 @@ describe('GET /provider/tenants/:id — P6.5-3 service integration', () => {
     } finally {
       client.release();
     }
-    const detail = await svc.get(principal(), 'archived org visibility', orgB.id);
+    const detail = await svc.get(principal(), 'TKT-1100: archived org visibility', orgB.id);
     expect(detail.id).toBe(orgB.id);
     expect(detail.archivedAt).not.toBeNull();
     // Restore so other tests aren't affected.

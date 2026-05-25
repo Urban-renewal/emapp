@@ -44,11 +44,11 @@ let orgB: { id: string };
 let auditStartMarker: Date;
 
 function principal(): ProviderPrincipal {
+  // Audit v1.1 CC-4 — services consume the narrow ProviderActor
+  // (sub / ip / userAgent); role / sid / type stay in the guard
+  // layer and are unused by service code.
   return {
     sub: provider.id,
-    role: 'provider_admin',
-    sid: '00000000-0000-4000-8000-00000000d37a',
-    type: 'provider_access',
     ip: '203.0.113.5',
     userAgent: 'P6.5-2-spec/1.0',
   };
@@ -100,7 +100,9 @@ async function ourAuditRows(): Promise<
 
 describe('GET /provider/tenants — P6.5-2 service integration', () => {
   it('T6.5-D37-1) cross-tenant visibility — Provider sees BOTH Org A and Org B (BYPASSRLS via withProvider)', async () => {
-    const result = await svc.list(principal(), 'cross-tenant visibility test', { limit: 100 });
+    const result = await svc.list(principal(), 'TKT-1100: cross-tenant visibility test', {
+      limit: 100,
+    });
     const slugs = result.data.map((t) => t.slug);
     expect(slugs).toContain(`${TEST_PREFIX}-a`);
     expect(slugs).toContain(`${TEST_PREFIX}-b`);
@@ -110,7 +112,7 @@ describe('GET /provider/tenants — P6.5-2 service integration', () => {
   });
 
   it('T6.5-D37-2a) cursor pagination — limit=1 returns a single row + cursor + has_more=true', async () => {
-    const first = await svc.list(principal(), 'pagination test page 1', { limit: 1 });
+    const first = await svc.list(principal(), 'TKT-1100: pagination test page 1', { limit: 1 });
     expect(first.data.length).toBe(1);
     expect(first.page.has_more).toBe(true);
     expect(first.page.cursor).toBeTruthy();
@@ -149,7 +151,10 @@ describe('GET /provider/tenants — P6.5-2 service integration', () => {
   it('T6.5-D37-2c) invalid cursor → 400 invalid_cursor (no Provider session opened)', async () => {
     const auditBefore = (await ourAuditRows()).length;
     await expect(
-      svc.list(principal(), 'invalid cursor test', { limit: 5, cursor: 'not-base64url-garbage' }),
+      svc.list(principal(), 'TKT-1100: invalid cursor test', {
+        limit: 5,
+        cursor: 'not-base64url-garbage',
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
     const auditAfter = (await ourAuditRows()).length;
     // The rejection happens BEFORE withProvider — so no audit row.
@@ -164,7 +169,10 @@ describe('GET /provider/tenants — P6.5-2 service integration', () => {
     const past = Buffer.from(
       JSON.stringify({ c: '1970-01-01T00:00:00.000Z', i: '00000000-0000-0000-0000-000000000000' }),
     ).toString('base64url');
-    const result = await svc.list(principal(), 'empty page test', { limit: 5, cursor: past });
+    const result = await svc.list(principal(), 'TKT-1100: empty page test', {
+      limit: 5,
+      cursor: past,
+    });
     expect(result.data).toEqual([]);
     expect(result.page.has_more).toBe(false);
     expect(result.page.cursor).toBeNull();
@@ -190,7 +198,7 @@ describe('GET /provider/tenants — P6.5-2 service integration', () => {
 
   it('T6.5-D37-3b) counts correctness — Org A has 1 user + 2 projects + 0 owners by default', async () => {
     // Factory's createTestOrg creates: 1 manager + 2 projects + 0 owners
-    const result = await svc.list(principal(), 'count correctness test', { limit: 100 });
+    const result = await svc.list(principal(), 'TKT-1100: count correctness test', { limit: 100 });
     const a = result.data.find((t) => t.id === orgA.id);
     expect(a).toBeDefined();
     expect(a!.counts.users).toBeGreaterThanOrEqual(1);
@@ -215,7 +223,9 @@ describe('GET /provider/tenants — P6.5-2 service integration', () => {
         phoneHash: null,
       });
     });
-    const result = await svc.list(principal(), 'recount after owner insert', { limit: 100 });
+    const result = await svc.list(principal(), 'TKT-1100: recount after owner insert', {
+      limit: 100,
+    });
     const a = result.data.find((t) => t.id === orgA.id);
     expect(a!.counts.owners).toBeGreaterThanOrEqual(1);
   });
@@ -231,19 +241,21 @@ describe('GET /provider/tenants — P6.5-2 service integration', () => {
     } finally {
       client.release();
     }
-    const result = await svc.list(principal(), 'archived visibility test', { limit: 200 });
+    const result = await svc.list(principal(), 'TKT-1100: archived visibility test', {
+      limit: 200,
+    });
     const found = result.data.find((t) => t.id === archived.id);
     expect(found).toBeDefined();
     expect(found!.archivedAt).not.toBeNull();
   });
 
   it('T6.5-D37-3d) cursor row itself is NOT re-emitted on the next page (strict-less-than)', async () => {
-    const first = await svc.list(principal(), 'cursor exclusivity page 1', { limit: 1 });
+    const first = await svc.list(principal(), 'TKT-1100: cursor exclusivity page 1', { limit: 1 });
     expect(first.data.length).toBe(1);
     const lastId = first.data[0]!.id;
     const cursor = first.page.cursor;
     expect(cursor).toBeTruthy();
-    const second = await svc.list(principal(), 'cursor exclusivity page 2', {
+    const second = await svc.list(principal(), 'TKT-1100: cursor exclusivity page 2', {
       limit: 5,
       cursor: cursor!,
     });
@@ -253,7 +265,7 @@ describe('GET /provider/tenants — P6.5-2 service integration', () => {
   });
 
   it('T6.5-D37-3e) tenant id is a UUID + name is non-empty (shape sanity)', async () => {
-    const result = await svc.list(principal(), 'shape sanity', { limit: 5 });
+    const result = await svc.list(principal(), 'TKT-1100: shape sanity', { limit: 5 });
     for (const t of result.data) {
       expect(t.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
       expect(t.name.length).toBeGreaterThan(0);
@@ -265,9 +277,9 @@ describe('GET /provider/tenants — P6.5-2 service integration', () => {
   });
 
   it('T6.5-D37-3f) limit boundary — limit=1 + limit=100 both accepted', async () => {
-    const small = await svc.list(principal(), 'limit 1 test', { limit: 1 });
+    const small = await svc.list(principal(), 'TKT-1100: limit 1 test', { limit: 1 });
     expect(small.data.length).toBeLessThanOrEqual(1);
-    const big = await svc.list(principal(), 'limit 100 test', { limit: 100 });
+    const big = await svc.list(principal(), 'TKT-1100: limit 100 test', { limit: 100 });
     expect(big.data.length).toBeLessThanOrEqual(100);
   });
 });

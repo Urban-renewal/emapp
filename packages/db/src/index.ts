@@ -30,7 +30,31 @@ export { env, reloadEnv } from './env';
 export { withTenant, type TenantTx } from './wrappers/with-tenant';
 export { withProvider } from './wrappers/with-provider';
 export { withBootstrap } from './wrappers/with-bootstrap';
-export { verifyEncryptionStartup } from './startup-check';
+export { verifyEncryptionStartup, verifyProviderPoolRole } from './startup-check';
+// Audit v1.1 closures — pure validators for Provider tier inputs
+// (access_reason quality + action regex + metadata size + UUID). One
+// source of truth for both the HTTP decorator AND the withProvider
+// wrapper (SA-13 deduplication; CC-2 quality rule; CC-3 SRP extract).
+export {
+  validateProviderAction,
+  validateProviderMetadata,
+  validateProviderReason,
+  validateProviderUserId,
+  PROVIDER_ACTION_MAX_LEN,
+  PROVIDER_ACTION_REGEX,
+  PROVIDER_CONTROL_CHARS_REGEX,
+  PROVIDER_METADATA_MAX_BYTES,
+  PROVIDER_REASON_MAX_LEN,
+  PROVIDER_REASON_MIN_LEN,
+  PROVIDER_TICKET_REF_REGEX,
+  PROVIDER_UUID_REGEX,
+  type ReasonFailureCode,
+  type ActionFailureCode,
+  type MetadataFailureCode,
+  type ValidatorOk,
+  type ValidatorFailed,
+  type ValidatorResult,
+} from './helpers/provider-validators';
 export * from './schema/index';
 export { sql } from 'drizzle-orm';
 export { AuditService } from './audit/audit.service';

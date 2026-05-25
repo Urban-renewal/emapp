@@ -55,14 +55,18 @@ describe('parseAccessReasonHeader (P6.5-1 hardening)', () => {
   });
 
   it('U7) CRLF injection attempt — strips control chars, returns clean value', () => {
-    const out = parseAccessReasonHeader('investigating\r\nX-Injected: pwned');
-    expect(out).toBe('investigatingX-Injected: pwned');
+    // CC-2 closure raised MIN_LEN 5 → 10 and added quality rules (≥3
+    // tokens, ≥4 distinct chars, or ticket-prefix). Use a substantive
+    // reason that survives the strip AND passes the quality bar.
+    const out = parseAccessReasonHeader('INC-1234\r\n investigating tenant failure');
+    expect(out).toBe('INC-1234 investigating tenant failure');
+    // eslint-disable-next-line no-control-regex
     expect(out).not.toMatch(/[\r\n]/);
   });
 
   it('U8) null-byte injection — stripped', () => {
-    const out = parseAccessReasonHeader('investigating\0null-byte');
-    expect(out).toBe('investigatingnull-byte');
+    const out = parseAccessReasonHeader('INC-1234\0 investigating tenant failure');
+    expect(out).toBe('INC-1234 investigating tenant failure');
     // eslint-disable-next-line no-control-regex
     expect(out).not.toMatch(/\x00/);
   });
@@ -82,24 +86,34 @@ describe('parseAccessReasonHeader (P6.5-1 hardening)', () => {
     expect(parseAccessReasonHeader(reason)).toBe(reason);
   });
 
-  it('U12) exactly 5 chars (boundary) — accepted', () => {
-    expect(parseAccessReasonHeader('abcde')).toBe('abcde');
+  it('U12) ticket-prefix short reason (boundary) — accepted (CC-2)', () => {
+    // Post-CC-2: a recognised ticket reference bypasses the MIN_LEN
+    // floor. "INC-1234" (8 chars) is shorter than MIN_LEN=10 yet
+    // accepted because it carries forensic-traceable meaning on its
+    // own.
+    expect(parseAccessReasonHeader('INC-1234')).toBe('INC-1234');
   });
 
-  it('U13) exactly 512 chars (boundary) — accepted', () => {
-    const reason = 'a'.repeat(512);
+  it('U13) exactly 512 chars (boundary) — accepted when substantive', () => {
+    // Substantive content (≥3 tokens, ≥4 distinct chars) at length 512.
+    const reason = ('investigating tenant ' + 'INC-1234 ').repeat(20).slice(0, 512);
     expect(parseAccessReasonHeader(reason).length).toBe(512);
   });
 
   it('U14) error code is STABLE across all rejection paths (FE switches on code, not message)', () => {
     // FE error handling pattern (D.16): switch on error.code, never
-    // on error.message. Every rejection from this layer must use
-    // the SAME error.code so the FE doesn't need a per-case branch.
+    // on error.message. Post-CC-2 the stable code set is:
+    //   - reason_required   (missing / empty / too short / array)
+    //   - reason_too_long   (> MAX_LEN)
+    //   - reason_low_quality (passes length floor but fails quality)
+    const stableCodes = new Set(['reason_required', 'reason_too_long', 'reason_low_quality']);
     const samples: Array<string | string[] | undefined> = [
       undefined,
       '',
       '   ',
       'a',
+      'aaaaa',
+      'aaaa bbbb cccc', // 3 tokens but only 3 distinct chars
       'a'.repeat(513),
       '\r\n\r\n\r\n',
       ['x', 'y'],
@@ -111,7 +125,7 @@ describe('parseAccessReasonHeader (P6.5-1 hardening)', () => {
       } catch (e) {
         expect(e).toBeInstanceOf(BadRequestException);
         const resp = (e as BadRequestException).getResponse() as { error?: { code?: string } };
-        expect(resp.error?.code).toBe('reason_required');
+        expect(stableCodes.has(resp.error?.code ?? '')).toBe(true);
       }
     }
   });

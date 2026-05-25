@@ -1,5 +1,24 @@
 # QA Manual Findings — Phase 4a Manager Web
 
+> **POST-PASS RE-CHARACTERIZATION (added later same day).** The 360 ms "baseline floor" and the 1.7 s `/projects` TTFB measured below are **geographic, not algorithmic**. The dev DB lives in Neon `us-east-1` (Virginia, IP 52.4.160.253); the QA was run from Israel. Direct TLS handshake to that host measured **360 ms per round-trip**, exactly matching the per-request floor.
+>
+> In production (Railway + Neon in the same region), per-RTT cost is ~1-5 ms. Projected production numbers:
+>
+> | Endpoint                    | Localhost QA (Israel→VA) | Production estimate               |
+> | --------------------------- | ------------------------ | --------------------------------- |
+> | `/api/v1/health`            | 360 ms                   | 5-15 ms (no DB ping after PR #54) |
+> | `/api/v1/ready`             | 362 ms                   | 20-30 ms (DB ping = 1-5 ms RTT)   |
+> | `/api/v1/projects?limit=25` | 1767 ms                  | 30-80 ms (4 RTs × 1-5 ms + query) |
+>
+> **Implications:**
+>
+> - PR #54 (liveness ≠ readiness) is still correct architecture, but the headline 40 % speedup is mostly a localhost artefact. In prod the win is ~5-15 ms — the architectural correctness (no DB-flake-induced restarts) remains the real value.
+> - **F-PERF-1 (projects 1767 ms) is most likely NOT a production issue.** The 4-RT cost in `withTenant` is geography-amplified locally; in prod the same 4 RTs cost 4-20 ms total. Deferred work on `withTenant` should wait until profiling against production data confirms there's an actual problem.
+> - If a real production user complains about latency, look for: FE bundle size + Heebo font load, cache invalidation, a single endpoint doing N+1 / table scan, or Railway cold-start with <2 instances. Not the DB ping or RLS GUC overhead.
+> - The QA pass itself is still useful — it confirmed security headers, anti-enumeration, no PII leaks, SSR form `method="post"`, and the locale middleware. Those are correctness checks that don't depend on RTT.
+>
+> See `FE-BUNDLE-AUDIT.md` for the follow-up FE-side investigation (result: bundle is healthy; suspects shifted to double-fetch waterfall / CF Pages cold-start / N+1 against populated data).
+
 **Date:** 2026-05-25
 **Tester:** Claude (manual click-by-click + 5-axis: Network / Console / Cookies / Server log / DB)
 **Branch:** `audit-v1-1-closures-worktree` (post Audit v1.1 closures)

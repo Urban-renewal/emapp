@@ -188,5 +188,62 @@ describe('next.config.ts security headers (§v9-P0-5 closure pin)', () => {
     }
     // Verify IS_DEV is defined as a NODE_ENV !== 'production' check.
     expect(config).toMatch(/IS_DEV\s*=\s*process\.env\[.NODE_ENV.\]\s*!==\s*['"]production['"]/);
+
+    // §csp-r2 — connect-src MUST include the R2 storage host. The FE
+    // upload contract (documents.ts:uploadToPresigned + imports.ts:
+    // uploadToPresignedXhr) calls PUT directly to a presigned R2 URL
+    // from the browser. Without this directive the browser blocks the
+    // PUT silently (no JS-readable error other than `TypeError:
+    // Failed to fetch`); uploads break in every browser environment.
+    // The matching API helmet allowlist lives in apps/api/src/main.ts
+    // (`connectSrc: [..., 'https://*.r2.cloudflarestorage.com']`).
+    // The two MUST stay in lock-step — divergence here was caught by
+    // browser smoke on 2026-05-25.
+    expect(config).toMatch(/connect-src[^"]*https:\/\/\*\.r2\.cloudflarestorage\.com/);
+  });
+
+  it('M10b) FE connect-src host allowlist matches API helmet connectSrc (lock-step)', async () => {
+    // Generic family-defense: every host the FE direct-fetches MUST
+    // appear in BOTH the FE next.config.ts CSP and the API helmet
+    // connectSrc. If a future contract adds (e.g.) a payment-gateway
+    // host to the API but forgets the FE side, the upload-class bug
+    // recurs. We extract the host-pattern set from each file and
+    // assert FE ⊇ {non-self entries from API} (modulo Sentry which
+    // is FE-only when the browser SDK lands — see PERF-M3 in
+    // next.config.ts).
+    const { readFileSync } = await import('fs');
+    const { fileURLToPath } = await import('url');
+    const { dirname, join } = await import('path');
+    const here = dirname(fileURLToPath(import.meta.url));
+    const feConfig = readFileSync(join(here, '..', 'next.config.ts'), 'utf8');
+    // here = apps/web/src → up 3 levels to repo root, then apps/api/src/main.ts.
+    const apiMain = readFileSync(
+      join(here, '..', '..', '..', 'apps', 'api', 'src', 'main.ts'),
+      'utf8',
+    );
+
+    // FE: extract the connect-src literal (single line) → host tokens.
+    const feLine = feConfig.match(/"(connect-src [^"]*)"/)?.[1] ?? '';
+    const feHosts = new Set(
+      feLine
+        .replace(/^connect-src\s*/, '')
+        .split(/\s+/)
+        .filter((h) => h.length > 0 && h !== "'self'"),
+    );
+
+    // API: extract the `connectSrc: [...]` array entries.
+    const apiBlock = apiMain.match(/connectSrc:\s*\[([\s\S]*?)\]/)?.[1] ?? '';
+    const apiHosts = new Set(
+      [...apiBlock.matchAll(/'(https?:\/\/[^']+)'/g)].map((m) => m[1]!).filter(Boolean),
+    );
+
+    // The FE must allow every API-listed host EXCEPT pure server-side
+    // ones. The current contract: R2 (browser PUT) is the only one
+    // that BOTH sides must allow.
+    const requiredOnFe = ['https://*.r2.cloudflarestorage.com'];
+    for (const host of requiredOnFe) {
+      expect(apiHosts.has(host), `API helmet must allow ${host} (connectSrc)`).toBe(true);
+      expect(feHosts.has(host), `FE CSP must allow ${host} (connect-src)`).toBe(true);
+    }
   });
 });

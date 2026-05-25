@@ -18,6 +18,7 @@ import {
   DocumentUploadResponseSchema,
   type CreateDocument,
   type Document,
+  type DocumentMime,
   type FinalizeDocument,
   type ListDocumentsQueryDto,
 } from '@emapp/shared-types';
@@ -112,17 +113,33 @@ export async function archiveDocument(id: string): Promise<void> {
  * canonicalize on BOTH the create-call mimeType (the caller does it)
  * and the upload-call mimeType (here) using the same map.
  */
-const MIME_CANONICALIZATION: Record<string, string> = {
+/**
+ * v9-post-audit-SOLID-11 closure — every map TARGET must be a valid
+ * DocumentMimeEnum value. The compile-time `satisfies` ensures a
+ * future map entry pointing to a non-canonical value fails `tsc`
+ * (e.g. `'image/jpg': 'image/x-jpeg'` would error: not in enum).
+ *
+ * The KEY side (LHS) is INTENTIONALLY unrestricted: it captures
+ * non-canonical aliases that browsers report (image/jpg, image/pjpeg,
+ * application/x-zip-compressed, text/comma-separated-values). The
+ * VALUE side (RHS) is the canonical DocumentMimeEnum member the
+ * BE signed against.
+ */
+const MIME_CANONICALIZATION = {
   'image/jpg': 'image/jpeg',
   'image/pjpeg': 'image/jpeg',
-  'application/x-zip-compressed': 'application/zip',
   'text/comma-separated-values': 'text/csv',
-};
+  // Note: `application/x-zip-compressed` (Windows browser alias for .zip)
+  // is NOT mapped — `application/zip` is not in DocumentMimeEnum (only
+  // xlsx/docx with their canonical `vnd.openxmlformats-…` MIMEs are
+  // allow-listed). Mapping it would silently coerce a rejected upload
+  // to a rejected upload via a different code path.
+} as const satisfies Record<string, DocumentMime>;
 
 /** Public — call BOTH in the upload hook (before createDocument) AND
  *  by uploadToPresigned (defense in depth). */
 export function canonicalMime(raw: string): string {
-  return MIME_CANONICALIZATION[raw] ?? raw;
+  return (MIME_CANONICALIZATION as Record<string, string>)[raw] ?? raw;
 }
 
 export async function uploadToPresigned(url: string, blob: Blob, mimeType: string): Promise<void> {

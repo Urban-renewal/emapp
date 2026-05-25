@@ -153,15 +153,26 @@ async function rawFetch<T>(path: string, init: ApiFetchOptions): Promise<RawFetc
     signal = AbortSignal.timeout(effectiveTimeout);
   }
 
+  // §v9-M-5 closure — Content-Type only when there's a body. GET /
+  // DELETE / HEAD have no body, so the JSON Content-Type is wasted
+  // bytes that some proxies (not Cloudflare today, but defense in
+  // depth) misinterpret as an empty-body POST.
+  const method = rest.method ?? 'GET';
+  const hasBody = rest.body !== undefined && rest.body !== null;
+  const headers: Record<string, string> = {
+    ...((rest.headers as Record<string, string> | undefined) ?? {}),
+  };
+  if (hasBody && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
+
   let res: Response;
   try {
     res = await fetch(`${API_PREFIX}${path}`, {
       ...rest,
+      method,
       credentials: 'same-origin',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(rest.headers ?? {}),
-      },
+      headers,
       signal,
     });
   } catch (e) {
@@ -219,9 +230,24 @@ function maybeEmitUnauthenticated(status: number, body: ApiResponse<unknown>): v
   window.dispatchEvent(new CustomEvent(UNAUTHENTICATED_EVENT));
 }
 
-/** List-aware variant — preserves the `page` envelope alongside `data[]`. */
+/**
+ * List-aware variant — preserves the `page` envelope alongside `data[]`.
+ *
+ * v9-post-audit-SOLID-7 closure — the previous `as unknown as
+ * ApiListResponse<T>` double-cast was a code smell hiding that the
+ * generic `apiFetch<T[]>` doesn't know about the `page` field. We now
+ * type the local result as a structural superset (`ApiData<T[]>` may
+ * also carry `page`) and let the caller-side `isList<T>` runtime
+ * check do the discrimination.
+ */
 async function apiFetchList<T>(path: string, init?: ApiFetchOptions): Promise<ApiListResponse<T>> {
-  return (await apiFetch<T[]>(path, init)) as unknown as ApiListResponse<T>;
+  const res = await apiFetch<T[]>(path, init);
+  // The raw JSON body — when it's a list — already carries `page` at
+  // the top level (validated by the envelope guard in rawFetch). The
+  // generic `ApiResponse<T[]>` type just doesn't include `page` in
+  // its union; the runtime shape does. This single-step cast (no
+  // intermediate `unknown`) is the minimal type-system adjustment.
+  return res as ApiListResponse<T>;
 }
 
 /**

@@ -153,14 +153,20 @@ describe('Documents upload — presigned URL handling', () => {
     ).rejects.toMatchObject({ code: 'upload_failed' });
   });
 
-  it('D10) canonicalMime normalizes file.type aliases (CLOSED §v9-M-3)', async () => {
+  it('D10) canonicalMime normalizes file.type aliases (CLOSED §v9-M-3 + SOLID-11)', async () => {
     const { canonicalMime } = await import('./documents');
     expect(canonicalMime('image/jpg')).toBe('image/jpeg');
     expect(canonicalMime('image/pjpeg')).toBe('image/jpeg');
-    expect(canonicalMime('application/x-zip-compressed')).toBe('application/zip');
     expect(canonicalMime('text/comma-separated-values')).toBe('text/csv');
     // Canonical values are passed through:
     expect(canonicalMime('application/pdf')).toBe('application/pdf');
+    // Unmapped aliases pass through as-is (the FE allow-list check
+    // rejects them before reaching the upload). Mapping
+    // application/x-zip-compressed → application/zip would silently
+    // coerce a rejected upload — `application/zip` is NOT in
+    // DocumentMimeEnum (only xlsx/docx with their canonical
+    // vnd.openxmlformats-… MIMEs are allow-listed).
+    expect(canonicalMime('application/x-zip-compressed')).toBe('application/x-zip-compressed');
   });
 
   it('D10b) uploadToPresigned uses the canonical mime, NOT the raw input', async () => {

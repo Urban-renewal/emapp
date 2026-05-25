@@ -6,12 +6,25 @@ export {
   providerDb,
   closeAllPools,
   setPoolErrorObserver,
+  // D.37 / Phase 6.5 — system-health surface (read-only telemetry).
+  getPoolStats,
+  setStorageErrorObserver,
+  recordStorageError,
+  getStorageErrorStats,
+  // Test-only seam — production code MUST NOT call this; the system-
+  // health counter is per-process by design (resets only on restart).
+  resetStorageErrorStatsForTests,
   type Database,
   type ProviderDatabase,
   type PoolErrorEvent,
   type PoolErrorObserver,
   type PoolErrorSource,
   type PoolName,
+  type PoolStatsSnapshot,
+  type AllPoolsStats,
+  type StorageErrorEvent,
+  type StorageErrorObserver,
+  type StorageErrorStats,
 } from './client';
 export { env, reloadEnv } from './env';
 export { withTenant, type TenantTx } from './wrappers/with-tenant';

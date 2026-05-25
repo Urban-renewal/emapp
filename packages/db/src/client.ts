@@ -130,6 +130,119 @@ export const providerPool = new Pool(providerPoolConfig);
 export const providerDb = drizzle(providerPool, { schema });
 export type ProviderDatabase = NodePgDatabase<typeof schema>;
 
+// ───────────────────────────────────────────────────────────────────
+// D.37 / Phase 6.5 — pool stats accessor + storage error observer.
+// Both surface internal state for the Provider system-health endpoint
+// WITHOUT exposing the pool / storage objects themselves. The principle
+// is the same as `setPoolErrorObserver` above: read-only telemetry,
+// no mutation surface.
+// ───────────────────────────────────────────────────────────────────
+
+export interface PoolStatsSnapshot {
+  /** Currently checked-out + idle clients combined (clients owned by the pool). */
+  total: number;
+  /** Idle (returned to pool, available for next checkout). */
+  idle: number;
+  /** Queued requests awaiting a pool slot. */
+  waiting: number;
+}
+
+export interface AllPoolsStats {
+  app: PoolStatsSnapshot;
+  provider: PoolStatsSnapshot;
+}
+
+/**
+ * Read-only snapshot of both pg pool gauges. Used by
+ * `GET /provider/system-health` (D.37). Returns NEW number-only
+ * objects — callers cannot mutate the pools through this.
+ *
+ * The values come straight from pg-pool's documented properties
+ * (`totalCount` / `idleCount` / `waitingCount`). They are gauges,
+ * not metrics over time — sampling at health-check rate is fine.
+ */
+export function getPoolStats(): AllPoolsStats {
+  return {
+    app: {
+      total: pool.totalCount,
+      idle: pool.idleCount,
+      waiting: pool.waitingCount,
+    },
+    provider: {
+      total: providerPool.totalCount,
+      idle: providerPool.idleCount,
+      waiting: providerPool.waitingCount,
+    },
+  };
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Storage error observer — parallel to `setPoolErrorObserver`.
+// The R2StorageProvider (apps/api + apps/worker) NOTIFIES via this
+// hook when any S3 SDK call fails. The Provider system-health endpoint
+// READS the accumulated counter + last-error timestamp.
+// ───────────────────────────────────────────────────────────────────
+
+export interface StorageErrorEvent {
+  /** Operation that failed (e.g. 'put', 'get', 'head', 'delete'). */
+  op: string;
+  /** Error class name (e.g. 'NoSuchKey', 'TimeoutError'). NEVER the message. */
+  errorClass: string;
+}
+
+export type StorageErrorObserver = (event: StorageErrorEvent) => void;
+
+let storageErrorObserver: StorageErrorObserver | undefined;
+let storageErrorCount = 0;
+let storageLastErrorAt: Date | null = null;
+
+/**
+ * Replace the storage error observer (one slot, same pattern as
+ * `setPoolErrorObserver`). The default observer is a built-in counter
+ * surfaced via `getStorageErrorStats()` — calling this lets ops bolt
+ * on Sentry forwarding without losing the counter.
+ *
+ * The observer fires AFTER the built-in counter increments, so the
+ * health endpoint always reflects accurate totals even with an
+ * observer attached.
+ */
+export function setStorageErrorObserver(observer: StorageErrorObserver | undefined): void {
+  storageErrorObserver = observer;
+}
+
+/**
+ * Storage providers call this on every error to keep the system-
+ * health counter accurate. The built-in counter NEVER throws; the
+ * caller's hot path is unaffected.
+ */
+export function recordStorageError(event: StorageErrorEvent): void {
+  storageErrorCount += 1;
+  storageLastErrorAt = new Date();
+  const fn = storageErrorObserver;
+  if (!fn) return;
+  try {
+    fn(event);
+  } catch {
+    /* observer must never weaken the counter */
+  }
+}
+
+export interface StorageErrorStats {
+  errorsSinceBoot: number;
+  lastErrorAt: Date | null;
+}
+
+export function getStorageErrorStats(): StorageErrorStats {
+  return { errorsSinceBoot: storageErrorCount, lastErrorAt: storageLastErrorAt };
+}
+
+/** Test seam — reset the counter between specs so cross-spec state
+ *  doesn't leak. Intentionally NOT exported via index.ts (test-only). */
+export function resetStorageErrorStatsForTests(): void {
+  storageErrorCount = 0;
+  storageLastErrorAt = null;
+}
+
 attachClientErrorGuard(providerPool, 'providerPool');
 
 /**

@@ -103,3 +103,44 @@ export const POLICY: Matrix = {
 export function can(role: Role, resource: Resource, action: Action): boolean {
   return POLICY[resource][action].includes(role);
 }
+
+// ───────────────────────────────────────────────────────────────────
+// D.37 / Phase 6.5 — Provider-tier matrix.
+//
+// DELIBERATELY SEPARATE from the org-tier POLICY above. The Role
+// type is org-only (`manager | agent | viewer`); the Provider tier
+// has its OWN role enum (`provider_admin`) and its own JWT audience
+// (`emapp-provider`, D.29). Mixing the two would let a future hand
+// accidentally write a single rule that "applies to both tiers" —
+// which is exactly the bug the tier separation was designed to make
+// structurally impossible (docs/07 §8.1).
+//
+// Resources here mirror the new /provider/* endpoint surface. All
+// actions are READ-ONLY because D.37 explicitly defers any write to
+// a separate Gate-6 decision. If a future endpoint ever needs to
+// accept a write action, do not silently add it here — open a D.NN
+// entry first.
+// ───────────────────────────────────────────────────────────────────
+export type ProviderRole = 'provider_admin';
+export type ProviderResource = 'provider';
+/** Only READ — D.37 invariant. NEVER widen without a D.NN entry. */
+export type ProviderAction = 'read';
+
+type ProviderMatrix = Record<ProviderResource, Record<ProviderAction, readonly ProviderRole[]>>;
+
+const PROV_ADMIN = ['provider_admin'] as const;
+
+export const PROVIDER_POLICY: ProviderMatrix = {
+  provider: { read: PROV_ADMIN },
+};
+
+/** Pure decision for the Provider tier. Symmetric with `can()` but
+ *  takes the tier-specific types — TypeScript prevents a caller from
+ *  passing an org Role into a Provider check (and vice-versa). */
+export function canProvider(
+  role: ProviderRole,
+  resource: ProviderResource,
+  action: ProviderAction,
+): boolean {
+  return PROVIDER_POLICY[resource][action].includes(role);
+}

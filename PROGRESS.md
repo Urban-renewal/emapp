@@ -6,6 +6,29 @@
 
 ## Heartbeat (latest — for the 30-second scan)
 
+- **Current slice (Phase 6.5 — Provider Admin BE, branch `phase-6.5-provider-be`):** D.37-locked read-only endpoint surface for the EMAPP operations team to observe production state across tenants (BYPASSRLS via `withProvider`). All 4 endpoints shipped + full test coverage + tier-isolated policy matrix. 90 new tests across 6 spec files (45 contract + 45 adversarial), all green on live Neon dev. 0 PII leaks, 0 cross-tenant bleed, 0 write paths (Gate-6 reaffirmed). Runs in **parallel** with the FE agent on `phase-4a-fe` — separate git worktree at `C:/emapp-provider-be` so neither agent disturbs the other.
+- **Phase 6.5 endpoints (all 4 D.37-scoped):**
+  - `GET /api/v1/provider/tenants` (P6.5-2) — paginated org list with users/projects/owners counts (correlated subqueries, single round-trip). 12 specs.
+  - `GET /api/v1/provider/tenants/:id` (P6.5-3) — tenant detail with 5 PII-masked sample owners (name `•••••••XX`, phone `•••••XXXX`, national_id NEVER on wire — masking done IN-SQL via current_setting GUC). 12 specs incl. full JSON scan + `\b\d{9}\b` regex zero-leak proof.
+  - `GET /api/v1/provider/audit` (P6.5-4) — cross-tenant audit search (orgId / action prefix / date range / cursor). 13 specs. LIKE-injection blocked at Zod (regex excludes `%`/`_`); writer appends literal `%` safely.
+  - `GET /api/v1/provider/system-health` (P6.5-5) — read-only gauges: pg-boss queue depth, pg pool stats (app + provider), R2 errorsSinceBoot + lastErrorAt. 8 specs incl. recursive leaf-type scan proving response is number/Date/null only.
+- **Phase 6.5 foundational fix (P6.5-1, T6.5-D37-0):** `withProvider` now populates `metadata.reason` (was always `{}` pre-D.37 — silent invariant break) + accepts optional `action` override + caller-supplied `metadata` (merged BENEATH the reason overlay so a hostile caller cannot smuggle a fake reason). 19 specs cover the contract including 12 adversarial: SQL-injection-shaped action rejected (provider_action_invalid), reason CRLF stripped, metadata 8KB cap, metadata circular-ref → provider_metadata_invalid, 5 concurrent calls → 5 distinct audit rows.
+- **Phase 6.5 telemetry seams (P6.5-5):** new `@emapp/db` exports — `getPoolStats()`, `setStorageErrorObserver`, `recordStorageError`, `getStorageErrorStats`. Returns number-only snapshots; never exposes pool/storage objects (D.21 compliance). R2StorageProvider now wraps every SDK send in `withErrorTelemetry()` HOF that increments the counter on failure.
+- **Phase 6.5 policy (P6.5-6):** new `PROVIDER_POLICY` matrix in `policy.ts` — DELIBERATELY SEPARATE from the org-tier POLICY. Role type isolation enforced at the TypeScript level (org `Role` cannot be passed to `canProvider()`; pinned by `@ts-expect-error` test). Single resource `provider`, single action `read`, single role `provider_admin`. Any widening = Gate-6 D.NN entry required.
+- **Phase 6.5 self-audit (3-axis):**
+  - **SOLID:** No DI duplication (lessons from P6.5-1 hardening — `imports: [AuthModule]` only); SRP per service (one endpoint = one service); telemetry seam pure functions (getPoolStats / getStorageErrorStats).
+  - **Security/ISO A.9.4 + A.12.4:** Every endpoint has `access_reason` header (400 reason_required), every call writes audit row in same tx (rollback if fn throws), PII masked at every wire boundary (verified by zero-leak regex tests). Tier isolation: ProviderAuthGuard rejects org JWT (audience mismatch D.29), policy.ts has zero org-Role overlap.
+  - **Perf:** Cursor pagination (no offset, D.16 mandate); correlated subqueries for counts (1 RT not N+1); withProvider overhead is unavoidable baseline (~4 RTs for session setup). System-health gauges are local-memory reads (no DB hit for pool/r2 sections).
+- **Phase 6.5 test deltas (90 new):**
+  - `with-provider-d37-audit.spec.ts` (19) — T6.5-D37-0 foundational invariant + adversarial battery
+  - `access-reason.decorator.spec.ts` (15) — header validation incl. CRLF/null-byte injection
+  - `provider-tenants.spec.ts` (12) — list endpoint
+  - `provider-tenant-detail.spec.ts` (12) — detail + PII masking + zero-leak proof
+  - `provider-audit.spec.ts` (13) — cross-tenant search + LIKE-injection defense
+  - `provider-system-health.spec.ts` (8) — gauges + leaf-type scan + concurrent safety
+  - `policy.spec.ts` (6 new, 219 total) — PROVIDER_POLICY pin + tier-isolation @ts-expect-error
+- **Phase 6.5 status:** **awaiting_approval** — PR opened, CI expected green. Runs in parallel with `phase-4a-fe` (FE agent's branch) — branches are entirely independent on `apps/api/src/modules/provider/*` files; merge conflicts unlikely.
+
 - **Last slice (v8.5 — Phase 4 FE readiness, branch `v8.5-phase4-readiness`):** v8.5 ran 3 INDEPENDENT fresh-eyes agents on the §v8-S1/S2/S3 trio. They surfaced **2 cross-confirmed P0s + 4 single-agent P0s + 2 HIGH bugs** that 8 prior audit passes had missed (lesson: code-quality audit ≠ phase-transition audit; new D.36 protocol logged). **All closed in v8.5 — no half-work.** Plus: D.35 Option A topology decided + Pages Function reverse-proxy implemented. Worker 223/223, API 329/329, db 114/114, lint + typecheck clean across all 8 packages.
 - **v8.5 P0 cross-confirmed closures:**
   - **Migrator GUC fragility (SOLID #1 + Sec P0-1)** — `packages/db/scripts/migrate.ts` was setting `app.encryption_key` on a checked-out client then releasing it, relying on pg-pool LIFO so the migrator's next checkout would inherit the GUC. Own code documented this as "we can't rely 100% on this" — a P0 because race or driver-change could silently produce ciphertexts no one can ever decrypt. **Fix:** hold a dedicated client through the entire migrate() lifecycle, bind drizzle to it directly, verify GUCs took before running, fail-fast sentinel if `PII_ENCRYPTION_KEY` / `PII_HASH_KEY` is empty.

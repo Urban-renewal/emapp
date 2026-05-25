@@ -179,15 +179,15 @@ describe('v8.5 withProvider — encryption + hash GUCs available', () => {
     expect(['ok', 'thrown']).toContain(outcome);
   });
 
-  it('A3) ADVERSARIAL — reason with embedded null byte propagates Postgres error (no silent success)', async () => {
+  it('A3) ADVERSARIAL — reason with embedded null byte is SANITIZED (D.37 hardening, no silent storage of control chars)', async () => {
+    // Pre-D.37: this test asserted withProvider THREW because Postgres
+    // TEXT rejected null bytes. Post-D.37 P6.5-1 hardening: the wrapper
+    // STRIPS control chars (including \0) BEFORE the INSERT, so the
+    // call succeeds with a clean stored reason. This is a behavior
+    // improvement (sanitize > reject) verified more thoroughly by the
+    // T6.5-D37-0i battery in with-provider-d37-audit.spec.ts.
     const evil = 'inv\0estigation';
-    let threw = false;
-    try {
-      await withProvider(provider.id, evil, async () => undefined);
-    } catch {
-      threw = true;
-    }
-    expect(threw).toBe(true);
+    await expect(withProvider(provider.id, evil, async () => undefined)).resolves.toBeUndefined();
   });
 
   it('A4) ADVERSARIAL — reason too short (< 5 chars) is REJECTED before any DB call', async () => {

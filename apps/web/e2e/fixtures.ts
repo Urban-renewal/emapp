@@ -28,7 +28,7 @@
  */
 import { test as base, expect } from '@playwright/test';
 
-import { resetMockHandlers } from './mock-backend';
+import { fetchResetRequestLog, resetMockHandlers } from './mock-backend';
 
 export { expect };
 
@@ -83,9 +83,13 @@ export const test = base.extend<{ consoleErrors: ConsoleErrorCollector }>({
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
         const text = msg.text();
-        if (!isBenign(text)) {
-          collector.push(`console.error: ${text}`);
-        }
+        if (isBenign(text)) return;
+        // Chromium's "Failed to load resource" entries don't include
+        // the URL in `text()` — pull it from `location()` so the
+        // captured string is actually diagnostic on CI.
+        const loc = msg.location();
+        const detail = loc?.url ? ` (at ${loc.url})` : '';
+        collector.push(`console.error: ${text}${detail}`);
       }
     });
 
@@ -98,12 +102,26 @@ export const test = base.extend<{ consoleErrors: ConsoleErrorCollector }>({
 
     await provide(collector);
 
-    // §Phase-E — reset mock-backend handlers between tests so a per-
+    // §Phase-E — reset mock-backend state between tests so a per-
     // test override (e.g. "return 401 from /me to simulate session
-    // expiry") doesn't leak into the next spec. Runs BEFORE the
-    // console-errors assertion so a leak-induced failure surfaces
-    // distinctly from a console-error failure.
+    // expiry") doesn't leak into the next spec.
+    //
+    // Two layers:
+    //  1. resetMockHandlers() — worker-local handler map (per-test
+    //     overrides registered via setMockHandler).
+    //  2. fetchResetRequestLog() — parent-process request log (over
+    //     HTTP, since the HTTP server lives in globalSetup's process
+    //     and workers can't reach its memory directly).
+    //
+    // Both run BEFORE the console-errors assertion so a leak-induced
+    // failure surfaces distinctly from a console-error failure.
     resetMockHandlers();
+    try {
+      await fetchResetRequestLog();
+    } catch {
+      // Mock backend may already be stopped (afterAll cleanup); the
+      // teardown HTTP call is best-effort.
+    }
 
     // §CI — after every test, assert zero console errors.
     // CSP eval-blocks, React hydration mismatches, missing chunks: all

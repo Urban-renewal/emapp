@@ -101,7 +101,14 @@ export function resetMockHandlers(): void {
 
 /** Inspect what the proxy actually called during a test — used for
  *  server-side request-shape assertions where browser-side `page.route`
- *  cannot reach. */
+ *  cannot reach.
+ *
+ *  §process-boundary — Playwright spawns test workers in subprocesses.
+ *  Each worker has its OWN copy of this module (the HTTP server is an
+ *  OS-level resource started by globalSetup in the parent process; the
+ *  in-memory `requestLog` here is per-process). Workers MUST use
+ *  `fetchRequestLog()` (HTTP-backed) instead of this function. Kept
+ *  for in-process callers (unit tests of the mock itself). */
 export function getRequestLog(): ReadonlyArray<{
   method: string;
   url: string;
@@ -109,6 +116,34 @@ export function getRequestLog(): ReadonlyArray<{
   cookie: string | null;
 }> {
   return requestLog;
+}
+
+/** Fetch the parent-process request log over HTTP — works across the
+ *  globalSetup ↔ test-worker process boundary. Test specs should use
+ *  this for the §AXIS-A server-side-call assertion. */
+export async function fetchRequestLog(
+  port: number = DEFAULT_PORT,
+): Promise<ReadonlyArray<{ method: string; url: string; body: string; cookie: string | null }>> {
+  const res = await fetch(`http://127.0.0.1:${port}/__test_log`);
+  if (!res.ok) {
+    throw new Error(`[mock-backend] /__test_log returned ${res.status}`);
+  }
+  return (await res.json()) as ReadonlyArray<{
+    method: string;
+    url: string;
+    body: string;
+    cookie: string | null;
+  }>;
+}
+
+/** Reset the parent-process log over HTTP. The fixture's per-test
+ *  reset must use THIS, not `resetMockHandlers` (which only clears
+ *  the worker-local module state). */
+export async function fetchResetRequestLog(port: number = DEFAULT_PORT): Promise<void> {
+  const res = await fetch(`http://127.0.0.1:${port}/__test_log`, { method: 'DELETE' });
+  if (!res.ok) {
+    throw new Error(`[mock-backend] DELETE /__test_log returned ${res.status}`);
+  }
 }
 
 /** Default handlers — extend as more journeys land. */
@@ -139,6 +174,20 @@ function installDefaultHandlers(): void {
   setMockHandler('POST', '/api/v1/auth/logout', () => ({
     status: 200,
     body: { data: { ok: true } },
+  }));
+
+  // §Phase-4c — notifications bell polls /api/v1/notifications on
+  // every dashboard render (apps/web/src/hooks/use-notifications.ts).
+  // Without this handler, /he/ navigation 404s on every E2E test and
+  // the §P0-3 guardrail fires. Return an empty list so the bell
+  // renders with zero unread — the relevant FE state is the same
+  // whether the list is empty or has items.
+  setMockHandler('GET', '/api/v1/notifications', () => ({
+    status: 200,
+    body: {
+      data: [],
+      page: { limit: 5, cursor: null, has_more: false },
+    },
   }));
 
   // §J14 — refresh: succeeds by default (covers silent-refresh test
@@ -173,6 +222,29 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const url = req.url ?? '/';
   const method = (req.method ?? 'GET').toUpperCase();
   const path = pathOf(url);
+
+  // §test-introspection — `/__test_log` is the cross-process channel
+  // for `fetchRequestLog()` / `fetchResetRequestLog()`. Served BEFORE
+  // the normal handler lookup so it doesn't show up in the log itself
+  // (would confuse the asserting test).
+  if (path === '/__test_log') {
+    if (method === 'GET') {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify(requestLog));
+      return;
+    }
+    if (method === 'DELETE') {
+      requestLog.length = 0;
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+    res.statusCode = 405;
+    res.end();
+    return;
+  }
+
   const body = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) ? await readBody(req) : '';
 
   requestLog.push({

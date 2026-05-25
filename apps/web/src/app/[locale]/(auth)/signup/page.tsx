@@ -58,7 +58,16 @@ export default function SignupPage() {
           <p className="mt-1 text-sm text-muted-foreground">{t('signupSubtitle')}</p>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" dir="rtl">
+        {/* §S1-SEC1 — see login/page.tsx for rationale: method="post"
+            is defense in depth against the GET-fallback URL credential
+            leak (JS-disabled, pre-hydration, hydration failure). */}
+        <form
+          method="post"
+          action=""
+          onSubmit={handleSubmit(onSubmit)}
+          className="space-y-4"
+          dir="rtl"
+        >
           <div className="space-y-1">
             <label className="text-sm font-medium" htmlFor="org_name">
               {t('orgName')}

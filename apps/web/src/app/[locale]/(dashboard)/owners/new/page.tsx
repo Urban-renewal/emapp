@@ -53,7 +53,11 @@ export default function NewOwnerPage() {
     <div className="mx-auto max-w-xl space-y-6" dir="rtl">
       <h1 className="text-2xl font-bold">{t('create')}</h1>
       <p className="text-xs text-muted-foreground">{t('piiNote')}</p>
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      {/* §S5-SEC1 — method="post" defense in depth: this form carries
+          national_id (D.19 PII). A GET-fallback would leak it to URL
+          query string + logs + CDN caches. See login/page.tsx §S1-SEC1
+          for the full rationale. */}
+      <form method="post" action="" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-1">
           <label htmlFor="name" className="text-sm font-medium">
             {t('field.name')}

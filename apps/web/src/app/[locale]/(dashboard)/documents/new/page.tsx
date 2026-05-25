@@ -80,7 +80,11 @@ export default function NewDocumentPage() {
     <div className="mx-auto max-w-xl space-y-6" dir="rtl">
       <h1 className="text-2xl font-bold">{t('upload')}</h1>
       <p className="text-xs text-muted-foreground">{t('uploadHint')}</p>
-      <form onSubmit={onSubmit} className="space-y-4">
+      {/* §S5-SEC1 — method="post" defense in depth (see login/page.tsx).
+          File uploads use FormData/XHR so the URL stays clean even
+          without JS, but the attribute prevents URL-encoded fallback
+          on browsers that downgrade. */}
+      <form method="post" action="" onSubmit={onSubmit} className="space-y-4">
         <div className="space-y-1">
           <label htmlFor="type" className="text-sm font-medium">
             {t('field.type')}

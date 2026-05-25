@@ -104,6 +104,26 @@ TypeScript passes, lint passes, tests green, no console.log,
 
 diff reviewed, CLAUDE.md updated if a new pattern emerged.
 
+\## Definition of Done for FE slices that add interactive UI
+
+In addition to the above, for any slice that adds or changes UI interaction
+(form / button / link that changes state / navigation):
+
+1. The 4-axis browser smoke (Network / URL / Cookies / Redirect) per
+   &#x20; `docs/DOD-BROWSER-SMOKE.md` — manual in real browser OR Playwright test
+   &#x20; that covers the same 4 axes IN THE SAME SLICE (NOT deferred).
+
+2. The static check `apps/web/src/app-forms-no-get-fallback.spec.ts` stays
+   &#x20; green (every &lt;form&gt; has `method="post"`). Enforced by `pnpm test`.
+
+3. View-source self-check before the slice closes — open `view-source:` on
+   &#x20; every page touched; if a &lt;form&gt; lacks `method="post"` AND inline
+   &#x20; onSubmit/preventDefault, it's a GET-fallback credential leak. Fix it.
+
+Trigger: this DoD was added after S1 shipped a login form that submitted
+credentials via GET URL because the SSR HTML had no `method="post"`. RTL
+unit tests passed; the bug was caught by user inspection of view-source.
+
 \## ===== AUTOPILOT PROTOCOL =====
 
 \### On every session start

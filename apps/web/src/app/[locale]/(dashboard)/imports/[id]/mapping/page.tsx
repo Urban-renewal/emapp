@@ -141,7 +141,8 @@ export default function MappingWizardPage() {
       <h1 className="text-2xl font-bold">{t('title')}</h1>
       <p className="text-sm text-muted-foreground">{t('hint')}</p>
 
-      <form onSubmit={onSubmit} className="space-y-4" dir="rtl">
+      {/* §S5-SEC1 — method="post" defense in depth (see login/page.tsx). */}
+      <form method="post" action="" onSubmit={onSubmit} className="space-y-4" dir="rtl">
         {FIELDS.map((field) => (
           <div
             key={field}

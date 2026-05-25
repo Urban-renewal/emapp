@@ -53,7 +53,24 @@ export default function LoginPage() {
           <p className="mt-1 text-sm text-muted-foreground">{t('loginSubtitle')}</p>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" dir="rtl">
+        {/* §S1-SEC1 (post-S11 P0 fix) — explicit `method="post"` is
+            defense in depth against the GET-fallback URL credential
+            leak: if JS fails to load OR the user clicks Submit before
+            React hydrates the onSubmit handler, the browser would
+            otherwise default to GET and send email+password in the
+            URL query string (visible in logs, CDN caches, browser
+            history). react-hook-form's handleSubmit calls
+            preventDefault on the hydrated path; method="post" covers
+            every other path. action="" prevents leaking to other
+            origins if the user has a stale base href. Doc 07 §7.10
+            + Doc 10 (No PII in URL). */}
+        <form
+          method="post"
+          action=""
+          onSubmit={handleSubmit(onSubmit)}
+          className="space-y-4"
+          dir="rtl"
+        >
           <div className="space-y-1">
             <label className="text-sm font-medium" htmlFor="email">
               {t('email')}

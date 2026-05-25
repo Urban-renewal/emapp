@@ -98,7 +98,8 @@ export default function NewSignatureRequestPage() {
     <div className="mx-auto max-w-xl space-y-6" dir="rtl">
       <h1 className="text-2xl font-bold">{t('create')}</h1>
       <p className="text-xs text-muted-foreground">{t('createHint')}</p>
-      <form onSubmit={onSubmit} className="space-y-4">
+      {/* §S5-SEC1 — method="post" defense in depth (see login/page.tsx). */}
+      <form method="post" action="" onSubmit={onSubmit} className="space-y-4">
         <div className="space-y-1">
           <label htmlFor="document" className="text-sm font-medium">
             {t('field.document')}

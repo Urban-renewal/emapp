@@ -41,6 +41,7 @@ import { ProviderTenantDetailController } from './provider-tenant-detail.control
 import { ProviderTenantDetailService } from './provider-tenant-detail.service';
 import { ProviderTenantsController } from './provider-tenants.controller';
 import { ProviderTenantsService } from './provider-tenants.service';
+import { DefaultSystemStatsProvider, SYSTEM_STATS_PROVIDER } from './system-stats';
 
 @Module({
   imports: [AuthModule],
@@ -67,6 +68,12 @@ import { ProviderTenantsService } from './provider-tenants.service';
     // ZodValidationPipe runs. Closes the "rejected requests leave
     // no audit trace" gap (ISO 27001 A.12.4.1).
     ProviderRequestAuditInterceptor,
+    // Audit v1.1 SA-12 — system-stats abstraction (mirrors
+    // STORAGE_PROVIDER / JOB_PRODUCER). Production wires the default
+    // delegate that calls `getPoolStats` / `getStorageErrorStats` from
+    // `@emapp/db`; tests can `overrideProvider(SYSTEM_STATS_PROVIDER)`
+    // with a stub.
+    { provide: SYSTEM_STATS_PROVIDER, useClass: DefaultSystemStatsProvider },
   ],
 })
 export class ProviderModule {}

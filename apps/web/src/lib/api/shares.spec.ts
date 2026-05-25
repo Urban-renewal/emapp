@@ -39,7 +39,9 @@ const DEFAULT_PERMS = {
   overview: { on: true },
   tenants: {
     on: false,
-    fields: { name: true, phone: false, email: false, national_id: false, note: false },
+    // `name` is `z.literal(true)` in the shared-types schema; widening
+    // it to `boolean` here would make the cast to CreateShare unsound.
+    fields: { name: true as const, phone: false, email: false, national_id: false, note: false },
   },
   documents: { on: false, actions: { download: true, upload: false } },
   signatures: { on: false },

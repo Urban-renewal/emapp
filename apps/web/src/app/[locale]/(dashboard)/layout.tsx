@@ -16,7 +16,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <div className="flex h-screen flex-col">
         <Topbar user={user} />
         <div className="flex flex-1 overflow-hidden">
-          <Sidebar />
+          <Sidebar role={user.role} />
           <main className="flex-1 overflow-auto p-6">{children}</main>
         </div>
         <AuthGuard />

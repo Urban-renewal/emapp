@@ -19,7 +19,8 @@
       "agent": "אגנט",
       "viewer": "צופה"
     },
-    "signatureRequests": "בקשות חתימה"
+    "signatureRequests": "בקשות חתימה",
+    "provider": "מטה Provider"
   },
   "auth": {
     "loginTitle": "כניסה למערכת",
@@ -348,5 +349,39 @@
     "errorTooShort": "החתימה קצרה מדי. נסה חתימה מלאה יותר.",
     "errorTooLarge": "החתימה גדולה מהמותר. נסה חתימה פשוטה יותר.",
     "errorInvalid": "החתימה אינה תקינה."
+  },
+  "provider": {
+    "nav": {
+      "tenants": "לקוחות",
+      "audit": "יומן ביקורת",
+      "systemHealth": "בריאות מערכת"
+    },
+    "gate": {
+      "title": "כניסה לתחום ה-Provider",
+      "hint": "כל פעולה בתחום זה מתועדת ביומן ה-Provider. הזן סיבה משמעותית לגישה הנוכחית (לדוגמה: מספר תקלה, חקירה).",
+      "label": "סיבת הגישה",
+      "placeholder": "לדוגמה: תקלה #4729 — בדיקת לקוח Alpha",
+      "submit": "המשך",
+      "tooShort": "הסיבה קצרה מדי (מינימום {min} תווים).",
+      "failed": "שמירת הסיבה נכשלה. נסה שוב."
+    },
+    "dashboard": {
+      "title": "Provider Admin",
+      "hint": "גישה צופה בין-לקוחית. כל בקשה כאן מוסיפה רשומה ביומן הביקורת המאובטח.",
+      "healthTitle": "בריאות מערכת — סיכום",
+      "healthLoadFailed": "טעינת נתוני הבריאות נכשלה.",
+      "healthAsOf": "תקף ל: {when}",
+      "severity": {
+        "ok": "תקין",
+        "warn": "אזהרה",
+        "crit": "קריטי"
+      }
+    },
+    "tenants": {
+      "listTitle": "לקוחות במערכת",
+      "loadFailed": "טעינת רשימת הלקוחות נכשלה.",
+      "empty": "אין לקוחות.",
+      "countsLine": "{users} משתמשים · {projects} פרויקטים · {owners} בעלי דירות"
+    }
   }
 }

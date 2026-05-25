@@ -82,7 +82,10 @@ test.describe('§E-J9 — Sidebar role gating (Members + Audit are Manager-only)
     // role filter / phase 4c additions), so an unscoped getByText
     // hits a Playwright strict-mode violation. The topbar is the
     // canonical role-badge surface.
-    await expect(page.getByRole('banner').getByText('צופה')).toBeVisible({
+    // `exact: true` — the mock user's display name (SEED_VIEWER =
+    // "ויקי צופה") ALSO contains the substring "צופה"; the bare
+    // role badge is the exact match.
+    await expect(page.getByRole('banner').getByText('צופה', { exact: true })).toBeVisible({
       timeout: 15_000,
     });
 
@@ -122,8 +125,9 @@ test.describe('§E-J9 — Sidebar role gating (Members + Audit are Manager-only)
     });
 
     await page.goto('/he/');
-    // Scope to topbar (see test 1 comment).
-    await expect(page.getByRole('banner').getByText('אגנט')).toBeVisible({
+    // Scope to topbar + exact match (see test 1 comment — display
+    // name "אבי סוכן" / "אבי אגנט" can collide).
+    await expect(page.getByRole('banner').getByText('אגנט', { exact: true })).toBeVisible({
       timeout: 15_000,
     });
 
@@ -150,8 +154,9 @@ test.describe('§E-J9 — Sidebar role gating (Members + Audit are Manager-only)
     });
 
     await page.goto('/he/');
-    // Scope to topbar (see test 1 comment).
-    await expect(page.getByRole('banner').getByText('מנהל')).toBeVisible({
+    // Scope to topbar + exact match — display name "מיכל מנהלת"
+    // contains substring "מנהל" which also matches role badge.
+    await expect(page.getByRole('banner').getByText('מנהל', { exact: true })).toBeVisible({
       timeout: 15_000,
     });
 

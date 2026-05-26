@@ -56,7 +56,22 @@
     "mfaCode": "MFA code (TOTP)",
     "mfaCodeHint": "6-digit code from your authenticator app or a recovery code",
     "mfaCodeInvalid": "Invalid MFA code",
-    "invalidProviderCredentials": "Invalid email, password or MFA code"
+    "invalidProviderCredentials": "Invalid email, password or MFA code",
+    "brandHeadline": "Order and clarity for urban-renewal projects.",
+    "brandSubtitle": "A platform for managing projects, residents, agents and documents. All information in one place — fast lookup and a coordinated team.",
+    "brandCopyright": "© EMAPP 2026",
+    "formHeading": "Welcome",
+    "formSubheading": "Choose your user type and sign in",
+    "loginCta": "Sign in",
+    "rolePicker": {
+      "manager": { "label": "Manager", "sub": "Email and password" },
+      "agent": { "label": "Agent", "sub": "Email or phone" },
+      "contractor": { "label": "Contractor", "sub": "Email and password" },
+      "tenant": { "label": "Resident", "sub": "National ID + phone" },
+      "comingSoonAgent": "Coming soon — only Manager sign-in is wired today",
+      "comingSoonContractor": "Coming soon — Contractor signs in via a share link",
+      "comingSoonTenant": "Coming soon — Resident signs in via SMS OTP"
+    }
   },
   "projects": {
     "listTitle": "Projects",

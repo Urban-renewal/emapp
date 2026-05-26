@@ -11,6 +11,7 @@ import {
   Home,
   Lock,
   Shield,
+  StickyNote,
   UserPlus,
   Users,
 } from 'lucide-react';
@@ -33,6 +34,7 @@ interface NavItem {
     | 'notifications'
     | 'tasks'
     | 'contractors'
+    | 'notes'
     | 'audit'
     | 'provider';
   icon: typeof Home;
@@ -82,6 +84,9 @@ export function Sidebar({ role }: Props) {
     // roles; the create button on the page surfaces a localized
     // `forbidden` on 403 (no client-side role mirror).
     { href: '/contractors', labelKey: 'contractors', icon: HardHat, enabled: true },
+    // Notes: D.17 read=ALL; create+update+delete = Manager OR author
+    // (service-layer check). Sidebar link visible to every role.
+    { href: '/notes', labelKey: 'notes', icon: StickyNote, enabled: true },
   ];
 
   // §D.17 — Members admin is Manager-only (policy.ts:71). The BE's

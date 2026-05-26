@@ -5,6 +5,31 @@
 
 ---
 
+## Division of labor — Chrome extension vs Playwright
+
+V11 uses **both tools**, in different roles, with no duplication.
+
+| Track | Tool | Purpose | Cadence |
+|---|---|---|---|
+| **A — Design Re-skin** | **Chrome extension** (Claude in Chrome) | "Does it look + work right now?" — visual + UX + RTL + security probe per slice | Every slice (one-time check) |
+| **B — BE Specialist** | **Chrome extension** + curl | "Does the endpoint behave + does one FE consumer still work?" — per-slice verification | Every slice (one-time check) |
+| **D — Playwright (existing)** | **Playwright** in `apps/web/e2e/` | "Will it stay working forever?" — codified regression net, runs in CI on every PR | After A's slice merges, D writes test in Wave 2/3 |
+
+### Why this split
+- Chrome extension catches what Playwright can't (visual misalignment, RTL hover, font rendering, animation glitches, real DevTools cookie/network inspection).
+- Playwright catches what Chrome extension can't (long-term regression, deterministic reruns in CI).
+- Different cadences — no effort duplication.
+- No race — D writes regression test **after** A's slice merges, not in parallel.
+
+### Setup per agent (one-time, session start)
+- **Track A + Track B agents:** pair Chrome via the Claude-in-Chrome MCP extension before starting the canary slice. Verify with a `list_connected_browsers` call. If pairing fails → STOP, post evidence, await user.
+- **Track D agent:** continues with Playwright in `apps/web/e2e/`. No browser pairing needed.
+
+### When Chrome extension isn't available
+Track A/B agent **falls back to Playwright** (same `apps/web/e2e/` setup) and posts the same evidence shape (all 4 axes, all roles, additions). **Never skip the smoke; downgrade the tool.** Note the downgrade in the PR description so D can prioritize covering it.
+
+---
+
 ## The rule
 
 Before declaring a slice "done":

@@ -41,7 +41,12 @@ const ORG_ID = '00000000-0000-4000-8000-000000000002';
 // A syntactically valid JWT (3 base64url segments) for the public
 // sign URL. Mirrors the shape sign-flow.spec.ts uses.
 const SIGN_JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.aGVsbG8td29ybGQtc2lnbg';
-const SIGN_URL = `http://localhost:3001/sign/${SIGN_JWT}`;
+// §HttpsUrlSchema — `SignatureRequestCreateResponseSchema.signUrl`
+// is parsed by `HttpsUrlSchema` which REQUIRES https://. A http://
+// URL would fail the Zod parse, the mutation throws, the success
+// state never renders, and the test would fail on the readonly-
+// input visibility assertion.
+const SIGN_URL = `https://app.emapp.io/sign/${SIGN_JWT}`;
 
 // Minimal-but-Zod-valid Document fixture (DocumentSchema in
 // shared-types). We only need one — the create form's <select>

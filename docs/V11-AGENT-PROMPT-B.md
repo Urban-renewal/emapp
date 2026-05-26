@@ -66,6 +66,22 @@ Excel+PDF (Phase 7). רץ אוטונומית עד הסוף.
        TenantPortal (לוודא איזה data יוצא)
 
 ═══════════════════════════════════════════════════════════════════
+שלב 0.4 — Pair Chrome (חד-פעמי, לפני canary)
+═══════════════════════════════════════════════════════════════════
+
+חלק מה-smoke שלך כולל FE consumer אחד דרך דפדפן אמיתי (לא רק
+curl). לפני B.S1:
+
+  1. ודא ש-Claude-in-Chrome MCP extension מותקן ומחובר
+  2. הרץ `list_connected_browsers` — חייב להחזיר session
+  3. אם אין pairing → STOP, דווח, חכה
+  4. fallback: Playwright ב-`apps/web/e2e/` עם אותו evidence shape,
+     ציין downgrade ב-PR description. **לעולם לא לדלג על smoke.**
+  5. עבור B.S1 (migration בלבד, ללא FE consumer) — curl + manual
+     up/down מספיק; pair Chrome לפני B.S2 שהוא ה-endpoint הראשון
+     שצריך verification דרך FE.
+
+═══════════════════════════════════════════════════════════════════
 שלב 0.5 — הוכחת ספיגה (חובה GO לפני סלייס ראשון)
 ═══════════════════════════════════════════════════════════════════
 

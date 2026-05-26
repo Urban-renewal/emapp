@@ -18,10 +18,10 @@
  */
 import { organizations, withProvider } from '@emapp/db';
 import type { ApiList, ListTenantsQuery, TenantListItem } from '@emapp/shared-types';
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { and, desc, eq, lt, or, sql } from 'drizzle-orm';
 
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import { decodeCursorOrThrow, encodeCursor } from '../../common/keyset-cursor';
 
 import type { ProviderActor } from './current-provider.decorator';
 
@@ -43,14 +43,11 @@ export class ProviderTenantsService {
   ): Promise<ApiList<TenantListItem>> {
     // Decode cursor BEFORE entering withProvider — invalid cursor is
     // a client error (400), no point opening a Provider session for it.
+    // SA-11: `decodeCursorOrThrow` centralises the 4-line decode+throw
+    // pattern that was duplicated across provider services.
     let cursorDecoded: { createdAt: Date; id: string } | null = null;
     if (query.cursor) {
-      const dec = decodeCursor(query.cursor);
-      if (!dec) {
-        throw new BadRequestException({
-          error: { code: 'invalid_cursor', message: 'Cursor is malformed' },
-        });
-      }
+      const dec = decodeCursorOrThrow(query.cursor);
       cursorDecoded = { createdAt: new Date(dec.c), id: dec.i };
     }
 

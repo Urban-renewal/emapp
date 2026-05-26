@@ -17,7 +17,8 @@
     "role": {
       "manager": "מנהל",
       "agent": "אגנט",
-      "viewer": "צופה"
+      "viewer": "צופה",
+      "provider_admin": "מנהל Provider"
     },
     "signatureRequests": "בקשות חתימה",
     "members": "חברי ארגון",
@@ -26,7 +27,8 @@
     "contractors": "קבלנים",
     "notes": "הערות",
     "audit": "יומן ביקורת",
-    "provider": "מטה Provider"
+    "provider": "מטה Provider",
+    "providerConsole": "מסוף Provider EMAPP"
   },
   "auth": {
     "loginTitle": "כניסה למערכת",

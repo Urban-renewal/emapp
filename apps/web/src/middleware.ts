@@ -7,7 +7,7 @@ import { routing } from './i18n/routing';
 const intlMiddleware = createMiddleware(routing);
 
 /**
- * Auth-gate routes (closes §v9-H-2).
+ * Auth-gate routes (closes §v9-H-2 + V10-S4 tier-aware extension).
  *
  * Strict regex match — `.endsWith('/login')` was a path-suffix bypass
  * (a path like `/he/projects/legacy/login` slipped through). We now
@@ -28,6 +28,23 @@ const PUBLIC_ROUTE_REGEX = new RegExp(
   `^\\/[a-z]{2}\\/(login|signup|accept-invite\\/${JWT_SHAPE})$`,
 );
 const AUTH_ROUTE_REGEX = /^\/[a-z]{2}\/(login|signup)$/;
+
+/**
+ * V10-S4 closure — Provider tier paths require `provider_access_token`,
+ * NOT the org-tier `access_token`. Matches `/he/provider`, `/he/provider/`,
+ * `/he/provider/tenants`, etc. The leading two-letter locale segment is
+ * pinned (rejects `/provider/...` without a locale prefix, which can't
+ * reach this surface anyway because the next-intl middleware would
+ * 308-redirect; this regex catches the post-redirect state).
+ *
+ * Why a regex and not `pathname.startsWith('/${locale}/provider')`:
+ *  - locale is dynamic (`he`/`en`); a generic regex avoids a per-locale
+ *    helper.
+ *  - the trailing boundary `(\/|$)` prevents `/he/providers` (plural,
+ *    hypothetical) from being treated as the provider tier — exact
+ *    segment match.
+ */
+const PROVIDER_TIER_REGEX = /^\/[a-z]{2}\/provider(\/|$)/;
 
 /**
  * Routes that bypass BOTH the auth gate AND next-intl locale routing.
@@ -52,10 +69,14 @@ function isPublicRoute(pathname: string): boolean {
 function isLocaleAgnosticPublic(pathname: string): boolean {
   return PUBLIC_LOCALE_AGNOSTIC_REGEX.test(pathname);
 }
+function isProviderTierPath(pathname: string): boolean {
+  return PROVIDER_TIER_REGEX.test(pathname);
+}
 
 export default function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const hasToken = req.cookies.has('access_token');
+  const hasOrgToken = req.cookies.has('access_token');
+  const hasProviderToken = req.cookies.has('provider_access_token');
 
   // Locale-agnostic public routes (/sign/<jwt>): skip both gates and
   // next-intl so the URL stays short + the JWT-bearer flow is the only
@@ -64,11 +85,12 @@ export default function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Redirect authenticated users away from auth pages.
-  // v9-post-audit-SOLID-8 — preserve the locale prefix on the redirect
-  // target so the user lands on `/he/` not `/` (which would 404 then
-  // bounce via next-intl, adding a round-trip).
-  if (isAuthRoute(pathname) && hasToken) {
+  // Redirect authenticated users away from /login / /signup. The
+  // posture is "any tier counts" — if you're logged in to either tier,
+  // we send you to the locale root, not the auth page. The dashboard
+  // layout will then resolve which tier-home to render.
+  // v9-post-audit-SOLID-8 — preserve the locale prefix.
+  if (isAuthRoute(pathname) && (hasOrgToken || hasProviderToken)) {
     const url = req.nextUrl.clone();
     const localeMatch = pathname.match(/^\/([a-z]{2})\//);
     const locale = localeMatch ? localeMatch[1] : 'he';
@@ -76,8 +98,30 @@ export default function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Redirect unauthenticated users to login for non-public routes.
-  if (!isPublicRoute(pathname) && !hasToken && !pathname.startsWith('/api')) {
+  // V10-S4 — Provider tier paths require the provider cookie.
+  // Tier isolation: an org-only session navigating to /he/provider
+  // gets redirected away (NOT silently rendered with the org session,
+  // which would be a privilege confusion bug). Until /provider/login
+  // ships (PR-C / V10-S2), the redirect target is the org login —
+  // safe fallback because anyone without provider_access_token does
+  // need to acquire one through the operator runbook anyway.
+  if (isProviderTierPath(pathname)) {
+    if (!hasProviderToken) {
+      const url = req.nextUrl.clone();
+      const localeMatch = pathname.match(/^\/([a-z]{2})\//);
+      const locale = localeMatch ? localeMatch[1] : 'he';
+      // PR-C (V10-S2) will flip this target to `/${locale}/provider/login`.
+      url.pathname = `/${locale}/login`;
+      return NextResponse.redirect(url);
+    }
+    return intlMiddleware(req);
+  }
+
+  // Non-provider dashboard paths require the org cookie.
+  // Anti-confusion: a Provider Admin with ONLY provider_access_token
+  // navigating to /he/projects gets redirected to /login (their
+  // provider token doesn't grant them org-tier access).
+  if (!isPublicRoute(pathname) && !hasOrgToken && !pathname.startsWith('/api')) {
     const url = req.nextUrl.clone();
     const localeMatch = pathname.match(/^\/([a-z]{2})\//);
     const locale = localeMatch ? localeMatch[1] : 'he';

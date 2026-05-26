@@ -17,7 +17,8 @@
     "role": {
       "manager": "Manager",
       "agent": "Agent",
-      "viewer": "Viewer"
+      "viewer": "Viewer",
+      "provider_admin": "Provider Admin"
     },
     "signatureRequests": "Signature Requests",
     "members": "Members",
@@ -26,7 +27,8 @@
     "contractors": "Contractors",
     "notes": "Notes",
     "audit": "Audit log",
-    "provider": "Provider"
+    "provider": "Provider",
+    "providerConsole": "EMAPP Provider Console"
   },
   "auth": {
     "loginTitle": "Sign In",

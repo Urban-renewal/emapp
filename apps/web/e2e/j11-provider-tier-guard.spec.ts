@@ -9,31 +9,37 @@
  * support + AccessReasonGate sessionStorage prefill — both larger
  * infra extensions. THIS slice pins the NEGATIVE control: a
  * non-Provider user navigating to /he/provider MUST be redirected
- * away (the FE-side defense-in-depth mirroring D.29 tier isolation
- * + D.37 read-only Provider scope).
+ * away (the middleware tier-isolation guard mirroring D.29 +
+ * D.37 read-only Provider scope).
  *
- * Server-side check (provider/layout.tsx:42-45):
- *   if (!user || user.role !== 'provider_admin') redirect('/');
+ * V10-S2/S3 update — the redirect target is now /he/provider/login
+ * (NOT /he/). Before V10-S2 there was no /provider/login page, so the
+ * middleware bounced unauthenticated /provider/* visits to /he/login
+ * (org login). With the page in place, the tier-appropriate target is
+ * the provider login — so a non-provider user (whether unauthenticated
+ * or org-authenticated) is sent there to acquire a provider session.
  *
- * The redirect target is '/' which then goes through next-intl
- * middleware → /he/ (dashboard home).
+ * Middleware tier-isolation rule (middleware.ts V10-S4):
+ *   /<locale>/provider/* requires provider_access_token. Anything else
+ *   redirects to /<locale>/provider/login.
  *
  * D.17 cells exercised:
- *   - Provider tier role gate (cosmetic seam over D.29 BE isolation).
+ *   - Provider tier cookie gate (middleware + layout defense in depth).
  *
  * 5-axis TUVAS:
- *   T — pre-seed Manager cookies; navigate to /he/provider.
- *   U — final URL is /he/ (the safe surface), NOT /he/provider.
- *   V — Manager dashboard renders (sidebar visible); no provider
- *       page chrome leaks pre-redirect.
- *   A — no /api/v1/provider/* calls reach the BE (FE-side guard
- *       prevents the request entirely).
+ *   T — pre-seed org cookies; navigate to /he/provider.
+ *   U — final URL is /he/provider/login, NOT /he/provider (the data
+ *       subtree). Verified the user did NOT reach the dashboard.
+ *   V — provider login form renders; no provider data chrome leaks
+ *       pre-redirect.
+ *   A — no /api/v1/provider/* calls fired (middleware tier-guard
+ *       prevented the request entirely; layout never ran).
  *   S — console clean.
  */
 import { test, expect } from './fixtures';
 
 test.describe('§E-J11 — Provider tier guard (non-provider redirected)', () => {
-  test('1) Manager → /he/provider redirected to /he/ (FE role guard)', async ({
+  test('1) Manager → /he/provider redirected to /he/provider/login (V10-S2)', async ({
     page,
     context,
     consoleErrors,
@@ -56,9 +62,9 @@ test.describe('§E-J11 — Provider tier guard (non-provider redirected)', () =>
       const url = new URL(route.request().url());
       if (url.pathname.startsWith('/api/v1/provider/')) {
         // §AXIS-A — a regression that called provider endpoints from
-        // a non-provider context surfaces here. The FE role guard is
-        // cosmetic; the BE ProviderAuthGuard rejects org-tier JWTs
-        // anyway, but the FE should not even attempt the call.
+        // a non-provider context surfaces here. The middleware tier-
+        // guard MUST prevent the layout from running before any
+        // provider API call has a chance to fire.
         providerApiHits += 1;
       }
       await route.fulfill({
@@ -70,30 +76,31 @@ test.describe('§E-J11 — Provider tier guard (non-provider redirected)', () =>
 
     await page.goto('/he/provider');
 
-    // §AXIS-U — landed on /he/ (the safe surface after the redirect
-    // from provider/layout.tsx:42-45 → middleware locale-prepends).
-    await page.waitForURL(/\/he\/?$/, { timeout: 15_000 });
-    expect(page.url()).toMatch(/\/he\/?$/);
-    // Crucially, NOT on /he/provider.
-    expect(page.url()).not.toContain('/he/provider');
+    // §AXIS-U — landed on /he/provider/login (V10-S2 tier-appropriate
+    // target). NOT inside /he/provider data subtree.
+    await page.waitForURL(/\/he\/provider\/login$/, { timeout: 15_000 });
+    expect(page.url()).toMatch(/\/he\/provider\/login$/);
+    // Crucially, NOT a deeper provider data path like /he/provider/tenants.
+    expect(page.url()).not.toMatch(/\/he\/provider\/(tenants|audit|system-health)/);
 
-    // §AXIS-V — the dashboard sidebar is rendered (proves we landed
-    // on the org-tier shell, not a half-rendered provider page).
-    await expect(page.getByRole('navigation')).toBeVisible({ timeout: 10_000 });
-    // The Manager's sidebar shows Members + Audit (Phase 4c S1/S4
-    // role-gating per sidebar.tsx:80-86) — but NEVER the Provider
-    // link (D.37: org-tier users don't see provider nav).
-    const sidebar = page.getByRole('navigation');
-    await expect(sidebar.getByRole('link', { name: 'מטה Provider' })).toBeHidden();
+    // §AXIS-V — the provider login form renders. The login title
+    // i18n key is `auth.providerLoginTitle` — Hebrew copy:
+    // "כניסה למסוף Provider".
+    await expect(page.getByRole('heading', { name: /Provider/i })).toBeVisible({
+      timeout: 10_000,
+    });
+    // The MFA field is the unambiguous marker of the provider login
+    // (org login has no MFA today; D.21 — MFA is provider-tier only).
+    await expect(page.locator('input#mfa_code')).toBeVisible();
 
-    // §AXIS-A — no provider-API calls fired. FE-side guard prevented
-    // the request from leaving the browser.
+    // §AXIS-A — no provider-API calls fired. The middleware redirect
+    // ran BEFORE any layout / page / hook could mount.
     expect(providerApiHits, 'no /api/v1/provider/* calls from a non-provider context').toBe(0);
 
     expect(consoleErrors.count, 'no console errors on tier-guard redirect').toBe(0);
   });
 
-  test('2) Viewer → /he/provider/tenants redirected to /he/', async ({
+  test('2) Viewer → /he/provider/tenants redirected to /he/provider/login (V10-S2)', async ({
     page,
     context,
     consoleErrors,
@@ -118,13 +125,31 @@ test.describe('§E-J11 — Provider tier guard (non-provider redirected)', () =>
       });
     });
 
-    // Deeper provider path — same guard applies (the layout wraps
-    // every page under /he/provider).
+    // Deeper provider path — the middleware tier-guard applies the
+    // same way (URL anchor matches /he/provider/<anything>).
     await page.goto('/he/provider/tenants');
-    await page.waitForURL(/\/he\/?$/, { timeout: 15_000 });
-    expect(page.url()).toMatch(/\/he\/?$/);
-    expect(page.url()).not.toContain('/he/provider');
+    await page.waitForURL(/\/he\/provider\/login$/, { timeout: 15_000 });
+    expect(page.url()).toMatch(/\/he\/provider\/login$/);
+    // The data subtree URL is gone.
+    expect(page.url()).not.toContain('/he/provider/tenants');
 
     expect(consoleErrors.count, 'no console errors on tier-guard redirect').toBe(0);
+  });
+
+  test('3) Unauthenticated visitor → /he/provider redirected to /he/provider/login (no cookies)', async ({
+    page,
+    consoleErrors,
+  }) => {
+    // No cookies set. Middleware tier-guard sends unauthenticated
+    // visitors to the provider login (was /he/login pre-V10-S2;
+    // the tier-appropriate target keeps the operator inside the
+    // tier context).
+    await page.goto('/he/provider');
+    await page.waitForURL(/\/he\/provider\/login$/, { timeout: 15_000 });
+    expect(page.url()).toMatch(/\/he\/provider\/login$/);
+
+    // Provider login form renders.
+    await expect(page.locator('input#mfa_code')).toBeVisible({ timeout: 10_000 });
+    expect(consoleErrors.count, 'no console errors on unauth redirect').toBe(0);
   });
 });

@@ -40,9 +40,14 @@ function buildNextUrl(pathname: string): URL & { clone: () => URL & { clone: () 
   return u;
 }
 
-function mockReq(opts: { pathname: string; hasToken?: boolean }): NextRequest {
+function mockReq(opts: {
+  pathname: string;
+  hasToken?: boolean;
+  hasProviderToken?: boolean;
+}): NextRequest {
   const cookies = new Map<string, { value: string }>();
   if (opts.hasToken) cookies.set('access_token', { value: 'TOKEN' });
+  if (opts.hasProviderToken) cookies.set('provider_access_token', { value: 'PROV-TOKEN' });
   const nextUrl = buildNextUrl(opts.pathname);
   return {
     nextUrl,
@@ -180,6 +185,77 @@ describe('middleware — adversarial', () => {
     // or 404.
     const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.aGVsbG8td29ybGQtc2lnbg';
     const res = middleware(mockReq({ pathname: `/xx/accept-invite/${jwt}` }));
+    expect(res.status).not.toBe(307);
+  });
+});
+
+// ─── V10-S4 closure — tier isolation at the middleware layer ───
+describe('middleware — provider tier (V10-S4 closure)', () => {
+  it('MP1) unauthenticated user at /he/provider is redirected to /he/login (no provider cookie)', () => {
+    const res = middleware(mockReq({ pathname: '/he/provider' }));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toMatch(/\/he\/login$/);
+  });
+
+  it('MP2) user with ONLY org access_token at /he/provider is redirected to /he/login (no provider cookie)', () => {
+    // Provider-tier paths require provider_access_token specifically;
+    // an org cookie alone must NOT grant access. Tier isolation.
+    const res = middleware(mockReq({ pathname: '/he/provider', hasToken: true }));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toMatch(/\/he\/login$/);
+  });
+
+  it('MP3) user with provider_access_token at /he/provider is allowed through (no redirect)', () => {
+    const res = middleware(mockReq({ pathname: '/he/provider', hasProviderToken: true }));
+    expect(res.status).not.toBe(307);
+  });
+
+  it('MP4) provider-tier path /he/provider/tenants requires provider cookie (deeper path)', () => {
+    const resWithout = middleware(mockReq({ pathname: '/he/provider/tenants' }));
+    expect(resWithout.status).toBe(307);
+    const resWith = middleware(
+      mockReq({ pathname: '/he/provider/tenants', hasProviderToken: true }),
+    );
+    expect(resWith.status).not.toBe(307);
+  });
+
+  it('MP5) /he/providers (plural — exact segment match) is NOT provider tier — falls to org auth gate', () => {
+    // Trailing-segment defense: the regex anchors on `provider(\/|$)`
+    // so a hypothetical `/he/providers/foo` (plural) gets org-tier
+    // treatment, not provider-tier.
+    const res = middleware(mockReq({ pathname: '/he/providers', hasProviderToken: true }));
+    // No org cookie → redirect to org login.
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toMatch(/\/he\/login$/);
+  });
+
+  it('MP6) user with ONLY provider cookie navigating to /he/projects is redirected to /he/login (tier isolation)', () => {
+    // Org-tier paths require access_token; provider cookie alone is
+    // NOT sufficient. Anti-confusion: a Provider Admin must not
+    // accidentally render org-tier UI with their privileged session.
+    const res = middleware(mockReq({ pathname: '/he/projects', hasProviderToken: true }));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toMatch(/\/he\/login$/);
+  });
+
+  it('MP7) authenticated EITHER tier at /he/login is redirected to /he (no tier-specific stuck-state)', () => {
+    // If only the provider cookie is present, /he/login still bounces
+    // away (otherwise a Provider Admin opening /login by accident
+    // would re-authenticate over their session — undesirable UX).
+    const res = middleware(mockReq({ pathname: '/he/login', hasProviderToken: true }));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toMatch(/\/he$/);
+  });
+
+  it('MP8) user with BOTH tokens at /he/provider/tenants is allowed (provider check passes)', () => {
+    // Edge case: a developer who is both a Manager AND a Provider
+    // Admin has both cookies set. Navigating to provider subtree
+    // should succeed (provider cookie present); the layout's session
+    // resolver will pick org tier first by default, but provider
+    // layout re-checks and redirects to / if it sees tier === 'org'.
+    const res = middleware(
+      mockReq({ pathname: '/he/provider/tenants', hasToken: true, hasProviderToken: true }),
+    );
     expect(res.status).not.toBe(307);
   });
 });

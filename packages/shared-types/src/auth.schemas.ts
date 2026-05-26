@@ -79,3 +79,27 @@ export const UserProfileSchema = z.object({
   }),
 });
 export type UserProfile = z.infer<typeof UserProfileSchema>;
+
+/** GET /api/v1/provider/me response body — V10-S1 closure (H1
+ *  Provider FE topology fix). Provider Admin self-identity for the
+ *  `provider/layout.tsx` server-side role gate.
+ *
+ *  Tier-isolated by design: `role` is a literal `'provider_admin'` —
+ *  matches `DB_TO_JWT_ROLE` in provider-auth.service.ts (Audit v1.1
+ *  SA-3). Adding new provider roles (e.g. `provider_viewer`) is a
+ *  Gate-6 / D.NN decision that requires extending this literal
+ *  alongside the policy + guard surfaces.
+ *
+ *  Deliberately narrower than UserProfile: no org (Provider is
+ *  cross-tenant; no single org context), no avatar (Provider tier
+ *  is operational, not branded). Internal columns (passwordHash,
+ *  mfaSecretEncrypted, recoveryCodesHash, failedLoginCount,
+ *  lockedUntil, lastLoginAt, disabledAt) MUST NEVER appear in this
+ *  shape — the BE's column allowlist enforces it. */
+export const ProviderProfileSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  email: z.string().email(),
+  role: z.literal('provider_admin'),
+});
+export type ProviderProfile = z.infer<typeof ProviderProfileSchema>;

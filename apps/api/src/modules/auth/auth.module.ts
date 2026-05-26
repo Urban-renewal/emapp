@@ -11,6 +11,7 @@ import { MeController } from './me.controller';
 import { ProviderAuthController } from './provider/provider-auth.controller';
 import { ProviderAuthGuard } from './provider/provider-auth.guard';
 import { ProviderAuthService } from './provider/provider-auth.service';
+import { ProviderMeController } from './provider/provider-me.controller';
 import { OtpController } from './tenant/otp.controller';
 import { OtpService, SMS_PROVIDER } from './tenant/otp.service';
 import { TenantAuthGuard } from './tenant/tenant-auth.guard';
@@ -22,7 +23,13 @@ import { TenantAuthGuard } from './tenant/tenant-auth.guard';
       signOptions: { expiresIn: '15m' },
     }),
   ],
-  controllers: [AuthController, MeController, ProviderAuthController, OtpController],
+  controllers: [
+    AuthController,
+    MeController,
+    ProviderAuthController,
+    ProviderMeController,
+    OtpController,
+  ],
   providers: [
     AuthService,
     AuthGuard,

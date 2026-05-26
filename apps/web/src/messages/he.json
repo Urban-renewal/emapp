@@ -23,6 +23,7 @@
     "members": "חברי ארגון",
     "notifications": "התראות",
     "tasks": "משימות",
+    "contractors": "קבלנים",
     "audit": "יומן ביקורת",
     "provider": "מטה Provider"
   },
@@ -73,6 +74,9 @@
     "assignmentsSection": "שיוך אגנטים",
     "assignmentsHint": "ניהול הרשאות הצוות לפרויקט. אגנטים רואים רק את הפרויקטים אליהם הם משויכים.",
     "assignmentsManage": "ניהול שיוכים",
+    "sharesSection": "שיתופי קבלנים",
+    "sharesHint": "מתן הרשאות גישה לקבלנים על פרויקט זה. כל הרשאה נשמרת בנפרד; ניתן לבטל בכל עת.",
+    "sharesManage": "ניהול שיתופים",
     "field": {
       "name": "שם הפרויקט",
       "type": "סוג",
@@ -551,6 +555,77 @@
       "1": "נמוכה",
       "2": "רגילה",
       "3": "דחופה"
+    }
+  },
+  "contractors": {
+    "listTitle": "קבלנים",
+    "create": "הוספת קבלן",
+    "creating": "מוסיף...",
+    "createFailed": "יצירת הקבלן נכשלה",
+    "forbiddenCreate": "אין הרשאה ליצור קבלן (מנהל בלבד).",
+    "emailExists": "כתובת האימייל כבר רשומה כקבלן בארגון.",
+    "loading": "טוען...",
+    "empty": "אין עדיין קבלנים. הקלק על \"הוספת קבלן\".",
+    "loadFailed": "טעינת רשימת הקבלנים נכשלה",
+    "notFound": "הקבלן לא נמצא",
+    "backToList": "חזרה לרשימה",
+    "cancel": "ביטול",
+    "archiveSection": "ארכוב קבלן",
+    "archiveHint": "לאחר הארכוב הקבלן לא יוצג ברשימה ולא ניתן יהיה לשתף פרויקטים איתו.",
+    "archive": "ארכב קבלן",
+    "archiving": "מארכב...",
+    "archiveConfirm": "לארכב את הקבלן? לא ניתן יהיה לשתף פרויקטים איתו לאחר מכן.",
+    "archiveFailed": "ארכוב הקבלן נכשל.",
+    "forbiddenArchive": "אין הרשאה לארכב קבלן (מנהל בלבד).",
+    "field": {
+      "name": "שם הקבלן / חברה",
+      "contactEmail": "אימייל איש קשר",
+      "contactPhone": "טלפון",
+      "specialty": "התמחות",
+      "companyId": "מספר חברה / ח.פ.",
+      "notes": "הערות"
+    }
+  },
+  "shares": {
+    "title": "שיתופי קבלנים",
+    "backToProject": "חזרה לפרויקט",
+    "grantSection": "הענקת שיתוף חדש",
+    "grant": "הענק שיתוף",
+    "granting": "מעניק...",
+    "createFailed": "הענקת השיתוף נכשלה",
+    "shareExists": "הקבלן כבר משותף לפרויקט זה.",
+    "forbidden": "אין הרשאה להעניק שיתופים (מנהל בלבד).",
+    "noEligibleContractors": "אין קבלנים זמינים לשיתוף נוסף. צור קבלן חדש או בטל שיתוף קיים.",
+    "loadFailed": "טעינת השיתופים נכשלה",
+    "empty": "אין שיתופים פעילים לפרויקט.",
+    "permissionSummary": "{summary} סעיפים פעילים",
+    "lastAccessed": "גישה אחרונה {rel}",
+    "contractorIdPrefix": "קבלן",
+    "revoke": "בטל שיתוף",
+    "revoking": "מבטל...",
+    "revokeConfirm": "לבטל את השיתוף? הגישה תיחסם מיידית.",
+    "permissionsLegend": "הרשאות גישה",
+    "field": {
+      "contractor": "קבלן",
+      "contractorPlaceholder": "בחר קבלן..."
+    },
+    "perm": {
+      "overview": "סקירת פרויקט (overview)",
+      "tenants": "פרטי בעלי דירות (tenants)",
+      "tenantsField": {
+        "phone": "טלפון",
+        "email": "אימייל",
+        "national_id": "ת.ז.",
+        "note": "הערות"
+      },
+      "documents": "מסמכים (documents)",
+      "documentAction": {
+        "download": "הורדה",
+        "upload": "העלאה"
+      },
+      "signatures": "חתימות (signatures)",
+      "notes": "הערות (notes)",
+      "team": "צוות (team)"
     }
   },
   "audit": {

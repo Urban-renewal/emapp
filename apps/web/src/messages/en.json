@@ -23,6 +23,7 @@
     "members": "Members",
     "notifications": "Notifications",
     "tasks": "Tasks",
+    "contractors": "Contractors",
     "audit": "Audit log",
     "provider": "Provider"
   },
@@ -73,6 +74,9 @@
     "assignmentsSection": "Agent assignments",
     "assignmentsHint": "Manage which org members are assigned to this project. Agents see only the projects they are assigned to.",
     "assignmentsManage": "Manage assignments",
+    "sharesSection": "Contractor shares",
+    "sharesHint": "Grant access permissions to contractors on this project. Each share is recorded separately and can be revoked at any time.",
+    "sharesManage": "Manage shares",
     "field": {
       "name": "Project name",
       "type": "Type",
@@ -551,6 +555,77 @@
       "1": "Low",
       "2": "Normal",
       "3": "High"
+    }
+  },
+  "contractors": {
+    "listTitle": "Contractors",
+    "create": "Add contractor",
+    "creating": "Adding...",
+    "createFailed": "Failed to create contractor",
+    "forbiddenCreate": "You are not allowed to create contractors (Manager only).",
+    "emailExists": "This email is already registered as a contractor in this organization.",
+    "loading": "Loading...",
+    "empty": "No contractors yet. Click \"Add contractor\".",
+    "loadFailed": "Failed to load contractors",
+    "notFound": "Contractor not found",
+    "backToList": "Back to list",
+    "cancel": "Cancel",
+    "archiveSection": "Archive contractor",
+    "archiveHint": "After archiving the contractor cannot be shared on new projects.",
+    "archive": "Archive contractor",
+    "archiving": "Archiving...",
+    "archiveConfirm": "Archive this contractor? They cannot be shared on new projects afterwards.",
+    "archiveFailed": "Failed to archive contractor.",
+    "forbiddenArchive": "You are not allowed to archive contractors (Manager only).",
+    "field": {
+      "name": "Contractor / company name",
+      "contactEmail": "Contact email",
+      "contactPhone": "Phone",
+      "specialty": "Specialty",
+      "companyId": "Company ID / registration",
+      "notes": "Notes"
+    }
+  },
+  "shares": {
+    "title": "Contractor shares",
+    "backToProject": "Back to project",
+    "grantSection": "Grant a new share",
+    "grant": "Grant share",
+    "granting": "Granting...",
+    "createFailed": "Failed to grant share",
+    "shareExists": "This contractor already has a share on this project.",
+    "forbidden": "You are not allowed to grant shares (Manager only).",
+    "noEligibleContractors": "No contractors available to share. Create a new contractor or revoke an existing share.",
+    "loadFailed": "Failed to load shares",
+    "empty": "No active shares for this project.",
+    "permissionSummary": "{summary} sections active",
+    "lastAccessed": "last accessed {rel}",
+    "contractorIdPrefix": "Contractor",
+    "revoke": "Revoke",
+    "revoking": "Revoking...",
+    "revokeConfirm": "Revoke this share? Access will be blocked immediately.",
+    "permissionsLegend": "Access permissions",
+    "field": {
+      "contractor": "Contractor",
+      "contractorPlaceholder": "Pick a contractor..."
+    },
+    "perm": {
+      "overview": "Project overview",
+      "tenants": "Owner details (tenants)",
+      "tenantsField": {
+        "phone": "Phone",
+        "email": "Email",
+        "national_id": "National ID",
+        "note": "Notes"
+      },
+      "documents": "Documents",
+      "documentAction": {
+        "download": "Download",
+        "upload": "Upload"
+      },
+      "signatures": "Signatures",
+      "notes": "Notes",
+      "team": "Team"
     }
   },
   "audit": {

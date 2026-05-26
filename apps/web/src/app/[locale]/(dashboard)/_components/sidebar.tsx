@@ -6,6 +6,7 @@ import {
   FileSignature,
   FileSpreadsheet,
   FileText,
+  HardHat,
   History,
   Home,
   Lock,
@@ -31,6 +32,7 @@ interface NavItem {
     | 'members'
     | 'notifications'
     | 'tasks'
+    | 'contractors'
     | 'audit'
     | 'provider';
   icon: typeof Home;
@@ -76,6 +78,10 @@ export function Sidebar({ role }: Props) {
     // Tasks: D.17 read=ALL (Agent sees ONLY own assignments via BE
     // service-layer scoping; the FE doesn't need to gate the link).
     { href: '/tasks', labelKey: 'tasks', icon: CheckSquare, enabled: true },
+    // Contractors: D.17 read=ALL; write=MGR. Sidebar visible to all
+    // roles; the create button on the page surfaces a localized
+    // `forbidden` on 403 (no client-side role mirror).
+    { href: '/contractors', labelKey: 'contractors', icon: HardHat, enabled: true },
   ];
 
   // §D.17 — Members admin is Manager-only (policy.ts:71). The BE's

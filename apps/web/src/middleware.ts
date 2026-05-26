@@ -87,6 +87,25 @@ function isProviderTierPath(pathname: string): boolean {
   return PROVIDER_TIER_REGEX.test(pathname);
 }
 
+/**
+ * Locale prefix detector. Every authenticated FE path lives under
+ * `/<locale>/...` (e.g. `/he/projects`); a raw `/projects` or
+ * `/provider` arrives BEFORE next-intl has prefixed the locale.
+ *
+ * V10-S4 follow-up: WITHOUT this short-circuit, a `router.push('/provider')`
+ * after a successful login would fall through to the auth-gate block,
+ * see no org cookie, and redirect to `/he/login` — kicking the
+ * just-authenticated Provider Admin straight back to the org login.
+ * Locale-prefixed paths route through the tier-aware gates below;
+ * non-prefixed paths defer to next-intl which will 308-redirect to
+ * the locale-prefixed version, and THIS middleware re-enters with the
+ * proper `/he/provider` to gate correctly.
+ */
+const LOCALE_PREFIX_REGEX = /^\/[a-z]{2}(\/|$)/;
+function hasLocalePrefix(pathname: string): boolean {
+  return LOCALE_PREFIX_REGEX.test(pathname);
+}
+
 export default function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const hasOrgToken = req.cookies.has('access_token');
@@ -97,6 +116,22 @@ export default function middleware(req: NextRequest) {
   // auth mechanism.
   if (isLocaleAgnosticPublic(pathname)) {
     return NextResponse.next();
+  }
+
+  // V10-S4 follow-up — narrow defer for locale-less `/provider*` paths
+  // when the user holds a provider cookie. Without this, the auth-gate
+  // block below would see no org cookie and redirect the just-
+  // authenticated Provider Admin to /he/login. Deferring to next-intl
+  // lets it 308-prefix the locale → /he/provider → middleware
+  // re-enters → tier-cookie gate passes them through.
+  //
+  // The check is intentionally narrow (only locale-less + /provider*
+  // shape + provider cookie present). Other locale-less paths still
+  // hit the existing auth-redirect block to preserve the single-
+  // redirect behavior the M8/M13-M15 tests rely on (saves one
+  // round-trip vs deferring everything to intl).
+  if (!hasLocalePrefix(pathname) && /^\/provider(\/|$)/.test(pathname) && hasProviderToken) {
+    return intlMiddleware(req);
   }
 
   // V10-S3 — Provider-tier auth page (`/<locale>/provider/login`):

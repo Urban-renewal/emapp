@@ -88,6 +88,38 @@ export const SEED_VIEWER = {
   avatarColor: '#a16207',
 } as const;
 
+/** Provider Admin (Tier 3) — D.37. Mirrors the shape `/api/v1/provider/me`
+ *  returns post-V10-S1 (apps/api/src/modules/auth/provider/provider-me.controller.ts).
+ *  Deliberately narrower than SEED_MANAGER: no `organization` (Provider is
+ *  cross-tenant), no avatarColor (operational tier, not branded). */
+export const SEED_PROVIDER = {
+  id: '00000000-0000-4000-8000-000000000099',
+  name: 'Lidor Provider Admin',
+  email: 'admin@emapp.io',
+  role: 'provider_admin',
+} as const;
+
+/** Sample tenants the mock provider sees. PII-free at the list level
+ *  (D.37 — name + slug + counts only; no owner-row data). */
+export const SEED_PROVIDER_TENANTS = [
+  {
+    id: '00000000-0000-4000-8000-0000000000a1',
+    name: 'Alpha Urban Renewal',
+    slug: 'alpha-dev',
+    createdAt: '2026-01-15T10:00:00.000Z',
+    archivedAt: null,
+    counts: { users: 5, projects: 3, owners: 42 },
+  },
+  {
+    id: '00000000-0000-4000-8000-0000000000a2',
+    name: 'Beta Tama 38',
+    slug: 'beta-tama',
+    createdAt: '2026-02-20T10:00:00.000Z',
+    archivedAt: null,
+    counts: { users: 2, projects: 1, owners: 18 },
+  },
+] as const;
+
 /** Per-test override registration. Caller MUST `resetMockHandlers()` in
  *  afterEach so handlers don't leak across tests. */
 export function setMockHandler(method: string, path: string, handler: MockHandler): void {
@@ -202,6 +234,117 @@ function installDefaultHandlers(): void {
       ].join(', '),
     },
   }));
+
+  // ─── V10-S1/S2/S3 — Provider tier (J11 happy-path) ───
+  //
+  // Anti-enum: every 401 path on /provider/auth/login returns the SAME
+  // `invalid_credentials` shape — matches the BE contract
+  // (provider-auth.service.ts:91). A real attacker can't distinguish
+  // wrong-password from wrong-MFA from disabled-user.
+  //
+  // Cookies: mirror the BE shape exactly (provider-auth.controller.ts:21):
+  //  - `provider_access_token` at Path=/ (30 min)
+  //  - `provider_refresh_token` at Path=/api/v1/provider/auth/refresh (4 h)
+  // Wrong path on either cookie breaks the FE logout flow silently;
+  // mock parity matters for that test.
+  setMockHandler('POST', '/api/v1/provider/auth/login', (_req, body) => {
+    // The mock trusts ANY non-empty (email + password + mfa_code) tuple.
+    // We re-check the shape defensively so a malformed test payload
+    // surfaces as 401 (anti-enum — same code as wrong credentials).
+    let parsed: { email?: string; password?: string; mfa_code?: string } = {};
+    try {
+      parsed = JSON.parse(body) as typeof parsed;
+    } catch {
+      return { status: 401, body: { error: { code: 'invalid_credentials' } } };
+    }
+    if (!parsed.email || !parsed.password || !parsed.mfa_code) {
+      return { status: 401, body: { error: { code: 'invalid_credentials' } } };
+    }
+    return {
+      status: 200,
+      body: { data: { ok: true } },
+      headers: {
+        'Set-Cookie': [
+          'provider_access_token=e2e-provider-access; Path=/; HttpOnly; SameSite=Lax',
+          'provider_refresh_token=e2e-provider-refresh; Path=/api/v1/provider/auth/refresh; HttpOnly; SameSite=Lax',
+        ].join(', '),
+      },
+    };
+  });
+
+  // /provider/me — returns SEED_PROVIDER iff the provider cookie is
+  // present. Anti-enum 401 otherwise (same code as expired/wrong-audience
+  // on the BE — see provider-me.controller.ts).
+  setMockHandler('GET', '/api/v1/provider/me', (req) => {
+    const cookieHeader = req.headers.cookie ?? '';
+    const hasProviderToken = /(?:^|;\s*)provider_access_token=([^;]+)/.test(cookieHeader);
+    if (!hasProviderToken) {
+      return {
+        status: 401,
+        body: { error: { code: 'invalid_token', message: 'no provider_access_token' } },
+      };
+    }
+    return { status: 200, body: { data: SEED_PROVIDER } };
+  });
+
+  // /provider/auth/logout — clears cookies + acknowledges.
+  setMockHandler('POST', '/api/v1/provider/auth/logout', () => ({
+    status: 200,
+    body: { data: { ok: true } },
+  }));
+
+  // /provider/tenants — list (D.37). Returns SEED_PROVIDER_TENANTS when
+  // the provider cookie is present + the `access_reason` HTTP header
+  // (snake_case, mirrors the BE access-reason.decorator.ts contract +
+  // the audit_log column) is populated. BE 400 reason_required
+  // otherwise. The mock matches BOTH guards.
+  setMockHandler('GET', '/api/v1/provider/tenants', (req) => {
+    const cookieHeader = req.headers.cookie ?? '';
+    const hasProviderToken = /(?:^|;\s*)provider_access_token=([^;]+)/.test(cookieHeader);
+    if (!hasProviderToken) {
+      return { status: 401, body: { error: { code: 'invalid_token' } } };
+    }
+    const reason = req.headers['access_reason'];
+    if (!reason || (typeof reason === 'string' && reason.trim().length === 0)) {
+      return { status: 400, body: { error: { code: 'reason_required' } } };
+    }
+    return {
+      status: 200,
+      body: {
+        data: SEED_PROVIDER_TENANTS,
+        page: { limit: 25, cursor: null, has_more: false },
+      },
+    };
+  });
+
+  // /provider/system-health — the provider dashboard home page fires
+  // this on mount via useProviderSystemHealth(). Mock returns a clean
+  // gauge snapshot so the page renders without errors.
+  setMockHandler('GET', '/api/v1/provider/system-health', (req) => {
+    const cookieHeader = req.headers.cookie ?? '';
+    const hasProviderToken = /(?:^|;\s*)provider_access_token=([^;]+)/.test(cookieHeader);
+    if (!hasProviderToken) {
+      return { status: 401, body: { error: { code: 'invalid_token' } } };
+    }
+    const reason = req.headers['access_reason'];
+    if (!reason) {
+      return { status: 400, body: { error: { code: 'reason_required' } } };
+    }
+    return {
+      status: 200,
+      body: {
+        data: {
+          queue: { created: 0, active: 0, retry: 0, failed: 0, completed: 10 },
+          pool: {
+            app: { total: 5, idle: 3, waiting: 0 },
+            provider: { total: 2, idle: 2, waiting: 0 },
+          },
+          r2: { errorsSinceBoot: 0, lastErrorAt: null },
+          timestamp: new Date().toISOString(),
+        },
+      },
+    };
+  });
 }
 
 function pathOf(url: string): string {

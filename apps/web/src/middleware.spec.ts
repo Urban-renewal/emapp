@@ -332,6 +332,47 @@ describe('middleware — provider/login page (V10-S2 + V10-S3 closures)', () => 
     const res = middleware(mockReq({ pathname: '/en/provider/login' }));
     expect(res.status).not.toBe(307);
   });
+
+  it('MPL8) locale-less /provider WITH provider cookie defers to next-intl (V10-S4 follow-up — post-login navigation)', () => {
+    // V10-S4 regression test: after a successful provider login, the
+    // page calls router.push('/provider') (no locale prefix). The
+    // middleware MUST defer to next-intl for this narrow case (locale-
+    // less + /provider* + provider cookie present) instead of falling
+    // through to the auth-gate (which would see no org cookie and
+    // redirect to /he/login — kicking the just-authenticated Provider
+    // Admin back to the org login screen).
+    //
+    // The mock of next-intl in this spec returns NextResponse.next(),
+    // so the path stays on /provider; what we verify is the ABSENCE of
+    // a 307 to /he/login — proof we deferred to next-intl correctly.
+    const res = middleware(mockReq({ pathname: '/provider', hasProviderToken: true }));
+    expect(res.status).not.toBe(307);
+  });
+
+  it('MPL9) locale-less /provider WITHOUT provider cookie does NOT defer (security — falls to auth gate)', () => {
+    // Defense: only the post-login navigation case defers. An
+    // anonymous visitor at /provider should NOT bypass the auth gate
+    // via this short-circuit — they get the regular redirect to
+    // /he/login (the locale-less path falls through to the auth block
+    // below which extracts locale from the pathname or defaults to 'he').
+    const res = middleware(mockReq({ pathname: '/provider' }));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toMatch(/\/he\/login$/);
+  });
+
+  it('MPL10) locale-less /provider/tenants WITH provider cookie also defers (deeper path)', () => {
+    const res = middleware(mockReq({ pathname: '/provider/tenants', hasProviderToken: true }));
+    expect(res.status).not.toBe(307);
+  });
+
+  it('MPL11) locale-less /providersomething (no slash after provider) does NOT defer (exact segment match)', () => {
+    // Defense: the regex anchors `/provider(\/|$)` — `/providerland`
+    // (no slash) does NOT trigger the defer. An attacker who somehow
+    // got a provider cookie + crafted a `/providerland` path should
+    // hit the normal auth gate.
+    const res = middleware(mockReq({ pathname: '/providerland', hasProviderToken: true }));
+    expect(res.status).toBe(307);
+  });
 });
 
 describe('next.config.ts security headers (§v9-P0-5 closure pin)', () => {

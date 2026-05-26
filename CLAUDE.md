@@ -98,6 +98,22 @@ Phase tasks: docs/03-mvp-roadmap.html. DB: docs/04c-phase-1-database.html.
 
 Security: docs/07-security-playbook.html. Auth/API flows: docs/08-auth-api-flows.html. API reference (generate from schema, see Doc 09 §0.4): docs/09-api-reference.html. FE security DoD: docs/10-frontend-security.html. Sync mechanism (shared-types + CI enforcement): docs/11-sync-mechanism.html. Decisions: docs/DECISIONS.html.
 
+\## V11 IN FLIGHT (2026-05-26 → ~2026-06-30)
+
+If you are a new agent joining the team during V11 (Design Re-skin + Calendar + Tenant Portal + Export):
+
+\- **Read first:** `docs/MASTER-PLAN-V11.md` (single source of truth for tracks/slices/gates).
+
+\- Then: `docs/V11-BROWSER-SMOKE.md` (the smoke standard — mandatory after every slice).
+
+\- Then: `docs/MEAPP_DESIGN_INDEX.md` (the partner's design folder map — only read MVP-relevant files).
+
+\- Then: `docs/DECISIONS.html` D.38 + D.39 + D.40 (the V11 scope decisions).
+
+\- Per-track entry point: `docs/V11-AGENT-PROMPT-A.md` (Design Re-skin) or `docs/V11-AGENT-PROMPT-B.md` (BE Specialist).
+
+\- Smoke (G4) is non-negotiable — no PR merges without per-role 4-axis evidence in the PR description.
+
 \## Definition of Done for any task
 
 TypeScript passes, lint passes, tests green, no console.log,

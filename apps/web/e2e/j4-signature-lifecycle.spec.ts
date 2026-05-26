@@ -235,9 +235,9 @@ test.describe('§E-J4 — Signature lifecycle (create + display signUrl)', () =>
     expect(SIGN_URL).toMatch(/\/sign\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
 
     // §AXIS-V — the "copy" + "view request" CTAs are present.
-    // t('copy') = "העתק"; t('viewRequest') = "צפה בבקשה".
+    // t('copy') = "העתק"; t('viewRequest') = "פתח את הבקשה".
     await expect(page.getByRole('button', { name: 'העתק' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'צפה בבקשה' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'פתח את הבקשה' })).toBeVisible();
 
     // §AXIS-U — URL stays on /new (the success state replaces the
     // form in-page rather than navigating, so the URL doesn't change).

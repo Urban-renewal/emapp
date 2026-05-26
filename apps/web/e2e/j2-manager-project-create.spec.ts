@@ -175,7 +175,6 @@ test.describe('§E-J2a — Manager creates a project', () => {
     // §AXIS-V/U — navigated to detail page.
     await page.waitForURL(new RegExp(`/he/projects/${NEW_PROJECT_ID}$`), { timeout: 10_000 });
     expect(page.url()).toMatch(new RegExp(`/he/projects/${NEW_PROJECT_ID}$`));
-    expect(getDetailCount, 'detail page fetched after redirect').toBeGreaterThanOrEqual(1);
 
     // §AXIS-U — URL bar must not carry any of the field values.
     expect(page.url(), 'no name in URL').not.toContain(encodeURIComponent(FORM_VALUES.name));
@@ -183,9 +182,17 @@ test.describe('§E-J2a — Manager creates a project', () => {
     expect(page.url()).not.toMatch(/[?&](name|type|description)=/);
 
     // §AXIS-V — detail page renders the created project's heading.
+    // This implicitly waits for the GET /projects/<id> to complete
+    // (the heading depends on data from useProject). Asserting
+    // getDetailCount BEFORE this would race the fetch.
     await expect(page.getByRole('heading', { name: FORM_VALUES.name })).toBeVisible({
       timeout: 10_000,
     });
+
+    // §AXIS-A — detail GET completed after redirect (heading visible
+    // proves it; this is a defensive double-check that the routing
+    // actually went through our handler vs. some other code path).
+    expect(getDetailCount, 'detail page fetched after redirect').toBeGreaterThanOrEqual(1);
 
     // §AXIS-S (console) — fixture auto-asserts.
     expect(consoleErrors.count, 'no console errors during create').toBe(0);

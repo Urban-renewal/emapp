@@ -31,6 +31,7 @@ import {
   ProviderSystemHealthService,
   resetSystemHealthCacheForTests,
 } from './provider-system-health.service';
+import { DefaultSystemStatsProvider } from './system-stats';
 
 let provider: TestProviderUser;
 let svc: ProviderSystemHealthService;
@@ -49,7 +50,10 @@ function principal(): ProviderPrincipal {
 beforeAll(async () => {
   await setupTestDatabase();
   provider = await createTestProviderUser();
-  svc = new ProviderSystemHealthService();
+  // SA-12 — service now takes ISystemStatsProvider via DI. The default
+  // production implementation delegates to `@emapp/db` (same calls as
+  // before the refactor); spec doesn't care about the abstraction.
+  svc = new ProviderSystemHealthService(new DefaultSystemStatsProvider());
   auditStartMarker = new Date();
 }, 60_000);
 

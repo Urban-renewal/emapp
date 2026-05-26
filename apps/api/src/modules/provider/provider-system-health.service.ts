@@ -38,13 +38,14 @@
  * Provider tier access — INCLUDING ops-level snapshots — leaves a
  * forensic record (D.37 invariant, ISO A.12.4).
  */
-import { getPoolStats, getStorageErrorStats, withProvider } from '@emapp/db';
+import { withProvider } from '@emapp/db';
 import type { SystemHealth } from '@emapp/shared-types';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import type { ProviderActor } from './current-provider.decorator';
+import { SYSTEM_STATS_PROVIDER, type ISystemStatsProvider } from './system-stats';
 
 // Type alias (not interface) for drizzle's tx.execute<T> constraint —
 // see the same note in provider-tenant-detail.service.ts (TS2344).
@@ -87,6 +88,16 @@ export function resetSystemHealthCacheForTests(): void {
 
 @Injectable()
 export class ProviderSystemHealthService {
+  /**
+   * SA-12 closure — pool + R2 gauges are injected via the
+   * `SYSTEM_STATS_PROVIDER` token rather than imported directly from
+   * `@emapp/db`. The default production binding delegates to the same
+   * `getPoolStats` / `getStorageErrorStats` functions; tests can swap
+   * a fake via NestJS `overrideProvider` instead of monkey-patching
+   * module imports.
+   */
+  constructor(@Inject(SYSTEM_STATS_PROVIDER) private readonly stats: ISystemStatsProvider) {}
+
   async read(actor: ProviderActor, reason: string): Promise<SystemHealth> {
     // Audit row is written autonomously by `withProvider` BEFORE the
     // callback runs (SA-7 closure). Returning a cached value below
@@ -102,8 +113,8 @@ export class ProviderSystemHealthService {
         }
         // Cache miss — assemble fresh.
         const queue = await probeQueueCounts(tx);
-        const poolStats = getPoolStats();
-        const r2Stats = getStorageErrorStats();
+        const poolStats = this.stats.getPoolStats();
+        const r2Stats = this.stats.getStorageErrorStats();
         const fresh: SystemHealth = {
           queue,
           pool: { app: poolStats.app, provider: poolStats.provider },

@@ -18,7 +18,7 @@ import { z } from 'zod';
 
 import { apiClient, isList, isOk } from '../api-client';
 
-import { ApiClientError } from './errors';
+import { ApiClientError, isEmptyResponseSuccess } from './errors';
 import { PageSchema } from './paging';
 
 const ContractorDataSchema = z.object({ data: ContractorSchema });
@@ -63,6 +63,6 @@ export async function updateContractor(id: string, body: UpdateContractor): Prom
 export async function archiveContractor(id: string): Promise<void> {
   const res = await apiClient.delete<unknown>(`/contractors/${id}`);
   if (isOk(res)) return;
-  if (res.error.code === 'invalid_response') return;
+  if (isEmptyResponseSuccess(res.error)) return;
   throw new ApiClientError(res.error);
 }

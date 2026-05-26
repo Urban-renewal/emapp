@@ -32,7 +32,7 @@ import { z } from 'zod';
 
 import { apiClient, isList, isOk } from '../api-client';
 
-import { ApiClientError } from './errors';
+import { ApiClientError, isEmptyResponseSuccess } from './errors';
 import { PageSchema } from './paging';
 
 const TaskDataSchema = z.object({ data: TaskSchema });
@@ -80,7 +80,7 @@ export async function updateTask(id: string, body: UpdateTask): Promise<Task> {
 export async function archiveTask(id: string): Promise<void> {
   const res = await apiClient.delete<unknown>(`/tasks/${id}`);
   if (isOk(res)) return;
-  if (res.error.code === 'invalid_response') return;
+  if (isEmptyResponseSuccess(res.error)) return;
   throw new ApiClientError(res.error);
 }
 
@@ -102,6 +102,6 @@ export async function addTaskAssignee(taskId: string, body: AssignTask): Promise
 export async function removeTaskAssignee(taskId: string, userId: string): Promise<void> {
   const res = await apiClient.delete<unknown>(`/tasks/${taskId}/assignees/${userId}`);
   if (isOk(res)) return;
-  if (res.error.code === 'invalid_response') return;
+  if (isEmptyResponseSuccess(res.error)) return;
   throw new ApiClientError(res.error);
 }

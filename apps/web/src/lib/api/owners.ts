@@ -14,7 +14,7 @@ import { z } from 'zod';
 
 import { apiClient, isList, isOk } from '../api-client';
 
-import { ApiClientError } from './errors';
+import { ApiClientError, isEmptyResponseSuccess } from './errors';
 import { PageSchema } from './paging';
 
 const OwnerDataSchema = z.object({ data: OwnerSchema });
@@ -54,7 +54,7 @@ export async function createOwner(body: CreateOwner): Promise<Owner> {
 export async function archiveOwner(id: string): Promise<void> {
   const res = await apiClient.delete<unknown>(`/owners/${id}`);
   if (isOk(res)) return;
-  if (res.error.code === 'invalid_response') return;
+  if (isEmptyResponseSuccess(res.error)) return;
   throw new ApiClientError(res.error);
 }
 

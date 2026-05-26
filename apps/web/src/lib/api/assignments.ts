@@ -19,7 +19,7 @@ import { z } from 'zod';
 
 import { apiClient, isList, isOk } from '../api-client';
 
-import { ApiClientError } from './errors';
+import { ApiClientError, isEmptyResponseSuccess } from './errors';
 import { PageSchema } from './paging';
 
 const AssignmentDataSchema = z.object({ data: ProjectAssignmentSchema });
@@ -62,6 +62,6 @@ export async function unassignProjectAssignment(id: string): Promise<void> {
   const res = await apiClient.delete<unknown>(`/assignments/${id}`);
   // 204 (empty body) — same pattern as archiveProject / revokeMember.
   if (isOk(res)) return;
-  if (res.error.code === 'invalid_response') return;
+  if (isEmptyResponseSuccess(res.error)) return;
   throw new ApiClientError(res.error);
 }

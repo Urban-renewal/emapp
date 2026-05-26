@@ -67,6 +67,16 @@ export default function NoteDetailPage() {
     codeOverrides: { forbidden: () => t('forbiddenEdit') },
     fallback: () => t('updateFailed'),
   });
+  // V10-S5 closure — archive failures used to surface the edit-error
+  // message ("Only Manager/author may EDIT this note") because the
+  // catch block reused `editError`. The user just clicked Archive
+  // though — show an archive-specific message. The BE returns the
+  // same `forbidden` code for both ops; the FE message is what
+  // disambiguates intent.
+  const archiveError = useApiErrorHandler<UpdateNote>({
+    codeOverrides: { forbidden: () => t('forbiddenArchive') },
+    fallback: () => t('archiveFailed'),
+  });
 
   if (isLoading) return <ListSkeleton withRows={false} />;
   if (isError || !note) {
@@ -105,11 +115,12 @@ export default function NoteDetailPage() {
   async function onArchive() {
     if (!id) return;
     if (!window.confirm(t('archiveConfirm'))) return;
+    archiveError.reset();
     try {
       await archiveMutation.mutateAsync(id);
       router.push('/notes');
     } catch (e) {
-      editError.handle(e);
+      archiveError.handle(e);
     }
   }
 
@@ -202,6 +213,9 @@ export default function NoteDetailPage() {
         <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4">
           <h2 className="mb-2 text-base font-semibold text-destructive">{t('archiveSection')}</h2>
           <p className="mb-3 text-xs text-muted-foreground">{t('archiveHint')}</p>
+          {archiveError.serverError && (
+            <p className="mb-3 text-sm text-destructive">{archiveError.serverError}</p>
+          )}
           <Button
             type="button"
             variant="destructive"

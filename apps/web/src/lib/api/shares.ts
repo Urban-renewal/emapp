@@ -23,7 +23,7 @@ import { z } from 'zod';
 
 import { apiClient, isList, isOk } from '../api-client';
 
-import { ApiClientError } from './errors';
+import { ApiClientError, isEmptyResponseSuccess } from './errors';
 import { PageSchema } from './paging';
 
 const ShareDataSchema = z.object({ data: ShareSchema });
@@ -69,6 +69,6 @@ export async function updateShare(id: string, body: UpdateShare): Promise<Share>
 export async function revokeShare(id: string): Promise<void> {
   const res = await apiClient.delete<unknown>(`/shares/${id}`);
   if (isOk(res)) return;
-  if (res.error.code === 'invalid_response') return;
+  if (isEmptyResponseSuccess(res.error)) return;
   throw new ApiClientError(res.error);
 }

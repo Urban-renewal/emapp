@@ -31,7 +31,7 @@ import { z } from 'zod';
 
 import { apiClient, isList, isOk } from '../api-client';
 
-import { ApiClientError } from './errors';
+import { ApiClientError, isEmptyResponseSuccess } from './errors';
 import { PageSchema } from './paging';
 
 export interface MemberListPage {
@@ -92,7 +92,7 @@ export async function revokeMember(userId: string): Promise<void> {
   // `invalid_response`. Treat that as success for DELETE (same pattern
   // as archiveProject — projects.ts:65-74).
   if (isOk(res)) return;
-  if (res.error.code === 'invalid_response') return;
+  if (isEmptyResponseSuccess(res.error)) return;
   throw new ApiClientError(res.error);
 }
 

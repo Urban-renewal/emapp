@@ -13,7 +13,7 @@ import { z } from 'zod';
 
 import { apiClient, isList, isOk, type ApiResponse } from '../api-client';
 
-import { ApiClientError } from './errors';
+import { ApiClientError, isEmptyResponseSuccess } from './errors';
 import { PageSchema } from './paging';
 
 const ProjectDataSchema = z.object({ data: ProjectSchema });
@@ -69,6 +69,6 @@ export async function archiveProject(id: string): Promise<void> {
   // and harmless for a 204; treat the call as success when the only
   // error is the empty-body code.
   if (isOk(res)) return;
-  if (res.error.code === 'invalid_response') return;
+  if (isEmptyResponseSuccess(res.error)) return;
   throw new ApiClientError(res.error);
 }

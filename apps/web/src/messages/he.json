@@ -50,7 +50,13 @@
     "signupError": "שגיאה ביצירת החשבון, נסה שנית",
     "emailInvalid": "אימייל לא תקין",
     "required": "שדה חובה",
-    "passwordRequirements": "הסיסמה חייבת להכיל לפחות 12 תווים"
+    "passwordRequirements": "הסיסמה חייבת להכיל לפחות 12 תווים",
+    "providerLoginTitle": "כניסה למסוף Provider",
+    "providerLoginSubtitle": "כניסה למסוף ניהול חוצה-לקוחות. נדרשים אימייל, סיסמה וקוד אימות.",
+    "mfaCode": "קוד אימות (TOTP)",
+    "mfaCodeHint": "קוד בן 6 ספרות מאפליקציית האותנטיקטור או קוד שחזור",
+    "mfaCodeInvalid": "קוד אימות לא תקין",
+    "invalidProviderCredentials": "אימייל, סיסמה או קוד אימות שגויים"
   },
   "projects": {
     "listTitle": "פרויקטים",

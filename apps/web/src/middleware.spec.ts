@@ -191,18 +191,20 @@ describe('middleware — adversarial', () => {
 
 // ─── V10-S4 closure — tier isolation at the middleware layer ───
 describe('middleware — provider tier (V10-S4 closure)', () => {
-  it('MP1) unauthenticated user at /he/provider is redirected to /he/login (no provider cookie)', () => {
+  it('MP1) unauthenticated user at /he/provider is redirected to /he/provider/login (V10-S2 — tier-specific login target)', () => {
     const res = middleware(mockReq({ pathname: '/he/provider' }));
     expect(res.status).toBe(307);
-    expect(res.headers.get('location')).toMatch(/\/he\/login$/);
+    expect(res.headers.get('location')).toMatch(/\/he\/provider\/login$/);
   });
 
-  it('MP2) user with ONLY org access_token at /he/provider is redirected to /he/login (no provider cookie)', () => {
+  it('MP2) user with ONLY org access_token at /he/provider is redirected to /he/provider/login (no provider cookie)', () => {
     // Provider-tier paths require provider_access_token specifically;
     // an org cookie alone must NOT grant access. Tier isolation.
+    // Redirect target is /provider/login (V10-S2) so the org user
+    // can acquire a provider session without leaving the tier context.
     const res = middleware(mockReq({ pathname: '/he/provider', hasToken: true }));
     expect(res.status).toBe(307);
-    expect(res.headers.get('location')).toMatch(/\/he\/login$/);
+    expect(res.headers.get('location')).toMatch(/\/he\/provider\/login$/);
   });
 
   it('MP3) user with provider_access_token at /he/provider is allowed through (no redirect)', () => {
@@ -238,13 +240,22 @@ describe('middleware — provider tier (V10-S4 closure)', () => {
     expect(res.headers.get('location')).toMatch(/\/he\/login$/);
   });
 
-  it('MP7) authenticated EITHER tier at /he/login is redirected to /he (no tier-specific stuck-state)', () => {
-    // If only the provider cookie is present, /he/login still bounces
-    // away (otherwise a Provider Admin opening /login by accident
-    // would re-authenticate over their session — undesirable UX).
-    const res = middleware(mockReq({ pathname: '/he/login', hasProviderToken: true }));
+  it('MP7) authenticated ORG-only user at /he/login is bounced to /he (V10-S3 refinement)', () => {
+    // V10-S3 refinement — `/he/login` is an ORG-tier auth route.
+    // Bounce ONLY org-authenticated users. A provider-only user
+    // visiting /he/login is allowed through (they want to acquire
+    // a second, org-tier session — dual-role flow).
+    const res = middleware(mockReq({ pathname: '/he/login', hasToken: true }));
     expect(res.status).toBe(307);
     expect(res.headers.get('location')).toMatch(/\/he$/);
+  });
+
+  it('MP7b) provider-only user at /he/login is allowed through (acquiring org session — dual-role)', () => {
+    // V10-S3: the bounce rule on `/he/login` is tier-specific. A user
+    // with ONLY provider_access_token can legally visit /he/login to
+    // acquire an org session in addition to their provider one.
+    const res = middleware(mockReq({ pathname: '/he/login', hasProviderToken: true }));
+    expect(res.status).not.toBe(307);
   });
 
   it('MP8) user with BOTH tokens at /he/provider/tenants is allowed (provider check passes)', () => {
@@ -256,6 +267,69 @@ describe('middleware — provider tier (V10-S4 closure)', () => {
     const res = middleware(
       mockReq({ pathname: '/he/provider/tenants', hasToken: true, hasProviderToken: true }),
     );
+    expect(res.status).not.toBe(307);
+  });
+});
+
+// ─── V10-S2 + V10-S3 closures — /provider/login page-specific rules ───
+describe('middleware — provider/login page (V10-S2 + V10-S3 closures)', () => {
+  it('MPL1) unauthenticated user at /he/provider/login is ALLOWED (public route)', () => {
+    // The whole point of V10-S3: PUBLIC_ROUTE_REGEX extends to include
+    // `provider\\/login` so the login page is reachable.
+    const res = middleware(mockReq({ pathname: '/he/provider/login' }));
+    expect(res.status).not.toBe(307);
+  });
+
+  it('MPL2) provider-authenticated user at /he/provider/login is bounced to /he/provider', () => {
+    // Already logged in as provider → no need to re-authenticate.
+    // Target is /provider (provider dashboard home), NOT /he (org root)
+    // — staying within the tier context.
+    const res = middleware(mockReq({ pathname: '/he/provider/login', hasProviderToken: true }));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toMatch(/\/he\/provider$/);
+  });
+
+  it('MPL3) org-only user at /he/provider/login is ALLOWED through (acquiring provider session — dual-role)', () => {
+    // V10-S3 design: this is a tier-specific auth route. An org user
+    // visiting /provider/login is trying to acquire a SECOND session
+    // for the provider tier. We don't bounce them away — that would
+    // prevent the dual-role login flow.
+    const res = middleware(mockReq({ pathname: '/he/provider/login', hasToken: true }));
+    expect(res.status).not.toBe(307);
+  });
+
+  it('MPL4) /he/provider/login does NOT trigger the provider-tier cookie gate (it IS the login page)', () => {
+    // The /provider/login route is matched as PUBLIC_ROUTE first; the
+    // PROVIDER_TIER cookie gate explicitly skips it via the
+    // `&& !isProviderAuthRoute(pathname)` clause. Without that skip,
+    // an unauthenticated visitor would loop /provider → /provider/login
+    // → /provider/login (bounced for no cookie) → infinite redirect.
+    const res = middleware(mockReq({ pathname: '/he/provider/login' }));
+    expect(res.status).not.toBe(307);
+  });
+
+  it('MPL5) dual-cookie user at /he/provider/login bounces to /he/provider (provider session wins)', () => {
+    // Both cookies present → the provider-auth bounce (MPL2) fires
+    // BEFORE the org-auth bounce (MP7) because we check provider
+    // auth-route first in the middleware order.
+    const res = middleware(
+      mockReq({ pathname: '/he/provider/login', hasToken: true, hasProviderToken: true }),
+    );
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toMatch(/\/he\/provider$/);
+  });
+
+  it('MPL6) path-suffix attack /he/projects/provider/login is NOT a public route', () => {
+    // PROVIDER_AUTH_ROUTE_REGEX is anchored — `/he/projects/provider/login`
+    // is NOT a provider login page; it's an unauthenticated visitor on
+    // a protected path and must redirect to /he/login (org login).
+    const res = middleware(mockReq({ pathname: '/he/projects/provider/login' }));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toMatch(/\/he\/login$/);
+  });
+
+  it('MPL7) /en/provider/login also reachable (locale-portable)', () => {
+    const res = middleware(mockReq({ pathname: '/en/provider/login' }));
     expect(res.status).not.toBe(307);
   });
 });

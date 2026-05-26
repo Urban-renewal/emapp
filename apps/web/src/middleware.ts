@@ -25,9 +25,20 @@ const intlMiddleware = createMiddleware(routing);
  */
 const JWT_SHAPE = '[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+';
 const PUBLIC_ROUTE_REGEX = new RegExp(
-  `^\\/[a-z]{2}\\/(login|signup|accept-invite\\/${JWT_SHAPE})$`,
+  `^\\/[a-z]{2}\\/(login|signup|provider\\/login|accept-invite\\/${JWT_SHAPE})$`,
 );
+/**
+ * Org-tier auth routes — bounce ANY user with `access_token` away.
+ * Deliberately narrow: `/<locale>/login` and `/<locale>/signup` only.
+ * Provider login is a SEPARATE auth route (`PROVIDER_AUTH_ROUTE_REGEX`)
+ * because the bounce destination + the cookie check are tier-specific
+ * (D.29 — different audiences mean different "logged in" semantics
+ * per tier; lumping them together would risk bouncing an org user
+ * away from /provider/login when they're trying to acquire a provider
+ * session in addition to their org session, or vice-versa).
+ */
 const AUTH_ROUTE_REGEX = /^\/[a-z]{2}\/(login|signup)$/;
+const PROVIDER_AUTH_ROUTE_REGEX = /^\/[a-z]{2}\/provider\/login$/;
 
 /**
  * V10-S4 closure — Provider tier paths require `provider_access_token`,
@@ -63,6 +74,9 @@ const PUBLIC_LOCALE_AGNOSTIC_REGEX = /^\/sign\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[
 function isAuthRoute(pathname: string): boolean {
   return AUTH_ROUTE_REGEX.test(pathname);
 }
+function isProviderAuthRoute(pathname: string): boolean {
+  return PROVIDER_AUTH_ROUTE_REGEX.test(pathname);
+}
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTE_REGEX.test(pathname) || PUBLIC_LOCALE_AGNOSTIC_REGEX.test(pathname);
 }
@@ -85,12 +99,27 @@ export default function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Redirect authenticated users away from /login / /signup. The
-  // posture is "any tier counts" — if you're logged in to either tier,
-  // we send you to the locale root, not the auth page. The dashboard
-  // layout will then resolve which tier-home to render.
-  // v9-post-audit-SOLID-8 — preserve the locale prefix.
-  if (isAuthRoute(pathname) && (hasOrgToken || hasProviderToken)) {
+  // V10-S3 — Provider-tier auth page (`/<locale>/provider/login`):
+  // bounce away ONLY if the user already has a provider session.
+  // An org-tier user MAY visit this page to acquire a separate
+  // provider session in addition to their org one (dual-role flow
+  // — rare but legal); we don't bounce them.
+  if (isProviderAuthRoute(pathname) && hasProviderToken) {
+    const url = req.nextUrl.clone();
+    const localeMatch = pathname.match(/^\/([a-z]{2})\//);
+    const locale = localeMatch ? localeMatch[1] : 'he';
+    url.pathname = `/${locale}/provider`;
+    return NextResponse.redirect(url);
+  }
+
+  // Org-tier auth pages (/login, /signup): bounce away ANY user
+  // with an org session. Provider-only sessions are NOT bounced
+  // (they may be trying to acquire an org session, mirror of the
+  // V10-S3 logic above). This narrower posture replaces the
+  // earlier "any tier counts" rule which would have prevented a
+  // Provider Admin from also logging into their org account.
+  // v9-post-audit-SOLID-8 — preserve the locale prefix on redirect.
+  if (isAuthRoute(pathname) && hasOrgToken) {
     const url = req.nextUrl.clone();
     const localeMatch = pathname.match(/^\/([a-z]{2})\//);
     const locale = localeMatch ? localeMatch[1] : 'he';
@@ -101,17 +130,20 @@ export default function middleware(req: NextRequest) {
   // V10-S4 — Provider tier paths require the provider cookie.
   // Tier isolation: an org-only session navigating to /he/provider
   // gets redirected away (NOT silently rendered with the org session,
-  // which would be a privilege confusion bug). Until /provider/login
-  // ships (PR-C / V10-S2), the redirect target is the org login —
-  // safe fallback because anyone without provider_access_token does
-  // need to acquire one through the operator runbook anyway.
-  if (isProviderTierPath(pathname)) {
+  // which would be a privilege confusion bug). Now that /provider/login
+  // exists (V10-S2), unauthenticated visitors land there instead of
+  // the org login.
+  //
+  // The `isProviderAuthRoute` short-circuit above means `/he/provider/login`
+  // ITSELF is matched as a public route (PUBLIC_ROUTE_REGEX includes
+  // it) and reaches this branch only as a fall-through, so we re-check
+  // and explicitly let it pass — the page is the redirect target.
+  if (isProviderTierPath(pathname) && !isProviderAuthRoute(pathname)) {
     if (!hasProviderToken) {
       const url = req.nextUrl.clone();
       const localeMatch = pathname.match(/^\/([a-z]{2})\//);
       const locale = localeMatch ? localeMatch[1] : 'he';
-      // PR-C (V10-S2) will flip this target to `/${locale}/provider/login`.
-      url.pathname = `/${locale}/login`;
+      url.pathname = `/${locale}/provider/login`;
       return NextResponse.redirect(url);
     }
     return intlMiddleware(req);

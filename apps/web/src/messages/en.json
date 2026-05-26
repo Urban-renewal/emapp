@@ -50,7 +50,13 @@
     "signupError": "Failed to create account, please try again",
     "emailInvalid": "Invalid email address",
     "required": "Required",
-    "passwordRequirements": "Password must be at least 12 characters"
+    "passwordRequirements": "Password must be at least 12 characters",
+    "providerLoginTitle": "Provider Console Login",
+    "providerLoginSubtitle": "Cross-tenant administration console. Email, password and MFA code required.",
+    "mfaCode": "MFA code (TOTP)",
+    "mfaCodeHint": "6-digit code from your authenticator app or a recovery code",
+    "mfaCodeInvalid": "Invalid MFA code",
+    "invalidProviderCredentials": "Invalid email, password or MFA code"
   },
   "projects": {
     "listTitle": "Projects",

@@ -9,6 +9,7 @@ import {
   providerSessions,
   providerUsers,
 } from '@emapp/db';
+import type { ProviderProfile } from '@emapp/shared-types';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { and, eq, isNull } from 'drizzle-orm';
@@ -323,6 +324,76 @@ export class ProviderAuthService {
       { sub, role, sid, type: 'provider_access' },
       { expiresIn: ACCESS_TTL_SEC, issuer: JWT_ISS, audience: JWT_AUD, algorithm: 'HS256' },
     );
+  }
+
+  /**
+   * Self-identity lookup for the Provider tier — V10-S1 closure
+   * (H1 Provider FE topology fix).
+   *
+   * Called by `ProviderMeController` on every page navigation through
+   * the Provider FE subtree. The org-tier `/me` equivalent (auth.service
+   * `getMe`) does the same lookup against `users + memberships`.
+   *
+   * **Performance** (runtime budget — Doc 03 §12):
+   * - Single SELECT by primary key (provider_users.id); plan: index
+   *   scan on pkey; ~sub-ms on a table that historically holds a handful
+   *   of rows. No JOIN, no withProvider (no session opening, no audit
+   *   row, no autonomous-tx ceremony — this is identity, not a
+   *   cross-tenant action). Total path: ~JWT verify + 1 round-trip.
+   * - No FE-side cache busting required; the FE wraps this in TanStack
+   *   with `staleTime: 30_000` like every other read.
+   *
+   * **Security** (Doc 07 §7.10 + D.29 tier isolation + SA-3 + SA-5):
+   * - Explicit per-column projection — never `select()` without args.
+   *   `passwordHash`, `mfaSecretEncrypted`, `recoveryCodesHash`,
+   *   `failedLoginCount`, `lockedUntil`, `lastLoginAt` are deliberately
+   *   excluded. Adding them is a code-review-reject.
+   * - Returns `null` for: missing row, disabled row (disabledAt set),
+   *   corrupted role (DB value not in DB_TO_JWT_ROLE). Caller MUST map
+   *   `null → 401 invalid_token` to preserve anti-enum invariant
+   *   (Doc 07 §6.12.1) — same error shape as expired JWT, malformed
+   *   JWT, wrong audience.
+   * - No audit row written. The org-tier `/me` is unaudited for the
+   *   same reason (called every page nav; identity is a metadata query,
+   *   not a cross-tenant action). The privileged-tier `withProvider`
+   *   audit obligation only applies to cross-tenant reads / actions
+   *   (D.37) — not to self-identity. If an attacker probes `/me` with
+   *   a stolen JWT, the auth path already audits the original login
+   *   + every cross-tenant call they make afterwards; piling on /me
+   *   would just add noise.
+   *
+   * Locked / failed_login state: this method intentionally does NOT
+   * check `lockedUntil`. A locked account that somehow has an active
+   * session token (lock fires only on login failure; a successful
+   * login clears `lockedUntil`) means the user has already authenticated
+   * past it — re-checking would be defense-in-depth that loses to
+   * complexity. Subsequent cross-tenant calls re-validate via session
+   * cache anyway.
+   */
+  async getProfile(providerUserId: string): Promise<ProviderProfile | null> {
+    const [p] = await db
+      .select({
+        id: providerUsers.id,
+        email: providerUsers.email,
+        name: providerUsers.name,
+        role: providerUsers.role,
+        disabledAt: providerUsers.disabledAt,
+      })
+      .from(providerUsers)
+      .where(eq(providerUsers.id, providerUserId))
+      .limit(1);
+
+    if (!p) return null;
+    if (p.disabledAt) return null;
+    const jwtRole = mapProviderDbRole(p.role);
+    if (!jwtRole) return null;
+
+    return {
+      id: p.id,
+      email: p.email,
+      name: p.name,
+      role: jwtRole,
+    };
   }
 
   static readonly ACCESS_TTL_SEC = ACCESS_TTL_SEC;

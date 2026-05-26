@@ -658,6 +658,8 @@
     "saving": "Saving...",
     "updateFailed": "Failed to update the note",
     "forbiddenEdit": "Only a Manager or the original author may edit this note.",
+    "archiveFailed": "Failed to archive the note",
+    "forbiddenArchive": "Only a Manager or the original author may archive this note.",
     "archiveSection": "Archive note",
     "archiveHint": "After archiving the note is hidden and can no longer be edited.",
     "archive": "Archive note",

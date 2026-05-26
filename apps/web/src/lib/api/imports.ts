@@ -39,7 +39,7 @@ import { z } from 'zod';
 
 import { apiClient, isList, isOk } from '../api-client';
 
-import { ApiClientError } from './errors';
+import { ApiClientError, isEmptyResponseSuccess } from './errors';
 import { PageSchema } from './paging';
 
 const ImportDataSchema = z.object({ data: ImportJobSchema });
@@ -142,7 +142,7 @@ export async function startImport(id: string): Promise<ImportJob> {
 export async function cancelImport(id: string): Promise<void> {
   const res = await apiClient.delete<unknown>(`/imports/${id}`);
   if (isOk(res)) return;
-  if (res.error.code === 'invalid_response') return;
+  if (isEmptyResponseSuccess(res.error)) return;
   throw new ApiClientError(res.error);
 }
 

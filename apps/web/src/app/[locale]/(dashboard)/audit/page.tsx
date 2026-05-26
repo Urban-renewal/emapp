@@ -60,9 +60,20 @@ export default function AuditPage() {
                   <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
                     {e.categoryLabel}
                   </span>
-                  <code className="truncate font-mono text-xs text-foreground" dir="ltr">
-                    {e.actionSuffix || e.action}
-                  </code>
+                  {/* Phase 4g — curated HE/EN label first; raw machine
+                       suffix kept as a small monospace chip when it
+                       differs from the label (forensic identifier for
+                       cross-referencing log search; Doc 07 §8.1). */}
+                  <span className="text-sm font-medium">{e.actionSuffixLabel || e.action}</span>
+                  {e.actionSuffix && e.actionSuffixLabel !== e.actionSuffix && (
+                    <code
+                      className="truncate rounded bg-muted/40 px-1 font-mono text-[10px] text-muted-foreground"
+                      dir="ltr"
+                      title={e.action}
+                    >
+                      {e.actionSuffix}
+                    </code>
+                  )}
                 </div>
                 <span className="shrink-0 text-xs text-muted-foreground">{e.createdRelative}</span>
               </div>

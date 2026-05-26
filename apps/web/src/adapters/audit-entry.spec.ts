@@ -130,3 +130,76 @@ describe('toAuditEntryViewModel — surface', () => {
     expect(toAuditEntryViewModel(baseEntry()).createdAtIso).toBe('2026-05-20T10:00:00.000Z');
   });
 });
+
+// ── Phase 4g — suffix dictionary (closes the 4c "raw + category"
+//    deferral with a curated HE/EN verb map). ──
+describe('toAuditEntryViewModel — Phase 4g suffix dictionary', () => {
+  it('T-4g-VM.1) universal verb: `xxx.create` → "נוצר" / "Created"', () => {
+    expect(
+      toAuditEntryViewModel(baseEntry({ action: 'project.create' }), 'he').actionSuffixLabel,
+    ).toBe('נוצר');
+    expect(
+      toAuditEntryViewModel(baseEntry({ action: 'project.create' }), 'en').actionSuffixLabel,
+    ).toBe('Created');
+  });
+
+  it('T-4g-VM.2) universal verb works for any category — `task.archive`', () => {
+    expect(
+      toAuditEntryViewModel(baseEntry({ action: 'task.archive' }), 'he').actionSuffixLabel,
+    ).toBe('אורכב');
+    expect(
+      toAuditEntryViewModel(baseEntry({ action: 'task.archive' }), 'en').actionSuffixLabel,
+    ).toBe('Archived');
+  });
+
+  it('T-4g-VM.3) category override wins over universal — `import.received`', () => {
+    expect(
+      toAuditEntryViewModel(baseEntry({ action: 'import.received' }), 'he').actionSuffixLabel,
+    ).toBe('התקבל');
+    expect(
+      toAuditEntryViewModel(baseEntry({ action: 'import.received' }), 'en').actionSuffixLabel,
+    ).toBe('Received');
+  });
+
+  it('T-4g-VM.4) unknown suffix in a known category → raw fallback', () => {
+    expect(
+      toAuditEntryViewModel(baseEntry({ action: 'import.brand_new_event' })).actionSuffixLabel,
+    ).toBe('brand_new_event');
+  });
+
+  it('T-4g-VM.5) unknown suffix in an unknown category → raw fallback', () => {
+    expect(
+      toAuditEntryViewModel(baseEntry({ action: 'futurething.something' })).actionSuffixLabel,
+    ).toBe('something');
+  });
+
+  it('T-4g-VM.6) no suffix → empty label', () => {
+    expect(toAuditEntryViewModel(baseEntry({ action: 'standalone' })).actionSuffixLabel).toBe('');
+  });
+
+  it('T-4g-VM.7) `member.role_change` → "תפקיד שונה" / "Role changed"', () => {
+    expect(
+      toAuditEntryViewModel(baseEntry({ action: 'member.role_change' }), 'he').actionSuffixLabel,
+    ).toBe('תפקיד שונה');
+    expect(
+      toAuditEntryViewModel(baseEntry({ action: 'member.role_change' }), 'en').actionSuffixLabel,
+    ).toBe('Role changed');
+  });
+
+  it('T-4g-VM.8) `signature_request.cancel` override ≠ universal `cancelled`', () => {
+    expect(
+      toAuditEntryViewModel(baseEntry({ action: 'signature_request.cancel' }), 'he')
+        .actionSuffixLabel,
+    ).toBe('בקשה בוטלה');
+    expect(
+      toAuditEntryViewModel(baseEntry({ action: 'signature_request.cancel' }), 'en')
+        .actionSuffixLabel,
+    ).toBe('Request cancelled');
+  });
+
+  it('T-4g-VM.9) raw `actionSuffix` stays available alongside the curated label', () => {
+    const vm = toAuditEntryViewModel(baseEntry({ action: 'import.received' }));
+    expect(vm.actionSuffix).toBe('received'); // raw — for forensic grep
+    expect(vm.actionSuffixLabel).toBe('התקבל'); // curated — for UI
+  });
+});

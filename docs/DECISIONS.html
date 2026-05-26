@@ -929,7 +929,7 @@ footer .footer-meta {
 <pre><code>## D.NN — Title
 Date · Decision · Alternatives · Why · Reversibility · Revisit trigger
 </code></pre>
-<p><strong>Last updated:</strong> 2026-05-25 — D.37 (Phase 6.5: Provider Admin BE, read-only) added to formalize the Phase 6.5 / Phase 8 naming inconsistency between PROGRESS.md and docs/03; unblocks BE/FE parallel work for Phase 4a + Phase 6.5.</p>
+<p><strong>Last updated:</strong> 2026-05-26 — D.38 (Calendar promoted to MVP — email-ICS bootstrap), D.39 (building_sections + apartment.unit_type schema for AddProject wizard), D.40 (Tenant Portal MVP scope — own-apartment+docs+signatures only) added as V11 kickoff (design re-skin + 3 new MVP features).</p>
 <hr />
 <h2>D.01 — Stack: Neon + Railway + Cloudflare + Resend + Sentry</h2>
 <ul>
@@ -1534,6 +1534,63 @@ Tenant tier), GATE 4 (SMS provider swap).</li>
 <p><strong>Reversibility:</strong> Cheap. Four read endpoints + a policy.ts entry + four spec files. If we later decide to consolidate with Phase 8, the endpoints stay; only the phase label moves.</p>
 <p><strong>Revisit trigger:</strong> First time a Provider Admin asks for a write action in production. At that point, open the Gate-6 review for writes.</p>
 <p><strong>Ref:</strong> docs/03 §10.5 (original Provider Admin scope, read-only); D.17 (policy matrix); D.20 (role tiers); D.21 (auth ownership, MFA mandatory for Provider); D.29 (tier-isolated JWT audiences); ARCHITECTURE-MAP.md (withProvider wrapper); <code>packages/db/src/wrappers/with-provider.ts</code>; <code>apps/api/src/modules/auth/provider/</code> (auth already exists; data endpoints are this phase).</p>
+<hr />
+<h2>D.38 — Calendar in MVP (promoted from Phase 2 deferred)</h2>
+<p><strong>Date:</strong> 2026-05-26 · <strong>Status:</strong> Locked</p>
+<p><strong>Decision:</strong> Calendar (scheduled tasks with day/hour/duration/attendees, surfaced via a WeekCalendar UI on the Manager Home) is <strong>in MVP scope</strong>. Previously listed as Phase 2 deferred per docs/03 §1.2 (alongside chat / AI / OCR / field tasks). Promoted by user direction on 2026-05-26 to V11.</p>
+<p><strong>Why now:</strong> Manager + Agent coordination centers on the calendar (per partner's design — <code>MEAPP_design/design_handoff/source/screens-manager.jsx</code> WeekCalendar component is the visual heart of ManagerHome). Without it, the Manager surface looks empty where the partner expects activity.</p>
+<p><strong>Smart bootstrap — email-as-calendar:</strong> Rather than building a custom calendar system or requiring Google/Outlook OAuth, the BE generates an RFC 5545 <code>.ics</code> file on every task create/update/cancel and sends it via Resend (already wired) to all attendees (manager + agent + tenant when relevant). Recipients see "Add to Calendar" in their Gmail/Outlook/Apple Mail and the event lands in whatever calendar they use. Zero third-party integration cost, leverages the email already in our DB.</p>
+<p><strong>Scope (V11):</strong></p>
+<ul>
+  <li><strong>BE:</strong> <code>tasks</code> table extended with <code>scheduled_at</code> (timestamp), <code>duration_minutes</code>, <code>task_type</code> (meeting/field/office/call), <code>location</code>, <code>attendees</code> (multi-attendee join). ICS generator via <code>ical-generator</code> npm. Resend integration on create/update/cancel. Audit row per calendar event.</li>
+  <li><strong>FE:</strong> WeekCalendar grid (5 days × 9 hours per partner design) on ManagerHome + ProjectPage. Task create/edit modal with attendee picker.</li>
+</ul>
+<p><strong>Out of scope (stays Phase 2):</strong> Two-way sync, webcal:// subscription feed, Google/Outlook OAuth, AI scheduling, recurring events, calendar export beyond per-task ICS.</p>
+<p><strong>Reversibility:</strong> Medium. Schema additions are additive (nullable columns); FE component is isolated. Worst-case rollback: revert schema migration + delete WeekCalendar component; existing <code>tasks</code> usage in Tasks UI (Phase 4d) is unaffected.</p>
+<p><strong>Revisit trigger:</strong> When user feedback shows email-ICS isn't enough (specific request for two-way sync or live updates), promote to Phase 2 design pass.</p>
+<p><strong>Ref:</strong> docs/03 §1.2 (Phase 2 deferred list — Calendar now moved out); <code>MEAPP_design/design_handoff/source/screens-manager.jsx</code> (WeekCalendar reference); D.27 (Resend integration); <code>packages/db/src/schema/</code> (tasks table to extend); docs/MASTER-PLAN-V11.md §4 Track B.S5-S7.</p>
+<hr />
+<h2>D.39 — Building sections + apartment.unit_type schema</h2>
+<p><strong>Date:</strong> 2026-05-26 · <strong>Status:</strong> Locked</p>
+<p><strong>Decision:</strong> Extend the schema to support the partner's data model for buildings and apartments:</p>
+<ul>
+  <li>New table <code>building_sections</code>: a building can have multiple sections (entrances), each with its own kind (residential / office / retail / mixed), floors, unit count, and optionally its own gush/helka. This reflects the real-world structure of compound urban-renewal projects (e.g., a building with a commercial ground floor + residential floors above; multiple entrances with different parcels).</li>
+  <li>New column <code>apartments.unit_type</code> (text enum: <code>apt | office | shop | mixed</code>). Today every apartment row is implicitly residential; partner's design has commercial units inside buildings.</li>
+  <li>New columns <code>apartments.area_sqm</code>, <code>apartments.entrance</code> — referenced by partner's design throughout.</li>
+</ul>
+<p><strong>Why:</strong> The partner's AddProjectModal is a 3-step wizard that creates a project, defines per-address building sections, and on completion expands into empty tenant records. Without sections + unit_type, the wizard can't model real projects. Without the schema, AddProject becomes a degraded form, which contradicts the user's directive ("מוצר מקצועי, לא דרך מהירה").</p>
+<p><strong>Migration plan:</strong> Additive only — new table + nullable columns with sensible defaults (<code>unit_type = 'apt'</code> for existing rows). Drizzle migration with explicit <code>down()</code> for rollback. RLS adjusted on <code>building_sections</code> to follow building's org_id.</p>
+<p><strong>Service impact:</strong> Project create service (Track B.S2) takes the wizard's section spec and expands it into <code>building_sections</code> rows + empty <code>apartments</code> rows + empty <code>owners</code> rows, all in one transaction.</p>
+<p><strong>Reversibility:</strong> High. Migration is additive. If we later want a different model, we can deprecate <code>building_sections</code> and migrate data; existing apartments remain queryable.</p>
+<p><strong>Out of scope:</strong> Mixed-use apartment subdivision (a single physical apartment split into office + residential). Stays as <code>unit_type='mixed'</code> with no sub-structure.</p>
+<p><strong>Ref:</strong> <code>MEAPP_design/data.jsx</code> (BUILDINGS_P7 + TENANTS_P7 examples show real-world sectioned buildings); <code>MEAPP_design/design_handoff/source/screens-modals.jsx</code> (AddProjectModal wizard); <code>MEAPP_design/EMAPP - Spec for Backend.html</code> (partner's BE spec describes sections); docs/MASTER-PLAN-V11.md §4 Track B.S1-S2.</p>
+<hr />
+<h2>D.40 — Tenant Portal MVP scope (own-data view only)</h2>
+<p><strong>Date:</strong> 2026-05-26 · <strong>Status:</strong> Locked</p>
+<p><strong>Decision:</strong> The Tenant Portal in MVP is intentionally minimal — a tenant authenticates via SMS OTP (per D.20) and can see ONLY:</p>
+<ul>
+  <li>Their own apartment record (apartment number, floor, building, area, status — masked PII to themselves shown as-is)</li>
+  <li>Documents linked to their apartment (download via existing presigned-URL flow)</li>
+  <li>Their own signature requests (status + signed-at timestamp + the link to /sign/&lt;token&gt; if still pending)</li>
+</ul>
+<p><strong>Out of scope (stays Phase 2):</strong></p>
+<ul>
+  <li>Per-project milestones timeline (partner's design has it; we don't have a milestones table or admin UI to populate it)</li>
+  <li>FAQ accordion (partner has it; same — no FAQ table)</li>
+  <li>Benefits comparison (current vs new apartment spec)</li>
+  <li>Tenant questions / chat with manager</li>
+  <li>"Activate portal" invitation flow (auto-issued via existing OTP)</li>
+</ul>
+<p><strong>Why now:</strong> D.17 + D.20 already promoted Tenant Portal to MVP (over original docs/03 §1.2 deferral). The OTP + SMS infra is built. The remaining pieces (milestones / FAQ / benefits / questions tables) are real backend features that take 2-3 weeks each and aren't critical for the first paying customer to use the product.</p>
+<p><strong>BE scope:</strong></p>
+<ul>
+  <li>Migration: <code>tenant_portal_views</code> projection or query helpers — depending on what's simplest given existing RLS. Likely no new table — just new endpoints with strict scoping.</li>
+  <li>Endpoints: <code>GET /api/v1/portal/me</code>, <code>/portal/apartment</code>, <code>/portal/documents</code>, <code>/portal/signatures</code> — all under <code>emapp-tenant</code> JWT audience, all RLS-scoped to the tenant's own owner_id.</li>
+</ul>
+<p><strong>FE scope:</strong> One <code>/portal</code> route under tenant tier — hero + apartment card + documents list + signatures list. RTL Hebrew. No marketing copy, no FAQ, no comparison panels.</p>
+<p><strong>Reversibility:</strong> High. Endpoints are read-only and scoped. If we later want to expand, we add tables and endpoints; nothing existing breaks.</p>
+<p><strong>Revisit trigger:</strong> First customer demo where the tenant asks "where do I see the project milestones?" — open Phase 2 Tenant Portal v2 design pass.</p>
+<p><strong>Ref:</strong> D.17 + D.20 (Tenant promoted to MVP); D.21 (owned auth tier audiences); D.30 (multi-org phone disambiguation); docs/PHASE-5-TENANT-DESIGN-SPIKE.md (earlier design thinking); <code>MEAPP_design/design_handoff/source/screens-tenants.jsx</code> + <code>screens-tenant.jsx</code> (partner's full Tenant Portal — only the apartment+docs+signatures portions are in MVP); docs/MASTER-PLAN-V11.md §4 Track B.S3-S4 + A.S14.</p>
 <hr />
 <h2>Pending Decisions (not yet made — tracked in OPEN_ITEMS.md §4)</h2>
 <p>These are listed so they're visible but explicitly NOT decided:</p>

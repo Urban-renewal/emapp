@@ -25,7 +25,7 @@ const intlMiddleware = createMiddleware(routing);
  */
 const JWT_SHAPE = '[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+';
 const PUBLIC_ROUTE_REGEX = new RegExp(
-  `^\\/[a-z]{2}\\/(login|signup|provider\\/login|accept-invite\\/${JWT_SHAPE})$`,
+  `^\\/[a-z]{2}\\/(login|signup|provider\\/login|tenant\\/login|accept-invite\\/${JWT_SHAPE})$`,
 );
 /**
  * Org-tier auth routes — bounce ANY user with `access_token` away.
@@ -39,6 +39,15 @@ const PUBLIC_ROUTE_REGEX = new RegExp(
  */
 const AUTH_ROUTE_REGEX = /^\/[a-z]{2}\/(login|signup)$/;
 const PROVIDER_AUTH_ROUTE_REGEX = /^\/[a-z]{2}\/provider\/login$/;
+/** V11 A.S14a — Tenant tier auth route (`/<locale>/tenant/login`). The
+ *  tenant uses SMS-OTP rather than a password; the page is the public
+ *  surface where an unauthenticated phone gets a code. Bouncing away
+ *  is tier-specific (mirror of the V10-S3 / org-login posture): an
+ *  org/provider user MAY visit /tenant/login to acquire a separate
+ *  tenant session (rare but legal — a Manager who is also an owner
+ *  in a project they manage), so we only bounce if the tenant cookie
+ *  is already present. */
+const TENANT_AUTH_ROUTE_REGEX = /^\/[a-z]{2}\/tenant\/login$/;
 
 /**
  * V10-S4 closure — Provider tier paths require `provider_access_token`,
@@ -56,6 +65,23 @@ const PROVIDER_AUTH_ROUTE_REGEX = /^\/[a-z]{2}\/provider\/login$/;
  *    segment match.
  */
 const PROVIDER_TIER_REGEX = /^\/[a-z]{2}\/provider(\/|$)/;
+
+/**
+ * V11 A.S14a — Tenant tier paths require `tenant_access_token` (set
+ * by `POST /api/v1/auth/otp/verify`). Matches `/he/portal`,
+ * `/he/portal/`, `/he/portal/apartment`, etc. Same regex posture as
+ * `PROVIDER_TIER_REGEX` — pinned locale + exact segment boundary so
+ * `/he/portals` (hypothetical plural) is NOT treated as tenant tier.
+ *
+ * Tier isolation: org `access_token` and provider `provider_access_token`
+ * do NOT grant access to the tenant portal — the JWT audience is
+ * `emapp-tenant` (D.29) and the BE's TenantAuthGuard rejects any other
+ * audience at the API layer. The middleware enforces the tier gate
+ * client-side so an org-only or provider-only session navigating to
+ * `/he/portal` gets redirected to `/he/tenant/login` rather than seeing
+ * a 401-flash + bounce from the page-level fetch.
+ */
+const TENANT_TIER_REGEX = /^\/[a-z]{2}\/portal(\/|$)/;
 
 /**
  * Routes that bypass BOTH the auth gate AND next-intl locale routing.
@@ -77,6 +103,9 @@ function isAuthRoute(pathname: string): boolean {
 function isProviderAuthRoute(pathname: string): boolean {
   return PROVIDER_AUTH_ROUTE_REGEX.test(pathname);
 }
+function isTenantAuthRoute(pathname: string): boolean {
+  return TENANT_AUTH_ROUTE_REGEX.test(pathname);
+}
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTE_REGEX.test(pathname) || PUBLIC_LOCALE_AGNOSTIC_REGEX.test(pathname);
 }
@@ -85,6 +114,9 @@ function isLocaleAgnosticPublic(pathname: string): boolean {
 }
 function isProviderTierPath(pathname: string): boolean {
   return PROVIDER_TIER_REGEX.test(pathname);
+}
+function isTenantTierPath(pathname: string): boolean {
+  return TENANT_TIER_REGEX.test(pathname);
 }
 
 /**
@@ -110,6 +142,7 @@ export default function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const hasOrgToken = req.cookies.has('access_token');
   const hasProviderToken = req.cookies.has('provider_access_token');
+  const hasTenantToken = req.cookies.has('tenant_access_token');
 
   // Locale-agnostic public routes (/sign/<jwt>): skip both gates and
   // next-intl so the URL stays short + the JWT-bearer flow is the only
@@ -147,6 +180,19 @@ export default function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // V11 A.S14a — Tenant-tier auth page (`/<locale>/tenant/login`):
+  // bounce away ONLY if the user already has a tenant session. Same
+  // dual-role posture as provider — an org/provider user MAY hold a
+  // tenant cookie for their OWN apartment(s) and we don't bounce them
+  // from acquiring a second tier's session.
+  if (isTenantAuthRoute(pathname) && hasTenantToken) {
+    const url = req.nextUrl.clone();
+    const localeMatch = pathname.match(/^\/([a-z]{2})\//);
+    const locale = localeMatch ? localeMatch[1] : 'he';
+    url.pathname = `/${locale}/portal`;
+    return NextResponse.redirect(url);
+  }
+
   // Org-tier auth pages (/login, /signup): bounce away ANY user
   // with an org session. Provider-only sessions are NOT bounced
   // (they may be trying to acquire an org session, mirror of the
@@ -179,6 +225,24 @@ export default function middleware(req: NextRequest) {
       const localeMatch = pathname.match(/^\/([a-z]{2})\//);
       const locale = localeMatch ? localeMatch[1] : 'he';
       url.pathname = `/${locale}/provider/login`;
+      return NextResponse.redirect(url);
+    }
+    return intlMiddleware(req);
+  }
+
+  // V11 A.S14a — Tenant tier gate. /<locale>/portal/* requires
+  // `tenant_access_token`. Anti-confusion: an org-only or provider-only
+  // session navigating to /he/portal gets redirected to /he/tenant/login
+  // (NOT silently rendered with the wrong tier's session, which would
+  // be a privilege-confusion bug — the BE TenantAuthGuard would reject
+  // the wrong-audience token at the API layer, but the page would
+  // 401-flash before bouncing).
+  if (isTenantTierPath(pathname) && !isTenantAuthRoute(pathname)) {
+    if (!hasTenantToken) {
+      const url = req.nextUrl.clone();
+      const localeMatch = pathname.match(/^\/([a-z]{2})\//);
+      const locale = localeMatch ? localeMatch[1] : 'he';
+      url.pathname = `/${locale}/tenant/login`;
       return NextResponse.redirect(url);
     }
     return intlMiddleware(req);

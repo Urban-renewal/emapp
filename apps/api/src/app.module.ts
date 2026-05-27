@@ -14,6 +14,7 @@ import { CalendarModule } from './modules/calendar/calendar.module';
 import { CalendarEmailModule } from './modules/calendar-email/calendar-email.module';
 import { ContractorsModule } from './modules/contractors/contractors.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { ExportModule } from './modules/export/export.module';
 import { ImportsModule } from './modules/imports/imports.module';
 import { MembersModule } from './modules/members/members.module';
 import { NotesModule } from './modules/notes/notes.module';
@@ -107,6 +108,11 @@ import { QueueModule } from './queue/queue.module';
     // CalendarService + IEmailProvider so TasksService can fire
     // best-effort ICS invites after task create/update/archive.
     CalendarEmailModule,
+    // V11 B.S8 / Phase 7 — Project → xlsx export (pure-function
+    // service). B.S10 will wire the endpoint that composes the
+    // input from a withTenant read; B.S9 will add the sibling PDF
+    // service on the same input shape.
+    ExportModule,
   ],
   controllers: [HealthController],
   // Rate limiting ENFORCED globally; the configurable guard adds a

@@ -28,7 +28,9 @@
     "notes": "הערות",
     "audit": "יומן ביקורת",
     "provider": "מטה Provider",
-    "providerConsole": "מסוף Provider EMAPP"
+    "providerConsole": "מסוף Provider EMAPP",
+    "tagline": "התחדשות עירונית",
+    "navLandmark": "ניווט ראשי"
   },
   "auth": {
     "loginTitle": "כניסה למערכת",

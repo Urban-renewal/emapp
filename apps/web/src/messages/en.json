@@ -28,7 +28,9 @@
     "notes": "Notes",
     "audit": "Audit log",
     "provider": "Provider",
-    "providerConsole": "EMAPP Provider Console"
+    "providerConsole": "EMAPP Provider Console",
+    "tagline": "Urban Renewal",
+    "navLandmark": "Primary navigation"
   },
   "auth": {
     "loginTitle": "Sign In",

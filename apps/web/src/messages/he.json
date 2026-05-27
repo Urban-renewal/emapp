@@ -167,6 +167,45 @@
       "hint": "משימות לפי פרויקט יתחברו ל-A.S12 (Calendar + ICS). בינתיים — רשימת המשימות הכללית.",
       "cta": "פתיחת רשימת משימות"
     },
+    "wizard": {
+      "step1": "פרטי הפרויקט",
+      "step2": "מבנה הפרויקט",
+      "step3": "סקירה ואישור",
+      "stepIndicator": "שלב {current} מתוך {total}",
+      "next": "הבא",
+      "back": "חזרה",
+      "submit": "יצירת פרויקט",
+      "noBuildings": "ניתן להמשיך ללא הוספת כתובות — הפרויקט ייוצר ריק וניתן יהיה להוסיף בניינים מאוחר יותר.",
+      "addBuilding": "הוספת כתובת",
+      "removeBuilding": "הסר",
+      "buildingNumberLabel": "כתובת {n}",
+      "field": {
+        "city": "עיר",
+        "address": "רחוב ומספר",
+        "block": "גוש",
+        "parcel": "חלקה",
+        "floors": "קומות",
+        "unitCount": "יחידות"
+      },
+      "section": {
+        "kind": "סוג שימוש",
+        "kindResidential": "מגורים",
+        "kindOffice": "משרדים",
+        "kindRetail": "מסחר",
+        "kindMixed": "עירוב"
+      },
+      "review": {
+        "projectHeading": "פרטי הפרויקט",
+        "buildingsHeading": "בניינים ({n})",
+        "noBuildings": "ללא בניינים — הפרויקט ייוצר בסיסי. ניתן להוסיף בניינים אחרי יצירה."
+      },
+      "validation": {
+        "nameRequired": "שם הפרויקט חובה",
+        "buildingAddressRequired": "כתובת חובה",
+        "buildingCityRequired": "עיר חובה",
+        "stepBlocked": "מלאו את כל השדות החובה בשלב זה לפני המעבר הבא"
+      }
+    },
     "column": {
       "name": "שם הפרויקט",
       "type": "סוג",

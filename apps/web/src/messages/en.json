@@ -167,6 +167,45 @@
       "hint": "Per-project tasks will wire up in A.S12 (Calendar + ICS). In the meantime — the global tasks list.",
       "cta": "Open tasks list"
     },
+    "wizard": {
+      "step1": "Project details",
+      "step2": "Project structure",
+      "step3": "Review and confirm",
+      "stepIndicator": "Step {current} of {total}",
+      "next": "Next",
+      "back": "Back",
+      "submit": "Create project",
+      "noBuildings": "You may continue without adding addresses — the project will be created empty and you can add buildings later.",
+      "addBuilding": "Add address",
+      "removeBuilding": "Remove",
+      "buildingNumberLabel": "Address {n}",
+      "field": {
+        "city": "City",
+        "address": "Street and number",
+        "block": "Block",
+        "parcel": "Parcel",
+        "floors": "Floors",
+        "unitCount": "Units"
+      },
+      "section": {
+        "kind": "Usage",
+        "kindResidential": "Residential",
+        "kindOffice": "Office",
+        "kindRetail": "Retail",
+        "kindMixed": "Mixed-use"
+      },
+      "review": {
+        "projectHeading": "Project details",
+        "buildingsHeading": "Buildings ({n})",
+        "noBuildings": "No buildings — the project will be created basic. You can add buildings after creation."
+      },
+      "validation": {
+        "nameRequired": "Project name is required",
+        "buildingAddressRequired": "Address is required",
+        "buildingCityRequired": "City is required",
+        "stepBlocked": "Fill all required fields in this step before moving on"
+      }
+    },
     "column": {
       "name": "Project name",
       "type": "Type",

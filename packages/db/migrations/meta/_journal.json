@@ -253,6 +253,13 @@
       "when": 1779048000000,
       "tag": "0035_building_sections_and_unit_type",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1779048600000,
+      "tag": "0036_tasks_extended_and_task_external_attendees",
+      "breakpoints": true
     }
   ]
 }

@@ -1079,6 +1079,7 @@ _(no body)_
 
 | field | type | required | constraints |
 |---|---|---|---|
+| `buildings` | array | no | — |
 | `description` | unknown | no | — |
 | `name` | string | yes | minLength=1, maxLength=200 |
 | `startedAt` | unknown | no | — |

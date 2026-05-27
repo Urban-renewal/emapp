@@ -142,6 +142,32 @@ unit tests passed; the bug was caught by user inspection of view-source.
 
 \## ===== AUTOPILOT PROTOCOL =====
 
+\### Multi-agent heartbeats (per-track, append-only)
+
+`PROGRESS.md` is a **generated artifact** as of 2026-05-27. The active
+"Heartbeat (latest)" section between `<!-- BEGIN AGENT HEARTBEATS -->`
+and `<!-- END AGENT HEARTBEATS -->` markers is regenerated from
+per-track files under `docs/heartbeats/track-{a,b}/YYYY-MM-DD.md`.
+
+Agents MUST:
+
+1. Write new heartbeat bullets to `docs/heartbeats/track-<your-track>/<today>.md`
+   (create the daily file if it doesn't exist). NEVER write directly inside
+   the `BEGIN/END AGENT HEARTBEATS` block — those edits will be overwritten
+   on the next `pnpm gen:progress`.
+2. Run `pnpm gen:progress` after adding a heartbeat (also runs in CI;
+   `pnpm gen:progress:check` will fail the PR if the files diverge).
+3. Commit BOTH the new heartbeat file AND the regenerated `PROGRESS.md`
+   in the same commit.
+
+Cross-track writes are forbidden: a Track B agent NEVER writes to
+`docs/heartbeats/track-a/`, and vice versa. The directory naming IS the
+ownership rule. See `docs/heartbeats/README.md` for the full convention.
+
+The `## Legacy heartbeats` section in `PROGRESS.md` is frozen at the
+2026-05-27 migration point and preserved for historical context — do not
+add new bullets there.
+
 \### On every session start
 
 1\. Read PROGRESS.md → identify Current Position + Next task.

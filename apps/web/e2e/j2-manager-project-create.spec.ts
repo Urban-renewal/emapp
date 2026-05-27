@@ -145,11 +145,22 @@ test.describe('§E-J2a — Manager creates a project', () => {
     await expect(form).toBeVisible({ timeout: 10_000 });
     expect((await form.getAttribute('method'))?.toLowerCase()).toBe('post');
 
-    // §AXIS-T — fill required fields. Type has default value 'tama38_2'.
+    // §AXIS-T — fill required fields on step 1. Type has default value
+    // 'tama38_2'. V11 A.S6 turned /projects/new into a 3-step wizard
+    // (Details → Structure → Review); the Create button (type="submit")
+    // only renders on step 3, so we must click "הבא" twice to reach it.
+    // Step 2 (Structure) is optional — we skip adding buildings so the
+    // wire body stays the same back-compat shape this test expects.
     await page.locator('input#name').fill(FORM_VALUES.name);
     await page.locator('select#type').selectOption(FORM_VALUES.type);
     await page.locator('textarea#description').fill(FORM_VALUES.description);
 
+    // Step 1 → Step 2
+    await page.getByRole('button', { name: 'הבא' }).click();
+    // Step 2 → Step 3 (no buildings added — empty structure stays valid)
+    await page.getByRole('button', { name: 'הבא' }).click();
+
+    // Step 3: the only `type="submit"` in the document.
     await Promise.all([
       page.waitForResponse(
         (r) => r.url().endsWith('/api/v1/projects') && r.request().method() === 'POST',

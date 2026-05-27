@@ -388,6 +388,19 @@
     "download": "Download",
     "downloading": "Preparing...",
     "downloadFailed": "Download failed.",
+    "searchPlaceholder": "Search document, type…",
+    "noResults": "No results match the search",
+    "viewCards": "Cards view",
+    "viewTable": "Table view",
+    "dataPendingHint": "Advanced filters (by project/owner/signature status) will appear once the API is enriched",
+    "signaturesEntry": "Signature requests",
+    "signaturesHint": "Signature requests on documents are managed on a separate page.",
+    "column": {
+      "name": "Document",
+      "type": "Type",
+      "size": "Size",
+      "created": "Created"
+    },
     "field": {
       "type": "Type",
       "file": "File"

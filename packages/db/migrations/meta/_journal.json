@@ -260,6 +260,13 @@
       "when": 1779048600000,
       "tag": "0036_tasks_extended_and_task_external_attendees",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1779894000000,
+      "tag": "0037_perf_indexes_tasks_memberships",
+      "breakpoints": true
     }
   ]
 }

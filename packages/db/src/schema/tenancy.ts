@@ -87,6 +87,12 @@ export const memberships = pgTable(
     orgActiveIdx: index('idx_memberships_org_active')
       .on(table.orgId)
       .where(sql`revoked_at IS NULL`),
+    // 2026-05-27 manager-be perf audit M5: members admin page ORDER BY
+    // created_at DESC had no matching index; sort dominated at 500 members.
+    // Mirrored in migration 0037.
+    orgCreatedIdx: index('idx_memberships_org_created')
+      .on(table.orgId, table.createdAt.desc(), table.id.desc())
+      .where(sql`revoked_at IS NULL`),
   }),
 );
 

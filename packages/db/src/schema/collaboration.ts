@@ -132,6 +132,12 @@ export const tasks = pgTable(
     projectIdx: index('idx_tasks_project')
       .on(table.projectId)
       .where(sql`project_id IS NOT NULL`),
+    // 2026-05-27 manager-be perf audit M1: ORDER BY created_at DESC
+    // had no matching index; planner fell back to in-RAM sort.
+    // Mirrored in migration 0037.
+    orgCreatedIdx: index('idx_tasks_org_created')
+      .on(table.orgId, table.createdAt.desc(), table.id.desc())
+      .where(sql`archived_at IS NULL`),
     priorityCheck: check('tasks_priority_range', sql`${table.priority} BETWEEN 1 AND 3`),
   }),
 );

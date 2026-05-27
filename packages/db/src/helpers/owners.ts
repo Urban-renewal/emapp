@@ -341,4 +341,54 @@ export async function decryptOwnerPiiBatch(
   return out;
 }
 
+/**
+ * V11 perf — name-only batched decrypt for sites that don't need
+ * national_id / phone (e.g. calendar-email ICS dispatcher, where the
+ * Subject + ATTENDEE-CN line only require the owner name).
+ *
+ * Single pgcrypto round-trip regardless of input size. Mirrors the
+ * `decryptOwnerPiiBatch` hex+jsonb_array_elements_text discipline, but
+ * skips the national_id / phone queries entirely — saves 2 RT per
+ * batch (~100 ms on Neon) AND avoids materialising PII the caller
+ * doesn't use.
+ *
+ * Caller passes `{ key, nameEncrypted }` records where `key` is any
+ * unique value (we hand it back so the caller can map results back
+ * to their original rows; the owner UUID is the natural choice but
+ * a row index works too).
+ */
+export interface EncryptedOwnerNameRow {
+  key: string;
+  nameEncrypted: Buffer;
+}
+
+export async function decryptOwnerNamesBatch(
+  db: Database,
+  rows: readonly EncryptedOwnerNameRow[],
+): Promise<Array<{ key: string; name: string }>> {
+  if (rows.length === 0) return [];
+  const { encKey } = requirePiiKeys();
+
+  const nameHex = JSON.stringify(rows.map((r) => r.nameEncrypted.toString('hex')));
+  const nameRes = await db.execute<{ dec: string; idx: number }>(
+    sql`
+      SELECT pgp_sym_decrypt(decode(t.val, 'hex'), ${encKey}) AS dec, t.idx::int AS idx
+      FROM jsonb_array_elements_text(${nameHex}::jsonb) WITH ORDINALITY AS t(val, idx)
+      ORDER BY t.idx
+    `,
+  );
+  if (nameRes.rows.length !== rows.length) {
+    throw new Error(
+      `decryptOwnerNamesBatch: row-count mismatch (expected ${rows.length}; got ${nameRes.rows.length})`,
+    );
+  }
+  return rows.map((r, i) => {
+    const name = nameRes.rows[i]?.dec;
+    if (typeof name !== 'string') {
+      throw new Error('decryptOwnerNamesBatch: missing name plaintext at idx ' + i);
+    }
+    return { key: r.key, name };
+  });
+}
+
 void randomBytes; // imported for future signing use

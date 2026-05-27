@@ -230,4 +230,115 @@ export async function decryptOwnerPii(
   return { nationalId, phone };
 }
 
+/**
+ * V11 B.S10-followup — batched decrypt for the export composer hot path
+ * (and any future bulk-read site).
+ *
+ * Mirrors the `encryptOwnerPiiBatch` discipline: ONE round-trip per
+ * column instead of N. At ~50ms Neon RTT, 1000 owners drop from
+ * ~5s (parallel `Promise.all`, capped by the 10-conn pool) to
+ * ~150ms (THREE round-trips total: name + national_id + phone).
+ *
+ * Strategy: pg's `unnest()` on a bytea[] preserves array order; we
+ * pair it with `WITH ORDINALITY` so the result rows can be reassembled
+ * back to the input index. Empty input → empty array (no round-trip).
+ *
+ * Phone is optional — input rows pass `phoneEncrypted: null` for
+ * phone-less owners and the CASE expression returns NULL aligned with
+ * the input position (same pattern as the encrypt batch helper's
+ * NULL handling).
+ */
+export interface EncryptedOwnerRow {
+  /** Position-preserving id (any unique value the caller wants back). */
+  ownerId: string;
+  nameEncrypted: Buffer;
+  nationalIdEncrypted: Buffer;
+  phoneEncrypted: Buffer | null;
+}
+
+export interface DecryptedOwnerRow {
+  ownerId: string;
+  name: string;
+  nationalId: string;
+  phone: string | null;
+}
+
+export async function decryptOwnerPiiBatch(
+  db: Database,
+  rows: readonly EncryptedOwnerRow[],
+): Promise<DecryptedOwnerRow[]> {
+  if (rows.length === 0) return [];
+  const { encKey } = requirePiiKeys();
+
+  // bytea arrays are awkward through pg-node + drizzle's sql template:
+  //   - `unnest($1::bytea[])` trips `transformTypeCast` (42846).
+  //   - `unnest($1)` without cast can't resolve the function signature
+  //     (42883 "no function matches the given name and argument types").
+  // Same pain the encrypt batch helper hit on the *text* side and
+  // worked around with `jsonb_array_elements_text`. For bytea we
+  // hex-encode each buffer to a text-friendly form, pass through the
+  // same jsonb_array_elements_text → decode(val, 'hex') pipeline,
+  // and recover the original byte sequence inside pg.
+  const nameHex = JSON.stringify(rows.map((r) => r.nameEncrypted.toString('hex')));
+  const idHex = JSON.stringify(rows.map((r) => r.nationalIdEncrypted.toString('hex')));
+  const phoneHex = JSON.stringify(
+    rows.map((r) => (r.phoneEncrypted ? r.phoneEncrypted.toString('hex') : null)),
+  );
+
+  const [nameRes, idRes, phoneRes] = await Promise.all([
+    db.execute<{ dec: string; idx: number }>(
+      sql`
+        SELECT pgp_sym_decrypt(decode(t.val, 'hex'), ${encKey}) AS dec, t.idx::int AS idx
+        FROM jsonb_array_elements_text(${nameHex}::jsonb) WITH ORDINALITY AS t(val, idx)
+        ORDER BY t.idx
+      `,
+    ),
+    db.execute<{ dec: string; idx: number }>(
+      sql`
+        SELECT pgp_sym_decrypt(decode(t.val, 'hex'), ${encKey}) AS dec, t.idx::int AS idx
+        FROM jsonb_array_elements_text(${idHex}::jsonb) WITH ORDINALITY AS t(val, idx)
+        ORDER BY t.idx
+      `,
+    ),
+    db.execute<{ dec: string | null; idx: number }>(
+      sql`
+        SELECT
+          CASE WHEN t.val IS NULL THEN NULL ELSE pgp_sym_decrypt(decode(t.val, 'hex'), ${encKey}) END AS dec,
+          t.idx::int AS idx
+        FROM jsonb_array_elements_text(${phoneHex}::jsonb) WITH ORDINALITY AS t(val, idx)
+        ORDER BY t.idx
+      `,
+    ),
+  ]);
+
+  if (
+    nameRes.rows.length !== rows.length ||
+    idRes.rows.length !== rows.length ||
+    phoneRes.rows.length !== rows.length
+  ) {
+    throw new Error(
+      `decryptOwnerPiiBatch: row-count mismatch (expected ${rows.length}; got name=${nameRes.rows.length} id=${idRes.rows.length} phone=${phoneRes.rows.length})`,
+    );
+  }
+
+  const out: DecryptedOwnerRow[] = [];
+  for (let i = 0; i < rows.length; i += 1) {
+    const name = nameRes.rows[i]?.dec;
+    const nationalId = idRes.rows[i]?.dec;
+    if (typeof name !== 'string') {
+      throw new Error('decryptOwnerPiiBatch: missing name plaintext at idx ' + i);
+    }
+    if (typeof nationalId !== 'string') {
+      throw new Error('decryptOwnerPiiBatch: missing national_id plaintext at idx ' + i);
+    }
+    out.push({
+      ownerId: rows[i]!.ownerId,
+      name,
+      nationalId,
+      phone: phoneRes.rows[i]?.dec ?? null,
+    });
+  }
+  return out;
+}
+
 void randomBytes; // imported for future signing use

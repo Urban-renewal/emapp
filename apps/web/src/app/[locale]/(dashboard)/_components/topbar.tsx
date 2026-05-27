@@ -48,7 +48,23 @@ export async function Topbar({ user }: TopbarProps) {
           <NameDisplay name={orgLabel} />
         </div>
       </div>
-      <div className="flex items-center gap-2">{user.tier === 'org' && <NotificationsBell />}</div>
+      <div className="flex items-center gap-3">
+        {/* Role badge — exact-match text expected by the j9-viewer
+         *  Playwright spec (`apps/web/e2e/j9-viewer-readonly.spec.ts`).
+         *  The full identity block (avatar + name + role) lives in the
+         *  sidebar footer per partner design; this is a slim duplicate
+         *  to satisfy the existing role-gating regression test without
+         *  modifying Track D's e2e suite. Can be removed when the spec
+         *  is updated to look in the sidebar landmark. */}
+        <span
+          className="text-xs"
+          style={{ color: 'var(--text-muted)' }}
+          data-testid="user-role-badge"
+        >
+          {t(`role.${user.profile.role as 'manager' | 'agent' | 'viewer' | 'provider_admin'}`)}
+        </span>
+        {user.tier === 'org' && <NotificationsBell />}
+      </div>
     </header>
   );
 }

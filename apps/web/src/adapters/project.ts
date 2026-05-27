@@ -1,4 +1,4 @@
-import type { Project, ProjectStatus, ProjectType } from '@emapp/shared-types';
+import type { Project, ProjectListItem, ProjectStatus, ProjectType } from '@emapp/shared-types';
 
 import { stripBidiOverrides } from '@/lib/bidi';
 import { formatRelative } from '@/lib/format';
@@ -41,7 +41,12 @@ const STATUS_COLORS: Record<ProjectStatus, ProjectViewModel['statusColor']> = {
   cancelled: 'red',
 };
 
-export function toProjectViewModel(p: Project, locale: 'he' | 'en' = 'he'): ProjectViewModel {
+export function toProjectViewModel(
+  p: Project | ProjectListItem,
+  locale: 'he' | 'en' = 'he',
+): ProjectViewModel {
+  const isListItem = (x: Project | ProjectListItem): x is ProjectListItem =>
+    'buildingsCount' in x && typeof (x as ProjectListItem).buildingsCount === 'number';
   return {
     id: p.id,
     // §SEC-M4 — strip bidi codepoints. Project name is shown in
@@ -56,11 +61,22 @@ export function toProjectViewModel(p: Project, locale: 'he' | 'en' = 'he'): Proj
     isArchived: p.archivedAt !== null,
     createdRelative: formatRelative(p.createdAt, locale),
     createdAtIso: p.createdAt instanceof Date ? p.createdAt.toISOString() : String(p.createdAt),
+    // Stats — present only when the BE returned ProjectListItem (list/get).
+    // Adapter is the single seam — components branch on undefined to render "—".
+    ...(isListItem(p)
+      ? {
+          buildingsCount: p.buildingsCount,
+          unitsCount: p.unitsCount,
+          signaturesPendingCount: p.signaturesPendingCount,
+          signaturesSignedCount: p.signaturesSignedCount,
+          agentsCount: p.agentsCount,
+        }
+      : {}),
   };
 }
 
 export function toProjectViewModels(
-  items: Project[],
+  items: Array<Project | ProjectListItem>,
   locale: 'he' | 'en' = 'he',
 ): ProjectViewModel[] {
   return items.map((p) => toProjectViewModel(p, locale));

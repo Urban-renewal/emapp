@@ -8,7 +8,14 @@ import {
   withTenant,
   type Project as ProjectRow,
 } from '@emapp/db';
-import type { CreateProject, Project, UpdateProject } from '@emapp/shared-types';
+import type {
+  CreateProject,
+  OrgStats,
+  Project,
+  ProjectListItem,
+  ProjectStats,
+  UpdateProject,
+} from '@emapp/shared-types';
 import {
   BadRequestException,
   ConflictException,
@@ -22,7 +29,7 @@ import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 export interface ProjectListPage {
-  data: Project[];
+  data: ProjectListItem[];
   page: { limit: number; cursor: string | null; has_more: boolean };
 }
 
@@ -42,6 +49,51 @@ function toProject(r: ProjectRow): Project {
     updatedAt: r.updatedAt,
     archivedAt: r.archivedAt,
   };
+}
+
+function toProjectListItem(r: ProjectRow, stats: ProjectStats): ProjectListItem {
+  return { ...toProject(r), ...stats };
+}
+
+/**
+ * Aggregate-stats SELECT fragment used by both list() and get(). Five
+ * correlated subqueries; each one is index-backed and sub-ms. We compute
+ * server-side via a single round-trip (no N+1) so the FE can render
+ * KPI cards (signature counts, agents, units) without follow-up calls.
+ *
+ * Doc-debt closure: `packages/shared-types/src/project.ts` previously
+ * noted "stats depend on Phase 5 signatures" and shipped without the
+ * fields. Phase 5 has landed (signature_requests + signatures tables),
+ * so this is the wiring that lets the FE drop "—" placeholders for
+ * real numbers.
+ */
+function statsSubqueries(projectIdRef: ReturnType<typeof sql>) {
+  return {
+    buildingsCount: sql<number>`COALESCE((
+      SELECT COUNT(*)::int FROM buildings
+      WHERE project_id = ${projectIdRef} AND archived_at IS NULL
+    ), 0)`.as('buildings_count'),
+    unitsCount: sql<number>`COALESCE((
+      SELECT COUNT(*)::int FROM apartments a
+      INNER JOIN buildings b ON b.id = a.building_id
+      WHERE b.project_id = ${projectIdRef}
+        AND a.archived_at IS NULL AND b.archived_at IS NULL
+    ), 0)`.as('units_count'),
+    signaturesPendingCount: sql<number>`COALESCE((
+      SELECT COUNT(*)::int FROM signature_requests sr
+      INNER JOIN documents d ON d.id = sr.document_id
+      WHERE d.project_id = ${projectIdRef} AND sr.status = 'pending'
+    ), 0)`.as('sigs_pending'),
+    signaturesSignedCount: sql<number>`COALESCE((
+      SELECT COUNT(*)::int FROM signature_requests sr
+      INNER JOIN documents d ON d.id = sr.document_id
+      WHERE d.project_id = ${projectIdRef} AND sr.status = 'signed'
+    ), 0)`.as('sigs_signed'),
+    agentsCount: sql<number>`COALESCE((
+      SELECT COUNT(DISTINCT user_id)::int FROM project_assignments
+      WHERE project_id = ${projectIdRef} AND unassigned_at IS NULL
+    ), 0)`.as('agents_count'),
+  } as const;
 }
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
@@ -125,12 +177,14 @@ export class ProjectsService {
             )
           : undefined;
 
+        const stats = statsSubqueries(sql`${projects.id}`);
+
         // Agent: inner-join the active assignment so only assigned projects
         // are visible. The idx_project_assignments_user_active partial index
         // backs this — no N+1, single round-trip.
         if (user.role === 'agent') {
           return tx
-            .select({ p: projects })
+            .select({ p: projects, ...stats })
             .from(projects)
             .innerJoin(
               projectAssignments,
@@ -142,12 +196,11 @@ export class ProjectsService {
             )
             .where(and(isNull(projects.archivedAt), keyset))
             .orderBy(desc(projects.createdAt), desc(projects.id))
-            .limit(limit + 1)
-            .then((res) => res.map((x) => x.p));
+            .limit(limit + 1);
         }
 
         return tx
-          .select()
+          .select({ p: projects, ...stats })
           .from(projects)
           .where(and(isNull(projects.archivedAt), keyset))
           .orderBy(desc(projects.createdAt), desc(projects.id))
@@ -158,9 +211,17 @@ export class ProjectsService {
 
     const hasMore = rows.length > limit;
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
-    const last = pageRows[pageRows.length - 1];
+    const last = pageRows[pageRows.length - 1]?.p;
     return {
-      data: pageRows.map(toProject),
+      data: pageRows.map((r) =>
+        toProjectListItem(r.p, {
+          buildingsCount: Number(r.buildingsCount),
+          unitsCount: Number(r.unitsCount),
+          signaturesPendingCount: Number(r.signaturesPendingCount),
+          signaturesSignedCount: Number(r.signaturesSignedCount),
+          agentsCount: Number(r.agentsCount),
+        }),
+      ),
       page: {
         limit,
         cursor: hasMore && last ? encodeCursor(last) : null,
@@ -169,13 +230,14 @@ export class ProjectsService {
     };
   }
 
-  async get(user: AccessTokenPayload, id: string): Promise<Project> {
+  async get(user: AccessTokenPayload, id: string): Promise<ProjectListItem> {
     const row = await withTenant(
       user.orgId,
       async (tx) => {
+        const stats = statsSubqueries(sql`${projects.id}`);
         if (user.role === 'agent') {
           const [r] = await tx
-            .select({ p: projects })
+            .select({ p: projects, ...stats })
             .from(projects)
             .innerJoin(
               projectAssignments,
@@ -187,15 +249,52 @@ export class ProjectsService {
             )
             .where(eq(projects.id, id))
             .limit(1);
-          return r?.p;
+          return r;
         }
-        const [r] = await tx.select().from(projects).where(eq(projects.id, id)).limit(1);
+        const [r] = await tx
+          .select({ p: projects, ...stats })
+          .from(projects)
+          .where(eq(projects.id, id))
+          .limit(1);
         return r;
       },
       { userId: user.sub },
     );
     if (!row) throw NOT_FOUND;
-    return toProject(row);
+    return toProjectListItem(row.p, {
+      buildingsCount: Number(row.buildingsCount),
+      unitsCount: Number(row.unitsCount),
+      signaturesPendingCount: Number(row.signaturesPendingCount),
+      signaturesSignedCount: Number(row.signaturesSignedCount),
+      agentsCount: Number(row.agentsCount),
+    });
+  }
+
+  /**
+   * Org-wide stats for the home dashboard KPI cards. Single round-trip,
+   * four COUNTs against indexed tables. All scoped by RLS via withTenant.
+   */
+  async orgStats(user: AccessTokenPayload): Promise<OrgStats> {
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        const result = await tx.execute(sql`
+          SELECT
+            (SELECT COUNT(*)::int FROM projects WHERE archived_at IS NULL) AS active_projects,
+            (SELECT COUNT(DISTINCT owner_id)::int FROM ownerships WHERE ended_at IS NULL) AS residents,
+            (SELECT COUNT(*)::int FROM signature_requests WHERE status = 'signed') AS signatures_received,
+            (SELECT COUNT(*)::int FROM signature_requests WHERE status = 'pending') AS signatures_pending
+        `);
+        const r = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
+        return {
+          activeProjects: Number(r['active_projects'] ?? 0),
+          residents: Number(r['residents'] ?? 0),
+          signaturesReceived: Number(r['signatures_received'] ?? 0),
+          signaturesPending: Number(r['signatures_pending'] ?? 0),
+        };
+      },
+      { userId: user.sub },
+    );
   }
 
   async create(user: AccessTokenPayload, input: CreateProject): Promise<Project> {

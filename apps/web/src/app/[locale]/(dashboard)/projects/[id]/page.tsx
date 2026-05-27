@@ -162,32 +162,50 @@ export default function ProjectDetailPage() {
               {data.typeLabel} · {data.createdRelative}
             </div>
 
-            {/* KPI placeholder grid — partner has agent avatars / contractor
-             *  name / signatures progress; the org-tier wire doesn't expose
-             *  these today, so we render the labels with `—` placeholders. */}
+            {/* KPI grid — wired to ProjectListItem stats. Contractor is still
+             *  unwired (the org-tier wire doesn't expose contractor name yet
+             *  — distinct slice). Signatures: signed / (signed+pending) ratio.
+             *  Agents: distinct assigned users. */}
             <div
               className="mt-4 grid grid-cols-1 gap-4 pt-4 sm:grid-cols-3"
               style={{ borderTop: '1px solid var(--border)' }}
             >
-              {[
-                { key: 'contractor', label: t('kpi.contractor') },
-                { key: 'signatures', label: t('kpi.signatures') },
-                { key: 'agents', label: t('kpi.agents') },
-              ].map((kpi) => (
-                <div key={kpi.key}>
-                  <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                    {kpi.label}
-                  </div>
-                  <div
-                    className="tabular mt-0.5 text-sm font-medium"
-                    style={{ color: 'var(--text)' }}
-                    aria-label={t('headerHint')}
-                    title={t('headerHint')}
-                  >
-                    —
-                  </div>
+              <div>
+                <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  {t('kpi.contractor')}
                 </div>
-              ))}
+                <div
+                  className="tabular mt-0.5 text-sm font-medium"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  —
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  {t('kpi.signatures')}
+                </div>
+                <div
+                  className="tabular mt-0.5 text-sm font-medium"
+                  style={{ color: 'var(--text)' }}
+                >
+                  {data.signaturesSignedCount !== undefined &&
+                  data.signaturesPendingCount !== undefined
+                    ? `${data.signaturesSignedCount}/${data.signaturesSignedCount + data.signaturesPendingCount}`
+                    : '—'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  {t('kpi.agents')}
+                </div>
+                <div
+                  className="tabular mt-0.5 text-sm font-medium"
+                  style={{ color: 'var(--text)' }}
+                >
+                  {data.agentsCount ?? '—'}
+                </div>
+              </div>
             </div>
           </div>
         </div>

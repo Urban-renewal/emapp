@@ -876,13 +876,28 @@
     "listTitle": "Notifications",
     "loadFailed": "Failed to load notifications.",
     "empty": "No notifications.",
+    "emptyBell": "No new notifications",
+    "emptyForFilter": "No notifications in this category.",
     "markRead": "Mark as read",
     "markAllRead": "Mark all as read ({count})",
     "markingAllRead": "Marking...",
     "unreadAria": "Unread notification",
+    "unreadSummary": "{count} new",
     "open": "Open",
     "bellAria": "Notifications",
-    "viewAll": "View all"
+    "viewAll": "View all",
+    "showAll": "Show all notifications",
+    "filter": {
+      "all": "All",
+      "unread": "Unread",
+      "signatures": "Signatures",
+      "tasks": "Tasks",
+      "documents": "Documents",
+      "notes": "Notes",
+      "mentions": "Mentions",
+      "apartments": "Apartment status",
+      "shareRevoked": "Access revoked"
+    }
   },
   "assignments": {
     "title": "Project agent assignments",

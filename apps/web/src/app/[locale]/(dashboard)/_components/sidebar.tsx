@@ -10,6 +10,7 @@ import {
   History,
   Home,
   Lock,
+  Settings,
   Shield,
   StickyNote,
   UserPlus,
@@ -40,6 +41,7 @@ interface NavItem {
     | 'contractors'
     | 'notes'
     | 'audit'
+    | 'settings'
     | 'provider';
   icon: typeof Home;
   enabled: boolean;
@@ -115,6 +117,7 @@ export function Sidebar({ role, userName, userRole, tier }: Props) {
   if (role === 'manager') {
     items.push({ href: '/members', labelKey: 'members', icon: UserPlus, enabled: true });
     items.push({ href: '/audit', labelKey: 'audit', icon: History, enabled: true });
+    items.push({ href: '/settings', labelKey: 'settings', icon: Settings, enabled: true });
   }
   if (role === 'provider_admin') {
     items.push({ href: '/provider', labelKey: 'provider', icon: Shield, enabled: true });

@@ -8,7 +8,21 @@ export interface UploadUrlOptions {
 
 export interface DownloadUrlOptions {
   ttlSeconds: number;
+  /** ASCII-safe fallback filename for the `Content-Disposition: attachment;
+   *  filename=…` slot. Must be already sanitised (no `;`, `=`, `,`, control
+   *  chars, or non-ASCII bytes — those would break RFC 6266 parsing OR
+   *  inject a header parameter). Use `safeDownloadFilename` upstream. */
   responseFilename?: string;
+  /** Original (Hebrew-capable) filename for the RFC 5987
+   *  `filename*=UTF-8''<percent-encoded>` slot. Modern clients
+   *  (Chrome/Firefox/Safari/curl 8+) prefer this over the ASCII
+   *  fallback. Audit H-2 fix (2026-05-27): without this, Hebrew
+   *  document names fell out of the wire entirely (the ASCII
+   *  sanitiser strips non-ASCII). When set together with
+   *  `responseFilename`, the provider emits BOTH per RFC 6266 +
+   *  RFC 5987 (legacy clients use the ASCII slot, modern clients
+   *  use the UTF-8 slot). */
+  responseFilenameUtf8?: string;
 }
 
 /** Object metadata returned by IStorageProvider.head().

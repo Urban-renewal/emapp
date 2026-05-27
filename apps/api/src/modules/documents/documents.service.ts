@@ -405,7 +405,13 @@ export class DocumentsService {
     try {
       url = await this.storage.getDownloadUrl(r2Key, {
         ttlSeconds: DOWNLOAD_URL_TTL_SECONDS,
+        // Audit H-2 fix — both slots: ASCII fallback for legacy
+        // clients (RFC 6266) + UTF-8 percent-encoded for Hebrew names
+        // (RFC 5987). Modern clients prefer the latter and show the
+        // original Hebrew filename to the user; legacy clients get
+        // the safe ASCII slug.
         responseFilename: safeDownloadFilename(name),
+        responseFilenameUtf8: name,
       });
     } catch (e) {
       this.logger.error(

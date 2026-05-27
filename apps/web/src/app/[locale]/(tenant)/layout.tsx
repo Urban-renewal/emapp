@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation';
 import { LogoutButton } from '../(dashboard)/_components/logout-button';
 import { QueryProvider } from '../(dashboard)/_components/query-provider';
 
+import { TenantAuthGuard } from './_components/tenant-auth-guard';
+
 /**
  * V11 A.S14a — Tenant tier layout.
  *
@@ -75,6 +77,7 @@ export default async function TenantLayout({ children }: { children: React.React
         </header>
 
         <main className="flex-1 overflow-auto p-6">{children}</main>
+        <TenantAuthGuard />
       </div>
     </QueryProvider>
   );

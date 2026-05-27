@@ -710,13 +710,44 @@
     }
   },
   "portal": {
-    "welcomeTitle": "Welcome to your resident portal",
-    "welcomeBody": "Track your apartment, the documents the team has attached to your file, and any signature requests sent to you — without needing to ask the team.",
-    "comingSoonSection": "Coming soon",
-    "comingApartment": "Apartment details — structure, status, and current project stage",
-    "comingDocuments": "Documents on your file (ownership agreements, briefings, lease contracts)",
-    "comingSignatures": "Signature requests from you — status, history and direct open",
-    "comingHint": "The data is already exposed by the BE (V11 B.S4). The next sub-slice (A.S14b) wires the views to the portal GET endpoints."
+    "hero": {
+      "statusChip": "Your project is active",
+      "greeting": "Hello, {firstName}",
+      "greetingFallback": "Welcome",
+      "titleWithProject": "The {project} project is in progress",
+      "titleFallback": "Your resident portal",
+      "lede": "Track your project, view your apartment, the documents on your file, and any signature requests sent to you — without needing to ask the team.",
+      "statApt": "Your apartment",
+      "statOwnership": "Ownership",
+      "statProjectStatus": "Project status"
+    },
+    "apartment": {
+      "section": "My apartment",
+      "loadFailed": "Failed to load apartment.",
+      "empty": "No apartments are linked to your ownership.",
+      "project": "Project",
+      "unitType": "Unit type",
+      "size": "Size",
+      "rooms": "Rooms",
+      "entrance": "Entrance",
+      "ownership": "Ownership"
+    },
+    "documents": {
+      "section": "My documents",
+      "loadFailed": "Failed to load documents.",
+      "empty": "No documents on your file yet.",
+      "downloadHint": "Direct download will ship in a separate slice. For now, ask the team for a copy."
+    },
+    "signatures": {
+      "section": "Signature requests",
+      "loadFailed": "Failed to load signature requests.",
+      "empty": "No active signature requests.",
+      "expired": "Expired",
+      "expiresAt": "Expires {rel}",
+      "signedAt": "Signed {rel}",
+      "createdAt": "Created {rel}",
+      "smsHint": "The signing link is sent to you via SMS and does not appear here (the link IS the one-time credential)."
+    }
   },
   "settings": {
     "listTitle": "Settings",

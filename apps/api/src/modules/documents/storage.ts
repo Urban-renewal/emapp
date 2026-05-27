@@ -141,17 +141,33 @@ export function newDocumentKey(orgId: string): string {
 }
 
 /**
- * Sanitise a stored document name before it is used as the download
- * Content-Disposition filename: strip path separators, quotes, and
- * control chars (header-injection / response-splitting defense). Falls
- * back to a safe constant if nothing printable remains.
+ * Sanitise a stored document name before it is used as the RFC 6266
+ * `filename="…"` slot of Content-Disposition.
+ *
+ * Audit H-2 fix (2026-05-27 manager-be-redteam): previously kept `;`,
+ * `=`, `,`, and non-ASCII bytes — strict parsers (curl, AV scanners)
+ * could be fooled into picking an attacker-chosen filename out of an
+ * embedded `; filename=evil.exe`, and Hebrew bytes broke RFC 6266
+ * compliance entirely. Now ASCII-printable only, also strips the
+ * parameter delimiters. The original (Hebrew-capable) name flows
+ * through the separate `responseFilenameUtf8` channel into the
+ * `filename*=UTF-8''…` slot.
  */
 export function safeDownloadFilename(name: string): string {
   let out = '';
   for (const ch of name) {
     const c = ch.codePointAt(0) ?? 0;
     if (c < 0x20 || c === 0x7f) continue; // control chars
-    if (ch === '"' || ch === '\\' || ch === '/') continue; // quoting / path
+    if (c > 0x7e) continue; // non-ASCII — use the UTF-8 channel instead
+    if (
+      ch === '"' || // closes the filename="..." quote
+      ch === '\\' || // backslash escape
+      ch === '/' || // path
+      ch === ';' || // splits the header param list
+      ch === '=' || // would start a fake `filename=` param
+      ch === ',' // splits multi-value headers
+    )
+      continue;
     out += ch;
   }
   out = out.trim().slice(0, 200);

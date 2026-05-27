@@ -388,6 +388,19 @@
     "download": "הורד",
     "downloading": "מכין...",
     "downloadFailed": "ההורדה נכשלה.",
+    "searchPlaceholder": "חיפוש מסמך, סוג…",
+    "noResults": "אין תוצאות לחיפוש",
+    "viewCards": "תצוגת כרטיסים",
+    "viewTable": "תצוגת טבלה",
+    "dataPendingHint": "פילטרים מתקדמים (לפי פרויקט/דייר/סטטוס חתימה) יזרמו לאחר העשרת ה-API",
+    "signaturesEntry": "בקשות חתימה",
+    "signaturesHint": "בקשות חתימה על מסמכים מנוהלות בעמוד נפרד.",
+    "column": {
+      "name": "מסמך",
+      "type": "סוג",
+      "size": "גודל",
+      "created": "תאריך"
+    },
     "field": {
       "type": "סוג",
       "file": "קובץ"

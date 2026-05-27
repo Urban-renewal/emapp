@@ -128,6 +128,20 @@
     "sharesSection": "Contractor shares",
     "sharesHint": "Grant access permissions to contractors on this project. Each share is recorded separately and can be revoked at any time.",
     "sharesManage": "Manage shares",
+    "searchPlaceholder": "Search project, type, status…",
+    "noResults": "No results match the search",
+    "viewCards": "Cards view",
+    "viewTable": "Table view",
+    "dataPendingHint": "Extended values (block/parcel/units/signatures/agents) will appear once the API is enriched",
+    "column": {
+      "name": "Project name",
+      "type": "Type",
+      "status": "Status",
+      "updated": "Updated",
+      "gushHelka": "Block / Parcel",
+      "units": "Units",
+      "signatures": "Signatures"
+    },
     "field": {
       "name": "Project name",
       "type": "Type",

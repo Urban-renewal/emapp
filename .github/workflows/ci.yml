@@ -73,6 +73,15 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
+      # V11 B.S9 — pdf-export.service.spec needs a headless Chromium
+      # binary (via playwright-core). Install once into the shared
+      # `~/.cache/ms-playwright/` location that both @emapp/web's
+      # `@playwright/test` and apps/api's `playwright-core` discover
+      # by default. The e2e job already runs this same command for
+      # its own purposes; reusing the playbook keeps the pattern
+      # identical.
+      - name: Install Playwright chromium (for B.S9 PDF tests)
+        run: pnpm --filter @emapp/web test:e2e:install
       - run: pnpm test
         env:
           DATABASE_URL: postgresql://postgres:test@localhost:5432/test

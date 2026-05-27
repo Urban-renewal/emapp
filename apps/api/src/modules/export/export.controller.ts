@@ -1,16 +1,6 @@
-import {
-  BadRequestException,
-  Controller,
-  ForbiddenException,
-  Get,
-  Param,
-  Query,
-  Req,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Param, Query, Res, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
@@ -69,7 +59,6 @@ export class ExportController {
   @Throttle({ default: { limit: 10, ttl: 3_600_000 } })
   @Get()
   async export(
-    @Req() req: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
     @CurrentUser() user: AccessTokenPayload,
     @Param('id', UuidParam) projectId: string,
@@ -114,11 +103,6 @@ export class ExportController {
     reply.header('X-Content-Type-Options', 'nosniff');
     // Match the existing API's no-store posture for sensitive data.
     reply.header('Cache-Control', 'no-store');
-
-    // Silence the `BadRequestException is unused` lint — kept on the
-    // import line for future Zod-rethrow callers.
-    void BadRequestException;
-    void req;
 
     return buf;
   }

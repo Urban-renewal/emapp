@@ -99,6 +99,26 @@
       "comingSoonAgent": "בקרוב — בשלב זה רק כניסת מנהל זמינה",
       "comingSoonContractor": "בקרוב — כניסת קבלן בנפרד דרך share-link",
       "comingSoonTenant": "בקרוב — כניסת דייר דרך SMS OTP"
+    },
+    "tenant": {
+      "phoneStepTitle": "כניסה לפורטל דייר",
+      "phoneStepHint": "הזן את מספר הטלפון שמשויך לבעלות הדירה. נשלח SMS עם קוד אימות חד-פעמי.",
+      "codeStepTitle": "הזן את הקוד",
+      "codeStepHint": "שלחנו קוד בן 6 ספרות אל {phone}. הקוד תקף ל-10 דקות.",
+      "phoneLabel": "מספר טלפון",
+      "phonePlaceholder": "0501234567",
+      "orgSlugLabel": "מזהה ארגון (אופציונלי)",
+      "orgSlugPlaceholder": "alpha-dev",
+      "orgSlugHint": "מלא רק אם אתה בעלים של דירה ביותר מארגון אחד.",
+      "codeLabel": "קוד אימות",
+      "sendCode": "שלח קוד",
+      "sending": "שולח...",
+      "verify": "אמת קוד",
+      "verifying": "מאמת...",
+      "changePhone": "שנה מספר טלפון",
+      "otpRequestFailed": "שליחת הקוד נכשלה. נסה שנית.",
+      "invalidOtp": "הקוד שגוי או פג תוקף. נסה שנית.",
+      "notATenant": "לא דייר? עבור לכניסת מנהל"
     }
   },
   "projects": {
@@ -688,6 +708,15 @@
       "name": "שם מלא",
       "role": "תפקיד"
     }
+  },
+  "portal": {
+    "welcomeTitle": "ברוך הבא לפורטל הדייר",
+    "welcomeBody": "כאן תוכל לעקוב אחר הדירה שלך, המסמכים שצירפנו לתיק, וכל בקשת חתימה ממך — בלי להזדקק להתחבר דרך הצוות.",
+    "comingSoonSection": "בקרוב",
+    "comingApartment": "פרטי הדירה — מבנה, סטטוס, וסיכום השלב הנוכחי בפרויקט",
+    "comingDocuments": "מסמכים שצורפו לתיק שלך (הסכמי בעלות, מצגות, חוזי שכירות)",
+    "comingSignatures": "בקשות חתימה ממך — סטטוס, היסטוריה ופתיחה ישירה",
+    "comingHint": "המידע כבר זמין בשרת (V11 B.S4). הסלייס הבא (A.S14b) יחבר את הצפיות לקריאות ה-GET של פורטל הדייר."
   },
   "settings": {
     "listTitle": "הגדרות",

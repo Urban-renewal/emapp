@@ -99,6 +99,26 @@
       "comingSoonAgent": "Coming soon — only Manager sign-in is wired today",
       "comingSoonContractor": "Coming soon — Contractor signs in via a share link",
       "comingSoonTenant": "Coming soon — Resident signs in via SMS OTP"
+    },
+    "tenant": {
+      "phoneStepTitle": "Resident portal sign-in",
+      "phoneStepHint": "Enter the phone number tied to your apartment ownership. We'll send an SMS with a one-time code.",
+      "codeStepTitle": "Enter the code",
+      "codeStepHint": "We sent a 6-digit code to {phone}. The code is valid for 10 minutes.",
+      "phoneLabel": "Phone number",
+      "phonePlaceholder": "0501234567",
+      "orgSlugLabel": "Organization slug (optional)",
+      "orgSlugPlaceholder": "alpha-dev",
+      "orgSlugHint": "Fill only if you own an apartment in more than one organization.",
+      "codeLabel": "Verification code",
+      "sendCode": "Send code",
+      "sending": "Sending...",
+      "verify": "Verify code",
+      "verifying": "Verifying...",
+      "changePhone": "Change phone number",
+      "otpRequestFailed": "Failed to send code. Please retry.",
+      "invalidOtp": "Code is wrong or expired. Please try again.",
+      "notATenant": "Not a resident? Go to manager sign-in"
     }
   },
   "projects": {
@@ -688,6 +708,15 @@
       "name": "Full name",
       "role": "Role"
     }
+  },
+  "portal": {
+    "welcomeTitle": "Welcome to your resident portal",
+    "welcomeBody": "Track your apartment, the documents the team has attached to your file, and any signature requests sent to you — without needing to ask the team.",
+    "comingSoonSection": "Coming soon",
+    "comingApartment": "Apartment details — structure, status, and current project stage",
+    "comingDocuments": "Documents on your file (ownership agreements, briefings, lease contracts)",
+    "comingSignatures": "Signature requests from you — status, history and direct open",
+    "comingHint": "The data is already exposed by the BE (V11 B.S4). The next sub-slice (A.S14b) wires the views to the portal GET endpoints."
   },
   "settings": {
     "listTitle": "Settings",

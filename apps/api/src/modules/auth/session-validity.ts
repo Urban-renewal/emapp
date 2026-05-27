@@ -1,4 +1,4 @@
-import { authSessions, db, providerSessions } from '@emapp/db';
+import { authSessions, db, providerSessions, tenantSessions } from '@emapp/db';
 import { eq } from 'drizzle-orm';
 
 /**
@@ -25,15 +25,17 @@ interface Entry {
 }
 const orgCache = new Map<string, Entry>();
 const provCache = new Map<string, Entry>();
+const tenantCache = new Map<string, Entry>();
 
 export function flushSessionCache(): void {
   orgCache.clear();
   provCache.clear();
+  tenantCache.clear();
 }
 
-async function check(kind: 'org' | 'provider', sid: string): Promise<boolean> {
+async function check(kind: 'org' | 'provider' | 'tenant', sid: string): Promise<boolean> {
   if (!sid) return false;
-  const cache = kind === 'org' ? orgCache : provCache;
+  const cache = kind === 'org' ? orgCache : kind === 'provider' ? provCache : tenantCache;
   const hit = cache.get(sid);
   const now = Date.now();
   if (hit && now - hit.at < TTL_MS) return hit.active;
@@ -46,11 +48,21 @@ async function check(kind: 'org' | 'provider', sid: string): Promise<boolean> {
       .where(eq(authSessions.id, sid))
       .limit(1);
     active = !!row && !row.revokedAt && row.expiresAt.getTime() > now;
-  } else {
+  } else if (kind === 'provider') {
     const [row] = await db
       .select({ revokedAt: providerSessions.revokedAt, expiresAt: providerSessions.expiresAt })
       .from(providerSessions)
       .where(eq(providerSessions.id, sid))
+      .limit(1);
+    active = !!row && !row.revokedAt && row.expiresAt.getTime() > now;
+  } else {
+    // Tenant Portal (Wave 4 M-1): pre-auth lookup via the BYPASSRLS pool —
+    // tenant_sessions is auth infrastructure (no RLS), same as auth_sessions.
+    // We don't have app.organization_id yet (that's what the JWT TELLS us).
+    const [row] = await db
+      .select({ revokedAt: tenantSessions.revokedAt, expiresAt: tenantSessions.expiresAt })
+      .from(tenantSessions)
+      .where(eq(tenantSessions.id, sid))
       .limit(1);
     active = !!row && !row.revokedAt && row.expiresAt.getTime() > now;
   }
@@ -63,4 +75,7 @@ export function isOrgSessionActive(sid: string): Promise<boolean> {
 }
 export function isProviderSessionActive(sid: string): Promise<boolean> {
   return check('provider', sid);
+}
+export function isTenantSessionActive(sid: string): Promise<boolean> {
+  return check('tenant', sid);
 }

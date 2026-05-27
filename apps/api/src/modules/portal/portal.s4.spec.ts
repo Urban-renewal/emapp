@@ -62,6 +62,11 @@ function tenantOf(o: TestOrg, ownerId: string): TenantTokenPayload {
     orgId: o.id,
     role: 'tenant',
     type: 'tenant_access',
+    // Wave 4 M-1: sid is now a required claim. Tests that only exercise
+    // PortalService read methods (not the guard, not logout) can supply
+    // any uuid here; the read methods don't read `sid`. The M-1 path
+    // (logout + guard revocation check) is covered in portal.m1.spec.ts.
+    sid: '00000000-0000-0000-0000-000000000000',
   };
 }
 

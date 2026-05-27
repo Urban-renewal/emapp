@@ -1,5 +1,5 @@
-import { Controller, Get, Req, UseGuards } from '@nestjs/common';
-import type { FastifyRequest } from 'fastify';
+import { Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import { TenantAuthGuard, type TenantTokenPayload } from '../auth/tenant/tenant-auth.guard';
 
@@ -49,5 +49,22 @@ export class PortalController {
   async getSignatures(@Req() req: FastifyRequest) {
     const tenant = (req as FastifyRequest & { tenant: TenantTokenPayload }).tenant;
     return this.portal.getSignatures(tenant);
+  }
+
+  /**
+   * `POST /portal/logout` (Wave 4 M-1) — tenant-initiated revoke. Soft
+   * revokes the tenant_sessions row bound to this JWT's `sid`. Clears
+   * the `tenant_access_token` cookie so subsequent requests fail at
+   * the guard with `missing_token`. Returns 204 No Content; idempotent
+   * (a second call after revoke just no-ops).
+   */
+  @Post('logout')
+  @HttpCode(204)
+  async logout(@Req() req: FastifyRequest, @Res({ passthrough: true }) res: FastifyReply) {
+    const tenant = (req as FastifyRequest & { tenant: TenantTokenPayload }).tenant;
+    await this.portal.logout(tenant);
+    // Clear the cookie (best-effort — the structural revoke is the DB
+    // row + cache flush; this just hides the dead token from the UA).
+    res.clearCookie('tenant_access_token', { path: '/' });
   }
 }

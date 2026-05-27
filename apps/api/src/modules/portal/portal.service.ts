@@ -1,11 +1,14 @@
 import {
   apartments,
+  auditLog,
   buildings,
+  db,
   documents,
   owners,
   ownerships,
   projects,
   signatureRequests,
+  tenantSessions,
   withTenant,
 } from '@emapp/db';
 import type {
@@ -17,6 +20,7 @@ import type {
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
+import { flushSessionCache } from '../auth/session-validity';
 import type { TenantTokenPayload } from '../auth/tenant/tenant-auth.guard';
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
@@ -191,6 +195,45 @@ export class PortalService {
           createdAt: r.createdAt,
         })),
     };
+  }
+
+  /**
+   * `POST /portal/logout` (Wave 4 M-1) — kill the current tenant
+   * session immediately. Soft revoke (sets revoked_at; matches CLAUDE.md
+   * "no permanent deletes"). Cache flush propagates inside this instance
+   * immediately; other instances converge within the 15s session-cache
+   * TTL. Idempotent: calling twice on the same sid is a no-op.
+   *
+   * Audit row uses actor_type='system' because the CHECK constraint
+   * `audit_log_actor_type_valid` (migration 0014) limits the
+   * discriminator to ('user','system','provider'). Tenant identity is
+   * recorded via target_table='owners' + target_id=ownerId, matching
+   * the pattern in otp.service.writeAuditSafe.
+   */
+  async logout(tenant: TenantTokenPayload): Promise<void> {
+    const now = new Date();
+    // BYPASSRLS pool — tenant_sessions has no RLS (auth infrastructure,
+    // matches auth_sessions). We pass the sid from the guard-verified
+    // JWT; an attacker can't supply someone else's sid because the JWT
+    // signature binds sid to this exact owner+org.
+    await db
+      .update(tenantSessions)
+      .set({ revokedAt: now })
+      .where(and(eq(tenantSessions.id, tenant.sid), isNull(tenantSessions.revokedAt)));
+    flushSessionCache();
+    // Best-effort audit (matches otp.service writeAuditSafe pattern).
+    try {
+      await db.insert(auditLog).values({
+        orgId: tenant.orgId,
+        actorType: 'system',
+        action: 'auth.tenant_logout',
+        targetTable: 'owners',
+        targetId: tenant.sub,
+        afterState: { sid: tenant.sid },
+      });
+    } catch {
+      // Best-effort: an audit-write failure must not surface to the user.
+    }
   }
 
   /** `GET /portal/signatures` — signature requests where this tenant

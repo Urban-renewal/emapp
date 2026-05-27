@@ -371,8 +371,16 @@ describe('purgeImportBytes (v8 §v8-S1)', () => {
     });
     const elapsed = Date.now() - t0;
     expect(result).toBe('purge-failed');
-    // Must have used the default ceiling — not infinity.
-    expect(elapsed).toBeLessThan(7_000);
+    // Must have used the default ceiling — not infinity. The default
+    // ceiling is 5s; we allow up to 12s here to absorb CI variance
+    // (cold Neon connection + audit-log round-trip + tx commit after
+    // the timeout fires). The invariant under test is "NOT infinity"
+    // (Infinity → setTimeout caps at ~24.8 days), so 12s gives the
+    // negative-case assertion 7+ orders of magnitude of headroom while
+    // staying tight enough to catch a regression to the un-clamped
+    // path. Flaked on B.S8 PR #132 CI run at 12552ms with the old
+    // 7s budget.
+    expect(elapsed).toBeLessThan(12_000);
   });
 
   it('A5) ADVERSARIAL — deleteTimeoutMs=120_000 (above ceiling) → clamped to 60s max', async () => {

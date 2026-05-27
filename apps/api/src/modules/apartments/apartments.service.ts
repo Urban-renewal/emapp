@@ -40,6 +40,13 @@ function toApartment(r: ApartmentRow): Apartment {
     statusChangedAt: r.statusChangedAt,
     lastContactAt: r.lastContactAt,
     notes: r.notes,
+    // V11 F1 — these 3 came in via migration 0035 (D.39) but the wire
+    // shape was never extended. The smoke-discipline backfill against
+    // PR #107 surfaced the gap: wizard wrote `unit_type='shop'`,
+    // `area_sqm=40.00` to DB, GET returned neither. Now exposed.
+    unitType: r.unitType,
+    areaSqm: num(r.areaSqm),
+    entrance: r.entrance,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     archivedAt: r.archivedAt,

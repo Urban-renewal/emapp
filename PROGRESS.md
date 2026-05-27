@@ -25,13 +25,48 @@
   forward.
 
 - **Heads-up for the next slice (F1 stops being a sleeper).** Track A
-shipped A.S5 ProjectPage (#114) while I was on the smoke backfill —
-that's the FE consumer for the apartment read-shape gap I flagged in PR
-[#107 comment](https://github.com/Urban-renewal/emapp/pull/107#issuecomment-4552245759).
-When A.S5 hits an apartment from the wizard with `unit_type='shop'`,
-the field won't be on the wire. Fix-PR for F1 + F2 is still pending
-user direction (A/B/C/D); now slightly more urgent than the original
-"low-sev sleeper" framing.
+  shipped A.S5 ProjectPage (#114) while I was on the smoke backfill —
+  that's the FE consumer for the apartment read-shape gap I flagged in PR
+  [#107 comment](https://github.com/Urban-renewal/emapp/pull/107#issuecomment-4552245759).
+  When A.S5 hits an apartment from the wizard with `unit_type='shop'`,
+  the field won't be on the wire. Fix-PR for F1 + F2 is still pending
+  user direction (A/B/C/D); now slightly more urgent than the original
+  "low-sev sleeper" framing.
+
+- **F1 + F2 fix shipped (combined PR — second under smoke discipline).**
+  Both bugs surfaced by the smoke-discipline backfill against PR #107
+  fixed in one PR (option A from the earlier menu). **F1**:
+  `ApartmentSchema` + `apartments.service.ts` `toApartment` mapper
+  extended with `unitType`, `areaSqm`, `entrance` (the 3 columns
+  migration 0035 added at the DB level but the read wire never
+  surfaced). **F2**: try/catch around the apartments INSERT in
+  `projects.service.create` walks the cause chain matching SQLSTATE
+  `23505` AND constraint `apartments_building_number_active`
+  (defence in depth — both must match so we don't accidentally claim
+  other unique-violations); throws `ConflictException` with stable
+  `code='apartment_number_duplicate'` and `details.numbers` +
+  `details.building` so the wizard FE can highlight the offending
+  row. Atomicity unchanged (whole tx still rolls back). Test
+  `projects.s2.spec.ts` case 3 now asserts the HTTP shape
+  (`getStatus()===409`, `error.code`, `error.details`) — closes the
+  exact gap that let F2 ship in the first place. **Raw smoke
+  evidence** in PR description (curl outputs for F1 GET +
+  F2 POST → 409 + rollback proof). Also adds
+  `docs/track-handoffs/` infra + first cross-track note to Track A
+  (worktree migration, heartbeat convention change, their open PRs
+  status, killed dist/main).
+
+- **Process commitment status — locking in the patterns.** Three
+V11-discipline patterns now active: (1) per-agent heartbeat files
+via `pnpm gen:progress` (PR #116 merged 2026-05-27); (2) Track-B
+worktree at `C:/emapp-bs2` operational since the smoke-discipline
+session (Track A worktree at `C:/emapp-track-a` pending their
+next session per their handoff); (3) serialize-PRs discipline
+exercised twice — at this PR's open ("no parallel open Track B
+PRs") and at the heartbeat-infra PR. Smoke-evidence-as-raw-paste
+discipline now binding too; this PR's body is the second example.
+All four discussed in the meta-Q&A response to "מה לעשות?" —
+recorded here so future Track B agents inherit the rule set.
 <!-- END AGENT HEARTBEATS -->
 
 ## Legacy heartbeats (pre-migration; preserved for context)

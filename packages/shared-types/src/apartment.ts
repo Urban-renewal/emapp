@@ -33,6 +33,21 @@ export const ApartmentSchema = z.object({
   statusChangedAt: z.coerce.date(),
   lastContactAt: z.coerce.date().nullable(),
   notes: z.string().max(2000).nullable(),
+  // V11 B.S1 added these columns at the DB layer (migration 0035, D.39).
+  // They were missing from the read wire-shape until F1 was caught by
+  // the smoke-discipline backfill against PR #107 (see PR #107 comment
+  // /pull/107#issuecomment-4552245759 for the proof: wizard wrote
+  // unit_type='shop' / area_sqm=40.00 to DB, GET endpoints returned
+  // neither). FE consumers (A.S5 ProjectPage, A.S6 AddProject wizard
+  // result page, A.S7 TenantPanel) require these fields.
+  //
+  // `unitType` is text on the wire (DB has NOT NULL DEFAULT 'apt'); the
+  // closed enum (apt|shop|office|mixed) is enforced on the WRITE boundary
+  // via `CreateProjectApartmentInput` in project.ts. Reads from a trusted
+  // DB don't need to re-validate.
+  unitType: z.string(),
+  areaSqm: z.number().min(0).nullable(),
+  entrance: z.string().max(40).nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
   archivedAt: z.coerce.date().nullable(),

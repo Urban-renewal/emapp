@@ -42,7 +42,7 @@
 /* eslint-disable no-console -- this script's job is to print fixture
  * info to the developer's stdout; the no-console rule that protects
  * application code does not apply to a dev tool. */
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { pathToFileURL } from 'url';
 
 import { hash as argon2Hash } from '@node-rs/argon2';
@@ -55,11 +55,14 @@ import {
   apartments,
   buildings,
   buildingSections,
+  documents,
   memberships,
   organizations,
   owners,
   ownerships,
   projects,
+  signatureRequests,
+  signatures,
   users,
 } from '../src/schema/index';
 import { withBootstrap } from '../src/wrappers/with-bootstrap';
@@ -131,6 +134,127 @@ const PENDING_INVITE = {
   name: 'נועה ממתינה',
   role: 'agent' as const,
 };
+
+// === Documents (Alpha) ===
+// 4 documents — covers both project-scope (regulation, blueprint) and
+// apartment-scope (per-owner agreement). r2Key is deterministic so a re-
+// run of the seed detects "already exists" via the UNIQUE index. The
+// actual file bytes don't exist in storage — only metadata. Listing /
+// counting / dashboard cards work; clicking Download would 404 (Fake
+// provider has empty in-memory Map; the seed process is separate from
+// the running API process). That's an accepted seed limitation; the
+// "active system" feel comes from the workflow state, not from actually
+// downloadable PDFs.
+type SeedDoc = {
+  key: string; // stable id within Alpha (used to build r2Key + cross-ref)
+  name: string;
+  type: string; // 'regulation' | 'blueprint' | 'agreement' | ...
+  mimeType: string;
+  sizeBytes: number;
+  scope: 'project' | 'apt';
+  aptNumber?: string; // for scope='apt'
+};
+const ALPHA_DOCUMENTS: SeedDoc[] = [
+  {
+    key: 'regulation',
+    name: 'תקנון תמ"א 38 — אלפא.pdf',
+    type: 'regulation',
+    mimeType: 'application/pdf',
+    sizeBytes: 248_910,
+    scope: 'project',
+  },
+  {
+    key: 'blueprint',
+    name: 'תוכנית בנייה — חזית.pdf',
+    type: 'blueprint',
+    mimeType: 'application/pdf',
+    sizeBytes: 1_245_312,
+    scope: 'project',
+  },
+  {
+    key: 'agreement-apt1',
+    name: 'הסכם דייר — דירה 1.pdf',
+    type: 'agreement',
+    mimeType: 'application/pdf',
+    sizeBytes: 156_872,
+    scope: 'apt',
+    aptNumber: '1',
+  },
+  {
+    key: 'agreement-apt2',
+    name: 'הסכם דייר — דירה 2.pdf',
+    type: 'agreement',
+    mimeType: 'application/pdf',
+    sizeBytes: 162_004,
+    scope: 'apt',
+    aptNumber: '2',
+  },
+];
+
+// === Signature requests (Alpha) ===
+// Covers all 3 states (pending/signed/cancelled) across multiple owners
+// + multiple documents — the dashboard should show realistic mixed
+// activity. jti is the idempotency key (UNIQUE index in DB).
+type SeedSigReq = {
+  jti: string; // stable seed identifier
+  docKey: string; // references ALPHA_DOCUMENTS[].key
+  ownerIdx: number; // index into existing Alpha owners (createdAt-ordered)
+  state: 'pending' | 'signed' | 'cancelled';
+  daysAgo: number; // when the request was created (negative = future)
+  signedDaysAgo?: number; // for signed
+  cancelledDaysAgo?: number; // for cancelled
+};
+const ALPHA_SIG_REQS: SeedSigReq[] = [
+  // Pending — manager invited Dana to sign her agreement; still waiting.
+  {
+    jti: 'seed-sig-apt1-dana-pending',
+    docKey: 'agreement-apt1',
+    ownerIdx: 0,
+    state: 'pending',
+    daysAgo: 1,
+  },
+  // Signed — Dana signed the apt-2 agreement (she's a 60% co-owner).
+  {
+    jti: 'seed-sig-apt2-dana-signed',
+    docKey: 'agreement-apt2',
+    ownerIdx: 0,
+    state: 'signed',
+    daysAgo: 4,
+    signedDaysAgo: 2,
+  },
+  // Signed — Yossi signed the apt-2 agreement (his 40% half).
+  {
+    jti: 'seed-sig-apt2-yossi-signed',
+    docKey: 'agreement-apt2',
+    ownerIdx: 1,
+    state: 'signed',
+    daysAgo: 4,
+    signedDaysAgo: 1,
+  },
+  // Pending — Yossi was invited on the project regulation; not signed yet.
+  {
+    jti: 'seed-sig-reg-yossi-pending',
+    docKey: 'regulation',
+    ownerIdx: 1,
+    state: 'pending',
+    daysAgo: 2,
+  },
+  // Cancelled — Sara was invited but the manager cancelled (wrong doc).
+  {
+    jti: 'seed-sig-reg-sara-cancelled',
+    docKey: 'regulation',
+    ownerIdx: 2,
+    state: 'cancelled',
+    daysAgo: 6,
+    cancelledDaysAgo: 5,
+  },
+];
+
+// Minimal SVG used as the signature blob for SIGNED requests. The FE
+// renders signatures inline with <img src="data:image/svg+xml;..."> from
+// the decoded bytes. This SVG draws a stylized signature stroke — not
+// the owner's real handwriting (no fake credible signatures here).
+const SIGNATURE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="60" viewBox="0 0 200 60"><path d="M10 40 Q 30 10, 50 35 T 90 30 T 130 35 T 170 32 T 190 35" stroke="#1e3a8a" stroke-width="2.2" fill="none" stroke-linecap="round"/><text x="100" y="55" font-size="9" font-family="sans-serif" text-anchor="middle" fill="#64748b">חתימה דיגיטלית — תיעוד טסט</text></svg>`;
 
 // Second org Beta — minimal bootstrap (manager-only) so cross-tenant
 // smoke tests have a known foreign org to probe against. NEVER seed
@@ -349,6 +473,8 @@ async function main(): Promise<number> {
   // We run them AFTER the baseline, regardless of whether Alpha was just
   // bootstrapped or pre-existed, so an older seed gets brought up to date.
   await runExtensions(summary.orgId);
+  await runDocuments(summary.orgId);
+  await runSignatureWorkflow(summary.orgId);
   await bootstrapBeta();
 
   return 0;
@@ -509,6 +635,194 @@ async function runExtensions(orgId: string): Promise<void> {
       });
       console.log(`[seed-dev/ext] created pending invite for ${PENDING_INVITE.email}.`);
     }
+  });
+}
+
+async function runDocuments(orgId: string): Promise<void> {
+  await withBootstrap(async (tx) => {
+    // Resolve the project + manager + per-apt ids we need for FK columns.
+    const proj = await tx
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.orgId, orgId))
+      .limit(1);
+    if (proj.length === 0) {
+      console.log('[seed-dev/docs] no Alpha project found — skipping documents.');
+      return;
+    }
+    const projectId = proj[0]!.id;
+
+    const mgr = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, 'manager@alpha.dev'))
+      .limit(1);
+    if (mgr.length === 0) return;
+    const managerId = mgr[0]!.id;
+
+    const aptRows = await tx
+      .select({ id: apartments.id, number: apartments.number })
+      .from(apartments)
+      .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
+      .innerJoin(projects, eq(projects.id, buildings.projectId))
+      .where(eq(projects.orgId, orgId));
+    const aptIdByNumber = new Map(aptRows.map((a) => [a.number, a.id]));
+
+    let docsCreated = 0;
+    for (const d of ALPHA_DOCUMENTS) {
+      // r2Key is deterministic per (org, doc.key) → idempotent via the
+      // UNIQUE index on documents.r2_key. We include orgId so re-seeding
+      // a different org wouldn't collide.
+      const r2Key = `documents/${orgId}/${d.key}.pdf`;
+      const existing = await tx
+        .select({ id: documents.id })
+        .from(documents)
+        .where(eq(documents.r2Key, r2Key))
+        .limit(1);
+      if (existing.length > 0) continue;
+
+      // contentHash is SHA-256 of a deterministic marker. In a real
+      // upload this would be the hash of the actual file bytes; for
+      // the seed we just need it stable + non-empty (the signatures
+      // reference it via document_hash).
+      const contentHash = createHash('sha256').update(`seed-${r2Key}`).digest('hex');
+      const aptId =
+        d.scope === 'apt' && d.aptNumber ? (aptIdByNumber.get(d.aptNumber) ?? null) : null;
+
+      await tx.insert(documents).values({
+        id: randomUUID(),
+        orgId,
+        projectId,
+        apartmentId: aptId,
+        name: d.name,
+        type: d.type,
+        mimeType: d.mimeType,
+        sizeBytes: d.sizeBytes,
+        r2Key,
+        contentHash,
+        uploadedBy: managerId,
+      });
+      docsCreated += 1;
+    }
+    if (docsCreated > 0)
+      console.log(
+        `[seed-dev/docs] created ${docsCreated} documents (metadata only — bytes absent from FakeStorage).`,
+      );
+  });
+}
+
+async function runSignatureWorkflow(orgId: string): Promise<void> {
+  await withBootstrap(async (tx) => {
+    const mgr = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, 'manager@alpha.dev'))
+      .limit(1);
+    if (mgr.length === 0) return;
+    const managerId = mgr[0]!.id;
+
+    // Owners in stable createdAt order — matches the indexing used by
+    // runExtensions() for ownerships, so ownerIdx is consistent across
+    // blocks (Dana=0, Yossi=1, Sara=2, plus the 4th unknown=3).
+    const ownerRows = await tx
+      .select({ id: owners.id })
+      .from(owners)
+      .where(eq(owners.orgId, orgId))
+      .orderBy(owners.createdAt);
+    if (ownerRows.length < 3) {
+      console.log('[seed-dev/sigs] not enough owners — skipping signature workflow.');
+      return;
+    }
+
+    // Map doc keys → document ids. We resolve by r2Key so the lookup is
+    // immune to name changes (Hebrew renames don't break the join).
+    const docKeyToId = new Map<string, { id: string; contentHash: string }>();
+    for (const d of ALPHA_DOCUMENTS) {
+      const r2Key = `documents/${orgId}/${d.key}.pdf`;
+      const row = await tx
+        .select({ id: documents.id, hash: documents.contentHash })
+        .from(documents)
+        .where(eq(documents.r2Key, r2Key))
+        .limit(1);
+      if (row.length > 0) docKeyToId.set(d.key, { id: row[0]!.id, contentHash: row[0]!.hash });
+    }
+
+    let reqsCreated = 0;
+    let sigsCreated = 0;
+    const now = Date.now();
+    const dayMs = 86_400_000;
+    const signatureBytes = Buffer.from(SIGNATURE_SVG, 'utf8');
+
+    for (const r of ALPHA_SIG_REQS) {
+      // Idempotency — jti is UNIQUE.
+      const existing = await tx
+        .select({ id: signatureRequests.id })
+        .from(signatureRequests)
+        .where(eq(signatureRequests.jti, r.jti))
+        .limit(1);
+      if (existing.length > 0) continue;
+
+      const doc = docKeyToId.get(r.docKey);
+      if (!doc) continue;
+      const ownerId = ownerRows[r.ownerIdx]?.id;
+      if (!ownerId) continue;
+
+      const createdAt = new Date(now - r.daysAgo * dayMs);
+      // Requests expire 14 days after creation (matches typical Phase 5
+      // SIGNATURE_TOKEN_TTL_DAYS for the seed; the real link TTL is set
+      // by env in production).
+      const expiresAt = new Date(createdAt.getTime() + 14 * dayMs);
+
+      let signedSignatureId: string | null = null;
+      if (r.state === 'signed') {
+        // Insert the corresponding signatures row first so we can link
+        // signedSignatureId. signature_blob is raw SVG (D.12 — not
+        // pgcrypto-encrypted; the at-rest protection comes from the
+        // documents.contentHash anchor + the audit chain).
+        const signedAt = new Date(now - (r.signedDaysAgo ?? 0) * dayMs);
+        const signatureId = randomUUID();
+        await tx.insert(signatures).values({
+          id: signatureId,
+          orgId,
+          documentId: doc.id,
+          ownerId,
+          documentHash: doc.contentHash,
+          signatureBlob: signatureBytes,
+          signatureFormat: 'svg',
+          signerIp: '203.0.113.42', // RFC 5737 TEST-NET-3 — never a real IP
+          signerUserAgent:
+            'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36',
+          sessionId: null,
+          authMethod: 'sms_otp',
+          signedAt,
+        });
+        signedSignatureId = signatureId;
+        sigsCreated += 1;
+      }
+
+      await tx.insert(signatureRequests).values({
+        id: randomUUID(),
+        orgId,
+        documentId: doc.id,
+        ownerId,
+        jti: r.jti,
+        status: r.state,
+        expiresAt,
+        createdBy: managerId,
+        createdAt,
+        signedAt: r.state === 'signed' ? new Date(now - (r.signedDaysAgo ?? 0) * dayMs) : null,
+        signedSignatureId,
+        cancelledAt:
+          r.state === 'cancelled' ? new Date(now - (r.cancelledDaysAgo ?? 0) * dayMs) : null,
+        cancelledBy: r.state === 'cancelled' ? managerId : null,
+      });
+      reqsCreated += 1;
+    }
+
+    if (reqsCreated > 0)
+      console.log(
+        `[seed-dev/sigs] created ${reqsCreated} signature requests (+${sigsCreated} signature rows).`,
+      );
   });
 }
 

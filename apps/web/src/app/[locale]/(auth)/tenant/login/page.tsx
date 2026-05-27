@@ -6,18 +6,19 @@ import {
   type OtpRequestDto,
   type OtpVerifyDto,
 } from '@emapp/shared-types';
+import { isValidIsraeliPhone } from '@emapp/validators';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { apiClient, isOk } from '@/lib/api-client';
 import { applyValidationErrors } from '@/lib/errors';
 
 /**
- * V11 A.S14a — Tenant tier (resident) passwordless login.
+ * V11 A.S14a + external-services-readiness — Tenant tier passwordless login.
  *
  * Two-step flow per D.20 + `apps/api/src/modules/auth/tenant/otp.controller.ts`:
  *   1. Phone entry (+ optional org-slug if the resident owns
@@ -30,6 +31,13 @@ import { applyValidationErrors } from '@/lib/errors';
  *      the BE through the same Pages-Function proxy used by the org
  *      and provider flows (D.35).
  *
+ * BE invariants (otp.service.ts) the FE has to respect:
+ *   - OTP TTL = 5 minutes (the SMS body literally says "תקף ל-5 דקות").
+ *   - Rate limit = 3 SMS / 15 min / phone (silent throttle — same 200).
+ *   - Rate limit (per-IP) = 5 requests / 15 min, 10 verifies / 15 min.
+ *   - Code is exactly 6 digits, single-use, max 5 verify attempts.
+ *   - Tenant access token TTL = 30 minutes.
+ *
  * Form discipline (mirrors the org Login at A.S1):
  *   - `<form method="post" action="">` + `handleSubmit` — defense in
  *     depth so the SSR HTML never produces a GET-fallback credential
@@ -39,6 +47,22 @@ import { applyValidationErrors } from '@/lib/errors';
  *     anything else collapses to a single generic message
  *     (`invalidOtp` / `otpRequestFailed`) — anti-enum.
  *
+ * Hardening passes layered on top of A.S14a:
+ *   - **Client-side phone validation** via `isValidIsraeliPhone` from
+ *     `@emapp/validators` (the same normalizer the BE uses). Surfaces
+ *     a clear "invalid phone" message INSTEAD of relying on the BE's
+ *     silent no-op + a subsequent "invalid code" mismatch. The check
+ *     is BEFORE the wire call — saves a round-trip and is anti-enum
+ *     in the sense that we never disclose whether a valid phone maps
+ *     to an owner.
+ *   - **Resend code** with a 30-second cooldown (one attempt every
+ *     half-minute is plenty; the BE silently caps at 3 SMS / 15 min
+ *     per phone anyway). The cooldown avoids hammering the SMS
+ *     provider during transient delivery delays.
+ *   - **Auto-submit on 6 digits**: when the code input fills, fire
+ *     `requestSubmit()`. Matches the muscle-memory of every iOS /
+ *     Android auto-fill flow.
+ *
  * After step-2 success: `router.push('/portal')` then `router.refresh()`
  * — the next middleware pass sees `tenant_access_token` and lets us
  * into the portal tier.
@@ -46,6 +70,8 @@ import { applyValidationErrors } from '@/lib/errors';
  * Style: solo card on a centered page (no split-screen — the resident
  * surface is simpler than the org auth landing).
  */
+const RESEND_COOLDOWN_SEC = 30;
+
 export default function TenantLoginPage() {
   const t = useTranslations('auth.tenant');
   const tCommon = useTranslations('auth');
@@ -54,43 +80,123 @@ export default function TenantLoginPage() {
   /** Surface generic anti-enum errors (network / unknown phone / wrong
    *  code) to the user without revealing which case occurred. */
   const [serverError, setServerError] = useState<string | null>(null);
+  /** Positive ack after a resend so the user sees feedback even though
+   *  the BE response is identical to the first request. */
+  const [resendAck, setResendAck] = useState<string | null>(null);
   /** We hold the phone between the two steps so the verify form can
    *  include it (per OtpVerifyDto). Carried in component state, never
-   *  in the URL — phone numbers are PII. */
+   *  in the URL — phone numbers are PII. We also store the optional
+   *  org_slug from step 1 so the resend re-uses the same disambiguator. */
   const [phone, setPhone] = useState('');
+  const [orgSlug, setOrgSlug] = useState<string | undefined>(undefined);
+  /** Cooldown countdown for the resend button (seconds). */
+  const [resendIn, setResendIn] = useState(0);
+  /** Pending state for the resend button (independent of the verify form's
+   *  isSubmitting which is owned by react-hook-form). */
+  const [isResending, setIsResending] = useState(false);
 
   const phoneForm = useForm<OtpRequestDto>({ resolver: zodResolver(OtpRequestSchema) });
   const codeForm = useForm<OtpVerifyDto>({ resolver: zodResolver(OtpVerifySchema) });
 
+  /** Ref on the wrapper form for the auto-submit-on-6-digits effect. */
+  const codeFormRef = useRef<HTMLFormElement | null>(null);
+  /** Watched value of the code input — used to trigger auto-submit when
+   *  the user reaches 6 digits. RHF's `watch` is the canonical hook
+   *  for cross-rendering an input value into an effect. */
+  const codeValue = codeForm.watch('code');
+
+  // Tick the resend cooldown once per second while it's positive.
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const id = window.setInterval(() => {
+      setResendIn((n) => (n > 0 ? n - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [resendIn]);
+
+  // Auto-submit when the code input hits exactly 6 digits and the form
+  // is not already submitting. Matches platform OTP auto-fill UX.
+  useEffect(() => {
+    if (step !== 'code') return;
+    if (typeof codeValue !== 'string') return;
+    if (!/^\d{6}$/.test(codeValue)) return;
+    if (codeForm.formState.isSubmitting) return;
+    // requestSubmit() triggers react-hook-form's onSubmit handler via
+    // the form's `onSubmit` prop — same path as a click on the verify
+    // button.
+    codeFormRef.current?.requestSubmit();
+  }, [codeValue, step, codeForm.formState.isSubmitting]);
+
+  // Shared helper used by step-1 submit AND the resend button. Returns
+  // true on a 200 (so callers can advance the step / show the ack);
+  // false otherwise (caller leaves the UI as-is so the user can retry).
+  const sendOtp = useCallback(
+    async (phoneArg: string, orgSlugArg: string | undefined): Promise<boolean> => {
+      const res = await apiClient.post<{ ok: true }>('/auth/otp/request', {
+        phone: phoneArg,
+        ...(orgSlugArg ? { org_slug: orgSlugArg } : {}),
+      });
+      if (isOk(res)) return true;
+      const code = res.error.code;
+      if (code === 'validation_error') {
+        const applied = applyValidationErrors(res.error, (field, message) => {
+          phoneForm.setError(field as keyof OtpRequestDto, { type: 'server', message });
+        });
+        if (applied.length === 0) setServerError(t('otpRequestFailed'));
+      } else {
+        setServerError(t('otpRequestFailed'));
+      }
+      return false;
+    },
+    [phoneForm, t],
+  );
+
   async function onSubmitPhone(data: OtpRequestDto) {
     setServerError(null);
-    const res = await apiClient.post<{ ok: true }>('/auth/otp/request', data);
-    if (isOk(res)) {
-      // 200 is generic — even for unknown phones. We optimistically
-      // advance to the code-entry step regardless; the verify step
-      // will surface a generic "invalid code" message if the phone
-      // wasn't actually a known owner.
-      setPhone(data.phone);
-      // Seed the verify form so the user only types the code.
-      codeForm.setValue('phone', data.phone);
-      setStep('code');
+    setResendAck(null);
+
+    // Client-side phone validation — same normalizer the BE uses
+    // (`@emapp/validators`). Saves a wire round-trip and gives the user
+    // an actionable message instead of the BE's silent no-op (anti-enum)
+    // followed by a misleading "invalid code" on step 2.
+    if (!isValidIsraeliPhone(data.phone)) {
+      phoneForm.setError('phone', { type: 'client', message: t('phoneInvalid') });
       return;
     }
-    const code = res.error.code;
-    if (code === 'validation_error') {
-      const applied = applyValidationErrors(res.error, (field, message) => {
-        phoneForm.setError(field as keyof OtpRequestDto, { type: 'server', message });
-      });
-      if (applied.length === 0) setServerError(t('otpRequestFailed'));
-    } else {
-      // Anti-enum collapse — throttle / network / etc. all surface
-      // as the same generic copy.
-      setServerError(t('otpRequestFailed'));
+
+    const slug = data.org_slug?.trim() ? data.org_slug.trim() : undefined;
+    const ok = await sendOtp(data.phone, slug);
+    if (!ok) return;
+
+    setPhone(data.phone);
+    setOrgSlug(slug);
+    // Seed the verify form so the user only types the code.
+    codeForm.setValue('phone', data.phone);
+    codeForm.setValue('code', '');
+    setStep('code');
+    setResendIn(RESEND_COOLDOWN_SEC);
+  }
+
+  async function onResend() {
+    if (resendIn > 0 || isResending) return;
+    setServerError(null);
+    setResendAck(null);
+    setIsResending(true);
+    try {
+      const ok = await sendOtp(phone, orgSlug);
+      if (ok) {
+        setResendAck(t('resendSent'));
+        setResendIn(RESEND_COOLDOWN_SEC);
+        codeForm.setValue('code', '');
+      }
+    } finally {
+      setIsResending(false);
     }
   }
 
   async function onSubmitCode(data: OtpVerifyDto) {
     setServerError(null);
+    setResendAck(null);
     const res = await apiClient.post<{ ok: true }>('/auth/otp/verify', data);
     if (isOk(res)) {
       // Cookie is now set by the BE response (`Set-Cookie: tenant_access_token`).
@@ -192,6 +298,7 @@ export default function TenantLoginPage() {
           </form>
         ) : (
           <form
+            ref={codeFormRef}
             method="post"
             action=""
             onSubmit={codeForm.handleSubmit(onSubmitCode)}
@@ -225,6 +332,12 @@ export default function TenantLoginPage() {
               )}
             </div>
 
+            {resendAck && (
+              <p className="text-sm" style={{ color: 'var(--success-700)' }} role="status">
+                {resendAck}
+              </p>
+            )}
+
             {serverError && (
               <p className="text-sm" style={{ color: 'var(--danger-700)' }} role="alert">
                 {serverError}
@@ -239,16 +352,34 @@ export default function TenantLoginPage() {
               {codeForm.formState.isSubmitting ? t('verifying') : t('verify')}
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setServerError(null);
-                setStep('phone');
-              }}
-              className="btn btn-secondary btn-sm"
-            >
-              {t('changePhone')}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onResend}
+                disabled={resendIn > 0 || isResending}
+                className="btn btn-secondary btn-sm disabled:cursor-not-allowed disabled:opacity-50"
+                aria-live="polite"
+              >
+                {isResending
+                  ? t('resending')
+                  : resendIn > 0
+                    ? t('resendCooldown', { seconds: resendIn })
+                    : t('resendCode')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setServerError(null);
+                  setResendAck(null);
+                  setResendIn(0);
+                  codeForm.reset();
+                  setStep('phone');
+                }}
+                className="btn btn-ghost btn-sm"
+              >
+                {t('changePhone')}
+              </button>
+            </div>
           </form>
         )}
 

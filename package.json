@@ -41,7 +41,8 @@
   "packageManager": "pnpm@9.0.0",
   "pnpm": {
     "overrides": {
-      "rollup": ">=3.30.0"
+      "rollup": ">=3.30.0",
+      "tmp": ">=0.2.6"
     }
   },
   "lint-staged": {

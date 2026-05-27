@@ -140,8 +140,16 @@ export class ExportController {
     // Defence-in-depth: prevent browser from rendering an xlsx/pdf
     // inline in an <iframe>. Always a download.
     reply.header('X-Content-Type-Options', 'nosniff');
-    // Match the existing API's no-store posture for sensitive data.
-    reply.header('Cache-Control', 'no-store');
+    // Wave 6 EXP-H3 (redteam audit 2026-05-28) — tighter cache headers.
+    // Cloudflare's "Cache Everything" page rules can override `no-store`;
+    // without `Vary: Cookie` a misconfig would let CF serve Manager A's
+    // PII xlsx to Manager B who requests the same URL. The Vary header
+    // tells the CDN "this response varies per cookie" — same URL with
+    // different auth cookies = different cache entries, never shared.
+    // `private` + `max-age=0, must-revalidate` belt-and-braces in case
+    // a CDN ignores no-store but honours the other directives.
+    reply.header('Cache-Control', 'private, no-store, max-age=0, must-revalidate');
+    reply.header('Vary', 'Cookie, Authorization');
 
     return buf;
   }

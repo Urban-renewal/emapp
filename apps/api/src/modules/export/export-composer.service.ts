@@ -10,7 +10,12 @@ import {
   users,
   withTenant,
 } from '@emapp/db';
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { and, eq, isNull, inArray } from 'drizzle-orm';
 
 import type { AccessTokenPayload } from '../auth/auth.service';
@@ -154,11 +159,19 @@ export class ExportComposerService {
             generatedBy: { name: generator.name, email: generator.email },
             buildings: [],
           };
+          // Wave 6 drive-by: this empty-project branch was missed in
+          // PR #158 (Wave 5 E-C1) which renamed the action to
+          // `project.export.requested` only on the non-empty path. The
+          // s10 test 5 happens to use a non-empty project so the
+          // inconsistency wasn't caught. Both branches now use the
+          // same action name — the compliance dashboard can pair
+          // every requested row with its outcome row regardless of
+          // whether the project had buildings.
           await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
             orgId: user.orgId,
             actorId: user.sub,
             actorType: 'user',
-            action: 'project.export',
+            action: 'project.export.requested',
             targetTable: 'projects',
             targetId: projectId,
             afterState: { format, rowCount: 0 },
@@ -226,10 +239,30 @@ export class ExportComposerService {
           nationalIdEncrypted: r.nationalIdEncrypted,
           phoneEncrypted: r.phoneEncrypted,
         }));
-        const decryptedByIdx = await decryptOwnerPiiBatch(
-          tx as unknown as Parameters<typeof decryptOwnerPiiBatch>[0],
-          encryptedRows,
-        );
+        // Wave 6 EXP-H2 (redteam audit 2026-05-28) — wrap the decrypt
+        // path. `decryptOwnerPiiBatch` throws errors that contain the
+        // row index ("missing name plaintext at idx 7") which would
+        // bubble through GlobalExceptionFilter → logger.error (stack
+        // + message) and, when AUTH_DEBUG_ERRORS=1 on staging, into
+        // the response body. Combined with a pgcrypto-rotation bug,
+        // every export 500 would be a row-index-disclosing event.
+        // Now: the original detail goes only to the server log
+        // (the orgId + project id give ops enough to investigate);
+        // the throw carries a stable code + non-leaky message.
+        let decryptedByIdx: Awaited<ReturnType<typeof decryptOwnerPiiBatch>>;
+        try {
+          decryptedByIdx = await decryptOwnerPiiBatch(
+            tx as unknown as Parameters<typeof decryptOwnerPiiBatch>[0],
+            encryptedRows,
+          );
+        } catch (e) {
+          this.logger.error(
+            `pgcrypto decrypt failed for project=${projectId} org=${user.orgId}: ${e instanceof Error ? e.message : 'unknown'}`,
+          );
+          throw new InternalServerErrorException({
+            error: { code: 'export_decrypt_failed', message: 'export temporarily unavailable' },
+          });
+        }
         const decryptedOwners: Array<ProjectExportOwner & { __apartmentId: string }> = ownRows.map(
           (r, i) => {
             const d = decryptedByIdx[i]!;

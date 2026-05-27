@@ -256,6 +256,36 @@ describe('V11 B.S9 · PdfExportService — Project → PDF (Phase 7 / D.38)', ()
     await b2.close();
   }, 30_000);
 
+  it('9) Wave 6 E-H4 — chromium.launch failure surfaces as 503 pdf_unavailable (no internals on the wire)', async () => {
+    // Hijack playwright.chromium.launch with a one-shot throw so the
+    // service's getBrowser() runs through the failure branch. We do it
+    // on a fresh service so the singleton on `svc` isn't disturbed.
+    const failing = new PdfExportService();
+    const playwright = await import('playwright-core');
+    const real = playwright.chromium.launch.bind(playwright.chromium);
+    let used = false;
+    (playwright.chromium as unknown as { launch: typeof playwright.chromium.launch }).launch =
+      (async (opts?: Parameters<typeof real>[0]) => {
+        if (used) return real(opts);
+        used = true;
+        throw new Error('mock launch failure — ENOENT /usr/bin/chromium');
+      }) as typeof playwright.chromium.launch;
+    try {
+      await expect(failing.getBrowser()).rejects.toMatchObject({
+        status: 503,
+        response: {
+          error: { code: 'pdf_unavailable', message: 'PDF rendering temporarily unavailable' },
+        },
+      });
+    } finally {
+      // Restore so subsequent tests in this file (and other files in
+      // the same vitest worker) get the real launcher back.
+      (playwright.chromium as unknown as { launch: typeof playwright.chromium.launch }).launch =
+        real;
+      await failing.onModuleDestroy();
+    }
+  }, 30_000);
+
   it('6) perf budget — 1000 (apt, owner) rows renders well under T7.8 ceiling (45s)', async () => {
     const apts: ProjectExportApartment[] = [];
     for (let i = 0; i < 500; i += 1) {

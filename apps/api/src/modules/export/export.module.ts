@@ -1,23 +1,33 @@
 import { Module } from '@nestjs/common';
 
+import { AuthModule } from '../auth/auth.module';
+
+import { ExportComposerService } from './export-composer.service';
+import { ExportController } from './export.controller';
 import { ExportService } from './export.service';
 import { PdfExportService } from './pdf-export.service';
 
 /**
- * V11 B.S8 + B.S9 — Project export module (Phase 7 / Doc 03 §11).
+ * V11 B.S8 + B.S9 + B.S10 — Project export module (Phase 7 / Doc 03 §11).
  *
- * Two pure-function renderers sharing one `ProjectExportInput`
- * contract so the partner sees identical columns in both formats:
- *   - `ExportService` → xlsx (B.S8)
- *   - `PdfExportService` → PDF (B.S9; playwright-core + Heebo woff2
- *     base64-embedded so the PDF is self-contained)
+ * Three concerns, one module:
+ *   - `ExportService` (B.S8) — xlsx renderer (pure function).
+ *   - `PdfExportService` (B.S9) — PDF renderer (pure function over the
+ *     SAME `ProjectExportInput` so both formats share columns).
+ *   - `ExportComposerService` (B.S10) — loads project sub-tree under
+ *     `withTenant`, decrypts owner PII, writes the audit row, shapes
+ *     the `ProjectExportInput`.
+ *   - `ExportController` (B.S10) — `GET /api/v1/projects/:id/export?
+ *     format=xlsx|pdf` with manager/agent/viewer access, 10/hour
+ *     throttle, RFC 5987 Hebrew-safe Content-Disposition header.
  *
- * No controller, no DB, no DI deps beyond Logger. B.S10 wires the
- * `GET /api/v1/projects/:id/export?format=xlsx|pdf` endpoint and
- * composes the input inside `withTenant`.
+ * AuthModule import is required because the controller stacks
+ * `AuthGuard` + `TenantGuard` (both live in AuthModule).
  */
 @Module({
-  providers: [ExportService, PdfExportService],
+  imports: [AuthModule],
+  controllers: [ExportController],
+  providers: [ExportService, PdfExportService, ExportComposerService],
   exports: [ExportService, PdfExportService],
 })
 export class ExportModule {}

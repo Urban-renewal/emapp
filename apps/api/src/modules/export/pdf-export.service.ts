@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 
 import { Injectable, Logger } from '@nestjs/common';
 import { chromium, type Browser } from 'playwright-core';
@@ -152,22 +152,56 @@ export class PdfExportService {
 
   private fontCss(): string {
     if (this.cachedFontCss !== null) return this.cachedFontCss;
-    // Use createRequire so we get the same module-resolution algorithm
-    // pnpm wired up at install time (handles pnpm's symlinked node_modules
-    // layout) — works under both CJS (Nest's webpack output) and ESM
-    // (Vitest). `import.meta.url` works under ESM only; createRequire
-    // accepts the same URL/path and bridges into the CJS resolver.
-    const req = createRequire(__filename);
+    // Original implementation used `createRequire(__filename).resolve(...)`
+    // — works under tsx/Vitest but breaks in the webpack-bundled
+    // production output: webpack inlines `node:module` such that the
+    // returned `req` function has no `.resolve` property at runtime.
+    // Caught by the B.S10 PDF smoke (the visual-smoke discipline from
+    // `feedback_visual_smoke_gap.md` paying off immediately).
+    //
+    // Replacement: walk a fixed list of candidate roots relative to
+    // `process.cwd()`. The API process starts in `apps/api/`, so pnpm
+    // gives us EITHER a local `apps/api/node_modules/@fontsource/heebo`
+    // (when hoisting puts it there) OR the workspace-root
+    // `../../node_modules/@fontsource/heebo`. We try both, take the
+    // first one that exists. Robust to webpack, CJS, ESM, tsx, and
+    // future bundlers because it doesn't depend on `require` or
+    // `import.meta.url`.
     const files = [
       'heebo-hebrew-400-normal.woff2',
       'heebo-hebrew-700-normal.woff2',
       'heebo-latin-400-normal.woff2',
       'heebo-latin-700-normal.woff2',
     ];
+    const cwd = process.cwd();
+    const candidates = [
+      // pnpm symlinks per-package node_modules; @fontsource/heebo is
+      // a direct dep of apps/api, so it lives at apps/api/node_modules.
+      resolvePath(cwd, 'apps/api/node_modules/@fontsource/heebo/files'),
+      // When running from inside apps/api (the dev process), cwd
+      // already IS apps/api, so the symlink is right here.
+      resolvePath(cwd, 'node_modules/@fontsource/heebo/files'),
+      // Defensive fallbacks for the workspace root (in case future
+      // pnpm settings hoist) and a nested case.
+      resolvePath(cwd, '../../node_modules/@fontsource/heebo/files'),
+      resolvePath(cwd, '../node_modules/@fontsource/heebo/files'),
+    ];
+    let base: string | null = null;
+    for (const cand of candidates) {
+      if (existsSync(`${cand}/${files[0]}`)) {
+        base = cand;
+        break;
+      }
+    }
+    if (!base) {
+      throw new Error(
+        `pdf-export: could not locate @fontsource/heebo files. CWD=${cwd}. ` +
+          `Tried: ${candidates.join(' | ')}. Install @fontsource/heebo or run from a workspace dir.`,
+      );
+    }
     const css = files
       .map((name) => {
-        const path = req.resolve(`@fontsource/heebo/files/${name}`);
-        const buf = readFileSync(path);
+        const buf = readFileSync(`${base}/${name}`);
         const b64 = buf.toString('base64');
         const weight = name.includes('700') ? 700 : 400;
         return `@font-face {

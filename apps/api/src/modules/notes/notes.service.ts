@@ -13,6 +13,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
@@ -203,7 +204,10 @@ export class NotesService {
             createdBy: user.sub,
           })
           .returning();
-        if (!row) throw new Error('note insert returned no row');
+        if (!row)
+          throw new InternalServerErrorException({
+            error: { code: 'insert_no_row', message: 'unexpected db state' },
+          });
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
@@ -220,13 +224,19 @@ export class NotesService {
   }
 
   async update(user: AccessTokenPayload, id: string, input: UpdateNote): Promise<Note> {
+    // Audit H-5 fix — viewer must be rejected BEFORE the author-equality
+    // check (an ex-agent demoted to viewer kept their old notes editable
+    // because the role check was `!== 'manager'`).
+    if (user.role === 'viewer') throw FORBIDDEN;
     return withTenant(
       user.orgId,
       async (tx) => {
         const [before] = await tx.select().from(notes).where(eq(notes.id, id)).limit(1);
+        // Audit M-3 fix — collapse "exists but not yours" 403 into 404
+        // so agents can't enumerate other users' note IDs (no oracle).
+        // Matches the docs/tasks loadVisible pattern.
         if (!before) throw NOT_FOUND;
-        // Author or manager only.
-        if (user.role !== 'manager' && before.createdBy !== user.sub) throw FORBIDDEN;
+        if (user.role !== 'manager' && before.createdBy !== user.sub) throw NOT_FOUND;
         const patch: Partial<typeof notes.$inferInsert> = { updatedAt: new Date() };
         if (input.body !== undefined) patch.body = input.body;
         if (input.pinned !== undefined) patch.isPinned = input.pinned ? 'true' : null;
@@ -248,12 +258,15 @@ export class NotesService {
   }
 
   async archive(user: AccessTokenPayload, id: string): Promise<void> {
+    // Audit H-5 fix — viewer rejected before author check (see update).
+    if (user.role === 'viewer') throw FORBIDDEN;
     await withTenant(
       user.orgId,
       async (tx) => {
         const [before] = await tx.select().from(notes).where(eq(notes.id, id)).limit(1);
+        // Audit M-3 fix — 403→404 to remove existence oracle.
         if (!before) throw NOT_FOUND;
-        if (user.role !== 'manager' && before.createdBy !== user.sub) throw FORBIDDEN;
+        if (user.role !== 'manager' && before.createdBy !== user.sub) throw NOT_FOUND;
         if (before.archivedAt) return;
         await tx
           .update(notes)

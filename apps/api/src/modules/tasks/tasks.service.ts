@@ -12,6 +12,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
@@ -219,7 +220,10 @@ export class TasksService {
             createdBy: user.sub,
           })
           .returning();
-        if (!row) throw new Error('task insert returned no row');
+        if (!row)
+          throw new InternalServerErrorException({
+            error: { code: 'insert_no_row', message: 'unexpected db state' },
+          });
         const assigneeIds = [...new Set(input.assigneeIds ?? [])];
         if (assigneeIds.length > 0) {
           for (const uid of assigneeIds) await this.assertMember(tx, user.orgId, uid);
@@ -403,7 +407,10 @@ export class TasksService {
             .insert(taskAssignees)
             .values({ taskId, userId: input.userId, assignedBy: user.sub })
             .returning();
-          if (!row) throw new Error('assignee insert returned no row');
+          if (!row)
+            throw new InternalServerErrorException({
+              error: { code: 'insert_no_row', message: 'unexpected db state' },
+            });
           await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
             orgId: user.orgId,
             actorId: user.sub,

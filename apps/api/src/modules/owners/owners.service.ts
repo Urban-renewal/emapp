@@ -15,6 +15,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
@@ -198,7 +199,10 @@ export class OwnersService {
               phoneHash: pii.phoneHash,
             })
             .returning({ id: owners.id });
-          if (!ins) throw new Error('owner insert returned no row');
+          if (!ins)
+            throw new InternalServerErrorException({
+              error: { code: 'insert_no_row', message: 'unexpected db state' },
+            });
           await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
             orgId: user.orgId,
             actorId: user.sub,
@@ -233,7 +237,10 @@ export class OwnersService {
             .from(owners)
             .where(eq(owners.id, ins.id))
             .limit(1);
-          if (!row) throw new Error('owner reload returned no row');
+          if (!row)
+            throw new InternalServerErrorException({
+              error: { code: 'reload_no_row', message: 'unexpected db state' },
+            });
           return toOwner(row);
         },
         { userId: user.sub },

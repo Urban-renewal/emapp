@@ -11,6 +11,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
@@ -50,6 +51,14 @@ export class OwnersController {
     return this.owners.list(user, query);
   }
 
+  // Audit L-2 fix — per-route throttle on /owners/search.
+  // Search is a hash-comparison lookup (national_id_hash / phone_hash),
+  // so an attacker with a stolen cookie can iterate hash space against
+  // it at 100/min under the global budget. Each call returns up to 50
+  // masked owners. Not a direct PII leak (masked + hash-equality only
+  // finds exact matches), but a meaningful db-load amplifier. 20/min
+  // mirrors the documents-post bucket; legitimate UX is one click.
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('search')
   @HttpCode(200)
   @AuthzAction('read') // a lookup, not a write — any org role

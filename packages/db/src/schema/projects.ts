@@ -88,6 +88,16 @@ export const apartments = pgTable(
     statusChangedAt: timestamp('status_changed_at', { withTimezone: true }).notNull().defaultNow(),
     lastContactAt: timestamp('last_contact_at', { withTimezone: true }),
     notes: text('notes'),
+    // D.39 — partner's design has non-residential units inside buildings
+    // (shop / office / mixed). Closed enum at the Zod boundary; existing
+    // rows backfill to 'apt' (pre-D.39 implicit residential).
+    unitType: text('unit_type').notNull().default('apt'),
+    // D.39 — registered area_sqm from the parcel record, distinct from
+    // size_sqm (the self-declared measurement); they can legally differ.
+    areaSqm: numeric('area_sqm', { precision: 10, scale: 2 }),
+    // D.39 — entrance label this apartment belongs to (mirrors
+    // building_sections.entrance for sectioned buildings).
+    entrance: text('entrance'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -107,6 +117,40 @@ export const apartments = pgTable(
 
 export type Apartment = typeof apartments.$inferSelect;
 export type NewApartment = typeof apartments.$inferInsert;
+
+// D.39 / V11 B.S1 — sectioned buildings (entrance × kind × floors × unit_count
+// + optional own parcel). RLS via parent (Template B per D.24 + 0011 revert):
+// section → building → project → org_id GUC. Enum (kind) checked at Zod
+// boundary, not DB CHECK — additive-only canary; belt-and-suspenders CHECK
+// can be added in a follow-up if a later audit requires it.
+export const buildingSections = pgTable(
+  'building_sections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    buildingId: uuid('building_id')
+      .notNull()
+      .references(() => buildings.id, { onDelete: 'cascade' }),
+    entrance: text('entrance'),
+    // Closed enum at Zod boundary: residential | office | retail | mixed
+    kind: text('kind').notNull(),
+    floors: integer('floors'),
+    unitCount: integer('unit_count'),
+    gush: text('gush'),
+    helka: text('helka'),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+  },
+  (table) => ({
+    buildingIdx: index('idx_building_sections_building')
+      .on(table.buildingId)
+      .where(sql`archived_at IS NULL`),
+  }),
+);
+
+export type BuildingSection = typeof buildingSections.$inferSelect;
+export type NewBuildingSection = typeof buildingSections.$inferInsert;
 
 // owners and ownerships — added in P1.5 (depends on pgcrypto from P1.10)
 

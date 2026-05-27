@@ -72,6 +72,15 @@ export class AuthController {
     return { data: { user: result.user } };
   }
 
+  // Audit M-5 fix — per-route throttle on /refresh.
+  // The global 100/min/IP budget is shared with every other endpoint on
+  // the same IP; a single misbehaving FE tab in a stuck refresh loop
+  // could chew through that and self-DoS the manager's whole network.
+  // 30/min/IP is generous for legitimate rotation (clients refresh once
+  // per ~15 min) but blocks runaway loops at the route level. Stricter
+  // than `login`'s 10/min — refresh is invoked transparently on every
+  // page load + xhr.
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Public()
   @Post('refresh')
   @HttpCode(200)

@@ -14,8 +14,17 @@ import { FakeEmailProvider, type IEmailProvider } from '@emapp/db';
 export const EMAIL_PROVIDER = 'EMAIL_PROVIDER';
 
 /** Token is exposed in the HTTP response ONLY outside production. In prod
- * the email channel is the sole delivery path (closes the D.27 risk). */
-export const EXPOSE_INVITE_TOKEN = process.env['NODE_ENV'] !== 'production';
+ * the email channel is the sole delivery path (closes the D.27 risk).
+ *
+ * Audit L-3 fix (2026-05-27 manager-be-redteam): hardened to fail-closed.
+ * Was `NODE_ENV !== 'production'` — which exposes the token if NODE_ENV is
+ * unset (e.g. ops mistake during a deploy). Now an allowlist: only
+ * `development` or `test` exposes. Any other value (including unset,
+ * empty, `staging`, `production`, or a typo like `prod`) suppresses
+ * the token. The invite email is the canonical delivery channel and
+ * cannot be silently bypassed by missing-env. */
+export const EXPOSE_INVITE_TOKEN =
+  process.env['NODE_ENV'] === 'development' || process.env['NODE_ENV'] === 'test';
 
 /**
  * HIGH-2 fix — production must NOT silently use FakeEmailProvider: with

@@ -12,6 +12,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
@@ -152,7 +153,10 @@ export class ProjectAssignmentsService {
               assignedBy: user.sub,
             })
             .returning();
-          if (!row) throw new Error('assignment insert returned no row');
+          if (!row)
+            throw new InternalServerErrorException({
+              error: { code: 'insert_no_row', message: 'unexpected db state' },
+            });
           await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
             orgId: user.orgId,
             actorId: user.sub,

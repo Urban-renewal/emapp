@@ -69,7 +69,10 @@ export class ExportController {
     // exports to writes-only roles, flip this — for now it matches
     // `projects:read = ALL`.
     if (user.role !== 'manager' && user.role !== 'agent' && user.role !== 'viewer') {
-      throw new ForbiddenException({ error: { code: 'forbidden' } });
+      // Wave 5 E-C3: D.16 envelope requires `message` per CLAUDE.md.
+      throw new ForbiddenException({
+        error: { code: 'forbidden', message: 'export not permitted for this role' },
+      });
     }
 
     const { input } = await this.composer.composeProjectExport(user, projectId, query.format);

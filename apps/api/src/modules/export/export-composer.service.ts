@@ -109,7 +109,14 @@ export class ExportComposerService {
                 .where(eq(projects.id, projectId))
                 .limit(1);
         if (!project) {
-          throw new NotFoundException({ error: { code: 'not_found' } });
+          // Wave 5 E-C3 (errors audit 2026-05-28): D.16 envelope requires
+          // `message` alongside `code`. The 404 here is the same
+          // posture as the agent-scope miss (no oracle — cross-org and
+          // unassigned both collapse to the same response), so the
+          // message stays generic; the code is the actionable signal.
+          throw new NotFoundException({
+            error: { code: 'not_found', message: 'project not found' },
+          });
         }
 
         // 2) Generator (the calling user) — name + email for the
@@ -120,7 +127,10 @@ export class ExportComposerService {
           .where(eq(users.id, user.sub))
           .limit(1);
         if (!generator) {
-          throw new NotFoundException({ error: { code: 'not_found' } });
+          // Wave 5 E-C3: D.16 envelope — message present.
+          throw new NotFoundException({
+            error: { code: 'not_found', message: 'generator user not found' },
+          });
         }
 
         // 3) Buildings (active only).

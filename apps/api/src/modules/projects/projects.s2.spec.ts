@@ -180,6 +180,11 @@ describe('V11 B.S2 · ProjectsService.create wizard expansion (D.39)', () => {
     expect(ourApts).toHaveLength(3);
     expect(ourApts.find((a) => a.number === 'shop-1')?.unitType).toBe('shop');
     expect(ourApts.find((a) => a.number === '1')?.unitType).toBe('apt');
+    // V11 F1 — the apartments DB-read shape now exposes the 3 B.S1
+    // columns. Test 4 in projects.s2 only asserted `unitType` was
+    // persisted; here we also pin `entrance` (which the wizard set
+    // on shop-1) so the read-shape gap doesn't reopen silently.
+    expect(ourApts.find((a) => a.number === 'shop-1')?.entrance).toBe('B-ground');
 
     const after = auditRows[0]?.afterState as Record<string, unknown> | undefined;
     expect(after?.['buildingsCreated']).toBe(1);
@@ -187,10 +192,17 @@ describe('V11 B.S2 · ProjectsService.create wizard expansion (D.39)', () => {
     expect(after?.['apartmentsCreated']).toBe(3);
   });
 
-  it('3) atomicity: duplicate apartment.number under the same building → ZERO rows persist (project + building + sections all rolled back)', async () => {
+  it('3) atomicity + F2: duplicate apartment.number → 409 ConflictException with apartment_number_duplicate code; ZERO rows persist (rollback)', async () => {
+    // V11 F2 — pre-fix this same input threw a raw pg error that the
+    // global exception filter mapped to `HTTP 500 {"error":{"code":"500"}}`.
+    // The smoke-discipline backfill against PR #107 caught it ([comment]
+    // /pull/107#issuecomment-4552245759). Post-fix: clean 409 with a
+    // stable `code` + the offending numbers in `details`, atomicity
+    // unchanged (whole tx still rolls back).
     const uniqueName = `B.S2 atomic-rollback ${Date.now()}`;
-    await expect(
-      svc.create(userOf(orgA), {
+    let caught: unknown;
+    try {
+      await svc.create(userOf(orgA), {
         name: uniqueName,
         type: 'tama38_2',
         buildings: [
@@ -198,19 +210,30 @@ describe('V11 B.S2 · ProjectsService.create wizard expansion (D.39)', () => {
             address: 'Rollback St',
             city: 'Haifa',
             sections: [{ kind: 'residential', floors: 2 }],
-            apartments: [
-              // Duplicate `number` in the same building triggers the
-              // apartments_building_number_active unique index (0001) AFTER
-              // the project + building + section all inserted. The tx
-              // rolls back, so the project row must NOT survive.
-              { number: 'A-1' },
-              { number: 'A-1' },
-            ],
+            apartments: [{ number: 'A-1' }, { number: 'A-1' }],
           },
         ],
-      }),
-    ).rejects.toThrow();
+      });
+    } catch (e) {
+      caught = e;
+    }
+    // (a) raised at all
+    expect(caught).toBeDefined();
+    // (b) it's specifically a ConflictException (HTTP 409 in Nest)
+    expect((caught as { getStatus?: () => number })?.getStatus?.()).toBe(409);
+    // (c) D.16 envelope with the stable code + the duplicate number in details
+    const resp = (caught as { response?: unknown }).response as {
+      error?: {
+        code?: string;
+        details?: { numbers?: string[]; building?: { address?: string; city?: string } };
+      };
+    };
+    expect(resp?.error?.code).toBe('apartment_number_duplicate');
+    expect(resp?.error?.details?.numbers).toEqual(['A-1']);
+    expect(resp?.error?.details?.building?.address).toBe('Rollback St');
+    expect(resp?.error?.details?.building?.city).toBe('Haifa');
 
+    // (d) Atomicity: project + building + sections + first apartment ALL rolled back.
     const survivors = await withTenant(orgA.id, async (tx) =>
       tx.select({ id: projects.id }).from(projects).where(eq(projects.name, uniqueName)),
     );

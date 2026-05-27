@@ -11,6 +11,7 @@ import {
 import type { CreateProject, Project, UpdateProject } from '@emapp/shared-types';
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -45,6 +46,45 @@ function toProject(r: ProjectRow): Project {
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
 const FORBIDDEN = new ForbiddenException({ error: { code: 'forbidden' } });
+
+/**
+ * V11 F2 — detect the partial-unique-index violation on
+ * `apartments_building_number_active` (migration 0001). pg drivers wrap
+ * the original error; the diagnostic fields can be on the error itself
+ * or nested under `.cause` (drizzle does the wrap in some paths).
+ * The function walks the cause chain up to 8 levels and matches both
+ * the SQLSTATE (`23505` = unique_violation) AND the constraint name to
+ * avoid claiming OTHER unique violations on apartments (none exist
+ * today, but defence in depth — F2 was discovered exactly because we
+ * trusted "throws something" without inspecting the shape).
+ */
+function isDuplicateApartmentNumberError(err: unknown): boolean {
+  let cur: unknown = err;
+  let depth = 0;
+  while (cur && depth < 8) {
+    const pg = cur as { code?: string; constraint?: string };
+    if (pg.code === '23505' && pg.constraint === 'apartments_building_number_active') {
+      return true;
+    }
+    cur = (cur as { cause?: unknown })?.cause;
+    depth += 1;
+  }
+  return false;
+}
+
+/** Returns only the numbers that appear more than once in the input.
+ *  Used to populate `apartment_number_duplicate.details.numbers` so a
+ *  wizard FE can highlight the offending row(s). De-duplicated and
+ *  alphabetised for a stable wire shape (response is deterministic for
+ *  the same input, easier to test). */
+function collectDuplicateNumbers(nums: readonly string[]): string[] {
+  const counts = new Map<string, number>();
+  for (const n of nums) counts.set(n, (counts.get(n) ?? 0) + 1);
+  return Array.from(counts.entries())
+    .filter(([, c]) => c > 1)
+    .map(([n]) => n)
+    .sort();
+}
 
 /**
  * Projects domain service (Phase 3 Slice 1).
@@ -232,22 +272,51 @@ export class ProjectsService {
           if (b.apartments?.length) {
             // numeric columns travel as strings on the wire (pg-node
             // semantics, matching the toProject pattern in this file).
-            await tx.insert(apartments).values(
-              b.apartments.map((a) => ({
-                buildingId: bRow.id,
-                number: a.number,
-                floor: a.floor ?? null,
-                sizeSqm: a.sizeSqm === undefined || a.sizeSqm === null ? null : String(a.sizeSqm),
-                rooms: a.rooms === undefined || a.rooms === null ? null : String(a.rooms),
-                // unit_type column is NOT NULL DEFAULT 'apt' (0035) — sending
-                // undefined lets the DB default apply, which is more honest
-                // than coercing here.
-                unitType: a.unitType ?? 'apt',
-                areaSqm: a.areaSqm === undefined || a.areaSqm === null ? null : String(a.areaSqm),
-                entrance: a.entrance ?? null,
-                notes: a.notes ?? null,
-              })),
-            );
+            //
+            // V11 F2 — the partial-unique index
+            // `apartments_building_number_active` (migration 0001) rejects
+            // duplicate `number` within the same building. Pre-fix this
+            // leaked as `HTTP 500 {"error":{"code":"500"}}` because the
+            // pg 23505 reached the global exception filter. Surfaced by
+            // smoke backfill against PR #107 (see #107 comment). Catch
+            // it here, map to a clean 4xx with a stable `code` and the
+            // offending number(s) in `details` so the wizard FE can
+            // highlight the right row. Atomicity is unchanged — the
+            // throw still propagates out of `withTenant` and rolls back
+            // the whole project + building + sections.
+            try {
+              await tx.insert(apartments).values(
+                b.apartments.map((a) => ({
+                  buildingId: bRow.id,
+                  number: a.number,
+                  floor: a.floor ?? null,
+                  sizeSqm: a.sizeSqm === undefined || a.sizeSqm === null ? null : String(a.sizeSqm),
+                  rooms: a.rooms === undefined || a.rooms === null ? null : String(a.rooms),
+                  // unit_type column is NOT NULL DEFAULT 'apt' (0035) — sending
+                  // undefined lets the DB default apply, which is more honest
+                  // than coercing here.
+                  unitType: a.unitType ?? 'apt',
+                  areaSqm: a.areaSqm === undefined || a.areaSqm === null ? null : String(a.areaSqm),
+                  entrance: a.entrance ?? null,
+                  notes: a.notes ?? null,
+                })),
+              );
+            } catch (err) {
+              if (isDuplicateApartmentNumberError(err)) {
+                throw new ConflictException({
+                  error: {
+                    code: 'apartment_number_duplicate',
+                    details: {
+                      building: { address: b.address, city: b.city },
+                      // Caller-visible numbers (no PII, just the values
+                      // they sent us) so the wizard can highlight rows.
+                      numbers: collectDuplicateNumbers(b.apartments.map((a) => a.number)),
+                    },
+                  },
+                });
+              }
+              throw err;
+            }
             apartmentsCreated += b.apartments.length;
           }
         }

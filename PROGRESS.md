@@ -298,7 +298,7 @@ taskId, action)` method. **Hooks**: `TasksService.create` /
 
 - **B.S10 shipped — Export endpoint (Phase 7, end of Track B).**
   New `ExportController` at `GET /api/v1/projects/:id/export?
-  format=xlsx|pdf` mounted under the existing `projects` POLICY
+format=xlsx|pdf` mounted under the existing `projects` POLICY
   resource (read=ALL — Gate-6 policy.ts untouched). New
   `ExportComposerService` loads project sub-tree
   (project → buildings → apartments → ownerships → owners) inside
@@ -317,7 +317,7 @@ taskId, action)` method. **Hooks**: `TasksService.create` /
 
   **Track A's PR #136 (already merged)** was built against the
   contract documented in `apps/api/src/modules/export/export.
-  module.ts:9` and surfaces the localized `notReady` toast on
+module.ts:9` and surfaces the localized `notReady` toast on
   HTTP 404 until this endpoint lands. Once #B.S10 PR merges,
   the FE button goes from `not_ready` → `ok` with zero FE
   changes — clean cross-track handoff.
@@ -328,7 +328,7 @@ taskId, action)` method. **Hooks**: `TasksService.create` /
   tsx/Vitest but breaks in the webpack-bundled production output
   (the returned `req` function has no `.resolve` property at
   runtime — `Cannot read properties of undefined (reading
-  'resolve')`). Caught by `GET /export?format=pdf → 500` in the
+'resolve')`). Caught by `GET /export?format=pdf → 500` in the
   HTTP smoke. Fix: switched to a candidate-paths walk via
   `process.cwd()` + `node:fs.existsSync` (covers
   `apps/api/node_modules/` for pnpm's per-package symlinks +
@@ -336,7 +336,7 @@ taskId, action)` method. **Hooks**: `TasksService.create` /
   externals didn't catch `playwright-core` under pnpm's symlinked
   node_modules layout, inlining ~playwright internals into
   `dist/main.js` and crashing at runtime with `Cannot find
-  module 'C:\emapp-bs2\apps\api\package.json'` (playwright
+module 'C:\emapp-bs2\apps\api\package.json'` (playwright
   internals do dynamic `require('./package.json')` that webpack
   mangles). Fix: added explicit externals entry in
   `apps/api/webpack.config.js` for `playwright-core` (and
@@ -388,6 +388,29 @@ taskId, action)` method. **Hooks**: `TasksService.create` /
   blowing the T7.7 budget in prod, OR rejoin Track A on
   V11 wrap-up (Doc 11 sync mechanism + Phase 9 Quality +
   Launch).
+
+- **B.S10-followup shipped — agent-scope enforcement on export
+  endpoint.** Closes the known-debt I documented in the B.S10
+  `ExportController` comment: an Agent who guessed an unassigned
+  project id could export it (matched the same gap as
+  `GET /api/v1/projects/:id` had at the time). Fix:
+  `ExportComposerService.composeProjectExport()` now INNER-JOINs
+  `project_assignments` on the project load when
+  `user.role === 'agent'` — mirrors the proven pattern from
+  `ProjectsService.get()`. Wire-shape posture preserved: an
+  unassigned-project miss returns 404 with the SAME body as a
+  cross-org RLS miss (no oracle of "the project exists but you
+  don't have access"). **Tests** `export.s10.spec.ts`: 2 new
+  cases (7/7 total green) — `2b` agent without active assignment
+  → 404; `2c` agent WITH active assignment → composes the full
+  sub-tree (positive scope test proves the agent gets the same
+  payload a manager would, no degradation). **Verify**: typecheck
+  - lint + full repo typecheck clean. **User feedback adjustment
+  this turn**: per "אל תעצור אף פעם אתה כל הזמן ממתין לבדיקה
+  של CI ונעצר" — stopped sitting idle waiting for CI signals on
+  the previous PR; this fix-PR was pushed in parallel to #139
+  (no file overlap, so the serialize discipline's underlying
+  goal — no merge conflicts — still holds).
   <!-- END AGENT HEARTBEATS -->
 
 ## Legacy heartbeats (pre-migration; preserved for context)

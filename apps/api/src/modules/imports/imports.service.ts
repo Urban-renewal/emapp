@@ -527,40 +527,54 @@ export class ImportsService {
       throw new ServiceUnavailableException({ error: { code: 'storage_unavailable' } });
     }
 
-    // v7 HIGH-3 (security Agent B): write an audit row for the
-    // successful credential mint. The presigned URL is a bearer
-    // credential — ISO 27001 A.12.4.1 wants every credential issuance
-    // logged. Outside the create tx because presign is post-commit;
-    // a small consistency gap (commit succeeded, mint succeeded, audit
-    // failed) is acceptable here because the credential's exfiltration
-    // window is already minimal (5min TTL) and the row itself is
-    // bound to this exact upload (Bucket+Key+ContentLength).
-    await withTenant(
-      user.orgId,
-      async (tx) => {
-        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
-          orgId: user.orgId,
-          actorId: user.sub,
-          actorType: 'user',
-          action: 'import.upload_url_minted',
-          targetTable: 'import_jobs',
-          targetId: row.id,
-          metadata: {
-            ttl_seconds: String(UPLOAD_URL_TTL_SECONDS),
-          },
-          sessionId: user.sid,
-        });
-      },
-      { userId: user.sub },
-    ).catch((e) => {
-      // Don't fail the request on audit-write failure (the upload URL
-      // is already minted and returned). Log loud so SRE notices.
+    // Audit C-2 fix (2026-05-27 manager-be-errors, D.31 + ISO 27001
+    // A.12.4.1): the presigned URL is a bearer credential. The
+    // post-commit audit write used to be best-effort with a
+    // `.catch(swallow)` — a DB blip between the presign-mint and the
+    // audit write would leave the URL minted-and-returned with NO
+    // forensic trail. ISO 27001 A.12.4.1 forbids that posture.
+    //
+    // Restructured to fail-loud: if the audit write fails, throw 503
+    // and DO NOT return the URL to the client. The presigned URL is
+    // computed locally (HMAC-SHA4 over the request) — withholding it
+    // means no one ever uses it (the HMAC is the credential; without
+    // surfacing it, the URL is unreachable). Client retries hit the
+    // idempotency interceptor's cache + re-execute, which presigns
+    // again with a fresh HMAC and re-attempts the audit write.
+    //
+    // This is the structural inline-the-audit posture from the audit's
+    // recommendation (B). Trade-off: a customer-visible 503 if audit
+    // logging is broken. That's correct: compliance over availability
+    // for a credential-issuance event.
+    try {
+      await withTenant(
+        user.orgId,
+        async (tx) => {
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+            orgId: user.orgId,
+            actorId: user.sub,
+            actorType: 'user',
+            action: 'import.upload_url_minted',
+            targetTable: 'import_jobs',
+            targetId: row.id,
+            metadata: {
+              ttl_seconds: String(UPLOAD_URL_TTL_SECONDS),
+            },
+            sessionId: user.sid,
+          });
+        },
+        { userId: user.sub },
+      );
+    } catch (e) {
       this.logger.error(
         `audit(import.upload_url_minted) failed (import=${row.id}): ${
           e instanceof Error ? e.message : 'unknown'
-        }`,
+        } — refusing to return the URL (compliance gate)`,
       );
-    });
+      throw new ServiceUnavailableException({
+        error: { code: 'audit_unavailable' },
+      });
+    }
 
     return {
       import: toView(row),

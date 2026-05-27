@@ -169,7 +169,13 @@
     "export": {
       "excel": "ייצוא לאקסל",
       "pdf": "ייצוא ל-PDF",
-      "comingSoon": "בקרוב — Phase 5"
+      "comingSoon": "בקרוב — Phase 5",
+      "pdfComingSoon": "בקרוב — Phase 5 (B.S9)",
+      "downloading": "מייצא...",
+      "downloaded": "ההורדה הסתיימה",
+      "failed": "ייצוא נכשל. נסה שוב.",
+      "notReady": "נקודת הקצה לייצוא טרם הופעלה — צפוי בקרוב.",
+      "aria": "ייצוא הפרויקט לאקסל"
     },
     "tab": {
       "tenants": "דיירים ונכסים",

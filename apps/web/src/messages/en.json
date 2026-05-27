@@ -169,7 +169,13 @@
     "export": {
       "excel": "Export to Excel",
       "pdf": "Export to PDF",
-      "comingSoon": "Coming soon — Phase 5"
+      "comingSoon": "Coming soon — Phase 5",
+      "pdfComingSoon": "Coming soon — Phase 5 (B.S9)",
+      "downloading": "Exporting...",
+      "downloaded": "Download complete",
+      "failed": "Export failed. Please try again.",
+      "notReady": "Export endpoint not yet live — coming soon.",
+      "aria": "Export project to Excel"
     },
     "tab": {
       "tenants": "Residents & assets",

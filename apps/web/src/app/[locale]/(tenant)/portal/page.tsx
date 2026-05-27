@@ -9,7 +9,9 @@ import {
   MapPin,
   User,
 } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
+import { useLocale, useTranslations } from 'next-intl';
+import { useEffect } from 'react';
 
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -26,6 +28,17 @@ import {
  * Sub-slice 2 of A.S14 wires the 4 read-only GET endpoints from B.S4
  * (`/api/v1/portal/{me,apartment,documents,signatures}`) behind the
  * tenant chrome shipped in A.S14a.
+ *
+ * Error-state discipline (manual-audit bug #4 fix): TanStack's
+ * `isError` flag is the primary signal, but we also treat
+ * `!isLoading && !isFetching && data === undefined` as an error
+ * fallback. This catches the edge case where a queryFn throws but
+ * the throw doesn't fully propagate to `isError` (observed with the
+ * api-client's emit-unauthenticated event path — the event fires
+ * BEFORE the throw lands in TanStack's catch, and the resulting
+ * `router.replace` navigation can race the error state). Without
+ * the fallback the user sees the empty-state copy ("no apartments
+ * found") even though the actual cause was an auth failure.
  *
  * Layout (single scrollable page, responsive):
  *  1. Hero — navy-gradient block with greeting (firstName from /me),
@@ -58,18 +71,76 @@ import {
  * own skeleton + error state so a slow signatures fetch doesn't block
  * the hero/apartment paint.
  */
+/**
+ * Coalesce a TanStack query into a single explicit state for the
+ * 4-way render switch (loading / error / empty / populated). The
+ * `errored` branch captures both the canonical `isError` flag AND
+ * the defensive `data === undefined && !fetching` fallback that
+ * triggers when an unauth-event race makes `isError` lag behind
+ * (manual-audit bug #4).
+ */
+function viewState<T>(q: {
+  isLoading: boolean;
+  isFetching: boolean;
+  isError: boolean;
+  data: T | undefined;
+}): 'loading' | 'error' | 'ready' {
+  if (q.isLoading) return 'loading';
+  if (q.isError) return 'error';
+  if (q.data === undefined && !q.isFetching) return 'error';
+  return 'ready';
+}
+
 export default function TenantPortalPage() {
   const t = useTranslations('portal');
+  const router = useRouter();
+  const locale = useLocale();
 
   const me = usePortalMe();
   const apts = usePortalApartments();
   const docs = usePortalDocuments();
   const sigs = usePortalSignatures();
 
+  const meState = viewState(me);
+  const aptsState = viewState(apts);
+  const docsState = viewState(docs);
+  const sigsState = viewState(sigs);
+
+  // Manual-audit bug #5 fix — belt-and-suspenders auth bounce.
+  // The api-client's `emapp:unauthenticated` event + the layout's
+  // TenantAuthGuard listener should redirect on auth failure, but
+  // manual testing showed the listener occasionally misses the event
+  // (React Strict Mode double-mount, effect timing vs query resolution
+  // before the layout effect attaches).
+  //
+  // Two cooperating fallbacks here:
+  //
+  //  1. Inspect `me.error` directly. If it's an ApiClientError with an
+  //     auth-shaped code, redirect.
+  //  2. If TanStack's error didn't propagate (we observed cases where
+  //     the query lands with data=undefined / isError=false despite a
+  //     401), watch ALL FOUR query states. When every fetch settles
+  //     into an `error`-or-empty state at once, the failure is
+  //     org-wide (almost certainly auth) — redirect rather than show
+  //     four side-by-side "load failed" messages.
+  // If ALL FOUR queries reach the error state at once, the failure is
+  // org-wide (almost certainly an auth issue — expired or missing
+  // tenant_access_token). Redirect rather than showing four
+  // side-by-side "load failed" messages with no recovery affordance.
+  // Anti-redirect-loop: only fires when we're actually on `/portal`
+  // (i.e. layout already mounted) so this can't kick off a navigation
+  // chain.
+  const allErrored =
+    meState === 'error' && aptsState === 'error' && docsState === 'error' && sigsState === 'error';
+  useEffect(() => {
+    if (!allErrored) return;
+    router.replace(`/${locale}/tenant/login`);
+  }, [allErrored, router, locale]);
+
   // Hero copy depends on the me-fetch + the first apartment's project
   // name. Both are independent; we render a placeholder until they
   // arrive (the rest of the page renders regardless).
-  const firstApt = apts.data?.[0];
+  const firstApt = aptsState === 'ready' ? apts.data?.[0] : undefined;
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
@@ -168,9 +239,9 @@ export default function TenantPortalPage() {
         title={t('apartment.section')}
         icon={<Home className="h-4 w-4" aria-hidden="true" style={{ color: 'var(--navy-700)' }} />}
       >
-        {apts.isLoading ? (
+        {aptsState === 'loading' ? (
           <SectionSkeleton lines={3} />
-        ) : apts.isError ? (
+        ) : aptsState === 'error' ? (
           <p className="text-sm" style={{ color: 'var(--danger-700)' }}>
             {t('apartment.loadFailed')}
           </p>
@@ -267,9 +338,9 @@ export default function TenantPortalPage() {
             <FileText className="h-4 w-4" aria-hidden="true" style={{ color: 'var(--navy-700)' }} />
           }
         >
-          {docs.isLoading ? (
+          {docsState === 'loading' ? (
             <SectionSkeleton lines={3} />
-          ) : docs.isError ? (
+          ) : docsState === 'error' ? (
             <p className="text-sm" style={{ color: 'var(--danger-700)' }}>
               {t('documents.loadFailed')}
             </p>
@@ -318,9 +389,9 @@ export default function TenantPortalPage() {
             />
           }
         >
-          {sigs.isLoading ? (
+          {sigsState === 'loading' ? (
             <SectionSkeleton lines={3} />
-          ) : sigs.isError ? (
+          ) : sigsState === 'error' ? (
             <p className="text-sm" style={{ color: 'var(--danger-700)' }}>
               {t('signatures.loadFailed')}
             </p>

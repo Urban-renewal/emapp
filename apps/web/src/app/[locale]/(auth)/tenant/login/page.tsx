@@ -1,13 +1,7 @@
 'use client';
 
-import {
-  OtpRequestSchema,
-  OtpVerifySchema,
-  type OtpRequestDto,
-  type OtpVerifyDto,
-} from '@emapp/shared-types';
+import { type OtpRequestDto, type OtpVerifyDto } from '@emapp/shared-types';
 import { isValidIsraeliPhone } from '@emapp/validators';
-import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -95,11 +89,31 @@ export default function TenantLoginPage() {
    *  isSubmitting which is owned by react-hook-form). */
   const [isResending, setIsResending] = useState(false);
 
-  const phoneForm = useForm<OtpRequestDto>({ resolver: zodResolver(OtpRequestSchema) });
-  const codeForm = useForm<OtpVerifyDto>({ resolver: zodResolver(OtpVerifySchema) });
+  // No Zod resolver here — we validate manually in onSubmitPhone /
+  // onSubmitCode so that:
+  //   - The empty optional `org_slug` field doesn't trip Zod's
+  //     `min(1)` rejection (manual-audit bug #2).
+  //   - The phone field surfaces our Hebrew `phoneInvalid` copy
+  //     instead of Zod's English default "String must contain at
+  //     least 9 character(s)" (manual-audit bug #1).
+  // The BE schema (OtpRequestSchema / OtpVerifySchema in
+  // @emapp/shared-types) remains the authoritative wire validator —
+  // FE just produces the correct payload shape.
+  const phoneForm = useForm<OtpRequestDto>();
+  const codeForm = useForm<OtpVerifyDto>();
 
   /** Ref on the wrapper form for the auto-submit-on-6-digits effect. */
   const codeFormRef = useRef<HTMLFormElement | null>(null);
+  /** Tracks the last 6-digit code value that the auto-submit effect
+   *  fired for. The effect compares the current `codeValue` against
+   *  this and skips if they match — guaranteeing EXACTLY ONE
+   *  auto-submit per unique code (manual-audit bug #3 fix). Reset to
+   *  null on step transitions, resend, and change-phone so a fresh
+   *  code entry can re-arm. RHF's `formState.isSubmitting` lags by
+   *  a render or two and was insufficient on its own — the effect
+   *  re-ran 5x in the same render-cycle window before isSubmitting
+   *  flipped, burning the BE's 5-attempt-per-OTP cap on one keystroke. */
+  const lastSubmittedCodeRef = useRef<string | null>(null);
   /** Watched value of the code input — used to trigger auto-submit when
    *  the user reaches 6 digits. RHF's `watch` is the canonical hook
    *  for cross-rendering an input value into an effect. */
@@ -114,13 +128,18 @@ export default function TenantLoginPage() {
     return () => window.clearInterval(id);
   }, [resendIn]);
 
-  // Auto-submit when the code input hits exactly 6 digits and the form
-  // is not already submitting. Matches platform OTP auto-fill UX.
+  // Auto-submit when the code input hits exactly 6 digits AND this
+  // exact code value hasn't already been auto-submitted. The
+  // value-comparison guard (vs the previous boolean flag) means each
+  // distinct 6-digit value gets exactly one auto-fire — and editing
+  // the code (state value changes) is the only path to re-arming.
   useEffect(() => {
     if (step !== 'code') return;
     if (typeof codeValue !== 'string') return;
     if (!/^\d{6}$/.test(codeValue)) return;
+    if (lastSubmittedCodeRef.current === codeValue) return;
     if (codeForm.formState.isSubmitting) return;
+    lastSubmittedCodeRef.current = codeValue;
     // requestSubmit() triggers react-hook-form's onSubmit handler via
     // the form's `onSubmit` prop — same path as a click on the verify
     // button.
@@ -155,24 +174,35 @@ export default function TenantLoginPage() {
     setServerError(null);
     setResendAck(null);
 
-    // Client-side phone validation — same normalizer the BE uses
-    // (`@emapp/validators`). Saves a wire round-trip and gives the user
-    // an actionable message instead of the BE's silent no-op (anti-enum)
-    // followed by a misleading "invalid code" on step 2.
-    if (!isValidIsraeliPhone(data.phone)) {
+    // Manual validation (no Zod resolver — see useForm comment above).
+    // Phone is the only required field; we use the SAME normalizer the
+    // BE uses (`@emapp/validators`) so the FE check matches the BE
+    // behavior exactly. Empty / too-short / wrong-prefix all collapse
+    // into the same Hebrew `phoneInvalid` copy — anti-enum is preserved
+    // because we never disclose whether a valid phone maps to an owner.
+    const phoneRaw = typeof data.phone === 'string' ? data.phone.trim() : '';
+    if (!isValidIsraeliPhone(phoneRaw)) {
       phoneForm.setError('phone', { type: 'client', message: t('phoneInvalid') });
       return;
     }
 
-    const slug = data.org_slug?.trim() ? data.org_slug.trim() : undefined;
-    const ok = await sendOtp(data.phone, slug);
+    // org_slug is optional. RHF passes "" for an empty input; we
+    // normalize to undefined so the wire payload omits the field
+    // (BE's F2 disambiguator only activates when present).
+    const slug =
+      typeof data.org_slug === 'string' && data.org_slug.trim() ? data.org_slug.trim() : undefined;
+
+    const ok = await sendOtp(phoneRaw, slug);
     if (!ok) return;
 
-    setPhone(data.phone);
+    setPhone(phoneRaw);
     setOrgSlug(slug);
-    // Seed the verify form so the user only types the code.
-    codeForm.setValue('phone', data.phone);
+    // Seed the verify form so the user only types the code, and clear
+    // any previous code value + reset the auto-submit guard so a fresh
+    // step-2 entry can fire normally.
+    codeForm.setValue('phone', phoneRaw);
     codeForm.setValue('code', '');
+    lastSubmittedCodeRef.current = null;
     setStep('code');
     setResendIn(RESEND_COOLDOWN_SEC);
   }
@@ -188,6 +218,8 @@ export default function TenantLoginPage() {
         setResendAck(t('resendSent'));
         setResendIn(RESEND_COOLDOWN_SEC);
         codeForm.setValue('code', '');
+        // Re-arm the auto-submit guard for the next 6-digit input.
+        lastSubmittedCodeRef.current = null;
       }
     } finally {
       setIsResending(false);
@@ -197,23 +229,45 @@ export default function TenantLoginPage() {
   async function onSubmitCode(data: OtpVerifyDto) {
     setServerError(null);
     setResendAck(null);
-    const res = await apiClient.post<{ ok: true }>('/auth/otp/verify', data);
-    if (isOk(res)) {
-      // Cookie is now set by the BE response (`Set-Cookie: tenant_access_token`).
-      // Push to /portal — middleware will let us through on the next request.
-      router.push('/portal');
-      router.refresh();
+    // Manual code validation — strict 6 digits. The auto-submit
+    // effect already gates on /^\d{6}$/, but the verify button can
+    // also fire with a partial entry; reject those before the wire
+    // call so we don't burn an attempt for a malformed code.
+    const codeRaw = typeof data.code === 'string' ? data.code.trim() : '';
+    if (!/^\d{6}$/.test(codeRaw)) {
+      codeForm.setError('code', { type: 'client', message: t('invalidOtp') });
       return;
     }
-    const code = res.error.code;
-    if (code === 'validation_error') {
-      const applied = applyValidationErrors(res.error, (field, message) => {
-        codeForm.setError(field as keyof OtpVerifyDto, { type: 'server', message });
+
+    try {
+      const res = await apiClient.post<{ ok: true }>('/auth/otp/verify', {
+        phone: data.phone,
+        code: codeRaw,
       });
-      if (applied.length === 0) setServerError(t('invalidOtp'));
-    } else {
+      if (isOk(res)) {
+        // Cookie is now set by the BE response (`Set-Cookie: tenant_access_token`).
+        // Push to /portal — middleware will let us through on the next request.
+        router.push('/portal');
+        router.refresh();
+        return;
+      }
+      const code = res.error.code;
+      if (code === 'validation_error') {
+        const applied = applyValidationErrors(res.error, (field, message) => {
+          codeForm.setError(field as keyof OtpVerifyDto, { type: 'server', message });
+        });
+        if (applied.length === 0) setServerError(t('invalidOtp'));
+      } else {
+        setServerError(t('invalidOtp'));
+      }
+    } catch {
       setServerError(t('invalidOtp'));
     }
+    // Note: we deliberately do NOT reset `lastSubmittedCodeRef` here.
+    // The ref tracks "which 6-digit value has already been tried"; a
+    // failed verify must NOT auto-retry the same value (BE locks
+    // after 5 wrong attempts). The user must edit the code to re-arm,
+    // which changes codeValue → ref-comparison fails → new fire.
   }
 
   return (
@@ -373,6 +427,7 @@ export default function TenantLoginPage() {
                   setResendAck(null);
                   setResendIn(0);
                   codeForm.reset();
+                  lastSubmittedCodeRef.current = null;
                   setStep('phone');
                 }}
                 className="btn btn-ghost btn-sm"

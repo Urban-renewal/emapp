@@ -24,3 +24,7 @@ export * from './import';
 // always, and conflating the two shapes risks a future change leaking
 // org-cleartext through a "shared" type.
 export * from './provider';
+// V11 B.S4 — Tenant Portal own-data view (D.40). Tier-isolated wire
+// shapes for /api/v1/portal/* under the `emapp-tenant` JWT audience.
+// All endpoints scoped to the authenticated tenant's own owner.id.
+export * from './portal';

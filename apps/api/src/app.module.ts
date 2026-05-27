@@ -18,6 +18,7 @@ import { NotesModule } from './modules/notes/notes.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OwnersModule } from './modules/owners/owners.module';
 import { OwnershipsModule } from './modules/ownerships/ownerships.module';
+import { PortalModule } from './modules/portal/portal.module';
 import { ProjectAssignmentsModule } from './modules/project-assignments/project-assignments.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { ProviderModule } from './modules/provider/provider.module';
@@ -91,6 +92,12 @@ import { QueueModule } from './queue/queue.module';
     // ProviderAuthGuard rejects org JWTs structurally (audience
     // mismatch per D.29). NO write endpoints — Gate-6 deferred.
     ProviderModule,
+    // D.40 — V11 Tenant Portal own-data view (read-only). Tier-
+    // isolated: TenantAuthGuard rejects org/provider JWTs via
+    // audience mismatch (`emapp-tenant` per D.29). No write
+    // endpoints. POLICY untouched — portal has no entry in the
+    // org POLICY matrix (Gate-6 untouched).
+    PortalModule,
   ],
   controllers: [HealthController],
   // Rate limiting ENFORCED globally; the configurable guard adds a

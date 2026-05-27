@@ -1,13 +1,17 @@
 # Wave 4 — Pending User Decisions (from 2026-05-27 Manager-BE audits)
 
-These four items came out of the 3-auditor pass (`docs/audits/2026-05-27-manager-be-{redteam,perf,errors}.md`) but require user direction before I can ship them:
+**Status (2026-05-28): all four items resolved.** Section preserved as the audit trail.
 
-1. **H-3 sec — `signature_requests` Agent visibility scope** (Gate-6 POLICY)
-2. **M-1 sec — `tenant_sessions` table** (schema migration + Provider Admin endpoint)
-3. **C-2 err — audit-orphan reconciliation** (structural / transactional outbox)
-4. **M-7 err — optimistic locking on PATCH** (cross-cutting, all mutate endpoints)
+| #   | Item                                                                  | Resolution                                                                  | Reference   |
+| --- | --------------------------------------------------------------------- | --------------------------------------------------------------------------- | ----------- |
+| 1   | H-3 sec — `signature_requests` Agent visibility scope (Gate-6 POLICY) | **Kept current** (option A — multi-agent collaboration on assigned project) | D.43 + #150 |
+| 2   | M-1 sec — `tenant_sessions` table                                     | **Shipped** (migration 0038 + `POST /portal/logout` + TTL 30→10 min)        | #152        |
+| 3   | C-2 err — audit-orphan reconciliation                                 | **Inline (option B)** for the import-upload site; outbox deferred           | #151        |
+| 4   | M-7 err — optimistic locking on PATCH                                 | **Deferred to V12** (no observed real-world race; documented gap)           | D.44 + #150 |
 
-Waves 1-3 already shipped 15 findings (#146 + #147 + #148). Wave 4 is everything that either needs a POLICY change, a schema migration that crosses multiple existing tables, or a cross-cutting API contract change.
+Waves 1-3 already shipped 15 findings (#146 + #147 + #148). Wave 4 was everything that either needed a POLICY change, a schema migration that crosses multiple existing tables, or a cross-cutting API contract change.
+
+The historical write-up of each option / recommendation is preserved below as the rationale trail.
 
 ---
 
@@ -104,3 +108,16 @@ When you're back, reply with one line per item, e.g.:
 I'll spin up the matching PRs immediately. No need to be in chat — drop the line and I'll execute.
 
 Track B — 2026-05-27
+
+---
+
+## Resolution log (2026-05-28)
+
+User reply: "אני מאשר לך להמשיך לפי ההמלצות שלך" (approval to proceed per recommendations, conditional on docs-reading — docs were read before each migration).
+
+- **H-3** → kept current (option A). D.43 entry added to DECISIONS.html.
+- **C-2** → option B (inline). PR #151 changed the post-presign audit-write site in `imports.service.ts` from `.catch(swallow)` to a hard `throw 503 audit_unavailable`. The audit-write is now non-optional: if the second tx fails, the URL is not returned. Worker outbox is no longer the only path; this is the smallest correct fix.
+- **M-1** → shipped (PR #152). `tenant_sessions` table mirrors `auth_sessions` (RLS-exempt, soft revoke, no DELETE grant). OTP verify mints JWT with `sid` + inserts row. `TenantAuthGuard` checks `isTenantSessionActive` (15s cache). `POST /api/v1/portal/logout` for tenant-initiated revoke. TTL dropped 30→10 min as interim mitigation. Audit row uses `actor_type='system'` (the CHECK constraint rejects `'tenant'`). Provider-Admin cross-tenant revoke endpoint deferred to V12 (needs UI design work).
+- **M-7** → deferred to V12. D.44 entry added to DECISIONS.html.
+
+Track B — 2026-05-28

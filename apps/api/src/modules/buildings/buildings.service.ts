@@ -63,40 +63,41 @@ export class BuildingsService {
     if (user.role !== 'manager') throw FORBIDDEN;
   }
 
-  /**
-   * Throws 404 unless the project is visible to this user.
-   *
-   * - **Agent** — still required: the project_assignments JOIN is the
-   *   only place that filters to "your assigned projects". Skipping
-   *   this would break D.17 scope-to-assigned. ONE round-trip.
-   * - **Manager / Viewer** — audit M3/H3-perf fix (2026-05-27): the
-   *   redundant SELECT before the list query was 1 extra round-trip
-   *   (~50ms Neon RTT) for no security benefit. RLS already filters
-   *   to the caller's org, and a non-existent project simply yields
-   *   an empty buildings list (no oracle — the manager is already
-   *   authenticated in their own org and `GET /projects/:id` is the
-   *   canonical "does this project exist" probe). Returning early
-   *   for Manager/Viewer drops a 4-RT list call to 3 RT — closes the
-   *   <1s budget for the dashboard fan-out.
-   */
+  // Throws 404 unless the project is visible to this user (org via RLS +,
+  // for agents, an active assignment). Returns nothing — visibility only.
+  //
+  // Note: Wave 2 H3-perf had tried to skip this for Manager/Viewer to
+  // save 1 RT on the LIST path, but the WRITE path (`create`) shares
+  // this method and needs the assert to surface a 404 instead of an
+  // FK violation 500 (contract spec BR4). The perf optimization is
+  // deferred to a follow-up that splits read vs write call-sites and
+  // ships with tests for both. For now, restore the original assert
+  // for all roles to keep CREATE 404s correct.
   private async assertProjectVisible(
     tx: TenantTx,
     user: AccessTokenPayload,
     projectId: string,
   ): Promise<void> {
-    // Manager/Viewer: skip — RLS + downstream list handles existence.
-    if (user.role !== 'agent') return;
+    if (user.role === 'agent') {
+      const [row] = await tx
+        .select({ id: projects.id })
+        .from(projects)
+        .innerJoin(
+          projectAssignments,
+          and(
+            eq(projectAssignments.projectId, projects.id),
+            eq(projectAssignments.userId, user.sub),
+            isNull(projectAssignments.unassignedAt),
+          ),
+        )
+        .where(eq(projects.id, projectId))
+        .limit(1);
+      if (!row) throw NOT_FOUND;
+      return;
+    }
     const [row] = await tx
       .select({ id: projects.id })
       .from(projects)
-      .innerJoin(
-        projectAssignments,
-        and(
-          eq(projectAssignments.projectId, projects.id),
-          eq(projectAssignments.userId, user.sub),
-          isNull(projectAssignments.unassignedAt),
-        ),
-      )
       .where(eq(projects.id, projectId))
       .limit(1);
     if (!row) throw NOT_FOUND;

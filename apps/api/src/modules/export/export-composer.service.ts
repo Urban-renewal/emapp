@@ -2,8 +2,7 @@ import {
   AuditService,
   apartments,
   buildings,
-  decryptOwnerName,
-  decryptOwnerPii,
+  decryptOwnerPiiBatch,
   owners,
   ownerships,
   projectAssignments,
@@ -43,15 +42,12 @@ import type {
  *     composer, then the matching renderer.
  *
  * Decryption strategy:
- *   - Per-owner `decryptOwnerName` + `decryptOwnerPii` in parallel
- *     via `Promise.all`. Each owner needs 3 pgcrypto round-trips
- *     (name + national_id + phone). For 1000 owners @ Neon's
- *     ~10-conn pool + ~50ms RTT, the parallel pool keeps elapsed
- *     time bounded (typical: 5-10 s for 1000 owners).
- *   - If the perf budget (T7.7 = 25 s end-to-end) becomes tight in
- *     prod, follow-up: add a batched-decrypt helper modelled after
- *     `encryptOwnerPiiBatch` (one `unnest($1::bytea[])` round-trip
- *     per column instead of N). Out of scope for this slice.
+ *   - `decryptOwnerPiiBatch` — ONE round-trip per column (name +
+ *     national_id + phone) regardless of owner count. Mirrors the
+ *     pre-existing `encryptOwnerPiiBatch` discipline. For 1000 owners
+ *     at Neon's ~50ms RTT, total decrypt time is ~150ms (THREE
+ *     round-trips), vs ~5 s for the previous per-owner Promise.all
+ *     approach.
  *
  * Audit:
  *   - Writes one `project.export` audit log row per call inside the
@@ -205,31 +201,38 @@ export class ExportComposerService {
                   ),
                 );
 
-        // 6) Decrypt PII in parallel (Promise.all caps at the pg pool
-        //    size; for thousand-owner cases consider a batched helper).
-        const decryptedOwners = await Promise.all(
-          ownRows.map(async (r) => {
-            const [name, pii] = await Promise.all([
-              decryptOwnerName(
-                tx as unknown as Parameters<typeof decryptOwnerName>[0],
-                r.nameEncrypted,
-              ),
-              decryptOwnerPii(tx as unknown as Parameters<typeof decryptOwnerPii>[0], {
-                nationalIdEncrypted: r.nationalIdEncrypted,
-                phoneEncrypted: r.phoneEncrypted,
-              }),
-            ]);
-            const o: ProjectExportOwner & { __apartmentId: string } = {
+        // 6) Decrypt PII in ONE round-trip per column (3 total) using
+        //    the batched helper. ownerId on each EncryptedOwnerRow is
+        //    a position-preserving key the caller chooses — we use a
+        //    composite of `ownerId|apartmentId` so the same owner on
+        //    two different apartments stays distinct in the result
+        //    map (an owner can co-own multiple apts in this project).
+        const encryptedRows = ownRows.map((r, i) => ({
+          // Use the row index as the position key. Owner-id alone is
+          // NOT unique within ownRows (an owner with multi-apt
+          // ownership appears once per apt).
+          ownerId: `${i}`,
+          nameEncrypted: r.nameEncrypted,
+          nationalIdEncrypted: r.nationalIdEncrypted,
+          phoneEncrypted: r.phoneEncrypted,
+        }));
+        const decryptedByIdx = await decryptOwnerPiiBatch(
+          tx as unknown as Parameters<typeof decryptOwnerPiiBatch>[0],
+          encryptedRows,
+        );
+        const decryptedOwners: Array<ProjectExportOwner & { __apartmentId: string }> = ownRows.map(
+          (r, i) => {
+            const d = decryptedByIdx[i]!;
+            return {
               __apartmentId: r.apartmentId,
-              name,
-              nationalId: pii.nationalId,
-              phone: pii.phone,
+              name: d.name,
+              nationalId: d.nationalId,
+              phone: d.phone,
               email: r.email,
               ownershipPct: Number(r.ownershipPct),
               role: r.role,
             };
-            return o;
-          }),
+          },
         );
 
         // 7) Group owners by apartment, then apartments by building.

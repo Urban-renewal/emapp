@@ -27,6 +27,12 @@ function baseApt(over: Partial<import('@emapp/shared-types').Apartment> = {}) {
     statusChangedAt: new Date('2026-05-20T10:00:00Z'),
     lastContactAt: null,
     notes: null,
+    // V11 F1 fix (Track B PR #118) — ApartmentSchema gained 3 fields
+    // from migration 0035 (D.39). Use DB defaults so the existing
+    // adapter assertions keep passing without touching their logic.
+    unitType: 'apt',
+    areaSqm: null,
+    entrance: null,
     createdAt: new Date('2026-05-20T10:00:00Z'),
     updatedAt: new Date('2026-05-20T10:00:00Z'),
     archivedAt: null,

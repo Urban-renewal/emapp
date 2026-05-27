@@ -298,7 +298,7 @@ taskId, action)` method. **Hooks**: `TasksService.create` /
 
 - **B.S10 shipped — Export endpoint (Phase 7, end of Track B).**
   New `ExportController` at `GET /api/v1/projects/:id/export?
-  format=xlsx|pdf` mounted under the existing `projects` POLICY
+format=xlsx|pdf` mounted under the existing `projects` POLICY
   resource (read=ALL — Gate-6 policy.ts untouched). New
   `ExportComposerService` loads project sub-tree
   (project → buildings → apartments → ownerships → owners) inside
@@ -317,7 +317,7 @@ taskId, action)` method. **Hooks**: `TasksService.create` /
 
   **Track A's PR #136 (already merged)** was built against the
   contract documented in `apps/api/src/modules/export/export.
-  module.ts:9` and surfaces the localized `notReady` toast on
+module.ts:9` and surfaces the localized `notReady` toast on
   HTTP 404 until this endpoint lands. Once #B.S10 PR merges,
   the FE button goes from `not_ready` → `ok` with zero FE
   changes — clean cross-track handoff.
@@ -328,7 +328,7 @@ taskId, action)` method. **Hooks**: `TasksService.create` /
   tsx/Vitest but breaks in the webpack-bundled production output
   (the returned `req` function has no `.resolve` property at
   runtime — `Cannot read properties of undefined (reading
-  'resolve')`). Caught by `GET /export?format=pdf → 500` in the
+'resolve')`). Caught by `GET /export?format=pdf → 500` in the
   HTTP smoke. Fix: switched to a candidate-paths walk via
   `process.cwd()` + `node:fs.existsSync` (covers
   `apps/api/node_modules/` for pnpm's per-package symlinks +
@@ -336,7 +336,7 @@ taskId, action)` method. **Hooks**: `TasksService.create` /
   externals didn't catch `playwright-core` under pnpm's symlinked
   node_modules layout, inlining ~playwright internals into
   `dist/main.js` and crashing at runtime with `Cannot find
-  module 'C:\emapp-bs2\apps\api\package.json'` (playwright
+module 'C:\emapp-bs2\apps\api\package.json'` (playwright
   internals do dynamic `require('./package.json')` that webpack
   mangles). Fix: added explicit externals entry in
   `apps/api/webpack.config.js` for `playwright-core` (and

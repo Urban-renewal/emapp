@@ -87,6 +87,11 @@ test.describe('§E-J2c — Manager creates an apartment', () => {
             statusChangedAt: now,
             lastContactAt: null,
             notes: FORM_VALUES.notes,
+            // V11 F1 fix (Track B PR #118) — ApartmentSchema gained 3
+            // fields from migration 0035 (D.39). DB defaults used here.
+            unitType: 'apt',
+            areaSqm: null,
+            entrance: null,
             createdAt: now,
             updatedAt: now,
             archivedAt: null,
@@ -116,6 +121,11 @@ test.describe('§E-J2c — Manager creates an apartment', () => {
             statusChangedAt: now,
             lastContactAt: null,
             notes: FORM_VALUES.notes,
+            // V11 F1 fix (Track B PR #118) — ApartmentSchema gained 3
+            // fields from migration 0035 (D.39). DB defaults used here.
+            unitType: 'apt',
+            areaSqm: null,
+            entrance: null,
             createdAt: now,
             updatedAt: now,
             archivedAt: null,

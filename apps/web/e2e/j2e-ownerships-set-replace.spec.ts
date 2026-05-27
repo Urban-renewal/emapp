@@ -148,6 +148,11 @@ test.describe('§E-J2e — Ownerships set-replace (D.25 sum=100)', () => {
             statusChangedAt: t,
             lastContactAt: null,
             notes: null,
+            // V11 F1 fix (Track B PR #118) — ApartmentSchema gained 3
+            // fields from migration 0035 (D.39). DB defaults used here.
+            unitType: 'apt',
+            areaSqm: null,
+            entrance: null,
             createdAt: t,
             updatedAt: t,
             archivedAt: null,

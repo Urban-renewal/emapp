@@ -42,6 +42,11 @@ function baseTask(over: Partial<import('@emapp/shared-types').Task> = {}) {
     priority: 2,
     dueAt: null,
     durationMinutes: null,
+    // V11 B.S5 F3 fix (Track B PR #120) — TaskSchema gained scheduled_at
+    // + location from migration 0036 (D.38). DB defaults (null/null)
+    // here so existing adapter assertions keep passing.
+    scheduledAt: null,
+    location: null,
     completedAt: null,
     completedBy: null,
     createdBy: '33333333-3333-4333-8333-333333333333',

@@ -61,6 +61,10 @@ const SAMPLE_TASK = {
   priority: 2,
   dueAt: null,
   durationMinutes: null,
+  // V11 B.S5 F3 fix (Track B PR #120) — TaskSchema gained scheduled_at
+  // + location from migration 0036 (D.38). DB defaults here.
+  scheduledAt: null,
+  location: null,
   completedAt: null,
   completedBy: null,
   createdBy: USER_ID,

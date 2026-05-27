@@ -284,9 +284,16 @@ describe('V11 B.S10 · ExportComposerService — project export (Phase 7)', () =
   });
 
   it('2) RLS — composer in org A cannot read org B project (NotFoundException)', async () => {
+    // Wave 5 E-C3 (errors audit 2026-05-28): the 404 envelope MUST
+    // include both `code` and `message` per D.16. The cross-org case
+    // shares the "project not found" message with a missing-project
+    // case (no oracle — both collapse to the same response).
     await expect(
       svc.composeProjectExport(userOf(orgA), orgB.projects[0]!.id, 'xlsx'),
-    ).rejects.toMatchObject({ status: 404 });
+    ).rejects.toMatchObject({
+      status: 404,
+      response: { error: { code: 'not_found', message: 'project not found' } },
+    });
   });
 
   it('2b) agent without an active project_assignments row → 404 (D.17 scope-to-assigned)', async () => {

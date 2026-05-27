@@ -876,13 +876,28 @@
     "listTitle": "התראות",
     "loadFailed": "טעינת ההתראות נכשלה.",
     "empty": "אין התראות.",
+    "emptyBell": "אין התראות חדשות",
+    "emptyForFilter": "אין התראות בקטגוריה זו.",
     "markRead": "סמן כנקרא",
     "markAllRead": "סמן הכל כנקרא ({count})",
     "markingAllRead": "מסמן...",
     "unreadAria": "התראה שלא נקראה",
+    "unreadSummary": "{count} חדשות",
     "open": "פתח",
     "bellAria": "התראות",
-    "viewAll": "הצג הכל"
+    "viewAll": "הצג הכל",
+    "showAll": "הצג את כל ההתראות",
+    "filter": {
+      "all": "הכל",
+      "unread": "לא נקראו",
+      "signatures": "חתימות",
+      "tasks": "משימות",
+      "documents": "מסמכים",
+      "notes": "הערות",
+      "mentions": "אזכורים",
+      "apartments": "סטטוס דירות",
+      "shareRevoked": "ביטולים"
+    }
   },
   "assignments": {
     "title": "שיוך אגנטים לפרויקט",

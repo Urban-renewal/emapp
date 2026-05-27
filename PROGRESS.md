@@ -108,17 +108,60 @@
     gen:api-docs:check clean (no shared-types touch).
 
 - **Process commitment status — locking in the patterns.** Three
-V11-discipline patterns now active: (1) per-agent heartbeat files
-via `pnpm gen:progress` (PR #116 merged 2026-05-27); (2) Track-B
-worktree at `C:/emapp-bs2` operational since the smoke-discipline
-session (Track A worktree at `C:/emapp-track-a` pending their
-next session per their handoff); (3) serialize-PRs discipline
-exercised twice — at this PR's open ("no parallel open Track B
-PRs") and at the heartbeat-infra PR. Smoke-evidence-as-raw-paste
-discipline now binding too; this PR's body is the second example.
-All four discussed in the meta-Q&A response to "מה לעשות?" —
-recorded here so future Track B agents inherit the rule set.
-<!-- END AGENT HEARTBEATS -->
+  V11-discipline patterns now active: (1) per-agent heartbeat files
+  via `pnpm gen:progress` (PR #116 merged 2026-05-27); (2) Track-B
+  worktree at `C:/emapp-bs2` operational since the smoke-discipline
+  session (Track A worktree at `C:/emapp-track-a` pending their
+  next session per their handoff); (3) serialize-PRs discipline
+  exercised twice — at this PR's open ("no parallel open Track B
+  PRs") and at the heartbeat-infra PR. Smoke-evidence-as-raw-paste
+  discipline now binding too; this PR's body is the second example.
+  All four discussed in the meta-Q&A response to "מה לעשות?" —
+  recorded here so future Track B agents inherit the rule set.
+
+- **B.S7 shipped — Calendar email dispatcher (D.38).** New
+  `CalendarEmailService` in `apps/api/src/modules/calendar-email/`
+  wires CalendarService (B.S6 ICS generator) + IEmailProvider (D.27
+  factory: FakeEmailProvider in dev, fails-fast in prod until Resend
+  lands in Infisical) into a single `sendInviteForTask(orgId,
+  taskId, action)` method. **Hooks**: `TasksService.create` /
+  `update` / `archive` fire the dispatcher OUTSIDE the withTenant tx
+  as a void promise — best-effort posture, never blocks or rolls
+  back a task write. Action selection: create-with-scheduled →
+  REQUEST; update where scheduled stays set → UPDATE; update
+  clearing scheduled → CANCEL; archive of a scheduled task →
+  CANCEL. **Idempotency columns** (B.S5 `ics_sent_at` /
+  `ics_cancelled_at`) updated per-attendee inside the dispatcher's
+  own tx so partial failures leave a precise audit. **Resend
+  attachment plumbing** added to `IEmailProvider` (optional
+  `attachments?: EmailAttachment[]` — non-breaking; D.27 members
+  invite path keeps working unchanged) and to `ResendEmailProvider`
+  (base64 + contentType forwarded so Hebrew ICS survives transit
+  cleanly and Gmail/Outlook recognise the .ics as iCalendar).
+  **Tests** `calendar-email.service.spec.ts` (7/7 green against
+  real Neon dev): create+sent_at, cancel+cancelled_at,
+  no-scheduled-skip, no-attendees-skip, no-email-skip (column stays
+  null for audit), provider-rejects-one-attendee-the-other-still-
+  ships (partial-success audit), provider-throws-caught-counted-as-
+  failed-never-rethrown. **Real HTTP smoke vs Neon dev** (raw paste
+  in PR description): signup -> 2 owners -> POST /tasks with
+  scheduledAt + location (201) -> attach 2 attendees via
+  withTenant helper (no CRUD endpoint yet; respects RLS) -> PATCH
+  /tasks/<id> triggers UPDATE hook -> DB query shows
+  `ics_sent_at` populated for both attendees -> DELETE
+  /tasks/<id> (204) triggers CANCEL hook -> DB query shows
+  `ics_cancelled_at` populated for both. **Verify**: api typecheck
+  - lint clean, calendar-email spec 7/7 vs real Neon, full repo
+  typecheck (8/8 packages) clean, api gen:api-docs:check clean
+  (no shared-types touch). **Open Track B PR list at branch push
+  time** = empty (serialize discipline self-check). **Wrinkle**
+  fixed during dev: initial import order placed
+  `../members/invite-email` before `../calendar/calendar.service`
+  alphabetically wrong per eslint `import/order` — fixed inline.
+  **Next slice B.S8** (per master plan): tenant portal extensions
+  (D.40) or attendees CRUD endpoint to remove the withTenant-helper
+  smoke workaround.
+  <!-- END AGENT HEARTBEATS -->
 
 ## Legacy heartbeats (pre-migration; preserved for context)
 

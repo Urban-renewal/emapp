@@ -20,6 +20,16 @@ import { Topbar } from './_components/topbar';
  * (V10-S4 — Provider tier paths require provider_access_token; org
  * paths require access_token), so by the time this Server Component
  * runs, the session is whichever tier the URL implied.
+ *
+ * V11 A.S2 — restructured to match partner AppShell:
+ *   Outer: flex row (RTL flow places Sidebar visually on the right).
+ *   Sidebar: full-height navy panel (240px).
+ *   Main column: TopBar (64px) at top + scrollable content below.
+ *
+ * Prior layout was Topbar-full-width-on-top + Sidebar/main row below;
+ * the partner design puts Sidebar full-height alongside a TopBar-only-
+ * over-main layout. Both Sidebar and TopBar still receive the same
+ * session data; the restructure is purely visual.
  */
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await getCurrentSessionUser();
@@ -27,12 +37,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <QueryProvider>
-      <div className="flex h-screen flex-col">
-        <Topbar user={session} />
-        <div className="flex flex-1 overflow-hidden">
-          <Sidebar role={session.profile.role} />
-          <main className="flex-1 overflow-auto p-6">{children}</main>
-        </div>
+      <div className="flex h-screen" style={{ background: 'var(--bg-app)' }}>
+        <Sidebar
+          role={session.profile.role}
+          userName={session.profile.name}
+          userRole={session.profile.role}
+          tier={session.tier}
+        />
+        <main className="flex min-w-0 flex-1 flex-col">
+          <Topbar user={session} />
+          <div className="flex-1 overflow-auto p-6">{children}</div>
+        </main>
         <AuthGuard />
       </div>
     </QueryProvider>

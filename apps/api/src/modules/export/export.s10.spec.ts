@@ -27,14 +27,17 @@ import {
   auditLog,
   buildings,
   encryptOwnerPii,
+  memberships,
   owners,
   ownerships,
+  projectAssignments,
+  users,
   withTenant,
 } from '@emapp/db';
 import { and, desc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { pool } from '../../../../../packages/db/src/client';
+import { db, pool } from '../../../../../packages/db/src/client';
 import { createTestOrg, type TestOrg } from '../../../../../packages/db/test/factories';
 import { setupTestDatabase } from '../../../../../packages/db/test/setup';
 import type { AccessTokenPayload } from '../auth/auth.service';
@@ -284,6 +287,85 @@ describe('V11 B.S10 · ExportComposerService — project export (Phase 7)', () =
     await expect(
       svc.composeProjectExport(userOf(orgA), orgB.projects[0]!.id, 'xlsx'),
     ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('2b) agent without an active project_assignments row → 404 (D.17 scope-to-assigned)', async () => {
+    // Create an agent user in orgA + a membership but NO project assignment.
+    // Uses the bare `db` (no RLS) — matches the pattern factories.ts uses
+    // for org/user/membership setup, since RLS on users + memberships is
+    // managed via the provider tier, not the app_user tenant scope.
+    const [u] = await db
+      .insert(users)
+      .values({
+        email: `agent-noassign-${Date.now()}-${Math.random()}@test.local`,
+        name: 'Unassigned Agent',
+        passwordHash: '$2b$12$placeholder',
+      })
+      .returning({ id: users.id });
+    await db.insert(memberships).values({
+      userId: u!.id,
+      orgId: orgA.id,
+      role: 'agent',
+      isPrimary: false,
+      acceptedAt: new Date(),
+    });
+    const agentUserId = u!.id;
+    const agentPayload: AccessTokenPayload = {
+      sub: agentUserId,
+      orgId: orgA.id,
+      role: 'agent',
+      sid: '00000000-0000-0000-0000-000000000000',
+      type: 'access',
+      iat: 0,
+      exp: 0,
+    } as unknown as AccessTokenPayload;
+    await expect(
+      svc.composeProjectExport(agentPayload, orgA.projects[0]!.id, 'xlsx'),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('2c) agent WITH an active project_assignments row → composes the project (positive scope test)', async () => {
+    const [u] = await db
+      .insert(users)
+      .values({
+        email: `agent-assigned-${Date.now()}-${Math.random()}@test.local`,
+        name: 'Assigned Agent',
+        passwordHash: '$2b$12$placeholder',
+      })
+      .returning({ id: users.id });
+    await db.insert(memberships).values({
+      userId: u!.id,
+      orgId: orgA.id,
+      role: 'agent',
+      isPrimary: false,
+      acceptedAt: new Date(),
+    });
+    // project_assignments IS tenant-RLS-scoped — insert via withTenant
+    // so the org_id GUC matches the parent project's org.
+    await withTenant(orgA.id, async (tx) => {
+      await tx.insert(projectAssignments).values({
+        projectId: orgA.projects[0]!.id,
+        userId: u!.id,
+        roleInProject: 'agent',
+        assignedBy: orgA.users[0]!.id,
+      });
+    });
+    const agentUserId = u!.id;
+    const assignedProjectId = orgA.projects[0]!.id;
+    const agentPayload: AccessTokenPayload = {
+      sub: agentUserId,
+      orgId: orgA.id,
+      role: 'agent',
+      sid: '00000000-0000-0000-0000-000000000000',
+      type: 'access',
+      iat: 0,
+      exp: 0,
+    } as unknown as AccessTokenPayload;
+    const { input } = await svc.composeProjectExport(agentPayload, assignedProjectId, 'xlsx');
+    expect(input.project.id).toBe(assignedProjectId);
+    // The full sub-tree should still be readable (agent gets the SAME
+    // payload as a manager once visibility is granted).
+    expect(input.buildings.length).toBeGreaterThan(0);
   });
 
   it('3) archived owner + ended ownership are filtered out (no leak via archived owner row)', async () => {

@@ -6,6 +6,7 @@ import {
   decryptOwnerPii,
   owners,
   ownerships,
+  projectAssignments,
   projects,
   users,
   withTenant,
@@ -72,18 +73,45 @@ export class ExportComposerService {
       user.orgId,
       async (tx) => {
         // 1) Project — 404 if missing or wrong org (RLS handles the
-        //    org scoping; missing rows surface as undefined).
-        const [project] = await tx
-          .select({
-            id: projects.id,
-            name: projects.name,
-            type: projects.type,
-            status: projects.status,
-            description: projects.description,
-          })
-          .from(projects)
-          .where(eq(projects.id, projectId))
-          .limit(1);
+        //    org scoping; missing rows surface as undefined). For
+        //    agents, additionally INNER JOIN project_assignments so
+        //    an unassigned project surfaces as 404 (matches the
+        //    posture of `ProjectsService.get()` — D.17: agent reads
+        //    ONLY projects in an active project_assignments row).
+        //    Closes the known-debt I documented in
+        //    `ExportController` § "Manager/Agent/Viewer".
+        const [project] =
+          user.role === 'agent'
+            ? await tx
+                .select({
+                  id: projects.id,
+                  name: projects.name,
+                  type: projects.type,
+                  status: projects.status,
+                  description: projects.description,
+                })
+                .from(projects)
+                .innerJoin(
+                  projectAssignments,
+                  and(
+                    eq(projectAssignments.projectId, projects.id),
+                    eq(projectAssignments.userId, user.sub),
+                    isNull(projectAssignments.unassignedAt),
+                  ),
+                )
+                .where(eq(projects.id, projectId))
+                .limit(1)
+            : await tx
+                .select({
+                  id: projects.id,
+                  name: projects.name,
+                  type: projects.type,
+                  status: projects.status,
+                  description: projects.description,
+                })
+                .from(projects)
+                .where(eq(projects.id, projectId))
+                .limit(1);
         if (!project) {
           throw new NotFoundException({ error: { code: 'not_found' } });
         }

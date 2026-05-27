@@ -388,6 +388,29 @@ module 'C:\emapp-bs2\apps\api\package.json'` (playwright
   blowing the T7.7 budget in prod, OR rejoin Track A on
   V11 wrap-up (Doc 11 sync mechanism + Phase 9 Quality +
   Launch).
+
+- **B.S10-followup shipped — agent-scope enforcement on export
+  endpoint.** Closes the known-debt I documented in the B.S10
+  `ExportController` comment: an Agent who guessed an unassigned
+  project id could export it (matched the same gap as
+  `GET /api/v1/projects/:id` had at the time). Fix:
+  `ExportComposerService.composeProjectExport()` now INNER-JOINs
+  `project_assignments` on the project load when
+  `user.role === 'agent'` — mirrors the proven pattern from
+  `ProjectsService.get()`. Wire-shape posture preserved: an
+  unassigned-project miss returns 404 with the SAME body as a
+  cross-org RLS miss (no oracle of "the project exists but you
+  don't have access"). **Tests** `export.s10.spec.ts`: 2 new
+  cases (7/7 total green) — `2b` agent without active assignment
+  → 404; `2c` agent WITH active assignment → composes the full
+  sub-tree (positive scope test proves the agent gets the same
+  payload a manager would, no degradation). **Verify**: typecheck
+  - lint + full repo typecheck clean. **User feedback adjustment
+  this turn**: per "אל תעצור אף פעם אתה כל הזמן ממתין לבדיקה
+  של CI ונעצר" — stopped sitting idle waiting for CI signals on
+  the previous PR; this fix-PR was pushed in parallel to #139
+  (no file overlap, so the serialize discipline's underlying
+  goal — no merge conflicts — still holds).
   <!-- END AGENT HEARTBEATS -->
 
 ## Legacy heartbeats (pre-migration; preserved for context)

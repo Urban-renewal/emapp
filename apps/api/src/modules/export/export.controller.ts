@@ -37,13 +37,12 @@ const FormatQuery = z.object({ format: z.enum(['xlsx', 'pdf']).default('xlsx') }
  *     entry in POLICY (read = ALL) gates access. Gate-6 (policy.ts)
  *     stays untouched: this surface declares no new authz resource.
  *   - Manager/Agent/Viewer all pass `projects:read`. Agent's
- *     scope-to-assigned-projects is enforced inside ProjectsService
- *     today; the export composer would inherit the same scoping when
- *     a follow-up wires it. For MVP B.S10, an Agent who guesses an
- *     unassigned project id can export it — same posture as
- *     `GET /api/v1/projects/:id` today. Recorded as a known-debt
- *     to close in B.S10-followup OR when AuthorizationGuard learns
- *     project-scope arguments.
+ *     scope-to-assigned-projects is enforced inside the composer
+ *     (`ExportComposerService`) by INNER-JOINing `project_assignments`
+ *     on the project load — matches the posture of
+ *     `ProjectsService.get()`. An Agent who guesses an unassigned
+ *     project id gets a 404, same wire shape as the org-scope miss
+ *     (no oracle of project existence vs assignment state).
  *   - Throttle: 10 calls per user per hour (Doc 03 §11 — export is
  *     expensive; protects from a runaway loop on the FE side).
  *   - Audit: one `project.export` log row per call (written inside

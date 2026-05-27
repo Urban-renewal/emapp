@@ -9,6 +9,7 @@ import {
   organizations,
   otpCodes,
   owners,
+  tenantSessions,
 } from '@emapp/db';
 import { normalizeIsraeliPhone } from '@emapp/validators';
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
@@ -29,7 +30,11 @@ const TTL_MS = 5 * 60 * 1000; // OTP valid 5 min (Doc 08 §4)
 const MAX_ATTEMPTS = 5;
 const RL_WINDOW_MS = 15 * 60 * 1000;
 const RL_MAX = 3; // 3 requests / 15 min / phone (GATE 4)
-const TENANT_ACCESS_TTL_SEC = 30 * 60;
+// Wave 4 M-1: dropped 30→10 min as the interim mitigation for the
+// "stolen-phone full TTL access" hole. The structural fix is the
+// tenant_sessions revocation gate (POST /portal/logout); the TTL drop
+// just bounds the worst case before the user notices and revokes.
+const TENANT_ACCESS_TTL_SEC = 10 * 60;
 const JWT_ISS = 'emapp';
 // Tier-isolated audience (audit-pass 2026-05-20 / D.29): distinct from
 // 'emapp-api' (org) and 'emapp-provider' (provider). Tier confusion is
@@ -188,8 +193,36 @@ export class OtpService {
       throw invalid;
     }
 
+    // Wave 4 M-1 — insert tenant_sessions row FIRST so we can embed its
+    // id in the JWT `sid` claim. Pre-auth context (no app.organization_id
+    // GUC) → uses the BYPASSRLS pool, same as auth_sessions inserts.
+    // tenant_sessions has NO RLS (auth infrastructure, like auth_sessions
+    // per migration 0018). org_id is explicit, written from row.orgId.
+    //
+    // The narrowing below mirrors the audit branches above — otpCodes
+    // schema permits NULL for ownerId/orgId (legacy), but the insert
+    // path always sets both. Defence-in-depth: if either is null we
+    // throw the generic 401 rather than emit a malformed row.
+    if (!row.ownerId || !row.orgId) throw invalid;
+    const [session] = await db
+      .insert(tenantSessions)
+      .values({
+        ownerId: row.ownerId,
+        orgId: row.orgId,
+        expiresAt: new Date(Date.now() + TENANT_ACCESS_TTL_SEC * 1000),
+        ip: ctx?.ip,
+        userAgent: ctx?.userAgent,
+      })
+      .returning({ id: tenantSessions.id });
+    if (!session) throw invalid; // defence in depth — should never happen
     const accessToken = this.jwt.sign(
-      { sub: row.ownerId, orgId: row.orgId, role: 'tenant', type: 'tenant_access' },
+      {
+        sub: row.ownerId,
+        orgId: row.orgId,
+        role: 'tenant',
+        type: 'tenant_access',
+        sid: session.id,
+      },
       { expiresIn: TENANT_ACCESS_TTL_SEC, issuer: JWT_ISS, audience: JWT_AUD, algorithm: 'HS256' },
     );
     // G1a: success audit. Tenant identity = owner row (not users) → actor_id

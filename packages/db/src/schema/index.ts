@@ -10,6 +10,7 @@ export * from './imports';
 export * from './mapping-templates';
 export * from './auth-sessions';
 export * from './provider-sessions';
+export * from './tenant-sessions';
 export * from './otp';
 // ./auth (ba_* Better Auth tables) is DEPRECATED per D.21 — Better Auth was
 // removed from the auth path. Tables remain physically (migration 0016) but

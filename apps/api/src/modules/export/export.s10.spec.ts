@@ -397,13 +397,21 @@ describe('V11 B.S10 · ExportComposerService — project export (Phase 7)', () =
     expect(rowCount).toBe(0);
   });
 
-  it('5) auditLog — writes one `project.export` row per call with action + targetId + afterState.format', async () => {
+  it('5) auditLog — writes one `project.export.requested` row per call with action + targetId + afterState.format (Wave 5 E-C1)', async () => {
+    // Wave 5 E-C1 (errors audit 2026-05-28): the composer now writes
+    // a pre-flight `project.export.requested` row (committed in the
+    // composer tx). The controller writes a paired
+    // `project.export.delivered` (or `.failed`) AFTER the renderer —
+    // covered by the post-render outcome assertion below.
     const before = await withTenant(orgA.id, (tx) =>
       tx
         .select({ id: auditLog.id })
         .from(auditLog)
         .where(
-          and(eq(auditLog.action, 'project.export'), eq(auditLog.targetId, orgA.projects[0]!.id)),
+          and(
+            eq(auditLog.action, 'project.export.requested'),
+            eq(auditLog.targetId, orgA.projects[0]!.id),
+          ),
         )
         .orderBy(desc(auditLog.createdAt))
         .limit(5),
@@ -420,15 +428,62 @@ describe('V11 B.S10 · ExportComposerService — project export (Phase 7)', () =
         })
         .from(auditLog)
         .where(
-          and(eq(auditLog.action, 'project.export'), eq(auditLog.targetId, orgA.projects[0]!.id)),
+          and(
+            eq(auditLog.action, 'project.export.requested'),
+            eq(auditLog.targetId, orgA.projects[0]!.id),
+          ),
         )
         .orderBy(desc(auditLog.createdAt))
         .limit(beforeCount + 1),
     );
     expect(after.length).toBeGreaterThan(beforeCount);
     const newest = after[0]!;
-    expect(newest.action).toBe('project.export');
+    expect(newest.action).toBe('project.export.requested');
     expect(newest.targetId).toBe(orgA.projects[0]!.id);
     expect((newest.afterState as { format?: string }).format).toBe('pdf');
+  });
+
+  it('6) Wave 5 E-C1 — auditExportOutcome writes a `project.export.delivered` row in a fresh tx', async () => {
+    await svc.auditExportOutcome(userOf(orgA), orgA.projects[0]!.id, 'xlsx', 'delivered', {
+      bytes: 12345,
+    });
+    const [row] = await withTenant(orgA.id, (tx) =>
+      tx
+        .select({ action: auditLog.action, afterState: auditLog.afterState })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.action, 'project.export.delivered'),
+            eq(auditLog.targetId, orgA.projects[0]!.id),
+          ),
+        )
+        .orderBy(desc(auditLog.createdAt))
+        .limit(1),
+    );
+    expect(row).toBeDefined();
+    expect(row!.action).toBe('project.export.delivered');
+    expect((row!.afterState as { bytes?: number }).bytes).toBe(12345);
+  });
+
+  it('7) Wave 5 E-C1 — auditExportOutcome writes a `project.export.failed` row with the error tag', async () => {
+    await svc.auditExportOutcome(userOf(orgA), orgA.projects[0]!.id, 'pdf', 'failed', {
+      errorTag: 'TimeoutError',
+    });
+    const [row] = await withTenant(orgA.id, (tx) =>
+      tx
+        .select({ action: auditLog.action, afterState: auditLog.afterState })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.action, 'project.export.failed'),
+            eq(auditLog.targetId, orgA.projects[0]!.id),
+          ),
+        )
+        .orderBy(desc(auditLog.createdAt))
+        .limit(1),
+    );
+    expect(row).toBeDefined();
+    expect(row!.action).toBe('project.export.failed');
+    expect((row!.afterState as { error?: string }).error).toBe('TimeoutError');
   });
 });

@@ -12,7 +12,7 @@ import { AuthGuard } from '../auth/guards/auth.guard';
 import { TenantGuard } from '../auth/guards/tenant.guard';
 
 import { ExportComposerService } from './export-composer.service';
-import { ExportService } from './export.service';
+import { ExportService, type ProjectExportInput } from './export.service';
 import { PdfExportService } from './pdf-export.service';
 
 const UuidParam = new ZodValidationPipe(z.string().uuid());
@@ -75,19 +75,55 @@ export class ExportController {
       });
     }
 
-    const { input } = await this.composer.composeProjectExport(user, projectId, query.format);
+    const composed = await this.composer.composeProjectExport(user, projectId, query.format);
 
-    const buf = await (query.format === 'pdf'
-      ? this.pdf.renderProjectPdf(input)
-      : this.xlsx.renderProjectXlsx(input));
+    // Wave 5 E-C2 (errors audit 2026-05-28) — PII hygiene: pre-extract
+    // the only field the post-render header logic needs (project name),
+    // and use a mutable `let` so we can null out the cleartext-bearing
+    // `input` object the moment the renderer returns. Combined with the
+    // try/finally below this means the decrypted PII array is eligible
+    // for GC BEFORE the response headers/body flush — instead of
+    // staying live through `reply.header()` calls and the buffer write.
+    const projectName = composed.input.project.name;
+    const ext = query.format === 'pdf' ? 'pdf' : 'xlsx';
+    let input: ProjectExportInput | null = composed.input;
+
+    let buf: Buffer;
+    try {
+      buf = await (query.format === 'pdf'
+        ? this.pdf.renderProjectPdf(input)
+        : this.xlsx.renderProjectXlsx(input));
+    } catch (e) {
+      // Wave 5 E-C1: pair the requested-row with a failure outcome row.
+      // Best-effort; never blocks the user response (which is already
+      // an exception bubble). Error tag is short + non-leaky (no cwd /
+      // stack / file paths — E-H3 covers cwd in pdf-export separately).
+      input = null;
+      const errorTag =
+        e instanceof Error ? (e.name === 'Error' ? 'render_error' : e.name) : 'render_error';
+      await this.composer.auditExportOutcome(user, projectId, query.format, 'failed', { errorTag });
+      throw e;
+    }
+
+    // Render succeeded — drop the cleartext-bearing input reference so
+    // the GC can reclaim the decrypted owner array before we flush
+    // headers + body. The renderer no longer needs `input`; everything
+    // downstream uses `projectName` + `buf`.
+    input = null;
+
+    // Wave 5 E-C1: pair the requested-row with the delivered outcome.
+    // Awaited so the audit row hits the DB before the response — but
+    // best-effort inside the helper (E-C1 doc clarifies the requested
+    // row is the gate; this one is the outcome marker).
+    await this.composer.auditExportOutcome(user, projectId, query.format, 'delivered', {
+      bytes: buf.byteLength,
+    });
 
     // ── Content-Disposition with Hebrew-safe filename ────────────────
     // RFC 6266 + RFC 5987: emit BOTH a plain ASCII `filename=` and
     // the percent-encoded `filename*=UTF-8''…` form. Modern clients
     // (Chrome / Firefox / Safari / curl 8+) prefer the UTF-8 form;
     // ancient clients fall back to the ASCII slug.
-    const projectName = input.project.name;
-    const ext = query.format === 'pdf' ? 'pdf' : 'xlsx';
     const asciiSlug = asciiSafeSlug(projectName) || `project-${projectId}`;
     const utf8Encoded = encodeURIComponent(`${projectName}.${ext}`);
     const dispositionHeader =

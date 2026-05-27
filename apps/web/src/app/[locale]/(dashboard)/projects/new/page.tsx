@@ -9,7 +9,7 @@ import {
 import { ArrowLeft, ArrowRight, Building2, Plus, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { useCreateProject } from '@/hooks/use-projects';
@@ -118,6 +118,12 @@ export default function NewProjectPage() {
   });
   const [stepError, setStepError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
+  // Synchronous in-flight guard — useRef value is updated immediately
+  // (no render-cycle latency), so a second submit that arrives before
+  // React re-renders `mutation.isPending` still sees the flag and bails.
+  // j2 e2e caught a 2-POST regression without this; the ref closes
+  // that race.
+  const submitInFlightRef = useRef(false);
 
   function canAdvanceFromStep1(): true | string {
     if (!state.name.trim()) return tw('validation.nameRequired');
@@ -147,22 +153,37 @@ export default function NewProjectPage() {
   }
 
   async function onSubmit() {
+    // Two guards against double-fire (j2 e2e caught a 2-POST regression):
+    //  1. `submitInFlightRef` — synchronous ref check; closes the
+    //     React-render-latency race where `mutation.isPending` hasn't
+    //     flipped to true yet before a second call lands.
+    //  2. `state.step !== 3` — defensive: the Create button only
+    //     renders at step 3, but if any earlier click bubbles to the
+    //     form's onSubmit (shadcn Button quirk, stray keyboard Enter
+    //     on an input, etc.), we must not POST.
+    if (submitInFlightRef.current || state.step !== 3) return;
+    submitInFlightRef.current = true;
     setServerError(null);
     setStepError(null);
     const candidate = toCreateInput(state);
     const parsed = CreateProjectInput.safeParse(candidate);
     if (!parsed.success) {
       setServerError(t('createFailed'));
+      submitInFlightRef.current = false;
       return;
     }
     try {
       const project = await mutation.mutateAsync(parsed.data);
       router.push(`/projects/${project.id}`);
+      // Intentionally NOT releasing the ref on success — the component
+      // is about to unmount via router.push; releasing would allow a
+      // late re-render to double-POST during the navigation window.
     } catch (e) {
       // Anti-enumeration generic — same UX whether server-side validation
       // failed, RBAC failed, or network failed.
       if (e instanceof ApiClientError) setServerError(t('createFailed'));
       else setServerError(t('createFailed'));
+      submitInFlightRef.current = false;
     }
   }
 

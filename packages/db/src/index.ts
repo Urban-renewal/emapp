@@ -71,6 +71,7 @@ export {
   encryptOwnerPiiBatch,
   decryptOwnerPii,
   decryptOwnerPiiBatch,
+  decryptOwnerNamesBatch,
   encryptOwnerName,
   decryptOwnerName,
   hashOwnerName,
@@ -79,6 +80,7 @@ export {
   decryptField,
   type EncryptedOwnerRow,
   type DecryptedOwnerRow,
+  type EncryptedOwnerNameRow,
 } from './helpers/owners';
 export {
   purgeImportBytes,

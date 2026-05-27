@@ -1,5 +1,5 @@
 import {
-  decryptOwnerName,
+  decryptOwnerNamesBatch,
   owners,
   taskExternalAttendees,
   tasks,
@@ -141,16 +141,24 @@ export class CalendarEmailService {
         return { sent: 0, skipped: 0, failed: 0 };
       }
 
-      // 4. Decrypt names (pgcrypto round-trip via the withTenant GUC).
-      //    Done in parallel since each decrypt is one round-trip and
-      //    typical attendee counts are small (<20).
-      const attendees: Array<IcsAttendeeInput & { _attendeeId: string }> = await Promise.all(
-        attendeeRows.map(async (r) => ({
+      // 4. Decrypt names in ONE pgcrypto round-trip via the batched
+      //    helper (was N round-trips serialised on the single tx
+      //    connection — Promise.all does NOT parallelise drizzle calls
+      //    on a single tx). Audit H1-perf fix: a 20-attendee task
+      //    dropped from ~1 s to ~50 ms on Neon. Promise.all inside the
+      //    tx had been blocking the row lock until ICS dispatch.
+      const decrypted = await decryptOwnerNamesBatch(
+        tx as unknown as Parameters<typeof decryptOwnerNamesBatch>[0],
+        attendeeRows.map((r) => ({ key: r.attendeeId, nameEncrypted: r.nameEncrypted })),
+      );
+      const nameByAttendeeId = new Map(decrypted.map((d) => [d.key, d.name]));
+      const attendees: Array<IcsAttendeeInput & { _attendeeId: string }> = attendeeRows.map(
+        (r) => ({
           _attendeeId: r.attendeeId,
           ownerId: r.ownerId,
-          name: await decryptOwnerName(tx, r.nameEncrypted),
+          name: nameByAttendeeId.get(r.attendeeId) ?? '',
           email: r.email,
-        })),
+        }),
       );
 
       // 5. Generate ICS once (same payload for all attendees).

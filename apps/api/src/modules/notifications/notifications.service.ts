@@ -39,6 +39,27 @@ function toNotification(r: typeof notifications.$inferSelect): Notification {
  */
 @Injectable()
 export class NotificationsService {
+  /**
+   * Audit M2-perf fix — dedicated unread-count endpoint. The Manager
+   * dashboard bell polls this every ~30s; without a single-shot count,
+   * the FE has been hitting GET /api/v1/notifications?limit=100 and
+   * counting client-side (full row payload over the wire + RLS scan).
+   * This uses the partial index `idx_notifications_user_unread`
+   * (read_at IS NULL) for a constant-time count.
+   */
+  async unreadCount(user: AccessTokenPayload): Promise<{ count: number }> {
+    const result = await withTenant(
+      user.orgId,
+      async (tx) =>
+        tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(notifications)
+          .where(isNull(notifications.readAt)),
+      { userId: user.sub },
+    );
+    return { count: result[0]?.count ?? 0 };
+  }
+
   async list(
     user: AccessTokenPayload,
     query: { limit: number; cursor?: string },

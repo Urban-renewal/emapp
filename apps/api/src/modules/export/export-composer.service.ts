@@ -284,12 +284,20 @@ export class ExportComposerService {
         };
         const rowCount = decryptedOwners.length || aptRows.length;
 
-        // 8) Audit (inside the same tx so RLS + actor are consistent).
+        // 8) Audit — Wave 5 E-C1 (errors audit 2026-05-28): write the
+        //    PRE-flight `project.export.requested` row in the same tx
+        //    as the read (RLS + actor consistent; commits as soon as
+        //    the composer returns). The controller writes a paired
+        //    `project.export.delivered` or `project.export.failed` row
+        //    AFTER the renderer outcome — so the forensic story
+        //    distinguishes "audit-says-yes-and-user-got-bytes" from
+        //    "audit-says-yes-but-renderer-threw" (previously
+        //    indistinguishable, ISO 27001 A.12.4 violation).
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',
-          action: 'project.export',
+          action: 'project.export.requested',
           targetTable: 'projects',
           targetId: projectId,
           afterState: { format, rowCount },
@@ -304,6 +312,59 @@ export class ExportComposerService {
       `composed project ${projectId} → ${format} input (${result.rowCount} rows, ${Date.now() - t0}ms)`,
     );
     return result;
+  }
+
+  /**
+   * Wave 5 E-C1 — record the export OUTCOME (delivered or failed) in a
+   * fresh `withTenant` tx after the renderer returns. Best-effort: a
+   * failure to write this auxiliary audit row logs loudly but does not
+   * fail the user-facing response (the `project.export.requested` row
+   * from `composeProjectExport` is the gate; this one is the outcome
+   * marker the compliance dashboard pairs against it).
+   *
+   * Outcome values:
+   *   - `'delivered'` — renderer returned a buffer; bytes are about
+   *     to flush to the wire.
+   *   - `'failed'` — renderer threw; the user will see a 500. The
+   *     `error` field carries a short tag (Chromium / ExcelJS / etc),
+   *     never the raw error message or stack (would leak cwd / file
+   *     paths per E-H3).
+   */
+  async auditExportOutcome(
+    user: AccessTokenPayload,
+    projectId: string,
+    format: 'xlsx' | 'pdf',
+    outcome: 'delivered' | 'failed',
+    extra?: { rowCount?: number; bytes?: number; errorTag?: string },
+  ): Promise<void> {
+    try {
+      await withTenant(
+        user.orgId,
+        async (tx) => {
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+            orgId: user.orgId,
+            actorId: user.sub,
+            actorType: 'user',
+            action: outcome === 'delivered' ? 'project.export.delivered' : 'project.export.failed',
+            targetTable: 'projects',
+            targetId: projectId,
+            afterState: {
+              format,
+              rowCount: extra?.rowCount,
+              bytes: extra?.bytes,
+              error: extra?.errorTag,
+            },
+            sessionId: user.sid,
+          });
+        },
+        { userId: user.sub },
+      );
+    } catch (e) {
+      // Best-effort: forensic auxiliary, not the gate. Log + move on.
+      this.logger.error(
+        `audit(project.export.${outcome}) failed (project=${projectId}): ${e instanceof Error ? e.message : 'unknown'} — request continues; requested-row is the gate`,
+      );
+    }
   }
 }
 

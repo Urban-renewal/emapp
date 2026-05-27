@@ -640,17 +640,42 @@ async function runExtensions(orgId: string): Promise<void> {
 
 async function runDocuments(orgId: string): Promise<void> {
   await withBootstrap(async (tx) => {
-    // Resolve the project + manager + per-apt ids we need for FK columns.
+    // Resolve the Pilot project by NAME — NOT .limit(1). Smoke-test agents
+    // create many projects under Alpha; picking "the first" picked a smoke
+    // project at one point, attaching all seed documents to it (the
+    // verification surfaced this — projectId pointed to 7db8ce03... instead
+    // of c1ed4913...). Filtering by PROJECT_NAME is the stable identifier.
     const proj = await tx
       .select({ id: projects.id })
       .from(projects)
-      .where(eq(projects.orgId, orgId))
+      .where(and(eq(projects.orgId, orgId), eq(projects.name, PROJECT_NAME)))
       .limit(1);
     if (proj.length === 0) {
-      console.log('[seed-dev/docs] no Alpha project found — skipping documents.');
+      console.log('[seed-dev/docs] Pilot project not found — skipping documents.');
       return;
     }
     const projectId = proj[0]!.id;
+
+    // Corrective UPDATE: if seed-created documents (recognized by r2Key
+    // prefix `documents/{orgId}/`) currently point to a different
+    // projectId, fix them. Idempotent — sets only rows where projectId
+    // differs from the now-correct Pilot id.
+    const fixedProjectId = await tx
+      .update(documents)
+      .set({ projectId, updatedAt: new Date() })
+      .where(
+        and(
+          eq(documents.orgId, orgId),
+          sql`${documents.r2Key} LIKE ${`documents/${orgId}/%`}`,
+          sql`${documents.projectId} <> ${projectId}`,
+        ),
+      )
+      .returning({ id: documents.id });
+    if (fixedProjectId.length > 0) {
+      console.log(
+        `[seed-dev/docs] corrected projectId on ${fixedProjectId.length} previously-misattributed documents.`,
+      );
+    }
 
     const mgr = await tx
       .select({ id: users.id })

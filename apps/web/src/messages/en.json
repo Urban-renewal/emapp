@@ -133,6 +133,40 @@
     "viewCards": "Cards view",
     "viewTable": "Table view",
     "dataPendingHint": "Extended values (block/parcel/units/signatures/agents) will appear once the API is enriched",
+    "headerHint": "Extended values (contractor/signatures/agents/units) will appear once the API is enriched",
+    "kpi": {
+      "contractor": "Linked contractor",
+      "signatures": "Signatures received",
+      "agents": "Active agents",
+      "notLinked": "Not linked"
+    },
+    "export": {
+      "excel": "Export to Excel",
+      "pdf": "Export to PDF",
+      "comingSoon": "Coming soon — Phase 5"
+    },
+    "tab": {
+      "tenants": "Residents & assets",
+      "docs": "Documents & messages",
+      "tasks": "Tasks",
+      "dashboard": "Dashboard"
+    },
+    "tenantsTab": {
+      "title": "Manage buildings and residents",
+      "hint": "Resident management is handled via the project's buildings.",
+      "cta": "Open buildings list"
+    },
+    "docsTab": {
+      "title": "Documents, messages and signatures",
+      "hint": "Documents and messages are org-wide. Signature requests are created per project.",
+      "docsCta": "Open documents",
+      "signaturesCta": "Open signature requests"
+    },
+    "tasksTab": {
+      "title": "Project tasks",
+      "hint": "Per-project tasks will wire up in A.S12 (Calendar + ICS). In the meantime — the global tasks list.",
+      "cta": "Open tasks list"
+    },
     "column": {
       "name": "Project name",
       "type": "Type",

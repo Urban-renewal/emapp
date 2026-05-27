@@ -76,16 +76,18 @@ test.describe('§E-J9 — Sidebar role gating (Members + Audit are Manager-only)
 
     await page.goto('/he/');
 
-    // §AXIS-V — the role badge in the topbar proves getMe() resolved
-    // to a viewer. Scope to the <banner> landmark — the word "צופה"
-    // appears elsewhere on the PR-merge CI build (e.g. via members
-    // role filter / phase 4c additions), so an unscoped getByText
-    // hits a Playwright strict-mode violation. The topbar is the
-    // canonical role-badge surface.
+    // §AXIS-V — the role badge proves getMe() resolved to a viewer.
+    // V11 A.S2 reskin moved the identity block (avatar + name + role)
+    // from the topbar to the sidebar footer per partner design — the
+    // role badge now lives inside the <aside> landmark (implicit
+    // `complementary` role from the HTML element). Scope to that
+    // landmark to avoid Playwright strict-mode violations when the
+    // word "צופה" appears elsewhere on the page (e.g. members role
+    // filter / phase 4c additions).
     // `exact: true` — the mock user's display name (SEED_VIEWER =
     // "ויקי צופה") ALSO contains the substring "צופה"; the bare
     // role badge is the exact match.
-    await expect(page.getByRole('banner').getByText('צופה', { exact: true })).toBeVisible({
+    await expect(page.getByRole('complementary').getByText('צופה', { exact: true })).toBeVisible({
       timeout: 15_000,
     });
 
@@ -125,9 +127,10 @@ test.describe('§E-J9 — Sidebar role gating (Members + Audit are Manager-only)
     });
 
     await page.goto('/he/');
-    // Scope to topbar + exact match (see test 1 comment — display
-    // name "אבי סוכן" / "אבי אגנט" can collide).
-    await expect(page.getByRole('banner').getByText('אגנט', { exact: true })).toBeVisible({
+    // Scope to sidebar landmark + exact match (see test 1 comment —
+    // V11 A.S2 moved the role badge from topbar to sidebar footer;
+    // display name "אבי סוכן" / "אבי אגנט" can also contain "אגנט").
+    await expect(page.getByRole('complementary').getByText('אגנט', { exact: true })).toBeVisible({
       timeout: 15_000,
     });
 
@@ -154,9 +157,10 @@ test.describe('§E-J9 — Sidebar role gating (Members + Audit are Manager-only)
     });
 
     await page.goto('/he/');
-    // Scope to topbar + exact match — display name "מיכל מנהלת"
-    // contains substring "מנהל" which also matches role badge.
-    await expect(page.getByRole('banner').getByText('מנהל', { exact: true })).toBeVisible({
+    // Scope to sidebar landmark + exact match — V11 A.S2 moved the
+    // role badge from topbar to sidebar footer; display name "מיכל
+    // מנהלת" contains substring "מנהל" which also matches role badge.
+    await expect(page.getByRole('complementary').getByText('מנהל', { exact: true })).toBeVisible({
       timeout: 15_000,
     });
 

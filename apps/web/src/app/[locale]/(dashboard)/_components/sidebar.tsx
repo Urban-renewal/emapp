@@ -11,7 +11,6 @@ import {
   Home,
   Lock,
   Settings,
-  Shield,
   StickyNote,
   UserPlus,
   Users,
@@ -119,9 +118,10 @@ export function Sidebar({ role, userName, userRole, tier }: Props) {
     items.push({ href: '/audit', labelKey: 'audit', icon: History, enabled: true });
     items.push({ href: '/settings', labelKey: 'settings', icon: Settings, enabled: true });
   }
-  if (role === 'provider_admin') {
-    items.push({ href: '/provider', labelKey: 'provider', icon: Shield, enabled: true });
-  }
+  // V11 A.S13: provider_admin no longer mounted on the org Sidebar — the
+  // dashboard layout now branches to the dedicated PCSidebar for the
+  // provider tier so the visual + nav structure matches the partner
+  // Platform Console (13 nav items, 4 groups).
 
   function isActive(href: string): boolean {
     if (href === '/') return path === '/' || path === '';

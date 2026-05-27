@@ -527,6 +527,32 @@
       "audit": "Audit log",
       "systemHealth": "System health"
     },
+    "pcNav": {
+      "consoleTagline": "Platform Console",
+      "envChip": "Production · prod-il-1",
+      "stubHint": "Coming soon — a BE slice is needed before this becomes usable.",
+      "group": {
+        "overview": "Overview",
+        "biz": "Business",
+        "ops": "Operations & security",
+        "admin": "Platform admin"
+      },
+      "item": {
+        "overview": "Platform dashboard",
+        "orgs": "Organizations",
+        "users": "Users",
+        "plans": "Plans & pricing",
+        "billing": "Billing & subscriptions",
+        "support": "Support & inquiries",
+        "roles": "Roles & permissions",
+        "integrations": "Integrations",
+        "health": "System health",
+        "backups": "Backups & restore",
+        "audit": "Activity log",
+        "staff": "EMAPP staff",
+        "settings": "Platform settings"
+      }
+    },
     "gate": {
       "title": "Provider Admin access",
       "hint": "Every action here is recorded in the Provider audit log. Enter a meaningful reason for this session (e.g. ticket number, investigation).",

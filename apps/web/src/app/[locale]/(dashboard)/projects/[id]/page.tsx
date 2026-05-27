@@ -1,5 +1,6 @@
 'use client';
 
+import { Building2, FileSignature, FileSpreadsheet, FileText, ListChecks } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -12,6 +13,43 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { useArchiveProject, useProject } from '@/hooks/use-projects';
 import { ApiClientError } from '@/lib/api/errors';
 
+type TabId = 'tenants' | 'docs' | 'tasks' | 'dashboard';
+
+/**
+ * V11 A.S5 — ProjectPage reskin per
+ * `MEAPP_design/screens-projects.jsx` ProjectPage (lines 637-...).
+ *
+ * Layout:
+ *  - Header card (`.card .card-pad`): navy-50 building-icon block +
+ *    project name + StatusBadge + (Excel/PDF placeholder action
+ *    buttons disabled per `home.action.fieldTaskHint` pattern) +
+ *    meta line (type · createdRelative + archived chip if archived)
+ *    + 3-col KPI grid placeholder (contractor / signatures / agents,
+ *    all `—` until BE wire enrichment).
+ *  - Tabs nav (`.card overflow-hidden`): 4 tabs per partner ProjectPage
+ *    lines 911-915 — Tenants / Docs+Messages / Tasks / Dashboard.
+ *    Active tab gets `aria-selected="true"` + navy-900 bottom border;
+ *    inactive tabs use `text-muted` color.
+ *  - Tab content panels:
+ *     • דיירים → CTA card linking to `/projects/[id]/buildings` (the
+ *       existing per-project building/apartment management surface);
+ *       the partner design embeds a tenant table here but the org-tier
+ *       wire doesn't expose a per-project tenant aggregator today.
+ *     • מסמכים והודעות → empty-state with CTAs to `/documents` and
+ *       `/signature-requests`. Docs are org-wide; sigs are
+ *       per-project but the per-project filter is a future BE slice.
+ *     • משימות → empty-state pointing to `/tasks` (existing global
+ *       list). Per-project task scoping wires up in A.S12.
+ *     • לוח בקרה → keeps the previous detail content (description
+ *       + buildings/assignments/shares CTAs + archive action).
+ *       Acts as the home of "Project Details" until a richer dashboard
+ *       per `project-dashboard.jsx` lands in a polish slice.
+ *
+ * Routing / interactions preserved:
+ *  - Buildings / Assignments / Shares links unchanged.
+ *  - Archive flow unchanged (window.confirm + mutateAsync + router push).
+ *  - StatusBadge / NameDisplay / Button components untouched.
+ */
 export default function ProjectDetailPage() {
   const t = useTranslations('projects');
   const params = useParams<{ id: string }>();
@@ -20,6 +58,7 @@ export default function ProjectDetailPage() {
   const { data, isLoading, isError, error } = useProject(id);
   const archive = useArchiveProject();
   const [actionError, setActionError] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabId>('tenants');
 
   if (isLoading) return <ListSkeleton withRows={false} />;
 
@@ -27,7 +66,9 @@ export default function ProjectDetailPage() {
     const notFound = error instanceof ApiClientError && error.code === 'not_found';
     return (
       <div className="space-y-3">
-        <p className="text-sm text-destructive">{notFound ? t('notFound') : t('loadFailed')}</p>
+        <p className="text-sm" style={{ color: 'var(--danger-700)' }}>
+          {notFound ? t('notFound') : t('loadFailed')}
+        </p>
         <Button variant="outline" size="sm" onClick={() => router.push('/projects')}>
           {t('backToList')}
         </Button>
@@ -45,6 +86,8 @@ export default function ProjectDetailPage() {
       await archive.mutateAsync(id);
       router.push('/projects');
     } catch (e) {
+      // Both ApiClientError + generic Error collapse to the same UX:
+      // anti-enumeration generic "archive failed" message.
       if (e instanceof ApiClientError) {
         setActionError(t('archiveFailed'));
       } else {
@@ -53,75 +96,299 @@ export default function ProjectDetailPage() {
     }
   }
 
+  const tabs: ReadonlyArray<{ id: TabId; label: string }> = [
+    { id: 'tenants', label: t('tab.tenants') },
+    { id: 'docs', label: t('tab.docs') },
+    { id: 'tasks', label: t('tab.tasks') },
+    { id: 'dashboard', label: t('tab.dashboard') },
+  ];
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-bold">
-            <NameDisplay name={data.name} />
-          </h1>
-          <div className="flex items-center gap-2">
-            <StatusBadge color={data.statusColor}>{data.statusLabel}</StatusBadge>
-            <span className="text-xs text-muted-foreground">{data.typeLabel}</span>
-            <span className="text-xs text-muted-foreground">· {data.createdRelative}</span>
-            {data.isArchived && (
-              <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
-                {t('archived')}
-              </span>
-            )}
+    <div className="flex flex-col gap-4">
+      {/* Header card */}
+      <div className="card" style={{ padding: 22 }}>
+        <div className="flex items-start gap-4">
+          {/* Project icon block */}
+          <div
+            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl"
+            style={{ background: 'var(--navy-50)', color: 'var(--navy-900)' }}
+            aria-hidden="true"
+          >
+            <Building2 className="h-7 w-7" />
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex flex-wrap items-center gap-2.5">
+              <h1
+                className="truncate text-[26px] font-bold"
+                style={{ color: 'var(--text)', lineHeight: 1.15 }}
+              >
+                <NameDisplay name={data.name} />
+              </h1>
+              <StatusBadge color={data.statusColor}>{data.statusLabel}</StatusBadge>
+              {data.isArchived && (
+                <span className="badge badge-neutral">
+                  <span className="badge-dot" aria-hidden="true" />
+                  <span>{t('archived')}</span>
+                </span>
+              )}
+              <div className="ms-auto flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled
+                  aria-disabled="true"
+                  title={t('export.comingSoon')}
+                  aria-label={`${t('export.excel')} — ${t('export.comingSoon')}`}
+                  className="btn btn-secondary btn-sm disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{t('export.excel')}</span>
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  aria-disabled="true"
+                  title={t('export.comingSoon')}
+                  aria-label={`${t('export.pdf')} — ${t('export.comingSoon')}`}
+                  className="btn btn-secondary btn-sm disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{t('export.pdf')}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
+              {data.typeLabel} · {data.createdRelative}
+            </div>
+
+            {/* KPI placeholder grid — partner has agent avatars / contractor
+             *  name / signatures progress; the org-tier wire doesn't expose
+             *  these today, so we render the labels with `—` placeholders. */}
+            <div
+              className="mt-4 grid grid-cols-1 gap-4 pt-4 sm:grid-cols-3"
+              style={{ borderTop: '1px solid var(--border)' }}
+            >
+              {[
+                { key: 'contractor', label: t('kpi.contractor') },
+                { key: 'signatures', label: t('kpi.signatures') },
+                { key: 'agents', label: t('kpi.agents') },
+              ].map((kpi) => (
+                <div key={kpi.key}>
+                  <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    {kpi.label}
+                  </div>
+                  <div
+                    className="tabular mt-0.5 text-sm font-medium"
+                    style={{ color: 'var(--text)' }}
+                    aria-label={t('headerHint')}
+                    title={t('headerHint')}
+                  >
+                    —
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-        {!data.isArchived && (
-          <Button variant="outline" size="sm" onClick={onArchive} disabled={archive.isPending}>
-            {archive.isPending ? t('archiving') : t('archive')}
-          </Button>
-        )}
       </div>
 
-      {data.description && (
-        <div className="rounded-md border bg-card p-4">
-          <h2 className="text-sm font-semibold">{t('field.description')}</h2>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
-            <NameDisplay name={data.description} />
-          </p>
+      {/* Tabs nav + content */}
+      <div className="card" style={{ overflow: 'hidden' }}>
+        <div
+          role="tablist"
+          aria-label={data.name}
+          className="flex"
+          style={{
+            gap: 0,
+            borderBottom: '1px solid var(--border)',
+            padding: '0 8px',
+            background: 'var(--bg-surface)',
+          }}
+        >
+          {tabs.map((tabDef) => {
+            const active = tab === tabDef.id;
+            return (
+              <button
+                key={tabDef.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setTab(tabDef.id)}
+                style={{
+                  padding: '12px 16px',
+                  background: 'transparent',
+                  border: 0,
+                  fontSize: 14,
+                  fontWeight: active ? 600 : 400,
+                  color: active ? 'var(--navy-900)' : 'var(--text-muted)',
+                  borderBottom: `2px solid ${active ? 'var(--navy-900)' : 'transparent'}`,
+                  marginBottom: -1,
+                  cursor: 'pointer',
+                }}
+              >
+                {tabDef.label}
+              </button>
+            );
+          })}
         </div>
-      )}
 
-      <div className="rounded-md border bg-card p-4">
-        <h2 className="text-sm font-semibold">{t('buildingsSection')}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{t('buildingsHint')}</p>
-        <div className="mt-3">
-          <Button asChild variant="outline" size="sm">
-            <Link href={`/projects/${data.id}/buildings`}>{t('buildingsManage')}</Link>
-          </Button>
+        <div className="p-4">
+          {tab === 'tenants' && (
+            <TabEmptyCta
+              icon={<Building2 className="h-10 w-10" style={{ color: 'var(--text-soft)' }} />}
+              title={t('tenantsTab.title')}
+              hint={t('tenantsTab.hint')}
+              ctas={[
+                {
+                  label: t('tenantsTab.cta'),
+                  href: `/projects/${data.id}/buildings`,
+                  primary: true,
+                },
+              ]}
+            />
+          )}
+
+          {tab === 'docs' && (
+            <TabEmptyCta
+              icon={<FileSignature className="h-10 w-10" style={{ color: 'var(--text-soft)' }} />}
+              title={t('docsTab.title')}
+              hint={t('docsTab.hint')}
+              ctas={[
+                { label: t('docsTab.docsCta'), href: '/documents', primary: true },
+                { label: t('docsTab.signaturesCta'), href: '/signature-requests', primary: false },
+              ]}
+            />
+          )}
+
+          {tab === 'tasks' && (
+            <TabEmptyCta
+              icon={<ListChecks className="h-10 w-10" style={{ color: 'var(--text-soft)' }} />}
+              title={t('tasksTab.title')}
+              hint={t('tasksTab.hint')}
+              ctas={[{ label: t('tasksTab.cta'), href: '/tasks', primary: true }]}
+            />
+          )}
+
+          {tab === 'dashboard' && (
+            <div className="flex flex-col gap-4">
+              {data.description && (
+                <section className="rounded-md border bg-card p-4" aria-labelledby="proj-desc-h">
+                  <h2 id="proj-desc-h" className="text-sm font-semibold">
+                    {t('field.description')}
+                  </h2>
+                  <p
+                    className="mt-1 whitespace-pre-wrap text-sm"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    <NameDisplay name={data.description} />
+                  </p>
+                </section>
+              )}
+
+              <section className="rounded-md border bg-card p-4" aria-labelledby="proj-buildings-h">
+                <h2 id="proj-buildings-h" className="text-sm font-semibold">
+                  {t('buildingsSection')}
+                </h2>
+                <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+                  {t('buildingsHint')}
+                </p>
+                <div className="mt-3">
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/projects/${data.id}/buildings`}>{t('buildingsManage')}</Link>
+                  </Button>
+                </div>
+              </section>
+
+              <section className="rounded-md border bg-card p-4" aria-labelledby="proj-assign-h">
+                <h2 id="proj-assign-h" className="text-sm font-semibold">
+                  {t('assignmentsSection')}
+                </h2>
+                <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+                  {t('assignmentsHint')}
+                </p>
+                <div className="mt-3">
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/projects/${data.id}/assignments`}>{t('assignmentsManage')}</Link>
+                  </Button>
+                </div>
+              </section>
+
+              <section className="rounded-md border bg-card p-4" aria-labelledby="proj-shares-h">
+                <h2 id="proj-shares-h" className="text-sm font-semibold">
+                  {t('sharesSection')}
+                </h2>
+                <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+                  {t('sharesHint')}
+                </p>
+                <div className="mt-3">
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/projects/${data.id}/shares`}>{t('sharesManage')}</Link>
+                  </Button>
+                </div>
+              </section>
+
+              {!data.isArchived && (
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onArchive}
+                    disabled={archive.isPending}
+                  >
+                    {archive.isPending ? t('archiving') : t('archive')}
+                  </Button>
+                </div>
+              )}
+              {actionError && (
+                <p className="text-sm" style={{ color: 'var(--danger-700)' }}>
+                  {actionError}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* §Phase 4c S2 — Project Assignments entry. Read=ALL so the
-          card is visible to every org role; the BE enforces write-MGR
-          on the linked page. */}
-      <div className="rounded-md border bg-card p-4">
-        <h2 className="text-sm font-semibold">{t('assignmentsSection')}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{t('assignmentsHint')}</p>
-        <div className="mt-3">
-          <Button asChild variant="outline" size="sm">
-            <Link href={`/projects/${data.id}/assignments`}>{t('assignmentsManage')}</Link>
-          </Button>
-        </div>
+/**
+ * Generic empty-state CTA panel for tabs that don't yet have an embedded
+ * surface in this slice — keeps every tab visually consistent and lets the
+ * user reach the canonical surface in one click.
+ */
+function TabEmptyCta({
+  icon,
+  title,
+  hint,
+  ctas,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  hint: string;
+  ctas: ReadonlyArray<{ label: string; href: string; primary: boolean }>;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+      {icon}
+      <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+        {title}
+      </p>
+      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+        {hint}
+      </p>
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+        {ctas.map((cta) => (
+          <Link
+            key={cta.href}
+            href={cta.href}
+            className={cta.primary ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+          >
+            {cta.label}
+          </Link>
+        ))}
       </div>
-
-      {/* §Phase 4f — Contractor shares entry. Read=ALL; write=MGR. */}
-      <div className="rounded-md border bg-card p-4">
-        <h2 className="text-sm font-semibold">{t('sharesSection')}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{t('sharesHint')}</p>
-        <div className="mt-3">
-          <Button asChild variant="outline" size="sm">
-            <Link href={`/projects/${data.id}/shares`}>{t('sharesManage')}</Link>
-          </Button>
-        </div>
-      </div>
-
-      {actionError && <p className="text-sm text-destructive">{actionError}</p>}
     </div>
   );
 }

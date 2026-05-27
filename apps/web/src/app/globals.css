@@ -1,9 +1,31 @@
+/*
+ * EMAPP global stylesheet — partner design tokens + component classes
+ * ported from `MEAPP_design/design_handoff/source/tokens.css`. Landed
+ * in A.S1 PR-1 (V11 canary, Track A). Companion: `tailwind.config.ts`
+ * (Tailwind palette mapping).
+ *
+ * Layout:
+ *   1. @tailwind directives — unchanged.
+ *   2. :root — shadcn HSL vars UNCHANGED + partner semantic aliases ADDED.
+ *   3. Base reset (body direction:rtl, font, scrollbars) — from tokens.css.
+ *   4. Component classes (.btn, .card, .badge, .input, .tbl, .avatar)
+ *      mirroring tokens.css. Coexists with shadcn `components/ui/*` —
+ *      reskins reach for these classes directly; existing shadcn forms
+ *      keep working unchanged.
+ *   5. Utilities (.row, .col, .muted, .soft, .tabular).
+ *
+ * `.card-hd h3` weight is 700 (tokens.css has 600) — kept at 700 to
+ * preserve Heebo at 3 weights (PR #47 LCP gain). Revisit in a dedicated
+ * typography slice if hierarchy looks off across A.S3..A.S15.
+ */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
+    /* shadcn HSL vars — UNCHANGED. components/ui/* depends on these. */
     --background: 0 0% 100%;
     --foreground: 20 14.3% 4.1%;
     --muted: 60 4.8% 95.9%;
@@ -12,6 +34,58 @@
     --primary: 172 83% 26%;
     --primary-foreground: 0 0% 98%;
     --radius: 0.5rem;
+
+    /* Partner semantic aliases — ADDITIVE. Hex (not HSL) so the
+     * `color-mix(in oklab, var(--primary-partner), white)` formula
+     * in `.btn-primary:hover` works against the literal source. */
+    --bg-app: #f5f7fa;
+    --bg-surface: #ffffff;
+    --bg-subtle: #f8fafc;
+    --bg-hover: #f1f5f9;
+    --border-strong: #cbd5e1;
+    --text: #0f172a;
+    --text-muted: #64748b;
+    --text-soft: #94a3b8;
+
+    --navy-50: #f2f6fb;
+    --navy-100: #e6edf7;
+    --navy-500: #4a6fa5;
+    --navy-600: #2b4a7c;
+    --navy-700: #1e3a5f;
+    --navy-800: #13315c;
+    --navy-900: #0b2545;
+    --ink-100: #f1f5f9;
+    --ink-200: #e2e8f0;
+    --ink-400: #94a3b8;
+    --ink-500: #64748b;
+    --ink-600: #475569;
+    --ink-700: #334155;
+
+    --success-50: #f0fdf4;
+    --success-100: #dcfce7;
+    --success-600: #16a34a;
+    --success-700: #15803d;
+    --warning-50: #fffbeb;
+    --warning-100: #fef3c7;
+    --warning-600: #d97706;
+    --warning-700: #b45309;
+    --danger-50: #fef2f2;
+    --danger-100: #fee2e2;
+    --danger-600: #dc2626;
+    --danger-700: #b91c1c;
+
+    --r-sm: 6px;
+    --r-md: 8px;
+    --r-lg: 12px;
+    --r-xl: 16px;
+    --r-2xl: 20px;
+    --row-h: 44px;
+    --pad: 16px;
+
+    /* Partner primary. Decoupled from shadcn --primary on purpose —
+     * shadcn keeps its teal (HSL 172 83% 26%); partner reskins use
+     * navy-900. Layers don't fight. */
+    --primary-partner: var(--navy-900);
   }
 
   .dark {
@@ -25,10 +99,352 @@
   }
 
   * {
+    box-sizing: border-box;
     @apply border-border;
   }
-
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+  }
   body {
     @apply bg-background text-foreground;
+    direction: rtl;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  button {
+    font-family: inherit;
+    cursor: pointer;
+  }
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: rgba(15, 23, 42, 0.12);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(15, 23, 42, 0.22);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 14px;
+    border-radius: var(--r-md);
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    background: var(--primary-partner);
+    color: #fff;
+  }
+  .btn-primary:hover {
+    background: color-mix(in oklab, var(--primary-partner) 88%, white);
+  }
+  .btn-secondary {
+    background: var(--bg-surface);
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+  .btn-secondary:hover {
+    background: var(--bg-subtle);
+    border-color: var(--ink-400);
+  }
+  .btn-ghost {
+    background: transparent;
+    color: var(--text);
+  }
+  .btn-ghost:hover {
+    background: var(--bg-hover);
+  }
+  .btn-danger {
+    background: var(--danger-600);
+    color: #fff;
+  }
+  .btn-sm {
+    height: 30px;
+    padding: 0 10px;
+    font-size: 13px;
+  }
+  .btn-lg {
+    height: 44px;
+    padding: 0 18px;
+    font-size: 15px;
+  }
+  .btn-icon {
+    width: 36px;
+    padding: 0;
+  }
+
+  .card {
+    background: var(--bg-surface);
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--r-lg);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+  .card-pad {
+    padding: 16px;
+  }
+  .card-hd {
+    padding: 14px 16px;
+    border-bottom: 1px solid hsl(var(--border));
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .card-hd h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+  .badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+  }
+  .badge-success {
+    background: var(--success-50);
+    color: var(--success-700);
+    border-color: var(--success-100);
+  }
+  .badge-success .badge-dot {
+    background: var(--success-600);
+  }
+  .badge-warning {
+    background: var(--warning-50);
+    color: var(--warning-700);
+    border-color: var(--warning-100);
+  }
+  .badge-warning .badge-dot {
+    background: var(--warning-600);
+  }
+  .badge-danger {
+    background: var(--danger-50);
+    color: var(--danger-700);
+    border-color: var(--danger-100);
+  }
+  .badge-danger .badge-dot {
+    background: var(--danger-600);
+  }
+  .badge-neutral {
+    background: var(--ink-100);
+    color: var(--ink-700);
+    border-color: var(--ink-200);
+  }
+  .badge-neutral .badge-dot {
+    background: var(--ink-500);
+  }
+  .badge-info {
+    background: var(--navy-50);
+    color: var(--navy-800);
+    border-color: var(--navy-100);
+  }
+  .badge-info .badge-dot {
+    background: var(--navy-700);
+  }
+
+  .input {
+    height: 38px;
+    width: 100%;
+    padding: 0 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-md);
+    background: var(--bg-surface);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.12s, box-shadow 0.12s;
+  }
+  .input:focus {
+    border-color: var(--primary-partner);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary-partner) 15%, transparent);
+  }
+  .input::placeholder {
+    color: var(--text-soft);
+  }
+  .label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    display: block;
+  }
+
+  .kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 6px;
+    min-width: 18px;
+    height: 18px;
+    background: var(--ink-100);
+    border: 1px solid var(--ink-200);
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--ink-600);
+    font-family: ui-monospace, SFMono-Regular, monospace;
+  }
+
+  .divider {
+    height: 1px;
+    background: hsl(var(--border));
+  }
+
+  .progress {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--ink-100);
+    overflow: hidden;
+    position: relative;
+  }
+  .progress > i {
+    display: block;
+    height: 100%;
+    background: var(--primary-partner);
+    border-radius: 999px;
+  }
+  .progress.success > i {
+    background: var(--success-600);
+  }
+  .progress.warning > i {
+    background: var(--warning-600);
+  }
+
+  .tbl {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13.5px;
+  }
+  .tbl thead th {
+    text-align: right;
+    font-weight: 500;
+    color: var(--text-muted);
+    font-size: 12px;
+    letter-spacing: 0.01em;
+    padding: 10px 14px;
+    background: var(--bg-subtle);
+    border-bottom: 1px solid hsl(var(--border));
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  .tbl tbody td {
+    padding: 12px 14px;
+    border-bottom: 1px solid hsl(var(--border));
+    vertical-align: middle;
+  }
+  .tbl tbody tr:hover td {
+    background: var(--bg-hover);
+  }
+  .tbl tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  .tbl[data-zebra='1'] tbody tr:nth-child(even) td {
+    background: var(--bg-subtle);
+  }
+  .tbl[data-zebra='1'] tbody tr:nth-child(even):hover td {
+    background: var(--bg-hover);
+  }
+
+  [data-density='compact'] {
+    --row-h: 36px;
+    --pad: 12px;
+  }
+  [data-density='compact'] .tbl tbody td {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+  [data-density='comfy'] {
+    --row-h: 52px;
+    --pad: 20px;
+  }
+  [data-density='comfy'] .tbl tbody td {
+    padding: 16px 16px;
+  }
+
+  .avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    background: var(--ink-100);
+    color: var(--ink-700);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .avatar-lg {
+    width: 44px;
+    height: 44px;
+    font-size: 15px;
+  }
+  .avatar-xl {
+    width: 72px;
+    height: 72px;
+    font-size: 22px;
+  }
+}
+
+@layer utilities {
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .col {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .muted {
+    color: var(--text-muted);
+  }
+  .soft {
+    color: var(--text-soft);
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
   }
 }

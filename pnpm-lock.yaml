@@ -105,6 +105,9 @@ importers:
       '@fastify/helmet':
         specifier: ^12.0.0
         version: 12.0.1
+      '@fontsource/heebo':
+        specifier: ^5.2.8
+        version: 5.2.8
       '@nestjs/common':
         specifier: ^11.0.0
         version: 11.1.21(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -147,6 +150,9 @@ importers:
       pino-http:
         specifier: ^10.0.0
         version: 10.5.0
+      playwright-core:
+        specifier: ^1.60.0
+        version: 1.60.0
       reflect-metadata:
         specifier: ^0.2.0
         version: 0.2.2
@@ -1444,6 +1450,9 @@ packages:
 
   '@fastify/proxy-addr@5.1.0':
     resolution: {integrity: sha512-INS+6gh91cLUjB+PVHfu1UqcB76Sqtpyp7bnL+FYojhjygvOPA9ctiD/JDKsyD9Xgu4hUhCSJBPig/w7duNajw==}
+
+  '@fontsource/heebo@5.2.8':
+    resolution: {integrity: sha512-K5aMLH2Yy/CmmjuM9lpToyIEwSdPKwW6KzZOGCFnj7XFrgatIpnesu6FDgmQl3bkyP/YCT62rzLRqRM9s/OzLw==}
 
   '@formatjs/ecma402-abstract@2.3.6':
     resolution: {integrity: sha512-HJnTFeRM2kVFVr5gr5kH1XP6K0JcJtE7Lzvtr3FS/so5f1kpsqqqxy5JF+FRaO6H2qmcMfAUIox7AJteieRtVw==}
@@ -7574,6 +7583,8 @@ snapshots:
     dependencies:
       '@fastify/forwarded': 3.0.1
       ipaddr.js: 2.4.0
+
+  '@fontsource/heebo@5.2.8': {}
 
   '@formatjs/ecma402-abstract@2.3.6':
     dependencies:

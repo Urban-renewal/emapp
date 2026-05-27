@@ -52,6 +52,7 @@
     "contractors": "Contractors",
     "notes": "Notes",
     "audit": "Audit log",
+    "settings": "Settings",
     "provider": "Provider",
     "providerConsole": "EMAPP Provider Console",
     "tagline": "Urban Renewal",
@@ -660,6 +661,46 @@
       "email": "Email",
       "name": "Full name",
       "role": "Role"
+    }
+  },
+  "settings": {
+    "listTitle": "Settings",
+    "subtitle": "Organization, team, integrations, and security",
+    "dataPendingHint": "Settings is scaffolding for now — the General tab is read-only (org + user). The other tabs (notification preferences, integrations, MFA & session management) need BE work and ship in later slices.",
+    "comingSoon": "Coming soon — a BE slice is needed before this becomes editable.",
+    "tab": {
+      "general": "General",
+      "team": "Team",
+      "notifications": "Notifications",
+      "integrations": "Integrations",
+      "security": "Security"
+    },
+    "general": {
+      "section": "Organization & user",
+      "orgName": "Organization",
+      "orgSlug": "Org slug",
+      "noOrg": "—",
+      "userName": "Signed-in user",
+      "userEmail": "Email",
+      "userRole": "Role",
+      "readOnlyHint": "Fields are read-only. Renaming the organization or editing the user profile will be enabled once the BE update endpoint lands."
+    },
+    "team": {
+      "section": "Team & permissions",
+      "description": "Member invites, role changes and revocations live on the Members screen. Per-agent permission overrides will be added here later.",
+      "openMembers": "Open Members"
+    },
+    "notifications": {
+      "section": "Notification preferences",
+      "description": "Choose channels (email / SMS / in-app) and categories (action required / system updates) per event type."
+    },
+    "integrations": {
+      "section": "Integrations",
+      "description": "Signature providers, document management, and mail delivery integrations. The final list depends on the launch plan."
+    },
+    "security": {
+      "section": "Security",
+      "description": "MFA enrollment, active sessions, and access log. We will wire this once /api/v1/sessions is added."
     }
   },
   "tasks": {

@@ -54,11 +54,87 @@ const projectWriteShape = {
   startedAt: z.coerce.date().nullable().optional(),
 } as const;
 
-/** POST body — `name` + `type` required (Doc 09 §3.10). */
-export const CreateProjectInput = z.object(projectWriteShape).strict();
+// ──────────────────────────────────────────────────────────────────────
+// V11 B.S2 — nested write shapes used by the AddProjectModal 3-step
+// wizard (D.39). The wizard sends ONE atomic request that creates the
+// project plus its initial building/section/apartment structure; the
+// BE expands it inside a single withTenant tx so partial state is
+// impossible (Track A.S6 consumer).
+//
+// All sub-objects `.strict()` — unknown fields rejected at the boundary
+// (mass-assignment defence; mirrors the parent CreateProjectInput
+// posture). Bounded array lengths cap the request shape (anti-bomb).
+// ──────────────────────────────────────────────────────────────────────
+
+/** D.39 closed enum — `building_sections.kind`. */
+export const SectionKindEnum = z.enum(['residential', 'office', 'retail', 'mixed']);
+export type SectionKind = z.infer<typeof SectionKindEnum>;
+
+/** D.39 closed enum — `apartments.unit_type`. */
+export const ApartmentUnitTypeEnum = z.enum(['apt', 'shop', 'office', 'mixed']);
+export type ApartmentUnitType = z.infer<typeof ApartmentUnitTypeEnum>;
+
+/** Nested section spec inside CreateProjectInput. */
+export const CreateProjectSectionInput = z
+  .object({
+    entrance: z.string().max(40).nullable().optional(),
+    kind: SectionKindEnum,
+    floors: z.number().int().min(0).max(200).nullable().optional(),
+    unitCount: z.number().int().min(0).max(2000).nullable().optional(),
+    gush: z.string().max(40).nullable().optional(),
+    helka: z.string().max(40).nullable().optional(),
+    notes: z.string().max(2000).nullable().optional(),
+  })
+  .strict();
+export type CreateProjectSection = z.infer<typeof CreateProjectSectionInput>;
+
+/** Nested apartment spec inside CreateProjectInput. */
+export const CreateProjectApartmentInput = z
+  .object({
+    number: z.string().min(1).max(40),
+    floor: z.number().int().min(-5).max(200).nullable().optional(),
+    sizeSqm: z.number().min(0).max(10000).nullable().optional(),
+    areaSqm: z.number().min(0).max(10000).nullable().optional(),
+    rooms: z.number().min(0).max(50).nullable().optional(),
+    unitType: ApartmentUnitTypeEnum.optional(),
+    entrance: z.string().max(40).nullable().optional(),
+    notes: z.string().max(2000).nullable().optional(),
+  })
+  .strict();
+export type CreateProjectApartment = z.infer<typeof CreateProjectApartmentInput>;
+
+/** Nested building spec inside CreateProjectInput. Note: `aptCount` is
+ *  intentionally NOT in this shape — the column is maintained by a
+ *  per-row trigger (`trg_apartments_count_maintenance`, migration 0002)
+ *  that increments/decrements on apartment insert/archive/delete.
+ *  Letting clients write it would corrupt the invariant. */
+export const CreateProjectBuildingInput = z
+  .object({
+    address: z.string().min(1).max(200),
+    city: z.string().min(1).max(120),
+    block: z.string().max(40).nullable().optional(),
+    parcel: z.string().max(40).nullable().optional(),
+    subparcel: z.string().max(40).nullable().optional(),
+    notes: z.string().max(2000).nullable().optional(),
+    sections: z.array(CreateProjectSectionInput).max(20).optional(),
+    apartments: z.array(CreateProjectApartmentInput).max(500).optional(),
+  })
+  .strict();
+export type CreateProjectBuilding = z.infer<typeof CreateProjectBuildingInput>;
+
+/** POST body — `name` + `type` required; optional nested wizard structure. */
+export const CreateProjectInput = z
+  .object({
+    ...projectWriteShape,
+    buildings: z.array(CreateProjectBuildingInput).max(20).optional(),
+  })
+  .strict();
 export type CreateProject = z.infer<typeof CreateProjectInput>;
 
-/** PATCH body — every field optional (Doc 09 §3.11). */
+/** PATCH body — every project-level field optional. The wizard-only nested
+ *  `buildings` is NOT updatable here (use the dedicated buildings/apartments
+ *  endpoints); excluding it keeps PATCH bounded and avoids ambiguous semantics
+ *  (replace vs merge of nested arrays). */
 export const UpdateProjectInput = z.object(projectWriteShape).partial().strict();
 export type UpdateProject = z.infer<typeof UpdateProjectInput>;
 

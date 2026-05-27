@@ -1,5 +1,8 @@
 import {
   AuditService,
+  apartments,
+  buildingSections,
+  buildings,
   projectAssignments,
   projects,
   withTenant,
@@ -177,6 +180,78 @@ export class ProjectsService {
           })
           .returning();
         if (!row) throw new Error('project insert returned no row');
+
+        // V11 B.S2 — wizard-driven atomic structure expansion (D.39).
+        // The AddProjectModal wizard ships project + buildings + sections
+        // + apartments in ONE request; we expand them inside this same
+        // withTenant tx so a failure anywhere rolls back the whole thing
+        // (no half-created projects, no orphaned buildings). Per-row
+        // entity audit is skipped in favour of one summary audit row
+        // with counts — easier to query later, and the atomic tx itself
+        // is the forensic boundary.
+        let buildingsCreated = 0;
+        let sectionsCreated = 0;
+        let apartmentsCreated = 0;
+
+        for (const b of input.buildings ?? []) {
+          const [bRow] = await tx
+            .insert(buildings)
+            .values({
+              projectId: row.id,
+              address: b.address,
+              city: b.city,
+              block: b.block ?? null,
+              parcel: b.parcel ?? null,
+              subparcel: b.subparcel ?? null,
+              // `aptCount` is intentionally NOT set: the per-row
+              // `trg_apartments_count_maintenance` trigger (migration
+              // 0002) increments it for each apartment INSERT below.
+              // Writing it here would double-count.
+              notes: b.notes ?? null,
+            })
+            .returning();
+          if (!bRow) throw new Error('building insert returned no row');
+          buildingsCreated += 1;
+
+          if (b.sections?.length) {
+            await tx.insert(buildingSections).values(
+              b.sections.map((s) => ({
+                buildingId: bRow.id,
+                entrance: s.entrance ?? null,
+                kind: s.kind,
+                floors: s.floors ?? null,
+                unitCount: s.unitCount ?? null,
+                gush: s.gush ?? null,
+                helka: s.helka ?? null,
+                notes: s.notes ?? null,
+              })),
+            );
+            sectionsCreated += b.sections.length;
+          }
+
+          if (b.apartments?.length) {
+            // numeric columns travel as strings on the wire (pg-node
+            // semantics, matching the toProject pattern in this file).
+            await tx.insert(apartments).values(
+              b.apartments.map((a) => ({
+                buildingId: bRow.id,
+                number: a.number,
+                floor: a.floor ?? null,
+                sizeSqm: a.sizeSqm === undefined || a.sizeSqm === null ? null : String(a.sizeSqm),
+                rooms: a.rooms === undefined || a.rooms === null ? null : String(a.rooms),
+                // unit_type column is NOT NULL DEFAULT 'apt' (0035) — sending
+                // undefined lets the DB default apply, which is more honest
+                // than coercing here.
+                unitType: a.unitType ?? 'apt',
+                areaSqm: a.areaSqm === undefined || a.areaSqm === null ? null : String(a.areaSqm),
+                entrance: a.entrance ?? null,
+                notes: a.notes ?? null,
+              })),
+            );
+            apartmentsCreated += b.apartments.length;
+          }
+        }
+
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
@@ -184,7 +259,16 @@ export class ProjectsService {
           action: 'project.create',
           targetTable: 'projects',
           targetId: row.id,
-          afterState: { name: row.name, type: row.type, status: row.status },
+          afterState: {
+            name: row.name,
+            type: row.type,
+            status: row.status,
+            // Counts always emitted so the audit shape stays stable
+            // whether the request used the wizard structure or not.
+            buildingsCreated,
+            sectionsCreated,
+            apartmentsCreated,
+          },
           sessionId: user.sid,
         });
         return toProject(row);

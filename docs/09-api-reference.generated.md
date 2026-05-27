@@ -1155,6 +1155,23 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/projects/:id/export
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** V11 B.S10 (Phase 7) — Download a project as xlsx or PDF. Manager/Agent/Viewer (mounted under `projects` POLICY read=ALL). Agent scope-to-assigned enforced by `ExportComposerService` INNER-JOIN project_assignments. Throttle: 10/hour/user. Response: binary buffer + RFC 6266 / 5987 `Content-Disposition: attachment` with UTF-8 Hebrew filename. Audit row `project.export` written per call. Query: `?format=xlsx|pdf` (default xlsx).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(binary xlsx or pdf — Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | application/pdf; Content-Disposition: attachment; filename="<ascii-slug>.<ext>"; filename*=UTF-8''<%-encoded>)
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`, `http_429`
+
 ### GET /api/v1/projects/:projectId/assignments
 
 - **Auth:** AuthGuard + TenantGuard

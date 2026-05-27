@@ -10,6 +10,7 @@ import { ApartmentsModule } from './modules/apartments/apartments.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BuildingsModule } from './modules/buildings/buildings.module';
+import { CalendarModule } from './modules/calendar/calendar.module';
 import { ContractorsModule } from './modules/contractors/contractors.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { ImportsModule } from './modules/imports/imports.module';
@@ -98,6 +99,9 @@ import { QueueModule } from './queue/queue.module';
     // endpoints. POLICY untouched — portal has no entry in the
     // org POLICY matrix (Gate-6 untouched).
     PortalModule,
+    // D.38 / V11 B.S6 — Calendar / ICS generator (pure function).
+    // No controller; B.S7 Resend integration consumes via DI.
+    CalendarModule,
   ],
   controllers: [HealthController],
   // Rate limiting ENFORCED globally; the configurable guard adds a

@@ -80,6 +80,33 @@
     open-PR list). **Next slice B.S6:** Calendar service + ICS
     generator (`ical-generator` lib) using these tables.
 
+- **B.S6 shipped — Calendar / ICS generator (D.38).** Pure-function
+  `CalendarService` in `apps/api/src/modules/calendar/` that wraps
+  `ical-generator` and fixes our RFC 5545 conventions (UID =
+  `<taskId>@emapp` stable across resends, PRODID via the object form
+  to avoid the double-dash artifact, METHOD = REQUEST for create/update
+  - CANCEL for cancellation, SEQUENCE = caller-supplied epoch from
+    `tasks.updated_at`). Two public methods: `generateRequest()` +
+    `generateCancel()`. No controller, no DB, no DI — input is plain
+    data, output is the .ics string. B.S7 (Resend integration) will
+    wire it; B.S10 (export) may also consume. **Tests:** 18/18 in
+    `calendar.service.spec.ts` pinning every line shape (VCALENDAR
+    brackets, METHOD, UID, SEQUENCE, DTSTART/DTEND math incl. 60min
+    default, SUMMARY, LOCATION present-iff, DESCRIPTION present-iff,
+    ORGANIZER, ATTENDEE per attendee + mailto:NONE for null emails,
+    exactly-one VEVENT, Hebrew UTF-8 round-trip). **Smoke:** raw
+    REQUEST + CANCEL output in PR description (Hebrew title + location
+  - 2 attendees with one missing email — all clean). **Wrinkles fixed
+    during dev (smoke discipline working as designed):** (a) PRODID
+    double-dash from `-//EMAPP//…` string + lib's own `-//` prefix →
+    switched to `{ company, product, language }` object form; (b)
+    `MAILTO` is uppercase in ATTENDEE but lowercase in ORGANIZER (lib
+    inconsistency, both RFC-valid) → tests case-insensitive; (c)
+    long email lines fold at 75 chars per RFC 5545 §3.1 → added
+    `unfold()` helper in spec. **Verify:** api typecheck + lint clean,
+    calendar.spec 18/18, full db suite already-green (no DB touch),
+    gen:api-docs:check clean (no shared-types touch).
+
 - **Process commitment status — locking in the patterns.** Three
 V11-discipline patterns now active: (1) per-agent heartbeat files
 via `pnpm gen:progress` (PR #116 merged 2026-05-27); (2) Track-B

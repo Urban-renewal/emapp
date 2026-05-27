@@ -129,6 +129,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.17)(pg@8.20.0)(postgres@3.4.9)
+      ical-generator:
+        specifier: ^10.2.0
+        version: 10.2.0(@types/node@20.19.41)(dayjs@1.11.20)(luxon@3.7.2)
       nestjs-pino:
         specifier: ^4.1.0
         version: 4.6.1(@nestjs/common@11.1.21(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@10.5.0)(pino@10.3.1)(rxjs@7.8.2)
@@ -4417,6 +4420,39 @@ packages:
     resolution: {integrity: sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA==}
     engines: {node: '>=18'}
     hasBin: true
+
+  ical-generator@10.2.0:
+    resolution: {integrity: sha512-XR5FsiDWCsz5MwBwMA/sQqR3A9H240xkXIeXOabV7uNAiieP+TA9rleVvlwPLRXMz+CXME8cGuDd7cdnE5At6w==}
+    engines: {node: 20 || 22 || >=24}
+    peerDependencies:
+      '@touch4it/ical-timezones': '>=1.6.0'
+      '@types/luxon': '>= 1.26.0'
+      '@types/mocha': '>= 8.2.1'
+      '@types/node': '*'
+      dayjs: '>= 1.10.0'
+      luxon: '>= 1.26.0'
+      moment: '>= 2.29.0'
+      moment-timezone: '>= 0.5.33'
+      rrule: '>= 2.6.8'
+    peerDependenciesMeta:
+      '@touch4it/ical-timezones':
+        optional: true
+      '@types/luxon':
+        optional: true
+      '@types/mocha':
+        optional: true
+      '@types/node':
+        optional: true
+      dayjs:
+        optional: true
+      luxon:
+        optional: true
+      moment:
+        optional: true
+      moment-timezone:
+        optional: true
+      rrule:
+        optional: true
 
   iconv-lite@0.7.2:
     resolution: {integrity: sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw==}
@@ -9177,7 +9213,7 @@ snapshots:
       sirv: 3.0.2
       tinyglobby: 0.2.16
       tinyrainbow: 1.2.0
-      vitest: 2.1.9(@types/node@25.8.0)(@vitest/ui@2.1.9)(msw@2.14.6(@types/node@25.8.0)(typescript@5.9.3))(terser@5.47.1)
+      vitest: 2.1.9(@types/node@20.19.41)(@vitest/ui@2.1.9)(msw@2.14.6(@types/node@20.19.41)(typescript@5.9.3))(terser@5.47.1)
 
   '@vitest/utils@2.1.9':
     dependencies:
@@ -10758,6 +10794,12 @@ snapshots:
   human-signals@5.0.0: {}
 
   husky@9.1.7: {}
+
+  ical-generator@10.2.0(@types/node@20.19.41)(dayjs@1.11.20)(luxon@3.7.2):
+    optionalDependencies:
+      '@types/node': 20.19.41
+      dayjs: 1.11.20
+      luxon: 3.7.2
 
   iconv-lite@0.7.2:
     dependencies:

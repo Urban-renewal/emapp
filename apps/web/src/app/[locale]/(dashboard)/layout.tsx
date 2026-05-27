@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getCurrentSessionUser } from '@/lib/session';
 
 import { AuthGuard } from './_components/auth-guard';
+import { PCSidebar } from './_components/pc-sidebar';
 import { QueryProvider } from './_components/query-provider';
 import { Sidebar } from './_components/sidebar';
 import { Topbar } from './_components/topbar';
@@ -35,15 +36,24 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const session = await getCurrentSessionUser();
   if (!session) redirect('/login');
 
+  // V11 A.S13 — branch the sidebar shell on tier. Provider Admins get
+  // the Platform Console PCSidebar (13 nav items, partner navy variant);
+  // org users keep the existing Sidebar.
+  const isProvider = session.tier === 'provider';
+
   return (
     <QueryProvider>
       <div className="flex h-screen" style={{ background: 'var(--bg-app)' }}>
-        <Sidebar
-          role={session.profile.role}
-          userName={session.profile.name}
-          userRole={session.profile.role}
-          tier={session.tier}
-        />
+        {isProvider ? (
+          <PCSidebar userName={session.profile.name} userRole={session.profile.role} />
+        ) : (
+          <Sidebar
+            role={session.profile.role}
+            userName={session.profile.name}
+            userRole={session.profile.role}
+            tier={session.tier}
+          />
+        )}
         <main className="flex min-w-0 flex-1 flex-col">
           <Topbar user={session} />
           <div className="flex-1 overflow-auto p-6">{children}</div>

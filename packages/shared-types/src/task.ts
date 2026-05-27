@@ -21,6 +21,13 @@ export const TaskSchema = z.object({
   priority: z.number().int().min(1).max(3),
   dueAt: z.coerce.date().nullable(),
   durationMinutes: z.number().int().min(0).nullable(),
+  // V11 B.S5 F3 fix — migration 0036 (D.38) added scheduled_at +
+  // location columns to `tasks` but the read wire never surfaced
+  // them. Same F1 class of bug discovered on B.S5 smoke. Distinct
+  // from dueAt (soft deadline) — scheduledAt is the calendar EVENT
+  // start that drives the WeekCalendar grid + ICS DTSTART.
+  scheduledAt: z.coerce.date().nullable(),
+  location: z.string().max(500).nullable(),
   completedAt: z.coerce.date().nullable(),
   completedBy: z.string().uuid().nullable(),
   createdBy: z.string().uuid(),
@@ -37,6 +44,11 @@ const taskWriteShape = {
   priority: z.number().int().min(1).max(3).optional(),
   dueAt: z.coerce.date().nullable().optional(),
   durationMinutes: z.number().int().min(0).nullable().optional(),
+  // V11 B.S5 F3 — calendar event fields, writable from the AddTask
+  // modal (Track A.S12 WeekCalendar consumer). Both optional + nullable
+  // — a task can be "scheduled" without a location, or vice-versa.
+  scheduledAt: z.coerce.date().nullable().optional(),
+  location: z.string().max(500).nullable().optional(),
   projectId: z.string().uuid().nullable().optional(),
   apartmentId: z.string().uuid().nullable().optional(),
 } as const;

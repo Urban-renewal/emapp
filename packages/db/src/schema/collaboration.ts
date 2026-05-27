@@ -15,7 +15,7 @@ import {
 import { taskStatusEnum, notificationTypeEnum } from './_enums';
 import type { SharePermissions } from './_share-permissions';
 import { citext } from './_types';
-import { apartments, projects } from './projects';
+import { apartments, owners, projects } from './projects';
 import { organizations, users } from './tenancy';
 
 export const contractors = pgTable(
@@ -103,6 +103,12 @@ export const tasks = pgTable(
     priority: smallint('priority').notNull().default(2),
     dueAt: timestamp('due_at', { withTimezone: true }),
     durationMinutes: integer('duration_minutes'),
+    // D.38 / V11 B.S5 — calendar event start (distinct from dueAt which
+    // is the soft deadline). When set, the task participates in the
+    // WeekCalendar grid + drives the ICS DTSTART.
+    scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
+    // D.38 — optional ICS LOCATION (free text, no geocoding).
+    location: text('location'),
     completedAt: timestamp('completed_at', { withTimezone: true }),
     completedBy: uuid('completed_by').references(() => users.id),
     createdBy: uuid('created_by')
@@ -119,6 +125,10 @@ export const tasks = pgTable(
     orgDueIdx: index('idx_tasks_org_due')
       .on(table.orgId, table.dueAt)
       .where(sql`archived_at IS NULL AND due_at IS NOT NULL`),
+    // D.38 — WeekCalendar week-of-X hot lookup.
+    orgScheduledIdx: index('idx_tasks_org_scheduled')
+      .on(table.orgId, table.scheduledAt)
+      .where(sql`archived_at IS NULL AND scheduled_at IS NOT NULL`),
     projectIdx: index('idx_tasks_project')
       .on(table.projectId)
       .where(sql`project_id IS NOT NULL`),
@@ -153,6 +163,45 @@ export const taskAssignees = pgTable(
 
 export type TaskAssignee = typeof taskAssignees.$inferSelect;
 export type NewTaskAssignee = typeof taskAssignees.$inferInsert;
+
+// D.41 / V11 B.S5 — task_external_attendees. SEPARATE table from
+// task_assignees (which links to `users`) because the semantics + FK
+// tier are different:
+//   - task_assignees:           internal users who DO the task (Manager / Agent)
+//   - task_external_attendees:  Tier-2 owners INVITED to the ICS event
+// Polymorphic FK or a shared "any-actor" table would conflate "actor"
+// and "invitee" and lose the audit/tier signal. The split is the
+// architectural choice authorized inline at the B.S1 GO answer Q3.
+//
+// ics_sent_at / ics_cancelled_at are the idempotency + audit trail
+// columns used by B.S7 Resend integration: each successful send /
+// cancel updates the timestamp so a crash between send and audit-log
+// can resume safely without double-sending.
+export const taskExternalAttendees = pgTable(
+  'task_external_attendees',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => owners.id, { onDelete: 'restrict' }),
+    icsSentAt: timestamp('ics_sent_at', { withTimezone: true }),
+    icsCancelledAt: timestamp('ics_cancelled_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    unique: uniqueIndex('task_external_attendees_task_owner_unique').on(
+      table.taskId,
+      table.ownerId,
+    ),
+    ownerIdx: index('idx_task_external_attendees_owner').on(table.ownerId),
+  }),
+);
+
+export type TaskExternalAttendee = typeof taskExternalAttendees.$inferSelect;
+export type NewTaskExternalAttendee = typeof taskExternalAttendees.$inferInsert;
 
 export const notifications = pgTable(
   'notifications',

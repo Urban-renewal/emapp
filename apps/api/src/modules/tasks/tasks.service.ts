@@ -40,6 +40,13 @@ function toTask(r: typeof tasks.$inferSelect): Task {
     priority: r.priority,
     dueAt: r.dueAt,
     durationMinutes: r.durationMinutes,
+    // V11 B.S5 F3 — D.38 calendar fields. Expose what migration 0036
+    // wrote at the DB layer; otherwise the WeekCalendar A.S12 consumer
+    // (and any direct curl GET) can't see what we wrote. Smoke caught
+    // this on the same PR — same class as F1 (B.S1 column gap closed
+    // by F1 fix-PR in #118).
+    scheduledAt: r.scheduledAt,
+    location: r.location,
     completedAt: r.completedAt,
     completedBy: r.completedBy,
     createdBy: r.createdBy,
@@ -178,6 +185,9 @@ export class TasksService {
             priority: input.priority ?? 2,
             dueAt: input.dueAt ?? null,
             durationMinutes: input.durationMinutes ?? null,
+            // V11 B.S5 F3 — D.38 calendar fields, optional on create.
+            scheduledAt: input.scheduledAt ?? null,
+            location: input.location ?? null,
             createdBy: user.sub,
           })
           .returning();
@@ -229,6 +239,10 @@ export class TasksService {
         if (input.priority !== undefined) patch.priority = input.priority;
         if (input.dueAt !== undefined) patch.dueAt = input.dueAt;
         if (input.durationMinutes !== undefined) patch.durationMinutes = input.durationMinutes;
+        // V11 B.S5 F3 — D.38 calendar fields editable on PATCH (manager only,
+        // per the role guard above — agents can only touch status/description).
+        if (input.scheduledAt !== undefined) patch.scheduledAt = input.scheduledAt;
+        if (input.location !== undefined) patch.location = input.location;
         if (input.projectId !== undefined) patch.projectId = input.projectId;
         if (input.apartmentId !== undefined) patch.apartmentId = input.apartmentId;
         if (input.status !== undefined) {

@@ -1494,8 +1494,10 @@ _(no body)_
 | `description` | unknown | no | — |
 | `dueAt` | unknown | no | — |
 | `durationMinutes` | unknown | no | — |
+| `location` | unknown | no | — |
 | `priority` | integer | no | minimum=1, maximum=3 |
 | `projectId` | unknown | no | — |
+| `scheduledAt` | unknown | no | — |
 | `title` | string | yes | minLength=1, maxLength=300 |
 | `type` | string | no | minLength=1, maxLength=50 |
 
@@ -1555,8 +1557,10 @@ _(no body)_
 | `description` | unknown | no | — |
 | `dueAt` | unknown | no | — |
 | `durationMinutes` | unknown | no | — |
+| `location` | unknown | no | — |
 | `priority` | integer | no | minimum=1, maximum=3 |
 | `projectId` | unknown | no | — |
+| `scheduledAt` | unknown | no | — |
 | `status` | string | no | enum=["pending","in_progress","completed","cancelled"] |
 | `title` | string | no | minLength=1, maxLength=300 |
 | `type` | string | no | minLength=1, maxLength=50 |

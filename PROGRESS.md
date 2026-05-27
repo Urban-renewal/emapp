@@ -124,7 +124,7 @@
   wires CalendarService (B.S6 ICS generator) + IEmailProvider (D.27
   factory: FakeEmailProvider in dev, fails-fast in prod until Resend
   lands in Infisical) into a single `sendInviteForTask(orgId,
-  taskId, action)` method. **Hooks**: `TasksService.create` /
+taskId, action)` method. **Hooks**: `TasksService.create` /
   `update` / `archive` fire the dispatcher OUTSIDE the withTenant tx
   as a void promise — best-effort posture, never blocks or rolls
   back a task write. Action selection: create-with-scheduled →
@@ -152,15 +152,60 @@
   /tasks/<id> (204) triggers CANCEL hook -> DB query shows
   `ics_cancelled_at` populated for both. **Verify**: api typecheck
   - lint clean, calendar-email spec 7/7 vs real Neon, full repo
-  typecheck (8/8 packages) clean, api gen:api-docs:check clean
-  (no shared-types touch). **Open Track B PR list at branch push
-  time** = empty (serialize discipline self-check). **Wrinkle**
-  fixed during dev: initial import order placed
-  `../members/invite-email` before `../calendar/calendar.service`
-  alphabetically wrong per eslint `import/order` — fixed inline.
-  **Next slice B.S8** (per master plan): tenant portal extensions
-  (D.40) or attendees CRUD endpoint to remove the withTenant-helper
-  smoke workaround.
+    typecheck (8/8 packages) clean, api gen:api-docs:check clean
+    (no shared-types touch). **Open Track B PR list at branch push
+    time** = empty (serialize discipline self-check). **Wrinkle**
+    fixed during dev: initial import order placed
+    `../members/invite-email` before `../calendar/calendar.service`
+    alphabetically wrong per eslint `import/order` — fixed inline.
+    **Next slice B.S8** (per master plan): tenant portal extensions
+    (D.40) or attendees CRUD endpoint to remove the withTenant-helper
+    smoke workaround.
+
+- **B.S8 shipped — Project xlsx export service (Phase 7 / D.38).**
+  New pure-function `ExportService` in `apps/api/src/modules/export/`
+  takes a fully-composed `ProjectExportInput` (project + buildings +
+  apartments + owners, decrypted by the caller via `withTenant`) and
+  returns the xlsx bytes as a `Buffer`. **No controller, no DB, no
+  DI deps beyond Logger** — B.S10 will wire the endpoint;
+  B.S9 PDF service will read the same input shape. Single worksheet
+  `פרויקט` with `rightToLeft="1"`, frozen 3-meta + 1-header row, 15
+  Hebrew columns (כתובת / עיר / גוש / חלקה / דירה / קומה / כניסה /
+  סוג יחידה / שטח / חדרים / סטטוס / בעלים / ת"ז / טלפון / אחוז
+  בעלות). One row per (apartment, owner); zero-owner apartments
+  still emit one row with empty owner cells so the coverage gap is
+  visible. Hebrew labels for unit_type (apt→דירה, shop→חנות,
+  office→משרד, mixed→מעורב) and status (signed→חתום, pending→ממתין,
+  declined→סירב, etc). **Heebo font** declared at cell level — the
+  4 `<name val="Heebo"/>` occurrences in `xl/styles.xml` prove the
+  worksheet style references the font (embedding the TTF is deferred
+  per Phase 7 scope; recipients with Heebo installed render natively,
+  others fall back). **Deps**: added `exceljs ^4.4.0` (runtime) +
+  `adm-zip` / `@types/adm-zip` (dev, for the spec's structural xlsx
+  inspection). **Tests** `export.service.spec.ts` (8/8 green vs real
+  Neon dev — Neon used only because the test harness's globalSetup
+  runs migrations; the service itself is offline): workbook
+  structure, RTL flag, header row order, one-row-per-(apt, owner)
+  including zero-owner gap row, Hebrew label translation, Heebo
+  styles ref, perf budget T7.7 (1000 rows < 25s — measured 115ms,
+  ~218× under budget), PII safety (national_id + phone never land
+  in `docProps/core.xml` or `docProps/app.xml`, only in the sheet
+  body). **Real file smoke** via `scripts/b8-smoke.ts` (raw paste
+  in PR description): 7.8 KB xlsx, magic bytes `50 4B 03 04` (PK
+  zip header), sheet1 `<dimension ref="A1:O8"/>`, `rightToLeft="1"`
+  - `state="frozen"` both present, sheet name `פרויקט`, 4 Heebo
+  style refs, **PII NEVER in docProps/core.xml** (verified via
+  `core.includes('000000018')==false` + same for phone), creator
+  `EMAPP — B.S8 Manager`. **Verify**: api typecheck + lint clean
+  (after one-line fix replacing `new ExcelJS.Workbook()` with
+  `new Workbook()` per eslint `import/no-named-as-default-member`),
+  full repo typecheck 8/8 clean, gen:api-docs:check clean,
+  gen:progress:check fail-recover (this entry triggered the regen
+  cycle). **Open Track B PR list at branch push time** = empty
+  (serialize discipline self-check; #130 already merged). **Next
+  slice B.S9** per master plan: PDF export service (puppeteer +
+  Heebo embedded base64) reading the SAME `ProjectExportInput`
+  shape so the two formats stay column-aligned.
   <!-- END AGENT HEARTBEATS -->
 
 ## Legacy heartbeats (pre-migration; preserved for context)

@@ -3,7 +3,32 @@
     "title": "Urban Renewal Project Management",
     "subtitle": "Apartment owner signature collection — Tama 38 & Pinuy-Binuy",
     "welcome": "Welcome. Pick an action from the menu.",
-    "getStarted": "Get Started"
+    "getStarted": "Get Started",
+    "pageTitle": "Home",
+    "pageSubtitle": "Today at a glance",
+    "kpi": {
+      "activeProjects": "Active projects",
+      "residents": "Residents",
+      "signaturesReceived": "Signatures received",
+      "pending": "Pending",
+      "placeholder": "—",
+      "comingSoon": "Summary values land in a dedicated slice"
+    },
+    "action": {
+      "newProject": "New project",
+      "fieldTask": "Field task",
+      "fieldTaskHint": "Coming soon"
+    },
+    "calendar": {
+      "title": "This week",
+      "empty": "No tasks this week",
+      "comingHint": "Full calendar wires up in A.S12 (Calendar + ICS)"
+    },
+    "conversations": {
+      "title": "Recent conversations",
+      "empty": "No conversations to show",
+      "comingHint": "Chat lands later (Phase 2)"
+    }
   },
   "nav": {
     "home": "Home",

@@ -3,7 +3,32 @@
     "title": "ניהול פרויקטי התחדשות עירונית",
     "subtitle": "כלי לאיסוף חתימות מבעלי דירות — תמ\"א 38 ופינוי-בינוי",
     "welcome": "ברוך הבא. בחר פעולה מהתפריט.",
-    "getStarted": "התחל"
+    "getStarted": "התחל",
+    "pageTitle": "דף הבית",
+    "pageSubtitle": "מבט כולל על הפעילות היום",
+    "kpi": {
+      "activeProjects": "פרויקטים פעילים",
+      "residents": "דיירים במערכת",
+      "signaturesReceived": "חתימות שהתקבלו",
+      "pending": "ממתינים לטיפול",
+      "placeholder": "—",
+      "comingSoon": "ערכי הסיכום מגיעים בסלייס ייעודי"
+    },
+    "action": {
+      "newProject": "פרויקט חדש",
+      "fieldTask": "משימת שטח",
+      "fieldTaskHint": "בקרוב"
+    },
+    "calendar": {
+      "title": "יומן השבוע",
+      "empty": "אין משימות השבוע",
+      "comingHint": "תצוגת יומן מלאה תיחבר ב-A.S12 (Calendar + ICS)"
+    },
+    "conversations": {
+      "title": "שיחות אחרונות",
+      "empty": "אין שיחות לתצוגה",
+      "comingHint": "צ'אט נוסף בשלב מאוחר יותר (Phase 2)"
+    }
   },
   "nav": {
     "home": "ראשי",

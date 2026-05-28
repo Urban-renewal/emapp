@@ -165,7 +165,45 @@ sum=100 and the signature lifecycle are exercised in Layer 3.
 
 ## Layer 3 — Cross-actor lifecycle + sync
 
-_pending_
+**Harness:** `e2e/audit/layer3-lifecycle.spec.ts` — multi-context (Manager,
+Beta-Manager, **anonymous Resident** = no cookies, the real public-link actor).
+Evidence: `docs/audit/artifacts/layer3/*.json`.
+
+### L1 — Signature lifecycle: **SYNCED** (the crown-jewel flow works end-to-end)
+
+| Step                                  | Actor           | Result                                                                               |
+| ------------------------------------- | --------------- | ------------------------------------------------------------------------------------ |
+| `POST /signature-requests`            | Manager         | **201**, returns `signUrl = .../sign/{jwt}`                                          |
+| `GET /sign/{token}`                   | Resident (anon) | **200**, sees `{document, owner, expiresAt}`                                         |
+| PII check on preview                  | Resident        | **national_id NOT leaked** in the public preview                                     |
+| `POST /sign/{token}` `{signatureSvg}` | Resident (anon) | **200**, `signedAt` returned                                                         |
+| `GET /signature-requests/{id}`        | Manager         | status flipped **pending → signed**, `signedAt` set — **state synced across actors** |
+| Audit                                 | Manager         | a `sign`-related audit row is present                                                |
+| Replay same token                     | Resident (anon) | **401 `invalid_token`** — single-use enforced                                        |
+
+The core product promise (collect a resident signature on a document) works
+correctly across actor boundaries, with no-oracle replay protection and no PII
+leak to the public link.
+
+### L8 — Cross-tenant isolation: **ISOLATED**
+
+Beta manager `GET /signature-requests/{AlphaRequestId}` → **404 `not_found`**
+(no-oracle, not 403 — existence is not leaked). Tenant boundary holds for by-id reads.
+
+### L10 — Ownership integrity: **CONSISTENT** (with a self-correction)
+
+Apartment `b606d92b…` ownership set: 1 owner at `ownershipPct: 100` → **sum = 100**.
+_Method note: my first pass guessed the field name (`sharePercent`) and computed
+sum=0 → "INCONSISTENT". Inspecting the row showed the real field is `ownershipPct`.
+The "inconsistency" was an artifact of my wrong field name, not a product defect —
+corrected and re-run (self-interrogation: suspect your own failure too)._
+
+### Not exercised (budget)
+
+Tenant OTP → portal own-data-only, invite→accept→active, contractor share-scope,
+import→appears-everywhere. Portal endpoints exist and are guarded
+(`TenantAuthGuard` + `tenant_sessions` revocation, migration 0038); negative guard
+checks fold into Layer 5.
 
 ## Layer 4 — Perf at scale
 

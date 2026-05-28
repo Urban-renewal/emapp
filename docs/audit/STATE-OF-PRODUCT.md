@@ -148,13 +148,13 @@ not product bugs. Verified by re-auth → green.)
 
 ### PARTIAL / flagged
 
-- **Owner create via the FE form did NOT submit under automation** — `POST` count
-  was **0** despite the inputs holding the correct values (`toHaveValue` passed) and
-  no navigation occurred. This matches the **login RHF hydration race**: when fields
-  are populated around hydration, React-Hook-Form's internal state stays empty, so
-  `handleSubmit`'s zod validation blocks the submit silently. The API path proves the
-  backend + masking work; the **client form is the weak link**. Flagged for human
-  confirmation in the visual pass. _Pattern: RHF forms (login, owners) silently no-op._
+- **Owner create via the FE form did NOT submit** — `POST` count was **0**. I first
+  hypothesised an RHF hydration race; the visual pass (human-like slow typing)
+  **disproved that** and found the real cause: the optional **email** field, left blank,
+  fails `.email()` validation. See **FUNC-1** in the Visual pass — promoted to a HIGH
+  functional bug. _(Method note: don't trust your first hypothesis — the human-typing
+  re-test surfaced the "Invalid email" ground truth.)_ The API path proves the backend
+  - masking work; the blocker is FE form validation, not the backend.
 
 ### Not individually exercised (budget) — backbone established
 
@@ -289,8 +289,104 @@ raw tokens). Evidence: `docs/audit/artifacts/layer5/*.json`.
 
 ## Visual pass
 
-_pending_
+**Method:** full-page Playwright screenshots of key screens, eyeballed
+multimodally (`docs/audit/artifacts/shots/*.png`). Plus a decisive re-test of
+the owner form with **human-like slow typing** (`pressSequentially`).
 
-## The 5 big patterns
+### FUNC-1 (HIGH, functional) — you cannot create an owner without an email via the UI
 
-_pending_
+The owner-form failure first labelled a "hydration race" in Layer 2 was **misdiagnosed**.
+Human-typing test (`docs/audit/artifacts/layer6/owner-form-human.json`): typing
+name + national*id + phone, leaving email blank, **submit fires NO POST** and the form
+shows **"Invalid email"** on the untouched field.
+Root cause: `email: z.string().email().nullable().optional()` (`packages/shared-types/src/owner.ts:58`).
+`.optional()` exempts `undefined` and `.nullable()` exempts `null`, but the FE form
+sends `""` for the untouched input — `""` is neither, so it hits `.email()` and fails.
+The API path succeeds **only** because it omits the key entirely. **Impact:** owners
+with no email (common for elderly residents — the exact target users) cannot be
+entered through the UI; the manager sees a confusing validation error on a field they
+were told is optional. \_Likely a whole class: any optional string field with a format
+validator + an empty-string-emitting input is a latent submit-blocker.*
+
+### Visual / polish findings
+
+- **RTL + spacing are clean and professional** on the dashboard (sidebar right, Hebrew
+  flows correctly, KPI cards aligned). No obvious jank in static screenshots.
+- **Dashboard KPIs render `—` placeholders** (visually confirms the Layer-1 shell finding).
+- **VIS-1 (LOW): internal slice/phase jargon leaks into the production UI.** The home
+  screen shows "תצוגת יומן מלאה תיחבר ב-**A.S12 (Calendar + ICS)**" and "צ'אט נוסף בשלב
+  מאוחר יותר (**Phase 2**)" — developer-facing references visible to end users.
+- **VIS-2 (flag, inconclusive): owner detail page rendered an empty content area** in
+  the screenshot (only the sidebar painted). Could be client-fetch timing or a sparse/
+  unwired detail page — Layer-1 had recorded owner-detail as 200 with ~2 content
+  elements. Needs a human confirm; not claimed as a confirmed bug.
+
+## The 5 big patterns (shared roots behind the findings)
+
+**1. "Structure is wired; insight is not."** Every list, detail, CRUD path, auth flow,
+and the full signature lifecycle work — but every _aggregate / derived_ surface is a
+placeholder: the 4 dashboard KPIs (`—`), per-project stats (`—`), week calendar
+(empty), conversations (empty). The product can faithfully **store and retrieve**, but
+the manager's at-a-glance "how are my projects doing?" view is hollow. The first screen
+a customer sees conveys zero live data.
+
+**2. The server spine is strong; the client edge is the weak link.** Under adversarial
+probing _every_ server-side guarantee held — RLS tenant isolation (404 no-oracle), JWT
+integrity, server-side RBAC, rate-limiting, mass-assignment rejection, PII masking,
+single-use sign tokens. The real user-blocking failures all live in the **FE form
+layer**: owner-create blocked by validation, login hydration race. Investment has gone
+into the backend's correctness; the frontend form/validation UX is comparatively brittle.
+
+**3. "Optional" across the validation boundary means `undefined`, but forms send `""`.**
+FUNC-1 (owner email) is one instance of a class: shared-types marks fields
+`.format().nullable().optional()`, the FE registers a plain input that emits `""` when
+untouched, and `""` fails the format check. Every optional+formatted field is a
+suspect. The fix pattern (FE `setValueAs`/transform `"" → undefined`, or schema
+`.or(z.literal(''))`) isn't applied consistently.
+
+**4. Hidden environment/topology coupling that breaks under the documented path or load.**
+The documented `pnpm dev` yields a broken stack (turbo strict-env-mode silently drops
+half the secrets); the SSR `getMe()` self-fetch deadlocks the server under load with no
+fast-fail. The system carries implicit assumptions about _which env var reaches which
+process_ and _self-referential request topology_ that are neither captured in config
+nor defended at runtime.
+
+**5. Slice-by-slice construction left consistency gaps.** Features built incrementally
+by different hands show seams: cursor-pagination composite indexes exist for
+owners/tasks/audit but not projects/documents (identical query shape, inconsistent
+index support); internal slice IDs ("A.S12", "Phase 2") leak into user copy;
+`/he/buildings` + `/he/apartments` 404 with no friendly handling. No cross-cutting
+"make it uniform" pass has been run over the slices.
+
+---
+
+## Executive summary (for the client)
+
+**What works — and is genuinely solid:** authentication, multi-tenant isolation, the
+full **signature-collection lifecycle** (manager creates → resident signs via public
+link → manager sees it, with single-use + audit + no PII leak), role-based access
+control, and the security/privacy fundamentals (PII encryption + masking, JWT integrity,
+rate-limiting, mass-assignment defense). **No critical security findings.** The data
+model is mature and index-aware. The routing surface is clean (0 console errors, 0 failed
+loads across 39 routes).
+
+**What's missing or broken — in priority order:**
+
+1. **FUNC-1 (HIGH):** can't create an owner without an email via the UI (optional-email
+   validation rejects empty string) — blocks a core, common data-entry case.
+2. **"Hollow dashboard" (HIGH, product):** the manager landing page and per-project
+   cards show only `—` placeholders — no live metrics, no drill-down. The product reads
+   as a CRUD shell, not a dashboard.
+3. **ENV-1 (HIGH, dev-only):** the documented `pnpm dev` boots a broken stack (turbo
+   env filtering) — onboarding friction / silent API death.
+4. **ENV-2 / PERF-2 (MED):** SSR `getMe` self-fetch can hang authenticated pages with no
+   fallback.
+5. **PERF-1 (MED, latent):** projects/documents list pagination lacks the index that
+   owners/tasks have — fine now, sorts the whole org set per page at scale.
+6. **Login hydration race, internal-jargon-in-UI (LOW).**
+
+**Tiering reality:** Org tier is built and works; Provider tier is a shell (MFA/console
+not exercisable); Resident tier's signature path works, broader portal not audited.
+
+_Evidence for every line above is in `docs/audit/artifacts/` (per-layer JSON, query
+plans, screenshots) and reproducible from the committed `e2e/audit/*.spec.ts`._

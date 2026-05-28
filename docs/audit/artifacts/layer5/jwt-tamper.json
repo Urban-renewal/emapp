@@ -1,0 +1,8 @@
+{
+  "probe": "jwt-tamper",
+  "validTokenStatus": 200,
+  "badSignatureStatus": 401,
+  "tamperedRoleStatus": 401,
+  "unsignedStatus": 401,
+  "verdict": "SECURE (all tampered tokens 401)"
+}

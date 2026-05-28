@@ -211,7 +211,38 @@ _pending_
 
 ## Layer 5 — Security / ISO 27001
 
-_pending_
+**Harness:** `e2e/audit/layer5-security.spec.ts` (multi-context + tampered
+raw tokens). Evidence: `docs/audit/artifacts/layer5/*.json`.
+**Headline: no CRITICAL findings. The security fundamentals are genuinely solid.**
+
+| Probe                         | Result               | Evidence                                                                                                                                                           |
+| ----------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **IDOR** (Beta → Alpha by-id) | **SECURE**           | project/owner/document/task: Alpha-own → 200, Beta-cross → **404** (no-oracle) for all 4.                                                                          |
+| **JWT tamper**                | **SECURE**           | valid → 200; bad signature → **401**; payload `role→provider_admin` (old sig) → **401**; unsigned (alg=none style) → **401**.                                      |
+| **Mass-assignment**           | **SECURE (rejects)** | POST `/owners` with forged `id`+`organizationId`+`createdBy` → **400** (strict zod schema rejects unknown keys — defense in depth; forged org never takes effect). |
+| **RBAC** (viewer write)       | **SECURE**           | (L2) viewer POST `/projects` → **403 forbidden**, server-side.                                                                                                     |
+| **Unauth access**             | **SECURE**           | anon GET projects/owners/me/portal-me/provider-tenants/audit → **all 401**.                                                                                        |
+| **Cookie flags**              | **SECURE**           | `access_token`: HttpOnly + SameSite=Lax; `refresh_token`: HttpOnly + SameSite=Lax + **Path scoped to `/api/v1/auth/refresh`**.                                     |
+| **Rate-limit**                | **SECURE**           | 14 login attempts → `[401×9, 429×5]` — throttle at 10/60s confirmed.                                                                                               |
+| **PII on the wire (D.19)**    | **SECURE**           | (L2/L3) national_id masked (`•••••••53`), never cleartext in create response or public sign preview.                                                               |
+
+### ISO 27001 control mapping
+
+| Annex A control         | Status    | Basis (this audit)                                                                                    |
+| ----------------------- | --------- | ----------------------------------------------------------------------------------------------------- |
+| **A.9 Access control**  | ✅ Strong | RLS tenant isolation (404 no-oracle), server-side RBAC (403), anon rejection (401), httpOnly cookies  |
+| **A.10 Cryptography**   | ✅ Strong | JWT integrity verified (tamper→401), PII pgcrypto-encrypted + masked, separate sign-token audience    |
+| **A.12 Ops / logging**  | ✅ Good   | audit rows on writes (signature lifecycle), rate-limiting. ⚠️ live PII-in-logs scrubbing not verified |
+| **A.13 Comms security** | ✅ Good   | SameSite cookies, HSTS + full CSP headers (seen at bootstrap)                                         |
+| **A.18 / privacy**      | ✅ Good   | D.19 masking honoured, no national_id leak to public link                                             |
+
+### Residual / not probed (honesty)
+
+- **PII-in-server-logs** not verified live (needs log access; pino redaction is configured per CLAUDE.md but unconfirmed at runtime).
+- **Provider MFA enforcement** not exercised (provider tier is a shell — see Layer 1).
+- **CSRF**: relies on SameSite=Lax + custom header; no anti-CSRF token observed (acceptable for cookie+SameSite, noted).
+- **Refresh-token rotation / reuse-detection** (D.21) asserted by design, not re-tested here.
+- **Public-sign POST rate-limit** (5/hr) not stress-tested (would burn the single-use token).
 
 ## Visual pass
 

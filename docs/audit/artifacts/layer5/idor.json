@@ -1,0 +1,15 @@
+{
+  "probe": "idor",
+  "results": {
+    "project_alphaOwn": 200,
+    "project_betaCross": 404,
+    "owner_alphaOwn": 200,
+    "owner_betaCross": 404,
+    "document_alphaOwn": 200,
+    "document_betaCross": 404,
+    "task_alphaOwn": 200,
+    "task_betaCross": 404
+  },
+  "leaks": [],
+  "verdict": "SECURE (all cross-tenant by-id → 404)"
+}

@@ -1,0 +1,49 @@
+[
+  {
+    "scenario": "projects list — BE down (abort)",
+    "mode": "abort",
+    "hasHebrewError": false,
+    "hasRetry": false,
+    "looksBlank": false,
+    "crashed": false,
+    "pageErrors": [],
+    "bodySample": "EM EMAPP התחדשות עירונית ראשי פרויקטים בעלי דירות ייבוא מסמכים בקשות חתימה התראות משימות קבלנים הערות חברי ארגון יומן ביקורת הגדרות ממ מיכל מנהלת מנהל התנתק Alpha טוען..."
+  },
+  {
+    "scenario": "projects list — 500",
+    "mode": "fail500",
+    "hasHebrewError": false,
+    "hasRetry": false,
+    "looksBlank": false,
+    "crashed": false,
+    "pageErrors": [],
+    "bodySample": "EM EMAPP התחדשות עירונית ראשי פרויקטים בעלי דירות ייבוא מסמכים בקשות חתימה התראות משימות קבלנים הערות חברי ארגון יומן ביקורת הגדרות ממ מיכל מנהלת מנהל התנתק Alpha טוען..."
+  },
+  {
+    "scenario": "owners list — BE down (abort)",
+    "mode": "abort",
+    "hasHebrewError": false,
+    "hasRetry": false,
+    "looksBlank": false,
+    "crashed": false,
+    "pageErrors": [],
+    "bodySample": "EM EMAPP התחדשות עירונית ראשי פרויקטים בעלי דירות ייבוא מסמכים בקשות חתימה התראות משימות קבלנים הערות חברי ארגון יומן ביקורת הגדרות ממ מיכל מנהלת מנהל התנתק Alpha בעלי דירות הוספת "
+  },
+  {
+    "scenario": "signature-requests — 500",
+    "mode": "fail500",
+    "hasHebrewError": false,
+    "hasRetry": false,
+    "looksBlank": false,
+    "crashed": false,
+    "pageErrors": [],
+    "bodySample": "EM EMAPP התחדשות עירונית ראשי פרויקטים בעלי דירות ייבוא מסמכים בקשות חתימה התראות משימות קבלנים הערות חברי ארגון יומן ביקורת הגדרות ממ מיכל מנהלת מנהל התנתק Alpha"
+  },
+  {
+    "scenario": "project detail — bogus id (404)",
+    "hasHebrewError": false,
+    "looksBlank": false,
+    "crashed": false,
+    "bodySample": "EM EMAPP התחדשות עירונית ראשי פרויקטים בעלי דירות ייבוא מסמכים בקשות חתימה התראות משימות קבלנים הערות חברי ארגון יומן ביקורת הגדרות ממ מיכל מנהלת מנהל התנתק Alpha"
+  }
+]

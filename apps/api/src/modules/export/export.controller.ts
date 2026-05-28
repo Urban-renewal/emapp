@@ -1,4 +1,13 @@
-import { Controller, ForbiddenException, Get, Param, Query, Res, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  ForbiddenException,
+  Get,
+  HttpException,
+  Param,
+  Query,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
@@ -12,6 +21,7 @@ import { AuthGuard } from '../auth/guards/auth.guard';
 import { TenantGuard } from '../auth/guards/tenant.guard';
 
 import { ExportComposerService } from './export-composer.service';
+import { ExportRateLimitService } from './export-rate-limit.service';
 import { ExportService, type ProjectExportInput } from './export.service';
 import { PdfExportService } from './pdf-export.service';
 
@@ -51,6 +61,7 @@ export class ExportController {
     private readonly composer: ExportComposerService,
     private readonly xlsx: ExportService,
     private readonly pdf: PdfExportService,
+    private readonly rateLimit: ExportRateLimitService,
   ) {}
 
   // Docs/03 §11: "Rate limit על ייצוא (10 per user per hour)".
@@ -73,6 +84,30 @@ export class ExportController {
       throw new ForbiddenException({
         error: { code: 'forbidden', message: 'export not permitted for this role' },
       });
+    }
+
+    // Wave 6 EXP-H1 (redteam audit 2026-05-28) — DB-backed per-user
+    // rate limit. The @Throttle decorator above is in-memory + per-
+    // process; on multi-replica Railway it lets the user pull 10×N
+    // exports/hour where N is the replica count. The DB counter
+    // serialises across replicas (cache_kv PK lock) so 10/hour is
+    // real. We keep both: @Throttle as cheap belt-and-braces for
+    // single-replica deploys + smoothing layer, DB check as the
+    // source of truth.
+    const verdict = await this.rateLimit.checkAndIncrement(user.sub);
+    if (!verdict.allowed) {
+      if (verdict.retryAfterSec !== undefined) {
+        reply.header('Retry-After', verdict.retryAfterSec.toString());
+      }
+      throw new HttpException(
+        {
+          error: {
+            code: 'export_rate_limited',
+            message: 'Hourly export limit reached; try again later',
+          },
+        },
+        429,
+      );
     }
 
     const composed = await this.composer.composeProjectExport(user, projectId, query.format);

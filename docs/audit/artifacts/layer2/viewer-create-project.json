@@ -1,0 +1,11 @@
+{
+  "flow": "viewer-create-project",
+  "createCtaVisibleToViewer": false,
+  "viewerCreateStatus": 403,
+  "viewerCreateBody": {
+    "error": {
+      "code": "forbidden"
+    }
+  },
+  "verdict": "COMPLETE(403 as required)"
+}

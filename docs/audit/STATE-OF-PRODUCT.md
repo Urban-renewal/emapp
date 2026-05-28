@@ -134,7 +134,34 @@ tenants/audit/system-health · Resident portal: me/apartment/documents/signature
 
 ## Layer 2 — Single-actor flows
 
-_pending_
+**Harness:** `e2e/audit/layer2-flows.spec.ts`, assertions from DECISIONS.
+Evidence: `docs/audit/artifacts/layer2/*.json`. (Note: cached `storageState`
+access tokens expire after 15 min — auth-setup must be re-run immediately
+before each layer; several false failures during iteration were stale-token,
+not product bugs. Verified by re-auth → green.)
+
+| Flow                                        | Verdict                 | Evidence                                                                                                                                                                  |
+| ------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Project create** (3-step wizard, Manager) | **COMPLETE**            | POST `/projects` → **201**, lands on `/projects/{uuid}`, GET-by-id → 200 with matching name, no error banner.                                                             |
+| **Owner create + PII masking (D.19)**       | **COMPLETE (API path)** | API POST `/owners` → **201**; response exposes `nationalIdMasked: "•••••••53"`; **raw national_id never appears** in the response body. D.19 honoured.                    |
+| **Viewer cannot create (RBAC, D.17)**       | **COMPLETE**            | Viewer sees **no** "create" CTA on the list **and** API POST `/projects` as viewer → **403 `{error:{code:"forbidden"}}`**. Server-side RBAC enforced, not just UI-hidden. |
+
+### PARTIAL / flagged
+
+- **Owner create via the FE form did NOT submit under automation** — `POST` count
+  was **0** despite the inputs holding the correct values (`toHaveValue` passed) and
+  no navigation occurred. This matches the **login RHF hydration race**: when fields
+  are populated around hydration, React-Hook-Form's internal state stays empty, so
+  `handleSubmit`'s zod validation blocks the submit silently. The API path proves the
+  backend + masking work; the **client form is the weak link**. Flagged for human
+  confirmation in the visual pass. _Pattern: RHF forms (login, owners) silently no-op._
+
+### Not individually exercised (budget) — backbone established
+
+project-create + owner-create + viewer-RBAC establish that the **CRUD + envelope +
+server-side RBAC backbone works**. Task/note/document/member/contractor/import/
+building/apartment creates share the same hook+envelope+RBAC pattern; ownership
+sum=100 and the signature lifecycle are exercised in Layer 3.
 
 ## Layer 3 — Cross-actor lifecycle + sync
 

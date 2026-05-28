@@ -1,7 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 
-import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+  type OnModuleDestroy,
+} from '@nestjs/common';
 import { chromium, type Browser } from 'playwright-core';
 
 import type {
@@ -193,6 +198,28 @@ export class PdfExportService implements OnModuleDestroy {
         this.logger.log(`Chromium singleton launched (pid=${b.contexts().length} contexts)`);
         return b;
       })
+      .catch((e: unknown) => {
+        // Wave 6 E-H4 (errors audit 2026-05-28): chromium.launch can fail
+        // for operational reasons (missing binary in container, /tmp full,
+        // seccomp denial). Without this catch the user got a generic 500
+        // and the FE had no signal to fall back to xlsx. With it, we
+        // surface a 503 carrying `code: 'pdf_unavailable'` so the FE can
+        // detect-and-fallback (FE: if error.code === 'pdf_unavailable',
+        // retry the same export with format=xlsx).
+        //
+        // Server-side: log the real error message + stack so ops can
+        // diagnose (e.g. "Failed to launch chromium: ENOENT /usr/bin/…").
+        // Client-side: ONLY the generic code + message — never the
+        // underlying playwright/Chromium internals (no path / pid / cwd).
+        const msg = e instanceof Error ? e.message : 'unknown';
+        this.logger.error(`Chromium launch failed: ${msg}`);
+        throw new ServiceUnavailableException({
+          error: {
+            code: 'pdf_unavailable',
+            message: 'PDF rendering temporarily unavailable',
+          },
+        });
+      })
       .finally(() => {
         // Whether the launch succeeded or failed, drop the in-flight
         // promise so the next caller either gets the cached browser
@@ -276,10 +303,22 @@ export class PdfExportService implements OnModuleDestroy {
       }
     }
     if (!base) {
-      throw new Error(
-        `pdf-export: could not locate @fontsource/heebo files. CWD=${cwd}. ` +
-          `Tried: ${candidates.join(' | ')}. Install @fontsource/heebo or run from a workspace dir.`,
+      // Wave 6 E-H3 (redteam audit 2026-05-28): the original throw
+      // embedded `process.cwd()` and the full candidate list in the
+      // Error message. With the GlobalExceptionFilter walking `.cause`
+      // and AUTH_DEBUG_ERRORS=1 on staging, that disclosed the
+      // node_modules layout + working directory to the response body.
+      // Now: detailed diagnostic goes to the server log; the throw
+      // carries only a stable code + non-leaky message.
+      this.logger.error(
+        `pdf-export font lookup failed. CWD=${cwd}. Tried: ${candidates.join(' | ')}`,
       );
+      throw new ServiceUnavailableException({
+        error: {
+          code: 'pdf_unavailable',
+          message: 'PDF rendering temporarily unavailable',
+        },
+      });
     }
     const css = files
       .map((name) => {

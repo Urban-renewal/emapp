@@ -1,0 +1,16 @@
+{
+  "name": "apartments-list",
+  "path": "/he/apartments",
+  "navStatus": 404,
+  "finalUrl": "http://localhost:3001/he/apartments",
+  "redirectedToLogin": false,
+  "httpErrors": [],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "elementCount": 0,
+  "mutatingCount": 0,
+  "disabledCount": 0,
+  "navTargets": [],
+  "hollowSignals": [],
+  "clicks": []
+}

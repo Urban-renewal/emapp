@@ -1,0 +1,61 @@
+{
+  "name": "members-list",
+  "path": "/he/members",
+  "navStatus": 200,
+  "finalUrl": "http://localhost:3001/he/members",
+  "redirectedToLogin": false,
+  "httpErrors": [],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "elementCount": 21,
+  "mutatingCount": 1,
+  "disabledCount": 0,
+  "navTargets": [
+    "/",
+    "/projects",
+    "/owners",
+    "/imports",
+    "/documents",
+    "/signature-requests",
+    "/notifications",
+    "/tasks",
+    "/contractors",
+    "/notes",
+    "/members",
+    "/audit",
+    "/settings"
+  ],
+  "hollowSignals": [],
+  "clicks": [
+    {
+      "label": "התראות",
+      "outcome": "WORKS",
+      "detail": "opened dialog/menu"
+    },
+    {
+      "label": "li#15",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "li#16",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "li#17",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "li#18",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "li#19",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    }
+  ]
+}

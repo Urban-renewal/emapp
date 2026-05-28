@@ -1,0 +1,36 @@
+{
+  "name": "document-detail",
+  "path": "/he/documents/e7adaaa5-c610-4fb4-afff-f8c43bbd807d",
+  "navStatus": 200,
+  "finalUrl": "http://localhost:3001/he/documents/e7adaaa5-c610-4fb4-afff-f8c43bbd807d",
+  "redirectedToLogin": false,
+  "httpErrors": [],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "elementCount": 15,
+  "mutatingCount": 1,
+  "disabledCount": 0,
+  "navTargets": [
+    "/",
+    "/projects",
+    "/owners",
+    "/imports",
+    "/documents",
+    "/signature-requests",
+    "/notifications",
+    "/tasks",
+    "/contractors",
+    "/notes",
+    "/members",
+    "/audit",
+    "/settings"
+  ],
+  "hollowSignals": [],
+  "clicks": [
+    {
+      "label": "התראות",
+      "outcome": "WORKS",
+      "detail": "opened dialog/menu"
+    }
+  ]
+}

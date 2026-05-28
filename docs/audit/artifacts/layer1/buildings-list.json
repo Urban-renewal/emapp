@@ -1,0 +1,16 @@
+{
+  "name": "buildings-list",
+  "path": "/he/buildings",
+  "navStatus": 404,
+  "finalUrl": "http://localhost:3001/he/buildings",
+  "redirectedToLogin": false,
+  "httpErrors": [],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "elementCount": 0,
+  "mutatingCount": 0,
+  "disabledCount": 0,
+  "navTargets": [],
+  "hollowSignals": [],
+  "clicks": []
+}

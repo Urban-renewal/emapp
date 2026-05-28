@@ -1,0 +1,61 @@
+{
+  "name": "settings",
+  "path": "/he/settings",
+  "navStatus": 200,
+  "finalUrl": "http://localhost:3001/he/settings",
+  "redirectedToLogin": false,
+  "httpErrors": [],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "elementCount": 21,
+  "mutatingCount": 1,
+  "disabledCount": 0,
+  "navTargets": [
+    "/",
+    "/projects",
+    "/owners",
+    "/imports",
+    "/documents",
+    "/signature-requests",
+    "/notifications",
+    "/tasks",
+    "/contractors",
+    "/notes",
+    "/members",
+    "/audit",
+    "/settings"
+  ],
+  "hollowSignals": [],
+  "clicks": [
+    {
+      "label": "התראות",
+      "outcome": "WORKS",
+      "detail": "opened dialog/menu"
+    },
+    {
+      "label": "כללי",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "חברי צוות",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "התראות",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "אינטגרציות",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "אבטחה",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    }
+  ]
+}

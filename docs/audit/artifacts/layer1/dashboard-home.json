@@ -1,0 +1,62 @@
+{
+  "name": "dashboard-home",
+  "path": "/he",
+  "navStatus": 200,
+  "finalUrl": "http://localhost:3001/he",
+  "redirectedToLogin": false,
+  "httpErrors": [],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "elementCount": 25,
+  "mutatingCount": 1,
+  "disabledCount": 1,
+  "navTargets": [
+    "/",
+    "/projects",
+    "/owners",
+    "/imports",
+    "/documents",
+    "/signature-requests",
+    "/notifications",
+    "/tasks",
+    "/contractors",
+    "/notes",
+    "/members",
+    "/audit",
+    "/settings",
+    "/projects/new"
+  ],
+  "hollowSignals": ["אין משימות"],
+  "clicks": [
+    {
+      "label": "התראות",
+      "outcome": "WORKS",
+      "detail": "opened dialog/menu"
+    },
+    {
+      "label": "פרויקטים פעילים\n—\n—",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "דיירים במערכת\n—\n—",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "חתימות שהתקבלו\n—\n—",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "ממתינים לטיפול\n—\n—",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "יומן השבוע\n\nאין משימות השבוע\n\nתצוגת יומן",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    }
+  ]
+}

@@ -122,7 +122,7 @@ export class PdfExportService implements OnModuleDestroy {
     return this.buildHtml(input);
   }
 
-  async renderProjectPdf(input: ProjectExportInput): Promise<Buffer> {
+  async renderProjectPdf(input: ProjectExportInput, signal?: AbortSignal): Promise<Buffer> {
     const t0 = Date.now();
     const html = this.buildHtml(input);
     // Wave 5 F1: get-or-launch the singleton; per-request work happens
@@ -131,6 +131,26 @@ export class PdfExportService implements OnModuleDestroy {
     // the 1+ second launch step.
     const browser = await this.getBrowser();
     const ctx = await browser.newContext();
+    // Wave 6 E-H1 (errors audit 2026-05-28): if the controller wired an
+    // AbortSignal (from `reply.raw.on('close')`), bind it to the
+    // context so a client disconnect mid-render closes Chromium's
+    // page+context immediately. Without this, an abandoned export
+    // holds Chromium until `page.pdf()` resolves (up to ~45 s) —
+    // trivial DoS against the singleton-browser path (next caller
+    // queues behind the abandoned render). `ctx.close()` is
+    // idempotent; the renderer's own try/finally then runs and
+    // finds it already closed, which surfaces as a TargetClosedError
+    // that the caller's catch logs as an aborted render.
+    const onAbort = (): void => {
+      ctx.close().catch(() => {
+        /* already-closed paths are fine */
+      });
+    };
+    if (signal?.aborted) {
+      onAbort();
+    } else {
+      signal?.addEventListener('abort', onAbort, { once: true });
+    }
     try {
       const page = await ctx.newPage();
       // `setContent` returns when the DOM is ready, but `document.fonts.ready`

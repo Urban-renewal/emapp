@@ -207,7 +207,50 @@ checks fold into Layer 5.
 
 ## Layer 4 — Perf at scale
 
-_pending_
+**Scope honesty:** I did **not** run the full multi-thousand-row volume seed
+(budget). Instead I used a higher-signal, deterministic method: **index inventory
+(`pg_indexes`) + `EXPLAIN ANALYZE`** of the real list queries. At current MVP data
+volumes every list query runs sub-millisecond, so timing alone proves nothing — the
+**query plans + index coverage** are what reveal scale behaviour. Evidence: the
+EXPLAIN output below (run against the real Neon DB via the `pg` pool).
+
+### PERF-1 (MEDIUM, latent scale gap) — inconsistent cursor-pagination index coverage
+
+Several list endpoints keyset-paginate with `ORDER BY created_at DESC, id DESC`.
+The composite index that makes that an _index-ordered_ scan exists for some tables
+but **not** for `projects` and `documents`:
+
+| Table              | Has `(org_id, created_at DESC, id DESC)` idx?          | EXPLAIN of list query (current data)                                       |
+| ------------------ | ------------------------------------------------------ | -------------------------------------------------------------------------- |
+| owners             | ✅ `idx_owners_org_created_desc`                       | Bitmap Index Scan (will be index-ordered at scale)                         |
+| tasks              | ✅                                                     | indexed                                                                    |
+| audit_log          | ✅ `(org_id, created_at DESC)`                         | indexed                                                                    |
+| signature_requests | ✅ `(org_id, status, created_at DESC)`                 | indexed                                                                    |
+| notifications      | ✅ `(user_id, created_at DESC)`                        | indexed                                                                    |
+| **projects**       | ❌ only `(org_id)`, `(org_id,status)`, `(org_id,type)` | **Bitmap Index Scan → Sort node** (`Sort Key: created_at DESC, id DESC`)   |
+| **documents**      | ❌ only `(org_id, project_id)` partial                 | **Seq Scan → Sort node** (worst — no usable index for the global org list) |
+
+At MVP volume the planner picks bitmap/seq + quicksort for all of them (~0.07 ms),
+so the regression is **not yet observable**. The risk is structural: as a single org
+accumulates thousands of projects/documents, `projects` and `documents` will fetch
+**the whole org set and sort it in memory on every page load**, while owners/tasks
+can switch to a 25-row index-ordered scan. **Fix is cheap**: add
+`(org_id, created_at DESC, id DESC) WHERE archived_at IS NULL` to `projects` and
+`documents` (mirroring the owners/tasks index). _Not a current-perf bug; a latent
+scale gap caught by plan inspection._
+
+### PERF-2 (MEDIUM, resilience) — see ENV-2
+
+The SSR `getMe()` self-fetch (every authenticated page render = a browser→Next→API
+round-trip with no visible server-side timeout) deadlocked the dev server under
+sustained load and never self-recovered. At scale or under a slow `/me`, authenticated
+pages have no fast-fail path. (Full detail in the bootstrap ENV-2 finding.)
+
+### Positive
+
+The schema is genuinely **index-aware** — owners alone has 6 purpose-built indexes
+(name_hash, phone_hash, national_id_hash unique, cursor composite). This is not a
+naive schema; the gap is two missing indexes, not a systemic absence.
 
 ## Layer 5 — Security / ISO 27001
 

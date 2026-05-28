@@ -88,10 +88,24 @@ export class ExportController {
     const ext = query.format === 'pdf' ? 'pdf' : 'xlsx';
     let input: ProjectExportInput | null = composed.input;
 
+    // Wave 6 E-H1 (errors audit 2026-05-28): wire client-disconnect to
+    // an AbortController so the renderer can short-circuit when the
+    // user closes the tab. Without this, an abandoned PDF render holds
+    // Chromium up to ~45 s on the singleton (next caller queues behind
+    // it — trivial DoS). Fastify exposes the underlying http req via
+    // `reply.raw.req`; its 'close' event fires when the client socket
+    // is gone, whether the response was sent or not. We only act on
+    // 'close' BEFORE the response was sent (`!reply.sent`).
+    const abort = new AbortController();
+    const onClose = (): void => {
+      if (!reply.sent) abort.abort();
+    };
+    reply.raw.on('close', onClose);
+
     let buf: Buffer;
     try {
       buf = await (query.format === 'pdf'
-        ? this.pdf.renderProjectPdf(input)
+        ? this.pdf.renderProjectPdf(input, abort.signal)
         : this.xlsx.renderProjectXlsx(input));
     } catch (e) {
       // Wave 5 E-C1: pair the requested-row with a failure outcome row.
@@ -99,6 +113,10 @@ export class ExportController {
       // an exception bubble). Error tag is short + non-leaky (no cwd /
       // stack / file paths — E-H3 covers cwd in pdf-export separately).
       input = null;
+      // Wave 6 E-H1: drop the listener on the failure path too — Nest's
+      // exception filter will write the response, but the abort listener
+      // would otherwise hang around on the request emitter until GC.
+      reply.raw.off('close', onClose);
       const errorTag =
         e instanceof Error ? (e.name === 'Error' ? 'render_error' : e.name) : 'render_error';
       await this.composer.auditExportOutcome(user, projectId, query.format, 'failed', { errorTag });
@@ -150,6 +168,13 @@ export class ExportController {
     // a CDN ignores no-store but honours the other directives.
     reply.header('Cache-Control', 'private, no-store, max-age=0, must-revalidate');
     reply.header('Vary', 'Cookie, Authorization');
+
+    // Wave 6 E-H1: detach the close listener before returning — the
+    // socket-close that fires after a successful response would
+    // otherwise trip the abort path, but at this point reply.sent
+    // makes onClose a no-op. Removing the listener keeps the
+    // request's event-emitter tidy under heavy load.
+    reply.raw.off('close', onClose);
 
     return buf;
   }

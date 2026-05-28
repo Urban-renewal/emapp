@@ -15,6 +15,7 @@ import {
   Logger,
   NotFoundException,
   InternalServerErrorException,
+  PayloadTooLargeException,
 } from '@nestjs/common';
 import { and, eq, isNull, inArray } from 'drizzle-orm';
 
@@ -63,6 +64,11 @@ import type {
 @Injectable()
 export class ExportComposerService {
   private readonly logger = new Logger(ExportComposerService.name);
+
+  // Wave 6 E-H2 + EXP-M1: hard ceiling on apartments per export. Far
+  // above any realistic SMB project (partner's largest ~300); purely
+  // a DoS/OOM guard. Exposed for the spec.
+  static readonly MAX_EXPORT_APARTMENTS = 5000;
 
   async composeProjectExport(
     user: AccessTokenPayload,
@@ -197,6 +203,35 @@ export class ExportComposerService {
           })
           .from(apartments)
           .where(and(inArray(apartments.buildingId, bldIds), isNull(apartments.archivedAt)));
+
+        // Wave 6 E-H2 + EXP-M1 (errors + redteam audit 2026-05-28) —
+        // server-side row cap. The composer holds ONE pool connection
+        // for the whole compose (the withTenant tx); a 50k-apartment
+        // project would (a) hold that connection through 3 decrypt
+        // round-trips + grouping, starving the pool under concurrent
+        // exports, and (b) build a ~70 MB HTML string before Chromium
+        // even starts (OOM the Railway container). We refuse oversized
+        // exports HERE — after the cheap apartments fetch, BEFORE the
+        // expensive owner-decrypt + render — with a 413 carrying a
+        // "split your project" hint. The cap (5000 apts) is far above
+        // any realistic SMB urban-renewal project (the partner's
+        // largest is ~300 apts) so no real user hits it; it's purely
+        // a DoS/OOM ceiling.
+        //
+        // NOTE: the audit's original suggestion (move the apartments +
+        // owners reads OUTSIDE the withTenant tx to shorten the
+        // connection hold) was REJECTED — it would bypass RLS, which
+        // CLAUDE.md forbids ("every DB read goes through withTenant").
+        // The row cap achieves the same pool-protection goal without
+        // touching the RLS boundary.
+        if (aptRows.length > ExportComposerService.MAX_EXPORT_APARTMENTS) {
+          throw new PayloadTooLargeException({
+            error: {
+              code: 'export_too_large',
+              message: `project has ${aptRows.length} apartments; export is limited to ${ExportComposerService.MAX_EXPORT_APARTMENTS}. split the project or contact support for a bulk export.`,
+            },
+          });
+        }
         const aptIds = aptRows.map((a) => a.id);
 
         // 5) Ownerships (active) JOIN owners (active) for those apts.

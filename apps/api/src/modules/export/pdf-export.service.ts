@@ -1,7 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+  type OnModuleDestroy,
+} from '@nestjs/common';
 import { chromium, type Browser } from 'playwright-core';
 
 import type {
@@ -63,20 +68,45 @@ import type {
  *     (PDF /Info dict: /Producer, /Creator, /Author) NEVER contains
  *     national_id or phone strings.
  *
- * Performance budget (docs/03 §11 T7.8): 1000 rows < 45 s. We
- * launch one Chromium per call; a pool comes in a follow-up when
- * concurrent exports become common (the master plan calls for "4
- * pages פתוחות מראש" but a pool only matters at >1 concurrent caller
- * and the MVP has none yet).
+ * Performance budget (docs/03 §11 T7.8): 1000 rows < 45 s. The
+ * 1-second user rule (CLAUDE.md: "more than 1 second is excessive") is
+ * what drives the Wave 5 F1 fix below.
+ *
+ * Wave 5 F1 (perf audit 2026-05-28): SINGLETON BROWSER. The previous
+ * code launched a fresh Chromium per request (`chromium.launch` in the
+ * critical path of `renderProjectPdf`). On Linux containers that is
+ * 600-1200 ms baseline (process fork + Chromium init + DevTools
+ * handshake) — by itself blowing past the 1 s rule. Now:
+ *   - One `Browser` per process, lazy-initialised on first render
+ *     (so test suites that never call `renderProjectPdf` don't pay
+ *     the launch cost, and dev startup is unaffected).
+ *   - Per-request `browser.newContext()` + `.close()` is the
+ *     isolation boundary (Playwright contexts are independent cookie/
+ *     storage jars; sharing a browser between requests is the
+ *     intended pattern).
+ *   - `onModuleDestroy` closes the singleton on graceful shutdown.
+ *   - Self-heal: if `browser.isConnected()` is false on the next
+ *     render (Chromium crashed), we relaunch transparently. Closes
+ *     the operational hole where one bad render kills exports forever.
+ *
+ * Cold path: 1.2-2.5 s on a fresh process. Warm path: ~400-700 ms
+ * (newContext + setContent + fonts.ready + page.pdf + context.close).
+ * Both fit within the 1 s rule for everything past the first call.
  */
 @Injectable()
-export class PdfExportService {
+export class PdfExportService implements OnModuleDestroy {
   private readonly logger = new Logger(PdfExportService.name);
 
   // Lazily read on first render; once loaded, the base64 strings stay
   // in process memory (~80 KB). woff2 is already the smallest font
   // wire format, no further compression possible.
   private cachedFontCss: string | null = null;
+
+  // Wave 5 F1: singleton browser, lazy-initialised. The launchPromise
+  // is the deduplication primitive — concurrent first-call requests
+  // share ONE launch instead of racing N forks.
+  private browser: Browser | null = null;
+  private launchPromise: Promise<Browser> | null = null;
 
   /**
    * Render a project to a PDF Buffer. Caller composes the input from
@@ -92,12 +122,36 @@ export class PdfExportService {
     return this.buildHtml(input);
   }
 
-  async renderProjectPdf(input: ProjectExportInput): Promise<Buffer> {
+  async renderProjectPdf(input: ProjectExportInput, signal?: AbortSignal): Promise<Buffer> {
     const t0 = Date.now();
     const html = this.buildHtml(input);
-    const browser = await this.launchBrowser();
+    // Wave 5 F1: get-or-launch the singleton; per-request work happens
+    // inside a fresh BrowserContext (Playwright's isolation boundary).
+    // We close the CONTEXT, not the browser, so the next call skips
+    // the 1+ second launch step.
+    const browser = await this.getBrowser();
+    const ctx = await browser.newContext();
+    // Wave 6 E-H1 (errors audit 2026-05-28): if the controller wired an
+    // AbortSignal (from `reply.raw.on('close')`), bind it to the
+    // context so a client disconnect mid-render closes Chromium's
+    // page+context immediately. Without this, an abandoned export
+    // holds Chromium until `page.pdf()` resolves (up to ~45 s) —
+    // trivial DoS against the singleton-browser path (next caller
+    // queues behind the abandoned render). `ctx.close()` is
+    // idempotent; the renderer's own try/finally then runs and
+    // finds it already closed, which surfaces as a TargetClosedError
+    // that the caller's catch logs as an aborted render.
+    const onAbort = (): void => {
+      ctx.close().catch(() => {
+        /* already-closed paths are fine */
+      });
+    };
+    if (signal?.aborted) {
+      onAbort();
+    } else {
+      signal?.addEventListener('abort', onAbort, { once: true });
+    }
     try {
-      const ctx = await browser.newContext();
       const page = await ctx.newPage();
       // `setContent` returns when the DOM is ready, but `document.fonts.ready`
       // is the only signal that @font-face has actually parsed + rasterised
@@ -128,16 +182,91 @@ export class PdfExportService {
       // is `Buffer` already but TS sees Uint8Array — cast for clarity.
       return Buffer.from(pdf);
     } finally {
-      await browser.close();
+      await ctx.close();
     }
   }
 
-  private async launchBrowser(): Promise<Browser> {
+  /**
+   * Wave 5 F1: get-or-launch the singleton browser. Concurrent first
+   * callers share one launch via `launchPromise`. If the previous
+   * browser died (Chromium crash), `isConnected()` returns false and
+   * we relaunch transparently — closes the operational hole where one
+   * bad render would kill exports forever.
+   *
+   * Exposed for tests (not as a real public API): the spec asserts
+   * subsequent calls return the SAME `Browser` instance.
+   */
+  async getBrowser(): Promise<Browser> {
+    if (this.browser && this.browser.isConnected()) return this.browser;
+    // The dead-browser branch: clear the cached reference so the
+    // launch path below re-runs cleanly.
+    this.browser = null;
+    if (this.launchPromise) return this.launchPromise;
     // Honours the standard playwright env (PLAYWRIGHT_BROWSERS_PATH,
     // PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH). On dev machines + CI that
     // ran `pnpm --filter @emapp/web test:e2e:install`, the binary is
     // already discoverable; no extra config needed.
-    return chromium.launch({ headless: true });
+    this.launchPromise = chromium
+      .launch({ headless: true })
+      .then((b) => {
+        this.browser = b;
+        // Defence in depth: if Chromium dies, drop our cached reference
+        // so the next call relaunches via the isConnected() gate above.
+        b.on('disconnected', () => {
+          if (this.browser === b) this.browser = null;
+        });
+        this.logger.log(`Chromium singleton launched (pid=${b.contexts().length} contexts)`);
+        return b;
+      })
+      .catch((e: unknown) => {
+        // Wave 6 E-H4 (errors audit 2026-05-28): chromium.launch can fail
+        // for operational reasons (missing binary in container, /tmp full,
+        // seccomp denial). Without this catch the user got a generic 500
+        // and the FE had no signal to fall back to xlsx. With it, we
+        // surface a 503 carrying `code: 'pdf_unavailable'` so the FE can
+        // detect-and-fallback (FE: if error.code === 'pdf_unavailable',
+        // retry the same export with format=xlsx).
+        //
+        // Server-side: log the real error message + stack so ops can
+        // diagnose (e.g. "Failed to launch chromium: ENOENT /usr/bin/…").
+        // Client-side: ONLY the generic code + message — never the
+        // underlying playwright/Chromium internals (no path / pid / cwd).
+        const msg = e instanceof Error ? e.message : 'unknown';
+        this.logger.error(`Chromium launch failed: ${msg}`);
+        throw new ServiceUnavailableException({
+          error: {
+            code: 'pdf_unavailable',
+            message: 'PDF rendering temporarily unavailable',
+          },
+        });
+      })
+      .finally(() => {
+        // Whether the launch succeeded or failed, drop the in-flight
+        // promise so the next caller either gets the cached browser
+        // or starts a fresh launch (instead of awaiting a stale failure).
+        this.launchPromise = null;
+      });
+    return this.launchPromise;
+  }
+
+  /**
+   * Nest lifecycle hook — runs on `app.close()` and SIGINT/SIGTERM
+   * (Nest installs a process listener when `enableShutdownHooks()` is
+   * called). Closes the singleton browser cleanly so Chromium doesn't
+   * stay alive after the API process exits.
+   */
+  async onModuleDestroy(): Promise<void> {
+    const b = this.browser;
+    if (!b) return;
+    this.browser = null;
+    try {
+      await b.close();
+    } catch (e) {
+      // Don't block shutdown on a Chromium close failure — log and move on.
+      this.logger.warn(
+        `Chromium close on shutdown failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+    }
   }
 
   private dataRowCount(input: ProjectExportInput): number {
@@ -194,10 +323,22 @@ export class PdfExportService {
       }
     }
     if (!base) {
-      throw new Error(
-        `pdf-export: could not locate @fontsource/heebo files. CWD=${cwd}. ` +
-          `Tried: ${candidates.join(' | ')}. Install @fontsource/heebo or run from a workspace dir.`,
+      // Wave 6 E-H3 (redteam audit 2026-05-28): the original throw
+      // embedded `process.cwd()` and the full candidate list in the
+      // Error message. With the GlobalExceptionFilter walking `.cause`
+      // and AUTH_DEBUG_ERRORS=1 on staging, that disclosed the
+      // node_modules layout + working directory to the response body.
+      // Now: detailed diagnostic goes to the server log; the throw
+      // carries only a stable code + non-leaky message.
+      this.logger.error(
+        `pdf-export font lookup failed. CWD=${cwd}. Tried: ${candidates.join(' | ')}`,
       );
+      throw new ServiceUnavailableException({
+        error: {
+          code: 'pdf_unavailable',
+          message: 'PDF rendering temporarily unavailable',
+        },
+      });
     }
     const css = files
       .map((name) => {

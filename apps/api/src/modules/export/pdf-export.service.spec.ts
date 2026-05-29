@@ -34,7 +34,7 @@
  *     container pays the chromium boot once; subsequent calls in
  *     the same suite reuse the OS page cache.
  */
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import type {
   ProjectExportApartment,
@@ -45,6 +45,13 @@ import type {
 import { PdfExportService } from './pdf-export.service';
 
 const svc = new PdfExportService();
+
+// Wave 5 F1: the service now holds a singleton browser across calls.
+// Close it after the suite so other test files don't inherit a stale
+// Chromium child process.
+afterAll(async () => {
+  await svc.onModuleDestroy();
+});
 
 function owner(
   name: string,
@@ -216,6 +223,68 @@ describe('V11 B.S9 · PdfExportService — Project → PDF (Phase 7 / D.38)', ()
       expect(authorMatch[1]).not.toContain('500000111');
     }
   }, 60_000);
+
+  it('7) Wave 5 F1 — singleton browser is reused across calls (same Browser instance)', async () => {
+    // After F1 fix, every renderProjectPdf call goes through getBrowser()
+    // which returns ONE cached Browser per process (lazy-launched on
+    // first use). Identity, not wall-time, is the structural test:
+    // wall-time is noisy because prior tests in this file already paid
+    // the launch cost.
+    const input = baseInput([building('דיזנגוף 100', [apt('1', [owner('דוד', 100)])])]);
+    const b1 = await svc.getBrowser();
+    await svc.renderProjectPdf(input);
+    const b2 = await svc.getBrowser();
+    await svc.renderProjectPdf(input);
+    const b3 = await svc.getBrowser();
+    expect(b1).toBe(b2);
+    expect(b2).toBe(b3);
+    expect(b1.isConnected()).toBe(true);
+  }, 60_000);
+
+  it('8) Wave 5 F1 — disconnect handler nulls the cached browser so the next call relaunches', async () => {
+    const b1 = await svc.getBrowser();
+    expect(b1.isConnected()).toBe(true);
+    // Simulate Chromium crash by closing the browser out from under us.
+    // The 'disconnected' event handler should drop the cached reference.
+    await b1.close();
+    // Tiny wait so the disconnected event has time to fire.
+    await new Promise((r) => setTimeout(r, 20));
+    const b2 = await svc.getBrowser();
+    expect(b2).not.toBe(b1); // fresh browser
+    expect(b2.isConnected()).toBe(true);
+    // Cleanup — close so other tests don't share this short-lived one.
+    await b2.close();
+  }, 30_000);
+
+  it('9) Wave 6 E-H4 — chromium.launch failure surfaces as 503 pdf_unavailable (no internals on the wire)', async () => {
+    // Hijack playwright.chromium.launch with a one-shot throw so the
+    // service's getBrowser() runs through the failure branch. We do it
+    // on a fresh service so the singleton on `svc` isn't disturbed.
+    const failing = new PdfExportService();
+    const playwright = await import('playwright-core');
+    const real = playwright.chromium.launch.bind(playwright.chromium);
+    let used = false;
+    (playwright.chromium as unknown as { launch: typeof playwright.chromium.launch }).launch =
+      (async (opts?: Parameters<typeof real>[0]) => {
+        if (used) return real(opts);
+        used = true;
+        throw new Error('mock launch failure — ENOENT /usr/bin/chromium');
+      }) as typeof playwright.chromium.launch;
+    try {
+      await expect(failing.getBrowser()).rejects.toMatchObject({
+        status: 503,
+        response: {
+          error: { code: 'pdf_unavailable', message: 'PDF rendering temporarily unavailable' },
+        },
+      });
+    } finally {
+      // Restore so subsequent tests in this file (and other files in
+      // the same vitest worker) get the real launcher back.
+      (playwright.chromium as unknown as { launch: typeof playwright.chromium.launch }).launch =
+        real;
+      await failing.onModuleDestroy();
+    }
+  }, 30_000);
 
   it('6) perf budget — 1000 (apt, owner) rows renders well under T7.8 ceiling (45s)', async () => {
     const apts: ProjectExportApartment[] = [];

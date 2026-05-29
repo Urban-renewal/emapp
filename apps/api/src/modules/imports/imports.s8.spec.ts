@@ -267,12 +267,20 @@ describe('Phase 6 S8 · §A — POST /imports (create)', () => {
       fileContentHash: 'f'.repeat(64),
       dryRun: false,
     });
+    // After Wave 4 C-2 (PR #151) the presign create now emits TWO audit
+    // rows: 'import.created' (the row insert) + 'import.upload_url_minted'
+    // (the credential issuance). Filter on the create one — the PII
+    // scrub invariant is about the row-create afterState.
     const [row] = await withTenant(orgA.id, (tx) =>
       tx
         .select()
         .from(auditLog)
         .where(
-          and(eq(auditLog.targetTable, 'import_jobs'), eq(auditLog.targetId, result.import.id)),
+          and(
+            eq(auditLog.targetTable, 'import_jobs'),
+            eq(auditLog.targetId, result.import.id),
+            eq(auditLog.action, 'import.created'),
+          ),
         ),
     );
     // Strip UUIDs first — projectId is a UUID and any UUID can

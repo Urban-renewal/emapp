@@ -113,9 +113,29 @@
   Pre-existing NIT noted (not fixed, out of scope): `projects/page.tsx`
   docstring says "פרויקט חדש" but renders "צור פרויקט" — a UX-3 copy item.
 
-- **Next:** slice 4 — PERF-4 (TanStack retry×3 on 4xx → 7-9s error feedback;
-  no-retry-on-4xx + cap backoff, error shown <1.5s) on `apps/web`, once this
-  PR is merged.
+- **Slice 3 merged green** — PR #177 squash-merged to main (commit c995e6f).
+
+- **Slice 4 — PERF-4 (fast error feedback) shipped.** PR pending. Root cause:
+  the global TanStack `retry: 3` + 1s/2s/4s backoff retried EVERY failed query,
+  so a deterministic 4xx took ~7s to surface (audit: 7-9s feedback). Fix
+  (FE-only, one config point in `query-provider.tsx`): global `retry` is now a
+  predicate that never retries a structured `ApiClientError` (a definitive
+  server RESPONSE — 4xx or 5xx) and retries only raw NETWORK failures ≤2× with
+  capped backoff (250ms/500ms, ≤2s). Keying on error TYPE is the correct
+  boundary and avoids threading HTTP status through 81 throw sites. The
+  401-refresh path is unaffected (it lives inside api-client, returns
+  resolved, never rejects → predicate never sees it — security-review
+  confirmed). Verification: e2e `perf4-error-feedback` (forced-404 + forced-500)
+  asserts the endpoint is fetched EXACTLY ONCE (mechanism — a latency-only
+  check a caching plaster could pass cannot collapse 4 requests to 1) + error
+  shown <1.5s from the request. Proven red→green (restore retry:3 → 4 fetches).
+  Full e2e 50/50; lint+typecheck+586 unit green. code-review PASS,
+  security-review PASS (no CRITICAL).
+
+- **Next:** slice 5 — PERF-2 (getMe SSR self-fetch blocks every authenticated
+  page). If fully FE-fixable (cache session-validity / client-load / timeout)
+  → implement; if it needs a new BE endpoint → STOP, record, ask (off-surface).
+  Once this PR is merged.
 
 ### 2026-05-28 · Track B · BE Specialist
 

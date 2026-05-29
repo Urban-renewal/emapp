@@ -1,0 +1,61 @@
+{
+  "name": "project-shares",
+  "path": "/he/projects/c1ed4913-b6ee-4471-81ee-8262276437d2/shares",
+  "navStatus": 200,
+  "finalUrl": "http://localhost:3001/he/projects/c1ed4913-b6ee-4471-81ee-8262276437d2/shares",
+  "redirectedToLogin": false,
+  "httpErrors": [],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "elementCount": 24,
+  "mutatingCount": 3,
+  "disabledCount": 1,
+  "navTargets": [
+    "/",
+    "/projects",
+    "/owners",
+    "/imports",
+    "/documents",
+    "/signature-requests",
+    "/notifications",
+    "/tasks",
+    "/contractors",
+    "/notes",
+    "/members",
+    "/audit",
+    "/settings"
+  ],
+  "hollowSignals": [],
+  "clicks": [
+    {
+      "label": "התראות",
+      "outcome": "WORKS",
+      "detail": "opened dialog/menu"
+    },
+    {
+      "label": "חזרה לפרויקט",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "li#18",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "li#19",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "li#20",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "li#21",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    }
+  ]
+}

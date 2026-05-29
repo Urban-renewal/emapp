@@ -1,0 +1,36 @@
+{
+  "name": "task-detail",
+  "path": "/he/tasks/88c7b8ff-cfeb-4b42-9f57-fb09796cfb70",
+  "navStatus": 200,
+  "finalUrl": "http://localhost:3001/he/tasks/88c7b8ff-cfeb-4b42-9f57-fb09796cfb70",
+  "redirectedToLogin": false,
+  "httpErrors": [],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "elementCount": 15,
+  "mutatingCount": 1,
+  "disabledCount": 0,
+  "navTargets": [
+    "/",
+    "/projects",
+    "/owners",
+    "/imports",
+    "/documents",
+    "/signature-requests",
+    "/notifications",
+    "/tasks",
+    "/contractors",
+    "/notes",
+    "/members",
+    "/audit",
+    "/settings"
+  ],
+  "hollowSignals": [],
+  "clicks": [
+    {
+      "label": "התראות",
+      "outcome": "WORKS",
+      "detail": "opened dialog/menu"
+    }
+  ]
+}

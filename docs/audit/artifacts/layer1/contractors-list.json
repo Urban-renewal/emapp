@@ -1,0 +1,62 @@
+{
+  "name": "contractors-list",
+  "path": "/he/contractors",
+  "navStatus": 200,
+  "finalUrl": "http://localhost:3001/he/contractors",
+  "redirectedToLogin": false,
+  "httpErrors": [],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "elementCount": 22,
+  "mutatingCount": 1,
+  "disabledCount": 0,
+  "navTargets": [
+    "/",
+    "/projects",
+    "/owners",
+    "/imports",
+    "/documents",
+    "/signature-requests",
+    "/notifications",
+    "/tasks",
+    "/contractors",
+    "/notes",
+    "/members",
+    "/audit",
+    "/settings",
+    "/contractors/new"
+  ],
+  "hollowSignals": [],
+  "clicks": [
+    {
+      "label": "התראות",
+      "outcome": "WORKS",
+      "detail": "opened dialog/menu"
+    },
+    {
+      "label": "li#16",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "li#17",
+      "outcome": "DEAD",
+      "detail": "not actionable"
+    },
+    {
+      "label": "li#18",
+      "outcome": "DEAD",
+      "detail": "not actionable"
+    },
+    {
+      "label": "li#19",
+      "outcome": "DEAD",
+      "detail": "not actionable"
+    },
+    {
+      "label": "li#20",
+      "outcome": "DEAD",
+      "detail": "not actionable"
+    }
+  ]
+}

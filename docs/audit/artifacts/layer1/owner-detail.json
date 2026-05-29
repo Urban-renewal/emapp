@@ -1,0 +1,36 @@
+{
+  "name": "owner-detail",
+  "path": "/he/owners/e776ee5e-9b41-4507-af07-457de3d5cb2a",
+  "navStatus": 200,
+  "finalUrl": "http://localhost:3001/he/owners/e776ee5e-9b41-4507-af07-457de3d5cb2a",
+  "redirectedToLogin": false,
+  "httpErrors": [],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "elementCount": 15,
+  "mutatingCount": 1,
+  "disabledCount": 0,
+  "navTargets": [
+    "/",
+    "/projects",
+    "/owners",
+    "/imports",
+    "/documents",
+    "/signature-requests",
+    "/notifications",
+    "/tasks",
+    "/contractors",
+    "/notes",
+    "/members",
+    "/audit",
+    "/settings"
+  ],
+  "hollowSignals": [],
+  "clicks": [
+    {
+      "label": "התראות",
+      "outcome": "WORKS",
+      "detail": "opened dialog/menu"
+    }
+  ]
+}

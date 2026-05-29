@@ -1,0 +1,36 @@
+{
+  "name": "sigreq-detail",
+  "path": "/he/signature-requests/7f1088f0-5fc2-48b0-bc6f-8c8b9d81d6ba",
+  "navStatus": 200,
+  "finalUrl": "http://localhost:3001/he/signature-requests/7f1088f0-5fc2-48b0-bc6f-8c8b9d81d6ba",
+  "redirectedToLogin": false,
+  "httpErrors": [],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "elementCount": 15,
+  "mutatingCount": 1,
+  "disabledCount": 0,
+  "navTargets": [
+    "/",
+    "/projects",
+    "/owners",
+    "/imports",
+    "/documents",
+    "/signature-requests",
+    "/notifications",
+    "/tasks",
+    "/contractors",
+    "/notes",
+    "/members",
+    "/audit",
+    "/settings"
+  ],
+  "hollowSignals": [],
+  "clicks": [
+    {
+      "label": "התראות",
+      "outcome": "WORKS",
+      "detail": "opened dialog/menu"
+    }
+  ]
+}

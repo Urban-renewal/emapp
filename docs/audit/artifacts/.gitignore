@@ -1,0 +1,4 @@
+# Raw Playwright run bundle (traces/video/screenshots) — large binaries.
+# Regenerable from the committed audit specs. Structured evidence lives in
+# the per-layer *.json files which ARE committed.
+_pw/

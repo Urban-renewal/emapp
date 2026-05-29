@@ -1,0 +1,36 @@
+{
+  "name": "imports-new",
+  "path": "/he/imports/new",
+  "navStatus": 200,
+  "finalUrl": "http://localhost:3001/he/imports/new",
+  "redirectedToLogin": false,
+  "httpErrors": [],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "elementCount": 17,
+  "mutatingCount": 3,
+  "disabledCount": 1,
+  "navTargets": [
+    "/",
+    "/projects",
+    "/owners",
+    "/imports",
+    "/documents",
+    "/signature-requests",
+    "/notifications",
+    "/tasks",
+    "/contractors",
+    "/notes",
+    "/members",
+    "/audit",
+    "/settings"
+  ],
+  "hollowSignals": [],
+  "clicks": [
+    {
+      "label": "התראות",
+      "outcome": "WORKS",
+      "detail": "opened dialog/menu"
+    }
+  ]
+}

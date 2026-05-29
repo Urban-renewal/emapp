@@ -1,0 +1,111 @@
+[
+  {
+    "step": "login→dashboard",
+    "settledMs": 4882,
+    "apiCount": 1,
+    "maxConcurrent": 1,
+    "pattern": "single",
+    "firstApiAfterMs": 1966,
+    "apiSpanMs": 1794,
+    "calls": [
+      {
+        "url": "/api/v1/auth/login",
+        "dur": 1794,
+        "status": 200
+      }
+    ]
+  },
+  {
+    "step": "→ projects list",
+    "settledMs": 1826,
+    "apiCount": 0,
+    "maxConcurrent": 0,
+    "pattern": "single",
+    "firstApiAfterMs": null,
+    "apiSpanMs": 0,
+    "calls": []
+  },
+  {
+    "step": "→ open first project",
+    "settledMs": 1116,
+    "apiCount": 2,
+    "maxConcurrent": 2,
+    "pattern": "parallel",
+    "firstApiAfterMs": 215,
+    "apiSpanMs": 682,
+    "calls": [
+      {
+        "url": "/api/v1/notifications",
+        "dur": 721,
+        "status": 200
+      },
+      {
+        "url": "/api/v1/projects",
+        "dur": 680,
+        "status": 200
+      }
+    ]
+  },
+  {
+    "step": "→ owners list",
+    "settledMs": 4118,
+    "apiCount": 0,
+    "maxConcurrent": 0,
+    "pattern": "single",
+    "firstApiAfterMs": null,
+    "apiSpanMs": 0,
+    "calls": []
+  },
+  {
+    "step": "→ documents list",
+    "settledMs": 2975,
+    "apiCount": 1,
+    "maxConcurrent": 1,
+    "pattern": "single",
+    "firstApiAfterMs": 557,
+    "apiSpanMs": 915,
+    "calls": [
+      {
+        "url": "/api/v1/notifications",
+        "dur": 915,
+        "status": 200
+      }
+    ]
+  },
+  {
+    "step": "→ signature-requests",
+    "settledMs": 2557,
+    "apiCount": 0,
+    "maxConcurrent": 0,
+    "pattern": "single",
+    "firstApiAfterMs": null,
+    "apiSpanMs": 0,
+    "calls": []
+  },
+  {
+    "step": "→ audit log",
+    "settledMs": 4408,
+    "apiCount": 1,
+    "maxConcurrent": 1,
+    "pattern": "single",
+    "firstApiAfterMs": 370,
+    "apiSpanMs": 788,
+    "calls": [
+      {
+        "url": "/api/v1/signature-requests",
+        "dur": 788,
+        "status": 200
+      }
+    ]
+  },
+  {
+    "step": "SPA nav: sidebar → projects",
+    "settledMs": 2261,
+    "apiCount": 0,
+    "maxConcurrent": 0,
+    "pattern": "single",
+    "firstApiAfterMs": null,
+    "apiSpanMs": 0,
+    "calls": []
+  }
+]

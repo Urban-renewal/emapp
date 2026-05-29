@@ -1,0 +1,36 @@
+{
+  "name": "apartment-detail",
+  "path": "/he/apartments/b606d92b-3e6d-4401-8bef-b80d46af31d9",
+  "navStatus": 200,
+  "finalUrl": "http://localhost:3001/he/apartments/b606d92b-3e6d-4401-8bef-b80d46af31d9",
+  "redirectedToLogin": false,
+  "httpErrors": [],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "elementCount": 15,
+  "mutatingCount": 1,
+  "disabledCount": 0,
+  "navTargets": [
+    "/",
+    "/projects",
+    "/owners",
+    "/imports",
+    "/documents",
+    "/signature-requests",
+    "/notifications",
+    "/tasks",
+    "/contractors",
+    "/notes",
+    "/members",
+    "/audit",
+    "/settings"
+  ],
+  "hollowSignals": [],
+  "clicks": [
+    {
+      "label": "התראות",
+      "outcome": "WORKS",
+      "detail": "opened dialog/menu"
+    }
+  ]
+}

@@ -104,6 +104,11 @@ test.describe('§E-J2a — Manager creates a project', () => {
             createdAt: now,
             updatedAt: now,
             archivedAt: null,
+            buildingsCount: 0,
+            unitsCount: 0,
+            signaturesPendingCount: 0,
+            signaturesSignedCount: 0,
+            agentsCount: 0,
           },
         }),
       });
@@ -132,6 +137,11 @@ test.describe('§E-J2a — Manager creates a project', () => {
             createdAt: now,
             updatedAt: now,
             archivedAt: null,
+            buildingsCount: 0,
+            unitsCount: 0,
+            signaturesPendingCount: 0,
+            signaturesSignedCount: 0,
+            agentsCount: 0,
           },
         }),
       });

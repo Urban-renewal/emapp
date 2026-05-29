@@ -100,6 +100,17 @@ removes trust from the loop:
    didn't cover (e.g. provider console), the agent writes the test **from the
    spec/DECISIONS**, not from the code, and a different session/you confirm it
    actually asserts the behavior.
+6. **Quality gate, not just correctness (PROC-3 / D.51).** Correctness (test
+   green) is necessary, not sufficient. Each fix also needs: a root-cause
+   statement, **mechanism-based criteria a plaster can't pass** (if a caching
+   hack would also pass the test, the test is too weak), and an anti-plaster
+   review. This is the gate against "understood the problem, shipped a shortcut".
+7. **Autopilot completion — a slice isn't done until ALL its checks are green.**
+   "Opened a PR / CI is running" is NOT done. The agent waits out its own CI
+   (the 8 branch-protected checks), fixes any failure, and only then merges and
+   advances. It never leaves a slice half-verified or hands a red/pending PR
+   forward. Branch protection now enforces this mechanically — a red PR cannot
+   merge, period.
 
 ---
 

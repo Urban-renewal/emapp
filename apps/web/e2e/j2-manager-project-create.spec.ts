@@ -155,6 +155,19 @@ test.describe('§E-J2a — Manager creates a project', () => {
     await expect(form).toBeVisible({ timeout: 10_000 });
     expect((await form.getAttribute('method'))?.toLowerCase()).toBe('post');
 
+    // §FUNC-4 — wait for the REAL hydration signal before touching any
+    // field. The wizard is a client-only controlled-input form: filling
+    // before React attaches its onChange handlers writes the DOM value
+    // but never reaches React state, and the controlled re-render on
+    // hydration then wipes the typed value — so the subsequent "הבא"
+    // click sees an empty name, never advances, and the POST never
+    // fires (waitForResponse times out). This was the flaky failure on
+    // slow runners. `data-hydrated="true"` is set by a post-hydration
+    // effect; gating on it (not a fixed timeout) makes the fill
+    // deterministic. The nav/submit buttons are ALSO disabled until
+    // hydrated, so a pre-hydration click cannot emit a partial POST.
+    await expect(form).toHaveAttribute('data-hydrated', 'true', { timeout: 10_000 });
+
     // §AXIS-T — fill required fields on step 1. Type has default value
     // 'tama38_2'. V11 A.S6 turned /projects/new into a 3-step wizard
     // (Details → Structure → Review); the Create button (type="submit")
@@ -170,16 +183,26 @@ test.describe('§E-J2a — Manager creates a project', () => {
     // Step 2 → Step 3 (no buildings added — empty structure stays valid)
     await page.getByRole('button', { name: 'הבא' }).click();
 
-    // Step 3: the only `type="submit"` in the document.
-    await Promise.all([
-      page.waitForResponse(
-        (r) => r.url().endsWith('/api/v1/projects') && r.request().method() === 'POST',
-        { timeout: 10_000 },
-      ),
-      page.locator('button[type="submit"]').click(),
-    ]);
+    // Step 3: the only `type="submit"` in the document. Click, then wait
+    // on the REDIRECT as the success signal — not on a `waitForResponse`
+    // race. The POST is intercepted and fulfilled by page.route(), and
+    // `onSubmit` only calls router.push AFTER `mutateAsync` resolves, so
+    // the navigation is causally downstream of a captured POST: once the
+    // URL is the detail page, `postCount`/`capturedBody`/`idempotencyKey`
+    // are guaranteed already set by the route handler. The previous
+    // `Promise.all([waitForResponse, click])` form flaked under load — the
+    // intercepted response fired inside the 10s window (trace-confirmed:
+    // POST @54.2s, wait window 54.1→64.1s) yet the response event was
+    // missed, while the redirect itself always succeeded. Asserting the
+    // causal signal removes the race without weakening any §AXIS check.
+    await page.locator('button[type="submit"]').click();
 
-    // §AXIS-A — wire-level assertions.
+    // §AXIS-V/U — navigated to detail page (success signal).
+    await page.waitForURL(new RegExp(`/he/projects/${NEW_PROJECT_ID}$`), { timeout: 15_000 });
+    expect(page.url()).toMatch(new RegExp(`/he/projects/${NEW_PROJECT_ID}$`));
+
+    // §AXIS-A — wire-level assertions. Guaranteed captured: the redirect
+    // above only fires after the POST resolved through the route handler.
     expect(postCount, 'exactly one POST /projects').toBe(1);
     const body = JSON.parse(capturedBody ?? '{}') as Record<string, unknown>;
     expect(body['name']).toBe(FORM_VALUES.name);
@@ -192,10 +215,6 @@ test.describe('§E-J2a — Manager creates a project', () => {
     expect(idempotencyKey).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
-
-    // §AXIS-V/U — navigated to detail page.
-    await page.waitForURL(new RegExp(`/he/projects/${NEW_PROJECT_ID}$`), { timeout: 10_000 });
-    expect(page.url()).toMatch(new RegExp(`/he/projects/${NEW_PROJECT_ID}$`));
 
     // §AXIS-U — URL bar must not carry any of the field values.
     expect(page.url(), 'no name in URL').not.toContain(encodeURIComponent(FORM_VALUES.name));
@@ -217,5 +236,51 @@ test.describe('§E-J2a — Manager creates a project', () => {
 
     // §AXIS-S (console) — fixture auto-asserts.
     expect(consoleErrors.count, 'no console errors during create').toBe(0);
+  });
+
+  // §FUNC-4 mechanism proof (D.51) — the hydration gate must live in the
+  // PRODUCT (server markup), not in test timing. This asserts the raw
+  // SSR HTML — fetched over HTTP with NO browser, NO JS execution, so it
+  // is the byte-for-byte first paint a slow-connection user sees before
+  // hydration. The form must be marked `data-hydrated="false"` and the
+  // step-1 "next" control must be `disabled`. A test-only plaster (a
+  // bumped timeout or waitForTimeout) cannot make these strings appear in
+  // server output — only the product gate does. This is the criterion a
+  // plaster cannot pass.
+  test('2) SSR markup gates interaction until hydrated (mechanism, not timing)', async ({
+    page,
+    context,
+  }) => {
+    await context.addCookies([
+      {
+        name: 'access_token',
+        value: 'e2e-manager-access-jwt',
+        domain: 'localhost',
+        path: '/',
+        httpOnly: true,
+        sameSite: 'Lax',
+        secure: false,
+      },
+    ]);
+
+    // Raw server response — context cookies are sent; the dashboard
+    // layout's SSR getMe() resolves against the mock backend, so the
+    // page renders (no redirect to /login).
+    const res = await page.request.get('/he/projects/new');
+    expect(res.status(), 'authenticated SSR render, not a redirect/401').toBe(200);
+    const html = await res.text();
+
+    // The wizard ships unhydrated on first paint.
+    expect(html, 'form marked not-yet-hydrated in server markup').toContain(
+      'data-hydrated="false"',
+    );
+
+    // The "next" control is rendered disabled until hydration. shadcn
+    // Button forwards the `disabled` prop to the underlying <button>;
+    // assert at least one disabled button exists in the pre-hydration
+    // markup (Back is not rendered on step 1, so this is the Next button).
+    expect(html, 'a nav control is disabled in pre-hydration markup').toMatch(
+      /<button[^>]*\sdisabled(?:=""|\s|>)/i,
+    );
   });
 });

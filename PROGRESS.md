@@ -20,6 +20,48 @@
 - **Env note (not blocking; CI-safe):** `with-provider-encryption #5` flakes ONLY when the full suite runs with file-parallelism against the **shared Neon pooler dev DB** under load — a known parallel-pollution artifact (no session-level GUC exists anywhere in code; verified). It passes in isolation, with 2 files, and single-threaded. CI runs against a **local Postgres** (no pooler) so it does not reproduce there. My new file (a 25th parallel fork) is what tips the local race; the gate itself is environment-independent.
 - **Track A (V12) — PERF-3: composite partial indexes for projects + documents list pagination.** Both list endpoints page `WHERE archived_at IS NULL ORDER BY created_at DESC, id DESC` (org-scoped by RLS) with no covering index → whole-org in-RAM Sort at scale (owners/tasks/memberships already fixed via 0037). Added migration `0039_perf_indexes_projects_documents.sql`: `idx_projects_org_created` + `idx_documents_org_created` on `(org_id, created_at DESC, id DESC) WHERE archived_at IS NULL`, mirroring 0037 byte-for-byte (additive, reversible = pure DROP INDEX). New gate `perf-3-projects-documents-index.spec.ts` asserts the MECHANISM (D.51): with seqscan+bitmapscan disabled, the plan is an ordered Index Scan on the new index with **no Sort node** (plaster-proof — a Sort can't be cached away), plus pg_indexes shape check. RED→GREEN proven. Evidence: before = `Sort (Sort Key: created_at DESC, id DESC) → Bitmap Index Scan on idx_projects_org_status`; after = `Index Only Scan using idx_projects_org_created`, Index Cond on org_id, no Sort. Full `@emapp/db` suite green single-threaded (26 files / 174). **Gate-2 (migration): PR opened, reviewers clean (no CRITICAL/HIGH), NOT auto-merged — awaiting owner approval on the migration before merge.**
 
+### 2026-05-29 · Track B · BE Specialist
+
+# Track B heartbeat — 2026-05-29
+
+- **Slice 1 — FUNC-4 (wizard hydration race) shipped.** PR #175. The
+  project-create wizard (`/projects/new`) is a client-only controlled-input
+  3-step form; SSR HTML painted before React attached handlers, so a
+  fill+click during the hydration window produced a partial/no-op submit
+  (typed values never reached state → controlled re-render wiped them →
+  step-1 validation saw an empty name → POST never fired). Real
+  slow-connection user bug; also the source of the flaky `j2` e2e.
+  - **Root fix (product):** post-hydration `useEffect` flips a `hydrated`
+    flag that disables Back/Next/Create until React is interactive and
+    sets `data-hydrated="true"` on the `<form>`; `onNext`/`onSubmit` also
+    bail when `!hydrated`. A pre-hydration interaction can no longer emit
+    a partial POST. `method="post"` invariant preserved.
+  - **Test (objective spec, did not author the original):** waits for the
+    real `data-hydrated="true"` signal before filling, and asserts success
+    via the causally-guaranteed redirect (`waitForURL` + route-captured
+    `postCount`/`body`/`Idempotency-Key`) instead of the flaky
+    `Promise.all([waitForResponse, click])`. Trace confirmed the
+    intercepted POST fired *inside* the 10s wait window yet the response
+    event was missed under load while the redirect always succeeded —
+    causal signal is deterministic and strictly stronger; no §AXIS
+    assertion dropped. Added a 2nd test asserting the gate in raw SSR
+    markup (`data-hydrated="false"` + disabled control) — a mechanism a
+    timing plaster cannot pass (D.51 §2).
+  - **Evidence:** `j2` submit 10/10 green under `--trace=on --repeat-each=10`
+    (previously 5/5 RED under that condition). lint+typecheck+577 unit
+    tests green. code-review PASS, security-review PASS (no CRITICAL).
+
+- **Observed, NOT a regression (flagged for slice 2):** `j2d`/`j3`/`j6`
+  exhibit the same pre-existing cold-compile `waitForResponse`/`waitForURL`
+  flake class under full-suite load (each passes in isolation; a different
+  spec flakes per run — load-dependent, not deterministic). Untouched by
+  this slice; CI `retries: 2` absorbs cold-compile flakes. `j2d`
+  (owner-create) shares slice 2's surface (FUNC-1) and will be hardened to
+  the same causal-signal pattern there.
+
+- **Next:** slice 2 — FUNC-1 (owner create rejects empty email; sweep the
+  optional+formatted-field class) on `apps/web`, once #175 is merged green.
+
 ### 2026-05-28 · Track B · BE Specialist
 
 # Track B heartbeat — 2026-05-28

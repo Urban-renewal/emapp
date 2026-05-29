@@ -9,7 +9,7 @@ import {
 import { ArrowLeft, ArrowRight, Building2, Plus, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { useCreateProject } from '@/hooks/use-projects';
@@ -118,6 +118,23 @@ export default function NewProjectPage() {
   });
   const [stepError, setStepError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
+  // §FUNC-4 — hydration gate. This is a client-only controlled-input
+  // wizard: the SSR HTML paints before React attaches the input
+  // onChange + button onClick handlers. A user (or a fast test) who
+  // fills fields and clicks "next"/"create" during that window gets a
+  // partial/no-op submit — the typed values never reached React state,
+  // so canAdvanceFromStep1 sees an empty name and the wizard silently
+  // stays on step 1 (or worse, a half-built state POSTs). On a slow
+  // connection this window is real and user-visible. We close it by
+  // gating every nav/submit control on a real hydration signal: the
+  // effect runs only after hydration, flipping `hydrated` true, which
+  // (a) enables Back/Next/Create and (b) sets data-hydrated="true" on
+  // the form so callers have a deterministic readiness signal instead
+  // of a timing guess.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
   // Synchronous in-flight guard — useRef value is updated immediately
   // (no render-cycle latency), so a second submit that arrives before
   // React re-renders `mutation.isPending` still sees the flag and bails.
@@ -138,6 +155,11 @@ export default function NewProjectPage() {
   }
 
   function onNext() {
+    // Defense in depth: the button is disabled until hydrated, but a
+    // stray Enter keypress or programmatic click could still reach
+    // here pre-hydration with empty state — bail rather than emit a
+    // spurious validation error.
+    if (!hydrated) return;
     setStepError(null);
     const check = state.step === 1 ? canAdvanceFromStep1() : canAdvanceFromStep2();
     if (check !== true) {
@@ -161,7 +183,9 @@ export default function NewProjectPage() {
     //     renders at step 3, but if any earlier click bubbles to the
     //     form's onSubmit (shadcn Button quirk, stray keyboard Enter
     //     on an input, etc.), we must not POST.
-    if (submitInFlightRef.current || state.step !== 3) return;
+    //  3. `!hydrated` — never POST before React has attached its
+    //     handlers; the field values would not yet be in state.
+    if (submitInFlightRef.current || state.step !== 3 || !hydrated) return;
     submitInFlightRef.current = true;
     setServerError(null);
     setStepError(null);
@@ -220,6 +244,7 @@ export default function NewProjectPage() {
     <form
       method="post"
       action=""
+      data-hydrated={hydrated ? 'true' : 'false'}
       onSubmit={(e) => {
         e.preventDefault();
         void onSubmit();
@@ -550,7 +575,12 @@ export default function NewProjectPage() {
       <div className="flex items-center justify-between gap-2">
         <div>
           {state.step > 1 && (
-            <Button type="button" variant="ghost" onClick={onBack} disabled={mutation.isPending}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onBack}
+              disabled={!hydrated || mutation.isPending}
+            >
               <ArrowRight className="h-4 w-4 rotate-180" aria-hidden="true" />
               <span>{tw('back')}</span>
             </Button>
@@ -561,12 +591,12 @@ export default function NewProjectPage() {
             {t('cancel')}
           </Button>
           {state.step < 3 ? (
-            <Button type="button" onClick={onNext}>
+            <Button type="button" onClick={onNext} disabled={!hydrated}>
               <span>{tw('next')}</span>
               <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             </Button>
           ) : (
-            <Button type="submit" disabled={mutation.isPending}>
+            <Button type="submit" disabled={!hydrated || mutation.isPending}>
               {mutation.isPending ? t('creating') : tw('submit')}
             </Button>
           )}

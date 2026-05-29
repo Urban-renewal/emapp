@@ -1,0 +1,13 @@
+{
+  "probe": "cookie-flags",
+  "loginStatus": 200,
+  "setCookies": [
+    "access_token :: Max-Age=900; Path=/; HttpOnly; SameSite=Lax",
+    "refresh_token :: Max-Age=2592000; Path=/api/v1/auth/refresh; HttpOnly; SameSite=Lax"
+  ],
+  "accessHttpOnly": true,
+  "accessSameSite": true,
+  "refreshHttpOnly": true,
+  "refreshScopedPath": true,
+  "verdict": "SECURE"
+}

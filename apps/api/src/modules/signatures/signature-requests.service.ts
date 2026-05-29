@@ -25,6 +25,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { and, desc, eq, lt, or, sql, type SQL } from 'drizzle-orm';
 
@@ -282,7 +283,14 @@ export class SignatureRequestsService {
   }> {
     const encKey = serverEnv.PII_ENCRYPTION_KEY;
     if (!encKey) {
-      throw new Error('PII_ENCRYPTION_KEY is required to decrypt owner.name for delivery');
+      // Audit C-1 fix — was: raw Error → 500 with code:"500", indistinguishable
+      // from a genuine internal bug. Now: 503 with stable D.16 code so the FE
+      // can render an actionable "service unavailable" banner and ops monitoring
+      // can alert on encryption-config drift specifically. Pattern mirrors
+      // public-sign.service.ts:218 (encryption_not_configured).
+      throw new ServiceUnavailableException({
+        error: { code: 'encryption_not_configured' },
+      });
     }
 
     // One round-trip: SELECT + name decrypt + (optional) phone decrypt.

@@ -2,6 +2,7 @@ import {
   AuditService,
   MemberConflictError,
   acceptOrgInvite,
+  authSessions,
   inviteOrgMember,
   memberships,
   users,
@@ -24,6 +25,7 @@ import { and, desc, eq, isNotNull, isNull, lt, ne, or, sql, type SQL } from 'dri
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { hashPassword } from '../auth/password';
+import { flushSessionCache } from '../auth/session-validity';
 
 import { EMAIL_PROVIDER, EXPOSE_INVITE_TOKEN, buildInviteEmail } from './invite-email';
 
@@ -238,7 +240,7 @@ export class MembersService {
     input: UpdateMember,
   ): Promise<Member> {
     if (targetUserId === user.sub) throw SELF; // no self role-change (lockout guard)
-    return withTenant(
+    const result = await withTenant(
       user.orgId,
       async (tx) => {
         if (input.role !== 'manager') {
@@ -256,6 +258,18 @@ export class MembersService {
           )
           .returning();
         if (!row) throw NOT_FOUND;
+        // Audit H-1 sec fix (2026-05-27 red-team): a role change must
+        // kill the target's existing access tokens, otherwise an
+        // ex-manager downgraded to viewer keeps full prior privileges
+        // for up to 15 minutes (the access-token TTL). Same posture as
+        // `auth.service.logout` — revoke all active auth_sessions for
+        // this user, then flushSessionCache so the next access-token
+        // check fails immediately. Target sees: "session expired —
+        // please sign in again", which is the correct security signal.
+        await tx
+          .update(authSessions)
+          .set({ revokedAt: new Date() })
+          .where(and(eq(authSessions.userId, targetUserId), isNull(authSessions.revokedAt)));
         const [u] = await tx
           .select({ email: users.email, name: users.name })
           .from(users)
@@ -268,7 +282,7 @@ export class MembersService {
           action: 'member.role_change',
           targetTable: 'memberships',
           targetId: row.id,
-          afterState: { role: input.role },
+          afterState: { role: input.role, sessionsRevoked: true },
           sessionId: user.sid,
         });
         return {
@@ -285,6 +299,11 @@ export class MembersService {
       },
       { userId: user.sub },
     );
+    // flushSessionCache OUTSIDE the tx: the in-process cache eviction
+    // must run after the rows are committed so other workers reading
+    // from the DB don't re-cache the now-stale session ids.
+    flushSessionCache();
+    return result;
   }
 
   async revoke(user: AccessTokenPayload, targetUserId: string): Promise<void> {
@@ -305,6 +324,14 @@ export class MembersService {
           )
           .returning({ id: memberships.id });
         if (!row) throw NOT_FOUND;
+        // Audit H-1 sec fix — revoking the membership without revoking
+        // the user's auth_sessions leaves the access token valid for
+        // up to 15 minutes. Kill all active sessions for this user so
+        // the next request hits a 401 immediately.
+        await tx
+          .update(authSessions)
+          .set({ revokedAt: new Date() })
+          .where(and(eq(authSessions.userId, targetUserId), isNull(authSessions.revokedAt)));
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
@@ -312,11 +339,14 @@ export class MembersService {
           action: 'member.revoke',
           targetTable: 'memberships',
           targetId: row.id,
+          afterState: { sessionsRevoked: true },
           sessionId: user.sid,
         });
       },
       { userId: user.sub },
     );
+    // flush AFTER commit so other workers don't re-cache stale sids.
+    flushSessionCache();
   }
 
   // PUBLIC — the invitee sets their own password. Generic errors only

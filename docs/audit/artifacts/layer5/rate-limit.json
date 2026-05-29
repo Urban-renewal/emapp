@@ -1,0 +1,6 @@
+{
+  "probe": "rate-limit",
+  "statuses": [401, 401, 401, 401, 401, 401, 401, 401, 401, 429, 429, 429, 429, 429],
+  "got429": true,
+  "verdict": "SECURE (429 after threshold)"
+}

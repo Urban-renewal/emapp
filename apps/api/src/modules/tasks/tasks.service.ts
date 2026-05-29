@@ -12,12 +12,14 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
 
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { CalendarEmailService } from '../calendar-email/calendar-email.service';
 
 export interface TaskListPage {
   data: Task[];
@@ -70,8 +72,35 @@ function toTask(r: typeof tasks.$inferSelect): Task {
  */
 @Injectable()
 export class TasksService {
+  // V11 B.S7 (D.38) — best-effort ICS dispatch after create/update/
+  // archive. Injected lazily (constructor) so tests can override with
+  // a stub provider; the service itself swallows failures so a broken
+  // email path NEVER fails a task write.
+  constructor(private readonly calendarEmail: CalendarEmailService) {}
+
   private requireManager(user: AccessTokenPayload): void {
     if (user.role !== 'manager') throw FORBIDDEN;
+  }
+
+  /**
+   * V11 B.S7 (D.38) — fire-and-forget ICS dispatch. Runs OUTSIDE the
+   * withTenant tx (the tx has already committed by the time we call
+   * this from the post-write hooks below), so a slow Resend round-trip
+   * doesn't hold the row-level lock and a failed send doesn't roll
+   * back the task. Best-effort posture: the service logs its own
+   * failures; we swallow any unexpected throw to keep the caller's
+   * promise resolved.
+   */
+  private fireCalendarEmail(
+    orgId: string,
+    taskId: string,
+    action: 'create' | 'update' | 'cancel',
+  ): void {
+    void this.calendarEmail.sendInviteForTask(orgId, taskId, action).catch(() => {
+      // CalendarEmailService logs per-attendee failures internally; an
+      // unexpected throw here (DB load failure, etc.) is also already
+      // logged. Swallow to keep this hook truly fire-and-forget.
+    });
   }
 
   private async assertMember(tx: TenantTx, orgId: string, userId: string): Promise<void> {
@@ -170,7 +199,7 @@ export class TasksService {
 
   async create(user: AccessTokenPayload, input: CreateTask): Promise<Task> {
     this.requireManager(user);
-    return withTenant(
+    const created = await withTenant(
       user.orgId,
       async (tx) => {
         const [row] = await tx
@@ -191,7 +220,10 @@ export class TasksService {
             createdBy: user.sub,
           })
           .returning();
-        if (!row) throw new Error('task insert returned no row');
+        if (!row)
+          throw new InternalServerErrorException({
+            error: { code: 'insert_no_row', message: 'unexpected db state' },
+          });
         const assigneeIds = [...new Set(input.assigneeIds ?? [])];
         if (assigneeIds.length > 0) {
           for (const uid of assigneeIds) await this.assertMember(tx, user.orgId, uid);
@@ -215,13 +247,22 @@ export class TasksService {
       },
       { userId: user.sub },
     );
+    // V11 B.S7 (D.38) — after-tx ICS dispatch. Only if the task has
+    // a scheduled time; CalendarEmailService also short-circuits on
+    // no-attendees, but we avoid even the inner DB read for the common
+    // case of a non-calendar to-do.
+    if (created.scheduledAt) {
+      this.fireCalendarEmail(user.orgId, created.id, 'create');
+    }
+    return created;
   }
 
   async update(user: AccessTokenPayload, id: string, input: UpdateTask): Promise<Task> {
-    return withTenant(
+    const { updated, hadScheduledBefore } = await withTenant(
       user.orgId,
       async (tx) => {
         const before = await this.loadVisible(tx, user, id); // 404/scope first
+        const hadScheduledBeforeLocal = before.scheduledAt !== null;
 
         // Agents may only touch status/description on their assigned tasks.
         if (user.role !== 'manager') {
@@ -268,24 +309,42 @@ export class TasksService {
           afterState: { status: row.status },
           sessionId: user.sid,
         });
-        return toTask(row);
+        return { updated: toTask(row), hadScheduledBefore: hadScheduledBeforeLocal };
       },
       { userId: user.sub },
     );
+    // V11 B.S7 (D.38) — after-tx ICS dispatch:
+    //   - was-scheduled AND is-scheduled  → UPDATE (clients refresh)
+    //   - was-scheduled AND now-cleared   → CANCEL (clients remove)
+    //   - was-not-scheduled AND now-set   → CREATE (clients add fresh)
+    //   - was-not AND still-not           → no-op
+    const hasScheduledNow = updated.scheduledAt !== null;
+    if (hadScheduledBefore && hasScheduledNow) {
+      this.fireCalendarEmail(user.orgId, updated.id, 'update');
+    } else if (hadScheduledBefore && !hasScheduledNow) {
+      this.fireCalendarEmail(user.orgId, updated.id, 'cancel');
+    } else if (!hadScheduledBefore && hasScheduledNow) {
+      this.fireCalendarEmail(user.orgId, updated.id, 'create');
+    }
+    return updated;
   }
 
   async archive(user: AccessTokenPayload, id: string): Promise<void> {
     this.requireManager(user);
-    await withTenant(
+    const cancelInfo = await withTenant(
       user.orgId,
       async (tx) => {
         const [before] = await tx
-          .select({ id: tasks.id, archivedAt: tasks.archivedAt })
+          .select({
+            id: tasks.id,
+            archivedAt: tasks.archivedAt,
+            scheduledAt: tasks.scheduledAt,
+          })
           .from(tasks)
           .where(eq(tasks.id, id))
           .limit(1);
         if (!before) throw NOT_FOUND;
-        if (before.archivedAt) return;
+        if (before.archivedAt) return { shouldCancel: false };
         await tx
           .update(tasks)
           .set({ archivedAt: new Date(), updatedAt: new Date() })
@@ -299,9 +358,16 @@ export class TasksService {
           targetId: id,
           sessionId: user.sid,
         });
+        // V11 B.S7 (D.38) — only fire CANCEL for tasks that actually
+        // had a calendar event. Non-calendar to-dos don't need an ICS
+        // METHOD:CANCEL (recipients never received a REQUEST).
+        return { shouldCancel: before.scheduledAt !== null };
       },
       { userId: user.sub },
     );
+    if (cancelInfo.shouldCancel) {
+      this.fireCalendarEmail(user.orgId, id, 'cancel');
+    }
   }
 
   async listAssignees(user: AccessTokenPayload, taskId: string): Promise<TaskAssignee[]> {
@@ -341,7 +407,10 @@ export class TasksService {
             .insert(taskAssignees)
             .values({ taskId, userId: input.userId, assignedBy: user.sub })
             .returning();
-          if (!row) throw new Error('assignee insert returned no row');
+          if (!row)
+            throw new InternalServerErrorException({
+              error: { code: 'insert_no_row', message: 'unexpected db state' },
+            });
           await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
             orgId: user.orgId,
             actorId: user.sub,

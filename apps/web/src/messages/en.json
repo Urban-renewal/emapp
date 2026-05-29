@@ -99,6 +99,31 @@
       "comingSoonAgent": "Coming soon — only Manager sign-in is wired today",
       "comingSoonContractor": "Coming soon — Contractor signs in via a share link",
       "comingSoonTenant": "Coming soon — Resident signs in via SMS OTP"
+    },
+    "tenant": {
+      "phoneStepTitle": "Resident portal sign-in",
+      "phoneStepHint": "Enter the phone number tied to your apartment ownership. We'll send an SMS with a one-time code.",
+      "codeStepTitle": "Enter the code",
+      "codeStepHint": "We sent a 6-digit code to {phone}. The code is valid for 5 minutes.",
+      "phoneLabel": "Phone number",
+      "phonePlaceholder": "0501234567",
+      "orgSlugLabel": "Organization slug (optional)",
+      "orgSlugPlaceholder": "alpha-dev",
+      "orgSlugHint": "Fill only if you own an apartment in more than one organization.",
+      "codeLabel": "Verification code",
+      "sendCode": "Send code",
+      "sending": "Sending...",
+      "verify": "Verify code",
+      "verifying": "Verifying...",
+      "changePhone": "Change phone number",
+      "resendCode": "Resend code",
+      "resending": "Sending...",
+      "resendCooldown": "You can request a new code in {seconds} seconds",
+      "resendSent": "A new code was sent",
+      "phoneInvalid": "Invalid phone number. Enter an Israeli phone (e.g. 0501234567).",
+      "otpRequestFailed": "Failed to send code. Please retry.",
+      "invalidOtp": "Code is wrong or expired. Please try again.",
+      "notATenant": "Not a resident? Go to manager sign-in"
     }
   },
   "projects": {
@@ -144,7 +169,13 @@
     "export": {
       "excel": "Export to Excel",
       "pdf": "Export to PDF",
-      "comingSoon": "Coming soon — Phase 5"
+      "comingSoon": "Coming soon — Phase 5",
+      "pdfComingSoon": "Coming soon — Phase 5 (B.S9)",
+      "downloading": "Exporting...",
+      "downloaded": "Download complete",
+      "failed": "Export failed. Please try again.",
+      "notReady": "Export endpoint not yet live — coming soon.",
+      "aria": "Export project to Excel"
     },
     "tab": {
       "tenants": "Residents & assets",
@@ -687,6 +718,46 @@
       "email": "Email",
       "name": "Full name",
       "role": "Role"
+    }
+  },
+  "portal": {
+    "hero": {
+      "statusChip": "Your project is active",
+      "greeting": "Hello, {firstName}",
+      "greetingFallback": "Welcome",
+      "titleWithProject": "The {project} project is in progress",
+      "titleFallback": "Your resident portal",
+      "lede": "Track your project, view your apartment, the documents on your file, and any signature requests sent to you — without needing to ask the team.",
+      "statApt": "Your apartment",
+      "statOwnership": "Ownership",
+      "statProjectStatus": "Project status"
+    },
+    "apartment": {
+      "section": "My apartment",
+      "loadFailed": "Failed to load apartment.",
+      "empty": "No apartments are linked to your ownership.",
+      "project": "Project",
+      "unitType": "Unit type",
+      "size": "Size",
+      "rooms": "Rooms",
+      "entrance": "Entrance",
+      "ownership": "Ownership"
+    },
+    "documents": {
+      "section": "My documents",
+      "loadFailed": "Failed to load documents.",
+      "empty": "No documents on your file yet.",
+      "downloadHint": "Direct download will ship in a separate slice. For now, ask the team for a copy."
+    },
+    "signatures": {
+      "section": "Signature requests",
+      "loadFailed": "Failed to load signature requests.",
+      "empty": "No active signature requests.",
+      "expired": "Expired",
+      "expiresAt": "Expires {rel}",
+      "signedAt": "Signed {rel}",
+      "createdAt": "Created {rel}",
+      "smsHint": "The signing link is sent to you via SMS and does not appear here (the link IS the one-time credential)."
     }
   },
   "settings": {

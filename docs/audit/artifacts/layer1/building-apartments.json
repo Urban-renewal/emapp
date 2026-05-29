@@ -1,0 +1,46 @@
+{
+  "name": "building-apartments",
+  "path": "/he/buildings/e9a255c9-9842-430f-a2ca-b124da89f79c/apartments",
+  "navStatus": 200,
+  "finalUrl": "http://localhost:3001/he/buildings/e9a255c9-9842-430f-a2ca-b124da89f79c/apartments",
+  "redirectedToLogin": false,
+  "httpErrors": [],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "elementCount": 21,
+  "mutatingCount": 1,
+  "disabledCount": 0,
+  "navTargets": [
+    "/",
+    "/projects",
+    "/owners",
+    "/imports",
+    "/documents",
+    "/signature-requests",
+    "/notifications",
+    "/tasks",
+    "/contractors",
+    "/notes",
+    "/members",
+    "/audit",
+    "/settings"
+  ],
+  "hollowSignals": [],
+  "clicks": [
+    {
+      "label": "התראות",
+      "outcome": "WORKS",
+      "detail": "opened dialog/menu"
+    },
+    {
+      "label": "li#15",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "li#16",
+      "outcome": "WORKS",
+      "detail": "nav → /he/buildings/e9a255c9-9842-430f-a2ca-b124da89f79c"
+    }
+  ]
+}

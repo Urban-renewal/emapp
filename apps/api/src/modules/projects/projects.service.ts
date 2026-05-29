@@ -21,6 +21,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, sql } from 'drizzle-orm';
@@ -318,7 +319,10 @@ export class ProjectsService {
             createdBy: user.sub,
           })
           .returning();
-        if (!row) throw new Error('project insert returned no row');
+        if (!row)
+          throw new InternalServerErrorException({
+            error: { code: 'insert_no_row', message: 'unexpected db state' },
+          });
 
         // V11 B.S2 — wizard-driven atomic structure expansion (D.39).
         // The AddProjectModal wizard ships project + buildings + sections
@@ -349,7 +353,10 @@ export class ProjectsService {
               notes: b.notes ?? null,
             })
             .returning();
-          if (!bRow) throw new Error('building insert returned no row');
+          if (!bRow)
+            throw new InternalServerErrorException({
+              error: { code: 'insert_no_row', message: 'unexpected db state' },
+            });
           buildingsCreated += 1;
 
           if (b.sections?.length) {

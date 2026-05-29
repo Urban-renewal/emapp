@@ -31,6 +31,17 @@ export class NotificationsController {
     return this.notifications.list(user, query);
   }
 
+  // Audit M2-perf — dedicated unread-count for the Manager's bell.
+  // FE polls every ~30s; without this they were fetching the full first
+  // page just to count, blowing the budget for a hot tab. Constant-time
+  // via the partial index `idx_notifications_user_unread`.
+  // Declared BEFORE any `:id` routes so the static segment doesn't get
+  // captured (cf. the `read-all` ordering comment at the top).
+  @Get('unread-count')
+  async unreadCount(@CurrentUser() user: AccessTokenPayload) {
+    return { data: await this.notifications.unreadCount(user) };
+  }
+
   @Post('read-all')
   @HttpCode(200)
   @AuthzAction('update') // mark-read is a self update, allowed to any role

@@ -1,0 +1,9 @@
+{
+  "probe": "mass-assign",
+  "status": 400,
+  "returnedId": null,
+  "returnedOrgId": null,
+  "forgedIdTookEffect": false,
+  "forgedOrgTookEffect": false,
+  "verdict": "SECURE (forged fields ignored)"
+}

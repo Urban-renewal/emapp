@@ -93,12 +93,20 @@ describe('Phase 4 · storage helpers', () => {
     expect(await p.head('any/key')).toBeNull();
   });
 
-  it('safeDownloadFilename strips control/quote/path; falls back', () => {
-    expect(safeDownloadFilename('חוזה.pdf')).toBe('חוזה.pdf');
+  it('safeDownloadFilename ASCII-only, strips quote/path/control/header-param chars', () => {
+    // Audit H-2 fix (2026-05-27): non-ASCII bytes now stripped — they
+    // break RFC 6266 plain `filename=`. Hebrew names flow through the
+    // separate `responseFilenameUtf8` channel into `filename*=UTF-8''…`.
+    expect(safeDownloadFilename('חוזה.pdf')).toBe('.pdf');
     expect(safeDownloadFilename('a"b\\c/d.pdf')).toBe('abcd.pdf');
     expect(safeDownloadFilename('x\r\ny.pdf')).toBe('xy.pdf');
     expect(safeDownloadFilename('   ')).toBe('document');
     expect(safeDownloadFilename('"/\\')).toBe('document');
     expect(safeDownloadFilename('a'.repeat(500)).length).toBe(200);
+    // Audit H-2 — header-parameter delimiters stripped (was the attack
+    // path: a doc named `x; filename=evil.exe` got past sanitisation
+    // and tricked `;`-split parsers into picking the second name).
+    expect(safeDownloadFilename('x; filename=evil.exe')).toBe('x filenameevil.exe');
+    expect(safeDownloadFilename('a,b=c;d')).toBe('abcd');
   });
 });

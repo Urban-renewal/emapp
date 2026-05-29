@@ -1,0 +1,24 @@
+{
+  "flow": "owner-create",
+  "name": "audit-owner-1779975720664",
+  "nidUsed": "391548252",
+  "feFormPostStatus": 0,
+  "feFormLandedDetail": false,
+  "apiCreateStatus": 201,
+  "apiResponseKeys": [
+    "id",
+    "organizationId",
+    "name",
+    "email",
+    "nationalIdMasked",
+    "phoneMasked",
+    "notes",
+    "createdAt",
+    "updatedAt",
+    "archivedAt"
+  ],
+  "rawNidLeakedInResponse": false,
+  "responseHasMaskedNid": true,
+  "maskedValue": "•••••••53",
+  "verdict": "COMPLETE(create works + national_id masked, D.19 honoured)"
+}

@@ -1,0 +1,11 @@
+{
+  "lifecycle": "cross-tenant-isolation",
+  "alphaReqId": "c2421ec8-fb0d-400b-94fe-7afd0f87dd25",
+  "betaReadStatus": 404,
+  "betaReadBody": {
+    "error": {
+      "code": "not_found"
+    }
+  },
+  "verdict": "ISOLATED (404 no oracle)"
+}

@@ -1,0 +1,18 @@
+{
+  "lifecycle": "ownership-sum",
+  "status": 200,
+  "rowCount": 1,
+  "shareSum": 100,
+  "sampleRow": {
+    "id": "1c74febb-3854-4e8d-9e55-f14a49dfcdbb",
+    "apartmentId": "b606d92b-3e6d-4401-8bef-b80d46af31d9",
+    "ownerId": "047213fc-911f-4b9b-82c9-b6bbcc7840a4",
+    "ownershipPct": 100,
+    "role": null,
+    "startedAt": "2026-05-27T12:04:02.315Z",
+    "endedAt": null,
+    "createdAt": "2026-05-27T12:04:02.315Z",
+    "updatedAt": "2026-05-27T12:04:02.315Z"
+  },
+  "verdict": "CONSISTENT (sum=100)"
+}

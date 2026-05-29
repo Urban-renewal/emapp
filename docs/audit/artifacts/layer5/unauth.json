@@ -1,0 +1,12 @@
+{
+  "probe": "unauth",
+  "results": {
+    "/api/v1/projects": 401,
+    "/api/v1/owners": 401,
+    "/api/v1/me": 401,
+    "/api/v1/portal/me": 401,
+    "/api/v1/provider/tenants": 401,
+    "/api/v1/audit": 401
+  },
+  "verdict": "SECURE (all anon reads rejected)"
+}

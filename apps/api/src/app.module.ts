@@ -10,8 +10,11 @@ import { ApartmentsModule } from './modules/apartments/apartments.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BuildingsModule } from './modules/buildings/buildings.module';
+import { CalendarModule } from './modules/calendar/calendar.module';
+import { CalendarEmailModule } from './modules/calendar-email/calendar-email.module';
 import { ContractorsModule } from './modules/contractors/contractors.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { ExportModule } from './modules/export/export.module';
 import { ImportsModule } from './modules/imports/imports.module';
 import { MembersModule } from './modules/members/members.module';
 import { NotesModule } from './modules/notes/notes.module';
@@ -98,6 +101,18 @@ import { QueueModule } from './queue/queue.module';
     // endpoints. POLICY untouched — portal has no entry in the
     // org POLICY matrix (Gate-6 untouched).
     PortalModule,
+    // D.38 / V11 B.S6 — Calendar / ICS generator (pure function).
+    // No controller; B.S7 Resend integration consumes via DI.
+    CalendarModule,
+    // D.38 / V11 B.S7 — Calendar email dispatcher. Wires
+    // CalendarService + IEmailProvider so TasksService can fire
+    // best-effort ICS invites after task create/update/archive.
+    CalendarEmailModule,
+    // V11 B.S8 / Phase 7 — Project → xlsx export (pure-function
+    // service). B.S10 will wire the endpoint that composes the
+    // input from a withTenant read; B.S9 will add the sibling PDF
+    // service on the same input shape.
+    ExportModule,
   ],
   controllers: [HealthController],
   // Rate limiting ENFORCED globally; the configurable guard adds a

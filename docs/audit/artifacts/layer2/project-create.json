@@ -1,0 +1,26 @@
+{
+  "flow": "project-create",
+  "name": "audit-proj-1779975720664",
+  "step1Filled": "audit-proj-1779975720664",
+  "postStatus": 201,
+  "postBodyKeys": [
+    "id",
+    "organizationId",
+    "name",
+    "type",
+    "status",
+    "description",
+    "targetSignaturePct",
+    "startedAt",
+    "createdBy",
+    "createdAt",
+    "updatedAt",
+    "archivedAt"
+  ],
+  "finalUrl": "http://localhost:3001/he/projects/4e21ba8f-9959-4309-a7af-9089ec5ccb00",
+  "visibleErrorBanner": [],
+  "landedOnDetail": true,
+  "getByIdStatus": 200,
+  "nameMatch": true,
+  "verdict": "COMPLETE"
+}

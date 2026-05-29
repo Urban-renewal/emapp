@@ -7,13 +7,16 @@ import { useTransition } from 'react';
 import { Button } from '@/components/ui/button';
 import { logout } from '@/lib/auth';
 import { logoutProvider } from '@/lib/provider-auth';
+import { logoutTenant } from '@/lib/tenant-auth';
 
 interface Props {
   /** Discriminates which Server Action to call + which cookies to
    *  clear. Org tier: `/api/v1/auth/logout` + clears access_token /
    *  refresh_token. Provider tier: `/api/v1/provider/auth/logout` +
-   *  clears provider_access_token / provider_refresh_token. */
-  tier: 'org' | 'provider';
+   *  clears provider_access_token / provider_refresh_token. Tenant
+   *  tier (V11 A.S14a): local cookie clear only — no BE endpoint
+   *  (passwordless OTP token expires on its own). */
+  tier: 'org' | 'provider' | 'tenant';
 }
 
 /**
@@ -58,9 +61,21 @@ export function LogoutButton({ tier }: Props) {
     startTransition(async () => {
       if (tier === 'provider') {
         await logoutProvider();
-      } else {
-        await logout();
+        router.refresh();
+        router.replace(`/${locale}/login`);
+        return;
       }
+      if (tier === 'tenant') {
+        await logoutTenant();
+        router.refresh();
+        // Tenant tier bounces to /tenant/login (the tenant's own
+        // auth surface), NOT the org /login. Each tier returns to
+        // its own front door so the post-logout UX matches the
+        // tier the user was just in.
+        router.replace(`/${locale}/tenant/login`);
+        return;
+      }
+      await logout();
       router.refresh();
       router.replace(`/${locale}/login`);
     });

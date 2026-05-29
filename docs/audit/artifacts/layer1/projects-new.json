@@ -1,0 +1,46 @@
+{
+  "name": "projects-new",
+  "path": "/he/projects/new",
+  "navStatus": 200,
+  "finalUrl": "http://localhost:3001/he/projects/new",
+  "redirectedToLogin": false,
+  "httpErrors": [],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "elementCount": 18,
+  "mutatingCount": 2,
+  "disabledCount": 0,
+  "navTargets": [
+    "/",
+    "/projects",
+    "/owners",
+    "/imports",
+    "/documents",
+    "/signature-requests",
+    "/notifications",
+    "/tasks",
+    "/contractors",
+    "/notes",
+    "/members",
+    "/audit",
+    "/settings"
+  ],
+  "hollowSignals": [],
+  "clicks": [
+    {
+      "label": "התראות",
+      "outcome": "WORKS",
+      "detail": "opened dialog/menu"
+    },
+    {
+      "label": "שם הפרויקט\nסוג\nתמ\"א 38/1\nתמ\"א 38/2\nפינוי",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    },
+    {
+      "label": "הבא",
+      "outcome": "DEAD",
+      "detail": "no effect"
+    }
+  ]
+}

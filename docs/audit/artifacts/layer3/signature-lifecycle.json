@@ -1,0 +1,26 @@
+{
+  "lifecycle": "signature",
+  "createStatus": 201,
+  "signUrlHost": "http://localhost:3001",
+  "requestId": "c2421ec8-fb0d-400b-94fe-7afd0f87dd25",
+  "tokenLen": 489,
+  "previewStatus": 200,
+  "previewKeys": ["document", "owner", "expiresAt"],
+  "previewLeaksNationalId": false,
+  "signStatus": 200,
+  "signBody": {
+    "data": {
+      "signedAt": "2026-05-28T13:47:07.177Z"
+    }
+  },
+  "managerSeesStatus": "signed",
+  "managerSeesSignedAt": "2026-05-28T13:47:07.177Z",
+  "auditHasSignEvent": true,
+  "replayStatus": 401,
+  "replayBody": {
+    "error": {
+      "code": "invalid_token"
+    }
+  },
+  "verdict": "SYNCED (create→sign→signed visible to manager; replay refused)"
+}

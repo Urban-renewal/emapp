@@ -12,6 +12,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
@@ -65,6 +66,14 @@ export class BuildingsService {
 
   // Throws 404 unless the project is visible to this user (org via RLS +,
   // for agents, an active assignment). Returns nothing — visibility only.
+  //
+  // Note: Wave 2 H3-perf had tried to skip this for Manager/Viewer to
+  // save 1 RT on the LIST path, but the WRITE path (`create`) shares
+  // this method and needs the assert to surface a 404 instead of an
+  // FK violation 500 (contract spec BR4). The perf optimization is
+  // deferred to a follow-up that splits read vs write call-sites and
+  // ships with tests for both. For now, restore the original assert
+  // for all roles to keep CREATE 404s correct.
   private async assertProjectVisible(
     tx: TenantTx,
     user: AccessTokenPayload,
@@ -173,7 +182,10 @@ export class BuildingsService {
             notes: input.notes ?? null,
           })
           .returning();
-        if (!row) throw new Error('building insert returned no row');
+        if (!row)
+          throw new InternalServerErrorException({
+            error: { code: 'insert_no_row', message: 'unexpected db state' },
+          });
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,

@@ -1,0 +1,36 @@
+{
+  "name": "member-detail",
+  "path": "/he/members/44ab57af-3f7d-4bd9-b583-e80c3e6b2cce",
+  "navStatus": 200,
+  "finalUrl": "http://localhost:3001/he/members/44ab57af-3f7d-4bd9-b583-e80c3e6b2cce",
+  "redirectedToLogin": false,
+  "httpErrors": [],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "elementCount": 15,
+  "mutatingCount": 1,
+  "disabledCount": 0,
+  "navTargets": [
+    "/",
+    "/projects",
+    "/owners",
+    "/imports",
+    "/documents",
+    "/signature-requests",
+    "/notifications",
+    "/tasks",
+    "/contractors",
+    "/notes",
+    "/members",
+    "/audit",
+    "/settings"
+  ],
+  "hollowSignals": [],
+  "clicks": [
+    {
+      "label": "התראות",
+      "outcome": "WORKS",
+      "detail": "opened dialog/menu"
+    }
+  ]
+}

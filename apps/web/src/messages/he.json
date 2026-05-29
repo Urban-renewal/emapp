@@ -99,6 +99,31 @@
       "comingSoonAgent": "בקרוב — בשלב זה רק כניסת מנהל זמינה",
       "comingSoonContractor": "בקרוב — כניסת קבלן בנפרד דרך share-link",
       "comingSoonTenant": "בקרוב — כניסת דייר דרך SMS OTP"
+    },
+    "tenant": {
+      "phoneStepTitle": "כניסה לפורטל דייר",
+      "phoneStepHint": "הזן את מספר הטלפון שמשויך לבעלות הדירה. נשלח SMS עם קוד אימות חד-פעמי.",
+      "codeStepTitle": "הזן את הקוד",
+      "codeStepHint": "שלחנו קוד בן 6 ספרות אל {phone}. הקוד תקף ל-5 דקות.",
+      "phoneLabel": "מספר טלפון",
+      "phonePlaceholder": "0501234567",
+      "orgSlugLabel": "מזהה ארגון (אופציונלי)",
+      "orgSlugPlaceholder": "alpha-dev",
+      "orgSlugHint": "מלא רק אם אתה בעלים של דירה ביותר מארגון אחד.",
+      "codeLabel": "קוד אימות",
+      "sendCode": "שלח קוד",
+      "sending": "שולח...",
+      "verify": "אמת קוד",
+      "verifying": "מאמת...",
+      "changePhone": "שנה מספר טלפון",
+      "resendCode": "שלח קוד מחדש",
+      "resending": "שולח...",
+      "resendCooldown": "ניתן לבקש קוד חדש בעוד {seconds} שניות",
+      "resendSent": "קוד חדש נשלח בהצלחה",
+      "phoneInvalid": "מספר טלפון לא תקין. הזן מספר ישראלי (לדוגמה: 0501234567).",
+      "otpRequestFailed": "שליחת הקוד נכשלה. נסה שנית.",
+      "invalidOtp": "הקוד שגוי או פג תוקף. נסה שנית.",
+      "notATenant": "לא דייר? עבור לכניסת מנהל"
     }
   },
   "projects": {
@@ -144,7 +169,13 @@
     "export": {
       "excel": "ייצוא לאקסל",
       "pdf": "ייצוא ל-PDF",
-      "comingSoon": "בקרוב — Phase 5"
+      "comingSoon": "בקרוב — Phase 5",
+      "pdfComingSoon": "בקרוב — Phase 5 (B.S9)",
+      "downloading": "מייצא...",
+      "downloaded": "ההורדה הסתיימה",
+      "failed": "ייצוא נכשל. נסה שוב.",
+      "notReady": "נקודת הקצה לייצוא טרם הופעלה — צפוי בקרוב.",
+      "aria": "ייצוא הפרויקט לאקסל"
     },
     "tab": {
       "tenants": "דיירים ונכסים",
@@ -687,6 +718,46 @@
       "email": "אימייל",
       "name": "שם מלא",
       "role": "תפקיד"
+    }
+  },
+  "portal": {
+    "hero": {
+      "statusChip": "הפרויקט שלך פעיל",
+      "greeting": "שלום, {firstName}",
+      "greetingFallback": "ברוך הבא",
+      "titleWithProject": "הפרויקט {project} בעיצומו",
+      "titleFallback": "פורטל הדייר שלך",
+      "lede": "כאן תוכל לעקוב אחר התקדמות הפרויקט, לראות את הדירה שלך, המסמכים שצירפנו לתיק, וכל בקשת חתימה ממך — מבלי לפנות לצוות.",
+      "statApt": "הדירה שלך",
+      "statOwnership": "אחוז בעלות",
+      "statProjectStatus": "סטטוס הפרויקט"
+    },
+    "apartment": {
+      "section": "הדירה שלי",
+      "loadFailed": "טעינת פרטי הדירה נכשלה.",
+      "empty": "לא נמצאו דירות בבעלותך.",
+      "project": "פרויקט",
+      "unitType": "סוג יחידה",
+      "size": "גודל",
+      "rooms": "חדרים",
+      "entrance": "כניסה",
+      "ownership": "בעלות"
+    },
+    "documents": {
+      "section": "המסמכים שלי",
+      "loadFailed": "טעינת המסמכים נכשלה.",
+      "empty": "אין עדיין מסמכים בתיק שלך.",
+      "downloadHint": "הורדה ישירה תיפתח בסלייס נפרד. בינתיים, אם צריך עותק, פנה לצוות."
+    },
+    "signatures": {
+      "section": "בקשות חתימה",
+      "loadFailed": "טעינת בקשות החתימה נכשלה.",
+      "empty": "אין בקשות חתימה פעילות.",
+      "expired": "פג תוקף",
+      "expiresAt": "תקף עד: {rel}",
+      "signedAt": "נחתם {rel}",
+      "createdAt": "נוצר {rel}",
+      "smsHint": "קישור החתימה נשלח אליך ב-SMS ולא יופיע כאן (אבטחה — הקישור הוא הסיסמה החד-פעמית)."
     }
   },
   "settings": {

@@ -92,12 +92,26 @@ export class R2StorageProvider implements IStorageProvider {
 
   async getDownloadUrl(key: string, opts: DownloadUrlOptions): Promise<string> {
     return withErrorTelemetry('getDownloadUrl', () => {
+      // Audit H-2 fix (2026-05-27 manager-be-redteam): build the
+      // Content-Disposition with BOTH RFC 6266 `filename=` AND RFC
+      // 5987 `filename*=UTF-8''<%-encoded>` when a UTF-8 name is
+      // supplied. Caller pre-sanitises the ASCII slot via
+      // `safeDownloadFilename` (no `;`, `=`, `,`, control chars, or
+      // non-ASCII bytes — so `;`-split parsers can't be fooled into
+      // picking an attacker-chosen filename out of an embedded
+      // semicolon). Hebrew filenames flow through the UTF-8 slot
+      // instead of being silently stripped.
+      let disp: string | undefined;
+      if (opts.responseFilename) {
+        disp = `attachment; filename="${opts.responseFilename}"`;
+        if (opts.responseFilenameUtf8) {
+          disp += `; filename*=UTF-8''${encodeURIComponent(opts.responseFilenameUtf8)}`;
+        }
+      }
       const cmd = new this.deps.GetObjectCommand({
         Bucket: this.bucket,
         Key: key,
-        ResponseContentDisposition: opts.responseFilename
-          ? `attachment; filename="${opts.responseFilename}"`
-          : undefined,
+        ResponseContentDisposition: disp,
       });
       return this.deps.getSignedUrl(this.deps.client, cmd, { expiresIn: opts.ttlSeconds });
     });

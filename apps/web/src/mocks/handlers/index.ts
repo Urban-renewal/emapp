@@ -88,6 +88,32 @@ export const handlers = [
   }),
   http.delete(`${API}/projects/:id`, () => new HttpResponse(null, { status: 204 })),
 
+  // V11 A.S15 — export endpoint stub (B.S10 contract). Returns a tiny
+  // empty-xlsx byte sequence (the 4 bytes "PK\x03\x04" is the ZIP magic
+  // header used by xlsx) so the FE's blob + download path can be
+  // exercised offline. The real BE response is a streaming xlsx with
+  // `Content-Disposition: attachment; filename="<project>.xlsx"`; this
+  // mock mirrors that header so the FE filename parser is also exercised.
+  http.get(`${API}/projects/:id/export`, ({ request, params }) => {
+    const url = new URL(request.url);
+    const format = url.searchParams.get('format');
+    if (format !== 'xlsx') {
+      return errorEnvelope('validation_error', 400);
+    }
+    const p = SAMPLE_PROJECTS.find((x) => x.id === params['id']);
+    if (!p) return errorEnvelope('not_found', 404);
+    // Smallest legal zip header — sufficient for the FE blob round-trip
+    // smoke. Real xlsx parsing isn't tested here (BE concern, B.S8).
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+    return new HttpResponse(bytes, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="project-${p.id}.xlsx"`,
+      },
+    });
+  }),
+
   // buildings (nested under project)
   http.get(`${API}/projects/:projectId/buildings`, ({ params }) => {
     const items = SAMPLE_BUILDINGS.filter((b) => b.projectId === params['projectId']);

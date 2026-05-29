@@ -9,6 +9,7 @@ import { useForm } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
 import { useCreateOwner } from '@/hooks/use-owners';
+import { emptyToUndefined } from '@/lib/forms';
 
 export default function NewOwnerPage() {
   const t = useTranslations('owners');
@@ -106,7 +107,7 @@ export default function NewOwnerPage() {
             autoComplete="tel"
             className="w-full rounded-md border px-3 py-2 font-mono text-sm"
             dir="ltr"
-            {...register('phone')}
+            {...register('phone', { setValueAs: emptyToUndefined })}
           />
           {errors.phone && <p className="text-xs text-destructive">{errors.phone.message}</p>}
         </div>
@@ -120,7 +121,7 @@ export default function NewOwnerPage() {
             type="email"
             autoComplete="email"
             className="w-full rounded-md border px-3 py-2 text-sm"
-            {...register('email')}
+            {...register('email', { setValueAs: emptyToUndefined })}
           />
           {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
         </div>

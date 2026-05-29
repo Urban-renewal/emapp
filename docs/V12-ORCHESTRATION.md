@@ -2,7 +2,7 @@
 
 > How the V12 work is surfaced, ordered, divided across agents, paced, and
 > verified. Companion to: `FINDINGS-REGISTER.md` (what's broken),
-> `MASTER-PLAN-V12.md` (slices + deps), `DECISIONS-V12.md` (D.42–45),
+> `MASTER-PLAN-V12.md` (slices + deps), `DECISIONS-V12.md` (D.45–D.51),
 > `SETUP-EXTERNAL-SERVICES.md` (infra). This doc is the **who/when/how-paced**.
 
 ---
@@ -21,7 +21,7 @@ foundation before features. The order is NOT "by severity" — it's by
    build don't touch the same files → run simultaneously.
 5. **Foundation before new tiers** — stabilize the built Org tier while the new
    Provider/Resident build runs on its own surface.
-6. **Decision-gated work** — was blocked; D.42–45 are now made → unblocked.
+6. **Decision-gated work** — was blocked; D.45–D.51 are now made → unblocked.
 
 ---
 
@@ -38,7 +38,7 @@ foundation before features. The order is NOT "by severity" — it's by
 **Collision rule:** different surfaces by design. The one shared seam is
 `packages/shared-types` — **add only, never change an existing type without
 posting an issue to the affected track** (V11 lesson). `policy.ts` is Gate-6 —
-only Track D edits it, and only per D.43.
+only Track D edits it, and only per D.46.
 
 ---
 
@@ -65,7 +65,7 @@ Pre-launch  PL1 prod-build+colocated DB · PL2 full suite · PL3 load · PL4 sca
 ```
 
 Track D is the longest (new tiers) — it starts **day 0** in parallel because
-its surface is net-new (no collision), gated only on D.42–45 (now decided).
+its surface is net-new (no collision), gated only on D.45–D.51 (now decided).
 
 ---
 
@@ -145,7 +145,7 @@ removes trust from the loop:
 
 קרא לפני קוד (~1.5 שעות):
   CLAUDE.md (root + apps/api + apps/web + packages/db) ·
-  DECISIONS.html (D.01–D.41, LAW) + DECISIONS-V12.md (D.42–45) ·
+  DECISIONS.html (D.01–D.44, LAW) + DECISIONS-V12.md (D.45–D.51) ·
   GATES.md · FINDINGS-REGISTER.md · MASTER-PLAN-V12.md (ה-track שלך) ·
   V12-ORCHESTRATION.md (זה) · V11-BROWSER-SMOKE.md · PROGRESS.md ·
   packages/db/src/wrappers/with-tenant.ts (איך RLS נאכף) ·
@@ -204,15 +204,15 @@ PRs מצטברים, אני מאחד. אתה לא מחכה.
 
 **Track D — Architecture (Agent A3):**
 
-> שלך (הכי ארוך): permission-model (D.43 — Agent capability matrix + Contractor
+> שלך (הכי ארוך): permission-model (D.46 — Agent capability matrix + Contractor
 > per-share scope, JSONB, IDOR-safe download, server-enforced D.17) → admin-app
-> (D.45 — admin.emapp.io, cookie scope) → Provider console (D1 onboarding → D2
+> (D.48 — admin.emapp.io, cookie scope) → Provider console (D1 onboarding → D2
 > console → D3 config) → Contractor portal → Resident portal completion (D5).
-> canary=permission-model slice. policy.ts הוא שלך (Gate-6 — לפי D.43 בלבד).
+> canary=permission-model slice. policy.ts הוא שלך (Gate-6 — לפי D.46 בלבד).
 
 **Track C — Security/ISO (Agent A4, joins day 2):**
 
-> שלך: SEC-1 masking (D.44, קואורדינציה עם portal של D) → SEC-2 (PII-in-logs) →
+> שלך: SEC-1 masking (D.47, קואורדינציה עם portal של D) → SEC-2 (PII-in-logs) →
 > SEC-3 (provider MFA) → SEC-4 (refresh reuse) → SEC-5 (CSRF) → SEC-6 → C7 (ISO
 > mapping, gated על ISO-SCOPE). canary=SEC-2.
 
@@ -240,14 +240,14 @@ PRs מצטברים, אני מאחד. אתה לא מחכה.
 | ENV-1,2,3               | A          | ✓                | ✓                     |
 | FUNC-1..5               | B          | ✓                | ✓                     |
 | UX-2,3                  | B          | ✓                | ✓ (UX-1=PERF-4)       |
-| SEC-1                   | C+D        | ✓ (=D.44)        | ✓                     |
+| SEC-1                   | C+D        | ✓ (=D.47)        | ✓                     |
 | SEC-2..6                | C          | ✓                | ✓                     |
 | ISO-SCOPE/C7            | C          | ✓ (gated)        | ✓                     |
 | ARCH-1,2,3              | D          | ✓                | ✓                     |
-| ARCH-5 (contractor)     | D          | ✓ (D.43)         | ✓                     |
+| ARCH-5 (contractor)     | D          | ✓ (D.46)         | ✓                     |
 | ARCH-6 (resident)       | D          | ✓                | ✓                     |
-| permission-model (D.43) | D          | ✓                | ✓                     |
-| admin-app (D.45)        | D          | ✓                | ✓                     |
+| permission-model (D.46) | D          | ✓                | ✓                     |
+| admin-app (D.48)        | D          | ✓                | ✓                     |
 | PROC-1,2                | cross      | ✓ (the contract) | ✓                     |
 | PL1-4 (prod/load/scale) | pre-launch | ✓                | ✓                     |
 

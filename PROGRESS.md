@@ -41,7 +41,7 @@
     via the causally-guaranteed redirect (`waitForURL` + route-captured
     `postCount`/`body`/`Idempotency-Key`) instead of the flaky
     `Promise.all([waitForResponse, click])`. Trace confirmed the
-    intercepted POST fired *inside* the 10s wait window yet the response
+    intercepted POST fired _inside_ the 10s wait window yet the response
     event was missed under load while the redirect always succeeded —
     causal signal is deterministic and strictly stronger; no §AXIS
     assertion dropped. Added a 2nd test asserting the gate in raw SSR
@@ -59,8 +59,43 @@
   (owner-create) shares slice 2's surface (FUNC-1) and will be hardened to
   the same causal-signal pattern there.
 
-- **Next:** slice 2 — FUNC-1 (owner create rejects empty email; sweep the
-  optional+formatted-field class) on `apps/web`, once #175 is merged green.
+- **Slice 1 merged green** — PR #175 squash-merged to main (commit d15eac1);
+  all 10 CI checks passed incl. e2e.
+
+- **Slice 2 — FUNC-1 (owner create without optional email/phone) shipped.**
+  PR pending. The owner-create form registered optional `email`/`phone` with
+  RHF; an untouched input submits `''`, but `CreateOwnerInput` declares
+  `email: .email().nullable().optional()` / `phone: .min(9)...optional()`,
+  which reject `''` (optional permits only `undefined`). So a manager who
+  left email blank could not submit the form — the resolver rejected the
+  body and no POST fired.
+  - **Root fix (FE-only):** a named `emptyToUndefined` setValueAs at the
+    form boundary maps `'' → undefined` so the blank field is OMITTED before
+    the resolver runs; the `.strict()` wire contract is unchanged (omits,
+    does not send `''`). Rejected the `.or(z.literal(''))` schema option as
+    a plaster — it would let `''` reach the BE and is off this track's
+    surface (shared-types).
+  - **Sweep (audit flagged "likely a class"):** manually verified all 12 RHF
+    forms vs their shared-types schemas — only `owners/new` had an optional
+    field with a constraint that rejects `''`. Required formatted fields
+    (contractor `contactEmail`) correctly reject blanks; other optionals are
+    `.max()`-only and tolerate `''`. One same-class field outside the
+    resolver path (tenant-login `org_slug`) is already hand-normalized.
+    `forms.spec.ts` pins the scope so future schema drift fails loudly.
+  - **Verification (D.51):** new e2e `j2d` test 2 fills only required fields,
+    leaves email+phone blank, asserts POST fires with both OMITTED (not `''`)
+    + redirect. Proven red→green (revert fix → form never submits). 9 unit
+    mechanism tests assert the schema rejects raw `''` and accepts the
+    transformed payload. Full e2e 46/46 green; lint+typecheck+586 unit green.
+    code-review PASS, security-review PASS (no CRITICAL).
+  - **Bonus:** hardened `j2d` test 1 off the flaky
+    `Promise.all([waitForResponse, click])` onto the causal redirect signal
+    (the slice-1 commitment). Note: `j2d` test-1's cold-compile timeout is a
+    pre-existing suite-wide dev artifact (goto `/owners/new` ~27s cold,
+    trace-confirmed), orthogonal to FUNC-1, absorbed by CI `retries: 2`.
+
+- **Next:** slice 3 — FUNC-3 (`/he/buildings` + `/he/apartments` bare-URL →
+  friendly redirect/404, not raw 404) on `apps/web`, once this PR is merged.
 
 ### 2026-05-28 · Track B · BE Specialist
 

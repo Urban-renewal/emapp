@@ -8,7 +8,13 @@
  * envelope so TanStack Query (or a manual caller) can `error.code`-
  * switch without parsing strings.
  */
-import { ProjectSchema, type CreateProject, type Project } from '@emapp/shared-types';
+import {
+  ProjectListItemSchema,
+  ProjectSchema,
+  type CreateProject,
+  type Project,
+  type ProjectListItem,
+} from '@emapp/shared-types';
 import { z } from 'zod';
 
 import { apiClient, isList, isOk, type ApiResponse } from '../api-client';
@@ -16,10 +22,15 @@ import { apiClient, isList, isOk, type ApiResponse } from '../api-client';
 import { ApiClientError, isEmptyResponseSuccess } from './errors';
 import { PageSchema } from './paging';
 
+// Write paths (create/archive) still return the bare Project shape.
 const ProjectDataSchema = z.object({ data: ProjectSchema });
+// list+get carry aggregate stats — must parse against ProjectListItem,
+// not ProjectSchema, or Zod strips the stats fields by default and the
+// FE renders "—" everywhere even when the API has real numbers.
+const ProjectListItemDataSchema = z.object({ data: ProjectListItemSchema });
 
 export interface ProjectListPage {
-  items: Project[];
+  items: ProjectListItem[];
   page: { limit: number; cursor: string | null; has_more: boolean };
 }
 
@@ -43,15 +54,15 @@ export async function listProjects(query: {
   const qs = params.toString();
   const res = await apiClient.getList<unknown>(`/projects${qs ? `?${qs}` : ''}`);
   if (!isList<unknown>(res)) throw new ApiClientError(res.error);
-  const items = z.array(ProjectSchema).parse(res.data);
+  const items = z.array(ProjectListItemSchema).parse(res.data);
   const page = PageSchema.parse(res.page);
   return { items, page };
 }
 
-export async function getProject(id: string): Promise<Project> {
+export async function getProject(id: string): Promise<ProjectListItem> {
   const res = await apiClient.get<unknown>(`/projects/${id}`);
   const data = unwrap(res);
-  return ProjectDataSchema.parse({ data }).data;
+  return ProjectListItemDataSchema.parse({ data }).data;
 }
 
 export async function createProject(body: CreateProject): Promise<Project> {

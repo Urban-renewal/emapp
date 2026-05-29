@@ -110,6 +110,12 @@ test.describe('§E-J6 — Excel import (upload + start)', () => {
               createdAt: now,
               updatedAt: now,
               archivedAt: null,
+              // ProjectListItem (Project + stats) — FE parses ProjectListItemSchema.
+              buildingsCount: 0,
+              unitsCount: 0,
+              signaturesPendingCount: 0,
+              signaturesSignedCount: 0,
+              agentsCount: 0,
             },
           ],
           page: { limit: 100, cursor: null, has_more: false },

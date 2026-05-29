@@ -101,6 +101,13 @@ test.describe('§E-J8 — Agent assigned-only projects', () => {
               createdAt: now,
               updatedAt: now,
               archivedAt: null,
+              // list/get responses are ProjectListItem (Project + stats) —
+              // the FE parses ProjectListItemSchema, so the mock must carry them.
+              buildingsCount: 0,
+              unitsCount: 0,
+              signaturesPendingCount: 0,
+              signaturesSignedCount: 0,
+              agentsCount: 0,
             },
           ],
           page: { limit: 25, cursor: null, has_more: false },

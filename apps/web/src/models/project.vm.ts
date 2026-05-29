@@ -32,4 +32,16 @@ export interface ProjectViewModel {
   createdRelative: string;
   /** Underlying createdAt — for sorting / cursor-paired display in the list. */
   createdAtIso: string;
+  /**
+   * Aggregate counts attached to list/detail rows by the BE since the
+   * project stats slice (resolves doc-debt: "stats depend on Phase 5
+   * signatures"). Optional because the wire `Project` schema (used by
+   * write responses) doesn't carry them — only `ProjectListItem` does.
+   * Components show "—" when undefined.
+   */
+  buildingsCount?: number;
+  unitsCount?: number;
+  signaturesPendingCount?: number;
+  signaturesSignedCount?: number;
+  agentsCount?: number;
 }

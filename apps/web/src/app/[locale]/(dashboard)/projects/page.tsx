@@ -237,7 +237,7 @@ export default function ProjectsPage() {
                     className="tabular mt-0.5 text-[13px] font-medium"
                     style={{ color: 'var(--text)' }}
                   >
-                    —
+                    {p.unitsCount ?? '—'}
                   </div>
                 </div>
                 <div>
@@ -248,7 +248,9 @@ export default function ProjectsPage() {
                     className="tabular mt-0.5 text-[13px] font-medium"
                     style={{ color: 'var(--text)' }}
                   >
-                    —
+                    {p.signaturesSignedCount !== undefined && p.signaturesPendingCount !== undefined
+                      ? `${p.signaturesSignedCount}/${p.signaturesSignedCount + p.signaturesPendingCount}`
+                      : '—'}
                   </div>
                 </div>
               </div>

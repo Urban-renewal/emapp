@@ -53,6 +53,14 @@ const SAMPLE_PROJECT = {
   createdAt: '2026-05-20T10:00:00.000Z',
   updatedAt: '2026-05-20T10:00:00.000Z',
   archivedAt: null,
+  // Aggregate stats — list() + get() return ProjectListItem (Project +
+  // ProjectStats). The create path parses bare ProjectSchema, which strips
+  // these unknown keys, so one fixture serves all call sites.
+  buildingsCount: 2,
+  unitsCount: 8,
+  signaturesPendingCount: 3,
+  signaturesSignedCount: 5,
+  agentsCount: 1,
 };
 
 const originalFetch = globalThis.fetch;

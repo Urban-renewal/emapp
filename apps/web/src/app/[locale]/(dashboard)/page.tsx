@@ -1,4 +1,6 @@
+import type { OrgStats } from '@emapp/shared-types';
 import { CalendarDays, MessageSquare, Pin, Plus } from 'lucide-react';
+import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
@@ -7,10 +9,10 @@ import { getTranslations } from 'next-intl/server';
  * `MEAPP_design/design_handoff/source/screens-manager.jsx` ManagerHome.
  * Visual structure landed in this slice:
  *   - Page header (title + subtitle).
- *   - 4-card KPI grid (Active projects / Residents / Signatures
- *     received / Pending). Values render as the partner's "—" dash
- *     placeholder until aggregator endpoints exist (Phase 4d or a
- *     dedicated metrics slice — flagged via `home.kpi.comingSoon`).
+ *   - 4-card KPI grid wired to `GET /api/v1/org/stats` (org-wide
+ *     aggregates). Active projects / Residents / Signatures received /
+ *     Pending — all real numbers. Falls back to "—" if the request
+ *     fails so the page never crashes the dashboard.
  *   - Two action buttons: primary "פרויקט חדש" → /projects/new
  *     (live); secondary "משימת שטח" disabled with "בקרוב" hint
  *     (Field Tasks is Phase 2 per docs/03 §1.2).
@@ -19,19 +21,64 @@ import { getTranslations } from 'next-intl/server';
  *     Calendar service + ICS); Conversations empty state on the
  *     right (chat is Phase 2 deferred).
  *
- * Server Component — uses `getTranslations` server-side; no client
- * state needed at this stage (KPI values are static placeholders).
+ * Server Component — fetches stats server-side with the request's
+ * own cookies forwarded so RLS / authz applies. Uses cache: no-store
+ * to avoid stale numbers between visits.
  */
+async function fetchOrgStats(): Promise<OrgStats | null> {
+  const cookieHeader = (await cookies()).toString();
+  const base = process.env['NEXT_INTERNAL_API_URL'] ?? 'http://localhost:3001';
+  try {
+    const res = await fetch(`${base}/api/v1/org/stats`, {
+      headers: { cookie: cookieHeader },
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { data: OrgStats };
+    return json.data;
+  } catch {
+    return null;
+  }
+}
+
 export default async function HomePage() {
   const t = await getTranslations('home');
+  const stats = await fetchOrgStats();
 
-  const kpis: ReadonlyArray<{ key: string; label: string; tone: 'info' | 'success' | 'warning' }> =
-    [
-      { key: 'activeProjects', label: t('kpi.activeProjects'), tone: 'info' },
-      { key: 'residents', label: t('kpi.residents'), tone: 'info' },
-      { key: 'signaturesReceived', label: t('kpi.signaturesReceived'), tone: 'success' },
-      { key: 'pending', label: t('kpi.pending'), tone: 'warning' },
-    ];
+  const placeholder = t('kpi.placeholder');
+  const fmt = (n: number | undefined): string => (typeof n === 'number' ? String(n) : placeholder);
+
+  const kpis: ReadonlyArray<{
+    key: string;
+    label: string;
+    tone: 'info' | 'success' | 'warning';
+    value: string;
+  }> = [
+    {
+      key: 'activeProjects',
+      label: t('kpi.activeProjects'),
+      tone: 'info',
+      value: fmt(stats?.activeProjects),
+    },
+    {
+      key: 'residents',
+      label: t('kpi.residents'),
+      tone: 'info',
+      value: fmt(stats?.residents),
+    },
+    {
+      key: 'signaturesReceived',
+      label: t('kpi.signaturesReceived'),
+      tone: 'success',
+      value: fmt(stats?.signaturesReceived),
+    },
+    {
+      key: 'pending',
+      label: t('kpi.pending'),
+      tone: 'warning',
+      value: fmt(stats?.signaturesPending),
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-5">
@@ -53,17 +100,12 @@ export default async function HomePage() {
               {kpi.label}
             </div>
             <div className="flex items-baseline gap-2">
-              <div
-                className="text-2xl font-bold tabular"
-                style={{ color: 'var(--text)' }}
-                aria-label={t('kpi.comingSoon')}
-                title={t('kpi.comingSoon')}
-              >
-                {t('kpi.placeholder')}
+              <div className="text-2xl font-bold tabular" style={{ color: 'var(--text)' }}>
+                {kpi.value}
               </div>
               <span className={`badge badge-${kpi.tone}`}>
                 <span className="badge-dot" aria-hidden="true" />
-                <span>{t('kpi.placeholder')}</span>
+                <span>{kpi.value}</span>
               </span>
             </div>
           </div>

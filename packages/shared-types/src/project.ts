@@ -42,6 +42,38 @@ export const ProjectSchema = z.object({
 });
 export type Project = z.infer<typeof ProjectSchema>;
 
+/**
+ * Aggregate counts attached to project list/detail rows so the dashboard
+ * cards can show real numbers instead of "—" placeholders. Resolves the
+ * "stats depend on Phase 5 signatures" doc-debt noted above.
+ *
+ * Computed server-side via correlated subqueries — single round-trip per
+ * row, each subquery backed by an index. All counts are >= 0.
+ */
+export const ProjectStatsSchema = z.object({
+  buildingsCount: z.number().int().nonnegative(),
+  unitsCount: z.number().int().nonnegative(),
+  signaturesPendingCount: z.number().int().nonnegative(),
+  signaturesSignedCount: z.number().int().nonnegative(),
+  agentsCount: z.number().int().nonnegative(),
+});
+export type ProjectStats = z.infer<typeof ProjectStatsSchema>;
+
+export const ProjectListItemSchema = ProjectSchema.merge(ProjectStatsSchema);
+export type ProjectListItem = z.infer<typeof ProjectListItemSchema>;
+
+/**
+ * Org-wide aggregates for the home dashboard KPI cards. Returned by
+ * `GET /api/v1/org/stats`. Distinct from project-level stats above.
+ */
+export const OrgStatsSchema = z.object({
+  activeProjects: z.number().int().nonnegative(),
+  residents: z.number().int().nonnegative(),
+  signaturesReceived: z.number().int().nonnegative(),
+  signaturesPending: z.number().int().nonnegative(),
+});
+export type OrgStats = z.infer<typeof OrgStatsSchema>;
+
 // Write shape: only client-supplied columns. org/createdBy/timestamps are
 // injected server-side from the JWT, never from the body. `.strict()` is
 // fail-closed (FE-security DoD): unknown fields are rejected, not ignored.

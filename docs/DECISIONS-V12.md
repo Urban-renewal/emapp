@@ -237,6 +237,45 @@ the loop instead of leaving green-pending work behind. Together they make
 
 ---
 
+## D.52 — PERF-1 round-trip floor = 3 (spec-safe); ≤2 rejected; latency via T6
+
+**Context:** the FINDINGS-REGISTER set PERF-1's target at "≤2 round-trips" for
+`withTenant`. The A1 agent proved that target unreachable without a security
+regression: collapsing the setup into a single statement to hit 2 requires the
+**simple protocol** (no parameter binding), which forces the PII **encryption
+key into the query text** → it lands in DB query logs, violating **spec §10.3**
+(key must stay parameter-bound, never logged). The session-level workaround
+leaks GUCs across pooled connections under the Neon transaction pooler (proved
+mechanically). The agent reverted to the safe path and stopped for this ruling.
+
+**Decision (owner, 2026-05-29):**
+
+1. **Reject ≤2 / inline-key.** We do not trade a PII/ISO control (§10.3) for one
+   round-trip. The encryption key stays **parameter-bound**.
+2. **The round-trip floor is 3** (open+SET ROLE · set_config params · COMMIT) —
+   the safe minimum under §10.3 + the Neon pooler. The big win (4–6 → 3) is
+   already banked; PERF-1's deliverable is to **lock 3 as a CI regression gate**
+   (`perf-1-withtenant-roundtrips.spec.ts`, budget `≤3`), so no future change can
+   regress back toward 4–6.
+3. **Absolute latency is a deployment concern, not a code concern.** The felt
+   slowness is the remote-DB distance (~138ms/hop), not the round-trip _count_.
+   It is solved by **T6 colocation** (app in Neon's region), which collapses each
+   hop to ~1ms. This is **already decided (T6)** and **tracked at the Pre-launch
+   milestone PL1** (`MASTER-PLAN-V12.md`) + the region step in
+   `SETUP-EXTERNAL-SERVICES.md`. **Do not act on it during V12 code work** — it
+   is a deploy-time step, gated at PL1 (launch is blocked until the colocated-DB
+   pass is done).
+
+**Rationale:** count = throughput ceiling (locked at the safe floor of 3);
+distance = felt latency (killed by colocation). Both axes are covered, neither
+sacrifices §10.3. "Minimal runtime" = minimal _safe_ round-trips + colocation,
+not a logged encryption key.
+
+**No open ends:** the colocation step you must not forget is mechanically held
+by **PL1** (a launch-blocking pre-launch gate) — see Plan impact below.
+
+---
+
 ## Plan impact
 
 - **D.46** adds a permission-model slice to Track D.

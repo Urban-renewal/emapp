@@ -72,8 +72,31 @@ its surface is net-new (no collision), gated only on D.42–45 (now decided).
 ## 4. Cadence — the rhythm you see
 
 - **Per slice:** branch → write/locate the failing verification test → fix →
-  red→green + full suite green → PR with mechanical evidence → self-merge (if
-  all green) → heartbeat → next slice. No waiting for you between slices.
+  red→green + full suite green → PR with mechanical evidence → **arm auto-merge**
+  → heartbeat → next slice. No waiting for you between slices.
+- **Auto-merge flow (the "don't miss a red PR" mechanism).** The instinct
+  "push and move on" is exactly how a red PR gets forgotten. So you do NOT sit
+  and watch CI, and you do NOT poll. Instead, **immediately after opening the
+  PR**:
+  ```
+  gh pr merge <n> --auto --squash --delete-branch
+  ```
+  `--auto` hands the merge to GitHub: it merges **by itself** the moment all 8
+  required checks (branch-protection-enforced, G0.1) go green. Three outcomes,
+  zero operator involvement:
+  - **CI green** → GitHub merges + deletes the branch. You never had to return.
+  - **CI red** → it does **not** merge; the CI-monitor callback re-invokes you
+    with the failure. You fix → push → CI re-runs under the same armed
+    auto-merge. Repeat until green.
+  - **Branch fell behind main** (strict mode) → `gh pr update-branch <n>` (or
+    the merge queue if G0.4 is on), then auto-merge proceeds.
+- **Done = merged, not "PR opened" (the autopilot rule, D.51).** A slice is
+  finished only when its PR is **merged green** — never at "CI is running". And
+  you do **not** start a slice that depends on another slice's PR until that PR
+  is _merged into main_ (building on an unmerged/red/stale branch is the exact
+  miss that cost a manual catch in the V12 setup round). If the next slice is
+  independent, proceed while auto-merge settles the prior one in the background;
+  if it depends, wait for the merge.
 - **Heartbeat:** each agent appends to `docs/heartbeats/track-<x>/<date>.md`
   after every slice: what shipped, decisions self-made, surprises, next.
 - **Integration gate (per milestone):** Verifier runs the **full** `e2e/audit/*`

@@ -48,15 +48,42 @@ Why this order works (chain check):
 4. docs/audit/FINDINGS-REGISTER.md — ה-findings של ה-track שלך + עמודת ה-verification.
 
 חוזה עבודה (לא לחרוג):
-- לכל slice: branch → טסט שנכשל (אדום) → fix → אדום→ירוק + כל החבילה ירוקה → PR עם עדות מכנית (curl/EXPLAIN/trace/screenshot — לעולם לא "verified ✓") → מיד: gh pr merge <n> --auto --squash --delete-branch → heartbeat → ה-slice הבא.
+- לכל slice: branch → טסט שנכשל (אדום) → fix → אדום→ירוק + ירוק מקומי (pnpm lint && pnpm typecheck && pnpm test, וה-e2e הרלוונטי) → PR עם עדות מכנית (curl/EXPLAIN/trace/screenshot — לעולם לא "verified ✓") → gh pr merge <n> --auto --squash --delete-branch → **gh pr checks <n> --watch** → heartbeat → ה-slice הבא.
+- **ה-`--watch` הוא ה-autopilot שלך (אין hook שיחזיר אותך — אתה האחראי):** הפקודה חוסמת בתוך אותו turn עד שה-CI מסיים. ירוק → GitHub כבר מיזג ומחק branch → המשך ל-slice הבא. אדום → `gh run view --log-failed`, תקן, push → אותו PR רץ שוב תחת אותו auto-merge → הרץ `--watch` שוב. חזור עד ירוק. **אל תכריז done ואל תתחיל slice חדש לפני ש-`--watch` חזר ירוק וה-PR מוזג.**
 - Done = מוזג ירוק. "PR פתוח / CI רץ" זה לא done. אל תתחיל slice שתלוי ב-PR שעוד לא מוזג ל-main.
-- CI אדום → ה-CI-monitor יחזיר אותך עם הכישלון → תקן → push → חוזר תחת אותו auto-merge. לולאה עד ירוק. אל תעזוב slice חצי-מאומת.
 - PROC-3 / D.51: כל fix-PR חייב (א) משפט root-cause, (ב) קריטריון מכני שפלסטר לא עובר ("אם cache/try-catch/קבוע-קסם היה מעביר את הטסט — הטסט חלש מדי, חזק אותו"). הרץ @security-reviewer ו-@code-reviewer על ה-diff לפני merge; ממצא CRITICAL חוסם עד תיקון-שורש.
 - Gate-6: אם ה-PR נוגע ב-apps/api/src/common/authz/policy.ts או packages/db/migrations/ או משנה type קיים ב-shared-types → אל תפעיל auto-merge. הוסף trailer "Gate-6-Approved:" לגוף ה-PR רק אחרי אישור owner, ועצור — ה-owner ממזג.
 - heartbeat: כתוב ל-docs/heartbeats/track-<שלך>/<היום>.md, הרץ pnpm gen:progress, commit את שניהם יחד. אסור לכתוב ל-track של מישהו אחר.
 - secrets: רק Infisical (infisical run --). אסור .env עם ערכים אמיתיים, אסור secret בקוד/טסט.
 
 עצור (רק אלה): סוף milestone · gate ב-GATES.md · blocked (תלות חסרה / טסט נכשל 5 פעמים / מסמך לא ברור / החלטה שאינה ב-DECISIONS). אחרת — המשך אוטומטית בלי לחכות לי.
+```
+
+---
+
+## AGENT BOOTSTRAP — runtime mechanics (read before slice 1; the prompt assumes these)
+
+```
+WORKTREE (אסור ששני סוכנים יחלקו tree — זה ה-collision שהמיס את המחשב):
+  Track A → C:\emapp-track-a   |  Track B → C:\emapp-track-b
+  Track C → C:\emapp-track-c   |  Track D → C:\emapp-track-d   |  Prompt 0 → C:\emapp-track-b
+  אם ה-tree שלך לא קיים:  git worktree add C:\emapp-track-<x> -b <track>/<slice> origin/main
+  עבוד אך ורק ב-tree שלך. אל תיגע ב-tree של track אחר.
+
+הרצת ה-stack (cold start):
+  infisical run --env=dev -- pnpm dev          # api:3000 + web:3001 (ראה .claude/launch.json)
+  בריא = login מחזיר 200 (אם לא — זה ENV-1, תלות של כולם; חכה ש-A1 סוגר).
+בדיקות:
+  pnpm lint && pnpm typecheck && pnpm test      # יחידה + conformance
+  pnpm --filter @emapp/web test:e2e             # Playwright (פעם ראשונה: ...test:e2e:install)
+  הספקים הנכשלים של ה-audit: apps/web/e2e/audit/*  (regression net — אל תיגע בהם, רק תגרום להם לעבור)
+
+איפה המשימות שלך:
+  docs/audit/FINDINGS-REGISTER.md → הסעיף של ה-track שלך (PERF / FUNC / SEC / ARCH / ENV / UX).
+  כל שורה כוללת כבר verification מכני. ה-spec הנכשל: grep -rl "<FINDING-ID או תיאור>" apps/web/e2e.
+  אין spec קיים (רוב PERF/SEC/ARCH) → כתוב אותו מה-spec/DECISIONS לפני התיקון (PROC-1).
+
+autopilot: אין hook. ה-gh pr checks --watch שבחוזה הוא מה שמחזיק אותך עד ירוק. אם המפעיל הריץ אותך תחת /loop — עדיף, אבל ה-watch מספיק לבד.
 ```
 
 ---

@@ -47,16 +47,16 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
+  // e2e/audit/* are manual product-state audit specs that drive a LIVE
+  // stack (real API + seeded Neon + paired browser). They run only via
+  // `playwright.audit.config.ts`, never in CI — CI has no live stack/seed,
+  // so picking them up here would fail the e2e job. Excluded explicitly.
+  testIgnore: '**/audit/**',
   fullyParallel: false,
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 2 : 0,
   workers: 1,
-  reporter: process.env['CI']
-    ? [
-        ['list'],
-        ['github'],
-      ]
-    : 'list',
+  reporter: process.env['CI'] ? [['list'], ['github']] : 'list',
   timeout: 30_000,
   expect: { timeout: 5_000 },
   globalSetup: './e2e/global-setup.ts',

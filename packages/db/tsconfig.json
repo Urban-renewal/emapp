@@ -6,5 +6,7 @@
     "outDir": "dist",
     "rootDir": "."
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts", "drizzle.config.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts", "drizzle.config.ts"],
+  "comment-exclude": "audit-forge-otp.ts is a one-shot AUDIT tool (run via tsx) that imports @emapp/validators across the package boundary, which violates this package's rootDir. It is not product code and not part of the db build/typecheck surface.",
+  "exclude": ["scripts/audit-forge-otp.ts"]
 }

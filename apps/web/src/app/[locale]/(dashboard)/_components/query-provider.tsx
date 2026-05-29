@@ -3,6 +3,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 
+import { ApiClientError } from '@/lib/api/errors';
+
 /**
  * TanStack Query defaults per docs/03 Phase 8 perf + Doc 02 §11.5.
  *
@@ -12,12 +14,16 @@ import { useState, type ReactNode } from 'react';
  *   - `refetchOnWindowFocus: true` — Agent C default; users with two
  *     tabs see the other tab's writes on re-focus. Cost = an extra
  *     query per focus event; mitigated by `staleTime`.
- *   - `retry: 3` with exponential backoff (1s, 2s, 4s capped at 30s)
- *     — covers transient 5xx + network blips. MUTATIONS stay at
- *     `retry: 0` because the api-client `postIdempotent` helper
- *     mints a NEW UUID per call (double-create on retry); the BE-side
- *     Idempotency-Key dedup would catch it but UI feedback is cleaner
- *     without auto-retry.
+ *   - `retry` (§PERF-4) — a structured `ApiClientError` is a definitive
+ *     server RESPONSE: a 4xx the user must act on (404/403/422 — a retry
+ *     changes nothing) or a 5xx/timeout the server already returned. The
+ *     old blanket `retry: 3` retried these with 1s/2s/4s backoff, so a
+ *     404 took ~7s to even surface. We now show such errors after the
+ *     FIRST attempt and retry only genuine NETWORK failures (fetch
+ *     rejected → a raw Error, not an ApiClientError), capped at 2 tries
+ *     with a tight backoff (250ms/500ms, ≤2s). MUTATIONS stay at
+ *     `retry: 0` because the api-client `postIdempotent` helper mints a
+ *     NEW UUID per call (double-create on retry).
  *
  * `useState(() => new QueryClient(...))` per the official docs —
  * keeps one client per provider mount (so the client survives
@@ -32,8 +38,14 @@ export function QueryProvider({ children }: { children: ReactNode }) {
           queries: {
             staleTime: 30_000,
             refetchOnWindowFocus: true,
-            retry: 3,
-            retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
+            // §PERF-4 — never retry a definitive server response; retry
+            // only transient network failures, and cap the backoff so
+            // even those surface fast.
+            retry: (failureCount, error) => {
+              if (error instanceof ApiClientError) return false;
+              return failureCount < 2;
+            },
+            retryDelay: (attempt) => Math.min(250 * 2 ** attempt, 2000),
           },
           mutations: {
             retry: 0,

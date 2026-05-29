@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 
 import { ExportComposerService } from './export-composer.service';
+import { ExportRateLimitService } from './export-rate-limit.service';
 import { ExportController } from './export.controller';
 import { ExportService } from './export.service';
 import { PdfExportService } from './pdf-export.service';
@@ -27,7 +28,7 @@ import { PdfExportService } from './pdf-export.service';
 @Module({
   imports: [AuthModule],
   controllers: [ExportController],
-  providers: [ExportService, PdfExportService, ExportComposerService],
+  providers: [ExportService, PdfExportService, ExportComposerService, ExportRateLimitService],
   exports: [ExportService, PdfExportService],
 })
 export class ExportModule {}

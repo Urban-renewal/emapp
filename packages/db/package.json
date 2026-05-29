@@ -13,6 +13,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "seed:dev": "tsx scripts/seed-dev.ts",
+    "verify:seed": "tsx scripts/verify-seed.ts",
     "provider:bootstrap": "tsx scripts/bootstrap-provider-admin.ts",
     "test": "vitest run",
     "test:watch": "vitest",

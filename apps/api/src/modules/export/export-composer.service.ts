@@ -10,7 +10,13 @@ import {
   users,
   withTenant,
 } from '@emapp/db';
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  InternalServerErrorException,
+  PayloadTooLargeException,
+} from '@nestjs/common';
 import { and, eq, isNull, inArray } from 'drizzle-orm';
 
 import type { AccessTokenPayload } from '../auth/auth.service';
@@ -58,6 +64,11 @@ import type {
 @Injectable()
 export class ExportComposerService {
   private readonly logger = new Logger(ExportComposerService.name);
+
+  // Wave 6 E-H2 + EXP-M1: hard ceiling on apartments per export. Far
+  // above any realistic SMB project (partner's largest ~300); purely
+  // a DoS/OOM guard. Exposed for the spec.
+  static readonly MAX_EXPORT_APARTMENTS = 5000;
 
   async composeProjectExport(
     user: AccessTokenPayload,
@@ -109,7 +120,14 @@ export class ExportComposerService {
                 .where(eq(projects.id, projectId))
                 .limit(1);
         if (!project) {
-          throw new NotFoundException({ error: { code: 'not_found' } });
+          // Wave 5 E-C3 (errors audit 2026-05-28): D.16 envelope requires
+          // `message` alongside `code`. The 404 here is the same
+          // posture as the agent-scope miss (no oracle — cross-org and
+          // unassigned both collapse to the same response), so the
+          // message stays generic; the code is the actionable signal.
+          throw new NotFoundException({
+            error: { code: 'not_found', message: 'project not found' },
+          });
         }
 
         // 2) Generator (the calling user) — name + email for the
@@ -120,7 +138,10 @@ export class ExportComposerService {
           .where(eq(users.id, user.sub))
           .limit(1);
         if (!generator) {
-          throw new NotFoundException({ error: { code: 'not_found' } });
+          // Wave 5 E-C3: D.16 envelope — message present.
+          throw new NotFoundException({
+            error: { code: 'not_found', message: 'generator user not found' },
+          });
         }
 
         // 3) Buildings (active only).
@@ -144,11 +165,19 @@ export class ExportComposerService {
             generatedBy: { name: generator.name, email: generator.email },
             buildings: [],
           };
+          // Wave 6 drive-by: this empty-project branch was missed in
+          // PR #158 (Wave 5 E-C1) which renamed the action to
+          // `project.export.requested` only on the non-empty path. The
+          // s10 test 5 happens to use a non-empty project so the
+          // inconsistency wasn't caught. Both branches now use the
+          // same action name — the compliance dashboard can pair
+          // every requested row with its outcome row regardless of
+          // whether the project had buildings.
           await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
             orgId: user.orgId,
             actorId: user.sub,
             actorType: 'user',
-            action: 'project.export',
+            action: 'project.export.requested',
             targetTable: 'projects',
             targetId: projectId,
             afterState: { format, rowCount: 0 },
@@ -174,6 +203,35 @@ export class ExportComposerService {
           })
           .from(apartments)
           .where(and(inArray(apartments.buildingId, bldIds), isNull(apartments.archivedAt)));
+
+        // Wave 6 E-H2 + EXP-M1 (errors + redteam audit 2026-05-28) —
+        // server-side row cap. The composer holds ONE pool connection
+        // for the whole compose (the withTenant tx); a 50k-apartment
+        // project would (a) hold that connection through 3 decrypt
+        // round-trips + grouping, starving the pool under concurrent
+        // exports, and (b) build a ~70 MB HTML string before Chromium
+        // even starts (OOM the Railway container). We refuse oversized
+        // exports HERE — after the cheap apartments fetch, BEFORE the
+        // expensive owner-decrypt + render — with a 413 carrying a
+        // "split your project" hint. The cap (5000 apts) is far above
+        // any realistic SMB urban-renewal project (the partner's
+        // largest is ~300 apts) so no real user hits it; it's purely
+        // a DoS/OOM ceiling.
+        //
+        // NOTE: the audit's original suggestion (move the apartments +
+        // owners reads OUTSIDE the withTenant tx to shorten the
+        // connection hold) was REJECTED — it would bypass RLS, which
+        // CLAUDE.md forbids ("every DB read goes through withTenant").
+        // The row cap achieves the same pool-protection goal without
+        // touching the RLS boundary.
+        if (aptRows.length > ExportComposerService.MAX_EXPORT_APARTMENTS) {
+          throw new PayloadTooLargeException({
+            error: {
+              code: 'export_too_large',
+              message: `project has ${aptRows.length} apartments; export is limited to ${ExportComposerService.MAX_EXPORT_APARTMENTS}. split the project or contact support for a bulk export.`,
+            },
+          });
+        }
         const aptIds = aptRows.map((a) => a.id);
 
         // 5) Ownerships (active) JOIN owners (active) for those apts.
@@ -216,10 +274,30 @@ export class ExportComposerService {
           nationalIdEncrypted: r.nationalIdEncrypted,
           phoneEncrypted: r.phoneEncrypted,
         }));
-        const decryptedByIdx = await decryptOwnerPiiBatch(
-          tx as unknown as Parameters<typeof decryptOwnerPiiBatch>[0],
-          encryptedRows,
-        );
+        // Wave 6 EXP-H2 (redteam audit 2026-05-28) — wrap the decrypt
+        // path. `decryptOwnerPiiBatch` throws errors that contain the
+        // row index ("missing name plaintext at idx 7") which would
+        // bubble through GlobalExceptionFilter → logger.error (stack
+        // + message) and, when AUTH_DEBUG_ERRORS=1 on staging, into
+        // the response body. Combined with a pgcrypto-rotation bug,
+        // every export 500 would be a row-index-disclosing event.
+        // Now: the original detail goes only to the server log
+        // (the orgId + project id give ops enough to investigate);
+        // the throw carries a stable code + non-leaky message.
+        let decryptedByIdx: Awaited<ReturnType<typeof decryptOwnerPiiBatch>>;
+        try {
+          decryptedByIdx = await decryptOwnerPiiBatch(
+            tx as unknown as Parameters<typeof decryptOwnerPiiBatch>[0],
+            encryptedRows,
+          );
+        } catch (e) {
+          this.logger.error(
+            `pgcrypto decrypt failed for project=${projectId} org=${user.orgId}: ${e instanceof Error ? e.message : 'unknown'}`,
+          );
+          throw new InternalServerErrorException({
+            error: { code: 'export_decrypt_failed', message: 'export temporarily unavailable' },
+          });
+        }
         const decryptedOwners: Array<ProjectExportOwner & { __apartmentId: string }> = ownRows.map(
           (r, i) => {
             const d = decryptedByIdx[i]!;
@@ -284,12 +362,20 @@ export class ExportComposerService {
         };
         const rowCount = decryptedOwners.length || aptRows.length;
 
-        // 8) Audit (inside the same tx so RLS + actor are consistent).
+        // 8) Audit — Wave 5 E-C1 (errors audit 2026-05-28): write the
+        //    PRE-flight `project.export.requested` row in the same tx
+        //    as the read (RLS + actor consistent; commits as soon as
+        //    the composer returns). The controller writes a paired
+        //    `project.export.delivered` or `project.export.failed` row
+        //    AFTER the renderer outcome — so the forensic story
+        //    distinguishes "audit-says-yes-and-user-got-bytes" from
+        //    "audit-says-yes-but-renderer-threw" (previously
+        //    indistinguishable, ISO 27001 A.12.4 violation).
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
           actorType: 'user',
-          action: 'project.export',
+          action: 'project.export.requested',
           targetTable: 'projects',
           targetId: projectId,
           afterState: { format, rowCount },
@@ -304,6 +390,59 @@ export class ExportComposerService {
       `composed project ${projectId} → ${format} input (${result.rowCount} rows, ${Date.now() - t0}ms)`,
     );
     return result;
+  }
+
+  /**
+   * Wave 5 E-C1 — record the export OUTCOME (delivered or failed) in a
+   * fresh `withTenant` tx after the renderer returns. Best-effort: a
+   * failure to write this auxiliary audit row logs loudly but does not
+   * fail the user-facing response (the `project.export.requested` row
+   * from `composeProjectExport` is the gate; this one is the outcome
+   * marker the compliance dashboard pairs against it).
+   *
+   * Outcome values:
+   *   - `'delivered'` — renderer returned a buffer; bytes are about
+   *     to flush to the wire.
+   *   - `'failed'` — renderer threw; the user will see a 500. The
+   *     `error` field carries a short tag (Chromium / ExcelJS / etc),
+   *     never the raw error message or stack (would leak cwd / file
+   *     paths per E-H3).
+   */
+  async auditExportOutcome(
+    user: AccessTokenPayload,
+    projectId: string,
+    format: 'xlsx' | 'pdf',
+    outcome: 'delivered' | 'failed',
+    extra?: { rowCount?: number; bytes?: number; errorTag?: string },
+  ): Promise<void> {
+    try {
+      await withTenant(
+        user.orgId,
+        async (tx) => {
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+            orgId: user.orgId,
+            actorId: user.sub,
+            actorType: 'user',
+            action: outcome === 'delivered' ? 'project.export.delivered' : 'project.export.failed',
+            targetTable: 'projects',
+            targetId: projectId,
+            afterState: {
+              format,
+              rowCount: extra?.rowCount,
+              bytes: extra?.bytes,
+              error: extra?.errorTag,
+            },
+            sessionId: user.sid,
+          });
+        },
+        { userId: user.sub },
+      );
+    } catch (e) {
+      // Best-effort: forensic auxiliary, not the gate. Log + move on.
+      this.logger.error(
+        `audit(project.export.${outcome}) failed (project=${projectId}): ${e instanceof Error ? e.message : 'unknown'} — request continues; requested-row is the gate`,
+      );
+    }
   }
 }
 

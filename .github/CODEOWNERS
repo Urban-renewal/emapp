@@ -1,15 +1,34 @@
-# Backend ownership
-/apps/api/                 @Urban-renewal/dev
-/packages/db/              @Urban-renewal/dev
-/packages/validators/      @Urban-renewal/dev
+# EMAPP — Code owners (G0.2).
+#
+# Sole admin = @EMAPP-URNAN. The previous version pointed at a NON-EXISTENT
+# team (@Urban-renewal/dev) so GitHub ignored it entirely — it was a no-op.
+# This version uses the real owner handle so review-requests actually fire.
+#
+# NOTE on enforcement: CODEOWNERS auto-REQUESTS owner review. It is NOT a hard
+# block by itself (that needs require-code-owner-review on every PR, which would
+# deadlock the solo-operator autopilot). The hard block on the Gate-6 paths is:
+#   1. the `gate-6-guard` CI check (fails the PR unless the body carries a
+#      `Gate-6-Approved:` trailer), and
+#   2. the operating-contract rule: a PR touching a Gate-6 path does NOT arm
+#      auto-merge — the agent STOPS and the owner merges it (V12-ORCHESTRATION §4).
+# CODEOWNERS is the third layer (visibility + auto-request) and the collision map.
 
-# Frontend ownership
-/apps/web/                 @Urban-renewal/dev
+# Default: everything is owner-visible.
+*                                            @EMAPP-URNAN
 
-# Shared — both review
-/packages/shared-types/    @Urban-renewal/dev
-/packages/config/          @Urban-renewal/dev
+# --- Gate-6: the authorization policy matrix (D.17 / D.46 / D.49) ---
+/apps/api/src/common/authz/policy.ts         @EMAPP-URNAN
 
-# Critical infrastructure — both review
-/.github/                  @Urban-renewal/dev
-/CLAUDE.md                 @Urban-renewal/dev
+# --- Gate-2: schema + migrations (RLS, pgcrypto, status enum — locked spec) ---
+/packages/db/migrations/                     @EMAPP-URNAN
+/packages/db/drizzle.config.ts               @EMAPP-URNAN
+
+# --- Shared seam: add-only; never change an existing type without owner sign-off ---
+/packages/shared-types/                      @EMAPP-URNAN
+
+# --- Law: decisions, gates, the agent protocol, CI/branch-protection config ---
+/docs/DECISIONS.html                         @EMAPP-URNAN
+/docs/DECISIONS-V12.md                        @EMAPP-URNAN
+/GATES.md                                     @EMAPP-URNAN
+/CLAUDE.md                                    @EMAPP-URNAN
+/.github/                                     @EMAPP-URNAN

@@ -192,6 +192,51 @@ with D.46 (contractor read+download) and D.47 (resident masking).
 | C-2 | Audit-orphan fix: transactional outbox (A) or inline same-tx (B)?               | B (inline per-site) — no new infra.                                     |
 | M-7 | Optimistic locking on PATCH now or defer?                                       | Defer to a later slice + record gap.                                    |
 
+## D.51 — Quality gate + autopilot completion (PROC-3)
+
+**Context:** the verification contract (PROC-1/2) proves a fix is _correct_
+(test red→green). It does **not** prove the fix is _optimal_ — a plaster
+(caching hack, swallowed error, special-case) can turn a test green without
+addressing the root cause. The owner's stated fear: an agent understands the
+problem but ships a shortcut. This decision closes that gap.
+
+**Decision — three mechanisms, all merge-blocking:**
+
+1. **Root-cause statement on every fix-PR.** The PR description must state:
+   (a) what causes the symptom, (b) that the fix addresses _that cause_ (not the
+   symptom), (c) the simpler approach considered and why it was rejected as a
+   plaster. No statement → not mergeable.
+
+2. **Mechanism-based acceptance criteria, not symptom-based.** Every
+   verification criterion must be one a plaster _cannot_ pass. Not "latency
+   <1s" (a cache passes it) but "EXPLAIN shows index scan; withTenant = 1
+   round-trip, measured". Not "no console error" but "the specific guard fires
+   with this input". Rule of thumb: **if a plaster would also make the test
+   pass, the test is too weak — strengthen it to assert the mechanism.** The
+   FINDINGS-REGISTER verification column is rewritten to this standard.
+
+3. **Anti-plaster review (G0.3 extended).** The code-review/security-review
+   skill explicitly hunts plaster-signals: caching that hides instead of fixes,
+   try/catch that swallows, magic constants, special-casing, "TODO: real fix
+   later". A flagged plaster blocks merge until reverted to a root fix.
+
+**Autopilot completion (the owner's rule):** an agent does NOT finish a slice
+or advance to the next until **all its verification is green** — the slice's
+test red→green AND the full CI suite (the 8 required checks, now branch-
+protection-enforced) AND the mechanism criteria. "Opened a PR / CI is running"
+is **not** done; "all checks green, merged" is done. The agent waits out its
+own CI and fixes failures before moving on — it never leaves a slice half-
+verified. (Demonstrated live: #134 was not declared done until its e2e went
+green; the plausible-but-unverified cold-compile guess was explicitly NOT
+shipped.)
+
+**Rationale:** correctness gate answers "does it work"; quality gate answers
+"is it the right fix"; autopilot completion ensures the agent actually closes
+the loop instead of leaving green-pending work behind. Together they make
+"optimal, not plaster" a mechanical gate, not an ad-hoc judgment.
+
+---
+
 ## Plan impact
 
 - **D.46** adds a permission-model slice to Track D.

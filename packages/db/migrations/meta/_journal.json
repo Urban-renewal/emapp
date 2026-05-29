@@ -274,6 +274,13 @@
       "when": 1779980400000,
       "tag": "0038_tenant_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1780066800000,
+      "tag": "0039_perf_indexes_projects_documents",
+      "breakpoints": true
     }
   ]
 }

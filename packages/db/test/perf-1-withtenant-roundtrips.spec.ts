@@ -105,7 +105,11 @@ describe('PERF-1 — withTenant round-trip overhead gate', () => {
   });
 
   // Overhead = every statement that is NOT the caller's own fn query
-  // (transaction control + role + GUC setup).
+  // (transaction control + role + GUC setup). NOTE: the gate's precision
+  // depends on the fixture fn (`select … from projects`) being free of
+  // begin/commit/role/set_config tokens — do not swap in an fn whose SQL text
+  // contains those words (e.g. a column literally named set_config) or it would
+  // be miscounted as overhead.
   const OVERHEAD_RE = /\bbegin\b|\bcommit\b|\brollback\b|set\s+local\s+role|set\s+role|set_config/i;
 
   it('issues ≤3 overhead round-trips for a single-statement read (4–6→3 locked)', async () => {
@@ -121,6 +125,14 @@ describe('PERF-1 — withTenant round-trip overhead gate', () => {
     );
 
     expect(rows.every((p) => p.orgId === org.id)).toBe(true); // correctness preserved
+    // Self-validate the harness: a single-statement read must produce ≥4 logged
+    // queries (3 overhead + ≥1 caller query). If the recorder silently captured
+    // nothing (e.g. a future drizzle that binds client.query by reference), the
+    // ≤3 assertion would pass green while measuring nothing — guard against that.
+    expect(
+      queryLog.length,
+      `recorder captured ${queryLog.length} queries (<4) — instrumentation broke`,
+    ).toBeGreaterThanOrEqual(4);
     expect(
       overhead.length,
       `withTenant overhead round-trips=${overhead.length} (>3 = perf regression): ${JSON.stringify(overhead)}`,

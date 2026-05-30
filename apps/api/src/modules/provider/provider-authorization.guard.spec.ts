@@ -15,19 +15,32 @@
 import { ExecutionContext } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 
+import type { ProviderAction } from '../../common/authz/policy';
+
 import { ProviderAuthorizationGuard } from './provider-authorization.guard';
+import { PROVIDER_AUTHZ_ACTION } from './provider-authz.decorators';
 
 interface FakeCtxOpts {
   providerUser?: { role?: string };
+  /** When set, a handler carrying @RequireProviderAction(action) metadata
+   *  is supplied via getHandler() (the D.49 write path). When omitted,
+   *  getHandler is ABSENT entirely — proving the guard resolves the safe
+   *  'read' default for the pre-D.49 pure-unit context shape. */
+  action?: ProviderAction;
 }
 
 function fakeCtx(opts: FakeCtxOpts): ExecutionContext {
-  return {
+  const base: Record<string, unknown> = {
     switchToHttp: () => ({
       getRequest: () => ({ providerUser: opts.providerUser }),
     }),
-    // Other ExecutionContext fields aren't read by this guard.
-  } as unknown as ExecutionContext;
+  };
+  if (opts.action !== undefined) {
+    const handler = (): void => undefined;
+    Reflect.defineMetadata(PROVIDER_AUTHZ_ACTION, opts.action, handler);
+    base['getHandler'] = () => handler;
+  }
+  return base as unknown as ExecutionContext;
 }
 
 describe('ProviderAuthorizationGuard — D.37 closeout matrix enforcement', () => {
@@ -66,5 +79,30 @@ describe('ProviderAuthorizationGuard — D.37 closeout matrix enforcement', () =
     const b = g.canActivate(fakeCtx({ providerUser: { role: 'provider_admin' } }));
     expect(a).toBe(b);
     expect(a).toBe(true);
+  });
+
+  // ── D.49 write-action enforcement ────────────────────────────────────
+  // Evidence (c): the guard gates a WRITE handler against the matrix's
+  // `write` action, not a hard-coded 'read'.
+
+  it('D49-AUTHZ-1) write handler + provider_admin → ALLOW (canProvider write granted)', () => {
+    expect(
+      g.canActivate(fakeCtx({ providerUser: { role: 'provider_admin' }, action: 'write' })),
+    ).toBe(true);
+  });
+
+  it('D49-AUTHZ-2) write handler + unknown role → 403 (write is still role-gated)', () => {
+    expect(() =>
+      g.canActivate(fakeCtx({ providerUser: { role: 'manager' }, action: 'write' })),
+    ).toThrow(/Forbidden|forbidden/);
+    expect(() =>
+      g.canActivate(fakeCtx({ providerUser: { role: 'provideradmin' }, action: 'write' })),
+    ).toThrow(/Forbidden|forbidden/);
+  });
+
+  it('D49-AUTHZ-3) explicit read handler + provider_admin → ALLOW (read path still works)', () => {
+    expect(
+      g.canActivate(fakeCtx({ providerUser: { role: 'provider_admin' }, action: 'read' })),
+    ).toBe(true);
   });
 });

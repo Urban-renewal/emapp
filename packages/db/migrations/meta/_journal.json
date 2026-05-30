@@ -281,6 +281,13 @@
       "when": 1780066800000,
       "tag": "0039_perf_indexes_projects_documents",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1780153200000,
+      "tag": "0040_org_provider_suspension",
+      "breakpoints": true
     }
   ]
 }

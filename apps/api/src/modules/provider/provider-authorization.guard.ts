@@ -20,21 +20,22 @@
  * widening entry per the comment in policy.ts) changes runtime
  * enforcement — no second source of truth.
  *
- * Symmetric with the org-tier `AuthorizationGuard`. We deliberately do
- * NOT verb→action map here because every Provider endpoint is GET-only
- * (D.37 Gate-6 invariant) and the action literal is hard-coded to
- * `'read'`. If a future write ever lands, the controller must use a
- * different decorator pattern and `ProviderAction` must widen first —
- * the type system will block this guard from accepting a non-'read'
- * action automatically.
+ * Symmetric with the org-tier `AuthorizationGuard`. D.49 opened Provider
+ * WRITE actions, so the guard now resolves the required `ProviderAction`
+ * from `@RequireProviderAction(...)` metadata on the handler, DEFAULTING
+ * to `'read'` when absent (every GET endpoint stays correctly gated with
+ * no annotation). It then consults `canProvider(role, 'provider', action)`
+ * — a write route the matrix does not grant fails closed.
  *
  * Fail-closed: missing or invalid principal → 403 forbidden (D.16).
  */
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 
-import { canProvider, type ProviderRole } from '../../common/authz/policy';
+import { canProvider, type ProviderAction, type ProviderRole } from '../../common/authz/policy';
 import type { ProviderTokenPayload } from '../auth/provider/provider-auth.service';
+
+import { PROVIDER_AUTHZ_ACTION } from './provider-authz.decorators';
 
 @Injectable()
 export class ProviderAuthorizationGuard implements CanActivate {
@@ -52,9 +53,15 @@ export class ProviderAuthorizationGuard implements CanActivate {
     if (!role) {
       throw new ForbiddenException({ error: { code: 'forbidden' } });
     }
-    // Phase 6.5 surface is read-only. Action literal is structurally
-    // 'read' — the ProviderAction type is exactly that single literal.
-    if (!canProvider(role, 'provider', 'read')) {
+    // D.49 — resolve the required action from handler metadata, default
+    // 'read'. `getHandler` is guarded so the pure-unit fake-context tests
+    // (which only stub switchToHttp) still resolve the safe default.
+    const handler =
+      typeof ctx.getHandler === 'function' ? (ctx.getHandler() as object | undefined) : undefined;
+    const action: ProviderAction =
+      (handler && (Reflect.getMetadata(PROVIDER_AUTHZ_ACTION, handler) as ProviderAction)) ??
+      'read';
+    if (!canProvider(role, 'provider', action)) {
       throw new ForbiddenException({ error: { code: 'forbidden' } });
     }
     return true;

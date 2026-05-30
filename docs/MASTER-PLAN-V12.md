@@ -136,10 +136,10 @@ PR then rides on them.
 
 ### Pre-launch — final truth
 
-| Slice | Goal                                                                                                                                                                           | Verification                                        |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| PL1   | **PERF-6**: `next build && next start` + **colocated DB** (T6 — Railway region = Neon region; the deferred latency fix from **D.52**, see `SETUP-EXTERNAL-SERVICES.md` step 4) | production-absolute ms numbers; per-hop ~138ms→~1ms |
-| PL2   | Full `e2e/audit/*` suite green + manual smoke per V11-BROWSER-SMOKE                                                                                                            | all green, raw evidence                             |
+| Slice | Goal                                                                                                                                                                                                                                                                                                                                                                                  | Verification                                                                |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| PL1   | **PERF-6**: `next build && next start` + **colocated DB** (T6 — Railway region = Neon region; the deferred latency fix from **D.52**, see `SETUP-EXTERNAL-SERVICES.md` step 4). **Also do the deferred PERF-2 fix here (D.53):** SSR `getMe` calls the backend directly instead of self-hopping its own proxy + server-side timeout — verify on the real Cloudflare→Railway topology. | production-absolute ms numbers; per-hop ~138ms→~1ms; SSR getMe: no self-hop |
+| PL2   | Full `e2e/audit/*` suite green + manual smoke per V11-BROWSER-SMOKE                                                                                                                                                                                                                                                                                                                   | all green, raw evidence                                                     |
 
 ---
 

@@ -276,6 +276,39 @@ by **PL1** (a launch-blocking pre-launch gate) — see Plan impact below.
 
 ---
 
+## D.53 — PERF-2 (getMe SSR self-hop) deferred to the infra/deploy layer (with T6)
+
+**Context:** PERF-2 — server-side `getMe` fetches `${origin}/api/v1/me`, i.e. its
+**own** Next proxy route, which then forwards to `API_BACKEND_URL`. This
+self-dependency double-hops every authenticated page render and deadlocks the
+**dev** server under load (one Node process calling itself). Track B (FE)
+analysed it and stopped: every clean fix crosses its surface boundary.
+
+**Decision (owner, Option D):** **defer the root fix to the infra/deploy layer,
+paired with T6.** Rejected alternatives:
+
+- **A — self-hop bypass (SSR calls the backend directly).** The correct root
+  fix, but it changes the deliberately-centralized `selfOrigin` / single-backend
+  hostname boundary and has **prod-runtime behavior (Cloudflare Pages → private
+  Railway) that cannot be verified in dev**. A blind, unverifiable fix is not
+  shipped — it is done at deploy, **where the prod topology exists and is
+  verifiable**, alongside T6. Add a server-side timeout there as defense-in-depth.
+- **B — session-validity cache.** **Rejected** — widens the token-revocation
+  window (auth-freshness regression, intersects redteam-H-1). Same
+  security-for-perf trade rejected in **D.52**.
+- **C — timeout only.** Symptom, not root (D.51-weak). Folds into A as hardening.
+
+**Rationale:** PERF-2's pain (~460ms + dev deadlock) is largely a remote-DB
+distance + dev-environment artifact — the SAME thing **T6 colocation** + prod
+scaling absorb (like D.52's latency). The architectural cleanup (A) belongs with
+the prod topology, where it is verifiable. Deferring is the disciplined call.
+
+**No open ends:** held by **PL1** (the launch-blocking gate) — the infra owner
+fixes PERF-2 (option A + timeout) when colocation lands. Full root-cause analysis
+preserved in `docs/heartbeats/track-b/2026-05-30.md`.
+
+---
+
 ## Plan impact
 
 - **D.46** adds a permission-model slice to Track D.

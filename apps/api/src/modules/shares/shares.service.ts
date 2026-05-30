@@ -55,12 +55,14 @@ function toShare(r: typeof shares.$inferSelect): Share {
  * NOT yet built — deferred & recorded (PROGRESS); this slice is the
  * manager-side grant management only.
  *
- * D.49 SUSPENSION: a suspended org's shares are inert. `assertProjectVisible`
- * gates every operation here on `isOrgSuspended(tx, project.orgId)` → 404.
- * When the contractor-facing consumption endpoint is built it MUST resolve
- * through this same `isOrgSuspended` gate (share → project → org) before
- * exposing ANY share data — otherwise a suspended org would still leak through
- * the contractor tier (which is NOT blocked by the org-login gate).
+ * D.49 SUSPENSION: a suspended org's shares are inert (404) for EVERY op.
+ * The read-resolution paths (list/create) gate via `assertProjectVisible`;
+ * the by-id write paths (update/revoke) call `isOrgSuspended(tx, user.orgId)`
+ * directly at the top of their tx. When the contractor-facing consumption
+ * endpoint is built it MUST also resolve through `isOrgSuspended`
+ * (share → project → org) before exposing ANY share data — otherwise a
+ * suspended org would leak through the contractor tier (which is NOT blocked
+ * by the org-login gate).
  */
 @Injectable()
 export class SharesService {
@@ -73,11 +75,10 @@ export class SharesService {
     user: AccessTokenPayload,
     projectId: string,
   ): Promise<void> {
-    // D.49 — a suspended org's data is frozen: every share operation (and the
-    // future contractor-facing consumption endpoint, which MUST resolve
-    // through this same gate) becomes inert → 404, indistinguishable from a
-    // non-existent project. This is the share-tier projection of suspension:
-    // org-side managers are already blocked at login (slice 2), this closes the
+    // D.49 — a suspended org's data is frozen: the share read-resolution paths
+    // (list/create) become inert → 404, indistinguishable from a non-existent
+    // project. (update/revoke gate directly — they don't pass through here.)
+    // org-side managers are already blocked at login (slice 2); this closes the
     // share-resolution seam itself so the property holds regardless of caller.
     if (await isOrgSuspended(tx, user.orgId)) throw NOT_FOUND;
 
@@ -198,6 +199,10 @@ export class SharesService {
     return withTenant(
       user.orgId,
       async (tx) => {
+        // D.49 — suspended org: shares are inert (404), same as the read paths.
+        // update/revoke address the share by id (no assertProjectVisible), so
+        // the gate is applied directly here.
+        if (await isOrgSuspended(tx, user.orgId)) throw NOT_FOUND;
         const [before] = await tx
           .select({ id: shares.id })
           .from(shares)
@@ -232,6 +237,8 @@ export class SharesService {
     await withTenant(
       user.orgId,
       async (tx) => {
+        // D.49 — suspended org: shares are inert (404), same as the read paths.
+        if (await isOrgSuspended(tx, user.orgId)) throw NOT_FOUND;
         const [before] = await tx
           .select({ id: shares.id, revokedAt: shares.revokedAt })
           .from(shares)

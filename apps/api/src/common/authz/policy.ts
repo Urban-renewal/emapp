@@ -105,7 +105,7 @@ export function can(role: Role, resource: Resource, action: Action): boolean {
 }
 
 // ───────────────────────────────────────────────────────────────────
-// D.37 / Phase 6.5 — Provider-tier matrix.
+// D.37 / D.49 — Provider-tier matrix.
 //
 // DELIBERATELY SEPARATE from the org-tier POLICY above. The Role
 // type is org-only (`manager | agent | viewer`); the Provider tier
@@ -115,23 +115,35 @@ export function can(role: Role, resource: Resource, action: Action): boolean {
 // which is exactly the bug the tier separation was designed to make
 // structurally impossible (docs/07 §8.1).
 //
-// Resources here mirror the new /provider/* endpoint surface. All
-// actions are READ-ONLY because D.37 explicitly defers any write to
-// a separate Gate-6 decision. If a future endpoint ever needs to
-// accept a write action, do not silently add it here — open a D.NN
-// entry first.
+// D.49 (supersedes the D.37 read-only lock): Provider WRITE actions are
+// now authorized — suspend/reactivate tenant, reset MFA, per-customer
+// config — under hard controls (audit-first withProvider, access_reason
+// required, distinct `write` action = least-privilege, NOT a widening of
+// read). DESTRUCTIVE / irreversible actions (e.g. tenant data purge)
+// remain OUT OF SCOPE pending a separate decision — do NOT add a third
+// action here for them; open a new D.NN entry first.
 // ───────────────────────────────────────────────────────────────────
 export type ProviderRole = 'provider_admin';
 export type ProviderResource = 'provider';
-/** Only READ — D.37 invariant. NEVER widen without a D.NN entry. */
-export type ProviderAction = 'read';
+/**
+ * `read` | `write` — D.49. `write` covers operational mutations
+ * (suspend/reactivate, MFA reset, per-customer config). Do NOT add a
+ * destructive/irreversible action (purge etc.) without a new D.NN entry
+ * (D.49 authorizes operational writes only).
+ */
+export type ProviderAction = 'read' | 'write';
 
 type ProviderMatrix = Record<ProviderResource, Record<ProviderAction, readonly ProviderRole[]>>;
 
 const PROV_ADMIN = ['provider_admin'] as const;
 
 export const PROVIDER_POLICY: ProviderMatrix = {
-  provider: { read: PROV_ADMIN },
+  // D.49 — provider_admin is the only Provider role today; it holds both
+  // read and (operational) write. A future read-only role
+  // (e.g. provider_billing_viewer) would get `read: PROV_ADMIN_AND_X,
+  // write: PROV_ADMIN` — least-privilege stays expressible because the
+  // two actions are distinct keys.
+  provider: { read: PROV_ADMIN, write: PROV_ADMIN },
 };
 
 /** Pure decision for the Provider tier. Symmetric with `can()` but

@@ -23,9 +23,11 @@
  * explicit-secret defense is removed. Matches the codebase convention
  * (see `ProjectsModule`, `AuditModule`, etc.).
  *
- * NO writes — Gate-6. Any attempt to add a write handler should fail
- * code review against D.37 "Out of scope" + require a separate D.NN
- * entry before implementation.
+ * Writes (D.49): suspend/reactivate tenant land here as the FIRST
+ * authorized Provider write. They are gated by the SAME two-layer guard
+ * stack plus `@RequireProviderAction('write')` → the matrix's `write`
+ * action (Gate-6, authorized in D.49). Destructive/irreversible actions
+ * (purge) remain out of scope until a separate D.NN entry.
  */
 import { Module } from '@nestjs/common';
 
@@ -39,22 +41,26 @@ import { ProviderSystemHealthController } from './provider-system-health.control
 import { ProviderSystemHealthService } from './provider-system-health.service';
 import { ProviderTenantDetailController } from './provider-tenant-detail.controller';
 import { ProviderTenantDetailService } from './provider-tenant-detail.service';
+import { ProviderTenantSuspensionController } from './provider-tenant-suspension.controller';
+import { ProviderTenantSuspensionService } from './provider-tenant-suspension.service';
 import { ProviderTenantsController } from './provider-tenants.controller';
 import { ProviderTenantsService } from './provider-tenants.service';
 import { DefaultSystemStatsProvider, SYSTEM_STATS_PROVIDER } from './system-stats';
 
 @Module({
   imports: [AuthModule],
-  // All 4 D.37 endpoints registered.
+  // 4 read (D.37) + 1 write surface (D.49 suspend/reactivate) registered.
   controllers: [
     ProviderTenantsController,
     ProviderTenantDetailController,
     ProviderAuditController,
     ProviderSystemHealthController,
+    ProviderTenantSuspensionController,
   ],
   providers: [
     ProviderTenantsService,
     ProviderTenantDetailService,
+    ProviderTenantSuspensionService,
     ProviderAuditService,
     ProviderSystemHealthService,
     // D.37 closeout gap #3 — PROVIDER_POLICY runtime enforcement.

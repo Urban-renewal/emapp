@@ -81,6 +81,39 @@ export const TenantDetailSchema = z.object({
 export type TenantDetail = z.infer<typeof TenantDetailSchema>;
 
 // ───────────────────────────────────────────────────────────────────
+// D.49 — Provider WRITE actions (supersedes the D.37 read-only lock).
+//
+// POST /provider/tenants/:id/suspend     — freeze an org operationally.
+// POST /provider/tenants/:id/reactivate  — lift the suspension.
+//
+// Both go through the audit-first `withProvider` path with a distinct
+// `write` ProviderAction (policy.ts, Gate-6 D.49) and the mandatory
+// `access_reason` header (the forensic reason; stored in
+// provider_audit_log). The optional body `note` is the operator-facing
+// reason persisted on the org (`organizations.suspended_reason`) and
+// shown in the console — distinct from the forensic access_reason.
+//
+// Destructive/irreversible actions (purge) are deliberately ABSENT —
+// out of scope per D.49 until a separate decision.
+// ───────────────────────────────────────────────────────────────────
+export const SuspendTenantBodySchema = z.object({
+  /** Operator-facing note → persisted to `organizations.suspended_reason`. */
+  note: z.string().trim().min(1).max(500).optional(),
+});
+export type SuspendTenantBody = z.infer<typeof SuspendTenantBodySchema>;
+
+export const TenantSuspensionStateSchema = z.object({
+  id: z.string().uuid(),
+  /** True after suspend, false after reactivate. */
+  suspended: z.boolean(),
+  /** ISO timestamp the org was suspended; null when active. */
+  suspendedAt: z.coerce.date().nullable(),
+  /** Operator note captured at suspend time; null when active. */
+  suspendedReason: z.string().nullable(),
+});
+export type TenantSuspensionState = z.infer<typeof TenantSuspensionStateSchema>;
+
+// ───────────────────────────────────────────────────────────────────
 // GET /provider/audit — cross-tenant audit search.
 // Filters: org_id (optional, repeatable in query), action prefix, date
 // range. Cursor-paginated.

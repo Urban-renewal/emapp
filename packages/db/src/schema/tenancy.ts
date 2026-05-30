@@ -25,6 +25,16 @@ export const organizations = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
+    // D.49 — Provider operational suspend/reactivate (distinct from
+    // archivedAt soft-delete). `suspendedAt` non-null = the org is
+    // suspended by a Provider Admin; toggled ONLY through the
+    // audit-first `withProvider` write path. `suspendedReason` is the
+    // operator-facing note shown in the console (NOT the forensic
+    // `access_reason`, which lives in provider_audit_log). Both nullable;
+    // reactivate clears them. Enforcement of suspension at the org
+    // login/session path is a companion concern (Track C auth surface).
+    suspendedAt: timestamp('suspended_at', { withTimezone: true }),
+    suspendedReason: text('suspended_reason'),
   },
   (table) => ({
     slugUnique: uniqueIndex('organizations_slug_unique').on(table.slug),

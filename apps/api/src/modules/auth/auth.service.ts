@@ -238,6 +238,11 @@ export class AuthService {
         orgId: organizations.id,
         orgName: organizations.name,
         orgSlug: organizations.slug,
+        // D.49 — operational suspension state. NOT filtered in the JOIN (a
+        // suspended org must still resolve, so we can return the specific
+        // `org_suspended` code for a valid member rather than a generic
+        // invalid-creds). archivedAt stays a JOIN filter (archived = gone).
+        orgSuspendedAt: organizations.suspendedAt,
       })
       .from(users)
       .leftJoin(memberships, and(eq(memberships.userId, users.id), isNull(memberships.revokedAt)))
@@ -314,6 +319,27 @@ export class AuthService {
 
     // No active org → indistinguishable from bad creds (anti-enumeration).
     if (!u.orgId || !u.role || !u.orgName) throw invalid;
+
+    // D.49 — the org is operationally SUSPENDED. We only reach here AFTER the
+    // password is verified and an active membership is confirmed, so the user
+    // has already proved they belong: returning a distinct, actionable code is
+    // NOT an enumeration oracle (unlike archived/no-org, which stay generic).
+    // No session is issued; the blocked attempt is audited.
+    if (u.orgSuspendedAt) {
+      await this.writeLoginAuditSafe({
+        orgId: u.orgId,
+        actorId: u.id,
+        actorEmail: dto.email,
+        action: 'auth.login_failed',
+        afterState: { reason: 'org_suspended' },
+        ip,
+        userAgent,
+      });
+      throw new UnauthorizedException({
+        error: { code: 'org_suspended', message: 'הארגון מושעה. לפרטים פנו לתמיכה.' },
+      });
+    }
+
     const profile: UserProfile = {
       id: u.id,
       name: u.userName,

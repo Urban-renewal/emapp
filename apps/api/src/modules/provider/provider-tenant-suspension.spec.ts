@@ -90,6 +90,34 @@ async function auditRowsFor(
   }
 }
 
+async function insertSession(userId: string): Promise<string> {
+  const client = await providerPool.connect();
+  try {
+    const r = await client.query<{ id: string }>(
+      `INSERT INTO auth_sessions (user_id, token_hash, expires_at)
+       VALUES ($1, $2, now() + interval '30 days')
+       RETURNING id`,
+      [userId, 'hash-' + randomUUID()],
+    );
+    return r.rows[0]!.id;
+  } finally {
+    client.release();
+  }
+}
+
+async function sessionRevoked(sessionId: string): Promise<boolean> {
+  const client = await providerPool.connect();
+  try {
+    const r = await client.query<{ revoked_at: Date | null }>(
+      `SELECT revoked_at FROM auth_sessions WHERE id = $1`,
+      [sessionId],
+    );
+    return r.rows[0]!.revoked_at !== null;
+  } finally {
+    client.release();
+  }
+}
+
 beforeAll(async () => {
   await setupTestDatabase();
   provider = await createTestProviderUser();
@@ -227,5 +255,31 @@ describe('D.49 ProviderTenantSuspensionService — suspend/reactivate', () => {
     expect(rows.length).toBe(1);
     expect(rows[0]!.action_type).toBe('provider.tenant.suspended');
     expect(rows[0]!.target_record_id).toBe(org.id);
+  });
+
+  it('D49-SUSP-REVOKE) suspend revokes ALL active sessions for the org members; other orgs untouched', async () => {
+    // Enforcement part 2: suspending an org kills its members' live sessions so
+    // an already-authenticated user is locked out (the session row is revoked →
+    // isOrgSessionActive false + refresh re-checks revoked_at). A session in a
+    // DIFFERENT org must stay active (the member sub-select is org-scoped).
+    const orgRevoke = await createTestOrg(`${TEST_PREFIX}-rev`, `${TEST_PREFIX}-rev`);
+    const orgKeep = await createTestOrg(`${TEST_PREFIX}-keep`, `${TEST_PREFIX}-keep`);
+    const sidRevoke = await insertSession(orgRevoke.users[0]!.id);
+    const sidKeep = await insertSession(orgKeep.users[0]!.id);
+
+    // Sanity: both active before suspend.
+    expect(await sessionRevoked(sidRevoke)).toBe(false);
+    expect(await sessionRevoked(sidKeep)).toBe(false);
+
+    await svc.suspend(
+      principal(),
+      'INC-4906: suspend must revoke live sessions',
+      orgRevoke.id,
+      null,
+    );
+
+    // The suspended org's member session is revoked; the other org's is not.
+    expect(await sessionRevoked(sidRevoke)).toBe(true);
+    expect(await sessionRevoked(sidKeep)).toBe(false);
   });
 });

@@ -43,7 +43,43 @@
     passed.
   - **Gate-6 STOP:** touches `policy.ts` + `packages/db/migrations` → PR opened
     WITHOUT auto-merge; awaiting owner `Gate-6-Approved` trailer + owner merge.
-    Next: slice 2 (reset tenant MFA + per-customer config writes) after merge.
+  - **MERGED** as #182 (owner approved + merged; security-review MED `.strict()`
+    folded in). Next was reassigned by owner (see slice 2).
+
+- **Track D — slice 2 (D.49 suspension ENFORCEMENT, Gate-6 — auth core).** Owner
+  reassigned enforcement to Track D (not Track C): suspend is now a real feature,
+  done BEFORE reset-MFA/config. An org with `suspended_at != null` is fully frozen.
+  - **Login block** (`auth.service.ts` login): the login JOIN now selects
+    `organizations.suspended_at` (NOT a JOIN filter — a suspended org must still
+    resolve). After password verification + active-membership confirmation, a
+    suspended org → `401 org_suspended` (distinct code is safe here: the user
+    already proved membership, so it is NOT an enumeration oracle), and the
+    blocked attempt is audited (`auth.login_failed`, reason `org_suspended`).
+  - **Session revocation** (`session.repository.ts` new `revokeAllForOrg` +
+    `provider-tenant-suspension.service.ts`): suspend now revokes every active
+    session for the org's members IN THE SAME audited work tx, then
+    `flushSessionCache()` → existing access tokens die immediately (refresh
+    re-checks `revoked_at`; isOrgSessionActive flips false). Member sub-select is
+    org-scoped (other orgs untouched). Reactivate clears the flag only — revoked
+    sessions stay dead (re-login required; safe direction).
+  - Evidence (D.51, deterministic — real DB, not the skip-in-CI contract suite):
+    `auth-suspension.spec.ts` (active→ok, suspended→`org_suspended`,
+    wrong-pw-on-suspended→generic `invalid_credentials` (no oracle),
+    reactivated→ok) + `D49-SUSP-REVOKE` (suspend kills the org's session, a
+    different org's session survives). `lint`/`typecheck` green; targeted 11
+    passed; full api suite 58 files passed (no regression on the login hot path).
+  - **Scope boundary (flagged, not silent):** this revokes org `auth_sessions`
+    only — NOT `tenant_sessions` (resident/דייר SMS-OTP portal, separate tier).
+    A live resident-portal session of a suspended org survives. Both reviewers
+    confirmed this is a conscious boundary, not a bug. Surfaced to the owner as
+    a question (freeze resident portal on suspend too? = a small follow-up).
+  - Reviews: **@security-reviewer PASS** (0 CRITICAL/HIGH — anti-enum ordering,
+    org-scoped revoke, atomic-in-work-tx, no refresh/switch-org bypass all
+    verified). **@code-reviewer PASS** (mechanism-level tests; root-cause, not
+    symptom).
+  - **Gate-6 STOP:** touches auth core (`auth.service.ts` login + session repo)
+    → PR opened WITHOUT auto-merge; awaiting owner `Gate-6-Approved` + merge.
+    Next after merge: reset tenant MFA + per-customer config writes.
 
 ### 2026-05-30 · Track B · BE Specialist
 

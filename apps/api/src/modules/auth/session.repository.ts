@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-import { authSessions } from '@emapp/db';
-import { and, eq, isNull } from 'drizzle-orm';
+import { authSessions, memberships } from '@emapp/db';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 
 // Raw refresh token = 256-bit random; only its SHA-256 hash is ever stored
 // (D.21). The raw token is returned once and lives only in the httpOnly
@@ -74,6 +74,35 @@ export async function revokeAllForUser(db: any, userId: string): Promise<void> {
     .update(authSessions)
     .set({ revokedAt: new Date() })
     .where(and(eq(authSessions.userId, userId), isNull(authSessions.revokedAt)));
+}
+
+/**
+ * D.49 — revoke every ACTIVE session for ALL ACTIVE members of an org.
+ * Used when a Provider Admin suspends a tenant: existing access tokens stop
+ * authenticating within <=15s (immediately after `flushSessionCache()`), and
+ * any refresh attempt fails (refresh re-checks `revoked_at`). Returns the
+ * number of sessions revoked. The member sub-select is scoped by `org_id`,
+ * so a member's sessions in OTHER orgs are untouched.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function revokeAllForOrg(db: any, orgId: string): Promise<number> {
+  const revoked = (await db
+    .update(authSessions)
+    .set({ revokedAt: new Date() })
+    .where(
+      and(
+        isNull(authSessions.revokedAt),
+        inArray(
+          authSessions.userId,
+          db
+            .select({ userId: memberships.userId })
+            .from(memberships)
+            .where(and(eq(memberships.orgId, orgId), isNull(memberships.revokedAt))),
+        ),
+      ),
+    )
+    .returning({ id: authSessions.id })) as Array<{ id: string }>;
+  return revoked.length;
 }
 
 export const REFRESH_TTL_MS_EXPORT = REFRESH_TTL_MS;

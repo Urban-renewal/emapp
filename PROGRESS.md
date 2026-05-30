@@ -68,6 +68,15 @@
     reactivated→ok) + `D49-SUSP-REVOKE` (suspend kills the org's session, a
     different org's session survives). `lint`/`typecheck` green; targeted 11
     passed; full api suite 58 files passed (no regression on the login hot path).
+  - **Scope boundary (flagged, not silent):** this revokes org `auth_sessions`
+    only — NOT `tenant_sessions` (resident/דייר SMS-OTP portal, separate tier).
+    A live resident-portal session of a suspended org survives. Both reviewers
+    confirmed this is a conscious boundary, not a bug. Surfaced to the owner as
+    a question (freeze resident portal on suspend too? = a small follow-up).
+  - Reviews: **@security-reviewer PASS** (0 CRITICAL/HIGH — anti-enum ordering,
+    org-scoped revoke, atomic-in-work-tx, no refresh/switch-org bypass all
+    verified). **@code-reviewer PASS** (mechanism-level tests; root-cause, not
+    symptom).
   - **Gate-6 STOP:** touches auth core (`auth.service.ts` login + session repo)
     → PR opened WITHOUT auto-merge; awaiting owner `Gate-6-Approved` + merge.
     Next after merge: reset tenant MFA + per-customer config writes.

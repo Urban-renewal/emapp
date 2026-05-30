@@ -23,7 +23,7 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import { organizations, withProvider } from '@emapp/db';
+import { encryptOwnerPii, organizations, owners, withProvider, withTenant } from '@emapp/db';
 import { NotFoundException } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -110,6 +110,57 @@ async function sessionRevoked(sessionId: string): Promise<boolean> {
   try {
     const r = await client.query<{ revoked_at: Date | null }>(
       `SELECT revoked_at FROM auth_sessions WHERE id = $1`,
+      [sessionId],
+    );
+    return r.rows[0]!.revoked_at !== null;
+  } finally {
+    client.release();
+  }
+}
+
+async function seedOwner(orgId: string): Promise<string> {
+  return withTenant(orgId, async (tx) => {
+    const pii = await encryptOwnerPii(tx as never, {
+      nationalId: '000000018',
+      name: 'דייר בדיקה',
+      phone: '0541230000',
+    });
+    const [row] = await tx
+      .insert(owners)
+      .values({
+        orgId,
+        nameEncrypted: pii.nameEncrypted,
+        nameHash: pii.nameHash,
+        nationalIdEncrypted: pii.nationalIdEncrypted,
+        nationalIdHash: pii.nationalIdHash,
+        phoneEncrypted: pii.phoneEncrypted,
+        phoneHash: pii.phoneHash,
+      })
+      .returning({ id: owners.id });
+    return row!.id;
+  });
+}
+
+async function insertTenantSession(ownerId: string, orgId: string): Promise<string> {
+  const client = await providerPool.connect();
+  try {
+    const r = await client.query<{ id: string }>(
+      `INSERT INTO tenant_sessions (owner_id, org_id, expires_at)
+       VALUES ($1, $2, now() + interval '10 minutes')
+       RETURNING id`,
+      [ownerId, orgId],
+    );
+    return r.rows[0]!.id;
+  } finally {
+    client.release();
+  }
+}
+
+async function tenantSessionRevoked(sessionId: string): Promise<boolean> {
+  const client = await providerPool.connect();
+  try {
+    const r = await client.query<{ revoked_at: Date | null }>(
+      `SELECT revoked_at FROM tenant_sessions WHERE id = $1`,
       [sessionId],
     );
     return r.rows[0]!.revoked_at !== null;
@@ -282,4 +333,29 @@ describe('D.49 ProviderTenantSuspensionService — suspend/reactivate', () => {
     expect(await sessionRevoked(sidRevoke)).toBe(true);
     expect(await sessionRevoked(sidKeep)).toBe(false);
   });
+
+  it('D49-SUSP-TENANT-REVOKE) suspend also revokes resident (tenant_sessions) sessions; other orgs untouched', async () => {
+    // Enforcement of the RESIDENT tier: suspending an org kills its owners'
+    // live tenant-portal sessions too (D.49 full freeze). A resident session in
+    // a DIFFERENT org survives (org-scoped on tenant_sessions.org_id).
+    const orgRevoke = await createTestOrg(`${TEST_PREFIX}-trev`, `${TEST_PREFIX}-trev`);
+    const orgKeep = await createTestOrg(`${TEST_PREFIX}-tkeep`, `${TEST_PREFIX}-tkeep`);
+    const ownerRevoke = await seedOwner(orgRevoke.id);
+    const ownerKeep = await seedOwner(orgKeep.id);
+    const tsidRevoke = await insertTenantSession(ownerRevoke, orgRevoke.id);
+    const tsidKeep = await insertTenantSession(ownerKeep, orgKeep.id);
+
+    expect(await tenantSessionRevoked(tsidRevoke)).toBe(false);
+    expect(await tenantSessionRevoked(tsidKeep)).toBe(false);
+
+    await svc.suspend(
+      principal(),
+      'INC-4907: suspend must freeze the resident portal',
+      orgRevoke.id,
+      null,
+    );
+
+    expect(await tenantSessionRevoked(tsidRevoke)).toBe(true);
+    expect(await tenantSessionRevoked(tsidKeep)).toBe(false);
+  }, 30_000);
 });

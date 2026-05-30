@@ -31,7 +31,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 
 import { flushSessionCache } from '../auth/session-validity';
-import { revokeAllForOrg } from '../auth/session.repository';
+import { revokeAllForOrg, revokeTenantSessionsForOrg } from '../auth/session.repository';
 
 import type { ProviderActor } from './current-provider.decorator';
 
@@ -68,12 +68,15 @@ export class ProviderTenantSuspensionService {
             suspendedReason: organizations.suspendedReason,
           });
         const updated = (rows[0] as SuspensionRow | undefined) ?? null;
-        // D.49 enforcement: when the org is really suspended, kill every active
-        // session for its members IN THE SAME audited work tx — an already
-        // authenticated user is locked out (refresh re-checks revoked_at; the
-        // access token dies via isOrgSessionActive). Skipped on a 404 (no row).
+        // D.49 enforcement: when the org is really suspended, freeze BOTH tiers
+        // IN THE SAME audited work tx — org users (auth_sessions) AND residents
+        // (tenant_sessions). An already-authenticated user/resident is locked
+        // out (refresh re-checks revoked_at; the access token dies via
+        // isOrgSessionActive after the cache flush below; resident OTP verify is
+        // blocked by isOrgSuspended). Skipped on a 404 (no row).
         if (updated) {
           await revokeAllForOrg(tx, tenantId);
+          await revokeTenantSessionsForOrg(tx, tenantId);
         }
         return updated;
       },

@@ -1,6 +1,7 @@
 import {
   AuditService,
   contractors,
+  isOrgSuspended,
   projectAssignments,
   projects,
   shares,
@@ -53,6 +54,13 @@ function toShare(r: typeof shares.$inferSelect): Share {
  * GET /contractor/projects/:id) needs the Contractor auth tier which is
  * NOT yet built — deferred & recorded (PROGRESS); this slice is the
  * manager-side grant management only.
+ *
+ * D.49 SUSPENSION: a suspended org's shares are inert. `assertProjectVisible`
+ * gates every operation here on `isOrgSuspended(tx, project.orgId)` → 404.
+ * When the contractor-facing consumption endpoint is built it MUST resolve
+ * through this same `isOrgSuspended` gate (share → project → org) before
+ * exposing ANY share data — otherwise a suspended org would still leak through
+ * the contractor tier (which is NOT blocked by the org-login gate).
  */
 @Injectable()
 export class SharesService {
@@ -65,6 +73,14 @@ export class SharesService {
     user: AccessTokenPayload,
     projectId: string,
   ): Promise<void> {
+    // D.49 — a suspended org's data is frozen: every share operation (and the
+    // future contractor-facing consumption endpoint, which MUST resolve
+    // through this same gate) becomes inert → 404, indistinguishable from a
+    // non-existent project. This is the share-tier projection of suspension:
+    // org-side managers are already blocked at login (slice 2), this closes the
+    // share-resolution seam itself so the property holds regardless of caller.
+    if (await isOrgSuspended(tx, user.orgId)) throw NOT_FOUND;
+
     if (user.role === 'agent') {
       const [row] = await tx
         .select({ id: projects.id })

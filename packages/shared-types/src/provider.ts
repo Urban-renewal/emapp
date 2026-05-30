@@ -96,10 +96,15 @@ export type TenantDetail = z.infer<typeof TenantDetailSchema>;
 // Destructive/irreversible actions (purge) are deliberately ABSENT —
 // out of scope per D.49 until a separate decision.
 // ───────────────────────────────────────────────────────────────────
-export const SuspendTenantBodySchema = z.object({
-  /** Operator-facing note → persisted to `organizations.suspended_reason`. */
-  note: z.string().trim().min(1).max(500).optional(),
-});
+export const SuspendTenantBodySchema = z
+  .object({
+    /** Operator-facing note → persisted to `organizations.suspended_reason`. */
+    note: z.string().trim().min(1).max(500).optional(),
+  })
+  // `.strict()` — every body schema rejects unknown keys (the invariant the
+  // ZodValidationPipe's fail-closed depth scan relies on). A caller cannot
+  // smuggle extra fields past validation.
+  .strict();
 export type SuspendTenantBody = z.infer<typeof SuspendTenantBodySchema>;
 
 export const TenantSuspensionStateSchema = z.object({

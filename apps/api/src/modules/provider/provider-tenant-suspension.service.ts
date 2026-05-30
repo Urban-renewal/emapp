@@ -30,6 +30,9 @@ import type { TenantSuspensionState } from '@emapp/shared-types';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 
+import { flushSessionCache } from '../auth/session-validity';
+import { revokeAllForOrg } from '../auth/session.repository';
+
 import type { ProviderActor } from './current-provider.decorator';
 
 type SuspensionRow = {
@@ -64,7 +67,15 @@ export class ProviderTenantSuspensionService {
             suspendedAt: organizations.suspendedAt,
             suspendedReason: organizations.suspendedReason,
           });
-        return (rows[0] as SuspensionRow | undefined) ?? null;
+        const updated = (rows[0] as SuspensionRow | undefined) ?? null;
+        // D.49 enforcement: when the org is really suspended, kill every active
+        // session for its members IN THE SAME audited work tx — an already
+        // authenticated user is locked out (refresh re-checks revoked_at; the
+        // access token dies via isOrgSessionActive). Skipped on a 404 (no row).
+        if (updated) {
+          await revokeAllForOrg(tx, tenantId);
+        }
+        return updated;
       },
       {
         ip: actor.ip,
@@ -76,6 +87,11 @@ export class ProviderTenantSuspensionService {
       },
     );
 
+    // Clear the in-process session-active cache so the revocation above is
+    // effective IMMEDIATELY on this instance (other instances converge within
+    // the 15s TTL). Same pattern as the refresh-reuse purge in auth.service.
+    if (row) flushSessionCache();
+
     return this.toState(row, tenantId, true);
   }
 
@@ -84,6 +100,10 @@ export class ProviderTenantSuspensionService {
     reason: string,
     tenantId: string,
   ): Promise<TenantSuspensionState> {
+    // Reactivate only clears the suspension flag → NEW logins succeed again.
+    // It deliberately does NOT un-revoke the sessions killed at suspend time:
+    // once a session is revoked it stays dead (re-login required) — the safe
+    // direction, and consistent with logout/reuse-purge semantics.
     const row = await withProvider(
       actor.sub,
       reason,

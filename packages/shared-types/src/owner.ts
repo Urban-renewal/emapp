@@ -30,7 +30,12 @@ const MaskedPii = z
   .regex(/^[•*\-\s\d]+$/, 'must use only mask characters [•*\\-\\s\\d]')
   .regex(/[•*]/, 'must contain at least one mask character (bullet or asterisk)');
 
-/** Owner resource as returned by the API — PII is masked, never clear. */
+/**
+ * Owner resource as returned by the API — PII is ALWAYS masked, for every role
+ * (D.54 reveal-on-demand model: list/detail/search/export never carry cleartext;
+ * the §v9-M-4 tripwire holds on every list/detail surface). Cleartext is obtained
+ * only via the dedicated, audited reveal endpoint (`OwnerPiiRevealSchema`).
+ */
 export const OwnerSchema = z.object({
   id: z.string().uuid(),
   organizationId: z.string().uuid(),
@@ -46,6 +51,23 @@ export const OwnerSchema = z.object({
   archivedAt: z.coerce.date().nullable(),
 });
 export type Owner = z.infer<typeof OwnerSchema>;
+
+/**
+ * D.54 — reveal-on-demand response (POST /owners/:id/reveal-pii). A SEPARATE
+ * schema from `OwnerSchema` (which is masked-only and tripwire-protected): this
+ * one deliberately carries the CLEARTEXT national_id/phone of a single owner,
+ * returned ONLY to an actor with `view_owner_pii` (manager always · agent per
+ * flag · viewer never) for an owner in their scope, and the access is audited.
+ * It is NOT a list/detail shape and must never be substituted for `OwnerSchema`.
+ */
+export const OwnerPiiRevealSchema = z.object({
+  id: z.string().uuid(),
+  /** CLEARTEXT national_id — exactly 9 digits (D.19). */
+  nationalId: z.string().regex(/^\d{9}$/),
+  /** CLEARTEXT phone, or null when none on file. */
+  phone: z.string().min(1).max(20).nullable(),
+});
+export type OwnerPiiReveal = z.infer<typeof OwnerPiiRevealSchema>;
 
 // Write shape. national_id is structurally 9 digits here; the MOD-10
 // checksum is enforced in the BE DTO refine (validator-backed). phone is

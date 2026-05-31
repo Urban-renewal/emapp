@@ -7,13 +7,14 @@ import {
   encryptOwnerPii,
   env as dbEnv,
   hashField,
+  memberships,
   owners,
   ownerships,
   projectAssignments,
   withTenant,
   type TenantTx,
 } from '@emapp/db';
-import type { Owner } from '@emapp/shared-types';
+import type { Owner, OwnerPiiReveal } from '@emapp/shared-types';
 import { normalizeIsraeliPhone } from '@emapp/validators';
 import {
   BadRequestException,
@@ -25,7 +26,10 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 
-import { requireAgentCapability } from '../../common/authz/agent-capabilities';
+import {
+  requireAgentCapability,
+  resolveOwnerPiiFidelity,
+} from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
@@ -54,6 +58,19 @@ const PHONE_MASK = sql<
 // app.encryption_key is set by withTenant via set_config.
 const NAME_DECRYPTED = sql<string>`pgp_sym_decrypt(${owners.nameEncrypted}, current_setting('app.encryption_key'))::text`;
 
+// D.54 (reveal-on-demand) — CLEARTEXT national_id / phone (full value),
+// decrypted IN-SQL so the ciphertext never leaves Postgres. Used ONLY by the
+// dedicated, audited `revealPii` endpoint (POST /owners/:id/reveal-pii) — NEVER
+// in list/detail/search/export, which stay masked-for-everyone (the §v9-M-4
+// tripwire holds for every list/detail surface).
+const NID_CLEAR = sql<string>`pgp_sym_decrypt(${owners.nationalIdEncrypted}, current_setting('app.encryption_key'))::text`;
+const PHONE_CLEAR = sql<
+  string | null
+>`case when ${owners.phoneEncrypted} is null then null else pgp_sym_decrypt(${owners.phoneEncrypted}, current_setting('app.encryption_key'))::text end`;
+
+// Masked owner projection — national_id/phone ALWAYS masked (D.47 tripwire),
+// for every role on every list/detail surface. Cleartext is reachable only via
+// `revealPii`. name decrypted in-SQL (§v8-S3); ciphertext never crosses the wire.
 const ownerCols = {
   id: owners.id,
   organizationId: owners.orgId,
@@ -88,14 +105,18 @@ const toOwner = (r: MaskedRow): Owner => ({ ...r });
  * cross-org id ⇒ 0 rows ⇒ 404 (no oracle). D.17: read (list/get/search)
  * = any org role; write (create/update/archive) = manager only.
  *
- * Agent project-scoping is intentionally NOT applied to bare Owner records
- * here: an owner's project linkage is via ownerships→apartment→…(Slice 5),
- * and a name+masked-id row is not project-scoped data. Apartment-scoped
- * owner views arrive with Slice 5. (Recorded — PROGRESS doc-debt.)
+ * D.54 — agent owner READS are now scoped: an agent must hold `view_owners`
+ * (else full deny) and sees ONLY owners with an active ownership in an
+ * assigned-project apartment (list/search via a WHERE EXISTS; get via
+ * assertOwnerInAssignedProject). Managers/viewers see all org owners.
  *
- * national_id/phone are pgcrypto-encrypted at rest and decrypted ONLY
- * inside SQL to a MASKED suffix — never returned, logged, or put in
- * errors/audit (CLAUDE.md / Doc07). Search matches by HMAC, body-only.
+ * national_id/phone are pgcrypto-encrypted at rest and decrypted ONLY inside
+ * SQL. EVERY list/detail/search surface returns the MASKED suffix only (D.47,
+ * §v9-M-4 tripwire) — for every role. D.54 — cleartext is REVEAL-ON-DEMAND: the
+ * dedicated, audited `revealPii` (POST /owners/:id/reveal-pii) returns the clear
+ * national_id/phone of ONE owner, gated by `view_owner_pii` (manager always ·
+ * agent per flag · viewer never) + owner-in-assigned-project scope, and writes a
+ * per-access audit row (ISO A.12.4). Never logged elsewhere. Search matches by HMAC.
  */
 @Injectable()
 export class OwnersService {
@@ -144,6 +165,45 @@ export class OwnersService {
     if (!hit) throw NOT_FOUND;
   }
 
+  /**
+   * D.54 — view_owners READ gate. An agent must hold `view_owners` to see
+   * owners AT ALL; otherwise full deny (403). Manager + viewer read freely
+   * (viewer is always masked via the fidelity resolver). Agent-only.
+   */
+  private async assertAgentCanViewOwners(tx: TenantTx, user: AccessTokenPayload): Promise<void> {
+    if (user.role !== 'agent') return;
+    const [m] = await tx
+      .select({ capabilities: memberships.capabilities })
+      .from(memberships)
+      .where(
+        and(
+          eq(memberships.userId, user.sub),
+          eq(memberships.orgId, user.orgId),
+          isNull(memberships.revokedAt),
+        ),
+      )
+      .limit(1);
+    if (!m || m.capabilities.view_owners !== true) throw FORBIDDEN;
+  }
+
+  /**
+   * D.54 — agent owner-read scope (list/search). Restricts to owners holding an
+   * ACTIVE ownership in an apartment whose project the agent is actively
+   * assigned to (same join as assertOwnerInAssignedProject, as a WHERE EXISTS).
+   * `undefined` for non-agents (no extra filter — managers/viewers see all).
+   */
+  private agentOwnerScope(user: AccessTokenPayload): SQL | undefined {
+    if (user.role !== 'agent') return undefined;
+    return sql`EXISTS (
+      SELECT 1 FROM ownerships ow
+      JOIN apartments a ON a.id = ow.apartment_id
+      JOIN buildings b ON b.id = a.building_id
+      JOIN project_assignments pa ON pa.project_id = b.project_id
+        AND pa.user_id = ${user.sub} AND pa.unassigned_at IS NULL
+      WHERE ow.owner_id = ${owners.id} AND ow.ended_at IS NULL
+    )`;
+  }
+
   async list(
     user: AccessTokenPayload,
     query: { limit: number; cursor?: string },
@@ -156,6 +216,10 @@ export class OwnersService {
     const rows = await withTenant(
       user.orgId,
       async (tx) => {
+        // D.54 — view_owners gate (agent off → 403) + agent project-scope. PII
+        // is masked for everyone here; cleartext is reveal-on-demand only.
+        await this.assertAgentCanViewOwners(tx, user);
+        const scope = this.agentOwnerScope(user);
         const keyset: SQL | undefined = cur
           ? or(
               lt(owners.createdAt, new Date(cur.c)),
@@ -165,7 +229,7 @@ export class OwnersService {
         return tx
           .select(ownerCols)
           .from(owners)
-          .where(and(isNull(owners.archivedAt), keyset))
+          .where(and(isNull(owners.archivedAt), scope, keyset))
           .orderBy(desc(owners.createdAt), desc(owners.id))
           .limit(limit + 1);
       },
@@ -183,11 +247,81 @@ export class OwnersService {
   async get(user: AccessTokenPayload, id: string): Promise<Owner> {
     const [row] = await withTenant(
       user.orgId,
-      async (tx) => tx.select(ownerCols).from(owners).where(eq(owners.id, id)).limit(1),
+      async (tx) => {
+        // D.54 — view_owners gate, then agent project-scope (404 if the owner is
+        // not in an assigned project — no oracle). Masked for everyone.
+        await this.assertAgentCanViewOwners(tx, user);
+        await this.assertOwnerInAssignedProject(tx, user, id);
+        return tx.select(ownerCols).from(owners).where(eq(owners.id, id)).limit(1);
+      },
       { userId: user.sub },
     );
     if (!row) throw NOT_FOUND;
     return toOwner(row);
+  }
+
+  /**
+   * D.54 — reveal-on-demand cleartext PII for ONE owner. The list/detail/export
+   * surfaces stay masked-for-everyone; this is the ONLY path to cleartext
+   * national_id/phone over the wire, and it is gated + audited.
+   *
+   * Gate order (no-oracle): `view_owners` 403 (an agent who cannot see owners AT
+   * ALL cannot reveal one — the SAME outermost gate as list/get; this also makes
+   * the contradictory `{view_owners:false, view_owner_pii:true}` grant inert) →
+   * existence 404 (RLS org-scope) → agent project-scope 404 (owner not in an
+   * assigned project is indistinguishable from absent, same as edit) →
+   * `view_owner_pii` 403 (manager always · agent per flag · viewer never, via
+   * `resolveOwnerPiiFidelity === 'unmasked'`). Scope is checked BEFORE the pii
+   * capability so an out-of-scope owner never becomes a capability oracle.
+   *
+   * Writes a per-access audit row (`owner.pii_revealed`, ISO A.12.4 — WHO
+   * revealed WHICH owner, WHEN) carrying only field NAMES, never the values.
+   */
+  async revealPii(user: AccessTokenPayload, id: string): Promise<OwnerPiiReveal> {
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        // view_owners gate FIRST (outermost) — an agent without it sees no
+        // owners anywhere, so it cannot reveal one. Manager/viewer pass.
+        await this.assertAgentCanViewOwners(tx, user);
+        const [exists] = await tx
+          .select({ id: owners.id })
+          .from(owners)
+          .where(eq(owners.id, id))
+          .limit(1);
+        if (!exists) throw NOT_FOUND;
+        // Agent: owner must be in an actively-assigned project (404 if not —
+        // before the pii capability check, so it stays a no-oracle 404).
+        await this.assertOwnerInAssignedProject(tx, user, id);
+        // view_owner_pii gate: manager always unmasked; agent iff the flag;
+        // viewer never. Anything but `unmasked` → 403.
+        const fidelity = await resolveOwnerPiiFidelity(tx, user);
+        if (fidelity !== 'unmasked') throw FORBIDDEN;
+
+        const [row] = await tx
+          .select({ id: owners.id, nationalId: NID_CLEAR, phone: PHONE_CLEAR })
+          .from(owners)
+          .where(eq(owners.id, id))
+          .limit(1);
+        if (!row) throw NOT_FOUND;
+
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'owner.pii_revealed',
+          targetTable: 'owners',
+          targetId: id,
+          // ISO A.12.4 — record WHO revealed WHICH owner + WHICH fields. NEVER
+          // the cleartext values (CLAUDE.md / Doc07).
+          afterState: { revealed: ['national_id', ...(row.phone != null ? ['phone'] : [])] },
+          sessionId: user.sid,
+        });
+
+        return { id: row.id, nationalId: row.nationalId, phone: row.phone };
+      },
+      { userId: user.sub },
+    );
   }
 
   // HMAC lookup (T3.O.1). The clear value arrives in the request BODY and
@@ -204,14 +338,20 @@ export class OwnersService {
     if (conds.length === 0) return [];
     return withTenant(
       user.orgId,
-      async (tx) =>
-        tx
+      async (tx) => {
+        // D.54 — view_owners gate + agent project-scope. An agent can still MATCH
+        // by national_id/phone (HMAC), but only owners in their assigned projects;
+        // results are masked for everyone (reveal-on-demand for cleartext).
+        await this.assertAgentCanViewOwners(tx, user);
+        const scope = this.agentOwnerScope(user);
+        return tx
           .select(ownerCols)
           .from(owners)
-          .where(and(isNull(owners.archivedAt), or(...conds)))
+          .where(and(isNull(owners.archivedAt), or(...conds), scope))
           .orderBy(desc(owners.createdAt), desc(owners.id))
           .limit(50)
-          .then((rs) => rs.map(toOwner)),
+          .then((rs) => rs.map(toOwner));
+      },
       { userId: user.sub },
     );
   }
@@ -279,6 +419,7 @@ export class OwnersService {
             },
             sessionId: user.sid,
           });
+          // Masked-for-everyone (reveal-on-demand for cleartext).
           const [row] = await tx
             .select(ownerCols)
             .from(owners)
@@ -372,6 +513,7 @@ export class OwnersService {
             afterState: { changed: Object.keys(patch).filter((k) => k !== 'updatedAt') },
             sessionId: user.sid,
           });
+          // Masked-for-everyone (reveal-on-demand for cleartext).
           const [row] = await tx.select(ownerCols).from(owners).where(eq(owners.id, id)).limit(1);
           if (!row) throw NOT_FOUND;
           return toOwner(row);

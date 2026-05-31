@@ -244,7 +244,7 @@ afterAll(async () => {
 });
 
 describe('V11 B.S10 · ExportComposerService — project export (Phase 7)', () => {
-  it('1) composes the full project tree with active buildings + apartments + (sara, david) owners decrypted to cleartext', async () => {
+  it('1) composes the full project tree with active buildings + apartments + (sara, david) owners; national_id/phone MASKED', async () => {
     const { input, rowCount } = await svc.composeProjectExport(
       userOf(orgA),
       orgA.projects[0]!.id,
@@ -260,16 +260,17 @@ describe('V11 B.S10 · ExportComposerService — project export (Phase 7)', () =
     expect(bldA2.apartments).toHaveLength(1);
     expect(bldEmpty.apartments).toHaveLength(0);
 
-    // aptA1 owners: david + sara — both decrypted to cleartext.
+    // aptA1 owners: david + sara. name + email are cleartext at this boundary
+    // (not classified PII); D.54 — national_id/phone are MASKED in the export
+    // (reveal-on-demand only).
     const a1 = bldA1.apartments[0]!;
     expect(a1.owners).toHaveLength(2);
     const a1Names = a1.owners.map((o) => o.name).sort();
     expect(a1Names).toEqual(['דוד כהן', 'שרה לוי']);
-    // PII is cleartext at this boundary.
     const davidOnA1 = a1.owners.find((o) => o.name === 'דוד כהן')!;
-    expect(davidOnA1.nationalId).toBe('300000010');
-    expect(davidOnA1.phone).toBe('0501110001');
-    expect(davidOnA1.email).toBe('david@example.com');
+    expect(davidOnA1.nationalId).toBe('•••••••10'); // masked (was cleartext pre-D.54)
+    expect(davidOnA1.phone).toBe('•••••0001'); // masked last-4
+    expect(davidOnA1.email).toBe('david@example.com'); // email is not masked PII
     expect(davidOnA1.ownershipPct).toBe(50);
 
     // aptA2 owner: david(100%) only.
@@ -370,9 +371,120 @@ describe('V11 B.S10 · ExportComposerService — project export (Phase 7)', () =
     } as unknown as AccessTokenPayload;
     const { input } = await svc.composeProjectExport(agentPayload, assignedProjectId, 'xlsx');
     expect(input.project.id).toBe(assignedProjectId);
-    // The full sub-tree should still be readable (agent gets the SAME
-    // payload as a manager once visibility is granted).
+    // The full sub-tree is readable once visibility is granted…
     expect(input.buildings.length).toBeGreaterThan(0);
+    // …but D.54 — an agent WITHOUT view_owner_pii (default) exports MASKED
+    // owner PII, NOT cleartext. The export reflects the actor's on-screen
+    // fidelity (D.50); this closes the prior bypass where every export caller
+    // got cleartext national_id/phone regardless of capability.
+    const allOwners = input.buildings.flatMap((b) => b.apartments.flatMap((a) => a.owners));
+    expect(allOwners.length).toBeGreaterThan(0);
+    for (const o of allOwners) {
+      expect(o.nationalId.startsWith('•')).toBe(true);
+      expect(o.nationalId).not.toBe('300000010'); // David — no cleartext leak
+      if (o.phone != null) expect(o.phone.startsWith('•')).toBe(true);
+    }
+  });
+
+  it('2d) agent WITH view_owner_pii → export is STILL MASKED (reveal-on-demand, never bulk)', async () => {
+    const [u] = await db
+      .insert(users)
+      .values({
+        email: `agent-pii-${Date.now()}-${Math.random()}@test.local`,
+        name: 'PII Agent',
+        passwordHash: '$2b$12$placeholder',
+      })
+      .returning({ id: users.id });
+    await db.insert(memberships).values({
+      userId: u!.id,
+      orgId: orgA.id,
+      role: 'agent',
+      isPrimary: false,
+      acceptedAt: new Date(),
+      capabilities: {
+        edit_project_data: false,
+        manage_documents: false,
+        run_imports: false,
+        manage_signatures: false,
+        manage_tasks: false,
+        view_owners: true,
+        view_owner_pii: true,
+      },
+    });
+    await withTenant(orgA.id, async (tx) => {
+      await tx.insert(projectAssignments).values({
+        projectId: orgA.projects[0]!.id,
+        userId: u!.id,
+        roleInProject: 'agent',
+        assignedBy: orgA.users[0]!.id,
+      });
+    });
+    const agentPayload: AccessTokenPayload = {
+      sub: u!.id,
+      orgId: orgA.id,
+      role: 'agent',
+      sid: '00000000-0000-0000-0000-000000000000',
+      type: 'access',
+      iat: 0,
+      exp: 0,
+    } as unknown as AccessTokenPayload;
+    const { input } = await svc.composeProjectExport(agentPayload, orgA.projects[0]!.id, 'xlsx');
+    const allOwners = input.buildings.flatMap((b) => b.apartments.flatMap((a) => a.owners));
+    expect(allOwners.length).toBeGreaterThan(0);
+    // D.54 reveal-on-demand: even view_owner_pii does NOT unmask the bulk export;
+    // cleartext is only via POST /owners/:id/reveal-pii. No cleartext NID leaks.
+    expect(allOwners.every((o) => o.nationalId.startsWith('•'))).toBe(true);
+    expect(allOwners.some((o) => o.nationalId === '300000010')).toBe(false);
+  });
+
+  it('2e) agent WITHOUT view_owners → export carries ZERO owner rows (D.54/D.50 read-scope)', async () => {
+    const [u] = await db
+      .insert(users)
+      .values({
+        email: `agent-noview-${Date.now()}-${Math.random()}@test.local`,
+        name: 'NoView Agent',
+        passwordHash: '$2b$12$placeholder',
+      })
+      .returning({ id: users.id });
+    await db.insert(memberships).values({
+      userId: u!.id,
+      orgId: orgA.id,
+      role: 'agent',
+      isPrimary: false,
+      acceptedAt: new Date(),
+      capabilities: {
+        edit_project_data: false,
+        manage_documents: false,
+        run_imports: false,
+        manage_signatures: false,
+        manage_tasks: false,
+        view_owners: false, // cannot see owners on screen → none in export
+        view_owner_pii: false,
+      },
+    });
+    await withTenant(orgA.id, async (tx) => {
+      await tx.insert(projectAssignments).values({
+        projectId: orgA.projects[0]!.id,
+        userId: u!.id,
+        roleInProject: 'agent',
+        assignedBy: orgA.users[0]!.id,
+      });
+    });
+    const agentPayload: AccessTokenPayload = {
+      sub: u!.id,
+      orgId: orgA.id,
+      role: 'agent',
+      sid: '00000000-0000-0000-0000-000000000000',
+      type: 'access',
+      iat: 0,
+      exp: 0,
+    } as unknown as AccessTokenPayload;
+    const { input } = await svc.composeProjectExport(agentPayload, orgA.projects[0]!.id, 'xlsx');
+    // Project + buildings + apartments still visible (assigned), but every
+    // apartment's owners array is empty — mirrors the on-screen owner deny.
+    expect(input.buildings.length).toBeGreaterThan(0);
+    const allOwners = input.buildings.flatMap((b) => b.apartments.flatMap((a) => a.owners));
+    expect(allOwners.length).toBe(0);
   });
 
   it('3) archived owner + ended ownership are filtered out (no leak via archived owner row)', async () => {

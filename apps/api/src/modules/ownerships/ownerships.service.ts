@@ -18,6 +18,7 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 
+import { canViewOwners } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
@@ -161,6 +162,12 @@ export class OwnershipsService {
       user.orgId,
       async (tx) => {
         await this.assertApartmentVisible(tx, user, apartmentId);
+        // D.54 — the `view_owners` gate applies to EVERY owner-bearing surface,
+        // not just /owners. An agent assigned to the apartment's project but
+        // WITHOUT view_owners sees the apartment yet NO owners → full deny here
+        // too (manager/viewer always pass). Mirrors OwnersService.list. PII is
+        // masked for everyone (reveal-on-demand for cleartext).
+        if (!(await canViewOwners(tx, user))) throw FORBIDDEN;
         const keyset: SQL | undefined = cur
           ? or(
               lt(ownerships.createdAt, new Date(cur.c)),

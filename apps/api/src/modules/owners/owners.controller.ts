@@ -82,6 +82,20 @@ export class OwnersController {
     return { data: await this.owners.get(user, id) };
   }
 
+  // D.54 — reveal-on-demand cleartext PII for ONE owner. POST (not GET) so the
+  // owner id + result never land in access logs / browser history, and so it is
+  // a deliberate per-owner action (audited, ISO A.12.4). `read` coarse action
+  // (any org role passes the matrix); the fine `view_owner_pii` gate + scope +
+  // audit live in the service. Throttled like /search — reveal is sensitive and
+  // legitimate UX is one click per owner.
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post(':id/reveal-pii')
+  @HttpCode(200)
+  @AuthzAction('read')
+  async revealPii(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
+    return { data: await this.owners.revealPii(user, id) };
+  }
+
   @Patch(':id')
   async update(
     @CurrentUser() user: AccessTokenPayload,

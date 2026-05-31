@@ -34,6 +34,7 @@ export const AGENT_CAPABILITY_KEYS = [
   'manage_tasks',
   'run_imports',
   'view_owners',
+  'view_owner_pii',
 ] as const;
 export type AgentCapabilityKey = (typeof AGENT_CAPABILITY_KEYS)[number];
 
@@ -45,8 +46,13 @@ export const AgentCapabilitiesSchema = z
     manage_signatures: z.boolean(),
     manage_tasks: z.boolean(),
     run_imports: z.boolean(),
-    /** view owners (default ON; PII masked per D.47). */
+    /** view owners AT ALL (default ON; scoped to assigned projects, D.54).
+     *  OFF → the agent sees no owners. */
     view_owners: z.boolean(),
+    /** D.54 — read PII fidelity: when ON the agent sees UNMASKED national_id /
+     *  phone (field staff who must verify identity); default OFF = masked.
+     *  Applies uniformly to list / detail / edit / export via one resolver. */
+    view_owner_pii: z.boolean(),
   })
   .strict();
 export type AgentCapabilities = z.infer<typeof AgentCapabilitiesSchema>;
@@ -58,6 +64,8 @@ export const DEFAULT_AGENT_CAPABILITIES: AgentCapabilities = {
   manage_tasks: false,
   run_imports: false,
   view_owners: true,
+  // D.54 — masked by default (least-privilege); manager grants unmasked.
+  view_owner_pii: false,
 };
 
 /** PATCH /members/:userId/capabilities — manager toggles a SUBSET; merged

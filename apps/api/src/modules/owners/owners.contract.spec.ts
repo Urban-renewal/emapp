@@ -3,8 +3,10 @@
  *
  * Spec-derived (docs/03 §7 T3.O.1, docs/09 §3.13 Owner, D.16, D.17,
  * D.19 national_id, Doc07 PII rules, CLAUDE.md). The HARD PII invariant:
- * the API NEVER returns/echoes clear national_id or phone — only a masked
- * suffix. Skips if API unreachable; CI `conformance` runs it for real.
+ * the API NEVER returns/echoes clear national_id or phone in list/detail —
+ * only a masked suffix. (D.54 reveal-on-demand: cleartext is reachable ONLY
+ * via the dedicated audited POST /owners/:id/reveal-pii, NOT these surfaces.)
+ * Skips if API unreachable; CI `conformance` runs it for real.
  *
  *  OWN1  Unauthenticated → 401.
  *  OWN2  Manager create (valid 9-digit+checksum id) → 2xx {data:{Owner}};
@@ -119,7 +121,8 @@ async function createOwner(at: string, body: Json): Promise<Res> {
 }
 
 // The core PII invariant: no clear national_id (the exact 9 digits) and no
-// clear phone digits may appear anywhere in a response payload.
+// clear phone digits may appear anywhere in a list/detail response payload
+// (cleartext is reveal-on-demand only — POST /owners/:id/reveal-pii).
 function assertNoClearPii(raw: string, nationalId: string, phoneLocal?: string): void {
   expect(raw.includes(nationalId), 'CLEAR national_id leaked in response').toBe(false);
   if (phoneLocal) {

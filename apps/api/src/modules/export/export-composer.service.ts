@@ -19,6 +19,7 @@ import {
 } from '@nestjs/common';
 import { and, eq, isNull, inArray } from 'drizzle-orm';
 
+import { canViewOwners } from '../../common/authz/agent-capabilities';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 import type {
@@ -234,9 +235,16 @@ export class ExportComposerService {
         }
         const aptIds = aptRows.map((a) => a.id);
 
+        // D.54 / D.50 — the export mirrors the actor's owner READ scope. An
+        // agent WITHOUT `view_owners` sees zero owners on screen, so the export
+        // must carry zero owner rows too (not merely masked ones). Manager +
+        // viewer can view owners. When blocked, skip the owner fetch + decrypt
+        // entirely (no rows, no PII touched).
+        const mayViewOwners = await canViewOwners(tx, user);
+
         // 5) Ownerships (active) JOIN owners (active) for those apts.
         const ownRows =
-          aptIds.length === 0
+          aptIds.length === 0 || !mayViewOwners
             ? []
             : await tx
                 .select({
@@ -298,14 +306,23 @@ export class ExportComposerService {
             error: { code: 'export_decrypt_failed', message: 'export temporarily unavailable' },
           });
         }
+        // D.54 / D.50 — the export is MASKED for everyone (reveal-on-demand model:
+        // cleartext PII is reachable only via the audited POST /owners/:id/
+        // reveal-pii, never a bulk export). The batched decrypt already ran; we
+        // mask national_id/phone in Node here. The transient cleartext is never
+        // logged/persisted (audit logs only project/org/rowCount). D.50 ("export
+        // fidelity == on-screen fidelity") holds trivially: on-screen is masked too.
+        const maskNid = (v: string): string => '•••••••' + v.slice(-2);
+        const maskPhone = (v: string | null): string | null =>
+          v == null ? null : '•••••' + v.slice(-4);
         const decryptedOwners: Array<ProjectExportOwner & { __apartmentId: string }> = ownRows.map(
           (r, i) => {
             const d = decryptedByIdx[i]!;
             return {
               __apartmentId: r.apartmentId,
               name: d.name,
-              nationalId: d.nationalId,
-              phone: d.phone,
+              nationalId: maskNid(d.nationalId),
+              phone: maskPhone(d.phone),
               email: r.email,
               ownershipPct: Number(r.ownershipPct),
               role: r.role,

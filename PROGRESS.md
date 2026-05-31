@@ -220,6 +220,120 @@
     api 65 files passed (phase5 signature tests unaffected).
   - Gate-6 (policy.ts) — auto-merge armed on owner standing authorization.
 
+- **Track D — slice (D.54 view_owners gate + PII fidelity, Gate-6: capability 7 +
+  migration + Owner contract — STOP, NOT auto-merge).** Two orthogonal axes on
+  owner data, both via ONE resolver so list/detail/edit/export can never diverge.
+  D.54 (DECISIONS-V12) explicitly **supersedes the "org-staff always masked"
+  assumption of D.19/D.46**.
+  - **Axis 1 — `view_owners` (existing, default ON) now GATES whether an agent sees
+    owners at all.** `owners.service` adds `assertAgentCanViewOwners` (agent must
+    hold the flag, else full 403 deny on list/get/search) + `agentOwnerScope`
+    (WHERE EXISTS owner→ownerships(ended_at IS NULL)→apartment→building→project ∈
+    active assignment, unassignedAt IS NULL). Agents see ONLY assigned-project
+    owners; manager/viewer unchanged. Closes the prior doc-debt ("bare owners not
+    project-scoped on read").
+  - **Axis 2 — NEW `view_owner_pii` (7th capability, default FALSE=masked)** controls
+    masked-vs-cleartext. Single SoT `resolveOwnerPiiFidelity(tx,user) →
+masked|unmasked`: manager→unmasked, agent→per-flag, viewer/other→masked. Used in
+    owners list/get/search/create/update, ownerships apartment-owners, AND export.
+  - **Contract design (security-review-driven, root-cause):** the cleartext is NOT
+    overloaded into the existing `nationalIdMasked`/`phoneMasked` fields — those are
+    typed `MaskedPii` (regex requires a bullet; the §v9-M-4 FE tripwire) and the FE
+    hard-parses every owner through `OwnerSchema`. Overloading would crash the
+    manager/pii-agent screens AND destroy the tripwire. Instead `OwnerSchema` gains
+    DEDICATED optional cleartext fields `nationalId`/`phone`, populated ONLY when
+    fidelity=unmasked; `…Masked` stays ALWAYS masked. Additive + non-`.strict()` →
+    cross-track safe (D2's FE keeps rendering masked until it wires the clear field;
+    no crash). `ownerColsFor(fidelity)` selects masked always + clear-or-NULL;
+    `toOwner` attaches the clear fields iff the unmasked sentinel (`nationalIdClear`)
+    is non-null.
+  - **Export bypass CLOSED (was live EXP-M3/D.50 bug):** `export-composer` decrypted
+    owner PII to Node cleartext for EVERY caller. Now (a) masks national_id/phone in
+    Node when fidelity=masked, and (b) honours `view_owners` via new
+    `canViewOwners(tx,user)` — an agent WITHOUT view_owners gets ZERO owner rows in
+    the export (mirrors the on-screen deny), not merely masked ones. Manager/pii-agent
+    → cleartext; viewer/no-pii-agent → masked; no-view_owners-agent → none.
+  - **Storage:** migration 0042 — default gains `view_owner_pii:false` + idempotent
+    backfill (`jsonb_set … WHERE NOT (… ? 'view_owner_pii')`, never overwrites a
+    grant). shared-types `AGENT_CAPABILITY_KEYS`/`AgentCapabilitiesSchema`/
+    `DEFAULT_AGENT_CAPABILITIES` + db `$type`/default carry the 7th key (D46-DRIFT).
+  - **Security review (two rounds, all fixed at root):** R1 BLOCK → fixed (1) the
+    `MaskedPii`-overload FE-crash/tripwire-destruction → dedicated cleartext fields
+    (above); (2) `owners.contract.spec` (OWN2/5/6/9) asserted manager→masked +
+    no-cleartext — superseded by D.54 → rewritten to `assertUnmaskedOwner` (masked
+    field stays masked, cleartext in the dedicated field); HIGH export skipped the
+    view_owners gate → `canViewOwners`. R2 PASS, but flagged a 2nd HIGH:
+    `ownerships.listApartmentOwners` (the `/apartments/:id/owners` surface) applied
+    fidelity but missed the `view_owners` deny → an assigned agent without
+    view_owners could still list that apartment's (masked) owners. FIXED: it now
+    calls `canViewOwners` → 403 for that agent (manager/viewer pass), covered by new
+    `ownerships-fidelity.spec` (AO-1..4). code-review PASS; 2 NITs cleared (removed
+    two needless `tx as unknown as …` casts in export; documented the Node-side
+    export-masking asymmetry).
+  - Evidence (D.51, deterministic real-DB): `owners-fidelity.spec` (8) — no
+    view_owners→403; view_owners→assigned-only + masked + NO clear field;
+    +view_owner_pii→clear in dedicated field while masked field STAYS masked;
+    unassigned→404; manager clear; viewer masked-no-clear; search scoped+masked.
+    `export.s10` 2c (default agent = masked, no NID leak) + 2d (pii-agent = clear) +
+    2e (no-view_owners agent = ZERO owner rows). `ownerships-fidelity.spec` AO-1..4
+    (apartment-owners: no-view_owners agent→403, masked, clear, manager/viewer).
+    owners-capability OWN-7 given the repo-standard 30s real-DB timeout. lint+typecheck
+    green; owners-audit-pii / owners-adversarial are audit-path specs (assert on
+    `audit_log.afterState`, orthogonal to the response projection) — statically
+    verified unaffected; host hit system-commit exhaustion (33.3/34.2 GB, user
+    IDE/browser) during the full parallel run, not a logic failure.
+  - **Gate-6 STOP:** capability #7 + migration 0042 + Owner shared-types contract →
+    PR opened WITHOUT auto-merge; awaiting owner `Gate-6-Approved` + merge. Follow-ups
+    queued: (a) narrow assignee path back into `tasks.update` (status/notes/done on an
+    assigned-to-them task, no project/apartment/assignee change); (b) mechanical CI
+    guard failing the build if a loosened POLICY cell omits `requireAgentCapability`;
+    (c) D2 FE: render the dedicated `nationalId`/`phone` clear fields for unmasked
+    actors (BE now delivers them; FE still shows masked until wired).
+
+- **Track D — slice (D.54 PIVOT → reveal-on-demand, owner directive B, Gate-6).**
+  Owner converted #192 from "inline unmask on list/detail" to a dedicated
+  reveal-on-demand endpoint — keeps every list/detail/export surface MASKED for
+  every role (restores the existing masked-only contracts + adversarial/conformance
+  suites to green; the §v9-M-4 tripwire holds everywhere) and moves cleartext to
+  one audited action.
+  - **Reverted:** the `OwnerSchema` cleartext fields + the per-call fidelity
+    projection in owners/ownerships/export. `OwnerSchema` is masked-only again;
+    `owners.service` uses the static masked `ownerCols`; `ownerships.listApartment
+Owners` + `export-composer` mask for everyone. `owners.contract` OWN2/5/6/9 +
+    `export.s10` #1 reverted to the masked assertions they always had.
+  - **KEPT:** the `view_owners` gate (agent sees owners at all, project-scoped) on
+    `/owners` list/get/search AND `/apartments/:id/owners` AND export (no-view_owners
+    agent → zero owner rows). `view_owner_pii` (migration 0042) survives — it now
+    gates the REVEAL, not the schema.
+  - **NEW endpoint `POST /api/v1/owners/:id/reveal-pii`** (`OwnersService.revealPii`,
+    new `OwnerPiiRevealSchema` — a SEPARATE shape, never `OwnerSchema`). Returns the
+    cleartext national_id/phone of ONE owner. Gate order (no-oracle): existence 404 →
+    agent project-scope 404 (reuse #186 active-ownership-in-assigned-project) →
+    `view_owner_pii` 403 (manager always · agent per flag · viewer never, via
+    `resolveOwnerPiiFidelity === 'unmasked'`). Throttled 20/min like `/search`;
+    coarse `@AuthzAction('read')` (the fine gate is in the service). **Per-access
+    audit** (`owner.pii_revealed`, ISO A.12.4 — who revealed which owner, when),
+    field NAMES only, never the cleartext.
+  - Evidence (D.51, deterministic real-DB): `owners-fidelity.spec` (11) — view_owners
+    gate (DV-1 403 / DV-2 scoped+masked / DV-3 masked for every role incl pii-agent /
+    DV-5 scope-404 / DV-8 search) + reveal (RV-1 agent+pii→cleartext / RV-2 no-pii→403 /
+    RV-3 out-of-scope→404 / RV-4 manager→cleartext / RV-5 viewer→403 / RV-6 audit row
+    written WITHOUT cleartext). `ownerships-fidelity` (3): apartment-owners gate +
+    masked-for-all. `export.s10` #1/2c/2d/2e all masked (2e no-view_owners→zero rows).
+    owners-capability / owners-audit-pii / owners-adversarial / export.service /
+    pdf-export / agent-capabilities / policy all green. lint+typecheck green.
+  - **Review (BLOCK→fixed at root):** both reviewers caught that `revealPii` gated
+    on `view_owner_pii` + scope but NOT `view_owners` — a contradictory
+    `{view_owners:false, view_owner_pii:true}` agent could reveal cleartext while
+    denied on every masked surface. FIXED: `assertAgentCanViewOwners` is now the
+    outermost gate in `revealPii` (mirrors `get`), + new RV-7 pins it (that exact
+    cell → 403). Stale `ownerships-fidelity` docblock corrected. Re-review pending.
+  - **Gate-6 STOP:** migration 0042 (kept) + the new reveal endpoint → on PR #192
+    WITHOUT auto-merge; awaiting owner `Gate-6-Approved` + merge. No `policy.ts`
+    change (reveal uses the existing owners `read` cell). Follow-ups (a)+(b)
+    unchanged; (c) replaced by: D2 FE wires a "reveal PII" action calling the new
+    endpoint (per-owner, on click).
+
 - **Track D — slice (D.46 manage_tasks, autonomous run, Gate-6: policy.ts).**
   FULL task management for agents, project-scoped (owner directive).
   - POLICY: tasks create/update/delete MGR→MA (update was already MA). pin updated.

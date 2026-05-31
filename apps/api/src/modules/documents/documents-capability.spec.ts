@@ -164,4 +164,15 @@ describe('D.46 — manage_documents agent enforcement', () => {
     const upd = await svc.update(manager(), id, { name: 'm.pdf' });
     expect(upd.name).toBe('m.pdf');
   });
+
+  it('D46-DOC-7) finalize (POST→create cell) is gated too: agent WITHOUT cap → 403', async () => {
+    // finalize maps to the documents.create cell (POST, no @AuthzAction). The
+    // cap gate runs after loadVisible, before the integrity logic — so an
+    // assigned-project doc + no cap throws 403 (proves the 4th write path gates).
+    const id = await seedDoc(assignedProjectId);
+    await setCap(false);
+    await expect(
+      svc.finalize(agent(), id, { sizeBytes: 100, contentHash: 'h' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
 });

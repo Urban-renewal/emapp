@@ -90,13 +90,14 @@ export const POLICY: Matrix = {
   // assigned-project docs via loadVisible). GUARDRAIL: every documents write
   // method MUST call requireAgentCapability.
   documents: { read: ALL, create: MA, update: MA, delete: MA },
-  // Signature requests (Phase 5, docs/03 §9): manager creates and cancels
-  // (status transition; never DELETE — forensic evidence per migration
-  // 0021). Any org role may read the list/status (record-scoping via the
-  // underlying document for agents lives in the service). The actual
-  // signing endpoint /sign/:token is PUBLIC (no auth, JWT is the
-  // credential) and therefore bypasses this matrix entirely.
-  signature_requests: { read: ALL, create: MGR, update: MGR, delete: MGR },
+  // Signature requests (Phase 5, docs/03 §9): create + cancel (cancel is an
+  // @AuthzAction('update') status transition; never DELETE — forensic evidence
+  // per migration 0021). D.46 — create/update opened to agents; fine gate =
+  // requireAgentCapability('manage_signatures') AFTER the underlying document's
+  // agent visibility (assertDocVisibleForAgent). GUARDRAIL: signature create +
+  // cancel MUST call requireAgentCapability + the doc-visibility check. The
+  // /sign/:token endpoint is PUBLIC (JWT is the credential) and bypasses this.
+  signature_requests: { read: ALL, create: MA, update: MA, delete: MGR },
   // Imports (Phase 6, docs/03 §10): any org role may read job status/stream.
   // D.46 — WRITE (create / start / cancel / mapping) opened to agents; fine
   // gate = requireAgentCapability('run_imports') AFTER assertProjectVisible on

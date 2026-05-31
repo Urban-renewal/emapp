@@ -20,7 +20,6 @@ import type {
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -29,6 +28,7 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq, lt, or, sql, type SQL } from 'drizzle-orm';
 
+import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { EMAIL_PROVIDER } from '../members/invite-email';
@@ -37,7 +37,6 @@ import { deliverSignatureLink } from './signature-link-delivery';
 import { SignatureTokenService } from './signature-token.service';
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
-const FORBIDDEN = new ForbiddenException({ error: { code: 'forbidden' } });
 
 /** Manager-side list page envelope (D.16 + keyset pagination). */
 export interface SignatureRequestListPage {
@@ -69,10 +68,6 @@ export class SignatureRequestsService {
     private readonly tokenService: SignatureTokenService,
     @Inject(EMAIL_PROVIDER) private readonly email: IEmailProvider,
   ) {}
-
-  private requireManager(user: AccessTokenPayload): void {
-    if (user.role !== 'manager') throw FORBIDDEN;
-  }
 
   /** Validate the document is visible in the manager's org and not
    *  archived. Returns the row or throws no-oracle 404. */
@@ -132,8 +127,6 @@ export class SignatureRequestsService {
     user: AccessTokenPayload,
     input: CreateSignatureRequest,
   ): Promise<SignatureRequestCreateResponse> {
-    this.requireManager(user);
-
     const requestId = randomUUID();
 
     // Mint OUTSIDE the tx: the JWT mint is in-process and idempotent.
@@ -156,6 +149,11 @@ export class SignatureRequestsService {
         // oracle distinguishes "wrong org" from "never existed").
         const doc = await this.loadVisibleDocument(tx, input.documentId);
         const own = await this.loadOwnerWithPii(tx, input.ownerId);
+        // D.46 — agent: the underlying document must be in an assigned project
+        // (404 if not), then the manage_signatures capability (403). Manager
+        // passes both. The signature inherits the document's project scope.
+        if (user.role === 'agent') await this.assertDocVisibleForAgent(tx, user, input.documentId);
+        await requireAgentCapability(tx, user, 'manage_signatures');
 
         // Block a duplicate pending request for the same (doc, owner).
         // Cancelled/signed requests don't block (the manager may need
@@ -440,7 +438,6 @@ export class SignatureRequestsService {
    *  current state). Signed rows return 409 (cannot un-sign forensic
    *  evidence). */
   async cancel(user: AccessTokenPayload, id: string): Promise<SignatureRequest> {
-    this.requireManager(user);
     const row = await withTenant(
       user.orgId,
       async (tx) => {
@@ -450,6 +447,11 @@ export class SignatureRequestsService {
           .where(eq(signatureRequests.id, id))
           .limit(1);
         if (!existing) throw NOT_FOUND;
+        // D.46 — agent: the signature's document must be in an assigned project
+        // (404), then the manage_signatures capability (403). Manager passes.
+        if (user.role === 'agent')
+          await this.assertDocVisibleForAgent(tx, user, existing.documentId);
+        await requireAgentCapability(tx, user, 'manage_signatures');
 
         if (existing.status === 'cancelled') {
           // Idempotent cancel — return the existing row, no new audit

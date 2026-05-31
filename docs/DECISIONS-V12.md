@@ -309,6 +309,71 @@ preserved in `docs/heartbeats/track-b/2026-05-30.md`.
 
 ---
 
+## D.54 — Tenant access model: per-person capability set (read fidelity + grouped writes)
+
+**Context:** D.46 defined a manager-toggled capability matrix for Agents, with
+owner PII masked. Field reality (owner: a field agent must _call_ owners and
+_verify identity_ for signatures) makes "agent always masked" wrong. And a field
+person wears multiple hats (documents + signatures + …). This decision makes the
+full tenant access model explicit. It **refines D.46**, **supersedes the
+"org-staff always masked" assumption of D.19/D.46**, and threads **D.50** (export).
+
+**Decision — access under a tenant is a per-membership capability set (JSONB),
+composed by the tenant Manager. Roles are presets, not rigid bundles.** Two axes,
+both manager-controlled per person:
+
+1. **Read PII fidelity:** `masked` | `unmasked`. Default **masked**
+   (least-privilege). Manager grants `unmasked` per person (field staff who need
+   real `national_id`/`phone`). Applies uniformly — list, detail, edit, **export
+   (D.50)** — via **one resolver** (single source of truth). Granting `unmasked`
+   is audited.
+2. **Write capability groups (coarse — NOT per-field, for regulatory clarity):**
+   `edit_project_data` · `manage_documents` · `manage_signatures` ·
+   `manage_tasks` · `run_imports`. Manager grants **any combination** (multi-hat).
+
+**Role presets = the MVP "profiles".** The 4 roles (Manager / Agent / Viewer /
+Contractor) are named default capability sets; the manager assigns a role and
+**tweaks per person** (override). At MVP scale (3–15 people per tenant, residents
+excluded) this fully covers the need and is audit-friendly ("role=agent + these
+overrides"). A **separate user-defined-profiles subsystem is fast-follow** —
+trigger: a customer reaches ~20+ field staff, or requests a custom named profile.
+
+**Enforcement (security — how privilege escalation is prevented):**
+
+- **JWT carries only the role, never capabilities** — capabilities are loaded
+  server-side from the membership per request. Nothing capability-related is
+  client-supplied → no token tampering.
+- **Two gates:** coarse role-gate in `POLICY` (the matrix) + **fine gate in the
+  service** (`requireAgentCapability` reads the flag from DB) **and** a scope
+  gate (assigned-project / active-ownership join). Both must pass; both are
+  server-authoritative.
+- **Both axes are separate** (verified #186): capability without assignment →
+  blocked; assignment without capability → blocked. Neither implies the other.
+- **Active-only:** assignment and ownership must be active (`ended_at`/
+  `unassignedAt` IS NULL) — no escalation via stale grants.
+- **RLS underneath** (`withTenant`): cross-tenant access is impossible at the DB
+  layer even if a service check is missed.
+- **Granting is manager-only**, target=agent, audited — no self-escalation.
+- **Mechanical fail-open guard (required):** a CI guard (like the
+  tenant-isolation guard) **fails the build** if any endpoint on a POLICY cell
+  loosened to agents does **not** call `requireAgentCapability`. Turns the
+  no-side-door rule from reviewer-judgment into a wall.
+
+**Audit:** capability/role changes + `unmasked` grants are audited. Per-access
+logging of `national_id` reads (ISO A.12.4 — who _viewed_ sensitive PII) is a
+**target**, shaped by the ISO SoA (ISO-SCOPE).
+
+**Extensibility:** new external roles (e.g. lawyer — _not_ MVP) = a capability
+preset on the same perms-driven model; no re-architecture.
+
+**Rationale:** matches the real field workflow, keeps an ISO-correct posture
+(need-to-know + audited + coarse groups + masked-by-default), and is **fully
+additive** to what is built (#185/#186 stay; add the PII-fidelity capability +
+one resolver + the fail-open guard). PM scope discipline: profiles deferred
+because at 3–15 people per tenant the role-presets are the profiles.
+
+---
+
 ## Plan impact
 
 - **D.46** adds a permission-model slice to Track D.

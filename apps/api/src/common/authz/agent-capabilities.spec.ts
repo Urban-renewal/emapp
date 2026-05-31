@@ -183,4 +183,36 @@ describe('D.46 — agent capability enforcement (buildings + apartments)', () =>
       membersSvc.updateCapabilities(manager(), managerId, { edit_project_data: true }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  // D.54 invariant — view_owner_pii (reveal cleartext) ⇒ view_owners (see owners).
+  it('D54-INV-1) grant view_owner_pii while view_owners is on (default) → ok', async () => {
+    const u = await membersSvc.updateCapabilities(manager(), agentId, { view_owner_pii: true });
+    expect(u.capabilities?.view_owner_pii).toBe(true);
+    expect(u.capabilities?.view_owners).toBe(true);
+  });
+
+  it('D54-INV-2) turning view_owners OFF while view_owner_pii is on → 400 (contradiction)', async () => {
+    // agent is {view_owners:true, view_owner_pii:true} from INV-1.
+    await expect(
+      membersSvc.updateCapabilities(manager(), agentId, { view_owners: false }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('D54-INV-3) {view_owners:false, view_owner_pii:true} in ONE patch → 400', async () => {
+    await expect(
+      membersSvc.updateCapabilities(manager(), agentId, {
+        view_owners: false,
+        view_owner_pii: true,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('D54-INV-4) turning BOTH off together → ok (no contradiction)', async () => {
+    const u = await membersSvc.updateCapabilities(manager(), agentId, {
+      view_owner_pii: false,
+      view_owners: false,
+    });
+    expect(u.capabilities?.view_owners).toBe(false);
+    expect(u.capabilities?.view_owner_pii).toBe(false);
+  });
 });

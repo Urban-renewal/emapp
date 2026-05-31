@@ -340,12 +340,35 @@ Owners` + `export-composer` mask for everyone. `owners.contract` OWN2/5/6/9 +
   directive — `view_owner_pii ⇒ view_owners` must be unsettable-if-contradictory.
   - `members.service.updateCapabilities` now rejects the MERGED result
     `{view_owners:false, view_owner_pii:true}` with `400
-    view_owner_pii_requires_view_owners` (checked post-merge so EITHER field arriving
+view_owner_pii_requires_view_owners` (checked post-merge so EITHER field arriving
     in the subset patch trips it). Defense-in-depth atop the #192 reveal gate (which
     already treats the combo as inert); keeps the stored capability set coherent.
   - Evidence: `agent-capabilities.spec` D54-INV-1 (pii on while owners on → ok),
     INV-2 (turn owners off while pii on → 400), INV-3 (both-contradictory in one
     patch → 400), INV-4 (both off → ok). Existing CAP/DRIFT cells still green.
+    lint+typecheck green. No policy/migration → auto-merge.
+  - **MERGED** as #194 (both reviewers PASS, CI green, auto-merged).
+
+- **Track D — slice (D.54 close-out 2/3: narrow assignee tasks.update, auto-merge).**
+  Owner directive — restore the pre-D.46 assignee path WITHOUT re-opening full
+  management. `tasks.update` now has TWO agent paths:
+  - **FULL** (unchanged): project-scoped (`agentScopeOk`) AND `manage_tasks` →
+    full-field management incl. re-target, keeping the #191 DESTINATION scope check.
+  - **NARROW** (restored): the agent is an ASSIGNEE of the task (`agentIsAssignee`,
+    task_assignees) but lacks the full path → may update ONLY status/description
+    ("סטטוס / הערות / בוצע"); any other field → 403 `task_assignee_update_scope`.
+    Cannot move the task (project/apartment are non-narrow → 403) or touch
+    assignees (no such field on UpdateTask).
+  - Agent in NEITHER bucket → 404 (no oracle, matches assignee-based GET). Refactor:
+    `requireAgentCapability` now delegates to a new non-throwing `agentHasCapability`
+    (so the FULL-vs-NARROW choice doesn't pre-throw); `assertTaskVisibleForAgent`
+    splits into a boolean `agentScopeOk` + assert wrapper.
+  - Evidence: `tasks-capability.spec` TASK-A1 (assignee no-cap → set status), A2
+    (edit notes), A3 (done → completedAt+completedBy), A4 (title → 403), A5 (re-target
+    project → 403), A6 (non-assignee no-cap → 404), A7 (assignee WITH cap → full path
+    still edits title). TASK-5 updated (project-assigned non-assignee no-cap → now 404,
+    a more no-oracle result matching GET; the capability-403 case is A4). All TASK-1..13
+    + A1..7 green; agent-capabilities + documents-capability green (refactor safe).
     lint+typecheck green. No policy/migration → auto-merge.
 
 - **Track D — slice (D.46 manage_tasks, autonomous run, Gate-6: policy.ts).**

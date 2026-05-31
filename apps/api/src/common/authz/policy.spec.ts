@@ -115,10 +115,12 @@ const EXPECTED: Record<Resource, Record<Action, Role[]>> = {
     update: ['manager'],
     delete: ['manager'],
   },
+  // D.46 — signature create/cancel(update) opened to agent (manage_signatures +
+  // underlying-document visibility, enforced in the service). No DELETE route.
   signature_requests: {
     read: ['manager', 'agent', 'viewer'],
-    create: ['manager'],
-    update: ['manager'],
+    create: ['manager', 'agent'],
+    update: ['manager', 'agent'],
     delete: ['manager'],
   },
   // D.46 — import writes opened to agent (run_imports + project-scoping on the

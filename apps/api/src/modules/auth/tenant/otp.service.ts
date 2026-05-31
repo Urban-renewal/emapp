@@ -5,6 +5,7 @@ import {
   db,
   env as dbEnv,
   hashField,
+  isOrgSuspended,
   type ISMSProvider,
   organizations,
   otpCodes,
@@ -204,6 +205,26 @@ export class OtpService {
     // path always sets both. Defence-in-depth: if either is null we
     // throw the generic 401 rather than emit a malformed row.
     if (!row.ownerId || !row.orgId) throw invalid;
+
+    // D.49 — the owner's org is operationally SUSPENDED → the whole resident
+    // portal is frozen. The OTP was already consumed above (usedAt set), so it
+    // can't be replayed. We return the SAME generic 401 as any other failure:
+    // residents are external parties, so we don't disclose the org's
+    // suspension state to them (anti-enumeration). The blocked attempt is
+    // audited for the operator's forensic trail.
+    if (await isOrgSuspended(db, row.orgId)) {
+      await this.writeAuditSafe({
+        orgId: row.orgId,
+        action: 'auth.tenant_login_failed',
+        targetTable: 'owners',
+        targetId: row.ownerId,
+        afterState: { reason: 'org_suspended' },
+        ip: ctx?.ip,
+        userAgent: ctx?.userAgent,
+      });
+      throw invalid;
+    }
+
     const [session] = await db
       .insert(tenantSessions)
       .values({

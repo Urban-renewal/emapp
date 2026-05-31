@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-import { authSessions, memberships } from '@emapp/db';
+import { authSessions, memberships, tenantSessions } from '@emapp/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 
 // Raw refresh token = 256-bit random; only its SHA-256 hash is ever stored
@@ -102,6 +102,24 @@ export async function revokeAllForOrg(db: any, orgId: string): Promise<number> {
       ),
     )
     .returning({ id: authSessions.id })) as Array<{ id: string }>;
+  return revoked.length;
+}
+
+/**
+ * D.49 — revoke every ACTIVE tenant-portal (resident) session for an org.
+ * Companion to `revokeAllForOrg` for the Tenant tier: when a Provider Admin
+ * suspends a tenant, the resident SMS-OTP portal is frozen too. `tenant_sessions`
+ * carries `org_id` directly (unlike auth_sessions), so this is a straight
+ * org-scoped update. Returns the number of sessions revoked. Reactivate does
+ * NOT un-revoke (re-OTP required — safe direction).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function revokeTenantSessionsForOrg(db: any, orgId: string): Promise<number> {
+  const revoked = (await db
+    .update(tenantSessions)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(tenantSessions.orgId, orgId), isNull(tenantSessions.revokedAt)))
+    .returning({ id: tenantSessions.id })) as Array<{ id: string }>;
   return revoked.length;
 }
 

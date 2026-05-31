@@ -357,6 +357,18 @@ export class MembersService {
         }
         // Shallow-merge the provided subset onto the stored set.
         const merged: AgentCapabilities = { ...before.capabilities, ...input };
+        // D.54 invariant — `view_owner_pii` (reveal cleartext) IMPLIES
+        // `view_owners` (see owners at all). The contradictory
+        // {view_owners:false, view_owner_pii:true} is forbidden at the source:
+        // `revealPii` already treats it as inert (view_owners gates first), but
+        // rejecting it here keeps the stored capability set coherent + auditable
+        // and prevents a confusing "granted but does nothing" pii flag. Checked
+        // on the MERGED result so it catches either field arriving in the patch.
+        if (merged.view_owner_pii && !merged.view_owners) {
+          throw new BadRequestException({
+            error: { code: 'view_owner_pii_requires_view_owners' },
+          });
+        }
         const [row] = await tx
           .update(memberships)
           .set({ capabilities: merged, updatedAt: new Date() })

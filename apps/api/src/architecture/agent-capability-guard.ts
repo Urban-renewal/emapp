@@ -106,7 +106,13 @@ function trailingDecorators(before: string): string {
   return picked.reverse().join('\n');
 }
 
-/** Extract `async <name>(...) { ... }` methods with their preceding decorators. */
+/**
+ * Extract `async <name>(...) { ... }` methods with their preceding decorators.
+ * ASSUMPTION: every route handler and every mutating service method in this
+ * codebase is `async` (they all `await withTenant(...)`). A non-`async` write
+ * handler would be invisible to the scan — acceptable under the current
+ * convention, called out so a future reviewer can broaden the regex if it changes.
+ */
 function parseMethods(src: string): ParsedMethod[] {
   const out: ParsedMethod[] = [];
   const re = /(?:\n|^)[ \t]*(?:public |private |protected )?async (\w+)\s*\(/g;
@@ -122,15 +128,28 @@ function parseMethods(src: string): ParsedMethod[] {
   return out;
 }
 
-/** Map of method name → whether ANY same-named method in the dir is gated. */
+/**
+ * Map of service method name → confident gate status, for the services in one
+ * module dir. The delegated `this.<prop>.<method>` is resolved by NAME (the
+ * scanner doesn't do full DI resolution), so a name that appears BOTH gated and
+ * ungated across sibling services is AMBIGUOUS — and is reported as `false`
+ * (NOT gated) on purpose: a fail-open guard must fail SAFE (flag for a human)
+ * rather than trust an OR that could mask the ungated delegate. A name seen only
+ * gated → `true`; only ungated → `false`. (No ambiguous collision exists in any
+ * module today; this just keeps it sound under future drift.)
+ */
 function serviceGateMap(moduleDir: string): Map<string, boolean> {
-  const map = new Map<string, boolean>();
+  const seen = new Map<string, { gated: boolean; ungated: boolean }>();
   for (const f of walk(moduleDir, (n) => n.endsWith('.service.ts') && !n.endsWith('.spec.ts'))) {
     for (const meth of parseMethods(readFileSync(f, 'utf8'))) {
-      const gated = GATE_RE.test(meth.body);
-      map.set(meth.name, (map.get(meth.name) ?? false) || gated);
+      const e = seen.get(meth.name) ?? { gated: false, ungated: false };
+      if (GATE_RE.test(meth.body)) e.gated = true;
+      else e.ungated = true;
+      seen.set(meth.name, e);
     }
   }
+  const map = new Map<string, boolean>();
+  for (const [name, e] of seen) map.set(name, e.gated && !e.ungated);
   return map;
 }
 

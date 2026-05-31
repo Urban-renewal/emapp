@@ -148,12 +148,14 @@ export class SignatureRequestsService {
         // simply invisible and the SELECT returns 0 rows → 404 (no
         // oracle distinguishes "wrong org" from "never existed").
         const doc = await this.loadVisibleDocument(tx, input.documentId);
-        const own = await this.loadOwnerWithPii(tx, input.ownerId);
-        // D.46 — agent: the underlying document must be in an assigned project
-        // (404 if not), then the manage_signatures capability (403). Manager
-        // passes both. The signature inherits the document's project scope.
+        // D.46 — gate BEFORE decrypting owner PII (defense-in-depth: a rejected
+        // agent must never trigger owner national_id/phone decryption). Agent:
+        // the underlying document must be in an assigned project (404), then the
+        // manage_signatures capability (403). Manager passes both; the signature
+        // inherits the document's project scope.
         if (user.role === 'agent') await this.assertDocVisibleForAgent(tx, user, input.documentId);
         await requireAgentCapability(tx, user, 'manage_signatures');
+        const own = await this.loadOwnerWithPii(tx, input.ownerId);
 
         // Block a duplicate pending request for the same (doc, owner).
         // Cancelled/signed requests don't block (the manager may need

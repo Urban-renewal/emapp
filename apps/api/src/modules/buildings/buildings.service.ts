@@ -10,13 +10,13 @@ import {
 import type { CreateBuilding, Building, UpdateBuilding } from '@emapp/shared-types';
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
 
+import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
@@ -43,7 +43,6 @@ function toBuilding(r: BuildingRow): Building {
 }
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
-const FORBIDDEN = new ForbiddenException({ error: { code: 'forbidden' } });
 
 /**
  * Buildings domain service (Phase 3 Slice 2).
@@ -60,10 +59,6 @@ const FORBIDDEN = new ForbiddenException({ error: { code: 'forbidden' } });
  */
 @Injectable()
 export class BuildingsService {
-  private requireManager(user: AccessTokenPayload): void {
-    if (user.role !== 'manager') throw FORBIDDEN;
-  }
-
   // Throws 404 unless the project is visible to this user (org via RLS +,
   // for agents, an active assignment). Returns nothing — visibility only.
   //
@@ -164,11 +159,12 @@ export class BuildingsService {
     projectId: string,
     input: CreateBuilding,
   ): Promise<Building> {
-    this.requireManager(user);
     return withTenant(
       user.orgId,
       async (tx) => {
         await this.assertProjectVisible(tx, user, projectId);
+        // D.46 — fine gate: agent needs edit_project_data (manager passes).
+        await requireAgentCapability(tx, user, 'edit_project_data');
         const [row] = await tx
           .insert(buildings)
           .values({
@@ -203,12 +199,16 @@ export class BuildingsService {
   }
 
   async update(user: AccessTokenPayload, id: string, input: UpdateBuilding): Promise<Building> {
-    this.requireManager(user);
     return withTenant(
       user.orgId,
       async (tx) => {
         const [before] = await tx.select().from(buildings).where(eq(buildings.id, id)).limit(1);
         if (!before) throw NOT_FOUND;
+        // D.46 — agent must be assigned to the parent project AND hold the
+        // edit_project_data capability (manager passes both; this is the
+        // by-id path, so the assignment check must be added explicitly).
+        if (user.role === 'agent') await this.assertProjectVisible(tx, user, before.projectId);
+        await requireAgentCapability(tx, user, 'edit_project_data');
 
         const patch: Partial<typeof buildings.$inferInsert> = { updatedAt: new Date() };
         if (input.address !== undefined) patch.address = input.address;
@@ -240,12 +240,13 @@ export class BuildingsService {
 
   // Soft delete = archivedAt (CLAUDE.md hard rule). Idempotent.
   async archive(user: AccessTokenPayload, id: string): Promise<void> {
-    this.requireManager(user);
     await withTenant(
       user.orgId,
       async (tx) => {
         const [before] = await tx.select().from(buildings).where(eq(buildings.id, id)).limit(1);
         if (!before) throw NOT_FOUND;
+        if (user.role === 'agent') await this.assertProjectVisible(tx, user, before.projectId);
+        await requireAgentCapability(tx, user, 'edit_project_data');
         if (before.archivedAt) return;
         await tx
           .update(buildings)

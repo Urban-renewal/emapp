@@ -80,6 +80,30 @@ export const memberships = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: 'restrict' }),
     role: userRoleEnum('role').notNull(),
+    // D.46 — per-agent capability matrix (6 curated toggles, manager-
+    // controlled, enforced server-side). Meaningful only for role='agent'
+    // (managers implicitly hold all; viewers are read-only). Default: all
+    // OFF except view_owners (PII masked per D.47). The Zod source of truth
+    // is `AgentCapabilitiesSchema` in @emapp/shared-types — this $type +
+    // default must mirror it (pinned by a test).
+    capabilities: jsonb('capabilities')
+      .$type<{
+        edit_project_data: boolean;
+        manage_documents: boolean;
+        manage_signatures: boolean;
+        manage_tasks: boolean;
+        run_imports: boolean;
+        view_owners: boolean;
+      }>()
+      .notNull()
+      .default({
+        edit_project_data: false,
+        manage_documents: false,
+        manage_signatures: false,
+        manage_tasks: false,
+        run_imports: false,
+        view_owners: true,
+      }),
     isPrimary: boolean('is_primary').notNull().default(false),
     invitedBy: uuid('invited_by').references(() => users.id),
     acceptedAt: timestamp('accepted_at', { withTimezone: true }),

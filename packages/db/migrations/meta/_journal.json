@@ -288,6 +288,13 @@
       "when": 1780153200000,
       "tag": "0040_org_provider_suspension",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1780239600000,
+      "tag": "0041_membership_capabilities",
+      "breakpoints": true
     }
   ]
 }

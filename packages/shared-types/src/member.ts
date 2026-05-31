@@ -13,6 +13,62 @@ import { z } from 'zod';
 export const OrgRoleEnum = z.enum(['manager', 'agent', 'viewer']);
 export type OrgRole = z.infer<typeof OrgRoleEnum>;
 
+// ───────────────────────────────────────────────────────────────────
+// D.46 — Agent capability matrix. A per-AGENT curated set of 6 toggles
+// (JSONB, D.17), MANAGER-controlled, enforced SERVER-SIDE in the
+// services (the coarse AuthorizationGuard is role-only and cannot see
+// these). Base (always on once a project is assigned): view assigned
+// project data. Managers implicitly hold ALL capabilities; viewers hold
+// none (they are read-only). Defaults: everything OFF except
+// `view_owners` (ON, PII masked per D.47).
+//
+// NOTE (canary): only `edit_project_data` is ENFORCED today (buildings +
+// apartments writes). The other five are stored but not yet wired — their
+// resources stay manager-only in POLICY until a follow-up enforces them,
+// so a stored `true` grants nothing prematurely.
+// ───────────────────────────────────────────────────────────────────
+export const AGENT_CAPABILITY_KEYS = [
+  'edit_project_data',
+  'manage_documents',
+  'manage_signatures',
+  'manage_tasks',
+  'run_imports',
+  'view_owners',
+] as const;
+export type AgentCapabilityKey = (typeof AGENT_CAPABILITY_KEYS)[number];
+
+export const AgentCapabilitiesSchema = z
+  .object({
+    /** edit buildings / apartments / owners (ENFORCED for buildings+apartments). */
+    edit_project_data: z.boolean(),
+    manage_documents: z.boolean(),
+    manage_signatures: z.boolean(),
+    manage_tasks: z.boolean(),
+    run_imports: z.boolean(),
+    /** view owners (default ON; PII masked per D.47). */
+    view_owners: z.boolean(),
+  })
+  .strict();
+export type AgentCapabilities = z.infer<typeof AgentCapabilitiesSchema>;
+
+export const DEFAULT_AGENT_CAPABILITIES: AgentCapabilities = {
+  edit_project_data: false,
+  manage_documents: false,
+  manage_signatures: false,
+  manage_tasks: false,
+  run_imports: false,
+  view_owners: true,
+};
+
+/** PATCH /members/:userId/capabilities — manager toggles a SUBSET; merged
+ *  onto the stored set. At least one key required. */
+export const UpdateAgentCapabilitiesInput = AgentCapabilitiesSchema.partial()
+  .strict()
+  .refine((o) => Object.keys(o).length > 0, {
+    message: 'at least one capability must be provided',
+  });
+export type UpdateAgentCapabilities = z.infer<typeof UpdateAgentCapabilitiesInput>;
+
 export const MemberSchema = z.object({
   userId: z.string().uuid(),
   email: z.string().email(),
@@ -23,6 +79,11 @@ export const MemberSchema = z.object({
   acceptedAt: z.coerce.date().nullable(), // null ⇒ invite pending
   revokedAt: z.coerce.date().nullable(),
   createdAt: z.coerce.date(),
+  // D.46 — the agent capability set (managers/viewers carry the stored
+  // default; only agents' flags are meaningful for enforcement). OPTIONAL in
+  // the wire contract for add-only cross-track safety (existing consumers /
+  // fixtures predate it); the BE ALWAYS populates it on every Member response.
+  capabilities: AgentCapabilitiesSchema.optional(),
 });
 export type Member = z.infer<typeof MemberSchema>;
 

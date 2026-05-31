@@ -107,9 +107,43 @@
     reactivated→list), `D49-SUSP-TENANT-REVOKE` (suspend kills the org's resident
     session; another org's survives). `lint`/`typecheck` green; full db (26) + api
     (60) suites passed.
-  - **Gate-6 STOP:** touches auth core (`otp.service.ts` + session repo) → PR
-    opened WITHOUT auto-merge; awaiting owner `Gate-6-Approved` + merge. Next
-    after merge: reset tenant MFA + per-customer config writes.
+  - **MERGED** as #184. Owner then DEFERRED reset-MFA (→ Track C, needs full 2FA)
+    + per-customer config (pending decision) — both via owner direction after I
+    surfaced that org-user MFA is unenforced (reset would be a no-op) and config
+    has no consumer/schema yet. Pivoted to D.46.
+
+- **Track D — slice (D.46 Agent capability matrix — CANARY, Gate-6: policy.ts +
+  migration).** Per-agent capability set (6 JSONB toggles, D.17), manager-
+  controlled, enforced server-side. Canary wires `edit_project_data` on
+  buildings + apartments fully; the other 5 capabilities are stored but their
+  resources stay manager-only until follow-up PRs (no premature grant).
+  - **Storage:** `memberships.capabilities` JSONB (migration 0041), default all-
+    off except `view_owners` (D.47). Zod SoT = `AgentCapabilitiesSchema`
+    (shared-types); DB `$type`+default mirror it, pinned by `D46-DRIFT`.
+  - **POLICY loosen (Gate-6):** buildings + apartments create/update/delete
+    MGR→MA (agent coarsely allowed); `policy.spec.ts` pin updated. owners stays
+    MGR (owner↔project scoping is a follow-up).
+  - **Fine gate:** `requireAgentCapability(tx, user, cap)` (common/authz) — manager
+    no-op, agent needs the flag, else 403. Wired into ALL 6 write methods
+    (buildings+apartments create/update/archive) AFTER the assigned-project
+    scoping. **GUARDRAIL (owner):** every endpoint on a loosened cell calls it —
+    by-id update/archive (which lacked an agent-assignment check, being manager-
+    only before) now ALSO add `assertProjectVisible`, so the loosening opens no
+    side door. To be confirmed explicitly by security-review.
+  - **Manager toggle:** `PATCH /members/:userId/capabilities` (manager-only via
+    the existing `@AuthzResource('members')` gate), subset-merge, agent-only
+    target (else 400), audited (`member.capabilities_change`). `capabilities`
+    added to the Member response (OPTIONAL for add-only cross-track safety; BE
+    always sets it).
+  - Evidence (D.51, deterministic real-DB): `agent-capabilities.spec` — assigned
+    agent w/o flag→403; manager toggle flips SAME agent blocked→allowed (create/
+    update/archive); agent w/ flag on UNASSIGNED project→404 (assignment gate
+    holds); manager no-op; toggle agent-only→400; fresh-agent default == shared-
+    types default. `lint`/`typecheck` green; full db (26) + api (61) suites passed
+    (no regression on existing buildings/apartments/members tests).
+  - **Gate-6 STOP:** touches `policy.ts` + `packages/db/migrations` → PR opened
+    WITHOUT auto-merge; awaiting owner `Gate-6-Approved` + merge. Next: owners-edit
+    scoping + the remaining 5 capabilities, then D.46 Contractor scope.
 
 ### 2026-05-30 · Track B · BE Specialist
 

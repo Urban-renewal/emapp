@@ -38,17 +38,20 @@ const EXPECTED: Record<Resource, Record<Action, Role[]>> = {
     update: ['manager'],
     delete: ['manager'],
   },
+  // D.46 — buildings + apartments writes coarsely opened to agent (the fine
+  // capability `edit_project_data` + assigned-project scoping is enforced in
+  // the service, NOT in this coarse matrix). Viewer still excluded.
   buildings: {
     read: ['manager', 'agent', 'viewer'],
-    create: ['manager'],
-    update: ['manager'],
-    delete: ['manager'],
+    create: ['manager', 'agent'],
+    update: ['manager', 'agent'],
+    delete: ['manager', 'agent'],
   },
   apartments: {
     read: ['manager', 'agent', 'viewer'],
-    create: ['manager'],
-    update: ['manager'],
-    delete: ['manager'],
+    create: ['manager', 'agent'],
+    update: ['manager', 'agent'],
+    delete: ['manager', 'agent'],
   },
   owners: {
     read: ['manager', 'agent', 'viewer'],

@@ -50,8 +50,14 @@ const MA = [M, A] as const; // manager + agent (viewer excluded)
  */
 export const POLICY: Matrix = {
   projects: { read: ALL, create: MGR, update: MGR, delete: MGR },
-  buildings: { read: ALL, create: MGR, update: MGR, delete: MGR },
-  apartments: { read: ALL, create: MGR, update: MGR, delete: MGR },
+  // D.46 — buildings + apartments writes are coarsely opened to agents
+  // (manager+agent); the FINE gate is enforced per-request in the service:
+  // requireAgentCapability(tx, user, 'edit_project_data') AFTER the existing
+  // assigned-project scoping. GUARDRAIL: every write endpoint on these cells
+  // MUST call requireAgentCapability — else this loosening is a side door.
+  // (owners stays manager-only until the owners-scoping follow-up.)
+  buildings: { read: ALL, create: MA, update: MA, delete: MA },
+  apartments: { read: ALL, create: MA, update: MA, delete: MA },
   owners: { read: ALL, create: MGR, update: MGR, delete: MGR },
   // ownerships writes are an atomic PUT set-replace (D.25) → "update".
   ownerships: { read: ALL, create: MGR, update: MGR, delete: MGR },

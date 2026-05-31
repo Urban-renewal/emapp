@@ -10,7 +10,15 @@ import {
   type IEmailProvider,
   type TenantTx,
 } from '@emapp/db';
-import type { AcceptInvite, CreateMember, Member, UpdateMember } from '@emapp/shared-types';
+import { DEFAULT_AGENT_CAPABILITIES } from '@emapp/shared-types';
+import type {
+  AcceptInvite,
+  AgentCapabilities,
+  CreateMember,
+  Member,
+  UpdateAgentCapabilities,
+  UpdateMember,
+} from '@emapp/shared-types';
 import {
   BadRequestException,
   ConflictException,
@@ -160,6 +168,8 @@ export class MembersService {
         acceptedAt: null,
         revokedAt: null,
         createdAt: new Date(),
+        // New membership carries the column default (least-privilege).
+        capabilities: DEFAULT_AGENT_CAPABILITIES,
       };
       // Token is returned ONLY outside production (dev/test convenience +
       // conformance/red-team). In prod the email is the sole delivery path.
@@ -201,6 +211,7 @@ export class MembersService {
             acceptedAt: memberships.acceptedAt,
             revokedAt: memberships.revokedAt,
             createdAt: memberships.createdAt,
+            capabilities: memberships.capabilities,
             mid: memberships.id,
           })
           .from(memberships)
@@ -225,6 +236,7 @@ export class MembersService {
         acceptedAt: r.acceptedAt,
         revokedAt: r.revokedAt,
         createdAt: r.createdAt,
+        capabilities: r.capabilities,
       })),
       page: {
         limit,
@@ -295,6 +307,7 @@ export class MembersService {
           acceptedAt: row.acceptedAt,
           revokedAt: row.revokedAt,
           createdAt: row.createdAt,
+          capabilities: row.capabilities,
         };
       },
       { userId: user.sub },
@@ -304,6 +317,83 @@ export class MembersService {
     // from the DB don't re-cache the now-stale session ids.
     flushSessionCache();
     return result;
+  }
+
+  /**
+   * D.46 — set an AGENT's capability flags (manager-only; the route is gated
+   * by @AuthzResource('members') → manager). The body is a SUBSET, merged onto
+   * the stored set. Only `role='agent'` memberships accept capabilities —
+   * managers implicitly hold all, viewers none, so toggling theirs is a 400
+   * (prevents a confusing no-op grant). Capabilities are NOT in the JWT, so
+   * the change is effective on the agent's next request with NO session
+   * revocation needed; we still audit the change.
+   */
+  async updateCapabilities(
+    user: AccessTokenPayload,
+    targetUserId: string,
+    input: UpdateAgentCapabilities,
+  ): Promise<Member> {
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        const [before] = await tx
+          .select({
+            id: memberships.id,
+            role: memberships.role,
+            capabilities: memberships.capabilities,
+          })
+          .from(memberships)
+          .where(
+            and(
+              eq(memberships.userId, targetUserId),
+              eq(memberships.orgId, user.orgId),
+              isNull(memberships.revokedAt),
+            ),
+          )
+          .limit(1);
+        if (!before) throw NOT_FOUND;
+        if (before.role !== 'agent') {
+          throw new BadRequestException({ error: { code: 'capabilities_agent_only' } });
+        }
+        // Shallow-merge the provided subset onto the stored set.
+        const merged: AgentCapabilities = { ...before.capabilities, ...input };
+        const [row] = await tx
+          .update(memberships)
+          .set({ capabilities: merged, updatedAt: new Date() })
+          .where(eq(memberships.id, before.id))
+          .returning();
+        if (!row) throw NOT_FOUND;
+        const [u] = await tx
+          .select({ email: users.email, name: users.name })
+          .from(users)
+          .where(eq(users.id, targetUserId))
+          .limit(1);
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'member.capabilities_change',
+          targetTable: 'memberships',
+          targetId: row.id,
+          beforeState: { capabilities: before.capabilities },
+          afterState: { capabilities: merged },
+          sessionId: user.sid,
+        });
+        return {
+          userId: targetUserId,
+          email: u?.email ?? '',
+          name: u?.name ?? '',
+          role: row.role,
+          isPrimary: row.isPrimary,
+          invitedBy: row.invitedBy,
+          acceptedAt: row.acceptedAt,
+          revokedAt: row.revokedAt,
+          createdAt: row.createdAt,
+          capabilities: row.capabilities,
+        };
+      },
+      { userId: user.sub },
+    );
   }
 
   async revoke(user: AccessTokenPayload, targetUserId: string): Promise<void> {

@@ -119,6 +119,13 @@ tenant MFA, per-customer config — under hard controls:
   out-of-scope pending a separate decision; this authorizes operational writes
   only.
 
+**Implementation status (deferred parts):** of the three writes authorized here,
+only **suspend/reactivate** is built (#182–184) + shipped in D2's console.
+**reset-MFA** is deferred to Track C (no enforced org 2FA to reset yet — D.55).
+**per-customer config** is deferred pending a concrete, enforced config value
+(building config writes that nothing reads = a no-op/plaster — D.51); it returns
+to scope when the owner names a real per-customer value to control.
+
 **Rationale:** unblocks the #1 owner want (the console). The audit-first +
 reason-required pattern means every Provider mutation is forensically logged —
 exactly what ISO A.9/A.12 wants for a privileged control plane. **Cost:** new BE
@@ -184,13 +191,13 @@ with D.46 (contractor read+download) and D.47 (resident masking).
 | ISO scope    | baseline Annex A (T5)                                      | obtain SoA from auditor |
 | Root domain  | scheme locked (T8)                                         | purchase domain         |
 
-## Still-open decisions (carried from wave4 audit — owner to rule)
+## Wave4 carried decisions — RULED by owner (2026-05-31)
 
-| ID  | Question                                                                        | Recommendation                                                          |
-| --- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| H-3 | May an Agent read signature_requests another Agent created on the same project? | Keep current (collaborative) — A. 1-day PR to tighten if owner prefers. |
-| C-2 | Audit-orphan fix: transactional outbox (A) or inline same-tx (B)?               | B (inline per-site) — no new infra.                                     |
-| M-7 | Optimistic locking on PATCH now or defer?                                       | Defer to a later slice + record gap.                                    |
+| ID  | Question                                                                        | Ruling                                                                                                                                                          |
+| --- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| H-3 | May an Agent read signature_requests another Agent created on the same project? | **Keep collaborative** — agents on a shared project see each other's signature requests (small teams co-work a project). Tighten later only if a customer asks. |
+| C-2 | Audit-orphan fix: transactional outbox (A) or inline same-tx (B)?               | **Inline same-tx (B)** — no new infra.                                                                                                                          |
+| M-7 | Optimistic locking on PATCH now or defer?                                       | **Defer** to a later slice; gap recorded.                                                                                                                       |
 
 ## D.51 — Quality gate + autopilot completion (PROC-3)
 
@@ -347,6 +354,18 @@ Contractor) are named default capability sets; the manager assigns a role and
 excluded) this fully covers the need and is audit-friendly ("role=agent + these
 overrides"). A **separate user-defined-profiles subsystem is fast-follow** —
 trigger: a customer reaches ~20+ field staff, or requests a custom named profile.
+
+**The preset default capability sets (locked):**
+
+| Role              | Read fidelity                    | Write groups       | Notes                                                                                                                                                     |
+| ----------------- | -------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Manager**       | unmasked                         | **all**            | full create/write/modify                                                                                                                                  |
+| **Agent** (field) | masked                           | **none** (all-off) | least-privilege START — `view_owners` on (masked); manager toggles up what's needed (incl. `view_owner_pii`). This is the migration-0041/0042 DB default. |
+| **Viewer**        | masked                           | none               | read-only org-wide; no `view_owner_pii`                                                                                                                   |
+| **Contractor**    | masked (owners-PII off entirely) | none               | share-scoped read + download (D.46)                                                                                                                       |
+
+So a fresh Agent starts at the floor and the manager grants exactly what that
+field person needs — least-privilege by default, not a permissive bundle.
 
 **Enforcement (security — how privilege escalation is prevented):**
 

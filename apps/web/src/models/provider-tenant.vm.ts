@@ -51,6 +51,14 @@ export interface ProviderTenantDetailVM {
   createdRelative: string;
   createdAtIso: string;
   isArchived: boolean;
+  /** D.49 — operational suspension state (distinct from archive). Drives
+   *  which write action the console offers (suspend vs reactivate) and a
+   *  suspended banner. */
+  isSuspended: boolean;
+  /** "לפני 3 ימים" relative freeze time; null when active. */
+  suspendedRelative: string | null;
+  /** Operator note captured at suspend time; null when active. */
+  suspendedReason: string | null;
   /** Detail page surfaces 5 counts (vs the 3 on the list — adds
    *  importJobs + signatureRequests). */
   counts: {

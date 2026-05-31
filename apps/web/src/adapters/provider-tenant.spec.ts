@@ -31,6 +31,8 @@ const SAMPLE_LIST_ROW = Object.freeze({
 
 const SAMPLE_DETAIL_ROW = Object.freeze({
   ...SAMPLE_LIST_ROW,
+  suspendedAt: null,
+  suspendedReason: null,
   counts: { users: 3, projects: 1, owners: 3, importJobs: 0, signatureRequests: 0 },
   sampleOwners: [
     {
@@ -133,5 +135,26 @@ describe('§provider-tenant.toTenantDetailVM', () => {
   it('9) empty sampleOwners array works', () => {
     const vm = toTenantDetailVM({ ...SAMPLE_DETAIL_ROW, sampleOwners: [] }, 'he');
     expect(vm.sampleOwners).toEqual([]);
+  });
+
+  it('10) D.49 — active tenant maps to not-suspended (null reason/relative)', () => {
+    const vm = toTenantDetailVM(SAMPLE_DETAIL_ROW, 'he');
+    expect(vm.isSuspended).toBe(false);
+    expect(vm.suspendedRelative).toBeNull();
+    expect(vm.suspendedReason).toBeNull();
+  });
+
+  it('11) D.49 — suspended tenant maps state + relative + operator note', () => {
+    const vm = toTenantDetailVM(
+      {
+        ...SAMPLE_DETAIL_ROW,
+        suspendedAt: new Date('2026-05-20T08:00:00Z'),
+        suspendedReason: 'non-payment',
+      },
+      'he',
+    );
+    expect(vm.isSuspended).toBe(true);
+    expect(vm.suspendedRelative).not.toBeNull();
+    expect(vm.suspendedReason).toBe('non-payment');
   });
 });

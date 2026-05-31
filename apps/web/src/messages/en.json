@@ -626,7 +626,25 @@
       "sampleOwnersHint": "Up to 5 most-recent owners. Name and phone are masked server-side (•••••••XX / •••••XXXX); national_id never crosses the wire.",
       "noSampleOwners": "No owners to show.",
       "phoneLabel": "Tel:",
-      "viewAuditForTenant": "View this tenant's audit log"
+      "viewAuditForTenant": "View this tenant's audit log",
+      "suspension": {
+        "title": "Tenant access control",
+        "badge": "Suspended",
+        "activeHint": "Tenant is active. Suspending freezes login for all of the tenant's users (reversible).",
+        "suspendedSince": "Suspended since {when}",
+        "suspend": "Suspend tenant",
+        "suspendConfirm": "Suspending freezes login immediately for all users and residents. Reversible (does not delete data).",
+        "noteLabel": "Operator note (optional)",
+        "notePlaceholder": "Reason for suspension — shown in the console",
+        "confirmSuspend": "Confirm suspend",
+        "suspending": "Suspending…",
+        "cancel": "Cancel",
+        "reactivate": "Reactivate",
+        "reactivateConfirm": "Reactivate this tenant? New logins will be allowed again (existing sessions stay revoked).",
+        "reactivating": "Reactivating…",
+        "actionFailed": "Action failed. Try again.",
+        "reasonRequired": "An access reason is required for this action."
+      }
     },
     "audit": {
       "title": "Cross-tenant audit search",

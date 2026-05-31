@@ -1,7 +1,7 @@
 'use client';
 
-import type { ProviderAuditQuery } from '@emapp/shared-types';
-import { useQuery } from '@tanstack/react-query';
+import type { ProviderAuditQuery, TenantSuspensionState } from '@emapp/shared-types';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
 import { toProviderAuditItemVMs } from '@/adapters/provider-audit';
@@ -11,7 +11,9 @@ import {
   getSystemHealth,
   getTenant,
   listTenants,
+  reactivateTenant,
   searchAudit,
+  suspendTenant,
   type ProviderAuditListPage,
   type TenantListPage,
 } from '@/lib/api/provider';
@@ -78,6 +80,46 @@ export function useProviderTenant(id: string | undefined) {
     enabled: Boolean(id) && Boolean(reason),
     staleTime: 30_000,
     select,
+  });
+}
+
+/**
+ * D.49 — suspend / reactivate mutations.
+ *
+ * Both read the session `access_reason` (the AccessReasonGate guarantees
+ * it is set before any `/provider/*` page renders); the API client also
+ * throws `ProviderReasonRequiredError` (code `reason_required_local`) if
+ * it is somehow empty (defense in depth on top of the BE 400
+ * `reason_required`). On success we invalidate the affected
+ * tenant detail query so the suspended banner + the offered action flip
+ * without a manual refetch. We invalidate by the `['provider','tenant']`
+ * prefix (all locales) — one network round-trip, no duplicate fetch.
+ */
+export function useSuspendTenant(id: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation<TenantSuspensionState, Error, { note?: string }>({
+    mutationFn: ({ note }) => {
+      if (!id) throw new Error('useSuspendTenant requires an id');
+      return suspendTenant(readProviderReason() ?? '', id, note);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...PROVIDER_KEY, 'tenant', id] });
+      qc.invalidateQueries({ queryKey: [...PROVIDER_KEY, 'tenants'] });
+    },
+  });
+}
+
+export function useReactivateTenant(id: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation<TenantSuspensionState, Error, void>({
+    mutationFn: () => {
+      if (!id) throw new Error('useReactivateTenant requires an id');
+      return reactivateTenant(readProviderReason() ?? '', id);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...PROVIDER_KEY, 'tenant', id] });
+      qc.invalidateQueries({ queryKey: [...PROVIDER_KEY, 'tenants'] });
+    },
   });
 }
 

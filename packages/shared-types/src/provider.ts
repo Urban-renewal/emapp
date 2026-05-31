@@ -68,6 +68,16 @@ export const TenantDetailSchema = z.object({
   slug: z.string(),
   createdAt: z.coerce.date(),
   archivedAt: z.coerce.date().nullable(),
+  /**
+   * D.49 — operational suspension state, surfaced so the console can
+   * render the correct write action (suspend vs reactivate) on load and
+   * show a suspended banner. `suspendedAt` non-null ⇒ the org is frozen
+   * (distinct from `archivedAt` soft-delete). `suspendedReason` is the
+   * operator note captured at suspend time. Read-only projection of the
+   * same columns the suspend/reactivate writes mutate — no new authority.
+   */
+  suspendedAt: z.coerce.date().nullable(),
+  suspendedReason: z.string().nullable(),
   counts: z.object({
     users: z.number().int().nonnegative(),
     projects: z.number().int().nonnegative(),

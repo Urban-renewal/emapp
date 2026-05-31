@@ -433,6 +433,15 @@ PL cutover. No real customer data is exposed in the interim (dev only).
 procurement (which has external lead time), without losing D.48 — the isolation
 step is held mechanically by the PL gate, like colocation.
 
+**Domain name = config-driven placeholder (not yet chosen).** `emapp.io`
+everywhere in these docs is **illustrative**, not a committed name — the root
+domain is a **PL-time decision** (owner picks + buys before launch). The scheme
+is locked (T8: `app.` / `admin.` / `notifications.` on the chosen root); only the
+root is open. **The build MUST NOT hard-code the literal domain** anywhere —
+cookie-domain, invite-email links, `API_BACKEND_URL`, and the subdomain origins
+all come from **env/config**. Picking the real name later = a config change, not
+a code change. (Agents: never write `emapp.io` into code; read it from config.)
+
 ---
 
 ## Plan impact

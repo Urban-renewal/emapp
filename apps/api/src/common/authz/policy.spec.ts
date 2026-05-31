@@ -53,11 +53,15 @@ const EXPECTED: Record<Resource, Record<Action, Role[]>> = {
     update: ['manager', 'agent'],
     delete: ['manager', 'agent'],
   },
+  // D.46 — owner update/archive opened to agent (project-scoped via the
+  // ownership join + edit_project_data, enforced in owners.service). CREATE
+  // stays manager-only (a bare new owner has no project to scope). Viewer
+  // still excluded from all writes.
   owners: {
     read: ['manager', 'agent', 'viewer'],
     create: ['manager'],
-    update: ['manager'],
-    delete: ['manager'],
+    update: ['manager', 'agent'],
+    delete: ['manager', 'agent'],
   },
   ownerships: {
     read: ['manager', 'agent', 'viewer'],

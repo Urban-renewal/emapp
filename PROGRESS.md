@@ -108,9 +108,9 @@
     session; another org's survives). `lint`/`typecheck` green; full db (26) + api
     (60) suites passed.
   - **MERGED** as #184. Owner then DEFERRED reset-MFA (→ Track C, needs full 2FA)
-    + per-customer config (pending decision) — both via owner direction after I
-    surfaced that org-user MFA is unenforced (reset would be a no-op) and config
-    has no consumer/schema yet. Pivoted to D.46.
+    - per-customer config (pending decision) — both via owner direction after I
+      surfaced that org-user MFA is unenforced (reset would be a no-op) and config
+      has no consumer/schema yet. Pivoted to D.46.
 
 - **Track D — slice (D.46 Agent capability matrix — CANARY, Gate-6: policy.ts +
   migration).** Per-agent capability set (6 JSONB toggles, D.17), manager-
@@ -142,8 +142,34 @@
     types default. `lint`/`typecheck` green; full db (26) + api (61) suites passed
     (no regression on existing buildings/apartments/members tests).
   - **Gate-6 STOP:** touches `policy.ts` + `packages/db/migrations` → PR opened
-    WITHOUT auto-merge; awaiting owner `Gate-6-Approved` + merge. Next: owners-edit
-    scoping + the remaining 5 capabilities, then D.46 Contractor scope.
+    WITHOUT auto-merge; awaiting owner `Gate-6-Approved` + merge.
+  - **MERGED** as #185. Owner directed owners-edit next, PROJECT-scoped (see below).
+
+- **Track D — slice (D.46 owners-edit project-scoping, Gate-6: policy.ts).**
+  Completes `edit_project_data` to owners — but PROJECT-scoped (owner decision,
+  not org-wide). Owners are org-scoped by existing arch, so this adds a real
+  scoping rule via the ownership graph.
+  - **POLICY loosen (Gate-6):** owners `update`/`delete` MGR→MA; `create` stays
+    MGR (a bare new owner has no ownership/project to scope). `policy.spec.ts`
+    pin updated. No migration (columns already exist).
+  - **Project-scope gate** (`owners.service` `assertOwnerInAssignedProject`): an
+    agent may edit an owner ONLY if the owner holds an ownership in an apartment
+    whose building's project the agent is actively assigned to
+    (owner→ownerships→apartments→buildings→project ∈ assignments). No path → 404
+    (no oracle). Order in update/archive: existence 404 → project-scope 404 →
+    capability 403 (so an unscoped owner never reveals a capability oracle).
+  - **GUARDRAIL:** the loosened cells (owners update+archive) BOTH call
+    `assertOwnerInAssignedProject` + `requireAgentCapability('edit_project_data')`;
+    `create` stays manager-only (not loosened). No other agent-reachable owner
+    writer.
+  - Evidence (D.51, real-DB): `owners-capability.spec` — owner in ASSIGNED
+    project→edit allowed (PII masked, no cleartext NID leak); owner only in
+    UNASSIGNED project→404; bare owner→404; cross-tenant→404; agent w/o flag on
+    assigned-project owner→403; manager edits any owner. `lint`/`typecheck` green;
+    full db (26) + api (62) suites passed.
+  - **Gate-6 STOP:** touches `policy.ts` → PR opened WITHOUT auto-merge; awaiting
+    owner `Gate-6-Approved` + merge. Next: remaining 5 capabilities, then
+    D.46 Contractor scope.
 
 ### 2026-05-30 · Track B · BE Specialist
 

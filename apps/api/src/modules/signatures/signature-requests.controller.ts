@@ -60,8 +60,9 @@ export class SignatureRequestsController {
   }
 
   /** Cancel = state transition (pending → cancelled). Annotated as
-   *  `update` for the D.17 policy matrix (manager-only — viewer/agent
-   *  must NOT be able to cancel a request). */
+   *  `update` for the D.17 policy matrix. D.46: manager OR an agent holding
+   *  `manage_signatures` on the request's document (assigned project); viewer
+   *  is excluded. The fine gate lives in the service. */
   @Post(':id/cancel')
   @HttpCode(200)
   @AuthzAction('update')

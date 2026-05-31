@@ -22,7 +22,6 @@ import {
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -31,6 +30,7 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 
+import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
@@ -43,7 +43,6 @@ import {
 } from './storage';
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
-const FORBIDDEN = new ForbiddenException({ error: { code: 'forbidden' } });
 
 export interface DocumentListPage {
   data: Document[];
@@ -87,10 +86,6 @@ export class DocumentsService {
   private readonly logger = new Logger(DocumentsService.name);
 
   constructor(@Inject(STORAGE_PROVIDER) private readonly storage: IStorageProvider) {}
-
-  private requireManager(user: AccessTokenPayload): void {
-    if (user.role !== 'manager') throw FORBIDDEN;
-  }
 
   private async assertProjectVisible(
     tx: TenantTx,
@@ -186,7 +181,6 @@ export class DocumentsService {
   }
 
   async create(user: AccessTokenPayload, input: CreateDocument): Promise<DocumentUploadResponse> {
-    this.requireManager(user);
     const r2Key = newDocumentKey(user.orgId);
 
     const row = await withTenant(
@@ -194,6 +188,11 @@ export class DocumentsService {
       async (tx) => {
         if (input.projectId) await this.assertProjectVisible(tx, user, input.projectId);
         if (input.apartmentId) await this.assertApartmentVisible(tx, user, input.apartmentId);
+        // D.46 — agents may NOT create org-level (unparented) docs, mirroring
+        // assertDocVisibleForAgent (org-level docs are manager/viewer-only);
+        // then the fine capability gate (manager passes).
+        if (user.role === 'agent' && !input.projectId && !input.apartmentId) throw NOT_FOUND;
+        await requireAgentCapability(tx, user, 'manage_documents');
         let r: DocumentRow | undefined;
         try {
           [r] = await tx
@@ -290,11 +289,11 @@ export class DocumentsService {
   //   layer-1 client check stands alone. (Documented in
   //   storage.interface.ts StorageObjectMeta.)
   async finalize(user: AccessTokenPayload, id: string, input: FinalizeDocument): Promise<Document> {
-    this.requireManager(user);
     const result = await withTenant(
       user.orgId,
       async (tx) => {
         const row = await this.loadVisible(tx, user, id);
+        await requireAgentCapability(tx, user, 'manage_documents');
         // Layer 1: client-consistency.
         let mismatch = input.sizeBytes !== row.sizeBytes || input.contentHash !== row.contentHash;
         // Layer 2: storage-attestation (only when layer-1 already passed —
@@ -500,11 +499,11 @@ export class DocumentsService {
   }
 
   async update(user: AccessTokenPayload, id: string, input: UpdateDocument): Promise<Document> {
-    this.requireManager(user);
     return withTenant(
       user.orgId,
       async (tx) => {
         const before = await this.loadVisible(tx, user, id);
+        await requireAgentCapability(tx, user, 'manage_documents');
         const patch: Partial<typeof documents.$inferInsert> = { updatedAt: new Date() };
         if (input.name !== undefined) patch.name = input.name;
         if (input.type !== undefined) patch.type = input.type;
@@ -530,12 +529,15 @@ export class DocumentsService {
   // Soft delete = archivedAt; the storage object is best-effort purged
   // (confidentiality: don't leave the blob retrievable). Idempotent.
   async archive(user: AccessTokenPayload, id: string): Promise<void> {
-    this.requireManager(user);
     const key = await withTenant(
       user.orgId,
       async (tx) => {
         const [before] = await tx.select().from(documents).where(eq(documents.id, id)).limit(1);
         if (!before) throw NOT_FOUND;
+        // D.46 — by-id path: agent doc visibility (404 if not in assigned
+        // project) then the capability gate (manager passes both).
+        await this.assertDocVisibleForAgent(tx, user, before);
+        await requireAgentCapability(tx, user, 'manage_documents');
         if (before.archivedAt) return null;
         await tx
           .update(documents)

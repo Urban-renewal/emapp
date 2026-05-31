@@ -81,11 +81,13 @@ const EXPECTED: Record<Resource, Record<Action, Role[]>> = {
     update: ['manager'],
     delete: ['manager'],
   },
+  // D.46 — task writes opened to agent (manage_tasks + project-scoping; full
+  // management, enforced in the service). update was already MA.
   tasks: {
     read: ['manager', 'agent', 'viewer'],
-    create: ['manager'],
+    create: ['manager', 'agent'],
     update: ['manager', 'agent'],
-    delete: ['manager'],
+    delete: ['manager', 'agent'],
   },
   notifications: {
     read: ['manager', 'agent', 'viewer'],
@@ -101,11 +103,13 @@ const EXPECTED: Record<Resource, Record<Action, Role[]>> = {
   },
   audit: { read: ['manager'], create: ['manager'], update: ['manager'], delete: ['manager'] },
   members: { read: ['manager'], create: ['manager'], update: ['manager'], delete: ['manager'] },
+  // D.46 — document writes opened to agent (manage_documents + doc/project
+  // visibility, enforced in the service). read/download = ALL.
   documents: {
     read: ['manager', 'agent', 'viewer'],
-    create: ['manager'],
-    update: ['manager'],
-    delete: ['manager'],
+    create: ['manager', 'agent'],
+    update: ['manager', 'agent'],
+    delete: ['manager', 'agent'],
   },
   project_assignments: {
     read: ['manager', 'agent', 'viewer'],
@@ -113,17 +117,21 @@ const EXPECTED: Record<Resource, Record<Action, Role[]>> = {
     update: ['manager'],
     delete: ['manager'],
   },
+  // D.46 — signature create/cancel(update) opened to agent (manage_signatures +
+  // underlying-document visibility, enforced in the service). No DELETE route.
   signature_requests: {
     read: ['manager', 'agent', 'viewer'],
-    create: ['manager'],
-    update: ['manager'],
+    create: ['manager', 'agent'],
+    update: ['manager', 'agent'],
     delete: ['manager'],
   },
+  // D.46 — import writes opened to agent (run_imports + project-scoping on the
+  // job's projectId, enforced in the service).
   imports: {
     read: ['manager', 'agent', 'viewer'],
-    create: ['manager'],
-    update: ['manager'],
-    delete: ['manager'],
+    create: ['manager', 'agent'],
+    update: ['manager', 'agent'],
+    delete: ['manager', 'agent'],
   },
   // D.34 mapping templates — v6 audit fix §9 declared as first-class
   // resource (was implicitly under `imports`). Same triple as the

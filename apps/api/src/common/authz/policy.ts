@@ -70,9 +70,14 @@ export const POLICY: Matrix = {
   ownerships: { read: ALL, create: MGR, update: MGR, delete: MGR },
   contractors: { read: ALL, create: MGR, update: MGR, delete: MGR },
   shares: { read: ALL, create: MGR, update: MGR, delete: MGR },
-  // tasks.update: manager OR an assigned agent (the "assigned" half is
-  // enforced per-record in the service).
-  tasks: { read: ALL, create: MGR, update: MA, delete: MGR },
+  // D.46 — task WRITE (create / update / archive / add+remove assignee) opened
+  // to agents; fine gate = requireAgentCapability('manage_tasks') AFTER the
+  // task's PROJECT scoping (assertTaskVisibleForAgent — project, or apartment→
+  // project; org-level task → agent 404). FULL management (the prior agent
+  // status/description-only restriction is removed under the capability). READ
+  // (list/get) stays assignee-based. GUARDRAIL: every task write method MUST
+  // call requireAgentCapability + assertTaskVisibleForAgent.
+  tasks: { read: ALL, create: MA, update: MA, delete: MA },
   // notifications are self-scoped by RLS — any role, only their own.
   notifications: { read: ALL, create: MGR, update: ALL, delete: MGR },
   // notes: manager/agent may author; manager-or-author may edit/delete
@@ -83,22 +88,30 @@ export const POLICY: Matrix = {
   // Org membership administration — manager only, every action.
   members: { read: MGR, create: MGR, update: MGR, delete: MGR },
   // Documents: any org role may read (agent → assigned-project docs only,
-  // record-scoped in the service); writes are manager-only. The presigned
-  // URL is minted ONLY after this gate + per-record visibility pass.
-  documents: { read: ALL, create: MGR, update: MGR, delete: MGR },
-  // Signature requests (Phase 5, docs/03 §9): manager creates and cancels
-  // (status transition; never DELETE — forensic evidence per migration
-  // 0021). Any org role may read the list/status (record-scoping via the
-  // underlying document for agents lives in the service). The actual
-  // signing endpoint /sign/:token is PUBLIC (no auth, JWT is the
-  // credential) and therefore bypasses this matrix entirely.
-  signature_requests: { read: ALL, create: MGR, update: MGR, delete: MGR },
-  // Imports (Phase 6, docs/03 §10): any org role may read job status/stream
-  // (record-scoping is org-direct via RLS — same shape as projects). Writes
-  // (enqueue / cancel) are manager-only; the SSE stream is a read, gated by
-  // verb→action mapping. The actual file content stays in R2 keyed
-  // off the import_jobs row — never on the wire.
-  imports: { read: ALL, create: MGR, update: MGR, delete: MGR },
+  // record-scoped in the service). D.46 — WRITE (create/finalize/update/
+  // archive) opened to agents; fine gate = requireAgentCapability(
+  // 'manage_documents') AFTER the existing doc/project visibility scoping.
+  // READ + DOWNLOAD stay `read: ALL` (download already agent-scoped to
+  // assigned-project docs via loadVisible). GUARDRAIL: every documents write
+  // method MUST call requireAgentCapability.
+  documents: { read: ALL, create: MA, update: MA, delete: MA },
+  // Signature requests (Phase 5, docs/03 §9): create + cancel (cancel is an
+  // @AuthzAction('update') status transition; never DELETE — forensic evidence
+  // per migration 0021). D.46 — create/update opened to agents; fine gate =
+  // requireAgentCapability('manage_signatures') AFTER the underlying document's
+  // agent visibility (assertDocVisibleForAgent). GUARDRAIL: signature create +
+  // cancel MUST call requireAgentCapability + the doc-visibility check. The
+  // /sign/:token endpoint is PUBLIC (JWT is the credential) and bypasses this.
+  signature_requests: { read: ALL, create: MA, update: MA, delete: MGR },
+  // Imports (Phase 6, docs/03 §10): any org role may read job status/stream.
+  // D.46 — WRITE (create / start / cancel / mapping) opened to agents; fine
+  // gate = requireAgentCapability('run_imports') AFTER assertProjectVisible on
+  // the job's projectId (NULLABLE — agent + null-project job = no-oracle 404).
+  // create=POST, start+mapping=update (@AuthzAction),
+  // cancel=delete. GUARDRAIL: all four import write methods MUST call
+  // requireAgentCapability + the project-scope check. (The creator-only check
+  // on start/cancel/mapping further scopes agents to their own jobs.)
+  imports: { read: ALL, create: MA, update: MA, delete: MA },
   // D.34 mapping templates (saved column→canonical mappings). v6 audit
   // fix §9: declared as a FIRST-CLASS resource (was implicitly under
   // `imports` via the wizard endpoint). Forward-compat: when the

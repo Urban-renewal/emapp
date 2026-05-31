@@ -384,6 +384,57 @@ because at 3–15 people per tenant the role-presets are the profiles.
 
 ---
 
+## D.55 — 2FA model: Provider mandatory + controlled break-glass; org opt-in
+
+**Context:** D.21 makes Provider MFA mandatory. The owner wanted an emergency
+path (lost device / "local account") and proposed making it optional. Optional
+MFA on the **cross-tenant super-admin** (keys to every customer's PII) is a
+security downgrade — the wrong mechanism for a legitimate break-glass need.
+
+**Decision (Track C / ISO — not D2):**
+
+- **Provider Admin: MFA stays mandatory (D.21 holds), NOT self-disable-able.**
+  Break-glass is a **controlled** path, not an off-switch:
+  - **Recovery codes** — one-time backup codes issued at enrollment, stored
+    offline; logging in with one IS a second factor. Standard TOTP break-glass.
+  - **Break-glass local account** — a dedicated emergency account, offline creds,
+    emergency-only, **every login alerts + audits**.
+  - (With ≥1 Provider admin: peer MFA-reset, controlled.)
+- **Org users: 2FA optional / opt-in** — each customer decides for its members.
+
+**Rationale:** delivers the owner's break-glass need **without** opening the
+front door — you can never log in without a second factor, but there is an
+audited emergency path. ISO A.9 for privileged accounts. **This is a Track C
+feature (the 2FA build), gated by ISO-SCOPE; it does NOT touch D2.** (This is
+why D2 ships no `reset-MFA` UI — there is no enforced org 2FA to reset yet.)
+
+---
+
+## D.56 — admin.emapp.io subdomain deferred to pre-launch (domain-gated); Provider built in-place now
+
+**Context:** D.48 puts the Provider console on a separate subdomain
+(`admin.emapp.io`) for cookie/blast-radius isolation. The owner will purchase the
+domain only once the product works end-to-end — so the subdomain can't exist yet.
+
+**Decision:** **build the full Provider console in-place now** (under the existing
+`/provider/*` routes, gated by provider login + the provider-authorization guard),
+and make the **`admin.emapp.io` cutover a launch-blocking PL gate** tied to the
+domain purchase — exactly the pattern used for colocation (D.52) and PERF-2
+(D.53). Everything is built and functional **except** the literal domain + DNS +
+cookie-scope flip, which is a documented, un-loseable pre-launch step (PL).
+
+**Interim posture:** during the in-place period (dev / pre-domain, no real
+tenants) the provider console shares the app's cookie scope; isolation is
+provided by provider login + MFA (D.21/D.55) + the provider-authorization guard.
+The **separate-subdomain cookie isolation** (the full D.48 posture) lands at the
+PL cutover. No real customer data is exposed in the interim (dev only).
+
+**Rationale:** decouples the entire Provider-console build from domain
+procurement (which has external lead time), without losing D.48 — the isolation
+step is held mechanically by the PL gate, like colocation.
+
+---
+
 ## Plan impact
 
 - **D.46** adds a permission-model slice to Track D.

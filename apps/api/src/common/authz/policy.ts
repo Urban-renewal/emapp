@@ -97,12 +97,15 @@ export const POLICY: Matrix = {
   // signing endpoint /sign/:token is PUBLIC (no auth, JWT is the
   // credential) and therefore bypasses this matrix entirely.
   signature_requests: { read: ALL, create: MGR, update: MGR, delete: MGR },
-  // Imports (Phase 6, docs/03 §10): any org role may read job status/stream
-  // (record-scoping is org-direct via RLS — same shape as projects). Writes
-  // (enqueue / cancel) are manager-only; the SSE stream is a read, gated by
-  // verb→action mapping. The actual file content stays in R2 keyed
-  // off the import_jobs row — never on the wire.
-  imports: { read: ALL, create: MGR, update: MGR, delete: MGR },
+  // Imports (Phase 6, docs/03 §10): any org role may read job status/stream.
+  // D.46 — WRITE (create / start / cancel / mapping) opened to agents; fine
+  // gate = requireAgentCapability('run_imports') AFTER assertProjectVisible on
+  // the job's projectId (NULLABLE — agent + null-project job = no-oracle 404).
+  // create=POST, start+mapping=update (@AuthzAction),
+  // cancel=delete. GUARDRAIL: all four import write methods MUST call
+  // requireAgentCapability + the project-scope check. (The creator-only check
+  // on start/cancel/mapping further scopes agents to their own jobs.)
+  imports: { read: ALL, create: MA, update: MA, delete: MA },
   // D.34 mapping templates (saved column→canonical mappings). v6 audit
   // fix §9: declared as a FIRST-CLASS resource (was implicitly under
   // `imports` via the wizard endpoint). Forward-compat: when the

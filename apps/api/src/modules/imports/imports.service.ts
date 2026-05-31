@@ -12,7 +12,10 @@
  *
  * Defense-in-depth (security):
  *   - withTenant → RLS org-isolation FORCE on EVERY DB op.
- *   - Manager-only writes via requireManager() (D.17 + D.26 policy).
+ *   - D.46: writes are manager OR an agent holding `run_imports`, gated by
+ *     requireAgentCapability AFTER the project-visibility check (manager is a
+ *     no-op pass). The creator-only check on start/cancel/mapping further
+ *     scopes agents to their own jobs.
  *   - Project visibility check (mirrors documents.service) before any
  *     mutation that targets a project.
  *   - r2Key is server-minted + never on the wire.
@@ -68,6 +71,7 @@ import {
 } from '@nestjs/common';
 import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
 
+import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import { JOB_PRODUCER } from '../../queue/queue.module';
 import type { AccessTokenPayload } from '../auth/auth.service';
@@ -220,10 +224,6 @@ export class ImportsService {
     @Inject(JOB_PRODUCER) private readonly producer: IJobProducer,
   ) {}
 
-  private requireManager(user: AccessTokenPayload): void {
-    if (user.role !== 'manager') throw FORBIDDEN;
-  }
-
   private async assertProjectVisible(
     tx: TenantTx,
     user: AccessTokenPayload,
@@ -303,9 +303,10 @@ export class ImportsService {
         }
 
         // Agent visibility: only imports whose projectId is an active
-        // assignment. Mirrors the documents.list agent-scope but
-        // imports always have a non-null projectId (NOT NULL in migration
-        // 0022), so the EXISTS is simpler — no apartment-chain branch.
+        // assignment. Mirrors the documents.list agent-scope; `project_id` is
+        // NULLABLE in the schema, so a null-project job simply fails the EXISTS
+        // (no apartment-chain branch) → invisible to agents, which is the safe
+        // default (also enforced on the write paths via the explicit null-guard).
         if (user.role === 'agent') {
           const viaAssignment = sql<boolean>`EXISTS (
             SELECT 1 FROM project_assignments pa
@@ -361,7 +362,6 @@ export class ImportsService {
    *  Manager-only. Project visibility verified. Audit row written
    *  inside the same tx as the INSERT. */
   async create(user: AccessTokenPayload, input: CreateImport): Promise<ImportUploadResponse> {
-    this.requireManager(user);
     const r2Key = newImportKey(user.orgId);
     const fileContentHash = toStoredHash(input.fileContentHash);
 
@@ -369,6 +369,8 @@ export class ImportsService {
       user.orgId,
       async (tx) => {
         await this.assertProjectVisible(tx, user, input.projectId);
+        // D.46 — fine gate after project scoping (manager passes).
+        await requireAgentCapability(tx, user, 'run_imports');
 
         // v8 SOLID-1 / D.22-F: Idempotency-Key replay. If the caller
         // supplied a key AND a row with the same (org_id, created_by,
@@ -588,11 +590,15 @@ export class ImportsService {
    *  singletonKey idempotency on the producer side so a double-click
    *  is a no-op. */
   async start(user: AccessTokenPayload, id: string): Promise<ImportJobView> {
-    this.requireManager(user);
     const row = await withTenant(
       user.orgId,
       async (tx) => {
         const r = await this.load(tx, id);
+        // D.46 — agent: assigned to the job's project (404 if not / null project)
+        // + run_imports capability (403), before the status/creator checks.
+        if (r.projectId) await this.assertProjectVisible(tx, user, r.projectId);
+        else if (user.role === 'agent') throw NOT_FOUND;
+        await requireAgentCapability(tx, user, 'run_imports');
         if (r.status !== 'queued') {
           // Already started or terminal — surfacing this as 409 lets
           // the FE distinguish "you already started this" from "this
@@ -774,12 +780,15 @@ export class ImportsService {
    *  path).
    */
   async cancel(user: AccessTokenPayload, id: string): Promise<void> {
-    this.requireManager(user);
     let didCancel = false;
     await withTenant(
       user.orgId,
       async (tx) => {
         const row = await this.load(tx, id);
+        // D.46 — agent: project assignment (404 / null project) + run_imports (403).
+        if (row.projectId) await this.assertProjectVisible(tx, user, row.projectId);
+        else if (user.role === 'agent') throw NOT_FOUND;
+        await requireAgentCapability(tx, user, 'run_imports');
         // v8 Sec-8: parity with start() — owner-only. A co-Manager
         // shouldn't be able to destroy another Manager's in-flight
         // import (especially after the worker has materialised some
@@ -944,8 +953,6 @@ export class ImportsService {
     id: string,
     input: SubmitMapping,
   ): Promise<SubmitMappingResponse> {
-    this.requireManager(user);
-
     // Defense in depth (Zod already enforces): unique column indexes.
     const seen = new Set<number>();
     for (const v of Object.values(input.columns)) {
@@ -962,6 +969,10 @@ export class ImportsService {
       user.orgId,
       async (tx) => {
         const row = await this.load(tx, id);
+        // D.46 — agent: project assignment (404 / null project) + run_imports (403).
+        if (row.projectId) await this.assertProjectVisible(tx, user, row.projectId);
+        else if (user.role === 'agent') throw NOT_FOUND;
+        await requireAgentCapability(tx, user, 'run_imports');
         // v8 Sec-8: parity with start() / cancel() — owner-only. The
         // mapping decision substantively reshapes downstream
         // persistence; only the creator should make it. (Future:

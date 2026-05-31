@@ -788,7 +788,14 @@ describe('Phase 6 S8 · §E — POST /imports/:id/mapping (D.34 wizard)', () => 
     }
   });
 
-  it('E4) Agent rejected (ForbiddenException)', async () => {
+  it('E4) Agent without assignment is rejected (D.46 project-scope → NotFound, no oracle)', async () => {
+    // D.46 (run_imports): imports writes are no longer blanket manager-only —
+    // an agent may submit mapping IF they hold run_imports AND are assigned to
+    // the job's project. This synthetic agent is NOT assigned (it reuses the
+    // manager's user id with role overridden, and managers have no
+    // project_assignments row), so the project-scope gate denies it FIRST with
+    // a no-oracle 404 (before the capability/creator checks). Either way the
+    // agent is denied — the loosened cell opens no ungated path.
     const id = await makeImport(orgA, { status: 'awaiting_mapping' });
     await expect(
       svc.submitMapping(userOf(orgA, 'agent'), id, {
@@ -800,7 +807,7 @@ describe('Phase 6 S8 · §E — POST /imports/:id/mapping (D.34 wizard)', () => 
           building_address: 4,
         },
       }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('E5) Cross-org → 404 (no oracle)', async () => {

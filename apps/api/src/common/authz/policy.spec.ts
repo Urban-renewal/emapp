@@ -121,11 +121,13 @@ const EXPECTED: Record<Resource, Record<Action, Role[]>> = {
     update: ['manager'],
     delete: ['manager'],
   },
+  // D.46 — import writes opened to agent (run_imports + project-scoping on the
+  // job's projectId, enforced in the service).
   imports: {
     read: ['manager', 'agent', 'viewer'],
-    create: ['manager'],
-    update: ['manager'],
-    delete: ['manager'],
+    create: ['manager', 'agent'],
+    update: ['manager', 'agent'],
+    delete: ['manager', 'agent'],
   },
   // D.34 mapping templates — v6 audit fix §9 declared as first-class
   // resource (was implicitly under `imports`). Same triple as the

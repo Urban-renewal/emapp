@@ -1,19 +1,18 @@
 /**
- * D.54 — view_owners gate + PII fidelity (view_owner_pii). Deterministic real-DB.
+ * D.54 (reveal-on-demand) — view_owners gate + reveal-pii. Deterministic real-DB.
  *
  * - agent WITHOUT view_owners → full deny (403) on list/get/search.
  * - agent WITH view_owners → sees ONLY owners in assigned projects (scoped),
- *   PII MASKED by default (view_owner_pii off).
- * - agent WITH view_owners + view_owner_pii → cleartext national_id/phone in the
- *   DEDICATED `nationalId`/`phone` fields; `nationalIdMasked` STAYS masked (the
- *   §v9-M-4 tripwire is never overloaded with cleartext).
- * - manager → cleartext (dedicated fields); viewer → masked (no cleartext fields).
- *   Default masked. The cleartext value appears ONLY in the dedicated fields and
- *   ONLY when the actor's resolved fidelity is unmasked.
+ *   ALWAYS masked (no cleartext on list/detail/search, for any role).
+ * - cleartext is reveal-on-demand: POST /owners/:id/reveal-pii (svc.revealPii)
+ *   returns clear national_id/phone of ONE owner, gated by view_owner_pii
+ *   (manager always · agent per flag · viewer never) + owner-in-assigned-project
+ *   scope, and writes a per-access audit row (owner.pii_revealed, ISO A.12.4).
  */
 import { randomUUID } from 'node:crypto';
 
 import {
+  auditLog,
   db,
   encryptOwnerPii,
   memberships,
@@ -23,6 +22,7 @@ import {
   withTenant,
 } from '@emapp/db';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { and, desc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { providerPool } from '../../../../../packages/db/src/client';
@@ -42,7 +42,7 @@ let ownerAssigned: string;
 let ownerUnassigned: string;
 
 const NID_ASSIGNED = '111111118';
-const PHONE_ASSIGNED = '0541239876';
+const PHONE_ASSIGNED = '+972541239876';
 const A_SID = '00000000-0000-4000-8000-0000000000b1';
 
 function tok(
@@ -151,7 +151,7 @@ beforeAll(async () => {
   await seedOwnership(aptA, ownerAssigned);
 
   const aptU = await seedApartment(await seedBuilding(unassignedProjectId));
-  ownerUnassigned = await seedOwner(org.id, '222222226', '0500000000');
+  ownerUnassigned = await seedOwner(org.id, '222222226', '+972500000000');
   await seedOwnership(aptU, ownerUnassigned);
 }, 120_000);
 
@@ -159,7 +159,7 @@ afterAll(() => {
   /* shared pools; global teardown closes them */
 });
 
-describe('D.54 — view_owners gate + PII fidelity', () => {
+describe('D.54 — view_owners gate + masked list/detail (no cleartext anywhere)', () => {
   it('DV-1) agent WITHOUT view_owners → 403 on list/get/search (full deny)', async () => {
     await setCaps(false, false);
     await expect(svc.list(tok('agent'), { limit: 10 })).rejects.toBeInstanceOf(ForbiddenException);
@@ -177,54 +177,76 @@ describe('D.54 — view_owners gate + PII fidelity', () => {
     expect(ids).not.toContain(ownerUnassigned); // out of agent scope
     const own = page.data.find((o) => o.id === ownerAssigned)!;
     expect(own.nationalIdMasked.startsWith('•')).toBe(true);
-    expect(own.nationalId).toBeUndefined(); // masked actor: no cleartext field
     expect(JSON.stringify(page.data)).not.toContain(NID_ASSIGNED); // no cleartext anywhere
   }, 30_000);
 
-  it('DV-3) agent WITH view_owners but NOT view_owner_pii → get → MASKED, no clear field', async () => {
-    await setCaps(true, false);
-    const o = await svc.get(tok('agent'), ownerAssigned);
-    expect(o.nationalIdMasked).toBe('•••••••18');
-    expect(o.phoneMasked).toBe('•••••9876');
-    expect(o.nationalId).toBeUndefined();
-    expect(o.phone).toBeUndefined();
-  });
-
-  it('DV-4) agent WITH view_owners + view_owner_pii → cleartext in DEDICATED fields, masked stays masked', async () => {
-    await setCaps(true, true);
-    const o = await svc.get(tok('agent'), ownerAssigned);
-    expect(o.nationalIdMasked).toBe('•••••••18'); // tripwire field STAYS masked
-    expect(o.phoneMasked).toBe('•••••9876');
-    expect(o.nationalId).toBe(NID_ASSIGNED); // cleartext only in the dedicated field
-    expect(o.phone).toBe(PHONE_ASSIGNED);
-  });
+  it('DV-3) get is masked for EVERY role (manager/viewer/pii-agent included)', async () => {
+    await setCaps(true, true); // even with view_owner_pii, the JSON detail stays masked
+    for (const u of [tok('agent'), tok('manager'), tok('viewer')]) {
+      const o = await svc.get(u, ownerAssigned);
+      expect(o.nationalIdMasked).toBe('•••••••18');
+      expect(JSON.stringify(o)).not.toContain(NID_ASSIGNED);
+    }
+  }, 30_000);
 
   it('DV-5) agent WITH view_owners → get an owner in an UNASSIGNED project → 404 (scope)', async () => {
     await setCaps(true, true);
     await expect(svc.get(tok('agent'), ownerUnassigned)).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('DV-6) manager → cleartext in dedicated field (their authorized view)', async () => {
-    const o = await svc.get(tok('manager'), ownerAssigned);
-    expect(o.nationalIdMasked).toBe('•••••••18'); // masked field stays masked
-    expect(o.nationalId).toBe(NID_ASSIGNED);
-    expect(o.phone).toBe(PHONE_ASSIGNED);
-  });
-
-  it('DV-7) viewer → masked, NO cleartext field (even with the owner visible)', async () => {
-    const o = await svc.get(tok('viewer'), ownerAssigned);
-    expect(o.nationalIdMasked).toBe('•••••••18');
-    expect(o.nationalId).toBeUndefined();
-    expect(o.phone).toBeUndefined();
-  });
-
-  it('DV-8) search honours scope + fidelity (agent masked, assigned-only)', async () => {
+  it('DV-8) search honours scope + masking (agent assigned-only, masked)', async () => {
     await setCaps(true, false);
     const res = await svc.search(tok('agent'), { national_id: NID_ASSIGNED });
     expect(res.map((o) => o.id)).toContain(ownerAssigned);
     expect(res.every((o) => o.nationalIdMasked.startsWith('•'))).toBe(true);
-    // searching the unassigned owner's NID → not visible to the agent
     const res2 = await svc.search(tok('agent'), { national_id: '222222226' });
     expect(res2.map((o) => o.id)).not.toContain(ownerUnassigned);
+  }, 30_000);
+});
+
+describe('D.54 — reveal-on-demand (POST /owners/:id/reveal-pii)', () => {
+  it('RV-1) agent WITH view_owner_pii + assigned owner → cleartext', async () => {
+    await setCaps(true, true);
+    const r = await svc.revealPii(tok('agent'), ownerAssigned);
+    expect(r).toEqual({ id: ownerAssigned, nationalId: NID_ASSIGNED, phone: PHONE_ASSIGNED });
+  });
+
+  it('RV-2) agent WITH view_owners but NOT view_owner_pii → 403', async () => {
+    await setCaps(true, false);
+    await expect(svc.revealPii(tok('agent'), ownerAssigned)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('RV-3) agent WITH view_owner_pii but owner UNASSIGNED → 404 (scope, no oracle)', async () => {
+    await setCaps(true, true);
+    await expect(svc.revealPii(tok('agent'), ownerUnassigned)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('RV-4) manager → cleartext (always unmasked)', async () => {
+    const r = await svc.revealPii(tok('manager'), ownerAssigned);
+    expect(r.nationalId).toBe(NID_ASSIGNED);
+    expect(r.phone).toBe(PHONE_ASSIGNED);
+  });
+
+  it('RV-5) viewer → 403 (never reveals)', async () => {
+    await expect(svc.revealPii(tok('viewer'), ownerAssigned)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('RV-6) a successful reveal writes a per-access audit row, WITHOUT cleartext', async () => {
+    await svc.revealPii(tok('manager'), ownerAssigned);
+    const [row] = await db
+      .select({ action: auditLog.action, afterState: auditLog.afterState })
+      .from(auditLog)
+      .where(and(eq(auditLog.targetId, ownerAssigned), eq(auditLog.action, 'owner.pii_revealed')))
+      .orderBy(desc(auditLog.createdAt))
+      .limit(1);
+    expect(row, 'no owner.pii_revealed audit row').toBeTruthy();
+    expect(JSON.stringify(row!.afterState)).not.toContain(NID_ASSIGNED); // field names only
+    expect((row!.afterState as { revealed: string[] }).revealed).toContain('national_id');
   }, 30_000);
 });

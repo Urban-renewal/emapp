@@ -31,46 +31,43 @@ const MaskedPii = z
   .regex(/[•*]/, 'must contain at least one mask character (bullet or asterisk)');
 
 /**
- * Owner resource as returned by the API.
- *
- * PII fidelity is per-actor (D.54 — supersedes the old "org-staff always
- * masked" rule of D.19/D.46). The `…Masked` fields are ALWAYS masked — they
- * keep the §v9-M-4 tripwire (a server bug that leaked cleartext into them is
- * still rejected at parse time). When the actor's resolved fidelity is
- * `unmasked` (manager, or agent with `view_owner_pii`), the server ADDITIONALLY
- * populates the cleartext `nationalId`/`phone` fields; for masked actors those
- * are absent. The clear value therefore only ever travels in its own dedicated,
- * non-tripwired field — never overloaded into the masked one. A single server
- * resolver (`resolveOwnerPiiFidelity`) is the only thing that decides this.
+ * Owner resource as returned by the API — PII is ALWAYS masked, for every role
+ * (D.54 reveal-on-demand model: list/detail/search/export never carry cleartext;
+ * the §v9-M-4 tripwire holds on every list/detail surface). Cleartext is obtained
+ * only via the dedicated, audited reveal endpoint (`OwnerPiiRevealSchema`).
  */
 export const OwnerSchema = z.object({
   id: z.string().uuid(),
   organizationId: z.string().uuid(),
   name: z.string().min(1).max(100),
   email: z.string().email().nullable(),
-  /** e.g. "•••••••82" — 7 bullets + last 2 digits. ALWAYS masked (tripwire). */
+  /** e.g. "•••••••82" — 7 bullets + last 2 digits. */
   nationalIdMasked: MaskedPii,
-  /** e.g. "•••••1234" suffix, or null when no phone on file. ALWAYS masked. */
+  /** e.g. "•••••1234" suffix, or null when no phone on file. */
   phoneMasked: MaskedPii.nullable(),
-  /**
-   * D.54 — CLEARTEXT national_id (exactly 9 digits). Present ONLY when the
-   * actor's resolved fidelity is `unmasked`; absent (undefined) when masked.
-   */
-  nationalId: z
-    .string()
-    .regex(/^\d{9}$/)
-    .optional(),
-  /**
-   * D.54 — CLEARTEXT phone. Present ONLY when unmasked (null when unmasked but
-   * no phone on file); absent (undefined) when the actor is masked.
-   */
-  phone: z.string().min(1).max(20).nullable().optional(),
   notes: z.string().max(2000).nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
   archivedAt: z.coerce.date().nullable(),
 });
 export type Owner = z.infer<typeof OwnerSchema>;
+
+/**
+ * D.54 — reveal-on-demand response (POST /owners/:id/reveal-pii). A SEPARATE
+ * schema from `OwnerSchema` (which is masked-only and tripwire-protected): this
+ * one deliberately carries the CLEARTEXT national_id/phone of a single owner,
+ * returned ONLY to an actor with `view_owner_pii` (manager always · agent per
+ * flag · viewer never) for an owner in their scope, and the access is audited.
+ * It is NOT a list/detail shape and must never be substituted for `OwnerSchema`.
+ */
+export const OwnerPiiRevealSchema = z.object({
+  id: z.string().uuid(),
+  /** CLEARTEXT national_id — exactly 9 digits (D.19). */
+  nationalId: z.string().regex(/^\d{9}$/),
+  /** CLEARTEXT phone, or null when none on file. */
+  phone: z.string().min(1).max(20).nullable(),
+});
+export type OwnerPiiReveal = z.infer<typeof OwnerPiiRevealSchema>;
 
 // Write shape. national_id is structurally 9 digits here; the MOD-10
 // checksum is enforced in the BE DTO refine (validator-backed). phone is

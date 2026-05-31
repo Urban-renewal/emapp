@@ -130,7 +130,7 @@ beforeAll(async () => {
   );
 }, 120_000);
 
-describe('D.54 — apartment-owners view_owners gate + fidelity', () => {
+describe('D.54 — apartment-owners view_owners gate (masked for everyone)', () => {
   it('AO-1) agent assigned but WITHOUT view_owners → 403 (sees apartment, not owners)', async () => {
     await setCaps(false, false);
     await expect(
@@ -138,34 +138,23 @@ describe('D.54 — apartment-owners view_owners gate + fidelity', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('AO-2) agent WITH view_owners, not pii → masked, no cleartext field', async () => {
-    await setCaps(true, false);
+  it('AO-2) agent WITH view_owners → masked, no cleartext (even with view_owner_pii)', async () => {
+    await setCaps(true, true); // pii flag does NOT unmask the list — reveal-on-demand only
     const page = await svc.listApartmentOwners(tok('agent'), apartmentId, { limit: 10 });
     const o = page.data.find((r) => r.id === ownerId)!;
     expect(o.nationalIdMasked).toBe('•••••••18');
-    expect(o.nationalId).toBeUndefined();
-    expect(o.phone).toBeUndefined();
+    expect(JSON.stringify(page.data)).not.toContain(NID); // no cleartext on this surface
   }, 30_000);
 
-  it('AO-3) agent WITH view_owners + view_owner_pii → cleartext in dedicated field', async () => {
-    await setCaps(true, true);
-    const page = await svc.listApartmentOwners(tok('agent'), apartmentId, { limit: 10 });
-    const o = page.data.find((r) => r.id === ownerId)!;
-    expect(o.nationalIdMasked).toBe('•••••••18'); // tripwire field stays masked
-    expect(o.nationalId).toBe(NID);
-    expect(o.phone).toBe(PHONE);
-  }, 30_000);
-
-  it('AO-4) manager → cleartext; viewer → masked-no-clear', async () => {
+  it('AO-3) manager + viewer → masked (no cleartext on the apartment-owners list)', async () => {
     const m = (await svc.listApartmentOwners(tok('manager'), apartmentId, { limit: 10 })).data.find(
       (r) => r.id === ownerId,
     )!;
-    expect(m.nationalId).toBe(NID);
     expect(m.nationalIdMasked).toBe('•••••••18');
     const v = (await svc.listApartmentOwners(tok('viewer'), apartmentId, { limit: 10 })).data.find(
       (r) => r.id === ownerId,
     )!;
-    expect(v.nationalId).toBeUndefined();
     expect(v.nationalIdMasked).toBe('•••••••18');
+    expect(JSON.stringify([m, v])).not.toContain(NID);
   }, 30_000);
 });

@@ -244,7 +244,7 @@ afterAll(async () => {
 });
 
 describe('V11 B.S10 · ExportComposerService — project export (Phase 7)', () => {
-  it('1) composes the full project tree with active buildings + apartments + (sara, david) owners decrypted to cleartext', async () => {
+  it('1) composes the full project tree with active buildings + apartments + (sara, david) owners; national_id/phone MASKED', async () => {
     const { input, rowCount } = await svc.composeProjectExport(
       userOf(orgA),
       orgA.projects[0]!.id,
@@ -260,16 +260,17 @@ describe('V11 B.S10 · ExportComposerService — project export (Phase 7)', () =
     expect(bldA2.apartments).toHaveLength(1);
     expect(bldEmpty.apartments).toHaveLength(0);
 
-    // aptA1 owners: david + sara — both decrypted to cleartext.
+    // aptA1 owners: david + sara. name + email are cleartext at this boundary
+    // (not classified PII); D.54 — national_id/phone are MASKED in the export
+    // (reveal-on-demand only).
     const a1 = bldA1.apartments[0]!;
     expect(a1.owners).toHaveLength(2);
     const a1Names = a1.owners.map((o) => o.name).sort();
     expect(a1Names).toEqual(['דוד כהן', 'שרה לוי']);
-    // PII is cleartext at this boundary.
     const davidOnA1 = a1.owners.find((o) => o.name === 'דוד כהן')!;
-    expect(davidOnA1.nationalId).toBe('300000010');
-    expect(davidOnA1.phone).toBe('0501110001');
-    expect(davidOnA1.email).toBe('david@example.com');
+    expect(davidOnA1.nationalId).toBe('•••••••10'); // masked (was cleartext pre-D.54)
+    expect(davidOnA1.phone).toBe('•••••0001'); // masked last-4
+    expect(davidOnA1.email).toBe('david@example.com'); // email is not masked PII
     expect(davidOnA1.ownershipPct).toBe(50);
 
     // aptA2 owner: david(100%) only.
@@ -385,7 +386,7 @@ describe('V11 B.S10 · ExportComposerService — project export (Phase 7)', () =
     }
   });
 
-  it('2d) agent WITH view_owner_pii → export is UNMASKED (cleartext, D.54)', async () => {
+  it('2d) agent WITH view_owner_pii → export is STILL MASKED (reveal-on-demand, never bulk)', async () => {
     const [u] = await db
       .insert(users)
       .values({
@@ -429,8 +430,11 @@ describe('V11 B.S10 · ExportComposerService — project export (Phase 7)', () =
     } as unknown as AccessTokenPayload;
     const { input } = await svc.composeProjectExport(agentPayload, orgA.projects[0]!.id, 'xlsx');
     const allOwners = input.buildings.flatMap((b) => b.apartments.flatMap((a) => a.owners));
-    expect(allOwners.some((o) => o.nationalId === '300000010')).toBe(true); // cleartext David
-    expect(allOwners.every((o) => !o.nationalId.startsWith('•'))).toBe(true);
+    expect(allOwners.length).toBeGreaterThan(0);
+    // D.54 reveal-on-demand: even view_owner_pii does NOT unmask the bulk export;
+    // cleartext is only via POST /owners/:id/reveal-pii. No cleartext NID leaks.
+    expect(allOwners.every((o) => o.nationalId.startsWith('•'))).toBe(true);
+    expect(allOwners.some((o) => o.nationalId === '300000010')).toBe(false);
   });
 
   it('2e) agent WITHOUT view_owners → export carries ZERO owner rows (D.54/D.50 read-scope)', async () => {

@@ -14,7 +14,7 @@ import {
   withTenant,
   type TenantTx,
 } from '@emapp/db';
-import type { Owner } from '@emapp/shared-types';
+import type { Owner, OwnerPiiReveal } from '@emapp/shared-types';
 import { normalizeIsraeliPhone } from '@emapp/validators';
 import {
   BadRequestException,
@@ -29,7 +29,6 @@ import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import {
   requireAgentCapability,
   resolveOwnerPiiFidelity,
-  type OwnerPiiFidelity,
 } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
@@ -59,41 +58,31 @@ const PHONE_MASK = sql<
 // app.encryption_key is set by withTenant via set_config.
 const NAME_DECRYPTED = sql<string>`pgp_sym_decrypt(${owners.nameEncrypted}, current_setting('app.encryption_key'))::text`;
 
-// D.54 — CLEARTEXT national_id / phone (full value), still decrypted IN-SQL so
-// the ciphertext never leaves Postgres. Selected into the DEDICATED cleartext
-// fields ONLY when the actor's resolved fidelity is `unmasked` (manager, or
-// agent with view_owner_pii). The `…Masked` fields stay ALWAYS masked (the
-// §v9-M-4 tripwire) — cleartext is NEVER overloaded into them.
+// D.54 (reveal-on-demand) — CLEARTEXT national_id / phone (full value),
+// decrypted IN-SQL so the ciphertext never leaves Postgres. Used ONLY by the
+// dedicated, audited `revealPii` endpoint (POST /owners/:id/reveal-pii) — NEVER
+// in list/detail/search/export, which stay masked-for-everyone (the §v9-M-4
+// tripwire holds for every list/detail surface).
 const NID_CLEAR = sql<string>`pgp_sym_decrypt(${owners.nationalIdEncrypted}, current_setting('app.encryption_key'))::text`;
 const PHONE_CLEAR = sql<
   string | null
 >`case when ${owners.phoneEncrypted} is null then null else pgp_sym_decrypt(${owners.phoneEncrypted}, current_setting('app.encryption_key'))::text end`;
-const NULL_TEXT = sql<string | null>`null`;
 
-/**
- * D.54 — the owner projection at a resolved PII fidelity. `nationalIdMasked`/
- * `phoneMasked` are ALWAYS the suffix-only masked form (D.47, tripwire). When
- * `unmasked`, the DEDICATED `nationalId`/`phone` cleartext fields are ALSO
- * selected (else NULL → dropped by `toOwner`). The single
- * `resolveOwnerPiiFidelity` resolver decides which — every owner read uses this.
- */
-function ownerColsFor(fidelity: OwnerPiiFidelity) {
-  const unmasked = fidelity === 'unmasked';
-  return {
-    id: owners.id,
-    organizationId: owners.orgId,
-    name: NAME_DECRYPTED,
-    email: owners.email,
-    nationalIdMasked: NID_MASK,
-    phoneMasked: PHONE_MASK,
-    nationalIdClear: unmasked ? NID_CLEAR : NULL_TEXT,
-    phoneClear: unmasked ? PHONE_CLEAR : NULL_TEXT,
-    notes: owners.notes,
-    createdAt: owners.createdAt,
-    updatedAt: owners.updatedAt,
-    archivedAt: owners.archivedAt,
-  } as const;
-}
+// Masked owner projection — national_id/phone ALWAYS masked (D.47 tripwire),
+// for every role on every list/detail surface. Cleartext is reachable only via
+// `revealPii`. name decrypted in-SQL (§v8-S3); ciphertext never crosses the wire.
+const ownerCols = {
+  id: owners.id,
+  organizationId: owners.orgId,
+  name: NAME_DECRYPTED,
+  email: owners.email,
+  nationalIdMasked: NID_MASK,
+  phoneMasked: PHONE_MASK,
+  notes: owners.notes,
+  createdAt: owners.createdAt,
+  updatedAt: owners.updatedAt,
+  archivedAt: owners.archivedAt,
+} as const;
 
 interface MaskedRow {
   id: string;
@@ -102,36 +91,12 @@ interface MaskedRow {
   email: string | null;
   nationalIdMasked: string;
   phoneMasked: string | null;
-  // null for masked actors; the full cleartext for unmasked actors (D.54).
-  nationalIdClear: string | null;
-  phoneClear: string | null;
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
   archivedAt: Date | null;
 }
-const toOwner = (r: MaskedRow): Owner => {
-  const o: Owner = {
-    id: r.id,
-    organizationId: r.organizationId,
-    name: r.name,
-    email: r.email,
-    nationalIdMasked: r.nationalIdMasked,
-    phoneMasked: r.phoneMasked,
-    notes: r.notes,
-    createdAt: r.createdAt,
-    updatedAt: r.updatedAt,
-    archivedAt: r.archivedAt,
-  };
-  // `nationalIdClear` is the unmasked sentinel: non-null IFF fidelity=unmasked
-  // (a 9-digit id is never null). Only then attach the cleartext fields; phone
-  // may legitimately be null (unmasked, no phone on file).
-  if (r.nationalIdClear != null) {
-    o.nationalId = r.nationalIdClear;
-    o.phone = r.phoneClear;
-  }
-  return o;
-};
+const toOwner = (r: MaskedRow): Owner => ({ ...r });
 
 /**
  * Owners domain service (Phase 3 Slice 4) — PII-bearing.
@@ -146,10 +111,12 @@ const toOwner = (r: MaskedRow): Owner => {
  * assertOwnerInAssignedProject). Managers/viewers see all org owners.
  *
  * national_id/phone are pgcrypto-encrypted at rest and decrypted ONLY inside
- * SQL. D.54 — the returned fidelity is resolved per actor by the single
- * `resolveOwnerPiiFidelity` resolver: masked suffix (D.47) for viewers + agents
- * without `view_owner_pii`; cleartext for managers + agents with it. Never
- * logged or put in errors/audit (CLAUDE.md / Doc07). Search matches by HMAC.
+ * SQL. EVERY list/detail/search surface returns the MASKED suffix only (D.47,
+ * §v9-M-4 tripwire) — for every role. D.54 — cleartext is REVEAL-ON-DEMAND: the
+ * dedicated, audited `revealPii` (POST /owners/:id/reveal-pii) returns the clear
+ * national_id/phone of ONE owner, gated by `view_owner_pii` (manager always ·
+ * agent per flag · viewer never) + owner-in-assigned-project scope, and writes a
+ * per-access audit row (ISO A.12.4). Never logged elsewhere. Search matches by HMAC.
  */
 @Injectable()
 export class OwnersService {
@@ -249,10 +216,9 @@ export class OwnersService {
     const rows = await withTenant(
       user.orgId,
       async (tx) => {
-        // D.54 — view_owners gate (agent off → 403), agent project-scope, and
-        // the resolved PII fidelity for the projection.
+        // D.54 — view_owners gate (agent off → 403) + agent project-scope. PII
+        // is masked for everyone here; cleartext is reveal-on-demand only.
         await this.assertAgentCanViewOwners(tx, user);
-        const fidelity = await resolveOwnerPiiFidelity(tx, user);
         const scope = this.agentOwnerScope(user);
         const keyset: SQL | undefined = cur
           ? or(
@@ -261,7 +227,7 @@ export class OwnersService {
             )
           : undefined;
         return tx
-          .select(ownerColsFor(fidelity))
+          .select(ownerCols)
           .from(owners)
           .where(and(isNull(owners.archivedAt), scope, keyset))
           .orderBy(desc(owners.createdAt), desc(owners.id))
@@ -283,16 +249,73 @@ export class OwnersService {
       user.orgId,
       async (tx) => {
         // D.54 — view_owners gate, then agent project-scope (404 if the owner is
-        // not in an assigned project — no oracle), then fidelity projection.
+        // not in an assigned project — no oracle). Masked for everyone.
         await this.assertAgentCanViewOwners(tx, user);
         await this.assertOwnerInAssignedProject(tx, user, id);
-        const fidelity = await resolveOwnerPiiFidelity(tx, user);
-        return tx.select(ownerColsFor(fidelity)).from(owners).where(eq(owners.id, id)).limit(1);
+        return tx.select(ownerCols).from(owners).where(eq(owners.id, id)).limit(1);
       },
       { userId: user.sub },
     );
     if (!row) throw NOT_FOUND;
     return toOwner(row);
+  }
+
+  /**
+   * D.54 — reveal-on-demand cleartext PII for ONE owner. The list/detail/export
+   * surfaces stay masked-for-everyone; this is the ONLY path to cleartext
+   * national_id/phone over the wire, and it is gated + audited.
+   *
+   * Gate order (no-oracle): existence 404 (RLS org-scope) → agent project-scope
+   * 404 (owner not in an assigned project is indistinguishable from absent, same
+   * as edit) → `view_owner_pii` 403 (manager always · agent per flag · viewer
+   * never, via `resolveOwnerPiiFidelity === 'unmasked'`). Scope is checked BEFORE
+   * the capability so an out-of-scope owner never becomes a capability oracle.
+   *
+   * Writes a per-access audit row (`owner.pii_revealed`, ISO A.12.4 — WHO
+   * revealed WHICH owner, WHEN) carrying only field NAMES, never the values.
+   */
+  async revealPii(user: AccessTokenPayload, id: string): Promise<OwnerPiiReveal> {
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        const [exists] = await tx
+          .select({ id: owners.id })
+          .from(owners)
+          .where(eq(owners.id, id))
+          .limit(1);
+        if (!exists) throw NOT_FOUND;
+        // Agent: owner must be in an actively-assigned project (404 if not —
+        // before the capability check, so it stays a no-oracle 404).
+        await this.assertOwnerInAssignedProject(tx, user, id);
+        // view_owner_pii gate: manager always unmasked; agent iff the flag;
+        // viewer never. Anything but `unmasked` → 403.
+        const fidelity = await resolveOwnerPiiFidelity(tx, user);
+        if (fidelity !== 'unmasked') throw FORBIDDEN;
+
+        const [row] = await tx
+          .select({ id: owners.id, nationalId: NID_CLEAR, phone: PHONE_CLEAR })
+          .from(owners)
+          .where(eq(owners.id, id))
+          .limit(1);
+        if (!row) throw NOT_FOUND;
+
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'owner.pii_revealed',
+          targetTable: 'owners',
+          targetId: id,
+          // ISO A.12.4 — record WHO revealed WHICH owner + WHICH fields. NEVER
+          // the cleartext values (CLAUDE.md / Doc07).
+          afterState: { revealed: ['national_id', ...(row.phone != null ? ['phone'] : [])] },
+          sessionId: user.sid,
+        });
+
+        return { id: row.id, nationalId: row.nationalId, phone: row.phone };
+      },
+      { userId: user.sub },
+    );
   }
 
   // HMAC lookup (T3.O.1). The clear value arrives in the request BODY and
@@ -310,14 +333,13 @@ export class OwnersService {
     return withTenant(
       user.orgId,
       async (tx) => {
-        // D.54 — view_owners gate + agent project-scope + fidelity. A masked-fidelity
-        // agent can still MATCH by national_id/phone (HMAC), but only owners in
-        // their assigned projects, and the returned PII honours their fidelity.
+        // D.54 — view_owners gate + agent project-scope. An agent can still MATCH
+        // by national_id/phone (HMAC), but only owners in their assigned projects;
+        // results are masked for everyone (reveal-on-demand for cleartext).
         await this.assertAgentCanViewOwners(tx, user);
-        const fidelity = await resolveOwnerPiiFidelity(tx, user);
         const scope = this.agentOwnerScope(user);
         return tx
-          .select(ownerColsFor(fidelity))
+          .select(ownerCols)
           .from(owners)
           .where(and(isNull(owners.archivedAt), or(...conds), scope))
           .orderBy(desc(owners.createdAt), desc(owners.id))
@@ -391,10 +413,9 @@ export class OwnersService {
             },
             sessionId: user.sid,
           });
-          // D.54 — the returned owner reflects the creator's PII fidelity.
-          const fidelity = await resolveOwnerPiiFidelity(tx, user);
+          // Masked-for-everyone (reveal-on-demand for cleartext).
           const [row] = await tx
-            .select(ownerColsFor(fidelity))
+            .select(ownerCols)
             .from(owners)
             .where(eq(owners.id, ins.id))
             .limit(1);
@@ -486,14 +507,8 @@ export class OwnersService {
             afterState: { changed: Object.keys(patch).filter((k) => k !== 'updatedAt') },
             sessionId: user.sid,
           });
-          // D.54 — the returned owner reflects the editor's PII fidelity (was
-          // masked-always pre-D.54; now resolved).
-          const fidelity = await resolveOwnerPiiFidelity(tx, user);
-          const [row] = await tx
-            .select(ownerColsFor(fidelity))
-            .from(owners)
-            .where(eq(owners.id, id))
-            .limit(1);
+          // Masked-for-everyone (reveal-on-demand for cleartext).
+          const [row] = await tx.select(ownerCols).from(owners).where(eq(owners.id, id)).limit(1);
           if (!row) throw NOT_FOUND;
           return toOwner(row);
         },

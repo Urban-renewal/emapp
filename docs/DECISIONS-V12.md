@@ -322,11 +322,21 @@ full tenant access model explicit. It **refines D.46**, **supersedes the
 composed by the tenant Manager. Roles are presets, not rigid bundles.** Two axes,
 both manager-controlled per person:
 
-1. **Read PII fidelity:** `masked` | `unmasked`. Default **masked**
-   (least-privilege). Manager grants `unmasked` per person (field staff who need
-   real `national_id`/`phone`). Applies uniformly — list, detail, edit, **export
-   (D.50)** — via **one resolver** (single source of truth). Granting `unmasked`
-   is audited.
+1. **Read PII fidelity — `masked` | `unmasked`, via reveal-on-demand (refined,
+   #192).** Default **masked** (least-privilege); the `view_owner_pii` capability
+   grants `unmasked` per person (field staff who need real `national_id`/`phone`).
+   **Mechanism (locked to "B" — server-side, not display-masking):** all bulk
+   surfaces — list, detail, **export (D.50)** — are **ALWAYS masked for everyone**;
+   cleartext never crosses the wire in bulk (the `…Masked` field is the
+   §v9-M-4 tripwire). Cleartext is obtained **only** via a dedicated, capability-
+   gated, scope-checked, **per-access-audited** reveal endpoint
+   (`POST /owners/:id/reveal-pii`, `owner.pii_revealed`, ISO A.12.4 — logs
+   who/which owner/which fields, **never the values**), one owner at a time.
+   Gate order (no-oracle): `view_owners` (outer) → existence → scope → `view_owner_pii`.
+   Rejected "A" (cleartext in the bulk list when unmasked): it loses the
+   "schema strips all cleartext" defense and the bulk-list tripwire — reveal-on-
+   demand keeps both and adds per-access audit. **Invariant:** `view_owner_pii`
+   ⇒ `view_owners` (enforced at the capability PATCH).
 2. **Write capability groups (coarse — NOT per-field, for regulatory clarity):**
    `edit_project_data` · `manage_documents` · `manage_signatures` ·
    `manage_tasks` · `run_imports`. Manager grants **any combination** (multi-hat).

@@ -1,9 +1,11 @@
 import {
   CreateMemberInput,
   ListMembersQuery,
+  UpdateAgentCapabilitiesInput,
   UpdateMemberInput,
   type CreateMember,
   type ListMembersQueryDto,
+  type UpdateAgentCapabilities,
   type UpdateMember,
 } from '@emapp/shared-types';
 import {
@@ -63,6 +65,18 @@ export class MembersController {
     @Body(new ZodValidationPipe(UpdateMemberInput)) body: UpdateMember,
   ) {
     return { data: await this.members.updateRole(user, userId, body) };
+  }
+
+  // D.46 — set an agent's capability flags. Manager-only (inherited from the
+  // controller-wide @AuthzResource('members') gate). More-specific path than
+  // PATCH :userId, so it matches first.
+  @Patch(':userId/capabilities')
+  async updateCapabilities(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('userId', UuidParam) userId: string,
+    @Body(new ZodValidationPipe(UpdateAgentCapabilitiesInput)) body: UpdateAgentCapabilities,
+  ) {
+    return { data: await this.members.updateCapabilities(user, userId, body) };
   }
 
   @Delete(':userId')

@@ -265,11 +265,14 @@ export class OwnersService {
    * surfaces stay masked-for-everyone; this is the ONLY path to cleartext
    * national_id/phone over the wire, and it is gated + audited.
    *
-   * Gate order (no-oracle): existence 404 (RLS org-scope) → agent project-scope
-   * 404 (owner not in an assigned project is indistinguishable from absent, same
-   * as edit) → `view_owner_pii` 403 (manager always · agent per flag · viewer
-   * never, via `resolveOwnerPiiFidelity === 'unmasked'`). Scope is checked BEFORE
-   * the capability so an out-of-scope owner never becomes a capability oracle.
+   * Gate order (no-oracle): `view_owners` 403 (an agent who cannot see owners AT
+   * ALL cannot reveal one — the SAME outermost gate as list/get; this also makes
+   * the contradictory `{view_owners:false, view_owner_pii:true}` grant inert) →
+   * existence 404 (RLS org-scope) → agent project-scope 404 (owner not in an
+   * assigned project is indistinguishable from absent, same as edit) →
+   * `view_owner_pii` 403 (manager always · agent per flag · viewer never, via
+   * `resolveOwnerPiiFidelity === 'unmasked'`). Scope is checked BEFORE the pii
+   * capability so an out-of-scope owner never becomes a capability oracle.
    *
    * Writes a per-access audit row (`owner.pii_revealed`, ISO A.12.4 — WHO
    * revealed WHICH owner, WHEN) carrying only field NAMES, never the values.
@@ -278,6 +281,9 @@ export class OwnersService {
     return withTenant(
       user.orgId,
       async (tx) => {
+        // view_owners gate FIRST (outermost) — an agent without it sees no
+        // owners anywhere, so it cannot reveal one. Manager/viewer pass.
+        await this.assertAgentCanViewOwners(tx, user);
         const [exists] = await tx
           .select({ id: owners.id })
           .from(owners)
@@ -285,7 +291,7 @@ export class OwnersService {
           .limit(1);
         if (!exists) throw NOT_FOUND;
         // Agent: owner must be in an actively-assigned project (404 if not —
-        // before the capability check, so it stays a no-oracle 404).
+        // before the pii capability check, so it stays a no-oracle 404).
         await this.assertOwnerInAssignedProject(tx, user, id);
         // view_owner_pii gate: manager always unmasked; agent iff the flag;
         // viewer never. Anything but `unmasked` → 403.

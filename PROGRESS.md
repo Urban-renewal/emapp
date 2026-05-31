@@ -299,7 +299,7 @@ masked|unmasked`: manager→unmasked, agent→per-flag, viewer/other→masked. U
   - **Reverted:** the `OwnerSchema` cleartext fields + the per-call fidelity
     projection in owners/ownerships/export. `OwnerSchema` is masked-only again;
     `owners.service` uses the static masked `ownerCols`; `ownerships.listApartment
-    Owners` + `export-composer` mask for everyone. `owners.contract` OWN2/5/6/9 +
+Owners` + `export-composer` mask for everyone. `owners.contract` OWN2/5/6/9 +
     `export.s10` #1 reverted to the masked assertions they always had.
   - **KEPT:** the `view_owners` gate (agent sees owners at all, project-scoped) on
     `/owners` list/get/search AND `/apartments/:id/owners` AND export (no-view_owners
@@ -322,11 +322,17 @@ masked|unmasked`: manager→unmasked, agent→per-flag, viewer/other→masked. U
     masked-for-all. `export.s10` #1/2c/2d/2e all masked (2e no-view_owners→zero rows).
     owners-capability / owners-audit-pii / owners-adversarial / export.service /
     pdf-export / agent-capabilities / policy all green. lint+typecheck green.
-  - **Gate-6 STOP:** migration 0042 (kept) + the new reveal endpoint → second commit
-    on the same PR #192 WITHOUT auto-merge; awaiting owner `Gate-6-Approved` + merge.
-    No `policy.ts` change (reveal uses the existing owners `read` cell). Follow-ups
-    (a)+(b) unchanged; (c) replaced by: D2 FE wires a "reveal PII" action calling the
-    new endpoint (per-owner, on click).
+  - **Review (BLOCK→fixed at root):** both reviewers caught that `revealPii` gated
+    on `view_owner_pii` + scope but NOT `view_owners` — a contradictory
+    `{view_owners:false, view_owner_pii:true}` agent could reveal cleartext while
+    denied on every masked surface. FIXED: `assertAgentCanViewOwners` is now the
+    outermost gate in `revealPii` (mirrors `get`), + new RV-7 pins it (that exact
+    cell → 403). Stale `ownerships-fidelity` docblock corrected. Re-review pending.
+  - **Gate-6 STOP:** migration 0042 (kept) + the new reveal endpoint → on PR #192
+    WITHOUT auto-merge; awaiting owner `Gate-6-Approved` + merge. No `policy.ts`
+    change (reveal uses the existing owners `read` cell). Follow-ups (a)+(b)
+    unchanged; (c) replaced by: D2 FE wires a "reveal PII" action calling the new
+    endpoint (per-owner, on click).
 
 - **Track D — slice (D.46 manage_tasks, autonomous run, Gate-6: policy.ts).**
   FULL task management for agents, project-scoped (owner directive).

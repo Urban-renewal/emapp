@@ -237,6 +237,15 @@ describe('D.54 — reveal-on-demand (POST /owners/:id/reveal-pii)', () => {
     );
   });
 
+  it('RV-7) agent with the contradictory {view_owners:false, view_owner_pii:true} → 403', async () => {
+    // An agent who cannot see owners AT ALL must not reveal one, even with the
+    // pii flag set (view_owners is the outermost gate). Closes the reveal bypass.
+    await setCaps(false, true);
+    await expect(svc.revealPii(tok('agent'), ownerAssigned)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
   it('RV-6) a successful reveal writes a per-access audit row, WITHOUT cleartext', async () => {
     await svc.revealPii(tok('manager'), ownerAssigned);
     const [row] = await db

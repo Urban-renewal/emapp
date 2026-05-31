@@ -5,10 +5,9 @@
  *
  * - agent assigned to the apartment's project but WITHOUT view_owners → 403
  *   (sees the apartment, but NO owners).
- * - agent WITH view_owners, NOT view_owner_pii → masked, no cleartext field.
- * - agent WITH view_owners + view_owner_pii → cleartext in the dedicated fields,
- *   `nationalIdMasked` STAYS masked.
- * - manager → cleartext; viewer → masked. (Deterministic real-DB.)
+ * - agent WITH view_owners → MASKED (even with view_owner_pii — the apartment-
+ *   owners list is masked-for-everyone; cleartext is reveal-on-demand only).
+ * - manager + viewer → MASKED. (Deterministic real-DB.)
  */
 import { randomUUID } from 'node:crypto';
 

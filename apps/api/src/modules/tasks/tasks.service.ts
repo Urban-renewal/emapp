@@ -1,6 +1,9 @@
 import {
+  apartments,
   AuditService,
+  buildings,
   memberships,
+  projectAssignments,
   taskAssignees,
   tasks,
   withTenant,
@@ -10,13 +13,13 @@ import type { AssignTask, CreateTask, Task, TaskAssignee, UpdateTask } from '@em
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 
+import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CalendarEmailService } from '../calendar-email/calendar-email.service';
@@ -27,7 +30,6 @@ export interface TaskListPage {
 }
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
-const FORBIDDEN = new ForbiddenException({ error: { code: 'forbidden' } });
 
 function toTask(r: typeof tasks.$inferSelect): Task {
   return {
@@ -78,8 +80,54 @@ export class TasksService {
   // email path NEVER fails a task write.
   constructor(private readonly calendarEmail: CalendarEmailService) {}
 
-  private requireManager(user: AccessTokenPayload): void {
-    if (user.role !== 'manager') throw FORBIDDEN;
+  /**
+   * D.46 — manage_tasks agent scope. A task is editable by an agent only if its
+   * project (or its apartment's building's project) is an active assignment.
+   * Org-level tasks (no project/apartment) → 404 (agent can't manage). No-op for
+   * non-agents. Used by ALL task write methods after the org-existence load and
+   * before requireAgentCapability('manage_tasks'). NOTE: READ scoping (list/get)
+   * stays assignee-based (taskAssignees) — a separate concern from write.
+   */
+  private async assertTaskVisibleForAgent(
+    tx: TenantTx,
+    user: AccessTokenPayload,
+    scope: { projectId: string | null; apartmentId: string | null },
+  ): Promise<void> {
+    if (user.role !== 'agent') return;
+    if (scope.projectId) {
+      const [r] = await tx
+        .select({ x: sql`1` })
+        .from(projectAssignments)
+        .where(
+          and(
+            eq(projectAssignments.projectId, scope.projectId),
+            eq(projectAssignments.userId, user.sub),
+            isNull(projectAssignments.unassignedAt),
+          ),
+        )
+        .limit(1);
+      if (!r) throw NOT_FOUND;
+      return;
+    }
+    if (scope.apartmentId) {
+      const [r] = await tx
+        .select({ x: sql`1` })
+        .from(apartments)
+        .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
+        .innerJoin(
+          projectAssignments,
+          and(
+            eq(projectAssignments.projectId, buildings.projectId),
+            eq(projectAssignments.userId, user.sub),
+            isNull(projectAssignments.unassignedAt),
+          ),
+        )
+        .where(eq(apartments.id, scope.apartmentId))
+        .limit(1);
+      if (!r) throw NOT_FOUND;
+      return;
+    }
+    throw NOT_FOUND; // org-level task — not agent-manageable
   }
 
   /**
@@ -198,10 +246,16 @@ export class TasksService {
   }
 
   async create(user: AccessTokenPayload, input: CreateTask): Promise<Task> {
-    this.requireManager(user);
     const created = await withTenant(
       user.orgId,
       async (tx) => {
+        // D.46 — agent: the new task must be scoped to a visible project/
+        // apartment (org-level task create → 404), then manage_tasks (403).
+        await this.assertTaskVisibleForAgent(tx, user, {
+          projectId: input.projectId ?? null,
+          apartmentId: input.apartmentId ?? null,
+        });
+        await requireAgentCapability(tx, user, 'manage_tasks');
         const [row] = await tx
           .insert(tasks)
           .values({
@@ -261,17 +315,14 @@ export class TasksService {
     const { updated, hadScheduledBefore } = await withTenant(
       user.orgId,
       async (tx) => {
-        const before = await this.loadVisible(tx, user, id); // 404/scope first
+        const [before] = await tx.select().from(tasks).where(eq(tasks.id, id)).limit(1);
+        if (!before) throw NOT_FOUND;
+        // D.46 — agent: the task's project must be an active assignment (404),
+        // then manage_tasks (403). With the capability an agent has FULL task
+        // management (no status/description-only restriction). Manager passes.
+        await this.assertTaskVisibleForAgent(tx, user, before);
+        await requireAgentCapability(tx, user, 'manage_tasks');
         const hadScheduledBeforeLocal = before.scheduledAt !== null;
-
-        // Agents may only touch status/description on their assigned tasks.
-        if (user.role !== 'manager') {
-          const touched = Object.keys(input);
-          const allowed = new Set(['status', 'description']);
-          if (user.role === 'viewer' || touched.some((k) => !allowed.has(k))) {
-            throw FORBIDDEN;
-          }
-        }
 
         const patch: Partial<typeof tasks.$inferInsert> = { updatedAt: new Date() };
         if (input.title !== undefined) patch.title = input.title;
@@ -330,7 +381,6 @@ export class TasksService {
   }
 
   async archive(user: AccessTokenPayload, id: string): Promise<void> {
-    this.requireManager(user);
     const cancelInfo = await withTenant(
       user.orgId,
       async (tx) => {
@@ -339,11 +389,16 @@ export class TasksService {
             id: tasks.id,
             archivedAt: tasks.archivedAt,
             scheduledAt: tasks.scheduledAt,
+            projectId: tasks.projectId,
+            apartmentId: tasks.apartmentId,
           })
           .from(tasks)
           .where(eq(tasks.id, id))
           .limit(1);
         if (!before) throw NOT_FOUND;
+        // D.46 — agent: project assignment (404) + manage_tasks (403) first.
+        await this.assertTaskVisibleForAgent(tx, user, before);
+        await requireAgentCapability(tx, user, 'manage_tasks');
         if (before.archivedAt) return { shouldCancel: false };
         await tx
           .update(tasks)
@@ -396,12 +451,19 @@ export class TasksService {
     taskId: string,
     input: AssignTask,
   ): Promise<TaskAssignee> {
-    this.requireManager(user);
     try {
       return await withTenant(
         user.orgId,
         async (tx) => {
-          await this.loadVisible(tx, user, taskId);
+          // D.46 — agent: project assignment (404) + manage_tasks (403).
+          const [task] = await tx
+            .select({ projectId: tasks.projectId, apartmentId: tasks.apartmentId })
+            .from(tasks)
+            .where(eq(tasks.id, taskId))
+            .limit(1);
+          if (!task) throw NOT_FOUND;
+          await this.assertTaskVisibleForAgent(tx, user, task);
+          await requireAgentCapability(tx, user, 'manage_tasks');
           await this.assertMember(tx, user.orgId, input.userId);
           const [row] = await tx
             .insert(taskAssignees)
@@ -434,11 +496,18 @@ export class TasksService {
   }
 
   async removeAssignee(user: AccessTokenPayload, taskId: string, userId: string): Promise<void> {
-    this.requireManager(user);
     await withTenant(
       user.orgId,
       async (tx) => {
-        await this.loadVisible(tx, user, taskId);
+        // D.46 — agent: project assignment (404) + manage_tasks (403).
+        const [task] = await tx
+          .select({ projectId: tasks.projectId, apartmentId: tasks.apartmentId })
+          .from(tasks)
+          .where(eq(tasks.id, taskId))
+          .limit(1);
+        if (!task) throw NOT_FOUND;
+        await this.assertTaskVisibleForAgent(tx, user, task);
+        await requireAgentCapability(tx, user, 'manage_tasks');
         const deleted = await tx
           .delete(taskAssignees)
           .where(and(eq(taskAssignees.taskId, taskId), eq(taskAssignees.userId, userId)))

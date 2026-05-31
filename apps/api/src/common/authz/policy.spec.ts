@@ -81,11 +81,13 @@ const EXPECTED: Record<Resource, Record<Action, Role[]>> = {
     update: ['manager'],
     delete: ['manager'],
   },
+  // D.46 — task writes opened to agent (manage_tasks + project-scoping; full
+  // management, enforced in the service). update was already MA.
   tasks: {
     read: ['manager', 'agent', 'viewer'],
-    create: ['manager'],
+    create: ['manager', 'agent'],
     update: ['manager', 'agent'],
-    delete: ['manager'],
+    delete: ['manager', 'agent'],
   },
   notifications: {
     read: ['manager', 'agent', 'viewer'],

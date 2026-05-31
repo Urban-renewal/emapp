@@ -220,6 +220,28 @@
     api 65 files passed (phase5 signature tests unaffected).
   - Gate-6 (policy.ts) — auto-merge armed on owner standing authorization.
 
+- **Track D — slice (D.46 manage_tasks, autonomous run, Gate-6: policy.ts).**
+  FULL task management for agents, project-scoped (owner directive).
+  - POLICY: tasks create/update/delete MGR→MA (update was already MA). pin updated.
+  - ALL 5 task write methods (create / update / archive / addAssignee /
+    removeAssignee) gate requireAgentCapability('manage_tasks') AFTER the new
+    assertTaskVisibleForAgent (the task's project — or apartment→project — must be
+    an active assignment; org-level task → agent 404). Order: load 404 →
+    project-scope 404 → capability 403.
+  - **Behavior change (flagged):** the prior agent `tasks.update` was
+    ASSIGNMENT-based (taskAssignees) + status/description-ONLY. Under D.46 it is
+    REPLACED by PROJECT-scoped + manage_tasks + FULL-field management (owner:
+    "ניהול מלא"). Consequence: a task-assignee who is NOT project-assigned / lacks
+    manage_tasks can no longer update — agents now manage tasks via the
+    capability + project assignment. READ (list/get) stays assignee-based.
+  - No CI test breakage: the only tasks spec (tasks.contract.spec) is a live-server
+    suite that SKIPS in CI; no deterministic test asserted the old behavior.
+  - Evidence: tasks-capability.spec (10) — create/update/archive/add/removeAssignee
+    agent w/o cap→403; manager toggle→allowed; FULL-field update (title) proven;
+    org-level/unassigned→404; manager no-op. lint/typecheck green; full api 65/66
+    files passed (1 = known imports.s8 A7 flake, green in isolation, untouched module).
+  - Gate-6 (policy.ts) — auto-merge armed on owner standing authorization.
+
 ### 2026-05-30 · Track B · BE Specialist
 
 # Track B heartbeat — 2026-05-30

@@ -70,9 +70,14 @@ export const POLICY: Matrix = {
   ownerships: { read: ALL, create: MGR, update: MGR, delete: MGR },
   contractors: { read: ALL, create: MGR, update: MGR, delete: MGR },
   shares: { read: ALL, create: MGR, update: MGR, delete: MGR },
-  // tasks.update: manager OR an assigned agent (the "assigned" half is
-  // enforced per-record in the service).
-  tasks: { read: ALL, create: MGR, update: MA, delete: MGR },
+  // D.46 — task WRITE (create / update / archive / add+remove assignee) opened
+  // to agents; fine gate = requireAgentCapability('manage_tasks') AFTER the
+  // task's PROJECT scoping (assertTaskVisibleForAgent — project, or apartment→
+  // project; org-level task → agent 404). FULL management (the prior agent
+  // status/description-only restriction is removed under the capability). READ
+  // (list/get) stays assignee-based. GUARDRAIL: every task write method MUST
+  // call requireAgentCapability + assertTaskVisibleForAgent.
+  tasks: { read: ALL, create: MA, update: MA, delete: MA },
   // notifications are self-scoped by RLS — any role, only their own.
   notifications: { read: ALL, create: MGR, update: ALL, delete: MGR },
   // notes: manager/agent may author; manager-or-author may edit/delete

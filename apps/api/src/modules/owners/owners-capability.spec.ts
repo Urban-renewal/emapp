@@ -115,9 +115,22 @@ async function seedApartment(buildingId: string): Promise<string> {
   try {
     const r = await c.query<{ id: string }>(
       `INSERT INTO apartments (building_id, number) VALUES ($1, $2) RETURNING id`,
-      [buildingId, String(Math.floor(Number(String(Date.now()).slice(-6))))],
+      [buildingId, randomUUID().slice(0, 8)],
     );
     return r.rows[0]!.id;
+  } finally {
+    c.release();
+  }
+}
+
+/** Soft-end every active ownership for an owner (D.25 set-replace shape). */
+async function endOwnerships(ownerId: string): Promise<void> {
+  const c = await providerPool.connect();
+  try {
+    await c.query(
+      `UPDATE ownerships SET ended_at = now() WHERE owner_id = $1 AND ended_at IS NULL`,
+      [ownerId],
+    );
   } finally {
     c.release();
   }
@@ -238,6 +251,16 @@ describe('D.46 — owner edit project-scoping (agents)', () => {
     } finally {
       await setCapability(true);
     }
+  }, 30_000);
+
+  it('D46-OWN-8) owner whose ONLY assigned-project ownership is ENDED → 404 (active-only scope)', async () => {
+    // Soft-ended ownerships (D.25 set-replace) must NOT grant edit — a
+    // historical link to an assigned project is not current access.
+    const apt = await seedApartment(await seedBuilding(assignedProjectId));
+    const o = await seedOwner(org.id, '666666668');
+    await seedOwnership(apt, o);
+    await endOwnerships(o); // the only link to the assigned project is now ended
+    await expect(svc.update(agent(), o, { notes: 'x' })).rejects.toBeInstanceOf(NotFoundException);
   }, 30_000);
 
   it('D46-OWN-7) manager edits ANY owner (unassigned + bare) — no project scoping', async () => {

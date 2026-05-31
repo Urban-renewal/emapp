@@ -122,7 +122,13 @@ export class OwnersService {
     const [hit] = await tx
       .select({ x: sql`1` })
       .from(owners)
-      .innerJoin(ownerships, eq(ownerships.ownerId, owners.id))
+      // ACTIVE ownership only — the D.25 set-replace SOFT-ends rows
+      // (ended_at = now), it does not delete. Without this filter a
+      // HISTORICAL link to an assigned project (e.g. an ownership later
+      // transferred away) would grant edit indefinitely. `ended_at IS NULL`
+      // is the universal "active ownership" predicate (matches every other
+      // ownerships read + the partial indexes).
+      .innerJoin(ownerships, and(eq(ownerships.ownerId, owners.id), isNull(ownerships.endedAt)))
       .innerJoin(apartments, eq(apartments.id, ownerships.apartmentId))
       .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
       .innerJoin(

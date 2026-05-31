@@ -303,9 +303,10 @@ export class ImportsService {
         }
 
         // Agent visibility: only imports whose projectId is an active
-        // assignment. Mirrors the documents.list agent-scope but
-        // imports always have a non-null projectId (NOT NULL in migration
-        // 0022), so the EXISTS is simpler — no apartment-chain branch.
+        // assignment. Mirrors the documents.list agent-scope; `project_id` is
+        // NULLABLE in the schema, so a null-project job simply fails the EXISTS
+        // (no apartment-chain branch) → invisible to agents, which is the safe
+        // default (also enforced on the write paths via the explicit null-guard).
         if (user.role === 'agent') {
           const viaAssignment = sql<boolean>`EXISTS (
             SELECT 1 FROM project_assignments pa

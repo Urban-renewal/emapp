@@ -100,7 +100,8 @@ export const POLICY: Matrix = {
   // Imports (Phase 6, docs/03 §10): any org role may read job status/stream.
   // D.46 — WRITE (create / start / cancel / mapping) opened to agents; fine
   // gate = requireAgentCapability('run_imports') AFTER assertProjectVisible on
-  // the job's projectId (NOT NULL). create=POST, start+mapping=update (@AuthzAction),
+  // the job's projectId (NULLABLE — agent + null-project job = no-oracle 404).
+  // create=POST, start+mapping=update (@AuthzAction),
   // cancel=delete. GUARDRAIL: all four import write methods MUST call
   // requireAgentCapability + the project-scope check. (The creator-only check
   // on start/cancel/mapping further scopes agents to their own jobs.)

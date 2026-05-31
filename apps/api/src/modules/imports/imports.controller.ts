@@ -12,9 +12,9 @@
  *
  * Defense-in-depth (same chain as documents/signature_requests):
  *   AuthGuard → TenantGuard → AuthorizationGuard (verb→action, policy
- *   `imports`) → service `requireManager` → withTenant (RLS FORCE
- *   org-isolation) → service business-rule guards (state-machine
- *   gates).
+ *   `imports` = manager+agent, D.46) → withTenant (RLS FORCE org-isolation)
+ *   → service: assertProjectVisible + requireAgentCapability('run_imports')
+ *   (manager no-op) → business-rule guards (creator-only + state-machine).
  */
 import {
   CreateImportInput,

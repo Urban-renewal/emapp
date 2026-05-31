@@ -317,11 +317,24 @@ export class TasksService {
       async (tx) => {
         const [before] = await tx.select().from(tasks).where(eq(tasks.id, id)).limit(1);
         if (!before) throw NOT_FOUND;
-        // D.46 — agent: the task's project must be an active assignment (404),
-        // then manage_tasks (403). With the capability an agent has FULL task
-        // management (no status/description-only restriction). Manager passes.
+        // D.46 — agent: the task's CURRENT project must be an active assignment
+        // (404), then manage_tasks (403). With the capability an agent has FULL
+        // task management (no status/description-only restriction). Manager passes.
         await this.assertTaskVisibleForAgent(tx, user, before);
         await requireAgentCapability(tx, user, 'manage_tasks');
+        // D.46 — DESTINATION scope: if an agent re-targets project/apartment, the
+        // NEW scope must ALSO be an active assignment — otherwise the agent could
+        // move a task into a project they don't control, or demote it to org-level
+        // (which agents cannot manage). Validate the effective post-patch scope.
+        if (
+          user.role === 'agent' &&
+          (input.projectId !== undefined || input.apartmentId !== undefined)
+        ) {
+          await this.assertTaskVisibleForAgent(tx, user, {
+            projectId: input.projectId !== undefined ? input.projectId : before.projectId,
+            apartmentId: input.apartmentId !== undefined ? input.apartmentId : before.apartmentId,
+          });
+        }
         const hadScheduledBeforeLocal = before.scheduledAt !== null;
 
         const patch: Partial<typeof tasks.$inferInsert> = { updatedAt: new Date() };
@@ -331,8 +344,9 @@ export class TasksService {
         if (input.priority !== undefined) patch.priority = input.priority;
         if (input.dueAt !== undefined) patch.dueAt = input.dueAt;
         if (input.durationMinutes !== undefined) patch.durationMinutes = input.durationMinutes;
-        // V11 B.S5 F3 — D.38 calendar fields editable on PATCH (manager only,
-        // per the role guard above — agents can only touch status/description).
+        // V11 B.S5 F3 — D.38 calendar fields editable on PATCH. D.46: a manager
+        // OR an agent with manage_tasks (gated above) edits ALL fields — full
+        // management, no status/description-only restriction.
         if (input.scheduledAt !== undefined) patch.scheduledAt = input.scheduledAt;
         if (input.location !== undefined) patch.location = input.location;
         if (input.projectId !== undefined) patch.projectId = input.projectId;

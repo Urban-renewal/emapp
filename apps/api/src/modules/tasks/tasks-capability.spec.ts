@@ -170,4 +170,28 @@ describe('D.46 — manage_tasks agent enforcement', () => {
     const upd = await svc.update(manager(), id, { title: 'mgr' });
     expect(upd.title).toBe('mgr');
   });
+
+  it('TASK-11) update: agent CANNOT move a task into an UNASSIGNED project (destination scope) → 404', async () => {
+    // Escalation guard: an agent controls a task in their assigned project but
+    // must NOT be able to re-target it to a project they do not control.
+    await setCap(true);
+    const id = await seedTask(assignedProjectId);
+    await expect(
+      svc.update(agent(), id, { projectId: unassignedProjectId }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  }, 30_000);
+
+  it('TASK-12) update: agent CANNOT demote a task to org-level (projectId=null) → 404', async () => {
+    await setCap(true);
+    const id = await seedTask(assignedProjectId);
+    await expect(svc.update(agent(), id, { projectId: null })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  }, 30_000);
+
+  it('TASK-13) manager CAN re-target a task to any project (no agent scope)', async () => {
+    const id = await seedTask(assignedProjectId);
+    const upd = await svc.update(manager(), id, { projectId: unassignedProjectId });
+    expect(upd.projectId).toBe(unassignedProjectId);
+  });
 });

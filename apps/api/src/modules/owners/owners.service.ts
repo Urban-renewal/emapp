@@ -1,12 +1,17 @@
 import {
   AuditService,
+  apartments,
+  buildings,
   encryptField,
   encryptOwnerName,
   encryptOwnerPii,
   env as dbEnv,
   hashField,
   owners,
+  ownerships,
+  projectAssignments,
   withTenant,
+  type TenantTx,
 } from '@emapp/db';
 import type { Owner } from '@emapp/shared-types';
 import { normalizeIsraeliPhone } from '@emapp/validators';
@@ -20,6 +25,7 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 
+import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
@@ -95,6 +101,41 @@ const toOwner = (r: MaskedRow): Owner => ({ ...r });
 export class OwnersService {
   private requireManager(user: AccessTokenPayload): void {
     if (user.role !== 'manager') throw FORBIDDEN;
+  }
+
+  /**
+   * D.46 — owner EDIT project-scoping for agents. An agent may edit an owner
+   * ONLY if that owner holds an ownership in an apartment whose building's
+   * project is one the agent is actively assigned to
+   * (owner→ownerships→apartments→buildings→project ∈ project_assignments).
+   * No such path → 404 (no oracle — indistinguishable from a non-existent
+   * owner; never leaks that the owner exists in another project/org).
+   * Managers/viewers are unaffected (the caller already established
+   * org-existence via RLS); this is the agent-only fine scope.
+   */
+  private async assertOwnerInAssignedProject(
+    tx: TenantTx,
+    user: AccessTokenPayload,
+    ownerId: string,
+  ): Promise<void> {
+    if (user.role !== 'agent') return;
+    const [hit] = await tx
+      .select({ x: sql`1` })
+      .from(owners)
+      .innerJoin(ownerships, eq(ownerships.ownerId, owners.id))
+      .innerJoin(apartments, eq(apartments.id, ownerships.apartmentId))
+      .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
+      .innerJoin(
+        projectAssignments,
+        and(
+          eq(projectAssignments.projectId, buildings.projectId),
+          eq(projectAssignments.userId, user.sub),
+          isNull(projectAssignments.unassignedAt),
+        ),
+      )
+      .where(eq(owners.id, ownerId))
+      .limit(1);
+    if (!hit) throw NOT_FOUND;
   }
 
   async list(
@@ -256,7 +297,6 @@ export class OwnersService {
   }
 
   async update(user: AccessTokenPayload, id: string, input: UpdateOwner): Promise<Owner> {
-    this.requireManager(user);
     try {
       return await withTenant(
         user.orgId,
@@ -269,6 +309,11 @@ export class OwnersService {
             .where(eq(owners.id, id))
             .limit(1);
           if (!before) throw NOT_FOUND;
+          // D.46 — agent: owner must be in an assigned project (404 if not,
+          // before the capability check so it stays a no-oracle 404), then
+          // the edit_project_data capability (403). Manager passes both.
+          await this.assertOwnerInAssignedProject(tx, user, id);
+          await requireAgentCapability(tx, user, 'edit_project_data');
 
           const patch: Record<string, unknown> = { updatedAt: new Date() };
           if (input.name !== undefined) {
@@ -336,7 +381,6 @@ export class OwnersService {
   }
 
   async archive(user: AccessTokenPayload, id: string): Promise<void> {
-    this.requireManager(user);
     await withTenant(
       user.orgId,
       async (tx) => {
@@ -346,6 +390,8 @@ export class OwnersService {
           .where(eq(owners.id, id))
           .limit(1);
         if (!before) throw NOT_FOUND;
+        await this.assertOwnerInAssignedProject(tx, user, id);
+        await requireAgentCapability(tx, user, 'edit_project_data');
         if (before.archivedAt) return;
         await tx
           .update(owners)

@@ -58,7 +58,14 @@ export const POLICY: Matrix = {
   // (owners stays manager-only until the owners-scoping follow-up.)
   buildings: { read: ALL, create: MA, update: MA, delete: MA },
   apartments: { read: ALL, create: MA, update: MA, delete: MA },
-  owners: { read: ALL, create: MGR, update: MGR, delete: MGR },
+  // D.46 — owner EDIT (update/archive) opened to agents; the fine gate is
+  // requireAgentCapability('edit_project_data') + PROJECT-scoping via the
+  // ownership join (owner→ownerships→apartments→buildings→project ∈
+  // assignments) in owners.service. CREATE stays manager-only: a bare new
+  // owner is org-level with no ownership yet, so there is no project to
+  // scope it to. GUARDRAIL: owners.update + owners.archive MUST call
+  // requireAgentCapability + the owner project-scoping check.
+  owners: { read: ALL, create: MGR, update: MA, delete: MA },
   // ownerships writes are an atomic PUT set-replace (D.25) → "update".
   ownerships: { read: ALL, create: MGR, update: MGR, delete: MGR },
   contractors: { read: ALL, create: MGR, update: MGR, delete: MGR },

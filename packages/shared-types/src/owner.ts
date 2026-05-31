@@ -30,16 +30,41 @@ const MaskedPii = z
   .regex(/^[•*\-\s\d]+$/, 'must use only mask characters [•*\\-\\s\\d]')
   .regex(/[•*]/, 'must contain at least one mask character (bullet or asterisk)');
 
-/** Owner resource as returned by the API — PII is masked, never clear. */
+/**
+ * Owner resource as returned by the API.
+ *
+ * PII fidelity is per-actor (D.54 — supersedes the old "org-staff always
+ * masked" rule of D.19/D.46). The `…Masked` fields are ALWAYS masked — they
+ * keep the §v9-M-4 tripwire (a server bug that leaked cleartext into them is
+ * still rejected at parse time). When the actor's resolved fidelity is
+ * `unmasked` (manager, or agent with `view_owner_pii`), the server ADDITIONALLY
+ * populates the cleartext `nationalId`/`phone` fields; for masked actors those
+ * are absent. The clear value therefore only ever travels in its own dedicated,
+ * non-tripwired field — never overloaded into the masked one. A single server
+ * resolver (`resolveOwnerPiiFidelity`) is the only thing that decides this.
+ */
 export const OwnerSchema = z.object({
   id: z.string().uuid(),
   organizationId: z.string().uuid(),
   name: z.string().min(1).max(100),
   email: z.string().email().nullable(),
-  /** e.g. "•••••••82" — 7 bullets + last 2 digits. */
+  /** e.g. "•••••••82" — 7 bullets + last 2 digits. ALWAYS masked (tripwire). */
   nationalIdMasked: MaskedPii,
-  /** e.g. "•••••1234" suffix, or null when no phone on file. */
+  /** e.g. "•••••1234" suffix, or null when no phone on file. ALWAYS masked. */
   phoneMasked: MaskedPii.nullable(),
+  /**
+   * D.54 — CLEARTEXT national_id (exactly 9 digits). Present ONLY when the
+   * actor's resolved fidelity is `unmasked`; absent (undefined) when masked.
+   */
+  nationalId: z
+    .string()
+    .regex(/^\d{9}$/)
+    .optional(),
+  /**
+   * D.54 — CLEARTEXT phone. Present ONLY when unmasked (null when unmasked but
+   * no phone on file); absent (undefined) when the actor is masked.
+   */
+  phone: z.string().min(1).max(20).nullable().optional(),
   notes: z.string().max(2000).nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),

@@ -268,5 +268,5 @@ describe('D.46 — owner edit project-scoping (agents)', () => {
     expect(r1.id).toBe(ownerUnassigned);
     const r2 = await svc.update(manager(), ownerBare, { notes: 'mgr' });
     expect(r2.id).toBe(ownerBare);
-  });
+  }, 30_000); // two sequential real-DB updates — Neon latency under parallel load
 });

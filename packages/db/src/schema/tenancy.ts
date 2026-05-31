@@ -94,6 +94,7 @@ export const memberships = pgTable(
         manage_tasks: boolean;
         run_imports: boolean;
         view_owners: boolean;
+        view_owner_pii: boolean;
       }>()
       .notNull()
       .default({
@@ -103,6 +104,8 @@ export const memberships = pgTable(
         manage_tasks: false,
         run_imports: false,
         view_owners: true,
+        // D.54 — read PII fidelity; masked by default (least-privilege).
+        view_owner_pii: false,
       }),
     isPrimary: boolean('is_primary').notNull().default(false),
     invitedBy: uuid('invited_by').references(() => users.id),

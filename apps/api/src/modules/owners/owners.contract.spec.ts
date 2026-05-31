@@ -2,9 +2,14 @@
  * Phase 3 Slice 4 — Owners CONTRACT conformance suite (BLACK-BOX).
  *
  * Spec-derived (docs/03 §7 T3.O.1, docs/09 §3.13 Owner, D.16, D.17,
- * D.19 national_id, Doc07 PII rules, CLAUDE.md). The HARD PII invariant:
- * the API NEVER returns/echoes clear national_id or phone — only a masked
- * suffix. Skips if API unreachable; CI `conformance` runs it for real.
+ * D.19 national_id, Doc07 PII rules, CLAUDE.md, DECISIONS-V12 D.54). PII
+ * invariant (D.54): the `nationalIdMasked`/`phoneMasked` fields are ALWAYS
+ * masked (the §v9-M-4 tripwire). Cleartext is returned ONLY in the dedicated
+ * `nationalId`/`phone` fields and ONLY to an `unmasked` actor — a manager, or an
+ * agent with `view_owner_pii` (D.54 supersedes D.19/D.46 "org-staff always
+ * masked"). These contract checks run as a manager (= unmasked); masked-fidelity
+ * actors are pinned by the deterministic `owners-fidelity.spec`. Skips if API
+ * unreachable; CI `conformance` runs it for real.
  *
  *  OWN1  Unauthenticated → 401.
  *  OWN2  Manager create (valid 9-digit+checksum id) → 2xx {data:{Owner}};
@@ -118,14 +123,19 @@ async function createOwner(at: string, body: Json): Promise<Res> {
   });
 }
 
-// The core PII invariant: no clear national_id (the exact 9 digits) and no
-// clear phone digits may appear anywhere in a response payload.
-function assertNoClearPii(raw: string, nationalId: string, phoneLocal?: string): void {
-  expect(raw.includes(nationalId), 'CLEAR national_id leaked in response').toBe(false);
-  if (phoneLocal) {
-    const digits = phoneLocal.replace(/\D/g, '');
-    expect(raw.includes(digits), 'CLEAR phone leaked in response').toBe(false);
-  }
+// D.54 — for an `unmasked` actor (these contract checks run as a manager) the
+// cleartext national_id lives ONLY in the dedicated `nationalId` field, while
+// `nationalIdMasked` STAYS masked (never overloaded — the §v9-M-4 tripwire). The
+// pre-D.54 "no clear PII anywhere, for anyone" rule is superseded for unmasked
+// actors (DECISIONS-V12 D.54 supersedes D.19/D.46 "org-staff always masked");
+// masked-fidelity actors are pinned by the deterministic owners-fidelity.spec.
+function assertUnmaskedOwner(o: Json, nationalId: string): void {
+  expect(String(o['nationalIdMasked']), 'masked field must stay masked').toMatch(/^•+\d{2}$/);
+  expect(
+    String(o['nationalIdMasked']),
+    'full id must not appear in the masked field',
+  ).not.toContain(nationalId);
+  expect(o['nationalId'], 'unmasked actor should receive cleartext national_id').toBe(nationalId);
 }
 
 beforeAll(async () => {
@@ -160,24 +170,26 @@ describe('CONTRACT · owners · auth', () => {
 });
 
 describe('CONTRACT · owners · CRUD + PII masking', () => {
-  ct('OWN2 create → masked Owner; clear PII never echoed', async () => {
-    const at = await manager('c');
-    const nid = nextId();
-    const r = await createOwner(at, {
-      name: 'דנה כהן',
-      national_id: nid,
-      phone: '0501234567',
-      email: 'dana@example.com',
-    });
-    expect(r.status, r.raw).toBeGreaterThanOrEqual(200);
-    expect(r.status).toBeLessThan(300);
-    const data = r.body['data'] as Json;
-    expect(OwnerSchema.safeParse(data).success, `not OwnerSchema: ${r.raw}`).toBe(true);
-    expect(String(data['nationalIdMasked'])).toMatch(/^•+\d{2}$/);
-    expect(String(data['nationalIdMasked'])).toContain(nid.slice(-2));
-    expect(data['phoneMasked']).not.toBeNull();
-    assertNoClearPii(r.raw, nid, '0501234567');
-  });
+  ct(
+    'OWN2 create → masked field stays masked; manager (unmasked) gets cleartext field',
+    async () => {
+      const at = await manager('c');
+      const nid = nextId();
+      const r = await createOwner(at, {
+        name: 'דנה כהן',
+        national_id: nid,
+        phone: '0501234567',
+        email: 'dana@example.com',
+      });
+      expect(r.status, r.raw).toBeGreaterThanOrEqual(200);
+      expect(r.status).toBeLessThan(300);
+      const data = r.body['data'] as Json;
+      expect(OwnerSchema.safeParse(data).success, `not OwnerSchema: ${r.raw}`).toBe(true);
+      expect(String(data['nationalIdMasked'])).toContain(nid.slice(-2));
+      expect(data['phoneMasked']).not.toBeNull();
+      assertUnmaskedOwner(data, nid); // manager = unmasked (D.54)
+    },
+  );
 
   ct('OWN3 bad checksum / shape / unknown field → 400 validation_error', async () => {
     const at = await manager('inv');
@@ -200,7 +212,7 @@ describe('CONTRACT · owners · CRUD + PII masking', () => {
     expect((dup.body['error'] as Json)?.['code']).toBe('owner_exists');
   });
 
-  ct('OWN5/OWN6 list + get are masked; clear PII never in body', async () => {
+  ct('OWN5/OWN6 list + get: masked field stays masked, manager gets cleartext field', async () => {
     const at = await manager('rd');
     const nid = nextId();
     const created = await createOwner(at, {
@@ -213,13 +225,13 @@ describe('CONTRACT · owners · CRUD + PII masking', () => {
     const list = await call('/owners', { cookie: `access_token=${at}` });
     expect(list.status).toBe(200);
     expect(list.body['page']).toHaveProperty('has_more');
-    assertNoClearPii(list.raw, nid, '0529876543');
-    expect((list.body['data'] as Json[]).some((o) => o['id'] === id)).toBe(true);
+    const listed = (list.body['data'] as Json[]).find((o) => o['id'] === id);
+    expect(listed, 'created owner not in list').toBeTruthy();
+    assertUnmaskedOwner(listed as Json, nid);
 
     const one = await call(`/owners/${id}`, { cookie: `access_token=${at}` });
     expect(one.status).toBe(200);
-    expect(String((one.body['data'] as Json)['nationalIdMasked'])).toContain(nid.slice(-2));
-    assertNoClearPii(one.raw, nid, '0529876543');
+    assertUnmaskedOwner(one.body['data'] as Json, nid);
   });
 
   ct('OWN7 random uuid → 404 not_found', async () => {
@@ -255,11 +267,9 @@ describe('CONTRACT · owners · HMAC search (T3.O.1)', () => {
     });
     expect(found.status).toBe(200);
     const arr = found.body['data'] as Json[];
-    expect(
-      arr.some((o) => o['id'] === id),
-      'HMAC search did not find the owner',
-    ).toBe(true);
-    assertNoClearPii(found.raw, nid);
+    const hit = arr.find((o) => o['id'] === id);
+    expect(hit, 'HMAC search did not find the owner').toBeTruthy();
+    assertUnmaskedOwner(hit as Json, nid); // manager = unmasked (D.54)
 
     const miss = await call('/owners/search', {
       method: 'POST',

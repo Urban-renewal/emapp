@@ -7,6 +7,7 @@ import {
   encryptOwnerPii,
   env as dbEnv,
   hashField,
+  memberships,
   owners,
   ownerships,
   projectAssignments,
@@ -25,7 +26,11 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 
-import { requireAgentCapability } from '../../common/authz/agent-capabilities';
+import {
+  requireAgentCapability,
+  resolveOwnerPiiFidelity,
+  type OwnerPiiFidelity,
+} from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
@@ -54,18 +59,41 @@ const PHONE_MASK = sql<
 // app.encryption_key is set by withTenant via set_config.
 const NAME_DECRYPTED = sql<string>`pgp_sym_decrypt(${owners.nameEncrypted}, current_setting('app.encryption_key'))::text`;
 
-const ownerCols = {
-  id: owners.id,
-  organizationId: owners.orgId,
-  name: NAME_DECRYPTED,
-  email: owners.email,
-  nationalIdMasked: NID_MASK,
-  phoneMasked: PHONE_MASK,
-  notes: owners.notes,
-  createdAt: owners.createdAt,
-  updatedAt: owners.updatedAt,
-  archivedAt: owners.archivedAt,
-} as const;
+// D.54 — CLEARTEXT national_id / phone (full value), still decrypted IN-SQL so
+// the ciphertext never leaves Postgres. Selected into the DEDICATED cleartext
+// fields ONLY when the actor's resolved fidelity is `unmasked` (manager, or
+// agent with view_owner_pii). The `…Masked` fields stay ALWAYS masked (the
+// §v9-M-4 tripwire) — cleartext is NEVER overloaded into them.
+const NID_CLEAR = sql<string>`pgp_sym_decrypt(${owners.nationalIdEncrypted}, current_setting('app.encryption_key'))::text`;
+const PHONE_CLEAR = sql<
+  string | null
+>`case when ${owners.phoneEncrypted} is null then null else pgp_sym_decrypt(${owners.phoneEncrypted}, current_setting('app.encryption_key'))::text end`;
+const NULL_TEXT = sql<string | null>`null`;
+
+/**
+ * D.54 — the owner projection at a resolved PII fidelity. `nationalIdMasked`/
+ * `phoneMasked` are ALWAYS the suffix-only masked form (D.47, tripwire). When
+ * `unmasked`, the DEDICATED `nationalId`/`phone` cleartext fields are ALSO
+ * selected (else NULL → dropped by `toOwner`). The single
+ * `resolveOwnerPiiFidelity` resolver decides which — every owner read uses this.
+ */
+function ownerColsFor(fidelity: OwnerPiiFidelity) {
+  const unmasked = fidelity === 'unmasked';
+  return {
+    id: owners.id,
+    organizationId: owners.orgId,
+    name: NAME_DECRYPTED,
+    email: owners.email,
+    nationalIdMasked: NID_MASK,
+    phoneMasked: PHONE_MASK,
+    nationalIdClear: unmasked ? NID_CLEAR : NULL_TEXT,
+    phoneClear: unmasked ? PHONE_CLEAR : NULL_TEXT,
+    notes: owners.notes,
+    createdAt: owners.createdAt,
+    updatedAt: owners.updatedAt,
+    archivedAt: owners.archivedAt,
+  } as const;
+}
 
 interface MaskedRow {
   id: string;
@@ -74,12 +102,36 @@ interface MaskedRow {
   email: string | null;
   nationalIdMasked: string;
   phoneMasked: string | null;
+  // null for masked actors; the full cleartext for unmasked actors (D.54).
+  nationalIdClear: string | null;
+  phoneClear: string | null;
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
   archivedAt: Date | null;
 }
-const toOwner = (r: MaskedRow): Owner => ({ ...r });
+const toOwner = (r: MaskedRow): Owner => {
+  const o: Owner = {
+    id: r.id,
+    organizationId: r.organizationId,
+    name: r.name,
+    email: r.email,
+    nationalIdMasked: r.nationalIdMasked,
+    phoneMasked: r.phoneMasked,
+    notes: r.notes,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    archivedAt: r.archivedAt,
+  };
+  // `nationalIdClear` is the unmasked sentinel: non-null IFF fidelity=unmasked
+  // (a 9-digit id is never null). Only then attach the cleartext fields; phone
+  // may legitimately be null (unmasked, no phone on file).
+  if (r.nationalIdClear != null) {
+    o.nationalId = r.nationalIdClear;
+    o.phone = r.phoneClear;
+  }
+  return o;
+};
 
 /**
  * Owners domain service (Phase 3 Slice 4) — PII-bearing.
@@ -88,14 +140,16 @@ const toOwner = (r: MaskedRow): Owner => ({ ...r });
  * cross-org id ⇒ 0 rows ⇒ 404 (no oracle). D.17: read (list/get/search)
  * = any org role; write (create/update/archive) = manager only.
  *
- * Agent project-scoping is intentionally NOT applied to bare Owner records
- * here: an owner's project linkage is via ownerships→apartment→…(Slice 5),
- * and a name+masked-id row is not project-scoped data. Apartment-scoped
- * owner views arrive with Slice 5. (Recorded — PROGRESS doc-debt.)
+ * D.54 — agent owner READS are now scoped: an agent must hold `view_owners`
+ * (else full deny) and sees ONLY owners with an active ownership in an
+ * assigned-project apartment (list/search via a WHERE EXISTS; get via
+ * assertOwnerInAssignedProject). Managers/viewers see all org owners.
  *
- * national_id/phone are pgcrypto-encrypted at rest and decrypted ONLY
- * inside SQL to a MASKED suffix — never returned, logged, or put in
- * errors/audit (CLAUDE.md / Doc07). Search matches by HMAC, body-only.
+ * national_id/phone are pgcrypto-encrypted at rest and decrypted ONLY inside
+ * SQL. D.54 — the returned fidelity is resolved per actor by the single
+ * `resolveOwnerPiiFidelity` resolver: masked suffix (D.47) for viewers + agents
+ * without `view_owner_pii`; cleartext for managers + agents with it. Never
+ * logged or put in errors/audit (CLAUDE.md / Doc07). Search matches by HMAC.
  */
 @Injectable()
 export class OwnersService {
@@ -144,6 +198,45 @@ export class OwnersService {
     if (!hit) throw NOT_FOUND;
   }
 
+  /**
+   * D.54 — view_owners READ gate. An agent must hold `view_owners` to see
+   * owners AT ALL; otherwise full deny (403). Manager + viewer read freely
+   * (viewer is always masked via the fidelity resolver). Agent-only.
+   */
+  private async assertAgentCanViewOwners(tx: TenantTx, user: AccessTokenPayload): Promise<void> {
+    if (user.role !== 'agent') return;
+    const [m] = await tx
+      .select({ capabilities: memberships.capabilities })
+      .from(memberships)
+      .where(
+        and(
+          eq(memberships.userId, user.sub),
+          eq(memberships.orgId, user.orgId),
+          isNull(memberships.revokedAt),
+        ),
+      )
+      .limit(1);
+    if (!m || m.capabilities.view_owners !== true) throw FORBIDDEN;
+  }
+
+  /**
+   * D.54 — agent owner-read scope (list/search). Restricts to owners holding an
+   * ACTIVE ownership in an apartment whose project the agent is actively
+   * assigned to (same join as assertOwnerInAssignedProject, as a WHERE EXISTS).
+   * `undefined` for non-agents (no extra filter — managers/viewers see all).
+   */
+  private agentOwnerScope(user: AccessTokenPayload): SQL | undefined {
+    if (user.role !== 'agent') return undefined;
+    return sql`EXISTS (
+      SELECT 1 FROM ownerships ow
+      JOIN apartments a ON a.id = ow.apartment_id
+      JOIN buildings b ON b.id = a.building_id
+      JOIN project_assignments pa ON pa.project_id = b.project_id
+        AND pa.user_id = ${user.sub} AND pa.unassigned_at IS NULL
+      WHERE ow.owner_id = ${owners.id} AND ow.ended_at IS NULL
+    )`;
+  }
+
   async list(
     user: AccessTokenPayload,
     query: { limit: number; cursor?: string },
@@ -156,6 +249,11 @@ export class OwnersService {
     const rows = await withTenant(
       user.orgId,
       async (tx) => {
+        // D.54 — view_owners gate (agent off → 403), agent project-scope, and
+        // the resolved PII fidelity for the projection.
+        await this.assertAgentCanViewOwners(tx, user);
+        const fidelity = await resolveOwnerPiiFidelity(tx, user);
+        const scope = this.agentOwnerScope(user);
         const keyset: SQL | undefined = cur
           ? or(
               lt(owners.createdAt, new Date(cur.c)),
@@ -163,9 +261,9 @@ export class OwnersService {
             )
           : undefined;
         return tx
-          .select(ownerCols)
+          .select(ownerColsFor(fidelity))
           .from(owners)
-          .where(and(isNull(owners.archivedAt), keyset))
+          .where(and(isNull(owners.archivedAt), scope, keyset))
           .orderBy(desc(owners.createdAt), desc(owners.id))
           .limit(limit + 1);
       },
@@ -183,7 +281,14 @@ export class OwnersService {
   async get(user: AccessTokenPayload, id: string): Promise<Owner> {
     const [row] = await withTenant(
       user.orgId,
-      async (tx) => tx.select(ownerCols).from(owners).where(eq(owners.id, id)).limit(1),
+      async (tx) => {
+        // D.54 — view_owners gate, then agent project-scope (404 if the owner is
+        // not in an assigned project — no oracle), then fidelity projection.
+        await this.assertAgentCanViewOwners(tx, user);
+        await this.assertOwnerInAssignedProject(tx, user, id);
+        const fidelity = await resolveOwnerPiiFidelity(tx, user);
+        return tx.select(ownerColsFor(fidelity)).from(owners).where(eq(owners.id, id)).limit(1);
+      },
       { userId: user.sub },
     );
     if (!row) throw NOT_FOUND;
@@ -204,14 +309,21 @@ export class OwnersService {
     if (conds.length === 0) return [];
     return withTenant(
       user.orgId,
-      async (tx) =>
-        tx
-          .select(ownerCols)
+      async (tx) => {
+        // D.54 — view_owners gate + agent project-scope + fidelity. A masked-fidelity
+        // agent can still MATCH by national_id/phone (HMAC), but only owners in
+        // their assigned projects, and the returned PII honours their fidelity.
+        await this.assertAgentCanViewOwners(tx, user);
+        const fidelity = await resolveOwnerPiiFidelity(tx, user);
+        const scope = this.agentOwnerScope(user);
+        return tx
+          .select(ownerColsFor(fidelity))
           .from(owners)
-          .where(and(isNull(owners.archivedAt), or(...conds)))
+          .where(and(isNull(owners.archivedAt), or(...conds), scope))
           .orderBy(desc(owners.createdAt), desc(owners.id))
           .limit(50)
-          .then((rs) => rs.map(toOwner)),
+          .then((rs) => rs.map(toOwner));
+      },
       { userId: user.sub },
     );
   }
@@ -279,8 +391,10 @@ export class OwnersService {
             },
             sessionId: user.sid,
           });
+          // D.54 — the returned owner reflects the creator's PII fidelity.
+          const fidelity = await resolveOwnerPiiFidelity(tx, user);
           const [row] = await tx
-            .select(ownerCols)
+            .select(ownerColsFor(fidelity))
             .from(owners)
             .where(eq(owners.id, ins.id))
             .limit(1);
@@ -372,7 +486,14 @@ export class OwnersService {
             afterState: { changed: Object.keys(patch).filter((k) => k !== 'updatedAt') },
             sessionId: user.sid,
           });
-          const [row] = await tx.select(ownerCols).from(owners).where(eq(owners.id, id)).limit(1);
+          // D.54 — the returned owner reflects the editor's PII fidelity (was
+          // masked-always pre-D.54; now resolved).
+          const fidelity = await resolveOwnerPiiFidelity(tx, user);
+          const [row] = await tx
+            .select(ownerColsFor(fidelity))
+            .from(owners)
+            .where(eq(owners.id, id))
+            .limit(1);
           if (!row) throw NOT_FOUND;
           return toOwner(row);
         },

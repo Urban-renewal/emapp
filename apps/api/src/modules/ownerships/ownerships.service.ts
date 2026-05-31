@@ -18,6 +18,7 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 
+import { canViewOwners, resolveOwnerPiiFidelity } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
@@ -55,6 +56,14 @@ const NID_MASK = sql<string>`'•••••••' || right(pgp_sym_decrypt(${
 const PHONE_MASK = sql<
   string | null
 >`case when ${owners.phoneEncrypted} is null then null else '•••••' || right(pgp_sym_decrypt(${owners.phoneEncrypted}, current_setting('app.encryption_key'))::text, 4) end`;
+// D.54 — cleartext national_id / phone, decrypted IN-SQL; selected into the
+// DEDICATED cleartext fields ONLY when the actor's resolved fidelity is
+// `unmasked` (resolveOwnerPiiFidelity). The `…Masked` fields stay ALWAYS masked.
+const NID_CLEAR = sql<string>`pgp_sym_decrypt(${owners.nationalIdEncrypted}, current_setting('app.encryption_key'))::text`;
+const PHONE_CLEAR = sql<
+  string | null
+>`case when ${owners.phoneEncrypted} is null then null else pgp_sym_decrypt(${owners.phoneEncrypted}, current_setting('app.encryption_key'))::text end`;
+const NULL_TEXT = sql<string | null>`null`;
 
 /**
  * Ownerships domain service (Phase 3 Slice 5).
@@ -161,6 +170,15 @@ export class OwnershipsService {
       user.orgId,
       async (tx) => {
         await this.assertApartmentVisible(tx, user, apartmentId);
+        // D.54 — the `view_owners` gate applies to EVERY owner-bearing surface,
+        // not just /owners. An agent assigned to the apartment's project but
+        // WITHOUT view_owners sees the apartment yet NO owners → full deny here
+        // too (manager/viewer always pass). Mirrors OwnersService.list.
+        if (!(await canViewOwners(tx, user))) throw FORBIDDEN;
+        // Then the resolved PII fidelity (manager unmasked; agent per
+        // view_owner_pii; viewer masked) — same single resolver as owners.service
+        // / export.
+        const fidelity = await resolveOwnerPiiFidelity(tx, user);
         const keyset: SQL | undefined = cur
           ? or(
               lt(ownerships.createdAt, new Date(cur.c)),
@@ -180,6 +198,8 @@ export class OwnershipsService {
             email: owners.email,
             nationalIdMasked: NID_MASK,
             phoneMasked: PHONE_MASK,
+            nationalIdClear: fidelity === 'unmasked' ? NID_CLEAR : NULL_TEXT,
+            phoneClear: fidelity === 'unmasked' ? PHONE_CLEAR : NULL_TEXT,
             notes: owners.notes,
             createdAt: owners.createdAt,
             updatedAt: owners.updatedAt,
@@ -196,21 +216,30 @@ export class OwnershipsService {
     const hasMore = rows.length > limit;
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
     const last = pageRows[pageRows.length - 1];
-    const data: ApartmentOwner[] = pageRows.map((r) => ({
-      id: r.id,
-      organizationId: r.organizationId,
-      name: r.name,
-      email: r.email,
-      nationalIdMasked: r.nationalIdMasked,
-      phoneMasked: r.phoneMasked,
-      notes: r.notes,
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-      archivedAt: r.archivedAt,
-      ownershipId: r.ownershipId,
-      ownershipPct: Number(r.ownershipPct),
-      role: r.role,
-    }));
+    const data: ApartmentOwner[] = pageRows.map((r) => {
+      const ao: ApartmentOwner = {
+        id: r.id,
+        organizationId: r.organizationId,
+        name: r.name,
+        email: r.email,
+        nationalIdMasked: r.nationalIdMasked,
+        phoneMasked: r.phoneMasked,
+        notes: r.notes,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+        archivedAt: r.archivedAt,
+        ownershipId: r.ownershipId,
+        ownershipPct: Number(r.ownershipPct),
+        role: r.role,
+      };
+      // D.54 — attach cleartext only when unmasked (nationalIdClear is the
+      // sentinel; phone may be null even when unmasked).
+      if (r.nationalIdClear != null) {
+        ao.nationalId = r.nationalIdClear;
+        ao.phone = r.phoneClear;
+      }
+      return ao;
+    });
     return {
       data,
       page: {

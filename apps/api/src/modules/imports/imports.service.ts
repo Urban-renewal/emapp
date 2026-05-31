@@ -12,7 +12,10 @@
  *
  * Defense-in-depth (security):
  *   - withTenant → RLS org-isolation FORCE on EVERY DB op.
- *   - Manager-only writes via requireManager() (D.17 + D.26 policy).
+ *   - D.46: writes are manager OR an agent holding `run_imports`, gated by
+ *     requireAgentCapability AFTER the project-visibility check (manager is a
+ *     no-op pass). The creator-only check on start/cancel/mapping further
+ *     scopes agents to their own jobs.
  *   - Project visibility check (mirrors documents.service) before any
  *     mutation that targets a project.
  *   - r2Key is server-minted + never on the wire.

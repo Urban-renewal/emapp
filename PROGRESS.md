@@ -171,6 +171,22 @@
     owner `Gate-6-Approved` + merge. Next: remaining 5 capabilities, then
     D.46 Contractor scope.
 
+- **Track D — slice (D.46 manage_documents, autonomous run, Gate-6: policy.ts).**
+  Owner authorized autonomous run on the remaining write-grant capabilities
+  (auto-merge + reviewers). manage_documents = gate documents create/finalize/
+  update/archive on the capability.
+  - POLICY: documents create/update/delete MGR→MA (read/download stay ALL —
+    download already agent-scoped via loadVisible). pin updated.
+  - All 4 write methods gate requireAgentCapability('manage_documents') AFTER the
+    existing doc/project visibility (assertDocVisibleForAgent/assertProjectVisible).
+    create also closes its gap: an agent may NOT create an org-level (unparented)
+    doc (consistent with assertDocVisibleForAgent). archive (bare-select by-id) got
+    the agent visibility check added.
+  - Evidence: documents-capability.spec — agent w/o cap→403 (create/update/archive);
+    manager toggle→allowed; org-level create→404; unassigned-project doc→404;
+    manager no-op. lint/typecheck green; full api 63 files passed.
+  - Gate-6 (policy.ts) — auto-merge armed on owner standing authorization.
+
 ### 2026-05-30 · Track B · BE Specialist
 
 # Track B heartbeat — 2026-05-30

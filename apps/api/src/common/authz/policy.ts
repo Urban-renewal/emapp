@@ -83,9 +83,13 @@ export const POLICY: Matrix = {
   // Org membership administration — manager only, every action.
   members: { read: MGR, create: MGR, update: MGR, delete: MGR },
   // Documents: any org role may read (agent → assigned-project docs only,
-  // record-scoped in the service); writes are manager-only. The presigned
-  // URL is minted ONLY after this gate + per-record visibility pass.
-  documents: { read: ALL, create: MGR, update: MGR, delete: MGR },
+  // record-scoped in the service). D.46 — WRITE (create/finalize/update/
+  // archive) opened to agents; fine gate = requireAgentCapability(
+  // 'manage_documents') AFTER the existing doc/project visibility scoping.
+  // READ + DOWNLOAD stay `read: ALL` (download already agent-scoped to
+  // assigned-project docs via loadVisible). GUARDRAIL: every documents write
+  // method MUST call requireAgentCapability.
+  documents: { read: ALL, create: MA, update: MA, delete: MA },
   // Signature requests (Phase 5, docs/03 §9): manager creates and cancels
   // (status transition; never DELETE — forensic evidence per migration
   // 0021). Any org role may read the list/status (record-scoping via the

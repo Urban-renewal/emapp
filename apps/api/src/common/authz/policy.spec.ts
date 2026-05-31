@@ -101,11 +101,13 @@ const EXPECTED: Record<Resource, Record<Action, Role[]>> = {
   },
   audit: { read: ['manager'], create: ['manager'], update: ['manager'], delete: ['manager'] },
   members: { read: ['manager'], create: ['manager'], update: ['manager'], delete: ['manager'] },
+  // D.46 — document writes opened to agent (manage_documents + doc/project
+  // visibility, enforced in the service). read/download = ALL.
   documents: {
     read: ['manager', 'agent', 'viewer'],
-    create: ['manager'],
-    update: ['manager'],
-    delete: ['manager'],
+    create: ['manager', 'agent'],
+    update: ['manager', 'agent'],
+    delete: ['manager', 'agent'],
   },
   project_assignments: {
     read: ['manager', 'agent', 'viewer'],

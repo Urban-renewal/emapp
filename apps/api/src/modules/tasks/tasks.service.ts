@@ -13,13 +13,14 @@ import type { AssignTask, CreateTask, Task, TaskAssignee, UpdateTask } from '@em
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 
-import { requireAgentCapability } from '../../common/authz/agent-capabilities';
+import { agentHasCapability, requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CalendarEmailService } from '../calendar-email/calendar-email.service';
@@ -65,9 +66,11 @@ function toTask(r: typeof tasks.$inferSelect): Task {
  * .org_id → direct RLS in withTenant). D.17:
  *  - manager → full CRUD, sees all org tasks.
  *  - viewer  → read-only, all org tasks.
- *  - agent   → sees ONLY tasks assigned to them (T3.T.1, service-layer
- *              JOIN on task_assignees); may update status/description of
- *              their own assigned tasks; no create/delete.
+ *  - agent   → READS only tasks assigned to them (T3.T.1, service-layer JOIN on
+ *              task_assignees). WRITES (D.46 + D.54 close-out): with manage_tasks
+ *              on an assigned-project task → full management (create/update/
+ *              archive/assignees, destination-scoped); OR, as a plain ASSIGNEE of
+ *              a task, the narrow update of status/description only.
  * Notification generation on assignment + SSE is Phase 5 (T3.N.1) — the
  * locked notifications RLS (user_id = app.user_id) forbids an actor
  * inserting another user's notification anyway. Deferred & recorded.
@@ -93,7 +96,22 @@ export class TasksService {
     user: AccessTokenPayload,
     scope: { projectId: string | null; apartmentId: string | null },
   ): Promise<void> {
-    if (user.role !== 'agent') return;
+    if (!(await this.agentScopeOk(tx, user, scope))) throw NOT_FOUND;
+  }
+
+  /**
+   * Non-throwing form of {@link assertTaskVisibleForAgent}: does the agent
+   * actively manage the task's project (directly or via its apartment's
+   * building's project)? Non-agents → always true. Org-level scope → false
+   * (agents can't manage unparented tasks). Used by `update` to pick the FULL
+   * (manage_tasks) path vs the narrow assignee path without a premature throw.
+   */
+  private async agentScopeOk(
+    tx: TenantTx,
+    user: AccessTokenPayload,
+    scope: { projectId: string | null; apartmentId: string | null },
+  ): Promise<boolean> {
+    if (user.role !== 'agent') return true;
     if (scope.projectId) {
       const [r] = await tx
         .select({ x: sql`1` })
@@ -106,8 +124,7 @@ export class TasksService {
           ),
         )
         .limit(1);
-      if (!r) throw NOT_FOUND;
-      return;
+      return Boolean(r);
     }
     if (scope.apartmentId) {
       const [r] = await tx
@@ -124,10 +141,48 @@ export class TasksService {
         )
         .where(eq(apartments.id, scope.apartmentId))
         .limit(1);
-      if (!r) throw NOT_FOUND;
-      return;
+      return Boolean(r);
     }
-    throw NOT_FOUND; // org-level task — not agent-manageable
+    return false; // org-level task — not agent-manageable via the project path
+  }
+
+  /** Is this agent an assignee of the task (task_assignees row)? Agent-only. */
+  private async agentIsAssignee(
+    tx: TenantTx,
+    user: AccessTokenPayload,
+    taskId: string,
+  ): Promise<boolean> {
+    const [r] = await tx
+      .select({ x: sql`1` })
+      .from(taskAssignees)
+      .where(and(eq(taskAssignees.taskId, taskId), eq(taskAssignees.userId, user.sub)))
+      .limit(1);
+    return Boolean(r);
+  }
+
+  /**
+   * D.54 close-out — the NARROW assignee update path. An agent who is an
+   * assignee of a task (but lacks the manage_tasks + project-scope FULL path)
+   * may still update ONLY status / description (the "סטטוס / הערות / בוצע"
+   * field-agent workflow). Any other field in the patch (project, apartment,
+   * title, type, priority, due/duration, schedule, location) → 403: managing the
+   * task itself requires manage_tasks. `assigneeId` cannot arrive here — there is
+   * no assignee field on UpdateTask (assignment is a separate endpoint).
+   */
+  private assertNarrowAssigneeUpdate(input: UpdateTask): void {
+    const ALLOWED = new Set<keyof UpdateTask>(['status', 'description']);
+    const offending = (Object.keys(input) as (keyof UpdateTask)[]).filter(
+      (k) => input[k] !== undefined && !ALLOWED.has(k),
+    );
+    if (offending.length > 0) {
+      throw new ForbiddenException({
+        error: {
+          code: 'task_assignee_update_scope',
+          message:
+            'assignee may update only status and notes; managing the task needs manage_tasks',
+        },
+      });
+    }
   }
 
   /**
@@ -317,23 +372,39 @@ export class TasksService {
       async (tx) => {
         const [before] = await tx.select().from(tasks).where(eq(tasks.id, id)).limit(1);
         if (!before) throw NOT_FOUND;
-        // D.46 — agent: the task's CURRENT project must be an active assignment
-        // (404), then manage_tasks (403). With the capability an agent has FULL
-        // task management (no status/description-only restriction). Manager passes.
-        await this.assertTaskVisibleForAgent(tx, user, before);
-        await requireAgentCapability(tx, user, 'manage_tasks');
-        // D.46 — DESTINATION scope: if an agent re-targets project/apartment, the
-        // NEW scope must ALSO be an active assignment — otherwise the agent could
-        // move a task into a project they don't control, or demote it to org-level
-        // (which agents cannot manage). Validate the effective post-patch scope.
-        if (
-          user.role === 'agent' &&
-          (input.projectId !== undefined || input.apartmentId !== undefined)
-        ) {
-          await this.assertTaskVisibleForAgent(tx, user, {
-            projectId: input.projectId !== undefined ? input.projectId : before.projectId,
-            apartmentId: input.apartmentId !== undefined ? input.apartmentId : before.apartmentId,
-          });
+        // D.46 + D.54 close-out — agent has TWO ways to update a task:
+        //
+        //  (A) FULL management — the task's CURRENT project is an active
+        //      assignment AND the agent holds manage_tasks. Then it is full-field
+        //      management, including re-targeting project/apartment (subject to a
+        //      DESTINATION scope check, #191 — the NEW scope must also be assigned,
+        //      so a task can't be moved into an uncontrolled project or demoted to
+        //      org-level).
+        //
+        //  (B) NARROW assignee path — the agent is an ASSIGNEE of this task
+        //      (task_assignees) but lacks the FULL path. Then ONLY status /
+        //      description may change (the field-agent "status / notes / done"
+        //      workflow); any other field → 403. This restores the pre-D.46
+        //      assignee-can-update-their-own-task behaviour WITHOUT re-opening
+        //      full management to non-manage_tasks agents.
+        //
+        // An agent in NEITHER bucket → 404 (no task oracle). Manager skips both.
+        if (user.role === 'agent') {
+          const fullPath =
+            (await this.agentScopeOk(tx, user, before)) &&
+            (await agentHasCapability(tx, user, 'manage_tasks'));
+          if (fullPath) {
+            if (input.projectId !== undefined || input.apartmentId !== undefined) {
+              await this.assertTaskVisibleForAgent(tx, user, {
+                projectId: input.projectId !== undefined ? input.projectId : before.projectId,
+                apartmentId:
+                  input.apartmentId !== undefined ? input.apartmentId : before.apartmentId,
+              });
+            }
+          } else {
+            if (!(await this.agentIsAssignee(tx, user, id))) throw NOT_FOUND;
+            this.assertNarrowAssigneeUpdate(input);
+          }
         }
         const hadScheduledBeforeLocal = before.scheduledAt !== null;
 

@@ -3,8 +3,9 @@
  *
  * manage_tasks grants FULL task management (create/update/archive + add/remove
  * assignee), PROJECT-scoped via the task's projectId (assertTaskVisibleForAgent).
- * This REPLACES the prior assignment-based, status/description-only agent update.
- * READ (list/get) stays assignee-based (out of scope here).
+ * D.54 close-out restores a NARROW path alongside it: a plain ASSIGNEE (no
+ * manage_tasks) may still update status/notes/done on their own task — see the
+ * second describe block. READ (list/get) stays assignee-based (out of scope).
  */
 import { randomUUID } from 'node:crypto';
 
@@ -79,6 +80,11 @@ async function seedTask(projectId: string): Promise<string> {
   return t.id;
 }
 
+/** Make the test agent an assignee of the task (manager-driven, the real path). */
+async function assignAgent(taskId: string): Promise<void> {
+  await svc.addAssignee(manager(), taskId, { userId: agentId });
+}
+
 beforeAll(async () => {
   await setupTestDatabase();
   svc = new TasksService(calendarStub);
@@ -123,14 +129,16 @@ describe('D.46 — manage_tasks agent enforcement', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('TASK-5) update: agent w/o cap → 403; with cap → FULL field update (title) allowed', async () => {
+  it('TASK-5) update: agent w/o cap & NOT assignee → 404; with cap → FULL field update (title)', async () => {
     const id = await seedTask(assignedProjectId);
     await setCap(false);
-    await expect(svc.update(agent(), id, { title: 'x' })).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    // D.54 close-out — w/o manage_tasks the agent falls to the narrow assignee
+    // path; not being a task-assignee, the task is invisible to them → 404 (the
+    // same no-oracle result as GET, which is assignee-based). (The capability-403
+    // case for an assignee touching a non-narrow field is TASK-A4.)
+    await expect(svc.update(agent(), id, { title: 'x' })).rejects.toBeInstanceOf(NotFoundException);
     await setCap(true);
-    // title is NOT in the old status/description allow-list — full management.
+    // title is NOT in the narrow allow-list — full management via manage_tasks.
     const upd = await svc.update(agent(), id, { title: 'agent-edited' });
     expect(upd.title).toBe('agent-edited');
   }, 30_000);
@@ -194,4 +202,69 @@ describe('D.46 — manage_tasks agent enforcement', () => {
     const upd = await svc.update(manager(), id, { projectId: unassignedProjectId });
     expect(upd.projectId).toBe(unassignedProjectId);
   });
+});
+
+// D.54 close-out 2/3 — the NARROW assignee update path: an agent who is an
+// ASSIGNEE of a task (but lacks manage_tasks) may update ONLY status/notes/done,
+// without re-opening full management or letting #191's destination scope lapse.
+describe('D.54 — narrow assignee task update (status/notes/done only)', () => {
+  it('TASK-A1) assignee WITHOUT manage_tasks → may set status', async () => {
+    await setCap(false);
+    const id = await seedTask(assignedProjectId);
+    await assignAgent(id);
+    const upd = await svc.update(agent(), id, { status: 'in_progress' });
+    expect(upd.status).toBe('in_progress');
+  }, 30_000);
+
+  it('TASK-A2) assignee WITHOUT manage_tasks → may edit notes (description)', async () => {
+    await setCap(false);
+    const id = await seedTask(assignedProjectId);
+    await assignAgent(id);
+    const upd = await svc.update(agent(), id, { description: 'called the owner, no answer' });
+    expect(upd.description).toBe('called the owner, no answer');
+  }, 30_000);
+
+  it('TASK-A3) assignee WITHOUT manage_tasks → "done" (status=completed) sets completedAt', async () => {
+    await setCap(false);
+    const id = await seedTask(assignedProjectId);
+    await assignAgent(id);
+    const upd = await svc.update(agent(), id, { status: 'completed' });
+    expect(upd.status).toBe('completed');
+    expect(upd.completedAt).not.toBeNull();
+    expect(upd.completedBy).toBe(agentId);
+  }, 30_000);
+
+  it('TASK-A4) assignee WITHOUT manage_tasks → editing title → 403 (narrow scope)', async () => {
+    await setCap(false);
+    const id = await seedTask(assignedProjectId);
+    await assignAgent(id);
+    await expect(svc.update(agent(), id, { title: 'hijack' })).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  }, 30_000);
+
+  it('TASK-A5) assignee WITHOUT manage_tasks → re-targeting project → 403 (cannot move task)', async () => {
+    await setCap(false);
+    const id = await seedTask(assignedProjectId);
+    await assignAgent(id);
+    await expect(
+      svc.update(agent(), id, { status: 'in_progress', projectId: unassignedProjectId }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  }, 30_000);
+
+  it('TASK-A6) NON-assignee WITHOUT manage_tasks → status update → 404 (no task oracle)', async () => {
+    await setCap(false);
+    const id = await seedTask(assignedProjectId); // agent assigned to project but NOT to task
+    await expect(svc.update(agent(), id, { status: 'in_progress' })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  }, 30_000);
+
+  it('TASK-A7) assignee WITH manage_tasks → full path still works (title editable)', async () => {
+    await setCap(true);
+    const id = await seedTask(assignedProjectId);
+    await assignAgent(id);
+    const upd = await svc.update(agent(), id, { title: 'full-mgmt' });
+    expect(upd.title).toBe('full-mgmt');
+  }, 30_000);
 });

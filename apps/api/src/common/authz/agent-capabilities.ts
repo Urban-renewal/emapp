@@ -31,8 +31,23 @@ export async function requireAgentCapability(
   user: AccessTokenPayload,
   capability: AgentCapabilityKey,
 ): Promise<void> {
-  if (user.role === 'manager') return;
-  if (user.role !== 'agent') throw FORBIDDEN;
+  if (!(await agentHasCapability(tx, user, capability))) throw FORBIDDEN;
+}
+
+/**
+ * Non-throwing sibling of `requireAgentCapability` — returns whether the actor
+ * holds the capability (manager → always true; agent → the JSONB flag; anyone
+ * else → false). Use when a capability is one of SEVERAL paths to an action
+ * (e.g. tasks.update: manage_tasks OR the narrow assignee path) and a hard
+ * throw would pre-empt the alternative. RLS-org-scoped membership read.
+ */
+export async function agentHasCapability(
+  tx: TenantTx,
+  user: AccessTokenPayload,
+  capability: AgentCapabilityKey,
+): Promise<boolean> {
+  if (user.role === 'manager') return true;
+  if (user.role !== 'agent') return false;
   const [m] = await tx
     .select({ capabilities: memberships.capabilities })
     .from(memberships)
@@ -44,7 +59,7 @@ export async function requireAgentCapability(
       ),
     )
     .limit(1);
-  if (!m || m.capabilities[capability] !== true) throw FORBIDDEN;
+  return m?.capabilities[capability] === true;
 }
 
 /**

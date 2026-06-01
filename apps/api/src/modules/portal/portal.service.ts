@@ -15,6 +15,7 @@ import type {
   TenantPortalApartment,
   TenantPortalDocument,
   TenantPortalMe,
+  TenantPortalProgress,
   TenantPortalSignature,
 } from '@emapp/shared-types';
 import { Injectable, NotFoundException } from '@nestjs/common';
@@ -32,10 +33,15 @@ const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
 // (file:line apps/api/src/modules/owners/owners.service.ts:48). Per
 // D.40, the tenant sees their OWN cleartext (no mask theatre).
 const NAME_CLEAR = sql<string>`pgp_sym_decrypt(${owners.nameEncrypted}, current_setting('app.encryption_key'))::text`;
-const NID_CLEAR = sql<string>`pgp_sym_decrypt(${owners.nationalIdEncrypted}, current_setting('app.encryption_key'))::text`;
-const PHONE_CLEAR = sql<
+// D.47 — national_id + phone are MASKED in-SQL (same pattern as the org-tier
+// NID_MASK / PHONE_MASK in owners.service.ts): `•••••••XX` (last 2) and
+// `•••••XXXX` (last 4). Cleartext never leaves Postgres — the resident sees
+// their own PII masked, consistent with D.19. (Supersedes the earlier D.40
+// "own cleartext".)
+const NID_MASK = sql<string>`'•••••••' || right(pgp_sym_decrypt(${owners.nationalIdEncrypted}, current_setting('app.encryption_key'))::text, 2)`;
+const PHONE_MASK = sql<
   string | null
->`case when ${owners.phoneEncrypted} is null then null else pgp_sym_decrypt(${owners.phoneEncrypted}, current_setting('app.encryption_key'))::text end`;
+>`case when ${owners.phoneEncrypted} is null then null else '•••••' || right(pgp_sym_decrypt(${owners.phoneEncrypted}, current_setting('app.encryption_key'))::text, 4) end`;
 
 /**
  * Tenant Portal — own-data view (D.40, V11 B.S4).
@@ -57,7 +63,8 @@ const PHONE_CLEAR = sql<
  */
 @Injectable()
 export class PortalService {
-  /** `GET /portal/me` — the tenant's own owner record with cleartext PII. */
+  /** `GET /portal/me` — the tenant's own owner record. national_id + phone
+   *  are MASKED in-SQL (D.47 — no cleartext PII on the wire). */
   async getMe(tenant: TenantTokenPayload): Promise<TenantPortalMe> {
     return withTenant(tenant.orgId, async (tx) => {
       const [row] = await tx
@@ -66,8 +73,8 @@ export class PortalService {
           organizationId: owners.orgId,
           name: NAME_CLEAR,
           email: owners.email,
-          nationalId: NID_CLEAR,
-          phone: PHONE_CLEAR,
+          nationalIdMasked: NID_MASK,
+          phoneMasked: PHONE_MASK,
           createdAt: owners.createdAt,
         })
         .from(owners)
@@ -76,6 +83,83 @@ export class PortalService {
       if (!row) throw NOT_FOUND;
       return row;
     });
+  }
+
+  /**
+   * `GET /portal/progress` — AGGREGATE signature progress for each project
+   * the tenant has an active apartment in. Counts ONLY — the scope-critical
+   * rule (D2): a resident NEVER sees another resident's individual data/PII.
+   *
+   * Scope: the project set is derived from the tenant's OWN ownerships
+   * (`ownerships.owner_id = tenant.sub`); the per-project counts are
+   * project-wide aggregates (all signature_requests on the project's
+   * documents), exposed as bare integers with no owner identity. One query
+   * (correlated count subqueries; zero N+1), under `withTenant` RLS so the
+   * org boundary holds even if a count predicate were wrong.
+   */
+  async getProgress(tenant: TenantTokenPayload): Promise<{ data: TenantPortalProgress[] }> {
+    const rows = await withTenant(tenant.orgId, async (tx) =>
+      tx
+        .selectDistinct({
+          projectId: projects.id,
+          projectName: projects.name,
+          status: projects.status,
+          // A signature request belongs to this project when its document is
+          // either project-level (`d.project_id = P`) OR apartment-level and
+          // the apartment is in this project (`b.project_id = P`). The latter
+          // is the COMMON case — per-owner contracts are apartment-scoped.
+          signaturesSigned: sql<number>`COALESCE((
+            SELECT COUNT(*)::int FROM signature_requests sr
+            INNER JOIN documents d ON d.id = sr.document_id
+            LEFT JOIN apartments a ON a.id = d.apartment_id
+            LEFT JOIN buildings b ON b.id = a.building_id
+            WHERE (d.project_id = ${projects.id} OR b.project_id = ${projects.id})
+              AND sr.status = 'signed'
+          ), 0)`,
+          signaturesPending: sql<number>`COALESCE((
+            SELECT COUNT(*)::int FROM signature_requests sr
+            INNER JOIN documents d ON d.id = sr.document_id
+            LEFT JOIN apartments a ON a.id = d.apartment_id
+            LEFT JOIN buildings b ON b.id = a.building_id
+            WHERE (d.project_id = ${projects.id} OR b.project_id = ${projects.id})
+              AND sr.status = 'pending'
+          ), 0)`,
+          // Total = ACTIVE requests only (signed + pending). 'cancelled'
+          // requests are withdrawn/superseded and MUST NOT dilute the
+          // completion %; by construction total = signed + pending.
+          signaturesTotal: sql<number>`COALESCE((
+            SELECT COUNT(*)::int FROM signature_requests sr
+            INNER JOIN documents d ON d.id = sr.document_id
+            LEFT JOIN apartments a ON a.id = d.apartment_id
+            LEFT JOIN buildings b ON b.id = a.building_id
+            WHERE (d.project_id = ${projects.id} OR b.project_id = ${projects.id})
+              AND sr.status IN ('signed', 'pending')
+          ), 0)`,
+        })
+        .from(ownerships)
+        .innerJoin(apartments, eq(apartments.id, ownerships.apartmentId))
+        .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
+        .innerJoin(projects, eq(projects.id, buildings.projectId))
+        .where(
+          and(
+            eq(ownerships.ownerId, tenant.sub),
+            isNull(ownerships.endedAt),
+            isNull(apartments.archivedAt),
+            isNull(projects.archivedAt),
+          ),
+        ),
+    );
+
+    return {
+      data: rows.map((r) => ({
+        projectId: r.projectId,
+        projectName: r.projectName,
+        status: r.status,
+        signaturesSigned: Number(r.signaturesSigned),
+        signaturesPending: Number(r.signaturesPending),
+        signaturesTotal: Number(r.signaturesTotal),
+      })),
+    };
   }
 
   /** `GET /portal/apartment` — apartments the tenant owns (active

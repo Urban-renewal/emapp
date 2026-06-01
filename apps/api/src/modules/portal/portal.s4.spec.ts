@@ -162,6 +162,7 @@ async function makeSignatureRequest(
   o: TestOrg,
   documentId: string,
   ownerId: string,
+  status: 'pending' | 'signed' | 'cancelled' = 'pending',
 ): Promise<string> {
   return withTenant(o.id, async (tx) => {
     const [row] = await tx
@@ -171,7 +172,7 @@ async function makeSignatureRequest(
         documentId,
         ownerId,
         jti: `jti-portal-${Date.now()}-${Math.random()}`,
-        status: 'pending',
+        status,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         createdBy: o.users[0]!.id,
       })
@@ -232,13 +233,18 @@ afterAll(async () => {
 });
 
 describe('V11 B.S4 · PortalService — Tenant Portal own-data view (D.40)', () => {
-  it('1) getMe — returns tenant\'s own cleartext PII (D.40 "to themselves shown as-is")', async () => {
+  it('1) getMe — D.47: own national_id + phone are MASKED, cleartext NEVER on the wire', async () => {
     const me = await svc.getMe(tenantOf(orgA, fx.tenantAOwnerId));
     expect(me.id).toBe(fx.tenantAOwnerId);
     expect(me.organizationId).toBe(orgA.id);
     expect(me.name).toBe('דוד תנעמי');
-    expect(me.nationalId).toBe('203456789');
-    expect(me.phone).toBe('0501234567');
+    // Masked: `•••••••XX` (last 2) / `•••••XXXX` (last 4).
+    expect(me.nationalIdMasked).toBe('•••••••89');
+    expect(me.phoneMasked).toBe('•••••4567');
+    // SEC-1 — the cleartext must NOT appear anywhere in the response.
+    const blob = JSON.stringify(me);
+    expect(blob).not.toContain('203456789');
+    expect(blob).not.toContain('0501234567');
   });
 
   it("2) getApartments — returns the tenant's 1 owned apartment with building+project context", async () => {
@@ -309,6 +315,50 @@ describe('V11 B.S4 · PortalService — Tenant Portal own-data view (D.40)', () 
     // Tenant B has no documents (none attached to apt B) and no sigs.
     expect(docsB.data.map((d) => d.id)).not.toContain(fx.tenantADocumentId);
     expect(sigsB.data.map((s) => s.id)).not.toContain(fx.tenantASignatureId);
+  });
+
+  it("7) getProgress — AGGREGATE counts for the tenant's project; NO owner identity/PII", async () => {
+    // Baseline (one seeded pending on tenant A's project).
+    const before = (await svc.getProgress(tenantOf(orgA, fx.tenantAOwnerId))).data.find(
+      (p) => p.projectId === orgA.projects[0]!.id,
+    )!;
+
+    // Seed a CANCELLED request on the same project — it must NOT count.
+    await makeSignatureRequest(orgA, fx.tenantADocumentId, fx.tenantAOwnerId, 'cancelled');
+
+    const { data } = await svc.getProgress(tenantOf(orgA, fx.tenantAOwnerId));
+    const row = data.find((p) => p.projectId === orgA.projects[0]!.id);
+    expect(row).toBeDefined();
+    // Tenant A's project has ≥1 ACTIVE signature request (the pending one).
+    expect(row!.signaturesTotal).toBeGreaterThanOrEqual(1);
+    expect(row!.signaturesPending).toBeGreaterThanOrEqual(1);
+    expect(row!.signaturesSigned).toBeGreaterThanOrEqual(0);
+    // total = signed + pending (cancelled EXCLUDED — denominator mechanism).
+    expect(row!.signaturesTotal).toBe(row!.signaturesPending + row!.signaturesSigned);
+    // The cancelled request did NOT change the total/pending — it is excluded.
+    expect(row!.signaturesTotal).toBe(before.signaturesTotal);
+    expect(row!.signaturesPending).toBe(before.signaturesPending);
+    // Scope-critical: the row carries ONLY aggregate fields — no owner
+    // id/name/national_id/phone, no per-resident breakdown.
+    const allowedKeys = new Set([
+      'projectId',
+      'projectName',
+      'status',
+      'signaturesSigned',
+      'signaturesPending',
+      'signaturesTotal',
+    ]);
+    for (const key of Object.keys(row!)) {
+      expect(allowedKeys.has(key)).toBe(true);
+    }
+    const blob = JSON.stringify(data);
+    expect(blob).not.toContain('203456789'); // tenant A national_id
+    expect(blob).not.toContain('0501234567'); // tenant A phone
+  });
+
+  it('8) getProgress — cross-org isolation: tenant C (orgB) never sees orgA projects', async () => {
+    const { data } = await svc.getProgress(tenantOf(orgB, fx.tenantCOwnerId));
+    expect(data.map((p) => p.projectId)).not.toContain(orgA.projects[0]!.id);
   });
 
   it('6) archived owner → 404 on getMe', async () => {

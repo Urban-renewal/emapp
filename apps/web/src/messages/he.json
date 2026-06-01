@@ -807,6 +807,20 @@
       "statOwnership": "אחוז בעלות",
       "statProjectStatus": "סטטוס הפרויקט"
     },
+    "identity": {
+      "section": "הפרטים שלי",
+      "name": "שם",
+      "nationalId": "ת.ז.",
+      "phone": "טלפון",
+      "email": "אימייל",
+      "loadFailed": "טעינת הפרטים נכשלה."
+    },
+    "progress": {
+      "section": "התקדמות הפרויקט",
+      "summary": "{signed} מתוך {total} חתימות נאספו ({pct}%)",
+      "empty": "אין עדיין נתוני התקדמות.",
+      "loadFailed": "טעינת ההתקדמות נכשלה."
+    },
     "apartment": {
       "section": "הדירה שלי",
       "loadFailed": "טעינת פרטי הדירה נכשלה.",

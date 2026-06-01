@@ -12,25 +12,54 @@ import { ProjectStatusEnum, ProjectTypeEnum } from './project';
 // and has a handful of docs/signatures, so the simple `{ data: [...] }`
 // envelope without keyset cursor is correct here).
 //
-// PII discipline: tenant sees THEIR OWN cleartext PII per D.40 ("masked
-// PII to themselves shown as-is") — they own it, so masking would be
-// theatrical. Other tenants' PII is unreachable: every query is scoped
-// to `eq(owners.id, tenant.sub)` (own row) or
-// `eq(ownerships.ownerId, tenant.sub)` (own ownerships → own
-// apartments → own documents/signatures).
+// PII discipline (D.47 — supersedes the earlier D.40 "own cleartext"):
+// the tenant's OWN national_id + phone are MASKED on the wire
+// (`•••••••53` / `•••••1234`), consistent with the org-side D.19 masking.
+// No cleartext PII crosses the wire anywhere — masked-by-default is the
+// cleanest ISO posture and removes the SEC-1 exposure. Other tenants'
+// data is unreachable: every query is scoped to `eq(owners.id,
+// tenant.sub)` (own row) or `eq(ownerships.ownerId, tenant.sub)` (own
+// ownerships → own apartments → own documents/signatures).
 // ──────────────────────────────────────────────────────────────────────
 
-/** `GET /portal/me` — the tenant's own owner record (cleartext PII). */
+/**
+ * `GET /portal/me` — the tenant's own owner record.
+ *
+ * D.47 — `national_id` + `phone` are MASKED (server-side, in-SQL); the
+ * cleartext never crosses the wire. Name + email are not D.19 PII and are
+ * shown as-is (a resident knows their own name).
+ */
 export const TenantPortalMeSchema = z.object({
   id: z.string().uuid(),
   organizationId: z.string().uuid(),
   name: z.string(),
   email: z.string().nullable(),
-  nationalId: z.string(),
-  phone: z.string().nullable(),
+  /** Masked: `•••••••XX` (7 bullets + last 2). Never cleartext (D.47). */
+  nationalIdMasked: z.string(),
+  /** Masked: `•••••XXXX` (last 4), or null when no phone on file. */
+  phoneMasked: z.string().nullable(),
   createdAt: z.coerce.date(),
 });
 export type TenantPortalMe = z.infer<typeof TenantPortalMeSchema>;
+
+/**
+ * `GET /portal/progress` — AGGREGATE signature progress for each project
+ * the tenant has an apartment in. Counts/percentages ONLY — NEVER any
+ * other resident's individual data or PII (the scope-critical rule). The
+ * resident sees "Project X: 58 of 100 signed (58%)", never who.
+ */
+export const TenantPortalProgressSchema = z.object({
+  projectId: z.string().uuid(),
+  projectName: z.string(),
+  status: ProjectStatusEnum,
+  /** Project-wide signature-request counts (aggregate, no per-owner rows).
+   *  `signaturesTotal` is ACTIVE only (`signed + pending`) — cancelled
+   *  requests are excluded so they don't dilute the completion %. */
+  signaturesSigned: z.number().int().nonnegative(),
+  signaturesPending: z.number().int().nonnegative(),
+  signaturesTotal: z.number().int().nonnegative(),
+});
+export type TenantPortalProgress = z.infer<typeof TenantPortalProgressSchema>;
 
 /** One row of `GET /portal/apartment` — an apartment the tenant owns,
  *  joined to its building + project for FE display context. */

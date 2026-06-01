@@ -37,7 +37,7 @@ const MASKED_OWNER = {
   archivedAt: null,
 };
 
-function profile(role: 'manager' | 'agent' | 'viewer') {
+function profile(role: 'manager' | 'agent' | 'viewer', viewOwnerPii = role === 'manager') {
   return {
     id: '00000000-0000-4000-8000-000000000003',
     name: 'מנהלת',
@@ -49,6 +49,7 @@ function profile(role: 'manager' | 'agent' | 'viewer') {
       name: 'Alpha',
       slug: 'alpha-dev',
     },
+    view_owner_pii: viewOwnerPii,
   };
 }
 
@@ -189,5 +190,63 @@ test.describe('§E-J19 — owner reveal PII (D.54)', () => {
     await expect(page.getByText('•••••••78')).toBeVisible({ timeout: 15_000 });
     // No reveal button for a viewer.
     await expect(page.getByRole('button', { name: 'הצג נתונים גלויים' })).toHaveCount(0);
+  });
+
+  // D2-DEF-3 — the button is gated on the agent's view_owner_pii capability
+  // (now carried on the /me profile), not just the role.
+  async function stubFor(
+    page: import('@playwright/test').Page,
+    me: ReturnType<typeof profile>,
+  ): Promise<void> {
+    await page.route('**/api/v1/me', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: me }),
+      });
+    });
+    await page.route('**/api/v1/owners/*', async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: MASKED_OWNER }),
+      });
+    });
+    await page.route('**/api/v1/**', async (route) => {
+      const p = new URL(route.request().url()).pathname;
+      if (p.startsWith('/api/v1/owners') || p === '/api/v1/me') {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [], page: { limit: 25, cursor: null, has_more: false } }),
+      });
+    });
+  }
+
+  test('3) Agent WITHOUT view_owner_pii does NOT see the reveal button', async ({
+    page,
+    context,
+  }) => {
+    await seedManager(context);
+    await stubFor(page, profile('agent', false));
+    await page.goto(`/he/owners/${OWNER_ID}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await expect(page.getByText('•••••••78')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'הצג נתונים גלויים' })).toHaveCount(0);
+  });
+
+  test('4) Agent WITH view_owner_pii sees the reveal button', async ({ page, context }) => {
+    await seedManager(context);
+    await stubFor(page, profile('agent', true));
+    await page.goto(`/he/owners/${OWNER_ID}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await expect(page.getByRole('button', { name: 'הצג נתונים גלויים' })).toBeVisible({
+      timeout: 15_000,
+    });
   });
 });

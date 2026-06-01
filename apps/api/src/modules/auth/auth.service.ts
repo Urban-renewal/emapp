@@ -10,6 +10,7 @@ import {
   users,
   withBootstrap,
 } from '@emapp/db';
+import type { AgentCapabilities } from '@emapp/shared-types';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { and, asc, desc, eq, isNull } from 'drizzle-orm';
@@ -44,6 +45,11 @@ export interface UserProfile {
   // Tenant link (`/tenant/<slug>?...`) can be constructed without a second
   // call. Slug is already public (URL-safe org identifier); zero PII risk.
   organization: { id: string; name: string; slug: string };
+  // D2-DEF-3 / D.54 — can this actor reveal owner PII (manager always ·
+  // agent per `view_owner_pii` capability · viewer never). UX gate only;
+  // the BE reveal endpoint is the authority. Optional/add-only; only the
+  // `/me` (loadProfile) path populates it.
+  view_owner_pii?: boolean;
 }
 
 const ACCESS_TTL_SEC = 15 * 60;
@@ -68,6 +74,7 @@ interface ProfileRow {
   orgId: string;
   orgName: string;
   orgSlug: string;
+  capabilities: AgentCapabilities | null;
 }
 
 // organizations.slug CHECK (migration 0010): ^[a-z][a-z0-9-]*[a-z0-9]$
@@ -545,6 +552,7 @@ export class AuthService {
         orgId: organizations.id,
         orgName: organizations.name,
         orgSlug: organizations.slug,
+        capabilities: memberships.capabilities,
       })
       .from(users)
       .innerJoin(memberships, eq(memberships.userId, users.id))
@@ -561,6 +569,16 @@ export class AuthService {
       .limit(1)) as ProfileRow[];
 
     if (!row) return null;
+    // D2-DEF-3 / D.54 — manager always reveals; agent iff the capability is
+    // granted; viewer never. Mirrors the BE reveal gate
+    // (`resolveOwnerPiiFidelity`) so the FE button visibility matches the
+    // server's authoritative decision.
+    const viewOwnerPii =
+      row.role === 'manager'
+        ? true
+        : row.role === 'agent'
+          ? Boolean(row.capabilities?.view_owner_pii)
+          : false;
     return {
       id: row.userId,
       name: row.userName,
@@ -568,6 +586,7 @@ export class AuthService {
       avatarColor: row.avatarColor,
       role: row.role,
       organization: { id: row.orgId, name: row.orgName, slug: row.orgSlug },
+      view_owner_pii: viewOwnerPii,
     };
   }
 

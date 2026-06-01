@@ -77,6 +77,15 @@ export const UserProfileSchema = z.object({
     name: z.string().min(1),
     slug: z.string().min(1),
   }),
+  /**
+   * D2-DEF-3 / D.54 — whether THIS actor may reveal owner PII (cleartext
+   * national_id/phone): manager always, agent iff the `view_owner_pii`
+   * capability is granted, viewer never. UX-only (the BE reveal endpoint is
+   * the authority); the owner "Reveal PII" button is offered only when this
+   * is true. OPTIONAL (add-only) — populated by `GET /me`; absent on an
+   * older producer is treated as "not granted" (safe default).
+   */
+  view_owner_pii: z.boolean().optional(),
 });
 export type UserProfile = z.infer<typeof UserProfileSchema>;
 

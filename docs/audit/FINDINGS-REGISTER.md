@@ -100,6 +100,21 @@ Provisioning model (who creates whom) — **decision pending, see ARCH-4 / D.NN*
 | ARCH-5 | MED (coverage) | Contractor share-scope never exercised.                                                                   | — (test).                                                                                                                                                                      | Contractor share E2E: read-only on correct scope only.                                  |
 | ARCH-6 | MED (coverage) | Resident portal beyond OTP+signature not fully audited (progress view, full design feature set).          | — (test) + build missing.                                                                                                                                                      | Resident portal full-feature E2E.                                                       |
 
+### D2 close-out — built + deferred (audited 2026-06-01)
+
+**D2 shipped (5 of 6 tiers complete):** Provider console (suspend/reactivate +
+onboarding) · Agent capability UI · reveal-on-demand PII button · Resident portal
+(D.47 masking + aggregate progress) · contractor share-default fix. #201–207, all
+audited (Gate-6 holds — no policy/migration; security properties verified).
+
+**Deferred (tracked so they don't fall through):**
+
+| ID       | Sev      | Finding                                                                                                                                                                                                                                                                                                                                               | Where               |
+| -------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| D2-DEF-1 | MED      | **Contractor read-tier not built** — share-permission defaults + `signatureScopeForShare` helper exist (owners-PII OFF, aggregate-only), but the contractor **auth tier + read endpoints + read-view UI** are not. The D.46 enforcement lands on those endpoints when they ship. So the Contractor is the one tier not consumption-complete after D2. | Track D-future / C  |
+| D2-DEF-2 | LOW (UX) | **AccessReasonGate length mismatch** — FE gate min 8 chars; `withProvider` rejects reasons < 20 (unless ticket ref) → operator with an 8–19-char non-ticket reason passes the gate but the provider write fails generically. Pre-existing; tighten the FE gate to match the BE.                                                                       | Track C / quick fix |
+| D2-DEF-3 | LOW (UX) | **Reveal-PII button shown to capability-less agents** — button renders for role=agent even without `view_owner_pii` (BE 403 is the real gate → no security issue, but a dead-click). Needs `UserProfile` to carry capabilities to hide precisely.                                                                                                     | Track C / quick fix |
+
 ---
 
 ## ENV — dev tooling / hygiene

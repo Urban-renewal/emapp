@@ -367,17 +367,13 @@ describe('V11 B.S4 · PortalService — Tenant Portal own-data view (D.40)', () 
     expect(data.map((p) => p.projectId)).not.toContain(orgA.projects[0]!.id);
   });
 
-  it('9) getProgress — BYTE-FOR-BYTE: the OR→UNION perf rewrite counts archived-doc signatures exactly as the prior OR-form did (no silent behavior change)', async () => {
-    // D.51 anti-plaster: the perf rewrite (OR → UNION on the doc-id set) must
-    // be COUNT-EQUIVALENT to the predicate it replaced. The old
-    // `(d.project_id = P OR b.project_id = P)` form had NO `archived_at`
-    // filter, so a signed signature on an ARCHIVED document of the project
-    // DID count. This asserts the rewrite preserves that exactly — adding an
-    // archived signed request increments `signaturesSigned` by 1.
-    //
-    // (Whether archived docs *should* count toward live progress is a
-    // separate product question, deliberately NOT changed inside a perf PR —
-    // changing it here would be the very symptom-plaster D.51 forbids.)
+  it('9) getProgress — D.57 valid-consent: a signed signature on an ARCHIVED document does NOT count toward live progress', async () => {
+    // D.57 (owner-approved): live signature progress counts only signatures on
+    // ACTIVE documents. A signature on a superseded (archived) agreement is not
+    // valid consent and must not inflate the live %. Uniform with the
+    // contractor read-tier, and consistent with getDocuments/getProject which
+    // already exclude archived. (This is a deliberate behavior change vs the
+    // old OR-form, which had no archived filter and would have counted it.)
     const pid = orgA.projects[0]!.id;
     const before = (await svc.getProgress(tenantOf(orgA, fx.tenantAOwnerId))).data.find(
       (p) => p.projectId === pid,
@@ -388,9 +384,9 @@ describe('V11 B.S4 · PortalService — Tenant Portal own-data view (D.40)', () 
     const after = (await svc.getProgress(tenantOf(orgA, fx.tenantAOwnerId))).data.find(
       (p) => p.projectId === pid,
     )!;
-    // Counted, NOT excluded — identical to the pre-rewrite OR-form.
-    expect(after.signaturesSigned).toBe(before.signaturesSigned + 1);
-    expect(after.signaturesTotal).toBe(before.signaturesTotal + 1);
+    // Excluded — the archived doc's signed request is withdrawn from live progress.
+    expect(after.signaturesSigned).toBe(before.signaturesSigned);
+    expect(after.signaturesTotal).toBe(before.signaturesTotal);
     expect(after.signaturesPending).toBe(before.signaturesPending);
   });
 

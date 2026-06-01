@@ -8,7 +8,7 @@
 import { OwnerSchema } from '@emapp/shared-types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { searchOwner } from './owners';
+import { revealOwnerPii, searchOwner } from './owners';
 
 const originalFetch = globalThis.fetch;
 const originalWindow = (globalThis as { window?: unknown }).window;
@@ -98,6 +98,47 @@ describe('searchOwner — PII discipline adversarial', () => {
     const malicious = { ...SAMPLE_OWNER, phone: '0501234567' };
     const parsed = OwnerSchema.parse(malicious);
     expect((parsed as unknown as { phone?: string }).phone).toBeUndefined();
+  });
+});
+
+describe('revealOwnerPii — D.54 reveal-on-demand adversarial', () => {
+  it('R1) POSTs to /owners/:id/reveal-pii — id in the PATH (not a query string), method POST', async () => {
+    const spy = vi.fn(() =>
+      Promise.resolve(
+        jsonResp(200, {
+          data: { id: SAMPLE_OWNER.id, nationalId: '012345678', phone: '0501234567' },
+        }),
+      ),
+    ) as unknown as typeof fetch;
+    globalThis.fetch = spy as unknown as typeof fetch;
+
+    const out = await revealOwnerPii(SAMPLE_OWNER.id);
+
+    const calls = (spy as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls;
+    const url = String(calls[0]?.[0]);
+    const init = calls[0]?.[1];
+    expect(url).toContain(`/owners/${SAMPLE_OWNER.id}/reveal-pii`);
+    expect(url).not.toContain('?');
+    expect(init?.method).toBe('POST');
+    // Returns the cleartext for the caller to hold in EPHEMERAL state.
+    expect(out.nationalId).toBe('012345678');
+    expect(out.phone).toBe('0501234567');
+  });
+
+  it('R2) 403 forbidden surfaces as ApiClientError.code (agent without view_owner_pii / viewer)', async () => {
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve(jsonResp(403, { error: { code: 'forbidden' } })),
+    ) as unknown as typeof fetch;
+    await expect(revealOwnerPii(SAMPLE_OWNER.id)).rejects.toMatchObject({ code: 'forbidden' });
+  });
+
+  it('R3) response schema REQUIRES a 9-digit national_id (a masked/bulleted value is rejected — no silent mask-passthrough)', async () => {
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve(
+        jsonResp(200, { data: { id: SAMPLE_OWNER.id, nationalId: '•••••••11', phone: null } }),
+      ),
+    ) as unknown as typeof fetch;
+    await expect(revealOwnerPii(SAMPLE_OWNER.id)).rejects.toBeTruthy();
   });
 });
 

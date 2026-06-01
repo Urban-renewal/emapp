@@ -12,6 +12,7 @@ import { useTranslations } from 'next-intl';
 import { use, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 
+import { MemberCapabilitiesPanel } from '@/components/members/member-capabilities-panel';
 import { Button } from '@/components/ui/button';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -182,6 +183,9 @@ export default function MemberDetailPage({ params }: PageProps) {
           </div>
         </form>
       </div>
+
+      {/* D.46/D.54 — agent capability matrix (role-presets + toggles). */}
+      <MemberCapabilitiesPanel member={member} />
 
       <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4">
         <h2 className="mb-2 text-base font-semibold text-destructive">{t('revokeSection')}</h2>

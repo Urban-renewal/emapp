@@ -22,9 +22,11 @@
 import {
   AcceptInviteInput,
   MemberSchema,
+  UpdateAgentCapabilitiesInput,
   type AcceptInvite,
   type CreateMember,
   type Member,
+  type UpdateAgentCapabilities,
   type UpdateMember,
 } from '@emapp/shared-types';
 import { z } from 'zod';
@@ -82,6 +84,23 @@ export async function createMember(body: CreateMember): Promise<CreateMemberResu
 
 export async function updateMemberRole(userId: string, body: UpdateMember): Promise<Member> {
   const res = await apiClient.patch<unknown>(`/members/${userId}`, body);
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return MemberDataSchema.parse({ data: res.data }).data;
+}
+
+/**
+ * D.46/D.54 — PATCH a member's agent capability set. The BE accepts a
+ * SUBSET merged onto the stored set and re-validates the invariant
+ * `view_owner_pii ⇒ view_owners` (400 `view_owner_pii_requires_view_owners`)
+ * + that the target is `role='agent'` (400 `capabilities_agent_only`).
+ * Defensive body parse before the wire.
+ */
+export async function updateMemberCapabilities(
+  userId: string,
+  body: UpdateAgentCapabilities,
+): Promise<Member> {
+  const validated = UpdateAgentCapabilitiesInput.parse(body);
+  const res = await apiClient.patch<unknown>(`/members/${userId}/capabilities`, validated);
   if (!isOk(res)) throw new ApiClientError(res.error);
   return MemberDataSchema.parse({ data: res.data }).data;
 }

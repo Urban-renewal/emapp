@@ -598,7 +598,8 @@
       "label": "Access reason",
       "placeholder": "e.g. incident #4729 — verify Alpha tenant",
       "submit": "Continue",
-      "tooShort": "Reason is too short (minimum {min} characters).",
+      "lowQuality": "Enter a ticket reference (e.g. INC-1234) or a detailed reason (at least {min} characters).",
+      "tooLong": "Reason is too long (maximum {max} characters).",
       "failed": "Failed to store reason. Please try again."
     },
     "dashboard": {

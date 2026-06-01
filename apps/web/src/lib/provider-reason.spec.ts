@@ -15,6 +15,7 @@ import {
   clearProviderReason,
   readProviderReason,
   setProviderReason,
+  validateProviderReasonClient,
 } from './provider-reason';
 
 const originalWindow = (globalThis as { window?: unknown }).window;
@@ -69,6 +70,45 @@ describe('§provider-reason — set / read / clear', () => {
 
   it('6) writes use the documented sessionStorage key (interop with manual ops debugging)', () => {
     expect(PROVIDER_REASON_STORAGE_KEY).toBe('emapp.provider.access_reason');
+  });
+});
+
+describe('§provider-reason — D2-DEF-2 validateProviderReasonClient (mirror of BE)', () => {
+  it('VR1) a <20-char reason WITHOUT a ticket reference is REJECTED (the DEF-2 gap)', () => {
+    // 8–19 chars used to pass the old gate (min 8) but `withProvider`
+    // rejects them — the gate now rejects up-front.
+    expect(validateProviderReasonClient('check tenant').ok).toBe(false); // 12 chars
+    expect(validateProviderReasonClient('investigate').ok).toBe(false); // 11 chars
+    expect(validateProviderReasonClient('a'.repeat(19)).ok).toBe(false);
+  });
+
+  it('VR2) a recognised ticket reference is accepted even when short', () => {
+    expect(validateProviderReasonClient('INC-1234').ok).toBe(true);
+    expect(validateProviderReasonClient('tkt-42').ok).toBe(true); // case-insensitive
+    expect(validateProviderReasonClient('JIRA-OPS-77').ok).toBe(true);
+  });
+
+  it('VR3) substantive free text (≥20 chars, ≥3 tokens, ≥4 distinct) is accepted', () => {
+    expect(validateProviderReasonClient('investigating tenant signup failure').ok).toBe(true);
+    expect(validateProviderReasonClient('billing reconciliation for Q2 2026').ok).toBe(true);
+  });
+
+  it('VR4) ≥20 chars but low-quality (few tokens / few distinct chars) is rejected', () => {
+    expect(validateProviderReasonClient('aaaaaaaaaaaaaaaaaaaaaa').ok).toBe(false); // 1 token, 1 distinct
+    expect(validateProviderReasonClient('abcabcabcabcabcabcabc').ok).toBe(false); // 1 token
+  });
+
+  it('VR5) the accepted value is control-char-stripped + trimmed', () => {
+    const r = validateProviderReasonClient('  investigating tenant signup failure  ');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toBe('investigating tenant signup failure');
+  });
+
+  it('VR6) a >512-char reason is REJECTED (mirror of BE reason_too_long)', () => {
+    const longReason = 'investigating tenant signup failure '.repeat(20); // ~720 chars
+    const r = validateProviderReasonClient(longReason);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('too_long');
   });
 });
 

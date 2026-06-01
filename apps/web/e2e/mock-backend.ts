@@ -120,6 +120,12 @@ export const SEED_PROVIDER_TENANTS = [
   },
 ] as const;
 
+/** Cross-process suspension state for the D.49 provider-write mock.
+ *  The mock server is a separate subprocess, so this lives here (in the
+ *  server module) and is cleared by the `DELETE /__test_log` reset that
+ *  tests already fire in `beforeEach` via `fetchResetRequestLog()`. */
+const suspendedTenants = new Set<string>();
+
 /** Per-test override registration. Caller MUST `resetMockHandlers()` in
  *  afterEach so handlers don't leak across tests. */
 export function setMockHandler(method: string, path: string, handler: MockHandler): void {
@@ -317,6 +323,37 @@ function installDefaultHandlers(): void {
     };
   });
 
+  // POST /provider/tenants — D.45 onboarding (create org + first-manager
+  // invite). Same provider+reason guard as the reads. Echoes a result with
+  // a dev invite token so the success screen can render it.
+  setMockHandler('POST', '/api/v1/provider/tenants', (req, body) => {
+    const cookieHeader = req.headers.cookie ?? '';
+    const hasProviderToken = /(?:^|;\s*)provider_access_token=([^;]+)/.test(cookieHeader);
+    if (!hasProviderToken) return { status: 401, body: { error: { code: 'invalid_token' } } };
+    const reason = req.headers['access_reason'];
+    if (!reason || (typeof reason === 'string' && reason.trim().length === 0)) {
+      return { status: 400, body: { error: { code: 'reason_required' } } };
+    }
+    let parsed: { orgName?: string; managerEmail?: string } = {};
+    try {
+      parsed = JSON.parse(body || '{}');
+    } catch {
+      /* fall through to a 400-shaped empty echo */
+    }
+    return {
+      status: 200,
+      body: {
+        data: {
+          orgId: '00000000-0000-4000-8000-0000000000b1',
+          slug: 'new-pilot-org-abc123def456',
+          orgName: parsed.orgName ?? 'New Pilot Org',
+          managerEmail: parsed.managerEmail ?? 'manager@example.test',
+          inviteToken: 'e2e-dev-invite-token',
+        },
+      },
+    };
+  });
+
   // /provider/system-health — the provider dashboard home page fires
   // this on mount via useProviderSystemHealth(). Mock returns a clean
   // gauge snapshot so the page renders without errors.
@@ -345,6 +382,74 @@ function installDefaultHandlers(): void {
       },
     };
   });
+
+  // /provider/tenants/:id — detail (D.37) + D.49 suspension state.
+  // Registered per seed-id (the mock map is exact-path). Reflects the
+  // cross-process `suspendedTenants` set so the suspend → refetch flip
+  // is observable in the e2e (§AXIS-V).
+  for (const seed of SEED_PROVIDER_TENANTS) {
+    const guardProvider = (req: IncomingMessage) => {
+      const cookieHeader = req.headers.cookie ?? '';
+      const hasProviderToken = /(?:^|;\s*)provider_access_token=([^;]+)/.test(cookieHeader);
+      if (!hasProviderToken) return { status: 401, body: { error: { code: 'invalid_token' } } };
+      const reason = req.headers['access_reason'];
+      if (!reason || (typeof reason === 'string' && reason.trim().length === 0)) {
+        return { status: 400, body: { error: { code: 'reason_required' } } };
+      }
+      return null;
+    };
+
+    setMockHandler('GET', `/api/v1/provider/tenants/${seed.id}`, (req) => {
+      const denied = guardProvider(req);
+      if (denied) return denied;
+      const suspended = suspendedTenants.has(seed.id);
+      return {
+        status: 200,
+        body: {
+          data: {
+            id: seed.id,
+            name: seed.name,
+            slug: seed.slug,
+            createdAt: seed.createdAt,
+            archivedAt: seed.archivedAt,
+            suspendedAt: suspended ? '2026-05-25T10:00:00.000Z' : null,
+            suspendedReason: suspended ? 'e2e freeze' : null,
+            counts: { ...seed.counts, importJobs: 0, signatureRequests: 0 },
+            sampleOwners: [],
+          },
+        },
+      };
+    });
+
+    setMockHandler('POST', `/api/v1/provider/tenants/${seed.id}/suspend`, (req) => {
+      const denied = guardProvider(req);
+      if (denied) return denied;
+      suspendedTenants.add(seed.id);
+      return {
+        status: 200,
+        body: {
+          data: {
+            id: seed.id,
+            suspended: true,
+            suspendedAt: '2026-05-25T10:00:00.000Z',
+            suspendedReason: 'e2e freeze',
+          },
+        },
+      };
+    });
+
+    setMockHandler('POST', `/api/v1/provider/tenants/${seed.id}/reactivate`, (req) => {
+      const denied = guardProvider(req);
+      if (denied) return denied;
+      suspendedTenants.delete(seed.id);
+      return {
+        status: 200,
+        body: {
+          data: { id: seed.id, suspended: false, suspendedAt: null, suspendedReason: null },
+        },
+      };
+    });
+  }
 }
 
 function pathOf(url: string): string {
@@ -379,6 +484,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     }
     if (method === 'DELETE') {
       requestLog.length = 0;
+      // D.49 — clear cross-process suspension state so each test starts
+      // from a clean (active) tenant.
+      suspendedTenants.clear();
       res.statusCode = 204;
       res.end();
       return;

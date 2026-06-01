@@ -358,4 +358,36 @@ describe('GET /provider/tenants/:id — P6.5-3 service integration', () => {
       client2.release();
     }
   });
+
+  it('T6.5-D49-detail) suspension state (suspended_at + reason) is surfaced for the console', async () => {
+    // Active by default → both null.
+    const active = await svc.get(principal(), 'TKT-1100: active suspension read', orgB.id);
+    expect(active.suspendedAt).toBeNull();
+    expect(active.suspendedReason).toBeNull();
+
+    // Freeze Org B via the BYPASSRLS pool, then re-read the detail.
+    const client = await providerPool.connect();
+    try {
+      await client.query(
+        `UPDATE organizations SET suspended_at = NOW(), suspended_reason = $2 WHERE id = $1`,
+        [orgB.id, 'non-payment'],
+      );
+    } finally {
+      client.release();
+    }
+    const suspended = await svc.get(principal(), 'TKT-1100: suspended detail read', orgB.id);
+    expect(suspended.suspendedAt).not.toBeNull();
+    expect(suspended.suspendedReason).toBe('non-payment');
+
+    // Restore so other tests aren't affected.
+    const client2 = await providerPool.connect();
+    try {
+      await client2.query(
+        `UPDATE organizations SET suspended_at = NULL, suspended_reason = NULL WHERE id = $1`,
+        [orgB.id],
+      );
+    } finally {
+      client2.release();
+    }
+  });
 });

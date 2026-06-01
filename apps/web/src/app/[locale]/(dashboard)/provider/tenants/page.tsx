@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
+import { Button } from '@/components/ui/button';
 import { ListPageShell } from '@/components/ui/list-page-shell';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useProviderTenants } from '@/hooks/use-provider';
@@ -29,6 +30,10 @@ export default function ProviderTenantsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
+        {/* D.45 — Provider-initiated onboarding entry point. */}
+        <Button asChild size="sm">
+          <Link href="/provider/onboard">{t('createTenant')}</Link>
+        </Button>
       </div>
 
       <ListPageShell

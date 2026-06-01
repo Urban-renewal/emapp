@@ -50,6 +50,14 @@ export function countActiveSections(perms: SharePermissions): number {
   ].filter(Boolean).length;
 }
 
+/**
+ * D.46 — the default permission set the contractor share form starts from.
+ * Mirrors the BE `defaultSharePermissions()` (kept in sync):
+ *  - overview ON, signature PROGRESS ON (aggregate-only)
+ *  - OWNERS / PII (`tenants`) OFF — never by default
+ *  - documents OFF (manager-selected)
+ *  - notes / team OFF
+ */
 export const SHARE_DEFAULT_PERMISSIONS: SharePermissions = {
   overview: { on: true },
   tenants: {
@@ -57,7 +65,7 @@ export const SHARE_DEFAULT_PERMISSIONS: SharePermissions = {
     fields: { name: true, phone: false, email: false, national_id: false, note: false },
   },
   documents: { on: false, actions: { download: true, upload: false } },
-  signatures: { on: false },
+  signatures: { on: true },
   notes: { on: false },
   team: { on: false },
 };

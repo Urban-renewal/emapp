@@ -32,10 +32,13 @@
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module';
+import { EMAIL_PROVIDER, emailProviderFactory } from '../members/invite-email';
 
 import { ProviderAuditController } from './provider-audit.controller';
 import { ProviderAuditService } from './provider-audit.service';
 import { ProviderAuthorizationGuard } from './provider-authorization.guard';
+import { ProviderOnboardingController } from './provider-onboarding.controller';
+import { ProviderOnboardingService } from './provider-onboarding.service';
 import { ProviderRequestAuditInterceptor } from './provider-request-audit.interceptor';
 import { ProviderSystemHealthController } from './provider-system-health.controller';
 import { ProviderSystemHealthService } from './provider-system-health.service';
@@ -56,6 +59,8 @@ import { DefaultSystemStatsProvider, SYSTEM_STATS_PROVIDER } from './system-stat
     ProviderAuditController,
     ProviderSystemHealthController,
     ProviderTenantSuspensionController,
+    // D.45 — Provider-initiated onboarding (create org + first-manager invite).
+    ProviderOnboardingController,
   ],
   providers: [
     ProviderTenantsService,
@@ -63,6 +68,11 @@ import { DefaultSystemStatsProvider, SYSTEM_STATS_PROVIDER } from './system-stat
     ProviderTenantSuspensionService,
     ProviderAuditService,
     ProviderSystemHealthService,
+    ProviderOnboardingService,
+    // D.45 — onboarding sends the first-manager invite email through the
+    // same governed IEmailProvider factory the members module uses (Fake
+    // in dev/test; fails fast at boot in prod until Resend is wired, D.27).
+    { provide: EMAIL_PROVIDER, useFactory: emailProviderFactory },
     // D.37 closeout gap #3 — PROVIDER_POLICY runtime enforcement.
     // Registered as a class-provider so the 4 controllers' `@UseGuards`
     // can resolve it from DI. Pure (no constructor deps) so it could

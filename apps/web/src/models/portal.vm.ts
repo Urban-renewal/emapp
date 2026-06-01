@@ -6,10 +6,10 @@
  * the adapter resolves locale-specific labels + relative dates + size
  * labels so the React components remain dumb renderers.
  *
- * PII discipline: the tenant sees their OWN cleartext name + phone +
- * national_id per D.40 ("masked PII to themselves shown as-is").
- * `<NameDisplay>` still wraps every render-time use (bidi-spoofing
- * defense, §v9-H-3).
+ * PII discipline (D.47 — supersedes D.40): the tenant's own national_id +
+ * phone are MASKED on the wire (`•••••••XX` / `•••••XXXX`); the VM passes
+ * them through verbatim. Name is shown as-is. `<NameDisplay>` still wraps
+ * every render-time name use (bidi-spoofing defense, §v9-H-3).
  */
 export interface PortalMeViewModel {
   id: string;
@@ -19,9 +19,22 @@ export interface PortalMeViewModel {
    *  whitespace is present. */
   firstName: string;
   email: string | null;
-  /** Cleartext for the tenant's OWN row (D.40). */
-  nationalId: string;
-  phone: string | null;
+  /** Masked national_id (D.47) — already `•••••••XX` from the wire. */
+  nationalIdMasked: string;
+  /** Masked phone (D.47) — `•••••XXXX`, or null when no phone on file. */
+  phoneMasked: string | null;
+}
+
+export interface PortalProgressViewModel {
+  projectId: string;
+  projectName: string;
+  statusLabel: string;
+  statusColor: 'gray' | 'amber' | 'emerald' | 'red';
+  signaturesSigned: number;
+  signaturesPending: number;
+  signaturesTotal: number;
+  /** Rounded 0–100; 0 when the project has no signature requests yet. */
+  signedPct: number;
 }
 
 export interface PortalApartmentRowViewModel {

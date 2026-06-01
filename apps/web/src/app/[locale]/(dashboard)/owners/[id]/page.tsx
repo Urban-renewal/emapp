@@ -14,10 +14,12 @@ import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
+import { OwnerPiiReveal } from '@/components/owners/owner-pii-reveal';
 import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useArchiveOwner, useOwner } from '@/hooks/use-owners';
+import { useSessionProfile } from '@/hooks/use-session';
 import { ApiClientError } from '@/lib/api/errors';
 
 /**
@@ -58,7 +60,13 @@ export default function OwnerDetailPage() {
   const id = params?.id;
   const { data, isLoading, isError, error } = useOwner(id);
   const archive = useArchiveOwner();
+  const { data: profile } = useSessionProfile();
   const [actionError, setActionError] = useState<string | null>(null);
+  // D.54 — offer the reveal button only to roles that can ever hold
+  // view_owner_pii: manager (always) + agent (per-flag, gated server-side).
+  // Viewers never reveal, so they don't see the button. The BE is the
+  // authoritative gate regardless of this UX hint.
+  const canReveal = profile?.role === 'manager' || profile?.role === 'agent';
 
   if (isLoading) return <ListSkeleton withRows={false} />;
   if (isError) {
@@ -152,29 +160,29 @@ export default function OwnerDetailPage() {
               )}
             </div>
 
-            {/* Masked PII rows — LTR for digit alignment */}
-            <dl
-              className="tabular mt-3 grid grid-cols-[80px_1fr] gap-y-1.5 text-sm"
-              style={{ color: 'var(--text)' }}
-              dir="ltr"
-            >
-              <dt style={{ color: 'var(--text-muted)' }}>{t('idLabel')}</dt>
-              <dd>{data.nationalIdMasked}</dd>
-              {data.phoneMasked && (
-                <>
-                  <dt style={{ color: 'var(--text-muted)' }}>{t('phoneLabel')}</dt>
-                  <dd>{data.phoneMasked}</dd>
-                </>
-              )}
+            {/* Masked PII + D.54 reveal-on-demand — LTR for digit alignment. */}
+            <div className="mt-3">
+              <OwnerPiiReveal
+                ownerId={data.id}
+                nationalIdMasked={data.nationalIdMasked}
+                phoneMasked={data.phoneMasked}
+                canReveal={canReveal}
+                idLabel={t('idLabel')}
+                phoneLabel={t('phoneLabel')}
+              />
               {data.email && (
-                <>
+                <dl
+                  className="tabular mt-1.5 grid grid-cols-[80px_1fr] gap-y-1.5 text-sm"
+                  style={{ color: 'var(--text)' }}
+                  dir="ltr"
+                >
                   <dt style={{ color: 'var(--text-muted)' }}>{t('emailLabel')}</dt>
                   <dd className="break-all">
                     <NameDisplay name={data.email} />
                   </dd>
-                </>
+                </dl>
               )}
-            </dl>
+            </div>
           </div>
         </div>
       </div>

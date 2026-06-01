@@ -1,6 +1,6 @@
 'use client';
 
-import type { CreateOwner, Owner } from '@emapp/shared-types';
+import type { CreateOwner, Owner, OwnerPiiReveal } from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
@@ -10,6 +10,7 @@ import {
   createOwner,
   getOwner,
   listOwners,
+  revealOwnerPii,
   type OwnerListPage,
 } from '@/lib/api/owners';
 import { useDisplayLocale } from '@/lib/locale';
@@ -66,5 +67,20 @@ export function useArchiveOwner() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: OWNERS_KEY });
     },
+  });
+}
+
+/**
+ * D.54 — reveal-on-demand cleartext PII for ONE owner.
+ *
+ * SECURITY-CRITICAL: the cleartext result is returned from `mutateAsync`
+ * for the caller to hold in EPHEMERAL component state ONLY. This hook
+ * deliberately has NO `onSuccess` cache write — the cleartext must never
+ * enter the TanStack cache (which `useOwner`/list reads from and which is
+ * inspectable). It is not cached, not persisted, not logged.
+ */
+export function useRevealOwnerPii() {
+  return useMutation<OwnerPiiReveal, Error, string>({
+    mutationFn: (id: string) => revealOwnerPii(id),
   });
 }

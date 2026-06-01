@@ -65,6 +65,9 @@ export function toTenantDetailVM(
     createdRelative: formatRelative(row.createdAt, locale),
     createdAtIso: row.createdAt.toISOString(),
     isArchived: row.archivedAt !== null,
+    isSuspended: row.suspendedAt !== null,
+    suspendedRelative: row.suspendedAt ? formatRelative(row.suspendedAt, locale) : null,
+    suspendedReason: row.suspendedReason,
     counts: {
       users: row.counts.users,
       projects: row.counts.projects,

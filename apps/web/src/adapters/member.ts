@@ -14,7 +14,7 @@
  * surface visibility for incomplete enrolment.
  */
 
-import type { Member, OrgRole } from '@emapp/shared-types';
+import { DEFAULT_AGENT_CAPABILITIES, type Member, type OrgRole } from '@emapp/shared-types';
 
 import { formatRelative } from '@/lib/format';
 import type { DisplayLocale } from '@/lib/locale';
@@ -76,6 +76,9 @@ export function toMemberViewModel(m: Member, locale: DisplayLocale = 'he'): Memb
     invitedBy: m.invitedBy,
     createdRelative: formatRelative(m.createdAt, locale),
     createdAtIso: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
+    // BE always sends capabilities; fall back to the locked default for any
+    // pre-capability fixture/consumer (add-only wire safety).
+    capabilities: m.capabilities ?? DEFAULT_AGENT_CAPABILITIES,
   };
 }
 

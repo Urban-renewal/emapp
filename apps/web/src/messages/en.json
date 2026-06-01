@@ -368,6 +368,14 @@
     }
   },
   "owners": {
+    "reveal": {
+      "reveal": "Reveal PII",
+      "revealing": "Loading…",
+      "hide": "Hide",
+      "revealedHint": "Shown temporarily — this view is audited.",
+      "noPermission": "You don't have permission to reveal PII.",
+      "failed": "Failed to reveal. Try again."
+    },
     "listTitle": "Owners",
     "create": "Add Owner",
     "creating": "Adding...",
@@ -609,7 +617,31 @@
       "listTitle": "Tenants",
       "loadFailed": "Failed to load tenants.",
       "empty": "No tenants.",
-      "countsLine": "{users} users · {projects} projects · {owners} owners"
+      "countsLine": "{users} users · {projects} projects · {owners} owners",
+      "createTenant": "New tenant"
+    },
+    "onboard": {
+      "title": "Create a new tenant",
+      "hint": "Create a new organization and invite its first Manager. The manager gets an email invite link and sets their own password.",
+      "field": {
+        "orgName": "Organization name",
+        "managerName": "Manager name",
+        "managerEmail": "Manager email"
+      },
+      "submit": "Create & invite",
+      "submitting": "Creating…",
+      "cancel": "Cancel",
+      "failed": "Failed to create tenant. Try again.",
+      "createdTitle": "Tenant created",
+      "createdHint": "The organization was created and an invite was sent to the first manager.",
+      "createdOrg": "Organization",
+      "inviteSentTo": "Invite sent to",
+      "inviteTokenLabel": "Invite token (dev only)",
+      "inviteTokenWarning": "Shown once. In production the invite is delivered by email only.",
+      "inviteTokenEmailOnly": "The invite was emailed to the manager.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "backToList": "Back to tenants"
     },
     "tenantDetail": {
       "notFound": "Tenant not found.",
@@ -626,7 +658,25 @@
       "sampleOwnersHint": "Up to 5 most-recent owners. Name and phone are masked server-side (•••••••XX / •••••XXXX); national_id never crosses the wire.",
       "noSampleOwners": "No owners to show.",
       "phoneLabel": "Tel:",
-      "viewAuditForTenant": "View this tenant's audit log"
+      "viewAuditForTenant": "View this tenant's audit log",
+      "suspension": {
+        "title": "Tenant access control",
+        "badge": "Suspended",
+        "activeHint": "Tenant is active. Suspending freezes login for all of the tenant's users (reversible).",
+        "suspendedSince": "Suspended since {when}",
+        "suspend": "Suspend tenant",
+        "suspendConfirm": "Suspending freezes login immediately for all users and residents. Reversible (does not delete data).",
+        "noteLabel": "Operator note (optional)",
+        "notePlaceholder": "Reason for suspension — shown in the console",
+        "confirmSuspend": "Confirm suspend",
+        "suspending": "Suspending…",
+        "cancel": "Cancel",
+        "reactivate": "Reactivate",
+        "reactivateConfirm": "Reactivate this tenant? New logins will be allowed again (existing sessions stay revoked).",
+        "reactivating": "Reactivating…",
+        "actionFailed": "Action failed. Try again.",
+        "reasonRequired": "An access reason is required for this action."
+      }
     },
     "audit": {
       "title": "Cross-tenant audit search",
@@ -679,6 +729,31 @@
     }
   },
   "members": {
+    "capabilities": {
+      "title": "Permissions",
+      "hint": "Choose this agent's permissions. The default is least-privilege; grant only what's needed.",
+      "readSection": "View",
+      "writeSection": "Edit",
+      "cap": {
+        "edit_project_data": "Edit project data (buildings / apartments / owners)",
+        "manage_documents": "Manage documents (upload / download)",
+        "manage_signatures": "Manage signatures (create requests)",
+        "manage_tasks": "Manage tasks / calendar",
+        "run_imports": "Run imports",
+        "view_owners": "View owners",
+        "view_owner_pii": "View unmasked PII (national_id / phone)"
+      },
+      "piiNeedsViewOwners": "To show unmasked PII, enable \"View owners\" first.",
+      "piiRequiresViewOwners": "Unmasked PII requires \"View owners\".",
+      "presetManager": "A Manager holds all permissions — nothing to configure.",
+      "presetViewer": "A Viewer is read-only with masked PII. No edit permissions.",
+      "agentOnly": "Permissions can only be set for agents.",
+      "resetPreset": "Reset to default",
+      "save": "Save permissions",
+      "saving": "Saving…",
+      "savedOk": "Permissions saved.",
+      "saveFailed": "Failed to save permissions. Try again."
+    },
     "listTitle": "Organization members",
     "invite": "Invite member",
     "inviting": "Inviting...",
@@ -731,6 +806,20 @@
       "statApt": "Your apartment",
       "statOwnership": "Ownership",
       "statProjectStatus": "Project status"
+    },
+    "identity": {
+      "section": "My details",
+      "name": "Name",
+      "nationalId": "National ID",
+      "phone": "Phone",
+      "email": "Email",
+      "loadFailed": "Failed to load your details."
+    },
+    "progress": {
+      "section": "Project progress",
+      "summary": "{signed} of {total} signatures collected ({pct}%)",
+      "empty": "No progress data yet.",
+      "loadFailed": "Failed to load progress."
     },
     "apartment": {
       "section": "My apartment",
@@ -905,6 +994,7 @@
     "revoking": "Revoking...",
     "revokeConfirm": "Revoke this share? Access will be blocked immediately.",
     "permissionsLegend": "Access permissions",
+    "permissionsHint": "By default the contractor sees the project and apartments (structural only) and aggregate signature progress. Owner details are hidden, and documents are exposed only by manager selection.",
     "field": {
       "contractor": "Contractor",
       "contractorPlaceholder": "Pick a contractor..."
@@ -912,6 +1002,8 @@
     "perm": {
       "overview": "Project overview",
       "tenants": "Owner details (tenants)",
+      "tenantsOffHint": "Owner details are hidden from the contractor (default).",
+      "signaturesHint": "The contractor sees an aggregate progress percentage only — never who signed.",
       "tenantsField": {
         "phone": "Phone",
         "email": "Email",

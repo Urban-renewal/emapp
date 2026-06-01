@@ -22,15 +22,22 @@
 import {
   ListTenantsQuerySchema,
   ProviderAuditItemSchema,
+  OnboardOrgBodySchema,
+  OnboardOrgResultSchema,
   ProviderAuditQuerySchema,
+  SuspendTenantBodySchema,
   SystemHealthSchema,
   TenantDetailSchema,
   TenantListItemSchema,
+  TenantSuspensionStateSchema,
+  type OnboardOrgBody,
+  type OnboardOrgResult,
   type ProviderAuditItem,
   type ProviderAuditQuery,
   type SystemHealth,
   type TenantDetail,
   type TenantListItem,
+  type TenantSuspensionState,
 } from '@emapp/shared-types';
 import { z } from 'zod';
 
@@ -135,6 +142,57 @@ export async function getTenant(reason: string, id: string): Promise<TenantDetai
   const res = await apiClient.get<unknown>(`/provider/tenants/${id}`, withReason(reason));
   if (!isOk(res)) throw new ApiClientError(res.error);
   return TenantDetailDataSchema.parse({ data: res.data }).data;
+}
+
+// ───────────────────────────────────────────────────────────────────
+// D.49 — Provider WRITE actions: suspend / reactivate a tenant.
+// Both POST through the audit-first `withProvider` path; the mandatory
+// `access_reason` header (session gate) lands on the forensic audit row.
+// `note` (suspend only) is the operator-facing reason persisted on the
+// org and shown in the console — distinct from the forensic reason.
+// ───────────────────────────────────────────────────────────────────
+
+const TenantSuspensionDataSchema = z.object({ data: TenantSuspensionStateSchema });
+
+export async function suspendTenant(
+  reason: string,
+  id: string,
+  note?: string,
+): Promise<TenantSuspensionState> {
+  // FE-side defensive parse on the body — never send a malformed note.
+  const body = SuspendTenantBodySchema.parse(note && note.trim() ? { note: note.trim() } : {});
+  const res = await apiClient.post<unknown>(
+    `/provider/tenants/${id}/suspend`,
+    body,
+    withReason(reason),
+  );
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return TenantSuspensionDataSchema.parse({ data: res.data }).data;
+}
+
+export async function reactivateTenant(reason: string, id: string): Promise<TenantSuspensionState> {
+  const res = await apiClient.post<unknown>(
+    `/provider/tenants/${id}/reactivate`,
+    {},
+    withReason(reason),
+  );
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return TenantSuspensionDataSchema.parse({ data: res.data }).data;
+}
+
+// ───────────────────────────────────────────────────────────────────
+// D.45 — Provider-initiated onboarding: create an Org + invite the first
+// Manager. POST /provider/tenants. Defensive parse on BOTH the body
+// (never send a malformed request) and the response (never trust wire).
+// ───────────────────────────────────────────────────────────────────
+
+const OnboardOrgDataSchema = z.object({ data: OnboardOrgResultSchema });
+
+export async function onboardOrg(reason: string, body: OnboardOrgBody): Promise<OnboardOrgResult> {
+  const parsed = OnboardOrgBodySchema.parse(body);
+  const res = await apiClient.post<unknown>('/provider/tenants', parsed, withReason(reason));
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return OnboardOrgDataSchema.parse({ data: res.data }).data;
 }
 
 // ───────────────────────────────────────────────────────────────────

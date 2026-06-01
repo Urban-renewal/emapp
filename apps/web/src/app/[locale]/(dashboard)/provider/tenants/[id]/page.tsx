@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
+import { TenantSuspensionPanel } from '@/components/provider/tenant-suspension-panel';
 import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
@@ -80,12 +81,20 @@ export default function ProviderTenantDetailPage() {
                 {tp('archived')}
               </span>
             )}
+            {data.isSuspended && (
+              <span className="rounded-full bg-amber-200 px-2 py-0.5 font-medium text-amber-900">
+                {t('suspension.badge')}
+              </span>
+            )}
           </div>
         </div>
         <Button variant="ghost" size="sm" onClick={() => router.push('/provider/tenants')}>
           {t('backToList')}
         </Button>
       </div>
+
+      {/* D.49 — Provider write actions (suspend / reactivate). */}
+      <TenantSuspensionPanel tenant={data} />
 
       {/* Counts grid — one card per metric. */}
       <section>

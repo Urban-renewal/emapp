@@ -52,6 +52,16 @@ export class PortalController {
   }
 
   /**
+   * `GET /portal/progress` (D2 S5) — AGGREGATE signature progress for the
+   * tenant's project(s). Counts only; never another resident's data/PII.
+   */
+  @Get('progress')
+  async getProgress(@Req() req: FastifyRequest) {
+    const tenant = (req as FastifyRequest & { tenant: TenantTokenPayload }).tenant;
+    return this.portal.getProgress(tenant);
+  }
+
+  /**
    * `POST /portal/logout` (Wave 4 M-1) — tenant-initiated revoke. Soft
    * revokes the tenant_sessions row bound to this JWT's `sid`. Clears
    * the `tenant_access_token` cookie so subsequent requests fail at

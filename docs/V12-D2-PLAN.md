@@ -16,15 +16,15 @@
 
 ## What already exists (survey) vs the D2 gap
 
-| Area                    | Exists                                                             | D2 builds                                                                                                                                                                          |
-| ----------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Provider console        | login, dashboard, tenants list+detail, audit, system-health (READ) | **suspend/reactivate buttons** on tenant detail (BE done #182); access-reason prompt (component exists)                                                                            |
-| Onboarding (D.45)       | only `withBootstrap` script (ARCH-2)                               | **BE endpoint** (Provider creates org + first-manager invite, audit-first `withProvider`) **+ FE form**                                                                            |
-| Capability UI (D.46)    | members list/detail pages                                          | **role-presets + 6 toggles + `view_owner_pii`** on member detail (invariant pii⇒view_owners reflected); BE done #185-194                                                           |
-| Reveal PII (D.54)       | endpoint built (#192)                                              | **"Reveal PII" button** on owner detail → calls `POST /owners/:id/reveal-pii`, shows cleartext (audited)                                                                           |
-| Resident portal (D.47)  | base `(tenant)/portal/page`                                        | **full "everything about me"**: project progress, my signatures, documents sent to me, status — scoped, PII masked (D.47). May add BE portal-aggregation endpoints                 |
-| Contractor scope (D.46) | contractors + shares pages                                         | **BE scope enforcement** (resolve-share per D.46: aggregate-only progress, owners-PII off, manager-selected docs, IDOR-safe download) **+ FE share-config + contractor read view** |
-| admin.emapp.io (D.48)   | provider is a `/provider/*` path                                   | **deferred to PL cutover (D.56)** — NOT built in D2                                                                                                                                |
+| Area                    | Exists                                                             | D2 builds                                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Provider console        | login, dashboard, tenants list+detail, audit, system-health (READ) | **suspend/reactivate buttons** on tenant detail (BE done #182); access-reason prompt (component exists)                                                                                                                                                                                                                                                                        |
+| Onboarding (D.45)       | only `withBootstrap` script (ARCH-2)                               | **BE endpoint** (Provider creates org + first-manager invite, audit-first `withProvider`) **+ FE form**                                                                                                                                                                                                                                                                        |
+| Capability UI (D.46)    | members list/detail pages                                          | **role-presets + 6 toggles + `view_owner_pii`** on member detail (invariant pii⇒view_owners reflected); BE done #185-194                                                                                                                                                                                                                                                       |
+| Reveal PII (D.54)       | endpoint built (#192)                                              | **"Reveal PII" button** on owner detail → calls `POST /owners/:id/reveal-pii`, shows cleartext (audited)                                                                                                                                                                                                                                                                       |
+| Resident portal (D.47)  | base `(tenant)/portal/page`                                        | **full "everything about me"**: project progress, my signatures, documents sent to me, status — masked (D.47). **SCOPE (critical): the resident sees ONLY their own data + project progress as an AGGREGATE (%, counts) — NEVER any other resident's individual data/PII.** RLS/tenant-session scoped; `@security-reviewer` mandatory. May add BE portal-aggregation endpoints |
+| Contractor scope (D.46) | contractors + shares pages                                         | **BE scope enforcement** (resolve-share per D.46: aggregate-only progress, owners-PII off, manager-selected docs, IDOR-safe download) **+ FE share-config + contractor read view**                                                                                                                                                                                             |
+| admin.emapp.io (D.48)   | provider is a `/provider/*` path                                   | **deferred to PL cutover (D.56)** — NOT built in D2                                                                                                                                                                                                                                                                                                                            |
 
 ## Slice groups (sequential; the agent self-paces within)
 
@@ -45,6 +45,20 @@
   contractor-scope (BE). Most of D2 is FE → auto-mergeable.
 - **FE DoD** on every interactive slice: 4-axis browser-smoke + `method="post"`
   - view-source self-check + the `app-forms-no-get-fallback` static check green.
+
+## Quality & performance bar (required on every slice)
+
+- **Low runtime:** every new BE endpoint is round-trip-conscious — **zero N+1**,
+  one query per operation (never a query in a loop), use the existing composite
+  indexes (PERF-3). All data access via `withTenant`/`withProvider` (inherits the
+  locked ≤3 round-trip overhead, #173). FE: TanStack Query caching, **zero
+  duplicate fetches**.
+- **SOLID / professional:** follow the **existing architecture** — FE
+  Wire→VM→Adapter (docs/05 §9.8); BE NestJS module/service + the wrappers.
+  **No new pattern/abstraction without a documented reason.** Single-
+  responsibility; dependency-injection through the existing NestJS DI.
+- **Enforced by:** `@code-reviewer` (hunts N+1 / inefficiency / plaster + DoD) +
+  `typecheck` (zero `any`) + `lint` — mechanical walls on every PR.
 
 ## Safe-default principle (for decisions that surface mid-build)
 

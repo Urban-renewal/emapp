@@ -42,6 +42,8 @@ type OrgRow = {
   slug: string;
   createdAt: Date;
   archivedAt: Date | null;
+  suspendedAt: Date | null;
+  suspendedReason: string | null;
   usersCount: number;
   projectsCount: number;
   ownersCount: number;
@@ -74,6 +76,8 @@ export class ProviderTenantDetailService {
             o.slug AS "slug",
             o.created_at AS "createdAt",
             o.archived_at AS "archivedAt",
+            o.suspended_at AS "suspendedAt",
+            o.suspended_reason AS "suspendedReason",
             (
               SELECT COUNT(*)::int FROM users u
               INNER JOIN memberships m ON m.user_id = u.id
@@ -167,6 +171,8 @@ export class ProviderTenantDetailService {
       slug: result.org.slug,
       createdAt: result.org.createdAt,
       archivedAt: result.org.archivedAt,
+      suspendedAt: result.org.suspendedAt,
+      suspendedReason: result.org.suspendedReason,
       counts: {
         users: Number(result.org.usersCount),
         projects: Number(result.org.projectsCount),

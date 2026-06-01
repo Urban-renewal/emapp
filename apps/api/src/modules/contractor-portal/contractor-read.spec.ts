@@ -61,6 +61,8 @@ const fx = {
   projectDocId: '',
   apartmentDocId: '',
   otherProjectDocId: '',
+  apartmentId: '',
+  ownerId: '',
 };
 
 function ctx(perms: SharePermissions): ContractorContext {
@@ -113,6 +115,8 @@ async function seed(): Promise<void> {
     await tx
       .insert(ownerships)
       .values({ apartmentId: apt!.id, ownerId: own!.id, ownershipPct: '100', role: 'owner' });
+    fx.apartmentId = apt!.id;
+    fx.ownerId = own!.id;
 
     // Project-level doc (contractor CAN see) + apartment-level doc (per-owner
     // agreement — contractor must NOT see) + a doc on another project.
@@ -234,6 +238,44 @@ describe('D2-DEF-1 — contractor getProgress (aggregate-only)', () => {
     await expect(
       svc.getProgress(ctx({ ...FULL(), signatures: { on: false } })),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('D.57 valid-consent: a signed signature on an ARCHIVED doc does NOT count', async () => {
+    // Baseline (1 signed + 1 pending on the active apartment doc).
+    const before = await svc.getProgress(ctx(FULL()));
+    // Seed an ARCHIVED apartment-level doc of this project + a SIGNED request
+    // on it. Per D.57 it is superseded consent and must be excluded — uniform
+    // with the tenant portal (portal.s4 #9).
+    await withTenant(orgA.id, async (tx) => {
+      const [d] = await tx
+        .insert(documents)
+        .values({
+          orgId: orgA.id,
+          apartmentId: fx.apartmentId,
+          name: 'Superseded Agreement',
+          type: 'contract',
+          mimeType: 'application/pdf',
+          sizeBytes: 1024,
+          r2Key: `org/${orgA.id}/doc/${randomUUID()}.pdf`,
+          contentHash: 'sha256:' + 'a'.repeat(64),
+          uploadedBy: orgA.users[0]!.id,
+          archivedAt: new Date(),
+        })
+        .returning({ id: documents.id });
+      await tx.insert(signatureRequests).values({
+        orgId: orgA.id,
+        documentId: d!.id,
+        ownerId: fx.ownerId,
+        jti: `jti-${randomUUID()}`,
+        status: 'signed',
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        createdBy: orgA.users[0]!.id,
+      });
+    });
+    const after = await svc.getProgress(ctx(FULL()));
+    expect(after.signaturesSigned).toBe(before.signaturesSigned);
+    expect(after.signaturesTotal).toBe(before.signaturesTotal);
+    expect(after.signaturesPending).toBe(before.signaturesPending);
   });
 });
 

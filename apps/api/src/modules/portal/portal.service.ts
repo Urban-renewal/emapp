@@ -7,6 +7,7 @@ import {
   owners,
   ownerships,
   projects,
+  projectSignatureDocIdsSql,
   signatureRequests,
   tenantSessions,
   withTenant,
@@ -106,34 +107,27 @@ export class PortalService {
           status: projects.status,
           // A signature request belongs to this project when its document is
           // either project-level (`d.project_id = P`) OR apartment-level and
-          // the apartment is in this project (`b.project_id = P`). The latter
-          // is the COMMON case — per-owner contracts are apartment-scoped.
+          // the apartment is in this project. PERF (D.51, EXPLAIN-verified):
+          // drive from the project's DOCUMENTS (their indexes) and count via
+          // `idx_signature_requests_doc_status` — the earlier
+          // `(d.project_id = P OR b.project_id = P)` form had NO index path.
+          // `projectSignatureDocIdsSql(projects.id)` is the shared fragment.
+          // 'cancelled' requests are excluded so the completion % isn't
+          // diluted (total = signed + pending by construction).
           signaturesSigned: sql<number>`COALESCE((
             SELECT COUNT(*)::int FROM signature_requests sr
-            INNER JOIN documents d ON d.id = sr.document_id
-            LEFT JOIN apartments a ON a.id = d.apartment_id
-            LEFT JOIN buildings b ON b.id = a.building_id
-            WHERE (d.project_id = ${projects.id} OR b.project_id = ${projects.id})
-              AND sr.status = 'signed'
+            WHERE sr.status = 'signed'
+              AND sr.document_id IN (${projectSignatureDocIdsSql(sql`${projects.id}`)})
           ), 0)`,
           signaturesPending: sql<number>`COALESCE((
             SELECT COUNT(*)::int FROM signature_requests sr
-            INNER JOIN documents d ON d.id = sr.document_id
-            LEFT JOIN apartments a ON a.id = d.apartment_id
-            LEFT JOIN buildings b ON b.id = a.building_id
-            WHERE (d.project_id = ${projects.id} OR b.project_id = ${projects.id})
-              AND sr.status = 'pending'
+            WHERE sr.status = 'pending'
+              AND sr.document_id IN (${projectSignatureDocIdsSql(sql`${projects.id}`)})
           ), 0)`,
-          // Total = ACTIVE requests only (signed + pending). 'cancelled'
-          // requests are withdrawn/superseded and MUST NOT dilute the
-          // completion %; by construction total = signed + pending.
           signaturesTotal: sql<number>`COALESCE((
             SELECT COUNT(*)::int FROM signature_requests sr
-            INNER JOIN documents d ON d.id = sr.document_id
-            LEFT JOIN apartments a ON a.id = d.apartment_id
-            LEFT JOIN buildings b ON b.id = a.building_id
-            WHERE (d.project_id = ${projects.id} OR b.project_id = ${projects.id})
-              AND sr.status IN ('signed', 'pending')
+            WHERE sr.status IN ('signed', 'pending')
+              AND sr.document_id IN (${projectSignatureDocIdsSql(sql`${projects.id}`)})
           ), 0)`,
         })
         .from(ownerships)

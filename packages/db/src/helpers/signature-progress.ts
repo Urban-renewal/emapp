@@ -3,18 +3,35 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { TenantTx } from '../wrappers/with-tenant';
 
 /**
- * PERF (D.51) — the project's signature-bearing document ids, as an
- * INDEX-FRIENDLY set: project-level docs via `idx_documents_org_project`,
- * apartment-level docs via `idx_buildings_project` → apartments →
- * `idx_documents_apartment`. Used as `... document_id IN (<this>)`.
+ * PERF (D.51) — the project's signature-bearing document ids as a set, so the
+ * count can be expressed as `... document_id IN (<this>)`.
  *
- * This deliberately AVOIDS the `(d.project_id = P OR b.project_id = P)`
- * predicate, which has no index path (EXPLAIN with seqscan disabled still
- * seq-scans signature_requests + documents). Driving from the documents
- * indexes lets the count use the `idx_signature_requests_doc_status`
- * (document_id, status) Index-Only Scan.
- */
-/**
+ * ROOT CAUSE (not a plaster): the prior `(d.project_id = P OR b.project_id =
+ * P)` predicate has NO index path — EXPLAIN with `enable_seqscan = off` still
+ * seq-scans signature_requests AND documents, because the OR straddles two
+ * tables and the planner can't drive either side from an index. project_id is
+ * genuinely NOT denormalised onto apartment-level docs (documents.service.ts
+ * writes `projectId: input.projectId ?? null` — an apartment doc has
+ * project_id NULL), so the predicate CANNOT collapse to `d.project_id = P`
+ * alone; the UNION over the two real paths is required, not a stylistic
+ * choice.
+ *
+ * Rewriting OR→UNION gives the planner an index path for the whole shape:
+ * under `enable_seqscan = off` neither documents nor signature_requests is
+ * seq-scanned and the count resolves through the
+ * `idx_signature_requests_doc_status` (document_id, status) index (proven by
+ * `signature-progress-perf.spec.ts`; the path is structural/volume-
+ * independent — at MVP row counts the planner still picks the cheaper seq
+ * scan, which is correct, exactly per D.51's mechanism-not-latency rule).
+ *
+ * BYTE-FOR-BYTE: this set is identical to the OR-form's matching set — it does
+ * NOT add an `archived_at IS NULL` filter, so an archived doc's signatures are
+ * counted exactly as before. (Whether archived docs *should* count toward live
+ * progress is a separate product/correctness question, deliberately NOT
+ * decided here.) Using the PARTIAL `idx_documents_org_project` (which would
+ * require that filter) was rejected precisely because it would change the
+ * count; the count-neutral form below still has a full index path.
+ *
  * `projectId` may be a literal (parameterised) OR a `SQL` column reference
  * for a CORRELATED subquery (e.g. the portal's per-project counts pass
  * `sql\`${projects.id}\``). Internal aliases are `pd_a` / `pd_b` so this can
@@ -23,12 +40,12 @@ import type { TenantTx } from '../wrappers/with-tenant';
 export function projectSignatureDocIdsSql(projectId: string | SQL): SQL {
   return sql`
     SELECT d.id FROM documents d
-      WHERE d.project_id = ${projectId} AND d.archived_at IS NULL
+      WHERE d.project_id = ${projectId}
     UNION
     SELECT d.id FROM documents d
       INNER JOIN apartments pd_a ON pd_a.id = d.apartment_id
       INNER JOIN buildings pd_b ON pd_b.id = pd_a.building_id
-      WHERE pd_b.project_id = ${projectId} AND d.archived_at IS NULL
+      WHERE pd_b.project_id = ${projectId}
   `;
 }
 

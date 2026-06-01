@@ -143,13 +143,14 @@ export class ContractorReadService {
     // Structural aggregate-only gate: 'none' → not granted; 'aggregate' → ok.
     if (signatureScopeForShare(ctx.permissions) !== 'aggregate') throw FORBIDDEN;
     const row = await withTenant(ctx.orgId, async (tx) => {
-      // PERF (D.51, EXPLAIN-verified): drive from the project's DOCUMENTS
-      // (idx_documents_org_project + the apartment→building project index)
-      // and count via idx_signature_requests_doc_status (document_id,status)
-      // — an Index-Only Scan. The earlier `(d.project_id = P OR b.project_id
-      // = P)` form had NO index path (seq-scanned signature_requests +
-      // documents even with seqscan disabled). `signatureProgressByProject`
-      // is the shared index-friendly resolver (also used by the portal).
+      // PERF (D.51): `signatureProgressByProject` rewrites the prior
+      // `(d.project_id = P OR b.project_id = P)` predicate — which had NO
+      // index path (seq-scanned signature_requests + documents even with
+      // seqscan disabled) — into an OR→UNION that the planner can drive from
+      // indexes, counting via idx_signature_requests_doc_status. The rewrite
+      // is byte-for-byte count-neutral (no archived filter added). Shared with
+      // the tenant portal. The path is structural (proven under
+      // enable_seqscan=off); at MVP volume seq scan is still the correct plan.
       return signatureProgressByProject(tx, ctx.projectId);
     });
     return {

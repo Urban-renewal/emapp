@@ -367,23 +367,31 @@ describe('V11 B.S4 · PortalService — Tenant Portal own-data view (D.40)', () 
     expect(data.map((p) => p.projectId)).not.toContain(orgA.projects[0]!.id);
   });
 
-  it('9) getProgress — EXCLUDES signatures on ARCHIVED documents (no inflated progress)', async () => {
+  it('9) getProgress — BYTE-FOR-BYTE: the OR→UNION perf rewrite counts archived-doc signatures exactly as the prior OR-form did (no silent behavior change)', async () => {
+    // D.51 anti-plaster: the perf rewrite (OR → UNION on the doc-id set) must
+    // be COUNT-EQUIVALENT to the predicate it replaced. The old
+    // `(d.project_id = P OR b.project_id = P)` form had NO `archived_at`
+    // filter, so a signed signature on an ARCHIVED document of the project
+    // DID count. This asserts the rewrite preserves that exactly — adding an
+    // archived signed request increments `signaturesSigned` by 1.
+    //
+    // (Whether archived docs *should* count toward live progress is a
+    // separate product question, deliberately NOT changed inside a perf PR —
+    // changing it here would be the very symptom-plaster D.51 forbids.)
     const pid = orgA.projects[0]!.id;
     const before = (await svc.getProgress(tenantOf(orgA, fx.tenantAOwnerId))).data.find(
       (p) => p.projectId === pid,
     )!;
-    // An ARCHIVED document on tenant A's apartment + an ACTIVE (signed)
-    // signature request on it. The completion % must NOT count it — an
-    // archived doc is withdrawn from the project's live progress (this is
-    // intentional, and matches the contractor read-tier + getDocuments).
     const archivedDoc = await makeDocument(orgA, fx.tenantAApartmentId, 'Archived Contract', true);
     await makeSignatureRequest(orgA, archivedDoc, fx.tenantAOwnerId, 'signed');
 
     const after = (await svc.getProgress(tenantOf(orgA, fx.tenantAOwnerId))).data.find(
       (p) => p.projectId === pid,
     )!;
-    expect(after.signaturesSigned).toBe(before.signaturesSigned);
-    expect(after.signaturesTotal).toBe(before.signaturesTotal);
+    // Counted, NOT excluded — identical to the pre-rewrite OR-form.
+    expect(after.signaturesSigned).toBe(before.signaturesSigned + 1);
+    expect(after.signaturesTotal).toBe(before.signaturesTotal + 1);
+    expect(after.signaturesPending).toBe(before.signaturesPending);
   });
 
   it('6) archived owner → 404 on getMe', async () => {

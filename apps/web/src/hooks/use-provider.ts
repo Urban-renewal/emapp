@@ -1,6 +1,11 @@
 'use client';
 
-import type { ProviderAuditQuery, TenantSuspensionState } from '@emapp/shared-types';
+import type {
+  OnboardOrgBody,
+  OnboardOrgResult,
+  ProviderAuditQuery,
+  TenantSuspensionState,
+} from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
@@ -11,6 +16,7 @@ import {
   getSystemHealth,
   getTenant,
   listTenants,
+  onboardOrg,
   reactivateTenant,
   searchAudit,
   suspendTenant,
@@ -118,6 +124,24 @@ export function useReactivateTenant(id: string | undefined) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [...PROVIDER_KEY, 'tenant', id] });
+      qc.invalidateQueries({ queryKey: [...PROVIDER_KEY, 'tenants'] });
+    },
+  });
+}
+
+/**
+ * D.45 — onboarding mutation (create org + first-manager invite).
+ *
+ * Reads the session `access_reason` (AccessReasonGate guarantees it).
+ * On success we invalidate the tenant list so the new org appears. The
+ * one-shot `inviteToken` (dev/test only, D.27) is returned from
+ * `mutateAsync` for the page to render once — NEVER written to cache.
+ */
+export function useOnboardOrg() {
+  const qc = useQueryClient();
+  return useMutation<OnboardOrgResult, Error, OnboardOrgBody>({
+    mutationFn: (body) => onboardOrg(readProviderReason() ?? '', body),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: [...PROVIDER_KEY, 'tenants'] });
     },
   });

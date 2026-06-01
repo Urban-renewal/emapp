@@ -31,6 +31,7 @@ import {
   getSystemHealth,
   getTenant,
   listTenants,
+  onboardOrg,
   reactivateTenant,
   searchAudit,
   suspendTenant,
@@ -167,6 +168,15 @@ describe('§provider — access_reason header (D.37 mandatory)', () => {
         name: 'reactivateTenant',
         run: () => reactivateTenant('r', '11111111-1111-1111-1111-111111111111'),
       },
+      {
+        name: 'onboardOrg',
+        run: () =>
+          onboardOrg('r', {
+            orgName: 'Acme Renewal',
+            managerName: 'Dana',
+            managerEmail: 'dana@example.test',
+          }),
+      },
     ];
     for (const call of calls) {
       const { stub, captured } = makeFetchStub(() => ({
@@ -223,6 +233,14 @@ function makeBodyFor(name: string): unknown {
         suspended: false,
         suspendedAt: null,
         suspendedReason: null,
+      };
+    case 'onboardOrg':
+      return {
+        orgId: '11111111-1111-1111-1111-111111111111',
+        slug: 'acme-renewal-abc123def456',
+        orgName: 'Acme Renewal',
+        managerEmail: 'dana@example.test',
+        inviteToken: 'dev-token-xyz',
       };
     default:
       return null;
@@ -336,6 +354,55 @@ describe('§provider — D.49 suspend / reactivate writes', () => {
     globalThis.fetch = stub as unknown as typeof fetch;
     await expect(
       suspendTenant('', '11111111-1111-1111-1111-111111111111', 'x'),
+    ).rejects.toBeInstanceOf(ProviderReasonRequiredError);
+    expect(captured).toHaveLength(0);
+  });
+});
+
+describe('§provider — D.45 onboarding write', () => {
+  it('P12) onboardOrg POSTs to /provider/tenants with body + reason header; parses result', async () => {
+    let sentBody: unknown;
+    const captured: CapturedRequest[] = [];
+    const stub = vi.fn((url: string, init?: RequestInit) => {
+      const headersObj: Record<string, string> = {};
+      if (init?.headers) {
+        new Headers(init.headers).forEach((v, k) => {
+          headersObj[k.toLowerCase()] = v;
+        });
+      }
+      captured.push({ url, method: init?.method ?? 'GET', headers: headersObj });
+      sentBody = init?.body ? JSON.parse(String(init.body)) : undefined;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ data: makeBodyFor('onboardOrg') }),
+      } as unknown as Response);
+    });
+    globalThis.fetch = stub as unknown as typeof fetch;
+    const result = await onboardOrg('ONB-99 onboard pilot tenant', {
+      orgName: 'Acme Renewal',
+      managerName: 'Dana',
+      managerEmail: 'Dana@Example.test',
+    });
+    expect(captured[0]!.method).toBe('POST');
+    expect(captured[0]!.url).toContain('/provider/tenants');
+    expect(captured[0]!.headers[PROVIDER_HEADERS.ACCESS_REASON]).toBe(
+      'ONB-99 onboard pilot tenant',
+    );
+    // Body normalised by the schema: email lower-cased before the wire.
+    expect((sentBody as { managerEmail?: string }).managerEmail).toBe('dana@example.test');
+    expect(result.orgId).toBe('11111111-1111-1111-1111-111111111111');
+    expect(result.inviteToken).toBe('dev-token-xyz');
+  });
+
+  it('P12b) onboardOrg with a blank reason refuses before the network call', async () => {
+    const { stub, captured } = makeFetchStub(() => ({
+      status: 200,
+      body: { data: makeBodyFor('onboardOrg') },
+    }));
+    globalThis.fetch = stub as unknown as typeof fetch;
+    await expect(
+      onboardOrg('', { orgName: 'X Co', managerName: 'Y', managerEmail: 'y@example.test' }),
     ).rejects.toBeInstanceOf(ProviderReasonRequiredError);
     expect(captured).toHaveLength(0);
   });

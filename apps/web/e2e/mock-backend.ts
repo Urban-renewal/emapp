@@ -323,6 +323,37 @@ function installDefaultHandlers(): void {
     };
   });
 
+  // POST /provider/tenants — D.45 onboarding (create org + first-manager
+  // invite). Same provider+reason guard as the reads. Echoes a result with
+  // a dev invite token so the success screen can render it.
+  setMockHandler('POST', '/api/v1/provider/tenants', (req, body) => {
+    const cookieHeader = req.headers.cookie ?? '';
+    const hasProviderToken = /(?:^|;\s*)provider_access_token=([^;]+)/.test(cookieHeader);
+    if (!hasProviderToken) return { status: 401, body: { error: { code: 'invalid_token' } } };
+    const reason = req.headers['access_reason'];
+    if (!reason || (typeof reason === 'string' && reason.trim().length === 0)) {
+      return { status: 400, body: { error: { code: 'reason_required' } } };
+    }
+    let parsed: { orgName?: string; managerEmail?: string } = {};
+    try {
+      parsed = JSON.parse(body || '{}');
+    } catch {
+      /* fall through to a 400-shaped empty echo */
+    }
+    return {
+      status: 200,
+      body: {
+        data: {
+          orgId: '00000000-0000-4000-8000-0000000000b1',
+          slug: 'new-pilot-org-abc123def456',
+          orgName: parsed.orgName ?? 'New Pilot Org',
+          managerEmail: parsed.managerEmail ?? 'manager@example.test',
+          inviteToken: 'e2e-dev-invite-token',
+        },
+      },
+    };
+  });
+
   // /provider/system-health — the provider dashboard home page fires
   // this on mount via useProviderSystemHealth(). Mock returns a clean
   // gauge snapshot so the page renders without errors.

@@ -129,6 +129,43 @@ export const TenantSuspensionStateSchema = z.object({
 export type TenantSuspensionState = z.infer<typeof TenantSuspensionStateSchema>;
 
 // ───────────────────────────────────────────────────────────────────
+// D.45 — Provider-initiated onboarding: create an Org + invite the
+// first Manager (invite-token email; the manager sets their own
+// password). POST /provider/tenants. Audited via the audit-first
+// `withProvider` path with a distinct `provider.tenant.created` action
+// (the existing `write` ProviderAction — no new policy cell, D.49).
+//
+// `orgName` / `managerName` are free-form (escaped at the email layer);
+// `managerEmail` is normalised lower-case. The org slug is ALWAYS
+// server-generated (random suffix) — never client-supplied — so it is
+// absent from the request body.
+// ───────────────────────────────────────────────────────────────────
+export const OnboardOrgBodySchema = z
+  .object({
+    orgName: z.string().trim().min(2).max(120),
+    managerName: z.string().trim().min(1).max(120),
+    // Normalise to lower-case so the citext unique index + any later
+    // lookup are consistent; max 254 per RFC 5321.
+    managerEmail: z.string().trim().toLowerCase().email().max(254),
+  })
+  .strict();
+export type OnboardOrgBody = z.infer<typeof OnboardOrgBodySchema>;
+
+export const OnboardOrgResultSchema = z.object({
+  orgId: z.string().uuid(),
+  /** Server-generated, URL-safe slug. */
+  slug: z.string(),
+  orgName: z.string(),
+  /** Echoed back so the console can show "invite sent to …". */
+  managerEmail: z.string().email(),
+  /** Present ONLY outside production (D.27 — EXPOSE_INVITE_TOKEN). The
+   *  console shows it once; in prod the email is the sole delivery path
+   *  and this is absent. Never persisted. */
+  inviteToken: z.string().optional(),
+});
+export type OnboardOrgResult = z.infer<typeof OnboardOrgResultSchema>;
+
+// ───────────────────────────────────────────────────────────────────
 // GET /provider/audit — cross-tenant audit search.
 // Filters: org_id (optional, repeatable in query), action prefix, date
 // range. Cursor-paginated.

@@ -609,7 +609,31 @@
       "listTitle": "לקוחות במערכת",
       "loadFailed": "טעינת רשימת הלקוחות נכשלה.",
       "empty": "אין לקוחות.",
-      "countsLine": "{users} משתמשים · {projects} פרויקטים · {owners} בעלי דירות"
+      "countsLine": "{users} משתמשים · {projects} פרויקטים · {owners} בעלי דירות",
+      "createTenant": "לקוח חדש"
+    },
+    "onboard": {
+      "title": "יצירת לקוח חדש",
+      "hint": "יצירת ארגון חדש והזמנת המנהל הראשון. המנהל יקבל קישור הזמנה במייל ויגדיר סיסמה בעצמו.",
+      "field": {
+        "orgName": "שם הארגון",
+        "managerName": "שם המנהל",
+        "managerEmail": "אימייל המנהל"
+      },
+      "submit": "צור והזמן",
+      "submitting": "יוצר…",
+      "cancel": "ביטול",
+      "failed": "יצירת הלקוח נכשלה. נסה שוב.",
+      "createdTitle": "הלקוח נוצר",
+      "createdHint": "הארגון נוצר והזמנה נשלחה למנהל הראשון.",
+      "createdOrg": "ארגון",
+      "inviteSentTo": "הזמנה נשלחה אל",
+      "inviteTokenLabel": "אסימון הזמנה (סביבת פיתוח בלבד)",
+      "inviteTokenWarning": "מוצג פעם אחת בלבד. בסביבת ייצור ההזמנה נשלחת רק במייל.",
+      "inviteTokenEmailOnly": "ההזמנה נשלחה במייל למנהל.",
+      "copy": "העתק",
+      "copied": "הועתק",
+      "backToList": "חזרה לרשימת הלקוחות"
     },
     "tenantDetail": {
       "notFound": "הלקוח לא נמצא.",

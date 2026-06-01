@@ -17,3 +17,18 @@ export function isDevAuthBypass(): boolean {
 export function isDevBypassCode(code: string): boolean {
   return isDevAuthBypass() && code === DEV_FIXED_AUTH_CODE;
 }
+
+/**
+ * Fail-fast boot guard (defense-in-depth beyond the code-level gate). The gate
+ * is already prod-impossible, but this turns a future env MISconfiguration
+ * (someone sets DEV_AUTH_BYPASS=1 in production) from a silent dormant flag
+ * into a LOUD boot crash. Call once at bootstrap.
+ */
+export function assertDevBypassNotInProduction(): void {
+  if (serverEnv.NODE_ENV === 'production' && serverEnv.DEV_AUTH_BYPASS === '1') {
+    throw new Error(
+      'DEV_AUTH_BYPASS=1 is set with NODE_ENV=production — refusing to start. ' +
+        'This dev-only auth bypass must never be enabled in a deployed environment.',
+    );
+  }
+}

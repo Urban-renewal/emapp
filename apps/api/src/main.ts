@@ -8,6 +8,7 @@ import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify
 import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
+import { assertDevBypassNotInProduction } from './common/dev-auth-bypass';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { resetStorageProvider } from './modules/documents/storage';
 import { installProcessGuards } from './process-guards';
@@ -25,6 +26,9 @@ const CORS_ORIGINS = {
 } as const;
 
 async function bootstrap() {
+  // Fail-fast (defense-in-depth): never boot with the dev auth bypass enabled
+  // in production, even if the gate would already keep it dormant.
+  assertDevBypassNotInProduction();
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({

@@ -721,6 +721,31 @@
     }
   },
   "members": {
+    "capabilities": {
+      "title": "Permissions",
+      "hint": "Choose this agent's permissions. The default is least-privilege; grant only what's needed.",
+      "readSection": "View",
+      "writeSection": "Edit",
+      "cap": {
+        "edit_project_data": "Edit project data (buildings / apartments / owners)",
+        "manage_documents": "Manage documents (upload / download)",
+        "manage_signatures": "Manage signatures (create requests)",
+        "manage_tasks": "Manage tasks / calendar",
+        "run_imports": "Run imports",
+        "view_owners": "View owners",
+        "view_owner_pii": "View unmasked PII (national_id / phone)"
+      },
+      "piiNeedsViewOwners": "To show unmasked PII, enable \"View owners\" first.",
+      "piiRequiresViewOwners": "Unmasked PII requires \"View owners\".",
+      "presetManager": "A Manager holds all permissions — nothing to configure.",
+      "presetViewer": "A Viewer is read-only with masked PII. No edit permissions.",
+      "agentOnly": "Permissions can only be set for agents.",
+      "resetPreset": "Reset to default",
+      "save": "Save permissions",
+      "saving": "Saving…",
+      "savedOk": "Permissions saved.",
+      "saveFailed": "Failed to save permissions. Try again."
+    },
     "listTitle": "Organization members",
     "invite": "Invite member",
     "inviting": "Inviting...",

@@ -1,6 +1,6 @@
 'use client';
 
-import type { CreateMember, UpdateMember } from '@emapp/shared-types';
+import type { CreateMember, UpdateAgentCapabilities, UpdateMember } from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
@@ -9,6 +9,7 @@ import {
   createMember,
   listMembers,
   revokeMember,
+  updateMemberCapabilities,
   updateMemberRole,
   type CreateMemberResult,
   type MemberListPage,
@@ -87,6 +88,22 @@ export function useUpdateMemberRole() {
   return useMutation({
     mutationFn: (input: { userId: string; body: UpdateMember }) =>
       updateMemberRole(input.userId, input.body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: MEMBERS_KEY });
+    },
+  });
+}
+
+/**
+ * D.46/D.54 — update an agent's capability set. Capabilities are NOT in
+ * the JWT (loaded server-side per request), so no session revocation is
+ * needed; we invalidate the members list so the new flags are reflected.
+ */
+export function useUpdateMemberCapabilities() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { userId: string; body: UpdateAgentCapabilities }) =>
+      updateMemberCapabilities(input.userId, input.body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: MEMBERS_KEY });
     },

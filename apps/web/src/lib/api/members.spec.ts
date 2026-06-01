@@ -19,7 +19,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiClientError } from './errors';
-import { acceptInvite, createMember, listMembers, revokeMember, updateMemberRole } from './members';
+import {
+  acceptInvite,
+  createMember,
+  listMembers,
+  revokeMember,
+  updateMemberCapabilities,
+  updateMemberRole,
+} from './members';
 
 interface StubResponse {
   status: number;
@@ -188,6 +195,65 @@ describe('updateMemberRole', () => {
     })) as unknown as typeof fetch;
     const m = await updateMemberRole(SAMPLE_MEMBER.userId, { role: 'manager' });
     expect(m.role).toBe('manager');
+  });
+});
+
+describe('updateMemberCapabilities (D.46/D.54)', () => {
+  const FULL = {
+    edit_project_data: false,
+    manage_documents: true,
+    manage_signatures: false,
+    manage_tasks: false,
+    run_imports: false,
+    view_owners: true,
+    view_owner_pii: true,
+  };
+
+  it('T-D46-API.1) PATCHes /members/:id/capabilities with the body; returns updated Member', async () => {
+    let url = '';
+    let method = '';
+    let sentBody: unknown;
+    globalThis.fetch = stubFetch((u, init) => {
+      url = u;
+      method = init?.method ?? 'GET';
+      sentBody = init?.body ? JSON.parse(String(init.body)) : undefined;
+      return { status: 200, body: { data: { ...SAMPLE_MEMBER, capabilities: FULL } } };
+    }) as unknown as typeof fetch;
+    const m = await updateMemberCapabilities(SAMPLE_MEMBER.userId, FULL);
+    expect(method).toBe('PATCH');
+    expect(url).toContain(`/members/${SAMPLE_MEMBER.userId}/capabilities`);
+    expect(sentBody).toMatchObject({ manage_documents: true, view_owner_pii: true });
+    expect(m.capabilities?.view_owner_pii).toBe(true);
+  });
+
+  it('T-D46-API.2) 400 view_owner_pii_requires_view_owners surfaces as ApiClientError.code', async () => {
+    globalThis.fetch = stubFetch(() => ({
+      status: 400,
+      body: { error: { code: 'view_owner_pii_requires_view_owners' } },
+    })) as unknown as typeof fetch;
+    await expect(
+      updateMemberCapabilities(SAMPLE_MEMBER.userId, { view_owner_pii: true, view_owners: false }),
+    ).rejects.toMatchObject({ code: 'view_owner_pii_requires_view_owners' });
+  });
+
+  it('T-D46-API.3) 400 capabilities_agent_only surfaces (non-agent target)', async () => {
+    globalThis.fetch = stubFetch(() => ({
+      status: 400,
+      body: { error: { code: 'capabilities_agent_only' } },
+    })) as unknown as typeof fetch;
+    await expect(
+      updateMemberCapabilities(SAMPLE_MEMBER.userId, { edit_project_data: true }),
+    ).rejects.toMatchObject({ code: 'capabilities_agent_only' });
+  });
+
+  it('T-D46-API.4) empty body rejected client-side BEFORE the wire (at-least-one-key)', async () => {
+    let called = false;
+    globalThis.fetch = stubFetch(() => {
+      called = true;
+      return { status: 200, body: { data: SAMPLE_MEMBER } };
+    }) as unknown as typeof fetch;
+    await expect(updateMemberCapabilities(SAMPLE_MEMBER.userId, {})).rejects.toBeTruthy();
+    expect(called).toBe(false);
   });
 });
 

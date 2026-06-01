@@ -20,7 +20,7 @@
  * the Manager from clicking a button that can never succeed).
  */
 
-import type { OrgRole } from '@emapp/shared-types';
+import type { AgentCapabilities, OrgRole } from '@emapp/shared-types';
 
 export type MemberState = 'pending' | 'active' | 'revoked';
 
@@ -40,4 +40,9 @@ export interface MemberViewModel {
   invitedBy: string | null;
   createdRelative: string;
   createdAtIso: string;
+  /** D.46/D.54 — the stored agent capability set. The BE always populates
+   *  it on every Member response; we fall back to the locked default if a
+   *  pre-capability fixture omits it. Meaningful for enforcement only when
+   *  `role === 'agent'` (managers implicitly hold all; viewers none). */
+  capabilities: AgentCapabilities;
 }

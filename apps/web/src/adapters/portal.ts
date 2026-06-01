@@ -15,6 +15,7 @@ import type {
   TenantPortalApartment,
   TenantPortalDocument,
   TenantPortalMe,
+  TenantPortalProgress,
   TenantPortalSignature,
 } from '@emapp/shared-types';
 
@@ -24,6 +25,7 @@ import type {
   PortalApartmentRowViewModel,
   PortalDocumentViewModel,
   PortalMeViewModel,
+  PortalProgressViewModel,
   PortalSignatureViewModel,
 } from '@/models/portal.vm';
 
@@ -168,9 +170,9 @@ const DOC_TYPE_EN: Record<string, string> = {
 // ──────────────────────────────────────────────────────────────────────
 
 export function toPortalMeViewModel(me: TenantPortalMe): PortalMeViewModel {
-  // Per D.40 the tenant sees their OWN cleartext — no masking, but we
-  // strip bidi-override codepoints so a malicious name from a corrupt
-  // import can't spoof other UI strings.
+  // D.47 — national_id + phone arrive MASKED from the wire; pass through.
+  // Strip bidi-override codepoints from the name so a malicious name from a
+  // corrupt import can't spoof other UI strings.
   const cleanName = stripBidiOverrides(me.name);
   const firstWhitespace = cleanName.indexOf(' ');
   return {
@@ -178,8 +180,8 @@ export function toPortalMeViewModel(me: TenantPortalMe): PortalMeViewModel {
     name: cleanName,
     firstName: firstWhitespace === -1 ? cleanName : cleanName.slice(0, firstWhitespace),
     email: me.email,
-    nationalId: me.nationalId,
-    phone: me.phone,
+    nationalIdMasked: me.nationalIdMasked,
+    phoneMasked: me.phoneMasked,
   };
 }
 
@@ -305,6 +307,33 @@ export function toPortalSignatureViewModels(
   locale: 'he' | 'en' = 'he',
 ): PortalSignatureViewModel[] {
   return rows.map((r) => toPortalSignatureViewModel(r, locale));
+}
+
+export function toPortalProgressViewModel(
+  row: TenantPortalProgress,
+  locale: 'he' | 'en' = 'he',
+): PortalProgressViewModel {
+  const labels = locale === 'he' ? PROJECT_STATUS_HE : PROJECT_STATUS_EN;
+  // Round-half-up percent; 0 when there are no signature requests yet.
+  const signedPct =
+    row.signaturesTotal > 0 ? Math.round((row.signaturesSigned / row.signaturesTotal) * 100) : 0;
+  return {
+    projectId: row.projectId,
+    projectName: stripBidiOverrides(row.projectName),
+    statusLabel: labels[row.status],
+    statusColor: PROJECT_STATUS_COLORS[row.status],
+    signaturesSigned: row.signaturesSigned,
+    signaturesPending: row.signaturesPending,
+    signaturesTotal: row.signaturesTotal,
+    signedPct,
+  };
+}
+
+export function toPortalProgressViewModels(
+  rows: TenantPortalProgress[],
+  locale: 'he' | 'en' = 'he',
+): PortalProgressViewModel[] {
+  return rows.map((r) => toPortalProgressViewModel(r, locale));
 }
 
 function formatBytes(n: number): string {

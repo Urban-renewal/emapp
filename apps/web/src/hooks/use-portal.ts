@@ -4,6 +4,7 @@ import type {
   TenantPortalApartment,
   TenantPortalDocument,
   TenantPortalMe,
+  TenantPortalProgress,
   TenantPortalSignature,
 } from '@emapp/shared-types';
 import { useQuery } from '@tanstack/react-query';
@@ -13,12 +14,14 @@ import {
   toPortalApartmentRowViewModels,
   toPortalDocumentViewModels,
   toPortalMeViewModel,
+  toPortalProgressViewModels,
   toPortalSignatureViewModels,
 } from '@/adapters/portal';
 import {
   getPortalApartments,
   getPortalDocuments,
   getPortalMe,
+  getPortalProgress,
   getPortalSignatures,
 } from '@/lib/api/portal';
 import { useDisplayLocale } from '@/lib/locale';
@@ -26,6 +29,7 @@ import type {
   PortalApartmentRowViewModel,
   PortalDocumentViewModel,
   PortalMeViewModel,
+  PortalProgressViewModel,
   PortalSignatureViewModel,
 } from '@/models/portal.vm';
 
@@ -93,6 +97,20 @@ export function usePortalSignatures() {
   return useQuery<TenantPortalSignature[], Error, PortalSignatureViewModel[]>({
     queryKey: [...PORTAL_KEY, 'signatures', locale],
     queryFn: getPortalSignatures,
+    staleTime: 30_000,
+    select,
+  });
+}
+
+export function usePortalProgress() {
+  const locale = useDisplayLocale();
+  const select = useCallback(
+    (data: TenantPortalProgress[]) => toPortalProgressViewModels(data, locale),
+    [locale],
+  );
+  return useQuery<TenantPortalProgress[], Error, PortalProgressViewModel[]>({
+    queryKey: [...PORTAL_KEY, 'progress', locale],
+    queryFn: getPortalProgress,
     staleTime: 30_000,
     select,
   });

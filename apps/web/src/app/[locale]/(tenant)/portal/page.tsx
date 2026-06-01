@@ -19,6 +19,7 @@ import {
   usePortalApartments,
   usePortalDocuments,
   usePortalMe,
+  usePortalProgress,
   usePortalSignatures,
 } from '@/hooks/use-portal';
 
@@ -100,11 +101,13 @@ export default function TenantPortalPage() {
   const apts = usePortalApartments();
   const docs = usePortalDocuments();
   const sigs = usePortalSignatures();
+  const progress = usePortalProgress();
 
   const meState = viewState(me);
   const aptsState = viewState(apts);
   const docsState = viewState(docs);
   const sigsState = viewState(sigs);
+  const progressState = viewState(progress);
 
   // Manual-audit bug #5 fix — belt-and-suspenders auth bounce.
   // The api-client's `emapp:unauthenticated` event + the layout's
@@ -320,6 +323,109 @@ export default function TenantPortalPage() {
                     {row.project.statusLabel}
                   </StatusBadge>
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      {/* ── My details (D.47 — own PII shown MASKED) ─────────────── */}
+      <Section
+        title={t('identity.section')}
+        icon={<User className="h-4 w-4" aria-hidden="true" style={{ color: 'var(--navy-700)' }} />}
+      >
+        {meState === 'loading' ? (
+          <SectionSkeleton lines={2} />
+        ) : meState === 'error' || !me.data ? (
+          <p className="text-sm" style={{ color: 'var(--danger-700)' }}>
+            {t('identity.loadFailed')}
+          </p>
+        ) : (
+          <dl
+            className="grid gap-x-6 gap-y-1.5 text-sm"
+            style={{ gridTemplateColumns: '120px 1fr', color: 'var(--text)' }}
+          >
+            <dt style={{ color: 'var(--text-muted)' }}>{t('identity.name')}</dt>
+            <dd>
+              <NameDisplay name={me.data.name} />
+            </dd>
+            <dt style={{ color: 'var(--text-muted)' }}>{t('identity.nationalId')}</dt>
+            {/* Already masked at the wire (D.47); LTR for digit alignment. */}
+            <dd className="tabular" dir="ltr">
+              {me.data.nationalIdMasked}
+            </dd>
+            {me.data.phoneMasked && (
+              <>
+                <dt style={{ color: 'var(--text-muted)' }}>{t('identity.phone')}</dt>
+                <dd className="tabular" dir="ltr">
+                  {me.data.phoneMasked}
+                </dd>
+              </>
+            )}
+            {me.data.email && (
+              <>
+                <dt style={{ color: 'var(--text-muted)' }}>{t('identity.email')}</dt>
+                <dd className="break-all" dir="ltr">
+                  <NameDisplay name={me.data.email} />
+                </dd>
+              </>
+            )}
+          </dl>
+        )}
+      </Section>
+
+      {/* ── Project progress (AGGREGATE only — never other residents) ── */}
+      <Section
+        title={t('progress.section')}
+        icon={
+          <CheckCircle2
+            className="h-4 w-4"
+            aria-hidden="true"
+            style={{ color: 'var(--navy-700)' }}
+          />
+        }
+      >
+        {progressState === 'loading' ? (
+          <SectionSkeleton lines={2} />
+        ) : progressState === 'error' ? (
+          <p className="text-sm" style={{ color: 'var(--danger-700)' }}>
+            {t('progress.loadFailed')}
+          </p>
+        ) : !progress.data || progress.data.length === 0 ? (
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            {t('progress.empty')}
+          </p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {progress.data.map((p) => (
+              <div key={p.projectId} className="card card-pad flex flex-col gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-base font-semibold" style={{ color: 'var(--text)' }}>
+                    <NameDisplay name={p.projectName} />
+                  </h3>
+                  <StatusBadge color={p.statusColor}>{p.statusLabel}</StatusBadge>
+                </div>
+                {/* Aggregate progress bar — counts only, no resident identities. */}
+                <div
+                  className="relative h-2 w-full overflow-hidden rounded-full"
+                  style={{ background: 'var(--navy-100)' }}
+                  role="progressbar"
+                  aria-valuenow={p.signedPct}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  <div
+                    className="absolute inset-y-0 start-0 rounded-full"
+                    style={{ width: `${p.signedPct}%`, background: 'var(--navy-700)' }}
+                  />
+                </div>
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                  {t('progress.summary', {
+                    signed: p.signaturesSigned,
+                    total: p.signaturesTotal,
+                    pct: p.signedPct,
+                  })}
+                </p>
               </div>
             ))}
           </div>

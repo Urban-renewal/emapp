@@ -807,6 +807,20 @@
       "statOwnership": "Ownership",
       "statProjectStatus": "Project status"
     },
+    "identity": {
+      "section": "My details",
+      "name": "Name",
+      "nationalId": "National ID",
+      "phone": "Phone",
+      "email": "Email",
+      "loadFailed": "Failed to load your details."
+    },
+    "progress": {
+      "section": "Project progress",
+      "summary": "{signed} of {total} signatures collected ({pct}%)",
+      "empty": "No progress data yet.",
+      "loadFailed": "Failed to load progress."
+    },
     "apartment": {
       "section": "My apartment",
       "loadFailed": "Failed to load apartment.",

@@ -21,10 +21,12 @@ import {
   TenantPortalApartmentSchema,
   TenantPortalDocumentSchema,
   TenantPortalMeSchema,
+  TenantPortalProgressSchema,
   TenantPortalSignatureSchema,
   type TenantPortalApartment,
   type TenantPortalDocument,
   type TenantPortalMe,
+  type TenantPortalProgress,
   type TenantPortalSignature,
 } from '@emapp/shared-types';
 import { z } from 'zod';
@@ -37,6 +39,7 @@ const MeDataSchema = z.object({ data: TenantPortalMeSchema });
 const ApartmentsDataSchema = z.object({ data: z.array(TenantPortalApartmentSchema) });
 const DocumentsDataSchema = z.object({ data: z.array(TenantPortalDocumentSchema) });
 const SignaturesDataSchema = z.object({ data: z.array(TenantPortalSignatureSchema) });
+const ProgressDataSchema = z.object({ data: z.array(TenantPortalProgressSchema) });
 
 export async function getPortalMe(): Promise<TenantPortalMe> {
   const res = await apiClient.get<unknown>('/portal/me');
@@ -60,4 +63,12 @@ export async function getPortalSignatures(): Promise<TenantPortalSignature[]> {
   const res = await apiClient.get<unknown>('/portal/signatures');
   if (!isOk(res)) throw new ApiClientError(res.error);
   return SignaturesDataSchema.parse({ data: res.data }).data;
+}
+
+/** `GET /portal/progress` — aggregate signature progress per project the
+ *  tenant has an apartment in (counts only; no other resident's data). */
+export async function getPortalProgress(): Promise<TenantPortalProgress[]> {
+  const res = await apiClient.get<unknown>('/portal/progress');
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return ProgressDataSchema.parse({ data: res.data }).data;
 }

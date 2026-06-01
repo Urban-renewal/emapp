@@ -9,7 +9,15 @@
     "PII_ENCRYPTION_KEY",
     "PII_HASH_KEY",
     "BETTER_AUTH_SECRET",
-    "JWT_SECRET"
+    "JWT_SECRET",
+    "SIGNATURE_TOKEN_SECRET",
+    "API_BACKEND_URL",
+    "RESEND_API_KEY",
+    "DATABASE_MIGRATE_URL",
+    "R2_ENDPOINT",
+    "R2_BUCKET",
+    "R2_ACCESS_KEY_ID",
+    "R2_SECRET_ACCESS_KEY"
   ],
   "tasks": {
     "build": {

@@ -4,7 +4,13 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { readProviderReason, setProviderReason } from '@/lib/provider-reason';
+import {
+  PROVIDER_REASON_MAX_LEN,
+  PROVIDER_REASON_SUBSTANTIVE_MIN_LEN,
+  readProviderReason,
+  setProviderReason,
+  validateProviderReasonClient,
+} from '@/lib/provider-reason';
 
 /**
  * Access-reason gate — blocks the `/provider/*` subtree until the
@@ -23,15 +29,16 @@ import { readProviderReason, setProviderReason } from '@/lib/provider-reason';
  *  - Reads sessionStorage on mount; if already set, renders nothing
  *    (the page content shows directly).
  *  - On submit, persists the reason and re-renders (gateOpen=false).
- *  - Minimum length 8 chars enforced FE-side — same posture as the
- *    BE's `provider_audit_log.reason` non-empty check; bouncing
- *    short/junk reasons at the gate avoids polluting the audit table.
+ *  - D2-DEF-2: the gate enforces the SAME rule as the BE `withProvider`
+ *    (`validateProviderReasonClient` — a ticket reference OR ≥20
+ *    substantive chars). Previously it accepted ≥8 chars, so an 8–19-char
+ *    non-ticket reason passed the gate but failed the first cross-tenant
+ *    call with a generic error. Bouncing it here keeps the audit table
+ *    clean and gives the operator a clear, immediate message.
  */
 interface Props {
   children: React.ReactNode;
 }
-
-const MIN_LENGTH = 8;
 
 export function AccessReasonGate({ children }: Props) {
   const t = useTranslations('provider.gate');
@@ -55,13 +62,19 @@ export function AccessReasonGate({ children }: Props) {
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const trimmed = value.trim();
-    if (trimmed.length < MIN_LENGTH) {
-      setError(t('tooShort', { min: MIN_LENGTH }));
+    const result = validateProviderReasonClient(value);
+    if (!result.ok) {
+      // Mirror the BE: a ticket ref (e.g. INC-1234) OR ≥20 substantive chars,
+      // and ≤512 chars (`too_long`).
+      setError(
+        result.code === 'too_long'
+          ? t('tooLong', { max: PROVIDER_REASON_MAX_LEN })
+          : t('lowQuality', { min: PROVIDER_REASON_SUBSTANTIVE_MIN_LEN }),
+      );
       return;
     }
     try {
-      setProviderReason(trimmed);
+      setProviderReason(result.value);
       setHasReason(true);
     } catch {
       setError(t('failed'));
@@ -96,7 +109,7 @@ export function AccessReasonGate({ children }: Props) {
           />
           {error && <p className="text-xs text-destructive">{error}</p>}
         </div>
-        <Button type="submit" disabled={value.trim().length < MIN_LENGTH}>
+        <Button type="submit" disabled={!validateProviderReasonClient(value).ok}>
           {t('submit')}
         </Button>
       </form>

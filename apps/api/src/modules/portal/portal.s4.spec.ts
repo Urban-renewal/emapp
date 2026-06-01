@@ -138,7 +138,12 @@ async function makeOwnership(
   });
 }
 
-async function makeDocument(o: TestOrg, apartmentId: string, name: string): Promise<string> {
+async function makeDocument(
+  o: TestOrg,
+  apartmentId: string,
+  name: string,
+  archived = false,
+): Promise<string> {
   return withTenant(o.id, async (tx) => {
     const [row] = await tx
       .insert(documents)
@@ -152,6 +157,7 @@ async function makeDocument(o: TestOrg, apartmentId: string, name: string): Prom
         r2Key: `org/${o.id}/doc/${Date.now()}-${Math.random()}.pdf`,
         contentHash: 'sha256:' + 'd'.repeat(64),
         uploadedBy: o.users[0]!.id,
+        archivedAt: archived ? new Date() : null,
       })
       .returning({ id: documents.id });
     return row!.id;
@@ -359,6 +365,29 @@ describe('V11 B.S4 · PortalService — Tenant Portal own-data view (D.40)', () 
   it('8) getProgress — cross-org isolation: tenant C (orgB) never sees orgA projects', async () => {
     const { data } = await svc.getProgress(tenantOf(orgB, fx.tenantCOwnerId));
     expect(data.map((p) => p.projectId)).not.toContain(orgA.projects[0]!.id);
+  });
+
+  it('9) getProgress — D.57 valid-consent: a signed signature on an ARCHIVED document does NOT count toward live progress', async () => {
+    // D.57 (owner-approved): live signature progress counts only signatures on
+    // ACTIVE documents. A signature on a superseded (archived) agreement is not
+    // valid consent and must not inflate the live %. Uniform with the
+    // contractor read-tier, and consistent with getDocuments/getProject which
+    // already exclude archived. (This is a deliberate behavior change vs the
+    // old OR-form, which had no archived filter and would have counted it.)
+    const pid = orgA.projects[0]!.id;
+    const before = (await svc.getProgress(tenantOf(orgA, fx.tenantAOwnerId))).data.find(
+      (p) => p.projectId === pid,
+    )!;
+    const archivedDoc = await makeDocument(orgA, fx.tenantAApartmentId, 'Archived Contract', true);
+    await makeSignatureRequest(orgA, archivedDoc, fx.tenantAOwnerId, 'signed');
+
+    const after = (await svc.getProgress(tenantOf(orgA, fx.tenantAOwnerId))).data.find(
+      (p) => p.projectId === pid,
+    )!;
+    // Excluded — the archived doc's signed request is withdrawn from live progress.
+    expect(after.signaturesSigned).toBe(before.signaturesSigned);
+    expect(after.signaturesTotal).toBe(before.signaturesTotal);
+    expect(after.signaturesPending).toBe(before.signaturesPending);
   });
 
   it('6) archived owner → 404 on getMe', async () => {

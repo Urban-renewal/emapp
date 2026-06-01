@@ -25,7 +25,11 @@ const intlMiddleware = createMiddleware(routing);
  */
 const JWT_SHAPE = '[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+';
 const PUBLIC_ROUTE_REGEX = new RegExp(
-  `^\\/[a-z]{2}\\/(login|signup|provider\\/login|tenant\\/login|accept-invite\\/${JWT_SHAPE})$`,
+  // D2-DEF-1 — `/<locale>/contractor/share/<jwt>` is the public contractor
+  // read-view landing: the share-access token (JWT in the path) IS the
+  // credential; no cookie. Same shape-pinning posture as accept-invite so a
+  // stray `/he/contractor/share/whatever` can't masquerade as public.
+  `^\\/[a-z]{2}\\/(login|signup|provider\\/login|tenant\\/login|accept-invite\\/${JWT_SHAPE}|contractor\\/share\\/${JWT_SHAPE})$`,
 );
 /**
  * Org-tier auth routes — bounce ANY user with `access_token` away.

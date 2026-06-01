@@ -22,6 +22,60 @@
  */
 const STORAGE_KEY = 'emapp.provider.access_reason';
 
+// ───────────────────────────────────────────────────────────────────
+// D2-DEF-2 — FE-side mirror of the BE `validateProviderReason`
+// (packages/db/src/helpers/provider-validators.ts). The gate previously
+// accepted ≥8 chars while `withProvider` requires a ticket reference OR
+// ≥20 substantive chars — so an 8–19-char non-ticket reason passed the
+// gate but the first cross-tenant call failed with a generic error. This
+// mirrors the EXACT BE rule so the gate rejects up-front.
+//
+// `@emapp/db` is the source of truth but is a backend package (pg/drizzle)
+// that must NOT be imported into the browser bundle; this is a faithful
+// copy pinned by `provider-reason.spec.ts` to the same contract.
+// ───────────────────────────────────────────────────────────────────
+
+/** Mirrors PROVIDER_TICKET_REF_REGEX. Bounded alternation + bounded
+ *  `\d{2,}` — no catastrophic backtracking (audited with the BE copy). */
+// eslint-disable-next-line security/detect-unsafe-regex -- mirror of the audited BE PROVIDER_TICKET_REF_REGEX
+const TICKET_REF_REGEX = /^(INC|REQ|SUP|TKT|BUG|JIRA|GH|PR)-(?:[A-Z]+-)?\d{2,}/i;
+// eslint-disable-next-line no-control-regex -- mirror of PROVIDER_CONTROL_CHARS_REGEX
+const CONTROL_CHARS_REGEX = /[\x00-\x1f\x7f]/g;
+/** Mirrors SUBSTANTIVE_MIN_LEN / _TOKENS / _DISTINCT_CHARS. */
+export const PROVIDER_REASON_SUBSTANTIVE_MIN_LEN = 20;
+const SUBSTANTIVE_MIN_TOKENS = 3;
+const SUBSTANTIVE_MIN_DISTINCT_CHARS = 4;
+/** Mirrors PROVIDER_REASON_MAX_LEN — the BE rejects > 512 chars
+ *  (`reason_too_long`); the gate must reject it too or a long reason
+ *  passes here and fails the first cross-tenant call. */
+export const PROVIDER_REASON_MAX_LEN = 512;
+
+export type ProviderReasonResult =
+  | { ok: true; value: string }
+  | { ok: false; code: 'low_quality' | 'too_long' };
+
+/**
+ * Validate an operator reason against the SAME rule the BE enforces
+ * (`validateProviderReason`). Accepts a recognised ticket reference (e.g.
+ * `INC-1234`) OR substantive free text (≥20 chars, ≥3 tokens, ≥4 distinct
+ * chars); rejects anything over the 512-char cap. Pure.
+ */
+export function validateProviderReasonClient(raw: string): ProviderReasonResult {
+  const cleaned = raw.replace(CONTROL_CHARS_REGEX, '').trim();
+  // Max-length cap applies regardless of ticket/substantive shape (BE
+  // checks length BEFORE the ticket fast-path).
+  if (cleaned.length > PROVIDER_REASON_MAX_LEN) return { ok: false, code: 'too_long' };
+  if (TICKET_REF_REGEX.test(cleaned)) return { ok: true, value: cleaned };
+  if (cleaned.length < PROVIDER_REASON_SUBSTANTIVE_MIN_LEN)
+    return { ok: false, code: 'low_quality' };
+  const tokens = cleaned.split(/\s+/).filter((t) => t.length > 0);
+  if (tokens.length < SUBSTANTIVE_MIN_TOKENS) return { ok: false, code: 'low_quality' };
+  if (new Set(cleaned.toLowerCase()).size < SUBSTANTIVE_MIN_DISTINCT_CHARS) {
+    return { ok: false, code: 'low_quality' };
+  }
+  return { ok: true, value: cleaned };
+}
+
 /** Defensive read — returns null on SSR, empty value, or whitespace. */
 export function readProviderReason(): string | null {
   if (typeof window === 'undefined') return null;

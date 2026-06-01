@@ -598,7 +598,8 @@
       "label": "סיבת הגישה",
       "placeholder": "לדוגמה: תקלה #4729 — בדיקת לקוח Alpha",
       "submit": "המשך",
-      "tooShort": "הסיבה קצרה מדי (מינימום {min} תווים).",
+      "lowQuality": "יש להזין מספר תקלה (למשל INC-1234) או סיבה מפורטת (לפחות {min} תווים).",
+      "tooLong": "הסיבה ארוכה מדי (מקסימום {max} תווים).",
       "failed": "שמירת הסיבה נכשלה. נסה שוב."
     },
     "dashboard": {
@@ -993,6 +994,11 @@
     "revoke": "בטל שיתוף",
     "revoking": "מבטל...",
     "revokeConfirm": "לבטל את השיתוף? הגישה תיחסם מיידית.",
+    "shareLink": "קישור גישה",
+    "linking": "מייצר...",
+    "shareLinkLabel": "קישור הגישה לקבלן (העתק ושלח)",
+    "shareLinkWarning": "הקישור הוא אישור גישה — שלח אותו ישירות לקבלן בלבד. ניתן לבטל בכל עת.",
+    "linkFailed": "יצירת הקישור נכשלה. נסה שוב.",
     "permissionsLegend": "הרשאות גישה",
     "permissionsHint": "כברירת מחדל הקבלן רואה את הפרויקט והדירות (מבני בלבד) והתקדמות חתימות מצרפית. פרטי בעלי הדירות מוסתרים, ומסמכים נחשפים רק לפי בחירת המנהל.",
     "field": {
@@ -1019,6 +1025,20 @@
       "notes": "הערות (notes)",
       "team": "צוות (team)"
     }
+  },
+  "contractorView": {
+    "loading": "טוען…",
+    "invalidLink": "הקישור אינו תקף, פג תוקפו או בוטל. פנה למנהל הפרויקט לקבלת קישור חדש.",
+    "progressSection": "התקדמות חתימות",
+    "progressSummary": "{signed} מתוך {total} חתימות נאספו ({pct}%)",
+    "buildingsSection": "בניינים ודירות",
+    "noBuildings": "אין בניינים לתצוגה.",
+    "cadastral": "גוש {block} חלקה {parcel}",
+    "apartmentCount": "{count} דירות",
+    "documentsSection": "מסמכים משותפים",
+    "noDocuments": "אין מסמכים משותפים.",
+    "download": "הורדה",
+    "downloadFailed": "ההורדה נכשלה. נסה שוב."
   },
   "notes": {
     "listTitle": "הערות",

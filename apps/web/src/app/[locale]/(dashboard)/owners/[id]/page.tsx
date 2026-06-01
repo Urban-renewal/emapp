@@ -62,11 +62,13 @@ export default function OwnerDetailPage() {
   const archive = useArchiveOwner();
   const { data: profile } = useSessionProfile();
   const [actionError, setActionError] = useState<string | null>(null);
-  // D.54 — offer the reveal button only to roles that can ever hold
-  // view_owner_pii: manager (always) + agent (per-flag, gated server-side).
-  // Viewers never reveal, so they don't see the button. The BE is the
-  // authoritative gate regardless of this UX hint.
-  const canReveal = profile?.role === 'manager' || profile?.role === 'agent';
+  // D.54 / D2-DEF-3 — offer the reveal button only to actors who can
+  // actually reveal: manager (always) OR an agent whose `view_owner_pii`
+  // capability is granted (now carried on the /me profile). An agent
+  // WITHOUT the flag, and every viewer, don't see the button. The BE
+  // reveal endpoint remains the authoritative gate regardless of this hint.
+  const canReveal =
+    profile?.role === 'manager' || (profile?.role === 'agent' && profile?.view_owner_pii === true);
 
   if (isLoading) return <ListSkeleton withRows={false} />;
   if (isError) {

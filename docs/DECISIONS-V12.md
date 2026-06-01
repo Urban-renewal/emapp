@@ -463,6 +463,43 @@ a code change. (Agents: never write `emapp.io` into code; read it from config.)
 
 ---
 
+## D.57 — Live signature progress = active-doc consent only (archived excluded), uniform portal + contractor
+
+**Context:** the aggregate signature-progress count (tenant portal slice 5 +
+contractor read-tier DEF-1, both via the shared
+`signatureProgressByProject` / `projectSignatureDocIdsSql` resolver) was being
+hardened for perf (D.51/D.52). The original `(d.project_id = P OR
+b.project_id = P)` predicate counted signatures on **archived** documents too,
+because it had no `archived_at` filter. The perf rewrite surfaced the question:
+should a signature on a **superseded (archived)** agreement count toward live
+progress?
+
+**Decision (owner-approved):** **No.** Live signature progress counts only
+signatures on **ACTIVE** documents — `archived_at IS NULL` on both UNION
+branches of the doc-id set. This is **valid-consent semantics**: a signature on
+an agreement that has since been replaced is not valid consent and must not
+inflate the live completion %. The rule is **uniform** across the tenant portal
+and the contractor read-tier (one shared resolver), and is **consistent with
+`getDocuments` / `getProject`**, which already exclude archived.
+
+**Status:** this is a **deliberate, approved behavior change** — NOT byte-for-
+byte with the pre-hardening OR-form (which counted archived). It is a
+correctness fix, not a perf-PR regression.
+
+**Mechanism bonus (not the driver):** the `archived_at IS NULL` predicate also
+makes the existing **partial** indexes `idx_documents_org_project` /
+`idx_documents_apartment` (both `… WHERE archived_at IS NULL`) usable, giving
+the count an index path (D.51) with **no new index / no migration**. Correctness
+and perf land on the same predicate. (A count-neutral variant without the filter
+could not use the partial indexes and failed the perf gate on CI's clean DB.)
+
+**Tests pinning it:** `portal.s4` #9 and `contractor-read.spec`
+("D.55 valid-consent…") both seed an archived signed request and assert
+`signaturesSigned` is unchanged; `signature-progress-perf.spec` asserts the
+index path under `enable_seqscan = off`.
+
+---
+
 ## Plan impact
 
 - **D.46** adds a permission-model slice to Track D.

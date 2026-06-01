@@ -72,4 +72,11 @@ export class SharesController {
   async revoke(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     await this.shares.revoke(user, id);
   }
+
+  // D2-DEF-1 — mint a share-access link (the contractor credential) for an
+  // existing share. Manager-only (enforced in the service + the matrix).
+  @Post('shares/:id/link')
+  async link(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
+    return { data: await this.shares.getShareLink(user, id) };
+  }
 }

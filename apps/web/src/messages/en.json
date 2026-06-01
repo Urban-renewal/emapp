@@ -609,7 +609,31 @@
       "listTitle": "Tenants",
       "loadFailed": "Failed to load tenants.",
       "empty": "No tenants.",
-      "countsLine": "{users} users · {projects} projects · {owners} owners"
+      "countsLine": "{users} users · {projects} projects · {owners} owners",
+      "createTenant": "New tenant"
+    },
+    "onboard": {
+      "title": "Create a new tenant",
+      "hint": "Create a new organization and invite its first Manager. The manager gets an email invite link and sets their own password.",
+      "field": {
+        "orgName": "Organization name",
+        "managerName": "Manager name",
+        "managerEmail": "Manager email"
+      },
+      "submit": "Create & invite",
+      "submitting": "Creating…",
+      "cancel": "Cancel",
+      "failed": "Failed to create tenant. Try again.",
+      "createdTitle": "Tenant created",
+      "createdHint": "The organization was created and an invite was sent to the first manager.",
+      "createdOrg": "Organization",
+      "inviteSentTo": "Invite sent to",
+      "inviteTokenLabel": "Invite token (dev only)",
+      "inviteTokenWarning": "Shown once. In production the invite is delivered by email only.",
+      "inviteTokenEmailOnly": "The invite was emailed to the manager.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "backToList": "Back to tenants"
     },
     "tenantDetail": {
       "notFound": "Tenant not found.",

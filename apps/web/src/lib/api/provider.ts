@@ -22,12 +22,16 @@
 import {
   ListTenantsQuerySchema,
   ProviderAuditItemSchema,
+  OnboardOrgBodySchema,
+  OnboardOrgResultSchema,
   ProviderAuditQuerySchema,
   SuspendTenantBodySchema,
   SystemHealthSchema,
   TenantDetailSchema,
   TenantListItemSchema,
   TenantSuspensionStateSchema,
+  type OnboardOrgBody,
+  type OnboardOrgResult,
   type ProviderAuditItem,
   type ProviderAuditQuery,
   type SystemHealth,
@@ -174,6 +178,21 @@ export async function reactivateTenant(reason: string, id: string): Promise<Tena
   );
   if (!isOk(res)) throw new ApiClientError(res.error);
   return TenantSuspensionDataSchema.parse({ data: res.data }).data;
+}
+
+// ───────────────────────────────────────────────────────────────────
+// D.45 — Provider-initiated onboarding: create an Org + invite the first
+// Manager. POST /provider/tenants. Defensive parse on BOTH the body
+// (never send a malformed request) and the response (never trust wire).
+// ───────────────────────────────────────────────────────────────────
+
+const OnboardOrgDataSchema = z.object({ data: OnboardOrgResultSchema });
+
+export async function onboardOrg(reason: string, body: OnboardOrgBody): Promise<OnboardOrgResult> {
+  const parsed = OnboardOrgBodySchema.parse(body);
+  const res = await apiClient.post<unknown>('/provider/tenants', parsed, withReason(reason));
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return OnboardOrgDataSchema.parse({ data: res.data }).data;
 }
 
 // ───────────────────────────────────────────────────────────────────

@@ -15,6 +15,7 @@ import { JwtService } from '@nestjs/jwt';
 import { and, eq, isNull } from 'drizzle-orm';
 import { Secret, TOTP } from 'otpauth';
 
+import { isDevBypassCode } from '../../../common/dev-auth-bypass';
 import { dummyVerify, verifyPassword } from '../password';
 import { flushSessionCache } from '../session-validity';
 
@@ -152,6 +153,13 @@ export class ProviderAuthService {
           mfaOk = true;
           consumedRecovery = p.recoveryCodesHash.filter((h) => h !== codeHash);
         }
+      }
+
+      // Dev-only fixed MFA code (double-gated, prod-impossible — see
+      // common/dev-auth-bypass.ts). Password is still required: we are inside
+      // `if (passOk)`, so this bypasses ONLY the second factor, never the password.
+      if (!mfaOk && isDevBypassCode(dto.mfa_code)) {
+        mfaOk = true;
       }
     }
 

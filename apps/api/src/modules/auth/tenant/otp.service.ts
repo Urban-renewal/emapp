@@ -17,6 +17,8 @@ import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
 
+import { isDevBypassCode } from '../../../common/dev-auth-bypass';
+
 export const SMS_PROVIDER = 'SMS_PROVIDER';
 
 /** G1a (audit-pass IV): per-request forensic context — IP + UA — passed
@@ -173,7 +175,10 @@ export class OtpService {
     }
 
     const attempts = row.attempts + 1;
-    const ok = row.codeHash === hashField(code, dbEnv.PII_HASH_KEY as string);
+    // Real HMAC compare, OR the fixed dev code when the (double-gated, prod-
+    // impossible) dev auth bypass is active — see common/dev-auth-bypass.ts.
+    const ok =
+      row.codeHash === hashField(code, dbEnv.PII_HASH_KEY as string) || isDevBypassCode(code);
     await db
       .update(otpCodes)
       .set({ attempts, usedAt: ok || attempts >= MAX_ATTEMPTS ? new Date() : null })

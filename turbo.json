@@ -4,6 +4,7 @@
   "globalEnv": [
     "NODE_ENV",
     "SKIP_ENV_VALIDATION",
+    "DEV_AUTH_BYPASS",
     "DATABASE_URL",
     "PROVIDER_DATABASE_URL",
     "PII_ENCRYPTION_KEY",

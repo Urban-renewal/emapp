@@ -12,14 +12,17 @@
  * while active returns 404 once suspended, and works again after reactivate —
  * proving the gate is the suspension flag, not some unrelated visibility rule.
  */
+import { serverEnv } from '@emapp/config';
 import { defaultSharePermissions } from '@emapp/db';
 import { NotFoundException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { providerPool } from '../../../../../packages/db/src/client';
 import { createTestOrg, type TestOrg } from '../../../../../packages/db/test/factories';
 import { setupTestDatabase } from '../../../../../packages/db/test/setup';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { ShareTokenService } from '../contractor-portal/share-token.service';
 
 import { SharesService } from './shares.service';
 
@@ -67,7 +70,7 @@ async function seedContractor(orgId: string, createdBy: string): Promise<string>
 
 beforeAll(async () => {
   await setupTestDatabase();
-  svc = new SharesService();
+  svc = new SharesService(new ShareTokenService(new JwtService({ secret: serverEnv.JWT_SECRET })));
   const tag = `d49-share-${Date.now()}`;
   org = await createTestOrg(tag, tag);
   projectId = org.projects[0]!.id;

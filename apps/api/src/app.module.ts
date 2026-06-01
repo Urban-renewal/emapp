@@ -12,6 +12,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { BuildingsModule } from './modules/buildings/buildings.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { CalendarEmailModule } from './modules/calendar-email/calendar-email.module';
+import { ContractorPortalModule } from './modules/contractor-portal/contractor-portal.module';
 import { ContractorsModule } from './modules/contractors/contractors.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { ExportModule } from './modules/export/export.module';
@@ -101,6 +102,10 @@ import { QueueModule } from './queue/queue.module';
     // endpoints. POLICY untouched — portal has no entry in the
     // org POLICY matrix (Gate-6 untouched).
     PortalModule,
+    // D2-DEF-1 / D.46 — Contractor read-tier (share-token, `emapp-share`
+    // audience). Parallel auth tier OUTSIDE the org POLICY matrix; perms-
+    // driven via the share JSONB. No migration / no policy.ts change.
+    ContractorPortalModule,
     // D.38 / V11 B.S6 — Calendar / ICS generator (pure function).
     // No controller; B.S7 Resend integration consumes via DI.
     CalendarModule,

@@ -2,7 +2,7 @@
 
 import type { CreateShare, SharePermissions } from '@emapp/shared-types';
 import { useParams, useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,12 @@ import { ListPageShell } from '@/components/ui/list-page-shell';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
 import { useContractorList } from '@/hooks/use-contractors';
-import { useCreateProjectShare, useProjectShareList, useRevokeShare } from '@/hooks/use-shares';
+import {
+  useCreateProjectShare,
+  useMintShareLink,
+  useProjectShareList,
+  useRevokeShare,
+} from '@/hooks/use-shares';
 import { SHARE_DEFAULT_PERMISSIONS } from '@/models/share.vm';
 
 /**
@@ -26,6 +31,7 @@ import { SHARE_DEFAULT_PERMISSIONS } from '@/models/share.vm';
 export default function ProjectSharesPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const locale = useLocale();
   const projectId = params?.id;
   const t = useTranslations('shares');
   const tp = useTranslations('projects');
@@ -47,6 +53,26 @@ export default function ProjectSharesPage() {
 
   const createMutation = useCreateProjectShare(projectId);
   const revokeMutation = useRevokeShare(projectId);
+  const mintMutation = useMintShareLink();
+  // The minted link (token + built URL) for ONE share, shown once for the
+  // manager to copy. Held in component state only — it is a credential and
+  // is never written to the TanStack cache.
+  const [mintedLink, setMintedLink] = useState<{ shareId: string; url: string } | null>(null);
+  const [linkError, setLinkError] = useState<string | null>(null);
+
+  async function onMintLink(id: string) {
+    setLinkError(null);
+    setMintedLink(null);
+    try {
+      const { token } = await mintMutation.mutateAsync(id);
+      // Build the contractor URL from the current origin — NO hardcoded
+      // domain (config-driven via window.location).
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      setMintedLink({ shareId: id, url: `${origin}/${locale}/contractor/share/${token}` });
+    } catch {
+      setLinkError(t('linkFailed'));
+    }
+  }
 
   const createError = useApiErrorHandler<CreateShare>({
     codeOverrides: {
@@ -273,38 +299,67 @@ export default function ProjectSharesPage() {
       >
         <ul className="space-y-2">
           {items.map((s) => (
-            <li
-              key={s.id}
-              className="flex items-center justify-between gap-4 rounded-md border bg-card p-3 text-sm"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">
-                  {s.contractorName ? (
-                    <NameDisplay name={s.contractorName} />
-                  ) : (
-                    <span className="font-mono text-xs" dir="ltr">
-                      {t('contractorIdPrefix')} {s.contractorIdShort}
-                    </span>
-                  )}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t('permissionSummary', { summary: s.permissionSummary })} · {s.createdRelative}
-                  {s.lastAccessedRelative && (
-                    <> · {t('lastAccessed', { rel: s.lastAccessedRelative })}</>
-                  )}
-                </p>
+            <li key={s.id} className="rounded-md border bg-card p-3 text-sm">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">
+                    {s.contractorName ? (
+                      <NameDisplay name={s.contractorName} />
+                    ) : (
+                      <span className="font-mono text-xs" dir="ltr">
+                        {t('contractorIdPrefix')} {s.contractorIdShort}
+                      </span>
+                    )}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t('permissionSummary', { summary: s.permissionSummary })} · {s.createdRelative}
+                    {s.lastAccessedRelative && (
+                      <> · {t('lastAccessed', { rel: s.lastAccessedRelative })}</>
+                    )}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onMintLink(s.id)}
+                    disabled={mintMutation.isPending}
+                  >
+                    {mintMutation.isPending ? t('linking') : t('shareLink')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onRevoke(s.id)}
+                    disabled={revokeMutation.isPending}
+                  >
+                    {revokeMutation.isPending ? t('revoking') : t('revoke')}
+                  </Button>
+                </div>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => onRevoke(s.id)}
-                disabled={revokeMutation.isPending}
-              >
-                {revokeMutation.isPending ? t('revoking') : t('revoke')}
-              </Button>
+              {/* Minted share link — shown once for the manager to copy +
+                  send out-of-band (the token IS the contractor credential). */}
+              {mintedLink?.shareId === s.id && (
+                <div className="mt-2 space-y-1 border-t pt-2">
+                  <label htmlFor={`link-${s.id}`} className="text-xs font-medium">
+                    {t('shareLinkLabel')}
+                  </label>
+                  <textarea
+                    id={`link-${s.id}`}
+                    readOnly
+                    value={mintedLink.url}
+                    rows={2}
+                    dir="ltr"
+                    className="w-full rounded-md border bg-muted px-2 py-1 font-mono text-xs"
+                  />
+                  <p className="text-xs text-amber-700">{t('shareLinkWarning')}</p>
+                </div>
+              )}
             </li>
           ))}
+          {linkError && <p className="text-sm text-destructive">{linkError}</p>}
         </ul>
       </ListPageShell>
     </div>

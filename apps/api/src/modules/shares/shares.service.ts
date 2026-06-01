@@ -8,7 +8,7 @@ import {
   withTenant,
   type TenantTx,
 } from '@emapp/db';
-import type { CreateShare, Share, UpdateShare } from '@emapp/shared-types';
+import type { CreateShare, Share, ShareLink, UpdateShare } from '@emapp/shared-types';
 import {
   BadRequestException,
   ConflictException,
@@ -21,6 +21,7 @@ import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
 
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { ShareTokenService } from '../contractor-portal/share-token.service';
 
 export interface ShareListPage {
   data: Share[];
@@ -66,8 +67,51 @@ function toShare(r: typeof shares.$inferSelect): Share {
  */
 @Injectable()
 export class SharesService {
+  constructor(private readonly shareToken: ShareTokenService) {}
+
   private requireManager(user: AccessTokenPayload): void {
     if (user.role !== 'manager') throw FORBIDDEN;
+  }
+
+  /**
+   * D2-DEF-1 — mint a share-access link for an existing (active) share.
+   * Manager-only. The token (audience `emapp-share`) is the contractor
+   * credential, delivered out-of-band; revocation is immediate via
+   * `shares.revoked_at`. Suspended org / revoked / missing share → 404
+   * (no-oracle, same posture as the other by-id share paths).
+   */
+  async getShareLink(user: AccessTokenPayload, shareId: string): Promise<ShareLink> {
+    this.requireManager(user);
+    const bound = await withTenant(
+      user.orgId,
+      async (tx) => {
+        if (await isOrgSuspended(tx, user.orgId)) throw NOT_FOUND;
+        const [row] = await tx
+          .select({ projectId: shares.projectId, contractorId: shares.contractorId })
+          .from(shares)
+          .where(and(eq(shares.id, shareId), isNull(shares.revokedAt)))
+          .limit(1);
+        if (!row) throw NOT_FOUND;
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'share.link_minted',
+          targetTable: 'shares',
+          targetId: shareId,
+          sessionId: user.sid,
+        });
+        return row;
+      },
+      { userId: user.sub },
+    );
+    const { token, expiresAt } = this.shareToken.sign({
+      sub: bound.contractorId,
+      projectId: bound.projectId,
+      shareId,
+      orgId: user.orgId,
+    });
+    return { token, expiresAt };
   }
 
   private async assertProjectVisible(

@@ -172,6 +172,18 @@ describe('middleware — adversarial', () => {
     expect(res.status).toBe(307);
   });
 
+  // ─── D2-DEF-1 — public contractor read-view (/he/contractor/share/<jwt>) ───
+  it('M19) /he/contractor/share/<jwt> is public — unauthenticated contractor reaches the page', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.aGVsbG8td29ybGQtc2lnbg';
+    const res = middleware(mockReq({ pathname: `/he/contractor/share/${jwt}` }));
+    expect(res.status).not.toBe(307);
+  });
+
+  it('M20) /he/contractor/share/notajwt is NOT public — shape-pinned, falls through to the auth gate', () => {
+    const res = middleware(mockReq({ pathname: '/he/contractor/share/notajwt' }));
+    expect(res.status).toBe(307);
+  });
+
   it('M19) /he/accept-invite/<jwt>/extra is NOT a public route — anchoring prevents path injection', () => {
     const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.aGVsbG8td29ybGQtc2lnbg';
     const res = middleware(mockReq({ pathname: `/he/accept-invite/${jwt}/x` }));

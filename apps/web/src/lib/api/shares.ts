@@ -13,10 +13,12 @@
  */
 import {
   CreateShareInput,
+  ShareLinkSchema,
   ShareSchema,
   UpdateShareInput,
   type CreateShare,
   type Share,
+  type ShareLink,
   type UpdateShare,
 } from '@emapp/shared-types';
 import { z } from 'zod';
@@ -27,6 +29,7 @@ import { ApiClientError, isEmptyResponseSuccess } from './errors';
 import { PageSchema } from './paging';
 
 const ShareDataSchema = z.object({ data: ShareSchema });
+const ShareLinkDataSchema = z.object({ data: ShareLinkSchema });
 
 export interface ShareListPage {
   items: Share[];
@@ -71,4 +74,12 @@ export async function revokeShare(id: string): Promise<void> {
   if (isOk(res)) return;
   if (isEmptyResponseSuccess(res.error)) return;
   throw new ApiClientError(res.error);
+}
+
+/** D2-DEF-1 — mint a share-access link (the contractor credential) for an
+ *  existing share. Manager-only. The token is delivered out-of-band. */
+export async function mintShareLink(id: string): Promise<ShareLink> {
+  const res = await apiClient.post<unknown>(`/shares/${id}/link`, {});
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return ShareLinkDataSchema.parse({ data: res.data }).data;
 }

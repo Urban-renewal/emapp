@@ -368,6 +368,14 @@
     }
   },
   "owners": {
+    "reveal": {
+      "reveal": "Reveal PII",
+      "revealing": "Loading…",
+      "hide": "Hide",
+      "revealedHint": "Shown temporarily — this view is audited.",
+      "noPermission": "You don't have permission to reveal PII.",
+      "failed": "Failed to reveal. Try again."
+    },
     "listTitle": "Owners",
     "create": "Add Owner",
     "creating": "Adding...",

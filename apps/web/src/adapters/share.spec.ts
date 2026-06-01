@@ -36,9 +36,22 @@ describe('toShareViewModel', () => {
     expect(vm.permissions).toEqual(SHARE_DEFAULT_PERMISSIONS);
   });
 
-  it('T-4f-VM.S2) permissionSummary counts ON sections (default = 1 / 6)', () => {
-    // SHARE_DEFAULT_PERMISSIONS has only `overview.on: true` of the 6 top-level sections.
-    expect(toShareViewModel(base()).permissionSummary).toBe('1 / 6');
+  it('T-4f-VM.S2) permissionSummary counts ON sections (D.46 default = 2 / 6)', () => {
+    // D.46 default: `overview.on` + `signatures.on` (aggregate progress) are
+    // the 2 ON sections; owners/PII (tenants), documents, notes, team are OFF.
+    expect(toShareViewModel(base()).permissionSummary).toBe('2 / 6');
+  });
+
+  it('T-D46) the FE default denies owners/PII + documents; mirrors the BE default', () => {
+    // Owners/PII OFF by default (D.46), documents manager-selected (OFF),
+    // overview + signature progress ON. Keeps the FE form's initial state in
+    // sync with the BE `defaultSharePermissions()`.
+    expect(SHARE_DEFAULT_PERMISSIONS.tenants.on).toBe(false);
+    expect(SHARE_DEFAULT_PERMISSIONS.documents.on).toBe(false);
+    expect(SHARE_DEFAULT_PERMISSIONS.overview.on).toBe(true);
+    expect(SHARE_DEFAULT_PERMISSIONS.signatures.on).toBe(true);
+    expect(SHARE_DEFAULT_PERMISSIONS.notes.on).toBe(false);
+    expect(SHARE_DEFAULT_PERMISSIONS.team.on).toBe(false);
   });
 
   it('T-4f-VM.S2b) countActiveSections — every section on yields 6', () => {

@@ -123,6 +123,9 @@ export default function ProjectSharesPage() {
           <fieldset className="space-y-2 rounded-md border p-3">
             <legend className="px-2 text-xs font-medium">{t('permissionsLegend')}</legend>
 
+            {/* D.46 — make the least-privilege contractor posture explicit. */}
+            <p className="text-xs text-muted-foreground">{t('permissionsHint')}</p>
+
             <PermToggle
               label={t('perm.overview')}
               checked={perms.overview.on}
@@ -134,6 +137,9 @@ export default function ProjectSharesPage() {
               checked={perms.tenants.on}
               onChange={(on) => setPerms({ ...perms, tenants: { ...perms.tenants, on } })}
             />
+            {!perms.tenants.on && (
+              <p className="ms-6 text-xs text-muted-foreground">{t('perm.tenantsOffHint')}</p>
+            )}
             {perms.tenants.on && (
               <div className="ms-6 space-y-1 text-xs text-muted-foreground">
                 <SubToggle
@@ -223,6 +229,9 @@ export default function ProjectSharesPage() {
               checked={perms.signatures.on}
               onChange={(on) => setPerms({ ...perms, signatures: { on } })}
             />
+            {perms.signatures.on && (
+              <p className="ms-6 text-xs text-muted-foreground">{t('perm.signaturesHint')}</p>
+            )}
             <PermToggle
               label={t('perm.notes')}
               checked={perms.notes.on}

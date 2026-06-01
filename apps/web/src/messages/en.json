@@ -994,6 +994,7 @@
     "revoking": "Revoking...",
     "revokeConfirm": "Revoke this share? Access will be blocked immediately.",
     "permissionsLegend": "Access permissions",
+    "permissionsHint": "By default the contractor sees the project and apartments (structural only) and aggregate signature progress. Owner details are hidden, and documents are exposed only by manager selection.",
     "field": {
       "contractor": "Contractor",
       "contractorPlaceholder": "Pick a contractor..."
@@ -1001,6 +1002,8 @@
     "perm": {
       "overview": "Project overview",
       "tenants": "Owner details (tenants)",
+      "tenantsOffHint": "Owner details are hidden from the contractor (default).",
+      "signaturesHint": "The contractor sees an aggregate progress percentage only — never who signed.",
       "tenantsField": {
         "phone": "Phone",
         "email": "Email",

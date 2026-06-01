@@ -4,6 +4,7 @@ import {
   canDownloadDocuments,
   documents,
   projects,
+  signatureProgressByProject,
   signatureScopeForShare,
   withTenant,
   type IStorageProvider,
@@ -22,7 +23,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull } from 'drizzle-orm';
 
 import { STORAGE_PROVIDER, safeDownloadFilename } from '../documents/storage';
 
@@ -141,42 +142,21 @@ export class ContractorReadService {
   async getProgress(ctx: ContractorContext): Promise<ContractorProgress> {
     // Structural aggregate-only gate: 'none' → not granted; 'aggregate' → ok.
     if (signatureScopeForShare(ctx.permissions) !== 'aggregate') throw FORBIDDEN;
-    return withTenant(ctx.orgId, async (tx) => {
-      // Counts of signature_requests whose document belongs to this project
-      // (project-level OR apartment-in-project), ACTIVE only (signed +
-      // pending). Bare integers — no owner identity is selected.
-      const [row] = await tx
-        .select({
-          signaturesSigned: sql<number>`COALESCE((
-            SELECT COUNT(*)::int FROM signature_requests sr
-            INNER JOIN documents d ON d.id = sr.document_id
-            LEFT JOIN apartments a ON a.id = d.apartment_id
-            LEFT JOIN buildings b ON b.id = a.building_id
-            WHERE (d.project_id = ${ctx.projectId} OR b.project_id = ${ctx.projectId})
-              AND d.archived_at IS NULL
-              AND sr.status = 'signed'
-          ), 0)`,
-          signaturesPending: sql<number>`COALESCE((
-            SELECT COUNT(*)::int FROM signature_requests sr
-            INNER JOIN documents d ON d.id = sr.document_id
-            LEFT JOIN apartments a ON a.id = d.apartment_id
-            LEFT JOIN buildings b ON b.id = a.building_id
-            WHERE (d.project_id = ${ctx.projectId} OR b.project_id = ${ctx.projectId})
-              AND d.archived_at IS NULL
-              AND sr.status = 'pending'
-          ), 0)`,
-        })
-        .from(projects)
-        .where(eq(projects.id, ctx.projectId))
-        .limit(1);
-      const signed = Number(row?.signaturesSigned ?? 0);
-      const pending = Number(row?.signaturesPending ?? 0);
-      return {
-        signaturesSigned: signed,
-        signaturesPending: pending,
-        signaturesTotal: signed + pending,
-      };
+    const row = await withTenant(ctx.orgId, async (tx) => {
+      // PERF (D.51, EXPLAIN-verified): drive from the project's DOCUMENTS
+      // (idx_documents_org_project + the apartment→building project index)
+      // and count via idx_signature_requests_doc_status (document_id,status)
+      // — an Index-Only Scan. The earlier `(d.project_id = P OR b.project_id
+      // = P)` form had NO index path (seq-scanned signature_requests +
+      // documents even with seqscan disabled). `signatureProgressByProject`
+      // is the shared index-friendly resolver (also used by the portal).
+      return signatureProgressByProject(tx, ctx.projectId);
     });
+    return {
+      signaturesSigned: row.signed,
+      signaturesPending: row.pending,
+      signaturesTotal: row.signed + row.pending,
+    };
   }
 
   /** `GET /contractor/documents` — PROJECT-LEVEL documents (manager-shared;

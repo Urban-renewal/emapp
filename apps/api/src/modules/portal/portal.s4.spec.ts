@@ -138,7 +138,12 @@ async function makeOwnership(
   });
 }
 
-async function makeDocument(o: TestOrg, apartmentId: string, name: string): Promise<string> {
+async function makeDocument(
+  o: TestOrg,
+  apartmentId: string,
+  name: string,
+  archived = false,
+): Promise<string> {
   return withTenant(o.id, async (tx) => {
     const [row] = await tx
       .insert(documents)
@@ -152,6 +157,7 @@ async function makeDocument(o: TestOrg, apartmentId: string, name: string): Prom
         r2Key: `org/${o.id}/doc/${Date.now()}-${Math.random()}.pdf`,
         contentHash: 'sha256:' + 'd'.repeat(64),
         uploadedBy: o.users[0]!.id,
+        archivedAt: archived ? new Date() : null,
       })
       .returning({ id: documents.id });
     return row!.id;
@@ -359,6 +365,25 @@ describe('V11 B.S4 · PortalService — Tenant Portal own-data view (D.40)', () 
   it('8) getProgress — cross-org isolation: tenant C (orgB) never sees orgA projects', async () => {
     const { data } = await svc.getProgress(tenantOf(orgB, fx.tenantCOwnerId));
     expect(data.map((p) => p.projectId)).not.toContain(orgA.projects[0]!.id);
+  });
+
+  it('9) getProgress — EXCLUDES signatures on ARCHIVED documents (no inflated progress)', async () => {
+    const pid = orgA.projects[0]!.id;
+    const before = (await svc.getProgress(tenantOf(orgA, fx.tenantAOwnerId))).data.find(
+      (p) => p.projectId === pid,
+    )!;
+    // An ARCHIVED document on tenant A's apartment + an ACTIVE (signed)
+    // signature request on it. The completion % must NOT count it — an
+    // archived doc is withdrawn from the project's live progress (this is
+    // intentional, and matches the contractor read-tier + getDocuments).
+    const archivedDoc = await makeDocument(orgA, fx.tenantAApartmentId, 'Archived Contract', true);
+    await makeSignatureRequest(orgA, archivedDoc, fx.tenantAOwnerId, 'signed');
+
+    const after = (await svc.getProgress(tenantOf(orgA, fx.tenantAOwnerId))).data.find(
+      (p) => p.projectId === pid,
+    )!;
+    expect(after.signaturesSigned).toBe(before.signaturesSigned);
+    expect(after.signaturesTotal).toBe(before.signaturesTotal);
   });
 
   it('6) archived owner → 404 on getMe', async () => {

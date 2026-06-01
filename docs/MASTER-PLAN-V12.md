@@ -125,6 +125,21 @@ PR then rides on them.
 > net-new tiers — write the spec-derived test first; Verifier confirms it
 > asserts real behavior, per ORCHESTRATION §5.5).
 
+### DV — Exploratory "as a user" integration verification (after D2/the tiers are built)
+
+The per-slice 4-axis smoke + CI e2e prove **mechanical correctness** (a scripted
+flow passes). They do **not** catch "dead button / janky / doesn't behave as a
+user expects" — exactly the PROC-2 class the owner flagged. So once the new-tier
+UI is in (end of D2), a **dedicated exploratory pass drives the LIVE app**, not
+scripted assertions:
+
+| Slice  | Goal                                                                                                                                                                                                                                                                                                                                                                                                              | Verification                                                                                                                                                                 |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **DV** | Drive the running app **as each role** (Provider · Manager · Agent[per-capability] · Viewer · Contractor · Resident) through every key flow, **plus the multi-actor lifecycle** (manager sends a doc to signature → resident receives via OTP → signs → it syncs back → manager sees it). Agent-driven (Playwright **headed** / browser tools) **reading console + network + server logs**, or human walkthrough. | a written report per role + lifecycle: what behaves, what's a dead-button/jank/broken-flow, with the log/screenshot evidence — NOT "looks fine". Findings become fix slices. |
+
+> This is the "real verification, not claimed" pass (PROC-2). It runs **after D2**
+> (first time the full app exists) and again, comprehensively, at **PL2**.
+
 ### M4 — Coverage close + cleanup (Track E + leftovers)
 
 | Slice | Goal                                          | Verification                 |
@@ -139,7 +154,7 @@ PR then rides on them.
 | Slice | Goal                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Verification                                                                                                          |
 | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | PL1   | **PERF-6**: `next build && next start` + **colocated DB** (T6 — Railway region = Neon region; the deferred latency fix from **D.52**, see `SETUP-EXTERNAL-SERVICES.md` step 4). **Also do the deferred PERF-2 fix here (D.53):** SSR `getMe` calls the backend directly instead of self-hopping its own proxy + server-side timeout — verify on the real Cloudflare→Railway topology. **And the admin.emapp.io cutover (D.56):** move the Provider console to the separate Pages app + scope `provider_access_token` to the subdomain (cookie isolation, D.48). | production-absolute ms numbers; per-hop ~138ms→~1ms; SSR getMe: no self-hop; provider cookie scoped to admin.emapp.io |
-| PL2   | Full `e2e/audit/*` suite green + manual smoke per V11-BROWSER-SMOKE                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | all green, raw evidence                                                                                               |
+| PL2   | Full `e2e/audit/*` suite green + the **comprehensive exploratory "as a user" pass** (the full DV sweep — every role + every multi-actor lifecycle on the prod-built app, reading console/network/server logs), per V11-BROWSER-SMOKE                                                                                                                                                                                                                                                                                                                            | all green, raw per-role + lifecycle evidence (logs/screenshots) — not "looks fine"                                    |
 
 ---
 

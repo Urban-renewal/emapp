@@ -8,6 +8,7 @@ import { toShareViewModels } from '@/adapters/share';
 import {
   createProjectShare,
   listProjectShares,
+  mintShareLink,
   revokeShare,
   updateShare,
   type ShareListPage,
@@ -67,4 +68,11 @@ export function useRevokeShare(projectId: string | undefined) {
     mutationFn: (id: string) => revokeShare(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: [...SHARES_KEY, 'list', projectId] }),
   });
+}
+
+/** D2-DEF-1 — mint a share-access link for a share. The returned token is
+ *  the contractor credential; the page shows it once for the manager to
+ *  copy + send out-of-band. Not cached (it is a credential). */
+export function useMintShareLink() {
+  return useMutation({ mutationFn: (id: string) => mintShareLink(id) });
 }

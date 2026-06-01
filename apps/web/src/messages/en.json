@@ -994,6 +994,11 @@
     "revoke": "Revoke",
     "revoking": "Revoking...",
     "revokeConfirm": "Revoke this share? Access will be blocked immediately.",
+    "shareLink": "Access link",
+    "linking": "Generating...",
+    "shareLinkLabel": "Contractor access link (copy & send)",
+    "shareLinkWarning": "This link is an access credential — send it directly to the contractor only. Revocable at any time.",
+    "linkFailed": "Failed to generate the link. Try again.",
     "permissionsLegend": "Access permissions",
     "permissionsHint": "By default the contractor sees the project and apartments (structural only) and aggregate signature progress. Owner details are hidden, and documents are exposed only by manager selection.",
     "field": {
@@ -1020,6 +1025,20 @@
       "notes": "Notes",
       "team": "Team"
     }
+  },
+  "contractorView": {
+    "loading": "Loading…",
+    "invalidLink": "This link is invalid, expired, or revoked. Contact the project manager for a new link.",
+    "progressSection": "Signature progress",
+    "progressSummary": "{signed} of {total} signatures collected ({pct}%)",
+    "buildingsSection": "Buildings & apartments",
+    "noBuildings": "No buildings to show.",
+    "cadastral": "Block {block} Parcel {parcel}",
+    "apartmentCount": "{count} apartments",
+    "documentsSection": "Shared documents",
+    "noDocuments": "No shared documents.",
+    "download": "Download",
+    "downloadFailed": "Download failed. Try again."
   },
   "notes": {
     "listTitle": "Notes",

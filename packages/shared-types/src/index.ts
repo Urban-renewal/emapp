@@ -9,6 +9,10 @@ export * from './owner';
 export * from './ownership';
 export * from './contractor';
 export * from './share';
+// D2-DEF-1 / D.46 — Contractor read-tier (share-token scoped, owners-PII
+// OFF, aggregate signatures). Tier-isolated read shapes for
+// /api/v1/contractor/* under the `emapp-share` JWT audience.
+export * from './contractor-read';
 export * from './task';
 export * from './notification';
 export * from './note';

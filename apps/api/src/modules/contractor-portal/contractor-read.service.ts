@@ -1,0 +1,256 @@
+import {
+  apartments,
+  buildings,
+  canDownloadDocuments,
+  documents,
+  projects,
+  signatureScopeForShare,
+  withTenant,
+  type IStorageProvider,
+} from '@emapp/db';
+import type {
+  ContractorDocument,
+  ContractorDownload,
+  ContractorProgress,
+  ContractorProjectView,
+} from '@emapp/shared-types';
+import {
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+
+import { STORAGE_PROVIDER, safeDownloadFilename } from '../documents/storage';
+
+import type { ContractorContext } from './contractor-auth.guard';
+
+const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
+const FORBIDDEN = new ForbiddenException({ error: { code: 'forbidden' } });
+const DOWNLOAD_URL_TTL_SECONDS = 300;
+
+/**
+ * D2-DEF-1 / D.46 — the contractor read-view service.
+ *
+ * Every method is scoped to the share's project under `withTenant(ctx.orgId)`
+ * RLS, and gated by the share's JSONB permissions via the shared
+ * `resolve-share` helpers (perms-driven, NOT role-hardcoded). The surface is
+ * structurally narrow:
+ *   - NO owner data anywhere (no owners table is ever queried) → owners-PII
+ *     OFF is structural, not a runtime flag.
+ *   - signature progress is AGGREGATE-only (`signatureScopeForShare` returns
+ *     'aggregate' | 'none' — 'individual' is unrepresentable).
+ *   - documents are PROJECT-LEVEL only (`project_id = P AND apartment_id IS
+ *     NULL`) → per-owner agreements (apartment-linked) are excluded, exactly
+ *     D.46 "only shared docs, NOT per-owner agreements".
+ */
+@Injectable()
+export class ContractorReadService {
+  private readonly logger = new Logger(ContractorReadService.name);
+
+  constructor(@Inject(STORAGE_PROVIDER) private readonly storage: IStorageProvider) {}
+
+  /** `GET /contractor/project` — project + buildings + apartments (structural). */
+  async getProject(ctx: ContractorContext): Promise<ContractorProjectView> {
+    if (!ctx.permissions.overview.on) throw FORBIDDEN;
+    return withTenant(ctx.orgId, async (tx) => {
+      const [project] = await tx
+        .select({
+          id: projects.id,
+          name: projects.name,
+          status: projects.status,
+          type: projects.type,
+        })
+        .from(projects)
+        .where(and(eq(projects.id, ctx.projectId), isNull(projects.archivedAt)))
+        .limit(1);
+      // Project gone/archived (or not in this org under RLS) → 404 no-oracle.
+      if (!project) throw NOT_FOUND;
+
+      const bldRows = await tx
+        .select({
+          id: buildings.id,
+          address: buildings.address,
+          city: buildings.city,
+          block: buildings.block,
+          parcel: buildings.parcel,
+        })
+        .from(buildings)
+        .where(and(eq(buildings.projectId, ctx.projectId), isNull(buildings.archivedAt)))
+        .orderBy(asc(buildings.address));
+
+      // Apartments for all of the project's buildings — STRUCTURAL columns
+      // only (no ownership join, no owner link).
+      const aptRows = await tx
+        .select({
+          id: apartments.id,
+          buildingId: apartments.buildingId,
+          number: apartments.number,
+          floor: apartments.floor,
+          rooms: apartments.rooms,
+          sizeSqm: apartments.sizeSqm,
+          unitType: apartments.unitType,
+          entrance: apartments.entrance,
+        })
+        .from(apartments)
+        .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
+        .where(and(eq(buildings.projectId, ctx.projectId), isNull(apartments.archivedAt)))
+        .orderBy(asc(apartments.number));
+
+      const aptsByBuilding = new Map<
+        string,
+        ContractorProjectView['buildings'][number]['apartments']
+      >();
+      for (const a of aptRows) {
+        const list = aptsByBuilding.get(a.buildingId) ?? [];
+        list.push({
+          id: a.id,
+          number: a.number,
+          floor: a.floor,
+          rooms: a.rooms === null ? null : Number(a.rooms),
+          sizeSqm: a.sizeSqm === null ? null : Number(a.sizeSqm),
+          unitType: a.unitType,
+          entrance: a.entrance,
+        });
+        aptsByBuilding.set(a.buildingId, list);
+      }
+
+      return {
+        project: { id: project.id, name: project.name, status: project.status, type: project.type },
+        buildings: bldRows.map((b) => ({
+          id: b.id,
+          address: b.address,
+          city: b.city,
+          block: b.block,
+          parcel: b.parcel,
+          apartments: aptsByBuilding.get(b.id) ?? [],
+        })),
+        permissions: {
+          overview: ctx.permissions.overview.on,
+          documents: ctx.permissions.documents.on,
+          signatures: ctx.permissions.signatures.on,
+        },
+      };
+    });
+  }
+
+  /** `GET /contractor/progress` — AGGREGATE signature counts (no who/individual). */
+  async getProgress(ctx: ContractorContext): Promise<ContractorProgress> {
+    // Structural aggregate-only gate: 'none' → not granted; 'aggregate' → ok.
+    if (signatureScopeForShare(ctx.permissions) !== 'aggregate') throw FORBIDDEN;
+    return withTenant(ctx.orgId, async (tx) => {
+      // Counts of signature_requests whose document belongs to this project
+      // (project-level OR apartment-in-project), ACTIVE only (signed +
+      // pending). Bare integers — no owner identity is selected.
+      const [row] = await tx
+        .select({
+          signaturesSigned: sql<number>`COALESCE((
+            SELECT COUNT(*)::int FROM signature_requests sr
+            INNER JOIN documents d ON d.id = sr.document_id
+            LEFT JOIN apartments a ON a.id = d.apartment_id
+            LEFT JOIN buildings b ON b.id = a.building_id
+            WHERE (d.project_id = ${ctx.projectId} OR b.project_id = ${ctx.projectId})
+              AND d.archived_at IS NULL
+              AND sr.status = 'signed'
+          ), 0)`,
+          signaturesPending: sql<number>`COALESCE((
+            SELECT COUNT(*)::int FROM signature_requests sr
+            INNER JOIN documents d ON d.id = sr.document_id
+            LEFT JOIN apartments a ON a.id = d.apartment_id
+            LEFT JOIN buildings b ON b.id = a.building_id
+            WHERE (d.project_id = ${ctx.projectId} OR b.project_id = ${ctx.projectId})
+              AND d.archived_at IS NULL
+              AND sr.status = 'pending'
+          ), 0)`,
+        })
+        .from(projects)
+        .where(eq(projects.id, ctx.projectId))
+        .limit(1);
+      const signed = Number(row?.signaturesSigned ?? 0);
+      const pending = Number(row?.signaturesPending ?? 0);
+      return {
+        signaturesSigned: signed,
+        signaturesPending: pending,
+        signaturesTotal: signed + pending,
+      };
+    });
+  }
+
+  /** `GET /contractor/documents` — PROJECT-LEVEL documents (manager-shared;
+   *  per-owner agreements excluded). */
+  async getDocuments(ctx: ContractorContext): Promise<{ data: ContractorDocument[] }> {
+    if (!ctx.permissions.documents.on) throw FORBIDDEN;
+    const rows = await withTenant(ctx.orgId, async (tx) =>
+      tx
+        .select({
+          id: documents.id,
+          name: documents.name,
+          type: documents.type,
+          mimeType: documents.mimeType,
+          sizeBytes: documents.sizeBytes,
+          createdAt: documents.createdAt,
+        })
+        .from(documents)
+        .where(
+          and(
+            eq(documents.projectId, ctx.projectId),
+            // Project-level only — per-owner (apartment-linked) agreements
+            // are NEVER exposed to a contractor (D.46).
+            isNull(documents.apartmentId),
+            isNull(documents.archivedAt),
+          ),
+        )
+        .orderBy(asc(documents.name)),
+    );
+    return {
+      data: rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        type: r.type,
+        mimeType: r.mimeType,
+        sizeBytes: r.sizeBytes,
+        createdAt: r.createdAt,
+      })),
+    };
+  }
+
+  /** `GET /contractor/documents/:id/download` — presigned URL, IDOR-checked. */
+  async getDownloadUrl(ctx: ContractorContext, docId: string): Promise<ContractorDownload> {
+    if (!canDownloadDocuments(ctx.permissions)) throw FORBIDDEN;
+    const doc = await withTenant(ctx.orgId, async (tx) => {
+      const [row] = await tx
+        .select({ r2Key: documents.r2Key, name: documents.name })
+        .from(documents)
+        .where(
+          and(
+            eq(documents.id, docId),
+            // IDOR: the doc MUST be a project-level doc of THIS share's
+            // project — any other id → 404 (no-oracle), never a minted URL.
+            eq(documents.projectId, ctx.projectId),
+            isNull(documents.apartmentId),
+            isNull(documents.archivedAt),
+          ),
+        )
+        .limit(1);
+      return row ?? null;
+    });
+    if (!doc) throw NOT_FOUND;
+
+    try {
+      const url = await this.storage.getDownloadUrl(doc.r2Key, {
+        ttlSeconds: DOWNLOAD_URL_TTL_SECONDS,
+        responseFilename: safeDownloadFilename(doc.name),
+        responseFilenameUtf8: doc.name,
+      });
+      return { url, expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS };
+    } catch (e) {
+      this.logger.error(
+        `presign(contractor download) failed (doc=${docId}): ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+      throw new ServiceUnavailableException({ error: { code: 'storage_unavailable' } });
+    }
+  }
+}

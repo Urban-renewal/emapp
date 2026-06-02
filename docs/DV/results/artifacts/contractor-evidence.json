@@ -1,0 +1,74 @@
+{
+  "generatedAt": "2026-06-02T19:57:56.350Z",
+  "findings": [
+    {
+      "id": "DV-CON-1",
+      "axis": "ergonomics/missing-feature",
+      "severity": "MEDIUM",
+      "title": "Contractor progress surfaces raw counts only — no consent-vs-legal-threshold, no per-building breakdown, no velocity",
+      "evidence": {
+        "endpoint": "GET /contractor/progress",
+        "body": {
+          "signaturesSigned": 2,
+          "signaturesPending": 2,
+          "signaturesTotal": 4
+        },
+        "rationale": "תמ\"א 38 / פינוי-בינוי decisions hinge on % signed vs the statutory majority. The contractor sees signed/total but not the threshold gap, per-building progress, or signing velocity — the actual decision inputs.",
+        "feFile": "apps/web/src/app/[locale]/(contractor)/contractor/share/[token]/page.tsx renders pct = signed/total only"
+      }
+    }
+  ],
+  "tokenMinted": true,
+  "shareId": "38680dec-1d3d-4fef-b342-fa18052b1f79",
+  "project": {
+    "id": "1ace1c99-19fb-48b5-8bd8-0c0e886b605c",
+    "name": "Tama 38/2 — Pilot",
+    "status": "gathering_signatures",
+    "type": "tama38_2"
+  },
+  "buildingCount": 2,
+  "progress": {
+    "signaturesSigned": 2,
+    "signaturesPending": 2,
+    "signaturesTotal": 4
+  },
+  "documents": [
+    {
+      "id": "f87283dc-5aef-4229-ac29-8ab8e899d592",
+      "name": "תוכנית בנייה — חזית.pdf"
+    },
+    {
+      "id": "8a3a33de-b9db-41f8-b792-07acd0d2ed43",
+      "name": "תקנון תמ\"א 38 — אלפא.pdf"
+    }
+  ],
+  "piiBoundary": {
+    "verdict": "CLEAN",
+    "scanned": ["project", "progress", "documents", "owners-401", "read-view-DOM"]
+  },
+  "idor": {
+    "legitDownload": 200,
+    "apartmentLinkedSameProject": 404,
+    "crossProject": 404,
+    "random": 404
+  },
+  "auth": {
+    "noToken": 401,
+    "garbage": 401,
+    "ownersWithShareToken": 401
+  },
+  "revocation": {
+    "before": 200,
+    "after": 401
+  },
+  "browser": {
+    "docStatus": 200,
+    "finalPath": "/he/contractor/share/<token>",
+    "consoleErrors": [],
+    "pageErrors": []
+  },
+  "missingFeature": {
+    "hasThreshold": false,
+    "hasPerBuilding": false
+  }
+}

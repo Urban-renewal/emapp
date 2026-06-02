@@ -79,10 +79,17 @@
 
 | Entity               | Expectation                                                                                                       | Status |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------- | ------ |
-| Project overview     | name/status/type + structural buildings/apartments                                                                | ⬜     |
-| Signature statistics | aggregate consent — **and does it surface consent-vs-threshold? per-building? velocity?** (missing-feature check) | ⬜     |
-| Shared documents     | project-level only; per-owner agreements excluded; IDOR-safe download                                             | ⬜     |
-| PII boundary         | NO national_id / phone / per-resident data anywhere                                                               | ⬜     |
+| Project overview     | name/status/type + structural buildings/apartments                                                                | 🟩     |
+| Signature statistics | aggregate consent — **and does it surface consent-vs-threshold? per-building? velocity?** (missing-feature check) | 🟧     |
+| Shared documents     | project-level only; per-owner agreements excluded; IDOR-safe download                                             | 🟩     |
+| PII boundary         | NO national_id / phone / per-resident data anywhere                                                               | 🟩     |
+
+> Covered by `dv-contractor.spec.ts` (PASSING) + `results/contractor.md`.
+> PII boundary **CLEAN** (structural — no owners table queried; `/owners` with
+> share token → 401). IDOR **safe** (apartment-linked + cross-project doc →
+> 404, no minted URL). Auth+revocation correct (revoke → immediate 401).
+> 🟧 = **DV-CON-1** (MEDIUM, missing-feature): progress is raw counts only —
+> no consent-vs-legal-threshold, no per-building breakdown, no velocity.
 
 ---
 

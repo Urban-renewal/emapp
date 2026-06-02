@@ -1,0 +1,135 @@
+{
+  "persona": "agent@alpha.dev",
+  "ranAt": "2026-06-02T21:19:16.785Z",
+  "groundTruth": {
+    "viewOwnerPii": false,
+    "assignedProjects": 3,
+    "managerProjects": 13
+  },
+  "totals": {
+    "actions": 14,
+    "worked": 7,
+    "functionalBugs": 0,
+    "authzBugs": 0,
+    "blockedOk": 7,
+    "uxDeadClicks": 0
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+  ],
+  "ledger": [
+    {
+      "action": "See the right project scope (only assigned)",
+      "how": "GET /projects (agent cookie) + count rendered project cards; compare vs manager-13",
+      "outcome": "CONFIRMED: agent sees exactly 3 assigned projects (manager sees 13)",
+      "shouldAgent": "yes",
+      "verdict": "works",
+      "proof": "apiCount=3 names=[Tama 38/2 — Pilot, תמ״א 38/2 — ארלוזורוב 14 (דמו), תמ״א 38/2 — ויצמן 20 (דמו)] renderedCards=3"
+    },
+    {
+      "action": "Nav hides manager-only sections (members / audit / settings)",
+      "how": "read sidebar nav link texts; assert none of the 3 manager-only labels present",
+      "outcome": "CONFIRMED: members/audit/settings absent from agent nav",
+      "shouldAgent": "no",
+      "verdict": "blocked_ok",
+      "proof": "nav=[ראשי | ראשי | פרויקטים | פרויקטים | בעלי דירות | בעלי דירות | ייבוא | ייבוא | מסמכים | מסמכים | בקשות חתימה | בקשות חתימה | התראות | התראות | משימות | משימות | קבלנים | קבלנים | הערות | הערות]"
+    },
+    {
+      "action": "Open an assigned project (card click)",
+      "how": "click the assigned project card on /projects → await URL=/projects/{id} + 4 tabs",
+      "outcome": "CONFIRMED: card click opened the project detail",
+      "shouldAgent": "yes",
+      "verdict": "works",
+      "proof": "cardHref=/projects/1ace1c99-19fb-48b5-8bd8-0c0e886b605c navigated=true tabs=4"
+    },
+    {
+      "action": "Open an assigned project (direct URL)",
+      "how": "goto /projects/a05e3d48-aaf2-43da-a6ec-6835e224cd4d directly → assert 4 tabs + project name in h1",
+      "outcome": "CONFIRMED: detail page opened for the agent via direct URL",
+      "shouldAgent": "yes",
+      "verdict": "works",
+      "proof": "tabs=4 nameShown=true"
+    },
+    {
+      "action": "Drill into a building (under an assigned project)",
+      "how": "/projects/{id}/buildings → click first building row → await /buildings/{id}",
+      "outcome": "CONFIRMED: building detail opened",
+      "shouldAgent": "yes",
+      "verdict": "works",
+      "proof": "apiBuildingId=f7cfd389-8b4d-4b99-b3c5-f1f086788fc4 navigated=true url=/he/buildings/f7cfd389-8b4d-4b99-b3c5-f1f086788fc4"
+    },
+    {
+      "action": "Drill into an apartment (under a building)",
+      "how": "/buildings/{id} → click first apartment row → await /apartments/{id}",
+      "outcome": "CONFIRMED: apartment detail opened",
+      "shouldAgent": "yes",
+      "verdict": "works",
+      "proof": "apiApartmentId=c8313538-011b-4e61-9785-84dbd0a732f7 navigated=true"
+    },
+    {
+      "action": "View owner records (list) — PII fidelity",
+      "how": "GET /owners (agent cookie); assert national_id is MASKED (view_owner_pii=false)",
+      "outcome": "CONFIRMED: owner PII is masked for this no-capability agent",
+      "shouldAgent": "yes",
+      "verdict": "works",
+      "proof": "rows=20 allMasked=true anyCleartext=false"
+    },
+    {
+      "action": "Reveal owner cleartext PII (agent without view_owner_pii)",
+      "how": "owner dossier → reveal → assert NO cleartext national_id leaks",
+      "outcome": "CONFIRMED: cleartext PII NOT exposed (reveal absent or denied)",
+      "shouldAgent": "no",
+      "verdict": "blocked_ok",
+      "proof": "no reveal control offered to the no-capability agent (correct)"
+    },
+    {
+      "action": "Edit project data on an assigned project (PATCH building)",
+      "how": "PATCH /buildings/{assigned} notes (the edit-form call) → status + API re-read",
+      "outcome": "CONFIRMED: edit blocked (HTTP 403) — agent lacks edit_project_data, nothing persisted",
+      "shouldAgent": "no",
+      "verdict": "blocked_ok",
+      "proof": "PATCH /buildings/{id} → HTTP 403 · persisted=false"
+    },
+    {
+      "action": "Open an UNASSIGNED project by direct URL (forbidden)",
+      "how": "goto /projects/83ca0e95-0f06-415a-ad0e-2fcf59135ad4 → assert API 404 + not-found UI (no tabs)",
+      "outcome": "CONFIRMED: blocked — API 404 + not-found UI, no project data leaked",
+      "shouldAgent": "no",
+      "verdict": "blocked_ok",
+      "proof": "apiStatus=404 tabsRendered=0 notFoundUI=true"
+    },
+    {
+      "action": "Create a project (forbidden for agent)",
+      "how": "POST /projects (agent cookie) → assert 403; note whether the UI shows the control",
+      "outcome": "CONFIRMED: create blocked (HTTP 403). UI still shows the \"פרויקט חדש\" control (1) → UX leak of an unusable control",
+      "shouldAgent": "no",
+      "verdict": "blocked_ok",
+      "proof": "POST /projects HTTP 403 · createControlVisibleInUI=1"
+    },
+    {
+      "action": "Manage org members (forbidden for agent)",
+      "how": "GET /members API + open /he/members; assert API 403 + no member roster leak in DOM",
+      "outcome": "CONFIRMED: members blocked (API 403, no roster leaked to the agent)",
+      "shouldAgent": "no",
+      "verdict": "blocked_ok",
+      "proof": "GET /members HTTP 403 · memberRosterLeakInDOM=false"
+    },
+    {
+      "action": "View the audit log (forbidden for agent)",
+      "how": "GET /audit (agent cookie) → assert 403/404",
+      "outcome": "CONFIRMED: audit blocked (HTTP 403)",
+      "shouldAgent": "no",
+      "verdict": "blocked_ok",
+      "proof": "GET /audit HTTP 403"
+    },
+    {
+      "action": "View own tasks list (legitimate read)",
+      "how": "GET /tasks (agent cookie) + assert /he/tasks renders without an error state",
+      "outcome": "CONFIRMED: tasks list loads for the agent",
+      "shouldAgent": "yes",
+      "verdict": "works",
+      "proof": "GET /tasks HTTP 200, rows=6, listErrorShown=false"
+    }
+  ]
+}

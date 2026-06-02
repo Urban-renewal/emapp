@@ -122,13 +122,6 @@ updates:
       - dependency-name: '@t3-oss/env-core'
         update-types: ['version-update:semver-major', 'version-update:semver-minor']
 
-      # better-auth — DEAD dependency. D.21 removed Better Auth from the auth
-      # path (OWNED auth stack); there are ZERO `from 'better-auth'` imports in
-      # the codebase. It should be REMOVED from apps/web, not bumped. Ignore
-      # ALL updates (no update-types) so dependabot stops churning a dep slated
-      # for deletion. Its `better-call` subdep also wants zod 4 (peer conflict).
-      - dependency-name: 'better-auth'
-
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:

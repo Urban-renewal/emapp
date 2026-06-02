@@ -1,0 +1,80 @@
+{
+  "persona": "provider@local.dev",
+  "ranAt": "2026-06-02T21:50:39.448Z",
+  "totals": {
+    "actions": 8,
+    "worked": 6,
+    "functionalBugs": 0,
+    "authzBugs": 0,
+    "blockedOk": 0,
+    "uxDeadClicks": 0,
+    "missing": 2
+  },
+  "consoleErrors": [],
+  "ledger": [
+    {
+      "action": "Navigate every provider tab + open a tenant detail",
+      "performed": "goto dashboard, tenants, tenant-detail (Alpha & Beta), onboard, audit, system-health; assert oracle content rendered",
+      "outcome": "CONFIRMED: every tab loaded its data (tenants list shows Alpha/Beta; detail opens)",
+      "shouldProvider": "yes",
+      "verdict": "works",
+      "proof": "loaded={\"dashboard\":true,\"tenants\":true,\"tenant-alpha\":true,\"tenant-beta\":true,\"onboard\":true,\"audit\":true,\"system-health\":true} (tenantsListOk=true alphaDetailOk=true)"
+    },
+    {
+      "action": "Platform-console sidebar nav — live vs scaffold",
+      "performed": "count nav items + locked/disabled placeholders in the provider shell",
+      "outcome": "9 of 13 sidebar entries are locked scaffold (billing, plans, integrations, roles, backups, support) — only overview/orgs/health/audit are live",
+      "shouldProvider": "yes",
+      "verdict": "MISSING",
+      "proof": "navTotal=13 navLive=4 navLocked=9 (locked items render a lock glyph + are non-navigable placeholders)"
+    },
+    {
+      "action": "Access-Reason gate enforcement",
+      "performed": "enter \"hi\" (too short) → check submit disabled + gate still up; enter INC-1001 → enabled (×2)",
+      "outcome": "CONFIRMED: gate blocks too-short reason, accepts a valid ticket ref",
+      "shouldProvider": "yes",
+      "verdict": "works",
+      "proof": "shortDisabled=true gateUp=true validEnabled=true repro=true"
+    },
+    {
+      "action": "Onboard a new organisation",
+      "performed": "/provider/onboard → fill orgName+managerName+managerEmail → submit → assert success panel + re-read tenants API (×2 distinct orgs)",
+      "outcome": "CONFIRMED: org \"DV Org 1780437015883\" (id a3bfc4f1-a0b0-4c7c-897e-f6abab86761c) AND a 2nd org both appear in GET /provider/tenants",
+      "shouldProvider": "yes",
+      "verdict": "works",
+      "proof": "POST=201 successPanel=true org1InApi=true org1Id=a3bfc4f1-a0b0-4c7c-897e-f6abab86761c org2InApi=true"
+    },
+    {
+      "action": "Suspend a tenant (Beta)",
+      "performed": "tenant detail → \"השעה לקוח\" → note → \"אשר השעיה\" → re-read provider detail API for suspendedAt",
+      "outcome": "CONFIRMED: Beta.suspendedAt is set after the UI suspend",
+      "shouldProvider": "yes",
+      "verdict": "works",
+      "proof": "suspendPOST=201 apiSuspendedAfter=true"
+    },
+    {
+      "action": "Reactivate a tenant (Beta)",
+      "performed": "tenant detail → \"החזר לפעולה\" (accept confirm) → re-read provider detail API for suspendedAt",
+      "outcome": "CONFIRMED: Beta.suspendedAt cleared after the UI reactivate — restored",
+      "shouldProvider": "yes",
+      "verdict": "works",
+      "proof": "reactivatePOST=201 apiSuspendedAfter=false"
+    },
+    {
+      "action": "Provider audit — view recent activity",
+      "performed": "GET /provider/audit?fromDate=<6h ago> with the access_reason header",
+      "outcome": "CONFIRMED: org-tier audit_log readable (25 rows in last 6h)",
+      "shouldProvider": "yes",
+      "verdict": "works",
+      "proof": "httpOk=true rows=25"
+    },
+    {
+      "action": "Audit of the provider's OWN actions (onboard/suspend/reactivate)",
+      "performed": "check whether the just-performed provider.tenant.* writes are visible through any provider read endpoint",
+      "outcome": "MISSING: provider_audit_log (where provider.tenant.created/suspended/reactivated land) has NO read endpoint — the operator cannot review their own audited actions in-product",
+      "shouldProvider": "yes",
+      "verdict": "MISSING",
+      "proof": "providerTierRowsVisibleViaApi=false (rows are written to provider_audit_log per provider-audit.controller.ts comment \"surfaced separately if ever needed\")"
+    }
+  ]
+}

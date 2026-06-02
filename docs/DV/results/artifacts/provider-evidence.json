@@ -1,0 +1,161 @@
+[
+  {
+    "slug": "dashboard",
+    "url": "/he/provider",
+    "finalUrl": "/he/provider",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/provider/system-health",
+        "status": 200,
+        "ms": -1
+      },
+      {
+        "url": "http://localhost:3001/api/v1/provider/system-health",
+        "status": 200,
+        "ms": 101
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nקונסולת פלטפורמה\nסביבת ייצור · prod-il-1\nסקירה\nדשבורד פלטפורמה\nארגונים\nמשתמשים\nמסחר\nתוכניות ומחירון\nחיובים ומנויים\nתמיכה ופניות\nתפעול ואבטחה\nתפקידים והרשאות\nאינטגרציות\nבריאות מערכת\nגיבויים ושחזור\nיומן פעילות\nניהול פלטפורמה\nצוות EMAPP\nהגדרות פלטפורמה\nDP\nDev Provider\nמנהל Provider\nהתנתק\nמסוף Provider EMAPP\nProvider Admin\n\nגישה צופה בין-לקוחית. כל בקשה כאן מוסיפה רשומה ביומן הביקורת המאובטח.\n\nבריאות מערכת — סיכום\nאזהרה\nתקף ל: 2.6.2026, 22:24:43\nלקוחות\nיומן ביקורת\nבריאות מערכת",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "tenants-list",
+    "url": "/he/provider/tenants",
+    "finalUrl": "/he/provider/tenants",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/provider/tenants?limit=25",
+        "status": 200,
+        "ms": 79
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nקונסולת פלטפורמה\nסביבת ייצור · prod-il-1\nסקירה\nדשבורד פלטפורמה\nארגונים\nמשתמשים\nמסחר\nתוכניות ומחירון\nחיובים ומנויים\nתמיכה ופניות\nתפעול ואבטחה\nתפקידים והרשאות\nאינטגרציות\nבריאות מערכת\nגיבויים ושחזור\nיומן פעילות\nניהול פלטפורמה\nצוות EMAPP\nהגדרות פלטפורמה\nDP\nDev Provider\nמנהל Provider\nהתנתק\nמסוף Provider EMAPP\nלקוחות במערכת\nלקוח חדש\nBeta\nbeta-dev\n\n1 משתמשים · 1 פרויקטים · 1 בעלי דירות · אתמול\n\nAlpha\nalpha-dev\n\n4 משתמשים · 7 פרויקטים · 43 בעלי דירות · אתמול",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "tenant-detail-alpha",
+    "url": "/he/provider/tenants/f4c183e2-d5ef-4b81-9a47-29162d3f9626",
+    "finalUrl": "/he/provider/tenants/f4c183e2-d5ef-4b81-9a47-29162d3f9626",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/provider/tenants/f4c183e2-d5ef-4b81-9a47-29162d3f9626",
+        "status": 200,
+        "ms": 125
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nקונסולת פלטפורמה\nסביבת ייצור · prod-il-1\nסקירה\nדשבורד פלטפורמה\nארגונים\nמשתמשים\nמסחר\nתוכניות ומחירון\nחיובים ומנויים\nתמיכה ופניות\nתפעול ואבטחה\nתפקידים והרשאות\nאינטגרציות\nבריאות מערכת\nגיבויים ושחזור\nיומן פעילות\nניהול פלטפורמה\nצוות EMAPP\nהגדרות פלטפורמה\nDP\nDev Provider\nמנהל Provider\nהתנתק\nמסוף Provider EMAPP\nAlpha\nalpha-dev\nאתמול\nחזרה לרשימה\nניהול גישת לקוח\n\nהלקוח פעיל. השעיה מקפיאה כניסה לכל משתמשי הלקוח (פעולה הפיכה).\n\nהשעה לקוח\nסטטיסטיקות לקוח\n\nמשתמשים\n\n4\n\nפרויקטים\n\n7\n\nבעלי דירות\n\n43\n\nייבואים\n\n0\n\nבקשות חתימה\n\n30\n\nדוגמת בעלי דירות (PII ממוסך)\n\nעד 5 בעלי דירות אחרונים. השם והטלפון ממוסכים בצד השרת (•••••••XX / •••••XXXX); ת.ז. אינה חוצה את ה-wire.\n\n•••••••הן\n\nטל' •••••4567 · dana@example.dev\n\n•••••••רץ\n\n•••••••וי\n\nטל' •••••6543\n\n•••••••רץ\n\nטל' •••••3973\n\n•••••••בר\n\nטל' •••••3836\n\nצפה ביומן הביקורת של הלקוח הזה",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "tenant-detail-beta",
+    "url": "/he/provider/tenants/bd0acb76-a148-4e3f-a280-e250e0435ed8",
+    "finalUrl": "/he/provider/tenants/bd0acb76-a148-4e3f-a280-e250e0435ed8",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/provider/tenants/bd0acb76-a148-4e3f-a280-e250e0435ed8",
+        "status": 200,
+        "ms": 85
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nקונסולת פלטפורמה\nסביבת ייצור · prod-il-1\nסקירה\nדשבורד פלטפורמה\nארגונים\nמשתמשים\nמסחר\nתוכניות ומחירון\nחיובים ומנויים\nתמיכה ופניות\nתפעול ואבטחה\nתפקידים והרשאות\nאינטגרציות\nבריאות מערכת\nגיבויים ושחזור\nיומן פעילות\nניהול פלטפורמה\nצוות EMAPP\nהגדרות פלטפורמה\nDP\nDev Provider\nמנהל Provider\nהתנתק\nמסוף Provider EMAPP\nBeta\nbeta-dev\nאתמול\nחזרה לרשימה\nניהול גישת לקוח\n\nהלקוח פעיל. השעיה מקפיאה כניסה לכל משתמשי הלקוח (פעולה הפיכה).\n\nהשעה לקוח\nסטטיסטיקות לקוח\n\nמשתמשים\n\n1\n\nפרויקטים\n\n1\n\nבעלי דירות\n\n1\n\nייבואים\n\n0\n\nבקשות חתימה\n\n0\n\nדוגמת בעלי דירות (PII ממוסך)\n\nעד 5 בעלי דירות אחרונים. השם והטלפון ממוסכים בצד השרת (•••••••XX / •••••XXXX); ת.ז. אינה חוצה את ה-wire.\n\n•••••••טן\n\nטל' •••••2334\n\nצפה ביומן הביקורת של הלקוח הזה",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "onboard",
+    "url": "/he/provider/onboard",
+    "finalUrl": "/he/provider/onboard",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nקונסולת פלטפורמה\nסביבת ייצור · prod-il-1\nסקירה\nדשבורד פלטפורמה\nארגונים\nמשתמשים\nמסחר\nתוכניות ומחירון\nחיובים ומנויים\nתמיכה ופניות\nתפעול ואבטחה\nתפקידים והרשאות\nאינטגרציות\nבריאות מערכת\nגיבויים ושחזור\nיומן פעילות\nניהול פלטפורמה\nצוות EMAPP\nהגדרות פלטפורמה\nDP\nDev Provider\nמנהל Provider\nהתנתק\nמסוף Provider EMAPP\nיצירת לקוח חדש\n\nיצירת ארגון חדש והזמנת המנהל הראשון. המנהל יקבל קישור הזמנה במייל ויגדיר סיסמה בעצמו.\n\nשם הארגון\nשם המנהל\nאימייל המנהל\nביטול\nצור והזמן",
+    "formCount": 1,
+    "formsWithoutPost": 0,
+    "formMethods": ["post"]
+  },
+  {
+    "slug": "audit",
+    "url": "/he/provider/audit",
+    "finalUrl": "/he/provider/audit",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/provider/audit?limit=25&fromDate=2026-05-25T21%3A00%3A00.000Z",
+        "status": 200,
+        "ms": 87
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nקונסולת פלטפורמה\nסביבת ייצור · prod-il-1\nסקירה\nדשבורד פלטפורמה\nארגונים\nמשתמשים\nמסחר\nתוכניות ומחירון\nחיובים ומנויים\nתמיכה ופניות\nתפעול ואבטחה\nתפקידים והרשאות\nאינטגרציות\nבריאות מערכת\nגיבויים ושחזור\nיומן פעילות\nניהול פלטפורמה\nצוות EMAPP\nהגדרות פלטפורמה\nDP\nDev Provider\nמנהל Provider\nהתנתק\nמסוף Provider EMAPP\nחיפוש ביומן ביקורת (בין-לקוחי)\n\nכל חיפוש נדרש או לפרט מזהה לקוח, או חלון תאריכים של עד 31 ימים (Audit v1.1 SA-4). הכל מתועד.\n\nמזהה לקוח (UUID)\nתחילית פעולה\nמתאריך\nעד תאריך\nאיפוס סינון\nחפש\nlogin\nlogin\nלפני 6 דקות\nf4c183e2\nuser\n18b77646\nowner\nowner.pii_revealed\nלפני 6 דקות\nf4c183e2\nuser\n18b77646\n·\nowners/86ea1064\nlogin\nlogin\nלפני 6 דקות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 6 דקות\nbd0acb76\nuser\nf88dc10f\nlogin\nlogin\nלפני 6 דקות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 דקות\nf4c183e2\nuser\na1426395\nlogin\nlogin\nלפני 12 דקות\nf4c183e2\nuser\neecb1611\nlogin\nlogin\nלפני שעה (1)\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני שעה (1)\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני שעה (1)\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 4 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 4 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 5 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 8 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 שעות\nf4c183e2\nuser\n18b77646\nauth\nauth.tenant_login_failed\nלפני 9 שעות\nf4c183e2\nsystem\n·\nowners/86ea1064\nauth\nauth.tenant_login\nלפני 9 שעות\nf4c183e2\nsystem\n·\nowners/86ea1064\nauth\nauth.otp_requested\nלפני 9 שעות\nf4c183e2\nsystem\n·\nowners/86ea1064\nהבא",
+    "formCount": 1,
+    "formsWithoutPost": 0,
+    "formMethods": ["post"]
+  },
+  {
+    "slug": "audit-org-filter",
+    "url": "/he/provider/audit?orgId=f4c183e2-d5ef-4b81-9a47-29162d3f9626",
+    "finalUrl": "/he/provider/audit",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/provider/audit?limit=25&orgId=f4c183e2-d5ef-4b81-9a47-29162d3f9626&fromDate=2026-05-25T21%3A00%3A00.000Z",
+        "status": 200,
+        "ms": 87
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nקונסולת פלטפורמה\nסביבת ייצור · prod-il-1\nסקירה\nדשבורד פלטפורמה\nארגונים\nמשתמשים\nמסחר\nתוכניות ומחירון\nחיובים ומנויים\nתמיכה ופניות\nתפעול ואבטחה\nתפקידים והרשאות\nאינטגרציות\nבריאות מערכת\nגיבויים ושחזור\nיומן פעילות\nניהול פלטפורמה\nצוות EMAPP\nהגדרות פלטפורמה\nDP\nDev Provider\nמנהל Provider\nהתנתק\nמסוף Provider EMAPP\nחיפוש ביומן ביקורת (בין-לקוחי)\n\nכל חיפוש נדרש או לפרט מזהה לקוח, או חלון תאריכים של עד 31 ימים (Audit v1.1 SA-4). הכל מתועד.\n\nמזהה לקוח (UUID)\nתחילית פעולה\nמתאריך\nעד תאריך\nאיפוס סינון\nחפש\nlogin\nlogin\nלפני 6 דקות\nf4c183e2\nuser\n18b77646\nowner\nowner.pii_revealed\nלפני 6 דקות\nf4c183e2\nuser\n18b77646\n·\nowners/86ea1064\nlogin\nlogin\nלפני 6 דקות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 6 דקות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 דקות\nf4c183e2\nuser\na1426395\nlogin\nlogin\nלפני 12 דקות\nf4c183e2\nuser\neecb1611\nlogin\nlogin\nלפני שעה (1)\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני שעה (1)\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני שעה (1)\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 4 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 4 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 5 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 8 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 שעות\nf4c183e2\nuser\n18b77646\nlogin\nlogin\nלפני 9 שעות\nf4c183e2\nuser\n18b77646\nauth\nauth.tenant_login_failed\nלפני 9 שעות\nf4c183e2\nsystem\n·\nowners/86ea1064\nauth\nauth.tenant_login\nלפני 9 שעות\nf4c183e2\nsystem\n·\nowners/86ea1064\nauth\nauth.otp_requested\nלפני 9 שעות\nf4c183e2\nsystem\n·\nowners/86ea1064\nlogin\nlogin\nלפני 9 שעות\nf4c183e2\nuser\n18b77646\nהבא",
+    "formCount": 1,
+    "formsWithoutPost": 0,
+    "formMethods": ["post"]
+  },
+  {
+    "slug": "system-health",
+    "url": "/he/provider/system-health",
+    "finalUrl": "/he/provider/system-health",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/provider/system-health",
+        "status": 200,
+        "ms": 59
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nקונסולת פלטפורמה\nסביבת ייצור · prod-il-1\nסקירה\nדשבורד פלטפורמה\nארגונים\nמשתמשים\nמסחר\nתוכניות ומחירון\nחיובים ומנויים\nתמיכה ופניות\nתפעול ואבטחה\nתפקידים והרשאות\nאינטגרציות\nבריאות מערכת\nגיבויים ושחזור\nיומן פעילות\nניהול פלטפורמה\nצוות EMAPP\nהגדרות פלטפורמה\nDP\nDev Provider\nמנהל Provider\nהתנתק\nמסוף Provider EMAPP\nבריאות מערכת — מבט מפורט\n\nמדדים חיים של תור עבודה, חיבורי DB ו-R2. הצגה בלבד. רענון אוטומטי כל 30 שניות.\n\nרענן\nסטטוס כללי: אזהרה\n·\nתקף ל: 2.6.2026, 22:25:18\nתור עבודה (pg-boss)\nפעיל\n\n0\n\nממתין\n\n0\n\nמנסה שוב\n\n0\n\nנכשל\n\n0\n\nהושלם\n\n0\n\nחיבורי DB\nApp pool (RLS)\nסה\"כ\n\n1\n\nפנויים\n\n1\n\nממתינים\n\n0\n\nProvider pool (BYPASSRLS)\nסה\"כ\n\n1\n\nפנויים\n\n0\n\nממתינים\n\n0\n\nאחסון R2\nשגיאות מאז עליית התהליך\n\n0\n\nשגיאה אחרונה\n\nאין שגיאות",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  }
+]

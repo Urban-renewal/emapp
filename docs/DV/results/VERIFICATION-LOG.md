@@ -46,3 +46,7 @@ This does NOT dismiss the owner's experience — it's real, and it's a real prob
 **To definitively separate dev-flakiness from real bugs → a PRODUCTION-BUILD pass** (`next build && next start` + `nest build` + local DB — PERF-6): no lazy-compile, no deadlock, representative of what a customer actually gets. Recommended before the product-owner review's final verdict.
 
 **Method note (carry forward):** the dev server degrades under heavy Playwright load (lazy compile / transient chunk 500s) → FALSE "action failed" readings. The `getByText().click()` hydration race is the other false-fail source (it produced my wrong DV-AGENT-NAV). Every "broken" verdict must be reproduced ≥2×, wait for hydration, and be distinguished from a transient 500 / a structural impossibility. The orchestrator re-checks every HIGH finding against the code structure.
+
+## cross-entity lifecycle — gated 2026-06-03
+
+**ALL 5 ripples SYNC, 0 desync** (R1 signature→manager/agent/contractor/resident; R2 assignment; R3 archive; R4 share-revoke; R5 provider-suspend kills the live session). Method rigorous: each effect confirmed on the AFFECTED side via API, reproduced ≥2×, transient 500/429 distinguished from desync, and R1's contractor-aggregate-+1 matches the D.57 logic I verified earlier. **The synchronized core of the product — the owner's top-priority dimension — WORKS.** Accepted. (Re-confirmed: no realtime/push — pull-based, correct on next read; DV-CON-1 consent-threshold still missing.)

@@ -236,6 +236,49 @@ describe('v8.5 D.35 proxy — buildUpstreamHeaders (request header rebuild)', ()
     // it stays absent (the client value MUST NOT be passed through).
     expect(out.get('x-real-ip')).toBeNull();
   });
+
+  it('20) strips the Expect header — undici fetch() throws NotSupportedError on it, which 502s EVERY POST/PUT/PATCH (login included) when forwarded', () => {
+    // Regression for the local-dev "every load fails" report: PowerShell /
+    // .NET (and some browsers) add `Expect: 100-continue` on bodied requests.
+    // undici's fetch() rejects it with `NotSupportedError: expect header not
+    // supported` → caught as upstream_unreachable → 502 on every mutation.
+    // We buffer the body whole, so 100-continue is meaningless here. A
+    // hard-coded "forward everything" proxy fails this test.
+    const req = mockReq({
+      headers: { expect: '100-continue', 'content-type': 'application/json' },
+    });
+    const out = buildUpstreamHeaders(req);
+    expect(out.get('expect')).toBeNull();
+    expect(out.get('content-type')).toBe('application/json'); // unrelated headers survive
+  });
+
+  it('21) strips hop-by-hop request headers (connection / keep-alive / transfer-encoding / upgrade / te / trailer) — they describe the client↔proxy hop only', () => {
+    const req = mockReq({
+      headers: {
+        connection: 'keep-alive',
+        'keep-alive': 'timeout=5',
+        'transfer-encoding': 'chunked',
+        upgrade: 'websocket',
+        te: 'trailers',
+        trailer: 'X-Checksum',
+        'proxy-authorization': 'Basic xyz',
+        accept: 'application/json',
+      },
+    });
+    const out = buildUpstreamHeaders(req);
+    for (const h of [
+      'connection',
+      'keep-alive',
+      'transfer-encoding',
+      'upgrade',
+      'te',
+      'trailer',
+      'proxy-authorization',
+    ]) {
+      expect(out.get(h)).toBeNull();
+    }
+    expect(out.get('accept')).toBe('application/json'); // non-hop-by-hop survives
+  });
 });
 
 describe('v8.5 D.35 proxy — copyResponseHeaders (response back to browser)', () => {

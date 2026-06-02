@@ -92,6 +92,30 @@ const STRIPPED_REQUEST_HEADERS = new Set([
   'x-forwarded-host',
   'x-forwarded-proto',
   'x-forwarded-for',
+  // Hop-by-hop + unsupported request headers (RFC 7230 §6.1). These
+  // describe the CLIENT↔proxy connection, not the proxy↔upstream one,
+  // and forwarding them breaks the upstream fetch:
+  //   - `expect: 100-continue` — undici's fetch() THROWS
+  //     `NotSupportedError: expect header not supported`, surfacing to
+  //     the user as a 502 on EVERY POST/PUT/PATCH (login included).
+  //     .NET/PowerShell clients add it by default; some browsers add it
+  //     for larger bodies. We buffer the body and send it whole, so the
+  //     100-continue handshake is meaningless here anyway.
+  //   - `connection`/`keep-alive`/`transfer-encoding`/`upgrade`/`te`/
+  //     `trailer` — per-hop; undici manages the upstream connection +
+  //     framing itself (we send a fixed-length buffered body).
+  //   - `proxy-*` — belong to the client↔proxy hop only.
+  // Content-Length is intentionally NOT stripped: undici recomputes it
+  // from the buffered body and the two agree.
+  'expect',
+  'connection',
+  'keep-alive',
+  'transfer-encoding',
+  'upgrade',
+  'te',
+  'trailer',
+  'proxy-authorization',
+  'proxy-authenticate',
 ]);
 
 /** v8.5 — exported for proxy.spec.ts.
@@ -210,10 +234,15 @@ async function proxy(req: NextRequest, segments: string[]): Promise<Response> {
     // is why the bug took manual smoke-testing to find.
     if (process.env['NODE_ENV'] !== 'test') {
       // eslint-disable-next-line no-console -- operator-facing debug log; never reaches the browser
+      const cause = (e as { cause?: { code?: string; message?: string } })?.cause;
       console.error('[proxy] upstream fetch threw', {
         url,
         method: req.method,
         error: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
+        // The real reason lives in `.cause` (undici wraps everything as a
+        // generic "fetch failed"). Surface it so ops sees DNS/TLS/connect/
+        // unsupported-header failures without a repro.
+        cause: cause ? (cause.code ?? cause.message ?? String(cause)) : undefined,
       });
     }
     return NextResponse.json(

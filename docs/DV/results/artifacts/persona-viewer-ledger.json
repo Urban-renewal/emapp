@@ -1,0 +1,276 @@
+{
+  "persona": "viewer@alpha.dev",
+  "ranAt": "2026-06-02T21:33:33.299Z",
+  "groundTruth": {
+    "role": "viewer",
+    "org": "alpha",
+    "projects": 13
+  },
+  "headline": {
+    "anyViewerWriteSucceeded": false,
+    "writesAttempted": 20,
+    "writesBlocked": 21
+  },
+  "uxLeak": {
+    "totalDeadControls": 3,
+    "perSurface": [
+      {
+        "surface": "/he/projects",
+        "controls": 1,
+        "labels": ["link:/projects/new"]
+      },
+      {
+        "surface": "/he/owners",
+        "controls": 1,
+        "labels": ["link:/owners/new"]
+      },
+      {
+        "surface": "/he/tasks",
+        "controls": 1,
+        "labels": ["link:/tasks/new"]
+      }
+    ]
+  },
+  "totals": {
+    "actions": 29,
+    "works": 6,
+    "authzBugs": 0,
+    "blockedOk": 22,
+    "uxDeadControls": 1
+  },
+  "consoleErrors": [],
+  "ledger": [
+    {
+      "action": "A1 · View projects list (read)",
+      "how": "GET /projects (viewer cookie) + assert /he/projects renders without an error state",
+      "outcome": "CONFIRMED: viewer reads 13 projects (full org scope), list rendered",
+      "shouldViewer": "yes",
+      "verdict": "works",
+      "proof": "apiProjects=13 listErrorShown=false"
+    },
+    {
+      "action": "A2 · Open a project detail (read)",
+      "how": "goto /projects/1ce34f4d-f885-4f9c-bf1e-18db9792e2ae → assert >=4 tabs render",
+      "outcome": "CONFIRMED: viewer opened the project detail (4 tabs, h1=\"DV Persona Proj 1780433849759\")",
+      "shouldViewer": "yes",
+      "verdict": "works",
+      "proof": "tabs=4"
+    },
+    {
+      "action": "A3 · View owners list — PII fidelity (read)",
+      "how": "GET /owners (viewer cookie); assert national_id is MASKED, no cleartext key",
+      "outcome": "CONFIRMED: owner PII masked for the read-only viewer",
+      "shouldViewer": "yes",
+      "verdict": "works",
+      "proof": "rows=20 allMasked=true anyCleartext=false"
+    },
+    {
+      "action": "A4 · View tasks list (read)",
+      "how": "GET /tasks (viewer cookie) → assert 200",
+      "outcome": "CONFIRMED: tasks list reads for the viewer",
+      "shouldViewer": "yes",
+      "verdict": "works",
+      "proof": "GET /tasks HTTP 200"
+    },
+    {
+      "action": "A5 · View signature-requests list (read)",
+      "how": "GET /signature-requests (viewer cookie) → assert 200",
+      "outcome": "CONFIRMED: signature-requests list reads for the viewer",
+      "shouldViewer": "yes",
+      "verdict": "works",
+      "proof": "GET /signature-requests HTTP 200"
+    },
+    {
+      "action": "A6 · Read members + audit (forbidden, manager-only)",
+      "how": "GET /members + GET /audit (viewer cookie) → assert 403",
+      "outcome": "CONFIRMED: members(403) + audit(403) denied to the viewer",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "GET /members HTTP 403 · GET /audit HTTP 403"
+    },
+    {
+      "action": "B1 · Create project (צור פרויקט)",
+      "how": "POST /api/v1/projects ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B2 · Archive project (ארכוב)",
+      "how": "DELETE /api/v1/projects/1ce34f4d-f885-4f9c-bf1e-18db9792e2ae ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B3 · Edit project (ערוך)",
+      "how": "PATCH /api/v1/projects/1ce34f4d-f885-4f9c-bf1e-18db9792e2ae ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B4 · Edit building (ערוך מבנה)",
+      "how": "PATCH /api/v1/buildings/866369ea-8af1-4f37-9163-fc09d1bc841c ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B5 · Create apartment (הוספת דירה)",
+      "how": "POST /api/v1/buildings/866369ea-8af1-4f37-9163-fc09d1bc841c/apartments ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B6 · Edit apartment",
+      "how": "PATCH /api/v1/apartments/3505b6ef-1914-4215-8a40-f54a76f1cfb1 ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B7 · Delete apartment",
+      "how": "DELETE /api/v1/apartments/3505b6ef-1914-4215-8a40-f54a76f1cfb1 ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B8 · Set apartment ownerships (assign owner)",
+      "how": "PUT /api/v1/apartments/3505b6ef-1914-4215-8a40-f54a76f1cfb1/ownerships ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B9 · Create owner (הוספת בעל דירה)",
+      "how": "POST /api/v1/owners ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B10 · Edit owner",
+      "how": "PATCH /api/v1/owners/30245d06-5f2b-4a44-90d6-b4f725fff2ad ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B11 · Delete owner",
+      "how": "DELETE /api/v1/owners/30245d06-5f2b-4a44-90d6-b4f725fff2ad ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B12 · Reveal owner PII (הצג נתונים)",
+      "how": "POST /api/v1/owners/30245d06-5f2b-4a44-90d6-b4f725fff2ad/reveal-pii ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B13 · Create task (צור משימה)",
+      "how": "POST /api/v1/tasks ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B14 · Create note (צור הערה)",
+      "how": "POST /api/v1/notes ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B15 · Create signature request (צור בקשת חתימה)",
+      "how": "POST /api/v1/signature-requests ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B16 · Cancel signature request (the \"חתום\"/manage seam)",
+      "how": "POST /api/v1/signature-requests/66a8baab-5c69-410a-9175-8bcbabd9e391/cancel ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B17 · Create contractor share (הוספת קבלן)",
+      "how": "POST /api/v1/projects/7c0d334f-ede2-4d87-9a4a-07a9d8b646e9/shares ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B18 · Create contractor (קבלן)",
+      "how": "POST /api/v1/contractors ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B19 · Create document (העלאת מסמך)",
+      "how": "POST /api/v1/documents ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B20 · Create import (העלאת קובץ)",
+      "how": "POST /api/v1/imports ×2 (viewer cookie) → expect 403, confirm no mutation",
+      "outcome": "CONFIRMED BLOCKED: BE 403 both times — no mutation",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "status=403,403"
+    },
+    {
+      "action": "B-GLOBAL · No write persisted (project count invariant)",
+      "how": "GET /projects before vs after the 20-write barrage → counts must be equal",
+      "outcome": "CONFIRMED: project count 13→13 unchanged — no viewer write mutated org data",
+      "shouldViewer": "no",
+      "verdict": "blocked_ok",
+      "proof": "before=13 after=13"
+    },
+    {
+      "action": "C1 · Mark own notifications read (self-scoped write)",
+      "how": "POST /notifications/read-all ×2 (viewer cookie) → 200 expected (own state, not org data)",
+      "outcome": "CONFIRMED: viewer may mark its OWN notifications read (by design — @AuthzAction update, RLS self-scoped)",
+      "shouldViewer": "yes",
+      "verdict": "works",
+      "proof": "POST /notifications/read-all HTTP 200,200"
+    },
+    {
+      "action": "D1 · Direct-URL the create-project wizard (/projects/new)",
+      "how": "goto /he/projects/new → does the wizard render for a read-only viewer?",
+      "outcome": "🟠 UX: the create-project wizard RENDERS for a viewer (submit dead-ends in BE 403 — see B1). Should be hidden/redirected.",
+      "shouldViewer": "no",
+      "verdict": "UX_dead_control",
+      "proof": "wizardRendered=true"
+    }
+  ]
+}

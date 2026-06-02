@@ -27,6 +27,14 @@ export const serverEnv = createEnv({
     SIGNATURE_TOKEN_SECRET: z.string().min(44).optional(),
     PII_ENCRYPTION_KEY: z.string().min(32).optional(),
     PII_HASH_KEY: z.string().min(32).optional(),
+    /** DEV-ONLY auth bypass opt-in. When '1' AND NODE_ENV==='development',
+     *  a fixed code ('000000') is accepted for tenant OTP + provider MFA so
+     *  local testing doesn't need a phone/authenticator. Double-gated (the
+     *  explicit flag is the real guard, since NODE_ENV defaults to
+     *  'development'); a conformance spec asserts the fixed code is REJECTED
+     *  whenever this is unset or NODE_ENV is not development. NEVER set in
+     *  staging/production. */
+    DEV_AUTH_BYPASS: z.string().optional(),
     PORT_API: z.coerce.number().default(3000),
     PORT_WEB: z.coerce.number().default(3001),
   },

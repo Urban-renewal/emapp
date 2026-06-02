@@ -270,7 +270,7 @@ const BETA = {
   owner: {
     name: 'רחל קטן',
     nationalId: luhnId('99900044'),
-    phone: '0521122334',
+    phone: '+972521122334', // E.164 canonical (see OWNERS note — OTP lookup uses the normalized form)
   },
 };
 
@@ -306,10 +306,15 @@ const OWNERS: Array<PiiFields & { email?: string }> = [
   {
     name: 'דנה כהן',
     nationalId: luhnId('99900011'),
-    phone: '0501234567',
+    // E.164 canonical form — the production owner-create path normalizes via
+    // `normalizeIsraeliPhone` before HMAC-hashing, and the tenant OTP lookup
+    // hashes the SAME normalized form. A local "05..." literal here would hash
+    // differently → the seeded resident could never receive an OTP. (login:
+    // user types 0501234567; it normalizes to this.)
+    phone: '+972501234567',
     email: 'dana@example.dev',
   },
-  { name: 'יוסי לוי', nationalId: luhnId('99900022'), phone: '0509876543' },
+  { name: 'יוסי לוי', nationalId: luhnId('99900022'), phone: '+972509876543' },
   { name: 'שרה פרץ', nationalId: luhnId('99900033') },
 ];
 

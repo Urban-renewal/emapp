@@ -12,32 +12,27 @@ import { apiClient, isOk } from '@/lib/api-client';
 import { applyValidationErrors } from '@/lib/errors';
 
 /**
- * V11 A.S1 PR-2 — Login reskin per
- * `MEAPP_design/design_handoff/source/screens-manager.jsx`. Split-screen:
- * navy gradient brand panel on the right (RTL flex first child) +
- * 480px form panel on the left.
+ * Org login — email + password for ANY org user (manager / agent / viewer).
+ * The login payload carries NO role; the BE derives the role from the account,
+ * so one form serves all org staff and each lands on a dashboard scoped to
+ * their own permissions. The other tiers have their own entries:
+ *   - Provider  → /provider/login (MFA mandatory, D.55)
+ *   - Resident  → /tenant/login   (SMS OTP, D.20)
+ *   - Contractor → a manager-issued share-link (no self-login, D.45/D.46)
  *
- * Wired roles in MVP:
- *   - Manager: email + password through `apiClient.post('/auth/login')`
- *   - Agent / Contractor / Tenant: visible-but-disabled with tooltip
- *     (D.20 — Tenant lives behind SMS OTP; Contractor lives behind a
- *     share-link; Agent flow follows Manager in a later slice).
+ * The V11-reskin role-picker was removed: it was cosmetic (never sent a role)
+ * and listed the external tiers as if they logged in here, which misrepresented
+ * the auth model and blocked agent/viewer in the UI.
  *
- * The auth flow is identical to pre-reskin: `method="post"` +
- * `action=""` (defense in depth per PR #47 + #61), `handleSubmit`
- * (preventDefault on hydrated path), `apiClient.post` (D.35 same-origin
- * /api/v1/* proxy), `applyValidationErrors` for `validation_error` ->
- * field errors, anti-enumeration generic message for everything else.
+ * Auth flow: `method="post"` + `action=""` (defense in depth per PR #47/#61),
+ * `handleSubmit` (preventDefault on hydrated path), `apiClient.post` (D.35
+ * same-origin proxy), `applyValidationErrors`, anti-enum generic message.
  */
-
-type RoleId = 'manager' | 'agent' | 'contractor' | 'tenant';
-const WIRED_ROLE: RoleId = 'manager';
 
 export default function LoginPage() {
   const t = useTranslations('auth');
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
-  const [activeRole, setActiveRole] = useState<RoleId>(WIRED_ROLE);
 
   const {
     register,
@@ -64,42 +59,6 @@ export default function LoginPage() {
       setServerError(t('invalidCredentials'));
     }
   }
-
-  const roles: ReadonlyArray<{
-    id: RoleId;
-    label: string;
-    sub: string;
-    wired: boolean;
-    comingSoon?: string;
-  }> = [
-    {
-      id: 'manager',
-      label: t('rolePicker.manager.label'),
-      sub: t('rolePicker.manager.sub'),
-      wired: true,
-    },
-    {
-      id: 'agent',
-      label: t('rolePicker.agent.label'),
-      sub: t('rolePicker.agent.sub'),
-      wired: false,
-      comingSoon: t('rolePicker.comingSoonAgent'),
-    },
-    {
-      id: 'contractor',
-      label: t('rolePicker.contractor.label'),
-      sub: t('rolePicker.contractor.sub'),
-      wired: false,
-      comingSoon: t('rolePicker.comingSoonContractor'),
-    },
-    {
-      id: 'tenant',
-      label: t('rolePicker.tenant.label'),
-      sub: t('rolePicker.tenant.sub'),
-      wired: false,
-      comingSoon: t('rolePicker.comingSoonTenant'),
-    },
-  ];
 
   return (
     <div className="flex min-h-screen">
@@ -144,37 +103,6 @@ export default function LoginPage() {
           <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
             {t('formSubheading')}
           </div>
-        </div>
-
-        <div className="mb-6 grid grid-cols-2 gap-2">
-          {roles.map((r) => {
-            const active = r.id === activeRole;
-            return (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => r.wired && setActiveRole(r.id)}
-                disabled={!r.wired}
-                title={r.comingSoon}
-                aria-label={r.comingSoon ? `${r.label} — ${r.comingSoon}` : r.label}
-                className="rounded-[10px] p-3.5 text-right transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-                style={{
-                  background: active ? 'var(--navy-50)' : 'var(--bg-surface)',
-                  border: `1.5px solid ${active ? 'var(--primary-partner)' : 'var(--border-strong)'}`,
-                }}
-              >
-                <div
-                  className="text-sm font-semibold"
-                  style={{ color: active ? 'var(--navy-900)' : 'var(--text)' }}
-                >
-                  {r.label}
-                </div>
-                <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                  {r.sub}
-                </div>
-              </button>
-            );
-          })}
         </div>
 
         <form

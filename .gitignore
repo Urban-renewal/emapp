@@ -22,3 +22,8 @@ playwright/.cache/
 # prod. Developers run the init command locally when they want
 # NEXT_PUBLIC_MSW=1 offline dev. §RED-3 closure.
 apps/web/public/mockServiceWorker.js
+
+# Local-only dev helpers (contain local dev secrets — never commit)
+start-dev-local.ps1
+mfa-code.ps1
+packages/db/scripts/_tmp_*.ts

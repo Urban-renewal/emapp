@@ -102,8 +102,11 @@ updates:
       # FE runtime libraries — added after PR #69 (closed) bundled three
       # major bumps that would have collided with V11 Design Re-skin
       # (Track A: tokens.css → tailwind.config.ts + reskin every page).
-      # • lucide-react 0→1   — icon API shape change; shell.jsx +
-      #                        every component using icons would break.
+      # • lucide-react 0.x   — PRE-1.0, so MINOR bumps are breaking too:
+      #                        #223 proposed 0.400→0.577 (177 minors) across
+      #                        15 icon-importing files. Icons get renamed /
+      #                        removed between 0.x minors. Ignore minor too,
+      #                        not just major — move it as a deliberate PR.
       # • next-intl 3→4      — config + t.rich callback signature changed
       #                        (already bit us in PR #57 → #61). Another
       #                        major mid-V11 = re-fix scattered across A.S1..S15.
@@ -111,13 +114,20 @@ updates:
       # • @t3-oss/env-core pre-1.0 — minor bump IS breaking (pre-1.0 semver).
       # Re-evaluate after v11.0-mvp-complete tag.
       - dependency-name: 'lucide-react'
-        update-types: ['version-update:semver-major']
+        update-types: ['version-update:semver-major', 'version-update:semver-minor']
       - dependency-name: 'next-intl'
         update-types: ['version-update:semver-major']
       - dependency-name: 'tailwind-merge'
         update-types: ['version-update:semver-major']
       - dependency-name: '@t3-oss/env-core'
         update-types: ['version-update:semver-major', 'version-update:semver-minor']
+
+      # better-auth — DEAD dependency. D.21 removed Better Auth from the auth
+      # path (OWNED auth stack); there are ZERO `from 'better-auth'` imports in
+      # the codebase. It should be REMOVED from apps/web, not bumped. Ignore
+      # ALL updates (no update-types) so dependabot stops churning a dep slated
+      # for deletion. Its `better-call` subdep also wants zod 4 (peer conflict).
+      - dependency-name: 'better-auth'
 
   - package-ecosystem: 'github-actions'
     directory: '/'

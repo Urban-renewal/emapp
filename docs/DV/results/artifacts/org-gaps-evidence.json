@@ -1,0 +1,17 @@
+{
+  "revealPii": {
+    "maskedBefore": "ת.ז.\n•••••••10\nטל'\n•••••4567",
+    "revealRequest": {
+      "url": "/api/v1/owners/86ea1064-df3c-41b0-a794-2e2b993c7081/reveal-pii",
+      "status": 200
+    },
+    "textAfter": "ת.ז.\n999000110\nטל'\n+972501234567",
+    "cleartextDiffersFromMask": true
+  },
+  "archiveModal": {
+    "triggerFound": true,
+    "dialogOpened": false,
+    "dialogText": "",
+    "networkAfterCancel": []
+  }
+}

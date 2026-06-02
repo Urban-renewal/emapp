@@ -1,0 +1,768 @@
+[
+  {
+    "slug": "dashboard",
+    "url": "/he",
+    "finalUrl": "/he",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 120
+      },
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 103
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\nדף הבית\n\nמבט כולל על הפעילות היום\n\nפרויקטים פעילים\n7\n7\nדיירים במערכת\n43\n43\nחתימות שהתקבלו\n24\n24\nממתינים לטיפול\n5\n5\nפרויקט חדש\nמשימת שטח\nיומן השבוע\n\nאין משימות השבוע\n\nתצוגת יומן מלאה תיחבר ב-A.S12 (Calendar + ICS)\n\nשיחות אחרונות\n\nאין שיחות לתצוגה\n\nצ'אט נוסף בשלב מאוחר יותר (Phase 2)",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "projects-list",
+    "url": "/he/projects",
+    "finalUrl": "/he/projects",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 75
+      },
+      {
+        "url": "http://localhost:3001/api/v1/projects?limit=25",
+        "status": 200,
+        "ms": 128
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\nפרויקטים\nצור פרויקט\n\nערכים מורחבים (גוש/חלקה/יח״ד/חתימות/סוכנים) יתחברו לאחר העשרת ה-API\n\nתמ״א 38/2 — ארלוזורוב 14 (דמו)\nבבנייה\nתמ\"א 38/2 · 2026-05-03\nגוש / חלקה\n—\nיח״ד\n9\nחתימות\n9/9\nתמ״א 38/2 — ויצמן 20 (דמו)\nאיסוף חתימות\nתמ\"א 38/2 · 2026-04-23\nגוש / חלקה\n—\nיח״ד\n10\nחתימות\n4/6",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "projects-new",
+    "url": "/he/projects/new",
+    "finalUrl": "/he/projects/new",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 98
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\nצור פרויקט\n1\nפרטי הפרויקט\n2\nמבנה הפרויקט\n3\nסקירה ואישור\nשם הפרויקט\nסוג\nתמ\"א 38/1\nתמ\"א 38/2\nפינוי-בינוי\nתיאור\nביטול\nהבא",
+    "formCount": 1,
+    "formsWithoutPost": 0,
+    "formMethods": ["post"]
+  },
+  {
+    "slug": "project-detail",
+    "url": "/he/projects/1ace1c99-19fb-48b5-8bd8-0c0e886b605c",
+    "finalUrl": "/he/projects/1ace1c99-19fb-48b5-8bd8-0c0e886b605c",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 80
+      },
+      {
+        "url": "http://localhost:3001/api/v1/projects/1ace1c99-19fb-48b5-8bd8-0c0e886b605c",
+        "status": 404,
+        "ms": 122
+      }
+    ],
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "pageErrors": [],
+    "failed4xx5xx": [
+      {
+        "url": "http://localhost:3001/api/v1/projects/1ace1c99-19fb-48b5-8bd8-0c0e886b605c",
+        "status": 404
+      }
+    ],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\n\nהפרויקט לא נמצא\n\nחזרה לרשימה",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "project-assignments",
+    "url": "/he/projects/1ace1c99-19fb-48b5-8bd8-0c0e886b605c/assignments",
+    "finalUrl": "/he/projects/1ace1c99-19fb-48b5-8bd8-0c0e886b605c/assignments",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 76
+      },
+      {
+        "url": "http://localhost:3001/api/v1/members?limit=100",
+        "status": 403,
+        "ms": 106
+      },
+      {
+        "url": "http://localhost:3001/api/v1/projects/1ace1c99-19fb-48b5-8bd8-0c0e886b605c/assignments?limit=25",
+        "status": 200,
+        "ms": 123
+      }
+    ],
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    ],
+    "pageErrors": [],
+    "failed4xx5xx": [
+      {
+        "url": "http://localhost:3001/api/v1/members?limit=100",
+        "status": 403
+      }
+    ],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\nשיוך אגנטים לפרויקט\nחזרה לפרויקט\n\nאין שיוכים פעילים לפרויקט.",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "project-buildings",
+    "url": "/he/projects/1ace1c99-19fb-48b5-8bd8-0c0e886b605c/buildings",
+    "finalUrl": "/he/projects/1ace1c99-19fb-48b5-8bd8-0c0e886b605c/buildings",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 69
+      },
+      {
+        "url": "http://localhost:3001/api/v1/projects/1ace1c99-19fb-48b5-8bd8-0c0e886b605c/buildings?limit=25",
+        "status": 404,
+        "ms": 97
+      }
+    ],
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "pageErrors": [],
+    "failed4xx5xx": [
+      {
+        "url": "http://localhost:3001/api/v1/projects/1ace1c99-19fb-48b5-8bd8-0c0e886b605c/buildings?limit=25",
+        "status": 404
+      }
+    ],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\n\nטעינת רשימת הבניינים נכשלה\n\nנסה שוב",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "project-shares",
+    "url": "/he/projects/1ace1c99-19fb-48b5-8bd8-0c0e886b605c/shares",
+    "finalUrl": "/he/projects/1ace1c99-19fb-48b5-8bd8-0c0e886b605c/shares",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 99
+      },
+      {
+        "url": "http://localhost:3001/api/v1/contractors?limit=100",
+        "status": 200,
+        "ms": 170
+      },
+      {
+        "url": "http://localhost:3001/api/v1/projects/1ace1c99-19fb-48b5-8bd8-0c0e886b605c/shares?limit=25",
+        "status": 404,
+        "ms": 349
+      }
+    ],
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "pageErrors": [],
+    "failed4xx5xx": [
+      {
+        "url": "http://localhost:3001/api/v1/projects/1ace1c99-19fb-48b5-8bd8-0c0e886b605c/shares?limit=25",
+        "status": 404
+      }
+    ],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\nשיתופי קבלנים\nחזרה לפרויקט\nהענקת שיתוף חדש\nקבלן\nבחר קבלן...\nאדריכלי לוין ושות׳ · studio@levin-arch.dev\nאורבן בנייה בע״מ · office@urban-build.dev\nמשרד עו״ד שגב · legal@segev-law.dev\nהרשאות גישה\n\nכברירת מחדל הקבלן רואה את הפרויקט והדירות (מבני בלבד) והתקדמות חתימות מצרפית. פרטי בעלי הדירות מוסתרים, ומסמכים נחשפים רק לפי בחירת המנהל.\n\nסקירת פרויקט (overview)\nפרטי בעלי דירות (tenants)\n\nפרטי בעלי הדירות מוסתרים מהקבלן (ברירת מחדל).\n\nמסמכים (documents)\nחתימות (signatures)\n\nהקבלן רואה אחוז התקדמות מצרפי בלבד — לעולם לא מי חתם.\n\nהערות (notes)\nצוות (team)\nהענק שיתוף\n\nטעינת השיתופים נכשלה\n\nנסה שוב",
+    "formCount": 1,
+    "formsWithoutPost": 0,
+    "formMethods": ["post"]
+  },
+  {
+    "slug": "building-detail",
+    "url": "/he/buildings/f3504b2c-bf53-4cba-953b-5b8975d175f0",
+    "finalUrl": "/he/buildings/f3504b2c-bf53-4cba-953b-5b8975d175f0",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 72
+      },
+      {
+        "url": "http://localhost:3001/api/v1/buildings/f3504b2c-bf53-4cba-953b-5b8975d175f0",
+        "status": 404,
+        "ms": 104
+      }
+    ],
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "pageErrors": [],
+    "failed4xx5xx": [
+      {
+        "url": "http://localhost:3001/api/v1/buildings/f3504b2c-bf53-4cba-953b-5b8975d175f0",
+        "status": 404
+      }
+    ],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\n\nהבניין לא נמצא\n\nחזרה לרשימה",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "apartment-detail",
+    "url": "/he/apartments/f5951010-90a8-4b09-a18d-091e906dbc26",
+    "finalUrl": "/he/apartments/f5951010-90a8-4b09-a18d-091e906dbc26",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 92
+      },
+      {
+        "url": "http://localhost:3001/api/v1/apartments/f5951010-90a8-4b09-a18d-091e906dbc26",
+        "status": 404,
+        "ms": 138
+      }
+    ],
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "pageErrors": [],
+    "failed4xx5xx": [
+      {
+        "url": "http://localhost:3001/api/v1/apartments/f5951010-90a8-4b09-a18d-091e906dbc26",
+        "status": 404
+      }
+    ],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\n\nהדירה לא נמצאה\n\nחזרה לרשימה",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "owners-list",
+    "url": "/he/owners",
+    "finalUrl": "/he/owners",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 84
+      },
+      {
+        "url": "http://localhost:3001/api/v1/owners?limit=25",
+        "status": 200,
+        "ms": 182
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\nבעלי דירות\nהוספת בעל דירה\nדפנה נחום\n\nת.ז. •••••••55 · טל' •••••3425\n\nאסף פרידמן\n\nת.ז. •••••••48 · טל' •••••3288\n\nסיגל לוי\n\nת.ז. •••••••30 · טל' •••••3151\n\nרן חדד\n\nת.ז. •••••••22 · טל' •••••3014\n\nענת אברהם\n\nת.ז. •••••••14 · טל' •••••2877\n\nבני כהן\n\nת.ז. •••••••06 · טל' •••••2740\n\nמאיה שמש\n\nת.ז. •••••••98 · טל' •••••2603\n\nאורן אזולאי\n\nת.ז. •••••••80 · טל' •••••2466\n\nשירה עמר\n\nת.ז. •••••••72 · טל' •••••2329\n\nגיל רוזן\n\nת.ז. •••••••64 · טל' •••••2192\n\nליאת דהן\n\nת.ז. •••••••56 · טל' •••••2055\n\nעומר מלכה\n\nת.ז. •••••••49 · טל' •••••1918\n\nרונית ברק\n\nת.ז. •••••••31 · טל' •••••1781\n\nטל ביטון\n\nת.ז. •••••••23 · טל' •••••1644\n\nאיתי גבאי\n\nת.ז. •••••••15 · טל' •••••1507\n\nחנה גולן\n\nת.ז. •••••••07 · טל' •••••1370\n\nדוד פרץ\n\nת.ז. •••••••99 · טל' •••••1233\n\nשני שמש\n\nת.ז. •••••••96 · טל' •••••5343\n\nמירי בר\n\nת.ז. •••••••81 · טל' •••••1096\n\nעמית אזולאי\n\nת.ז. •••••••88 · טל' •••••5206\n\nיעקב שפירא\n\nת.ז. •••••••73 · טל' •••••0959\n\nנטע עמר\n\nת.ז. •••••••70 · טל' •••••5069\n\nאלון רוזן\n\nת.ז. •••••••62 · טל' •••••4932\n\nנועה מזרחי\n\nת.ז. •••••••65 · טל' •••••0822\n\nאבי נחום\n\nת.ז. •••••••57 · טל' •••••0685\n\nהבא",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "owner-detail",
+    "url": "/he/owners/86ea1064-df3c-41b0-a794-2e2b993c7081",
+    "finalUrl": "/he/owners/86ea1064-df3c-41b0-a794-2e2b993c7081",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 86
+      },
+      {
+        "url": "http://localhost:3001/api/v1/me",
+        "status": 200,
+        "ms": 131
+      },
+      {
+        "url": "http://localhost:3001/api/v1/owners/86ea1064-df3c-41b0-a794-2e2b993c7081",
+        "status": 404,
+        "ms": 139
+      }
+    ],
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "pageErrors": [],
+    "failed4xx5xx": [
+      {
+        "url": "http://localhost:3001/api/v1/owners/86ea1064-df3c-41b0-a794-2e2b993c7081",
+        "status": 404
+      }
+    ],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\n\nבעל הדירה לא נמצא\n\nחזרה לרשימה",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "owners-new",
+    "url": "/he/owners/new",
+    "finalUrl": "/he/owners/new",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 66
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\nהוספת בעל דירה\n\nהנתונים מוצפנים בזמן האחסון; באמצעות מסך זה לא מוצגים נתונים פתוחים.\n\nשם מלא\nת.ז. (9 ספרות)\nטלפון\nאימייל\nהערות\nביטול\nהוספת בעל דירה",
+    "formCount": 1,
+    "formsWithoutPost": 0,
+    "formMethods": ["post"]
+  },
+  {
+    "slug": "documents-list",
+    "url": "/he/documents",
+    "finalUrl": "/he/documents",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 96
+      },
+      {
+        "url": "http://localhost:3001/api/v1/documents?limit=25",
+        "status": 200,
+        "ms": 141
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "document-detail",
+    "url": "/he/documents/f87283dc-5aef-4229-ac29-8ab8e899d592",
+    "finalUrl": "/he/documents/f87283dc-5aef-4229-ac29-8ab8e899d592",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/documents?limit=25",
+        "status": 200,
+        "ms": -1
+      },
+      {
+        "url": "http://localhost:3001/api/v1/documents?limit=25",
+        "status": 200,
+        "ms": 3856
+      },
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 135
+      },
+      {
+        "url": "http://localhost:3001/api/v1/documents/f87283dc-5aef-4229-ac29-8ab8e899d592",
+        "status": 404,
+        "ms": 182
+      }
+    ],
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "pageErrors": [],
+    "failed4xx5xx": [
+      {
+        "url": "http://localhost:3001/api/v1/documents/f87283dc-5aef-4229-ac29-8ab8e899d592",
+        "status": 404
+      }
+    ],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\n\nהמסמך לא נמצא\n\nחזרה לרשימה",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "sigreq-list",
+    "url": "/he/signature-requests",
+    "finalUrl": "/he/signature-requests",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 88
+      },
+      {
+        "url": "http://localhost:3001/api/v1/signature-requests?limit=25",
+        "status": 200,
+        "ms": 119
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\nבקשות חתימה\nצור בקשה חדשה\nהכל\nממתין\nחתום\nבוטל\nחתום\n\nנוצר לפני 7 ימים · נחתם לפני 5 ימים\n\nחתום\n\nנוצר לפני 7 ימים · נחתם שלשום\n\nחתום\n\nנוצר לפני 7 ימים · נחתם לפני 3 ימים\n\nחתום\n\nנוצר לפני 8 ימים · נחתם לפני 3 ימים\n\nחתום\n\nנוצר לפני 8 ימים · נחתם שלשום\n\nחתום\n\nנוצר לפני 8 ימים · נחתם לפני 4 ימים\n\nחתום\n\nנוצר לפני 8 ימים · נחתם לפני 3 ימים\n\nחתום\n\nנוצר לפני 9 ימים · נחתם לפני 3 ימים\n\nממתין לחתימה\n\nנוצר לפני 9 ימים · יפוג בעוד 5 ימים\n\nחתום\n\nנוצר לפני 10 ימים · נחתם לפני 4 ימים\n\nחתום\n\nנוצר לפני 10 ימים · נחתם לפני 3 ימים\n\nחתום\n\nנוצר לפני 10 ימים · נחתם לפני 5 ימים\n\nחתום\n\nנוצר לפני 11 ימים · נחתם לפני 4 ימים\n\nחתום\n\nנוצר לפני 11 ימים · נחתם לפני 5 ימים\n\nממתין לחתימה\n\nנוצר לפני 11 ימים · יפוג בעוד 3 ימים",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "sigreq-detail",
+    "url": "/he/signature-requests/66a8baab-5c69-410a-9175-8bcbabd9e391",
+    "finalUrl": "/he/signature-requests/66a8baab-5c69-410a-9175-8bcbabd9e391",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 90
+      },
+      {
+        "url": "http://localhost:3001/api/v1/signature-requests/66a8baab-5c69-410a-9175-8bcbabd9e391",
+        "status": 404,
+        "ms": 127
+      }
+    ],
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "pageErrors": [],
+    "failed4xx5xx": [
+      {
+        "url": "http://localhost:3001/api/v1/signature-requests/66a8baab-5c69-410a-9175-8bcbabd9e391",
+        "status": 404
+      }
+    ],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\n\nהבקשה לא נמצאה\n\nחזרה לרשימה",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "contractors-list",
+    "url": "/he/contractors",
+    "finalUrl": "/he/contractors",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 95
+      },
+      {
+        "url": "http://localhost:3001/api/v1/contractors?limit=25",
+        "status": 200,
+        "ms": 124
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\nקבלנים\nהוספת קבלן\nאדריכלי לוין ושות׳\n\nstudio@levin-arch.dev · +97236000222\n\nאדריכלות\n\nאורבן בנייה בע״מ\n\noffice@urban-build.dev · +97236000111\n\nקבלן מבצע\n\nמשרד עו״ד שגב\n\nlegal@segev-law.dev · +97236000333\n\nליווי משפטי",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "contractor-detail",
+    "url": "/he/contractors/afa0059f-5d65-4e90-9b16-1d2d10e6ab64",
+    "finalUrl": "/he/contractors/afa0059f-5d65-4e90-9b16-1d2d10e6ab64",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 81
+      },
+      {
+        "url": "http://localhost:3001/api/v1/contractors/afa0059f-5d65-4e90-9b16-1d2d10e6ab64",
+        "status": 200,
+        "ms": 117
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\nאדריכלי לוין ושות׳\n\nלפני 20 ימים\n\nחזרה לרשימה\nאימייל איש קשר: studio@levin-arch.dev\nטלפון: +97236000222\nהתמחות: אדריכלות\nמספר חברה / ח.פ.: 514888002\nהערות: דמו — קבלן/ספק לדוגמה.\nארכוב קבלן\n\nלאחר הארכוב הקבלן לא יוצג ברשימה ולא ניתן יהיה לשתף פרויקטים איתו.\n\nארכב קבלן",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "tasks-list",
+    "url": "/he/tasks",
+    "finalUrl": "/he/tasks",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 77
+      },
+      {
+        "url": "http://localhost:3001/api/v1/tasks?limit=25",
+        "status": 200,
+        "ms": 131
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\nמשימות\nצור משימה\nהעלאת תוכניות אדריכליות מעודכנות\nהושלם\n\nלפני 8 ימים\n\nפגישת חתימה עם דיירי ויצמן 20\nממתין\n\nלפני 8 ימים\n\nעדכון סטטוס דירות — ויצמן 22\nבביצוע\n\nלפני 8 ימים\n\nשליחת תזכורת חתימה לדיירים\nממתין\n\nלפני 8 ימים\n\nמעקב דייר מסרב — נווה שאנן\nבביצוע\nדחופה\n\nלפני 8 ימים\n\nסיור בניין — ארלוזורוב 14\nבביצוע\n\nלפני 8 ימים",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "task-detail",
+    "url": "/he/tasks/fa007e59-0f5e-457d-9c4f-d22f9de17ea8",
+    "finalUrl": "/he/tasks/fa007e59-0f5e-457d-9c4f-d22f9de17ea8",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 84
+      },
+      {
+        "url": "http://localhost:3001/api/v1/members?limit=100",
+        "status": 403,
+        "ms": 128
+      },
+      {
+        "url": "http://localhost:3001/api/v1/tasks/fa007e59-0f5e-457d-9c4f-d22f9de17ea8",
+        "status": 200,
+        "ms": 134
+      },
+      {
+        "url": "http://localhost:3001/api/v1/tasks/fa007e59-0f5e-457d-9c4f-d22f9de17ea8/assignees",
+        "status": 200,
+        "ms": 152
+      }
+    ],
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    ],
+    "pageErrors": [],
+    "failed4xx5xx": [
+      {
+        "url": "http://localhost:3001/api/v1/members?limit=100",
+        "status": 403
+      }
+    ],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\nהעלאת תוכניות אדריכליות מעודכנות\nהושלם\n·\nרגילה\n·\nלפני 8 ימים\nחזרה לרשימה\nעדכון סטטוס ותיאור\nסטטוס\nממתין\nבביצוע\nהושלם\nבוטל\nתיאור\nשמור\nמשויכים למשימה\nמשתמש eecb1611לפני 9 שעות",
+    "formCount": 1,
+    "formsWithoutPost": 0,
+    "formMethods": ["post"]
+  },
+  {
+    "slug": "notes-list",
+    "url": "/he/notes",
+    "finalUrl": "/he/notes",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 123
+      },
+      {
+        "url": "http://localhost:3001/api/v1/members?limit=100",
+        "status": 403,
+        "ms": 194
+      },
+      {
+        "url": "http://localhost:3001/api/v1/notes?limit=25",
+        "status": 200,
+        "ms": 215
+      }
+    ],
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    ],
+    "pageErrors": [],
+    "failed4xx5xx": [
+      {
+        "url": "http://localhost:3001/api/v1/members?limit=100",
+        "status": 403
+      }
+    ],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\nהערות\nצור הערה\n\nאין הערות להציג.",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "notifications",
+    "url": "/he/notifications",
+    "finalUrl": "/he/notifications",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 129
+      },
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=25",
+        "status": 200,
+        "ms": 178
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\nהתראות\nסמן הכל כנקרא (4)\nהכל\nלא נקראו\nחתימות\nמשימות\nמסמכים\nהערות\nאזכורים\nסטטוס דירות\nביטולים\nמשימה חדשה שובצה אליך\nפגישת חתימה עם דיירי ויצמן 20\nמשימה חדשה\n·\nלפני 9 שעות\nסמן כנקרא\nמסמך הועלה\nתקנון תמ״א 38 — ויצמן 20\nמסמך חדש\n·\nאתמול\nסמן כנקרא\nסטטוס דירה עודכן\nדירה 3 בוויצמן 20 → פגישה\nסטטוס דירה עודכן\n·\nלפני 3 ימים\nסמן כנקרא\nהערה נוספה\nהערה על דייר מסרב בנווה שאנן\nהערה חדשה\n·\nלפני 5 ימים\nסמן כנקרא",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "imports-list",
+    "url": "/he/imports",
+    "finalUrl": "/he/imports",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 88
+      },
+      {
+        "url": "http://localhost:3001/api/v1/imports?limit=25",
+        "status": 200,
+        "ms": 120
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\nייבוא\nייבוא קובץ Excel\n\nאין עדיין ייבואים. הקלק \"ייבוא קובץ Excel\".",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "members-list",
+    "url": "/he/members",
+    "finalUrl": "/he/members",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 81
+      },
+      {
+        "url": "http://localhost:3001/api/v1/members?limit=25",
+        "status": 403,
+        "ms": 114
+      }
+    ],
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    ],
+    "pageErrors": [],
+    "failed4xx5xx": [
+      {
+        "url": "http://localhost:3001/api/v1/members?limit=25",
+        "status": 403
+      }
+    ],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\n\nטעינת רשימת החברים נכשלה\n\nנסה שוב",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "audit",
+    "url": "/he/audit",
+    "finalUrl": "/he/audit",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 78
+      },
+      {
+        "url": "http://localhost:3001/api/v1/audit?limit=25",
+        "status": 403,
+        "ms": 118
+      }
+    ],
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    ],
+    "pageErrors": [],
+    "failed4xx5xx": [
+      {
+        "url": "http://localhost:3001/api/v1/audit?limit=25",
+        "status": 403
+      }
+    ],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\nיומן ביקורת\n\nכל פעולה משמעותית במערכת מתועדת באופן בלתי הפיך (append-only). ההצגה כאן כוללת את ה-מי / מה / מתי / יעד; שינויים מפורטים (לפני/אחרי), כתובת IP ו-User-Agent נשמרים אך אינם מוצגים במסך זה.\n\nטעינת יומן הביקורת נכשלה.\n\nנסה שוב",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  },
+  {
+    "slug": "settings",
+    "url": "/he/settings",
+    "finalUrl": "/he/settings",
+    "httpStatusOfDoc": 200,
+    "apiCalls": [
+      {
+        "url": "http://localhost:3001/api/v1/notifications?limit=5",
+        "status": 200,
+        "ms": 81
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failed4xx5xx": [],
+    "bodyText": "EM\nEMAPP\nהתחדשות עירונית\nראשי\nפרויקטים\nבעלי דירות\nייבוא\nמסמכים\nבקשות חתימה\nהתראות\nמשימות\nקבלנים\nהערות\nאס\nאבי סוכן\nאגנט\nהתנתק\nAlpha\n4\nהגדרות\n\nניהול הארגון, חברי הצוות, אינטגרציות ואבטחה\n\nהשלב הנוכחי של ההגדרות הוא scaffolding — כרטיסיית \"כללי\" מציגה את הארגון והמשתמש (קריאה-בלבד). שאר הכרטיסיות יחוברו בשלבים הבאים (העדפות התראות, אינטגרציות, MFA וניהול סשנים).\n\nכללי\nחברי צוות\nהתראות\nאינטגרציות\nאבטחה\nפרטי הארגון והמשתמש\nשם הארגון\nAlpha\nמזהה ארגון\nalpha-dev\nהמשתמש המחובר\nאבי סוכן\nאימייל\nagent@alpha.dev\nתפקיד\nagent\n\nהשדות מוצגים לקריאה. שינוי שם הארגון או פרטי המשתמש יתאפשר לאחר חיבור endpoint העדכון בצד שרת.",
+    "formCount": 0,
+    "formsWithoutPost": 0,
+    "formMethods": []
+  }
+]

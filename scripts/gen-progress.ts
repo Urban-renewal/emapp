@@ -37,6 +37,7 @@ const END = '<!-- END AGENT HEARTBEATS -->';
 const TRACK_LABELS: Record<string, string> = {
   'track-a': 'Track A · Design Re-skin (FE)',
   'track-b': 'Track B · BE Specialist',
+  'track-ops': 'Track Ops · DevEx / Release Engineering / Infra',
   // Future tracks: add here.
 };
 

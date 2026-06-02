@@ -44,6 +44,13 @@ updates:
         update-types: ['version-update:semver-major']
       - dependency-name: '@vitest/*'
         update-types: ['version-update:semver-major']
+      # vite underpins vitest + the @emapp/web test config; its major is
+      # pinned to vitest's supported peer range (we sit on vite 6, the
+      # minimum vitest 4 requires). A vite major (6→8 proposed in #220)
+      # touches the Next.js build + every vite plugin and must move with
+      # vitest as a deliberate, single-tool PR — never auto-bumped.
+      - dependency-name: 'vite'
+        update-types: ['version-update:semver-major']
 
       # Commit / lint tooling — config shape changes between majors
       - dependency-name: '@commitlint/*'

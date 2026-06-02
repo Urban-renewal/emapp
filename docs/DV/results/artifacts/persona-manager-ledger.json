@@ -1,0 +1,143 @@
+{
+  "persona": "manager@alpha.dev",
+  "ranAt": "2026-06-02T20:59:29.075Z",
+  "created": {
+    "projectId": "384ac9c2-1f09-48d8-929a-9a406252be39",
+    "ownerId": "30245d06-5f2b-4a44-90d6-b4f725fff2ad",
+    "buildingId": "863ef493-c79b-4bde-b0cf-bef7b09cc685",
+    "apartmentId": "f51bbda5-41b7-4da3-a77c-ae06779ffdd4",
+    "taskId": "6764bfab-f625-4da4-816d-48a945fa5227",
+    "noteId": "9c8e3452-c971-4b46-a4a1-67c4fcab439a"
+  },
+  "totals": {
+    "actions": 15,
+    "worked": 13,
+    "functionalBugs": 1,
+    "authzBugs": 0,
+    "blockedOk": 0,
+    "uxDeadClicks": 1
+  },
+  "consoleErrors": [],
+  "ledger": [
+    {
+      "action": "Navigate into a project from the list",
+      "how": "click first project card → assert URL is /projects/{id} + detail tablist present",
+      "outcome": "CONFIRMED: detail page opened",
+      "shouldManager": "yes",
+      "verdict": "works",
+      "proof": "clicked /projects/1ce34f4d-f885-4f9c-bf1e-18db9792e2ae → url=http://localhost:3001/he/projects/1ce34f4d-f885-4f9c-bf1e-18db9792e2ae projectTabs=4"
+    },
+    {
+      "action": "Create a project",
+      "how": "3-step wizard → submit → assert redirect to /projects/{id} + API re-read",
+      "outcome": "CONFIRMED: project 384ac9c2-1f09-48d8-929a-9a406252be39 exists in API",
+      "shouldManager": "yes",
+      "verdict": "works",
+      "proof": "id=384ac9c2-1f09-48d8-929a-9a406252be39 apiHasName=true"
+    },
+    {
+      "action": "Create an owner",
+      "how": "/owners/new fill name+valid national_id+phone → submit → check redirect + API re-read",
+      "outcome": "CONFIRMED: owner 30245d06-5f2b-4a44-90d6-b4f725fff2ad created + redirected to dossier",
+      "shouldManager": "yes",
+      "verdict": "works",
+      "proof": "id=30245d06-5f2b-4a44-90d6-b4f725fff2ad apiHasName=true redirected=true"
+    },
+    {
+      "action": "Reveal an owner's PII",
+      "how": "owner dossier → click reveal → assert cleartext national_id appears",
+      "outcome": "CONFIRMED: cleartext shown",
+      "shouldManager": "yes",
+      "verdict": "works",
+      "proof": "reveal-pii HTTP 200 · cleartext9digit=true"
+    },
+    {
+      "action": "Owner quick-actions (WhatsApp / SendDoc / AddNote / CreateTask)",
+      "how": "owner dossier → inspect the 4 quick-action buttons",
+      "outcome": "4 buttons present but disabled — clicking does nothing",
+      "shouldManager": "yes",
+      "verdict": "UX_dead_click",
+      "proof": "disabled placeholder buttons=4 (title=\"בקרוב\")"
+    },
+    {
+      "action": "Create a building under a project",
+      "how": "/projects/{id}/buildings/new → fill address+city → submit → check redirect + API",
+      "outcome": "CONFIRMED: building 863ef493-c79b-4bde-b0cf-bef7b09cc685 created + redirected",
+      "shouldManager": "yes",
+      "verdict": "works",
+      "proof": "id=863ef493-c79b-4bde-b0cf-bef7b09cc685 apiOk=true redirected=true"
+    },
+    {
+      "action": "Create an apartment under a building",
+      "how": "/buildings/{id}/apartments/new → fill number → submit → check redirect + API",
+      "outcome": "CONFIRMED: apartment f51bbda5-41b7-4da3-a77c-ae06779ffdd4 created + redirected",
+      "shouldManager": "yes",
+      "verdict": "works",
+      "proof": "id=f51bbda5-41b7-4da3-a77c-ae06779ffdd4 apiOk=true redirected=true"
+    },
+    {
+      "action": "Set ownerships to sum 100 on an apartment",
+      "how": "ownerships page → add row → pick owner → 100% → save → API re-read",
+      "outcome": "CONFIRMED: ownership persisted at 100%",
+      "shouldManager": "yes",
+      "verdict": "works",
+      "proof": "owners endpoint contains owner=30245d06-5f2b-4a44-90d6-b4f725fff2ad pct100=true"
+    },
+    {
+      "action": "Create a task",
+      "how": "/tasks/new → title+desc → submit → check redirect + API re-read",
+      "outcome": "CONFIRMED: task 6764bfab-f625-4da4-816d-48a945fa5227 created + redirected",
+      "shouldManager": "yes",
+      "verdict": "works",
+      "proof": "id=6764bfab-f625-4da4-816d-48a945fa5227 apiHasTitle=true redirected=true"
+    },
+    {
+      "action": "Edit a task (change status → completed)",
+      "how": "task detail → status select → completed → save → API re-read",
+      "outcome": "CONFIRMED: status persisted as completed",
+      "shouldManager": "yes",
+      "verdict": "works",
+      "proof": "API status=completed"
+    },
+    {
+      "action": "Create a note",
+      "how": "/notes/new → body → submit → check redirect + API re-read",
+      "outcome": "CONFIRMED: note 9c8e3452-c971-4b46-a4a1-67c4fcab439a created + redirected",
+      "shouldManager": "yes",
+      "verdict": "works",
+      "proof": "id=9c8e3452-c971-4b46-a4a1-67c4fcab439a apiHasBody=true redirected=true"
+    },
+    {
+      "action": "Assign an agent to a project",
+      "how": "/projects/{id}/assignments → pick member → assign → API re-read",
+      "outcome": "CONFIRMED: assignment present (or no-one left to assign)",
+      "shouldManager": "yes",
+      "verdict": "works",
+      "proof": "no eligible members in dropdown (all already assigned?)"
+    },
+    {
+      "action": "Send a document to signature",
+      "how": "/signature-requests/new → doc + new owner → submit → assert sign-URL panel",
+      "outcome": "FAILED",
+      "shouldManager": "yes",
+      "verdict": "FUNCTIONAL_BUG",
+      "proof": "document dropdown EMPTY (only placeholder) while documents API returns 41 rows — manager cannot send any doc to signature"
+    },
+    {
+      "action": "Open notifications + mark one read",
+      "how": "/notifications → click \"mark read\" → API re-read of read state",
+      "outcome": "CONFIRMED: mark-read executed",
+      "shouldManager": "yes",
+      "verdict": "works",
+      "proof": "no unread notifications to mark (already all read)"
+    },
+    {
+      "action": "Archive a project",
+      "how": "project detail → dashboard tab → archive (accept confirm) → API re-read archivedAt",
+      "outcome": "CONFIRMED: project archived",
+      "shouldManager": "yes",
+      "verdict": "works",
+      "proof": "API archivedAt set"
+    }
+  ]
+}

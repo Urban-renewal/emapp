@@ -161,6 +161,57 @@ surface (capped at manager/agent/viewer). Building the Admin/custom-role
 administration API — with `canAssignRole` wired + the D-G defensive tests — is
 the natural next enterprise slice.
 
+### D-H — Pre-merge ADVERSARIAL audit (3 fresh-eyes reviewers): findings + fixes
+
+Before opening the merge PR, three independent adversarial reviewers were run on
+the whole stack (RLS/migrations, auth-core correctness, cross-cutting/legacy-
+coexistence), each with a "try to break it" mandate. The auth DECISION logic
+came back clean (no fail-open, no wrong-allow/deny, honest equivalence proof,
+complete cutover, expired-grant exclusion in the single decision path). Two real
+issues were found that the per-slice reviews had missed — both fixed via the same
+test→fix→review flow, both re-reviewed:
+
+**D-H.1 — 2× CRITICAL: cross-tenant DELETE of SYSTEM roles (RLS) — FIXED.**
+In 0043, the `roles` + `role_permissions` `tenant_isolation` policies used a
+single `FOR ALL` policy whose `USING` admitted system rows (`org_id IS NULL`)
+cross-org (so every tenant can READ the seeded roles). The Postgres gotcha:
+**DELETE is authorized by `USING` only** (`WITH CHECK` does not apply to DELETE),
+so any tenant's `app_user` could `DELETE` a system role / its permissions —
+wiping them GLOBALLY for every org (proven live: rowCount=64). INSERT/UPDATE were
+correctly blocked; only DELETE leaked. Not reachable via the current API (no
+endpoint DELETEs roles), but a genuine breach of the RLS last-line boundary that
+becomes reachable with custom-role management. **Fix:** migration `0046` splits
+each policy — a `FOR ALL` policy scoped to own-org (governs INSERT/UPDATE/DELETE)
+plus a `FOR SELECT` policy re-adding the cross-org system read (permissive
+policies OR per command). RED probe-based tests (throwaway never-assigned system
+roles, non-destructive) added to `iam-foundation-schema.spec.ts` assert the
+cross-tenant DELETE removes 0 rows. Verified: 21/21 green (DELETE blocked, cross-
+org SELECT preserved, custom-role isolation + UPDATE-blocked intact). Both
+reviewers PASS; both independently swept all migrations and found NO other table
+with this pattern. Gate-6 (migration) — owner sign-off = the merge approval.
+
+**D-H.2 — MEDIUM: owner-PII reveal FE/BE split-brain — FIXED.**
+The BE reveal endpoint gates on the LEGACY capability model (`resolveOwnerPiiFidelity`:
+manager always · agent iff its `view_owner_pii` capability · viewer never), and
+`/me` exposes `view_owner_pii` computed by that same logic. But slice 5b had
+switched the FE reveal button to `useHasPermission('owners.reveal_pii')` (the
+engine permission) — which an agent granted the capability does NOT hold (the
+engine agent role excludes `reveal_pii`; no per-assignment grant path exists
+yet). So an org could grant an agent PII access and the new FE would silently
+HIDE the button (direction = UNDER-exposure / dead control — NOT a leak; the BE
+remained authoritative). **Fix:** the FE button now gates on `/me.view_owner_pii`
+(the field that mirrors the BE authority), so FE === BE across all roles;
+forward-compatible (when `reveal_pii` migrates to a per-assignment engine grant,
+`/me.view_owner_pii` moves with the BE gate). code-reviewer PASS. This corrects
+the D-D framing, which had understated the reveal-gate divergence.
+
+**Documented NITs from the audit (non-blocking):** orphan `role_assignments`
+rows on org/project hard-delete (`scope_id` has no FK — but orphans never resolve:
+a deleted org has no RLS context, a deleted project is never a check target);
+roster/engine drift if an Owner is demoted via the member surface (safe direction,
+documented); test-factory orgs created without an Owner assignment (fixture drift,
+not production — real orgs get an Owner via signup/onboard).
+
 ---
 
 ## DEFERRED — additive / non-breaking (documented with safety)

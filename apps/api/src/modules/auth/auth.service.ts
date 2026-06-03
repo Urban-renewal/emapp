@@ -14,7 +14,7 @@ import {
   withTenant,
 } from '@emapp/db';
 import type { AgentCapabilities } from '@emapp/shared-types';
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 
@@ -124,6 +124,8 @@ function isEmailDuplicate(err: unknown): boolean {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly jwt: JwtService,
     private readonly permissions: PermissionService,
@@ -673,7 +675,16 @@ export class AuthService {
         );
       });
       return [...effective].sort();
-    } catch {
+    } catch (e) {
+      // Degrade to an empty set so `/me` stays available, but DON'T swallow
+      // silently — a resolve failure here means the engine/DB is unhealthy and
+      // every user would lose their write controls with no other signal. Log
+      // it (org id only — no PII; the error message is engine/DB-level).
+      this.logger.warn(
+        `/me effective-permission resolve failed (org=${orgId}): ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
       return [];
     }
   }

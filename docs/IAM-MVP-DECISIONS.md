@@ -224,10 +224,19 @@ guard which was free). Given low runtime is the owner's #1 pain, a per-request
 DB hit on every endpoint is worth scrutinising.
 **Why deferring is the CORRECT call (not laziness).**
 
-1. The resolve is a **single, well-indexed query**:
+1. The resolve query is a **single, well-indexed join**:
    `role_assignments ⋈ role_permissions` filtered by `user_id`
    (`idx_role_assignments_user`) on `role_id` (`idx_role_permissions_role`),
-   RLS-scoped — no org predicate needed. Minimal cost.
+   RLS-scoped — no org predicate needed. **Honest accounting (pre-merge perf
+   audit):** the cost is NOT just that one SELECT — the guard opens its OWN
+   `withTenant`, so each guarded org request adds ~1 pooled-connection acquire +
+   ~4 round-trips (BEGIN/SET-ROLE, set_config, the resolve SELECT, COMMIT),
+   SEPARATE from the handler's own `withTenant`. So the real per-request overhead
+   vs the old free in-memory `policy.ts` matrix is ≈ one extra short transaction,
+   not "one query". It is bounded + indexed (no N+1, no double-resolve — the
+   per-request `PermissionResolutionCache` collapses any concurrent checks), but
+   the doc should not undersell it. This is the price item the caching below
+   would remove.
 2. A cross-request cache **conflicts with a locked security invariant**:
    per-request resolution (NOT JWT-embedded) was chosen specifically for
    **immediate revocation** (IAM-DESIGN §5). The MVP stack has **no Redis**

@@ -267,6 +267,16 @@ describe('IAM provisioning gap — assignments must be created by the REAL paths
     const { payload } = await signupOwner('update-owner');
     const targetUserId = await inviteAndAccept(payload, 'agent', 'update-target');
 
+    // BEFORE the downgrade: the agent must hold the AGENT set. Asserting this
+    // forces a real assignment to have existed, so the post-update VIEWER
+    // assertion below cannot pass vacuously — self-contained like the revoke
+    // test (independent-review hardening). FAILS now (empty — the gap).
+    const beforeUpdate = await resolveOrgPermissions(targetUserId, payload.orgId);
+    expect(
+      beforeUpdate,
+      'invited agent had no permissions before updateRole (provisioning gap)',
+    ).toEqual(expectedEffectiveSorted('agent'));
+
     // REAL downgrade through the service (mutates memberships.role only today).
     await members.updateRole(payload, targetUserId, { role: 'viewer' });
 

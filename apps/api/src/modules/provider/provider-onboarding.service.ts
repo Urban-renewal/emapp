@@ -25,11 +25,19 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import { organizations, memberships, users, withProvider, type IEmailProvider } from '@emapp/db';
+import {
+  organizations,
+  memberships,
+  roleAssignments,
+  roles,
+  users,
+  withProvider,
+  type IEmailProvider,
+} from '@emapp/db';
 import type { OnboardOrgBody, OnboardOrgResult } from '@emapp/shared-types';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 
 import { makeSlug } from '../auth/auth.service';
 import { EMAIL_PROVIDER, EXPOSE_INVITE_TOKEN, buildInviteEmail } from '../members/invite-email';
@@ -58,6 +66,7 @@ export class ProviderOnboardingService {
     // targetRecordId is the real org id (committed before the work).
     const orgId = randomUUID();
     const slug = makeSlug(body.orgName);
+    const now = new Date();
 
     const { userId, membershipId } = await withProvider(
       actor.sub,
@@ -101,6 +110,36 @@ export class ProviderOnboardingService {
           })
           .returning({ id: memberships.id });
         if (!m) throw new Error('onboarding: membership insert returned no row');
+
+        // IAM provisioning — authorization is engine-backed: the
+        // AuthorizationGuard ⋈ PermissionService resolves permissions from
+        // `role_assignments`; without a covering row the founding manager has
+        // ZERO permissions and is locked out of their own org on accept. The
+        // org's founding user is its OWNER (decision §11.1 / D-A / migration
+        // 0044 — same as self-signup). We keep `memberships.role = 'manager'`
+        // (the legacy field, unchanged) AND grant an org-scope OWNER assignment
+        // so the engine resolves the full Owner set. Atomic with the membership
+        // (same withProvider tx) — never an onboarded org with a membership but
+        // no assignment.
+        const [ownerRole] = await tx
+          .select({ id: roles.id })
+          .from(roles)
+          .where(and(isNull(roles.orgId), eq(roles.isSystem, true), eq(roles.key, 'owner')))
+          .limit(1);
+        if (!ownerRole) throw new Error('onboarding: owner system role not found (seed missing)');
+        await tx.insert(roleAssignments).values({
+          userId: uid,
+          roleId: ownerRole.id,
+          scopeType: 'org',
+          scopeId: orgId,
+          // Provider-initiated: no inviting org-USER. `granted_by` references
+          // org users (nullable FK, onDelete:set null), so we use null —
+          // mirroring `memberships.invitedBy: null` above. (Self-signup uses the
+          // new user's own id; here the actor is a provider_user, not an org
+          // user, so null is the correct provenance.)
+          grantedBy: null,
+          grantedAt: now,
+        });
 
         return { userId: uid, membershipId: m.id };
       },

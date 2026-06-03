@@ -226,6 +226,48 @@ not production — real orgs get an Owner via signup/onboard); \*\*the DV-ORG-9
   BE would allow; no 403-on-click, no leak). Same fix pattern as the assignments
   page (D-B FE half); migrate it to `useHasPermission` in a FE-polish follow-up.
 
+### D-I — CI-caught fixes (the PR's CI found what local verification could not)
+
+The PR's CI surfaced two real issues the local unit suite + the 5 fresh-eyes
+audits all missed — because the local runs use the test factory / mocks, while CI
+boots a live API (conformance black-box) and the full app (Playwright e2e):
+
+**D-I.1 — Viewer/Agent governance-read OVER-REACH (security) — FIXED.** `VIEWER`
+(derived from "every `*.read`") and `AGENT` ("all operational") swept in the
+GOVERNANCE reads — Viewer held `audit.read`/`members.read`/`roles.read`/
+`org.settings.read` (could read the audit log, org settings, role config, member
+roster); Agent held `audit.read`. Legacy had those at Manager+ (`audit:MGR`/
+`members:MGR`). Fix: exclude governance reads from Viewer (members/roles/audit/
+org) and `audit.read` from Agent; migration `0047` removes the seeded rows; the 3
+obsolete `(C)` equivalence divergences removed; pinning tests updated.
+Manager/Admin/Owner unaffected (reach members/audit read via the `export.run`
+closure). code-reviewer **PASS**; security-reviewer: secure on the merits (the
+narrowing is correct, complete, right-direction) + flagged the Gate-6 trailer +
+the seed note below. Verified: conformance + e2e CI **green**.
+
+**D-I.2 — e2e mock `/me` had no permissions (test infra) — FIXED.** Slice 5b moved
+sidebar + CTA gating to client-side `useHasPermission` (from `/me.permissions`),
+but the e2e mock `/me` returned no `permissions` and the per-test catch-all
+shadowed it → every gated control vanished (manager saw no Members/Audit; create
+CTAs hidden). Fix: role-appropriate `permissions` + `view_owner_pii` in the mock
+`SEED_*`, `/me` fall-through to the mock-backend in j9/j8/func3, and a stale j8
+assertion corrected (Agent's create-CTA is now correctly HIDDEN). Verified
+locally 6/6 + full e2e green on CI.
+
+**Seed source-of-truth note (security-reviewer HIGH — documented, not a runtime
+risk).** Migration `0043`'s seed block still hard-codes the SUPERSEDED grants
+(the wide viewer/agent governance reads; also the pre-`0045` permission set). The
+later migrations `0045` (adds project_assignments.\*) and `0047` (removes the
+governance over-reach) PATCH it forward, so a fresh in-order apply
+(`0043→…→0047`) lands on the CORRECT final state — pinned by
+`iam-foundation-schema.spec.ts` (the DB-layer seed-equivalence test, green). The
+`0043` seed literals are intentionally NOT edited (an applied migration is
+immutable — editing it risks a content/hash divergence on existing DBs). The CODE
+source-of-truth (`system-roles.ts`) is correct; `seed-dev` does not seed
+system-role permissions (only the migrator does). Follow-up (optional, post-MVP):
+a seed-consolidation migration that re-states the system-role permission sets in
+one place so `0043` is not read as current in isolation.
+
 ---
 
 ## DEFERRED — additive / non-breaking (documented with safety)

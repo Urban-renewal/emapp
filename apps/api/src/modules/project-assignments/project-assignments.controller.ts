@@ -29,17 +29,19 @@ import { ProjectAssignmentsService } from './project-assignments.service';
 
 const UuidParam = new ZodValidationPipe(z.string().uuid());
 
-// A project assignment IS a project-scoped role grant in the new model (§3/§7):
-// list → roles.read, create → roles.assign, unassign → roles.revoke. These are
-// Admin/Owner governance permissions — the Manager + Agent roles lack them
-// (documented (B) divergence vs the legacy manager-write / agent-read matrix).
+// Project-assignment is OPERATIONAL project-staffing (assign an Agent to a
+// project), NOT org-role governance. It uses DEDICATED operational permissions:
+// list → project_assignments.read (every in-org role reads, legacy read: ALL),
+// create + unassign → project_assignments.manage (Manager/Admin/Owner, legacy
+// MGR). This restores Manager's ability to staff their own projects, which the
+// authz cutover lost by mapping staffing onto roles.* (Admin/Owner-only).
 @Controller()
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class ProjectAssignmentsController {
   constructor(private readonly assignments: ProjectAssignmentsService) {}
 
   @Get('projects/:projectId/assignments')
-  @RequirePermission('roles.read')
+  @RequirePermission('project_assignments.read')
   async list(
     @CurrentUser() user: AccessTokenPayload,
     @Param('projectId', UuidParam) projectId: string,
@@ -50,7 +52,7 @@ export class ProjectAssignmentsController {
   }
 
   @Post('projects/:projectId/assignments')
-  @RequirePermission('roles.assign')
+  @RequirePermission('project_assignments.manage')
   async create(
     @CurrentUser() user: AccessTokenPayload,
     @Param('projectId', UuidParam) projectId: string,
@@ -61,7 +63,7 @@ export class ProjectAssignmentsController {
 
   @Delete('assignments/:id')
   @HttpCode(204)
-  @RequirePermission('roles.revoke')
+  @RequirePermission('project_assignments.manage')
   async unassign(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     await this.assignments.unassign(user, id);
   }

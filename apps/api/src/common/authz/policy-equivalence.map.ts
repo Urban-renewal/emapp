@@ -55,8 +55,9 @@ export function cellKey(resource: Resource, action: Action): LegacyCellKey {
  *   - `ownerships.{create,update,delete}` → the single atomic `ownerships.set`
  *     (D.25 100% set-replace — one permission, not a CRUD quad).
  *   - `members.{create,update,delete}` → `members.{invite,update,remove}`.
- *   - `project_assignments.*` → `roles.*` (a project assignment IS a
- *     project-scoped role assignment in the new model, §3/§7).
+ *   - `project_assignments.{create,update,delete}` → `project_assignments.manage`
+ *     and `.read` → `project_assignments.read` (project-staffing is an OPERATIONAL
+ *     act held by Manager+, NOT org-role governance — distinct from `roles.*`).
  *   - `imports.{create,update,delete}` → `imports.{run,map,cancel}`.
  *   - `mapping_templates` writes → the single `mapping_templates.manage`.
  */
@@ -112,11 +113,14 @@ export const LEGACY_TO_PERMISSION: Readonly<Partial<Record<LegacyCellKey, Permis
   // ── audit — read only in the catalog (append-only; no user write perms) ────
   'audit.read': 'audit.read',
 
-  // ── project_assignments → roles.* (project assignment = scoped role grant) ─
-  'project_assignments.read': 'roles.read',
-  'project_assignments.create': 'roles.assign',
-  'project_assignments.update': 'roles.assign',
-  'project_assignments.delete': 'roles.revoke',
+  // ── project_assignments → dedicated operational perms (Manager+ staffing) ──
+  // read = ALL in-org (project_assignments.read); create/update/delete = MGR
+  // (project_assignments.manage). NOT roles.* governance — staffing a project is
+  // operational, distinct from org-role assignment.
+  'project_assignments.read': 'project_assignments.read',
+  'project_assignments.create': 'project_assignments.manage',
+  'project_assignments.update': 'project_assignments.manage',
+  'project_assignments.delete': 'project_assignments.manage',
 
   // ── members → invite/update/remove ─────────────────────────────────────────
   'members.read': 'members.read',
@@ -235,15 +239,18 @@ export interface KnownDivergence {
  *       legacy=false → new=true. This is the EXPECTED model change the slice
  *       exists to certify. Every such cell is listed below (direction 'new').
  *
- *   (B) GOVERNANCE WRITE moves Manager → Admin/Owner. In the new taxonomy (§4)
- *       member + role ADMINISTRATION (invite/update/remove, assign/revoke) is an
- *       Admin/Owner surface; the MANAGER role holds no governance WRITE. Legacy
+ *       NOTE: project-assignment staffing is NOT in (A). It is an OPERATIONAL
+ *       Manager act mapped to the dedicated `project_assignments.manage` (Manager
+ *       holds it, Agent does NOT) — so Manager staffing and Agent reading both
+ *       stay EQUAL to legacy, not divergent.
+ *
+ *   (B) MEMBER GOVERNANCE WRITE moves Manager → Admin/Owner. In the new taxonomy
+ *       (§4) member ADMINISTRATION (invite/update/remove) is an Admin/Owner
+ *       surface; the MANAGER role holds no member-governance WRITE. Legacy
  *       `policy.ts` gave Manager those write cells. So they go legacy=true →
  *       new=false (direction 'legacy'). Governance READ does NOT diverge for
- *       Manager: it holds `export.run`, which `⇒ members.read` + `⇒ roles.read`
- *       via the §2 closure, so the read decisions stay equivalent — only the
- *       writes move. (Agent's `project_assignments.read → roles.read` DOES
- *       diverge: Agent lacks `export.run`, so it loses the implied roles.read.)
+ *       Manager: it holds `export.run`, which `⇒ members.read` via the §2 closure,
+ *       so the read decisions stay equivalent — only the member writes move.
  *
  *   (C) READ surface widens to "all reads". The new Viewer = every `*.read`
  *       (PII masked). Legacy restricted `members.read` + `audit.read` to
@@ -412,42 +419,11 @@ export const KNOWN_DIVERGENCES: readonly KnownDivergence[] = [
     reason:
       '(B) Legacy: Manager could remove members. New: members.remove is Admin/Owner only (§4).',
   },
-  {
-    role: 'manager',
-    resource: 'project_assignments',
-    action: 'create',
-    permission: 'roles.assign',
-    direction: 'legacy',
-    reason:
-      '(B) Legacy: Manager could assign agents to projects. New: roles.assign is Admin/Owner only (§4).',
-  },
-  {
-    role: 'manager',
-    resource: 'project_assignments',
-    action: 'update',
-    permission: 'roles.assign',
-    direction: 'legacy',
-    reason:
-      '(B) Legacy: Manager could update project assignments. New: roles.assign is Admin/Owner only (§4).',
-  },
-  {
-    role: 'manager',
-    resource: 'project_assignments',
-    action: 'delete',
-    permission: 'roles.revoke',
-    direction: 'legacy',
-    reason:
-      '(B) Legacy: Manager could remove project assignments. New: roles.revoke is Admin/Owner only (§4).',
-  },
-  {
-    role: 'agent',
-    resource: 'project_assignments',
-    action: 'read',
-    permission: 'roles.read',
-    direction: 'legacy',
-    reason:
-      '(B) Legacy: an agent could read project assignments (it was `read: ALL`). New: roles.read is an Admin/Owner governance permission — the Agent role lacks it (§4).',
-  },
+  // NOTE: project_assignments create/update/delete (Manager) and read (Agent) are
+  // NO LONGER divergent. They now resolve via the dedicated operational permissions
+  // (project_assignments.manage / .read) which Manager and Agent respectively hold,
+  // so engine === legacy EXACTLY (Manager staffs projects = legacy MGR; Agent reads
+  // assignments = legacy read: ALL). They are intentionally absent from this list.
 
   // ── (C) Read surface widens to "all reads" (Viewer / Agent gain) ───────────
   {

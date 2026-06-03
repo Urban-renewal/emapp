@@ -316,6 +316,13 @@
       "when": 1780498800000,
       "tag": "0044_iam_primary_owner",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1780585200000,
+      "tag": "0045_iam_project_assignment_perms",
+      "breakpoints": true
     }
   ]
 }

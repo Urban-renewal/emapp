@@ -64,6 +64,8 @@ const EXPECTED_CATALOG = [
   'contractors.archive',
   'shares.create',
   'shares.revoke',
+  'project_assignments.read',
+  'project_assignments.manage',
   'imports.read',
   'imports.run',
   'imports.cancel',
@@ -105,6 +107,12 @@ describe('IAM · permission catalog (§2)', () => {
 describe('IAM · permission implications (§2)', () => {
   it('reveal_pii ⇒ owners.read', () => {
     expect(PERMISSION_IMPLICATIONS.get('owners.reveal_pii')).toContain('owners.read');
+  });
+
+  it('project_assignments.manage ⇒ project_assignments.read (explicit, not write-implies-read)', () => {
+    expect(PERMISSION_IMPLICATIONS.get('project_assignments.manage')).toContain(
+      'project_assignments.read',
+    );
   });
 
   it('every write (create/update/archive) implies its .read', () => {
@@ -158,7 +166,14 @@ const EXPECTED_ROLE_PERMS: Record<string, string[]> = {
   ],
   manager: [...operational],
   agent: operational.filter(
-    (p) => !['projects.create', 'owners.create', 'owners.reveal_pii', 'export.run'].includes(p),
+    (p) =>
+      ![
+        'projects.create',
+        'owners.create',
+        'owners.reveal_pii',
+        'export.run',
+        'project_assignments.manage',
+      ].includes(p),
   ),
   viewer: reads.filter((p) => p !== 'owners.reveal_pii'),
   external_read: [
@@ -229,6 +244,22 @@ describe('IAM · system roles (§4)', () => {
     for (const p of ['projects.create', 'owners.create', 'owners.reveal_pii', 'export.run']) {
       expect(agent.has(p as never), p).toBe(false);
     }
+  });
+
+  it('project_assignments: Manager/Admin/Owner manage; Agent reads only; Viewer reads; External-Read neither', () => {
+    const has = (key: string, perm: string) =>
+      new Set(SYSTEM_ROLE_BY_KEY.get(key as never)!.permissions).has(perm as never);
+    // .manage = Manager+ (staff projects — legacy MGR); Agent must NOT manage.
+    for (const key of ['owner', 'admin', 'manager']) {
+      expect(has(key, 'project_assignments.manage'), `${key} manage`).toBe(true);
+      expect(has(key, 'project_assignments.read'), `${key} read`).toBe(true);
+    }
+    expect(has('agent', 'project_assignments.read'), 'agent read').toBe(true);
+    expect(has('agent', 'project_assignments.manage'), 'agent NOT manage').toBe(false);
+    expect(has('viewer', 'project_assignments.read'), 'viewer read').toBe(true);
+    expect(has('viewer', 'project_assignments.manage'), 'viewer NOT manage').toBe(false);
+    expect(has('external_read', 'project_assignments.read'), 'external NOT read').toBe(false);
+    expect(has('external_read', 'project_assignments.manage'), 'external NOT manage').toBe(false);
   });
 
   it('every role permission is a real catalog permission', () => {

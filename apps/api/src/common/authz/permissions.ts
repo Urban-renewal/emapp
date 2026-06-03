@@ -75,6 +75,10 @@ export const PERMISSIONS = [
   'shares.create',
   'shares.revoke',
 
+  // ── project_assignments : read, manage (staff agents onto projects — operational) ─
+  'project_assignments.read',
+  'project_assignments.manage',
+
   // ── imports : read, run, cancel, map ; mapping_templates : read, manage ──
   'imports.read',
   'imports.run',
@@ -190,6 +194,10 @@ export const PERMISSION_IMPLICATIONS: ReadonlyMap<Permission, readonly Permissio
 
   // reveal_pii ⇒ owners.read
   add('owners.reveal_pii', 'owners.read');
+
+  // project_assignments.manage ⇒ project_assignments.read
+  // (buildWriteImpliesRead matches create|update|archive, NOT manage — explicit.)
+  add('project_assignments.manage', 'project_assignments.read');
 
   // export.run ⇒ <resource>.read (for every readable resource)
   for (const r of READABLE_RESOURCES) add('export.run', `${r}.read` as Permission);

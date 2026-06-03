@@ -90,6 +90,7 @@ const AGENT_EXCLUDE = new Set<Permission>([
   'owners.create',
   'owners.reveal_pii', // granted per-assignment later, not by default (§4)
   'export.run',
+  'project_assignments.manage', // staffing projects is a Manager act, not Agent (legacy MGR)
 ]);
 const AGENT: readonly Permission[] = ALL_OPERATIONAL.filter(
   (p) => !AGENT_EXCLUDE.has(p) && !p.startsWith('org.'),

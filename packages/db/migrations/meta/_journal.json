@@ -323,6 +323,13 @@
       "when": 1780585200000,
       "tag": "0045_iam_project_assignment_perms",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1780671600000,
+      "tag": "0046_iam_rls_system_role_delete_fix",
+      "breakpoints": true
     }
   ]
 }

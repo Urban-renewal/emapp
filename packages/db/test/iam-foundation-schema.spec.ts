@@ -63,6 +63,8 @@ const ALL_PERMS = [
   'contractors.archive',
   'shares.create',
   'shares.revoke',
+  'project_assignments.read',
+  'project_assignments.manage',
   'imports.read',
   'imports.run',
   'imports.cancel',
@@ -111,8 +113,13 @@ const EXPECTED: Record<string, string[]> = {
   manager: [...operational],
   agent: operational.filter(
     (p) =>
-      !['projects.create', 'owners.create', 'owners.reveal_pii', 'export.run'].includes(p) &&
-      !p.startsWith('org.'),
+      ![
+        'projects.create',
+        'owners.create',
+        'owners.reveal_pii',
+        'export.run',
+        'project_assignments.manage',
+      ].includes(p) && !p.startsWith('org.'),
   ),
   viewer: reads.filter((p) => p !== 'owners.reveal_pii'),
   external_read: [

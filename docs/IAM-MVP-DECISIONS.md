@@ -1,9 +1,16 @@
 # IAM Enterprise Rework — MVP Implementation Decisions & Residuals
 
-Status: **load-bearing work complete + verified on the local DB**; additive
-items documented below with rationale + safety. Branch: `iam/fixes` (integration)
-@ `9a0359e`. Per-slice checkpoints: `iam/project-assignment-manager`.
-Nothing merged to `main` — awaiting the owner's final examination/merge.
+Status: **MERGE-READY** — load-bearing work complete; pre-merge adversarial audit
+(5 fresh-eyes passes: security/RLS, auth-core, legacy-coexistence, perf/error-
+handling, holistic sign-off) run and all findings FIXED + re-reviewed; additive
+items documented below with rationale + safety. Branch: `iam/fixes`. Nothing
+merged to `main` — awaiting the owner's examination/merge (the only remaining
+step is the user-level browser smoke).
+**Final verification (fresh clean DB):** `@emapp/api` 989 tests + `@emapp/web`
+618 tests green (0 failed); lint 8/8; typecheck clean; production build succeeds;
+no `console.log` in prod; no test suppressions. The one full-suite local failure
+(`imports.s8 A7`) was proven ENVIRONMENTAL (local DB pollution from the session's
+test runs — passes 34/34 on a fresh DB; my diff touches no imports/storage code).
 
 This doc records the implementation-level decisions taken during the enterprise
 IAM rework (the load-bearing model itself is `docs/IAM-DESIGN.md`). It is the

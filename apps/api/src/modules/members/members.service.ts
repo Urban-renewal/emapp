@@ -5,6 +5,8 @@ import {
   authSessions,
   inviteOrgMember,
   memberships,
+  roleAssignments,
+  roles,
   users,
   withTenant,
   type IEmailProvider,
@@ -28,7 +30,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { and, desc, eq, isNotNull, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
 
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
@@ -111,6 +113,26 @@ export class MembersService {
         ),
       );
     if ((c?.n ?? 0) < 1) throw LAST_MGR;
+  }
+
+  // IAM slice 5 — the org-scope SYSTEM role-id catalog. Returns the id for the
+  // requested role key plus the full set of system role-ids, so an org-scope
+  // assignment can be retargeted to the new role while scoping the UPDATE/DELETE
+  // to system-role assignments only (a custom-role grant, if any, is untouched).
+  // System roles are cross-org (`org_id IS NULL`), readable under any tenant's
+  // RLS (migration 0043), so this resolves inside the request's `withTenant` tx.
+  private async loadSystemRoleIds(
+    tx: TenantTx,
+    key: 'manager' | 'agent' | 'viewer',
+  ): Promise<{ targetRoleId: string; systemRoleIds: string[] }> {
+    const rows = await tx
+      .select({ id: roles.id, key: roles.key })
+      .from(roles)
+      .where(and(isNull(roles.orgId), eq(roles.isSystem, true)));
+    const systemRoleIds = rows.map((r) => r.id);
+    const targetRoleId = rows.find((r) => r.key === key)?.id;
+    if (!targetRoleId) throw new Error(`members: system role '${key}' not found (seed missing)`);
+    return { targetRoleId, systemRoleIds };
   }
 
   async create(
@@ -282,21 +304,64 @@ export class MembersService {
           .update(authSessions)
           .set({ revokedAt: new Date() })
           .where(and(eq(authSessions.userId, targetUserId), isNull(authSessions.revokedAt)));
+        // IAM slice 5 — keep the engine in sync with the role change. The guard
+        // resolves permissions from `role_assignments`, so a `memberships.role`
+        // change that doesn't retarget the assignment would leave the engine
+        // resolving the STALE set. Retarget the target's org-scope SYSTEM-role
+        // assignment to the new role (atomic, same tx). Defensive INSERT if no
+        // such assignment existed (a pre-engine member never backfilled).
+        const { targetRoleId, systemRoleIds } = await this.loadSystemRoleIds(tx, input.role);
+        const updatedAssignments = await tx
+          .update(roleAssignments)
+          .set({ roleId: targetRoleId })
+          .where(
+            and(
+              eq(roleAssignments.userId, targetUserId),
+              eq(roleAssignments.scopeType, 'org'),
+              eq(roleAssignments.scopeId, user.orgId),
+              inArray(roleAssignments.roleId, systemRoleIds),
+            ),
+          )
+          .returning({ id: roleAssignments.id });
+        if (updatedAssignments.length === 0) {
+          await tx
+            .insert(roleAssignments)
+            .values({
+              userId: targetUserId,
+              roleId: targetRoleId,
+              scopeType: 'org',
+              scopeId: user.orgId,
+              grantedBy: user.sub,
+            })
+            .onConflictDoNothing();
+        }
         const [u] = await tx
           .select({ email: users.email, name: users.name })
           .from(users)
           .where(eq(users.id, targetUserId))
           .limit(1);
-        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
-          orgId: user.orgId,
-          actorId: user.sub,
-          actorType: 'user',
-          action: 'member.role_change',
-          targetTable: 'memberships',
-          targetId: row.id,
-          afterState: { role: input.role, sessionsRevoked: true },
-          sessionId: user.sid,
-        });
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).logMany([
+          {
+            orgId: user.orgId,
+            actorId: user.sub,
+            actorType: 'user',
+            action: 'member.role_change',
+            targetTable: 'memberships',
+            targetId: row.id,
+            afterState: { role: input.role, sessionsRevoked: true },
+            sessionId: user.sid,
+          },
+          {
+            orgId: user.orgId,
+            actorId: user.sub,
+            actorType: 'user',
+            action: 'role.change',
+            targetTable: 'role_assignments',
+            targetId: targetUserId,
+            afterState: { role: input.role, scope: 'org' }, // no PII
+            sessionId: user.sid,
+          },
+        ]);
         return {
           userId: targetUserId,
           email: u?.email ?? '',
@@ -434,16 +499,43 @@ export class MembersService {
           .update(authSessions)
           .set({ revokedAt: new Date() })
           .where(and(eq(authSessions.userId, targetUserId), isNull(authSessions.revokedAt)));
-        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
-          orgId: user.orgId,
-          actorId: user.sub,
-          actorType: 'user',
-          action: 'member.revoke',
-          targetTable: 'memberships',
-          targetId: row.id,
-          afterState: { sessionsRevoked: true },
-          sessionId: user.sid,
-        });
+        // IAM slice 5 — remove the engine grant on revoke (defense in depth
+        // beyond session revocation). The guard resolves permissions from
+        // `role_assignments`; leaving the row would let a revoked member retain
+        // engine-resolved permissions (e.g. a fresh login if the membership
+        // were ever re-activated). DELETE the user's org-scope assignment(s) so
+        // the post-revoke effective set is EMPTY (atomic, same tx).
+        await tx
+          .delete(roleAssignments)
+          .where(
+            and(
+              eq(roleAssignments.userId, targetUserId),
+              eq(roleAssignments.scopeType, 'org'),
+              eq(roleAssignments.scopeId, user.orgId),
+            ),
+          );
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).logMany([
+          {
+            orgId: user.orgId,
+            actorId: user.sub,
+            actorType: 'user',
+            action: 'member.revoke',
+            targetTable: 'memberships',
+            targetId: row.id,
+            afterState: { sessionsRevoked: true },
+            sessionId: user.sid,
+          },
+          {
+            orgId: user.orgId,
+            actorId: user.sub,
+            actorType: 'user',
+            action: 'role.revoke',
+            targetTable: 'role_assignments',
+            targetId: targetUserId,
+            afterState: { scope: 'org' }, // no PII
+            sessionId: user.sid,
+          },
+        ]);
       },
       { userId: user.sub },
     );

@@ -7,6 +7,8 @@ import {
   db,
   memberships,
   organizations,
+  roleAssignments,
+  roles,
   users,
   withBootstrap,
   withTenant,
@@ -172,6 +174,29 @@ export class AuthService {
           updatedAt: now,
         });
 
+        // IAM slice 5 — provision the org's authorization. The engine
+        // (AuthorizationGuard ⋈ PermissionService) resolves permissions from
+        // `role_assignments`; without a row the first user has ZERO permissions
+        // and is locked out of their own org. Decision §11.1 / migration 0044:
+        // the org's primary manager is the OWNER. We keep `memberships.role =
+        // 'manager'` (the legacy field, unchanged) AND grant an org-scope OWNER
+        // assignment so the engine resolves the full Owner set. Atomic with the
+        // membership (same withBootstrap tx) — never an org with no admin.
+        const [ownerRole] = await tx
+          .select({ id: roles.id })
+          .from(roles)
+          .where(and(isNull(roles.orgId), eq(roles.isSystem, true), eq(roles.key, 'owner')))
+          .limit(1);
+        if (!ownerRole) throw new Error('signup: owner system role not found (seed missing)');
+        await tx.insert(roleAssignments).values({
+          userId,
+          roleId: ownerRole.id,
+          scopeType: 'org',
+          scopeId: orgId,
+          grantedBy: userId,
+          grantedAt: now,
+        });
+
         const [s] = await tx
           .insert(authSessions)
           .values({
@@ -202,6 +227,17 @@ export class AuthService {
             action: 'first_manager_created',
             targetTable: 'users',
             targetId: userId,
+            ip: ip ?? null,
+            userAgent: userAgent ?? null,
+          },
+          {
+            orgId,
+            actorId: userId,
+            actorType: 'user',
+            action: 'role.grant',
+            targetTable: 'role_assignments',
+            targetId: userId,
+            afterState: { role: 'owner', scope: 'org' }, // no PII
             ip: ip ?? null,
             userAgent: userAgent ?? null,
           },

@@ -302,6 +302,13 @@
       "when": 1780326000000,
       "tag": "0042_membership_view_owner_pii",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1780412400000,
+      "tag": "0043_iam_foundation",
+      "breakpoints": true
     }
   ]
 }

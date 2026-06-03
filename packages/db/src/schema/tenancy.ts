@@ -57,6 +57,13 @@ export const users = pgTable(
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
     failedLoginCount: integer('failed_login_count').notNull().default(0),
     lockedUntil: timestamp('locked_until', { withTimezone: true }),
+    // Enterprise IAM (IAM-DESIGN §3) — SSO/SCIM readiness. All nullable;
+    // `provisioning_source` defaults to 'local'. ADDITIVE in Slice 1: columns
+    // exist now so converting a user to an SSO/SCIM-provisioned identity later
+    // is a data change, not a schema migration. No code reads these yet.
+    externalId: text('external_id'),
+    idp: text('idp'),
+    provisioningSource: text('provisioning_source').notNull().default('local'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),

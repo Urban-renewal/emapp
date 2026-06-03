@@ -1,14 +1,6 @@
 'use client';
 
-import {
-  ArrowRight,
-  CheckSquare,
-  FileSignature,
-  Mail,
-  MessageCircle,
-  Phone,
-  StickyNote,
-} from 'lucide-react';
+import { ArrowRight, Mail, Phone } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -19,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useArchiveOwner, useOwner } from '@/hooks/use-owners';
-import { useSessionProfile } from '@/hooks/use-session';
+import { useHasPermission } from '@/hooks/use-permissions';
 import { ApiClientError } from '@/lib/api/errors';
 
 /**
@@ -60,15 +52,15 @@ export default function OwnerDetailPage() {
   const id = params?.id;
   const { data, isLoading, isError, error } = useOwner(id);
   const archive = useArchiveOwner();
-  const { data: profile } = useSessionProfile();
   const [actionError, setActionError] = useState<string | null>(null);
-  // D.54 / D2-DEF-3 — offer the reveal button only to actors who can
-  // actually reveal: manager (always) OR an agent whose `view_owner_pii`
-  // capability is granted (now carried on the /me profile). An agent
-  // WITHOUT the flag, and every viewer, don't see the button. The BE
+  // IAM slice 5b — offer the reveal button only to actors who hold the
+  // `owners.reveal_pii` permission (resolved from `/me`). Supersedes the
+  // legacy role + `view_owner_pii`-flag check (D.54 / D2-DEF-3): managers and
+  // any agent granted reveal hold the permission; viewers never do. The BE
   // reveal endpoint remains the authoritative gate regardless of this hint.
-  const canReveal =
-    profile?.role === 'manager' || (profile?.role === 'agent' && profile?.view_owner_pii === true);
+  const canReveal = useHasPermission('owners.reveal_pii');
+  // Archive is a write — gate the "ארכוב" button on `owners.archive`.
+  const canArchive = useHasPermission('owners.archive');
 
   if (isLoading) return <ListSkeleton withRows={false} />;
   if (isError) {
@@ -148,7 +140,7 @@ export default function OwnerDetailPage() {
                   <span>{tp('archived')}</span>
                 </span>
               )}
-              {!data.isArchived && (
+              {!data.isArchived && canArchive && (
                 <div className="ms-auto">
                   <Button
                     variant="outline"
@@ -229,61 +221,14 @@ export default function OwnerDetailPage() {
         </section>
       )}
 
-      {/* Quick-actions row (all disabled — placeholder per `actionsComingSoon`) */}
-      <section className="card card-pad flex flex-col gap-3" aria-labelledby="own-actions-h">
-        <h2
-          id="own-actions-h"
-          className="text-[11px] font-semibold uppercase tracking-wider"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          {t('actionsSection')}
-        </h2>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            disabled
-            aria-disabled="true"
-            title={t('actionsComingSoon')}
-            className="btn btn-secondary btn-sm disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>{t('actionWhatsapp')}</span>
-          </button>
-          <button
-            type="button"
-            disabled
-            aria-disabled="true"
-            title={t('actionsComingSoon')}
-            className="btn btn-secondary btn-sm disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <FileSignature className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>{t('actionSendDoc')}</span>
-          </button>
-          <button
-            type="button"
-            disabled
-            aria-disabled="true"
-            title={t('actionsComingSoon')}
-            className="btn btn-secondary btn-sm disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <StickyNote className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>{t('actionAddNote')}</span>
-          </button>
-          <button
-            type="button"
-            disabled
-            aria-disabled="true"
-            title={t('actionsComingSoon')}
-            className="btn btn-secondary btn-sm disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <CheckSquare className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>{t('actionCreateTask')}</span>
-          </button>
-        </div>
-        <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-          {t('actionsComingSoon')}
-        </p>
-      </section>
+      {/* IAM slice 5b — the owner quick-actions row (WhatsApp / send-for-
+       *  signature / add-note / create-task) was a placeholder: all four were
+       *  permanently `disabled` because the wire (phone-to-WhatsApp, document
+       *  picker, note/task creation endpoints) isn't built. Ship-or-hide: a
+       *  dead control is a dead control whatever its role gate, so the whole
+       *  section is removed until the endpoints exist. Re-add behind the
+       *  matching write permission (`tasks.create`, `signature_requests.send`,
+       *  `notes.create`) when wired. */}
 
       {/* Notes — only piece of writable per-owner metadata the wire exposes */}
       {data.notes && (

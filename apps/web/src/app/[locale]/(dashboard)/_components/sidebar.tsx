@@ -20,6 +20,7 @@ import { usePathname } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 
 import { NameDisplay } from '@/components/ui/name-display';
+import { useHasPermission } from '@/hooks/use-permissions';
 import { cn } from '@/lib/utils';
 
 import { LogoutButton } from './logout-button';
@@ -47,12 +48,6 @@ interface NavItem {
 }
 
 interface Props {
-  /** User role from `getMe()` — server-side loaded. Used to show the
-   *  provider nav item ONLY for `provider_admin`. Org-tier users
-   *  never see (or know about) the existence of the provider subtree.
-   *  This is FE-side cosmetics; the BE's ProviderAuthGuard enforces
-   *  the actual tier separation. */
-  role?: string;
   /** Display name in the user footer block. Wired through layout from
    *  the session profile; wrapped in `<NameDisplay>` for bidi safety. */
   userName: string;
@@ -76,7 +71,10 @@ interface Props {
  * Closures preserved from prior versions:
  *  - §v9-H-4 (sidebar bare-`<a>` → `<Link>` so SPA navigation stays).
  *  - §v9-L-1 (disabled-item a11y → `<span aria-disabled>`, not focusable).
- *  - §D.17 role-gating (Members/Audit Manager-only; Provider tier-only).
+ *  - IAM slice 5b — Members/Audit/Settings nav gate on the actor's effective
+ *    PERMISSIONS (`members.read` / `audit.read` / `org.settings.read`) from
+ *    `/me`, not the legacy `role === 'manager'` string. (Supersedes §D.17
+ *    role-gating here; the BE guard stays authoritative.)
  *  - §D.37 Provider tier separation (cosmetic FE; BE guard is authoritative).
  *
  * Active state — `usePathname()` strips the locale prefix (`/he/...` →
@@ -84,9 +82,16 @@ interface Props {
  * (`href: '/'`) needs an exact match; the rest are prefix matches so
  * deep paths (`/projects/[id]/buildings`) keep the parent nav highlighted.
  */
-export function Sidebar({ role, userName, userRole, tier }: Props) {
+export function Sidebar({ userName, userRole, tier }: Props) {
   const t = useTranslations('nav');
   const locale = useLocale();
+  // IAM slice 5b — nav items gate on the actor's effective PERMISSIONS
+  // (from `/me`), not the legacy `role === 'manager'` string. Members/Audit/
+  // Settings each appear iff the actor holds the matching read permission.
+  // UX only; the BE guards each route regardless (defense in depth).
+  const canReadMembers = useHasPermission('members.read');
+  const canReadAudit = useHasPermission('audit.read');
+  const canReadSettings = useHasPermission('org.settings.read');
   const rawPath = usePathname() ?? '/';
   // Strip the `/he` or `/en` locale prefix so item.href can be compared
   // against the unprefixed app paths.
@@ -113,9 +118,13 @@ export function Sidebar({ role, userName, userRole, tier }: Props) {
     { href: '/notes', labelKey: 'notes', icon: StickyNote, enabled: true },
   ];
 
-  if (role === 'manager') {
+  if (canReadMembers) {
     items.push({ href: '/members', labelKey: 'members', icon: UserPlus, enabled: true });
+  }
+  if (canReadAudit) {
     items.push({ href: '/audit', labelKey: 'audit', icon: History, enabled: true });
+  }
+  if (canReadSettings) {
     items.push({ href: '/settings', labelKey: 'settings', icon: Settings, enabled: true });
   }
   // V11 A.S13: provider_admin no longer mounted on the org Sidebar — the

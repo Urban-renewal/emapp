@@ -8,15 +8,18 @@ import { Button } from '@/components/ui/button';
 import { ListPageShell } from '@/components/ui/list-page-shell';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useContractorList } from '@/hooks/use-contractors';
+import { useHasPermission } from '@/hooks/use-permissions';
 
 /**
- * Contractors list — D.17 read=ALL; create=MGR (Agent/Viewer see the
- * "Create" button and get a localized `forbidden` toast if they try).
+ * Contractors list — read=ALL. IAM slice 5b: the "Create" CTA now renders
+ * only for actors holding `contractors.create` (no more dead button that
+ * 403s for agent/viewer). BE remains authoritative.
  */
 export default function ContractorsPage() {
   const t = useTranslations('contractors');
   const tp = useTranslations('projects');
   const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const canCreate = useHasPermission('contractors.create');
   const { data, isLoading, isError, refetch } = useContractorList({ limit: 25, cursor });
   const items = data?.items ?? [];
 
@@ -24,9 +27,11 @@ export default function ContractorsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
-        <Button asChild>
-          <Link href="/contractors/new">{t('create')}</Link>
-        </Button>
+        {canCreate && (
+          <Button asChild>
+            <Link href="/contractors/new">{t('create')}</Link>
+          </Button>
+        )}
       </div>
 
       <ListPageShell

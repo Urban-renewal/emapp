@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useBuildingList } from '@/hooks/use-buildings';
+import { useHasPermission } from '@/hooks/use-permissions';
 
 export default function BuildingsPage() {
   const t = useTranslations('buildings');
@@ -16,6 +17,8 @@ export default function BuildingsPage() {
   const params = useParams<{ id: string }>();
   const projectId = params?.id;
   const [cursor, setCursor] = useState<string | undefined>(undefined);
+  // IAM slice 5b — "create building" CTA gated on `buildings.create`.
+  const canCreate = useHasPermission('buildings.create');
   const { data, isLoading, isError, refetch } = useBuildingList(projectId, { limit: 25, cursor });
 
   if (isLoading) return <ListSkeleton rows={6} />;
@@ -37,9 +40,11 @@ export default function BuildingsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
-        <Button asChild>
-          <Link href={`/projects/${projectId}/buildings/new`}>{t('create')}</Link>
-        </Button>
+        {canCreate && (
+          <Button asChild>
+            <Link href={`/projects/${projectId}/buildings/new`}>{t('create')}</Link>
+          </Button>
+        )}
       </div>
 
       <p className="text-sm">

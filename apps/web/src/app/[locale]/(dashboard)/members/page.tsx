@@ -10,6 +10,7 @@ import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useMemberList } from '@/hooks/use-members';
+import { useHasPermission } from '@/hooks/use-permissions';
 
 /**
  * V11 A.S9 — TeamPage (members list) reskin per
@@ -73,6 +74,9 @@ export default function MembersPage() {
   const tp = useTranslations('projects');
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [query, setQuery] = useState('');
+  // IAM slice 5b — the "Invite" CTA gates on `members.invite` (read-only
+  // members viewers, if any, see the list but not the invite button).
+  const canInvite = useHasPermission('members.invite');
   const { data, isLoading, isError, refetch } = useMemberList({ limit: 25, cursor });
 
   const items = useMemo(() => data?.items ?? [], [data?.items]);
@@ -134,10 +138,12 @@ export default function MembersPage() {
           />
         </div>
 
-        <Link href="/members/new" className="btn btn-primary">
-          <Plus className="h-[15px] w-[15px]" aria-hidden="true" />
-          <span>{t('invite')}</span>
-        </Link>
+        {canInvite && (
+          <Link href="/members/new" className="btn btn-primary">
+            <Plus className="h-[15px] w-[15px]" aria-hidden="true" />
+            <span>{t('invite')}</span>
+          </Link>
+        )}
       </div>
 
       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>

@@ -48,7 +48,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <PCSidebar userName={session.profile.name} userRole={session.profile.role} />
         ) : (
           <Sidebar
-            role={session.profile.role}
             userName={session.profile.name}
             userRole={session.profile.role}
             tier={session.tier}

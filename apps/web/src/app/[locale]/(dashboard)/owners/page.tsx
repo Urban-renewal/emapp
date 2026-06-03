@@ -8,11 +8,14 @@ import { Button } from '@/components/ui/button';
 import { ListPageShell } from '@/components/ui/list-page-shell';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useOwnerList } from '@/hooks/use-owners';
+import { useHasPermission } from '@/hooks/use-permissions';
 
 export default function OwnersPage() {
   const t = useTranslations('owners');
   const tp = useTranslations('projects');
   const [cursor, setCursor] = useState<string | undefined>(undefined);
+  // IAM slice 5b — create CTA gated on `owners.create` (UX; BE is authoritative).
+  const canCreate = useHasPermission('owners.create');
   const { data, isLoading, isError, refetch } = useOwnerList({ limit: 25, cursor });
   const items = data?.items ?? [];
 
@@ -20,9 +23,11 @@ export default function OwnersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
-        <Button asChild>
-          <Link href="/owners/new">{t('create')}</Link>
-        </Button>
+        {canCreate && (
+          <Button asChild>
+            <Link href="/owners/new">{t('create')}</Link>
+          </Button>
+        )}
       </div>
 
       <ListPageShell

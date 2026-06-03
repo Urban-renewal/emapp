@@ -3,6 +3,8 @@ import { NoopSMSProvider } from '@emapp/db';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 
+import { PermissionService } from '../../common/authz/permission.service';
+
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './guards/auth.guard';
@@ -32,6 +34,10 @@ import { TenantAuthGuard } from './tenant/tenant-auth.guard';
   ],
   providers: [
     AuthService,
+    // IAM slice 4 — the slice-2 engine, injected into AuthService so `/me`
+    // can resolve the actor's effective permission-set. ADDITIVE: still not
+    // wired into any guard (the cutover is slice 5).
+    PermissionService,
     AuthGuard,
     TenantGuard,
     ProviderAuthService,

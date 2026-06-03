@@ -86,6 +86,17 @@ export const UserProfileSchema = z.object({
    * older producer is treated as "not granted" (safe default).
    */
   view_owner_pii: z.boolean().optional(),
+  /**
+   * IAM slice 4 — the actor's EXACT effective permission-set on the active
+   * org scope, resolved live by the enterprise-IAM engine (covering
+   * `role_assignments`, implication closure expanded). Each entry is a
+   * catalog permission string (e.g. `projects.read`). ADDITIVE / non-gating:
+   * `GET /me` now returns it, but NOTHING gates on it yet — the FE cutover is
+   * slice 5; `policy.ts` + the guards remain the live enforcer. OPTIONAL
+   * (add-only) — absent on an older producer is treated as "no extra grants",
+   * the safe default. Same add-only pattern as `view_owner_pii` (D2-DEF-3).
+   */
+  permissions: z.array(z.string()).optional(),
 });
 export type UserProfile = z.infer<typeof UserProfileSchema>;
 

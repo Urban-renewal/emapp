@@ -9,11 +9,17 @@ import {
   organizations,
   users,
   withBootstrap,
+  withTenant,
 } from '@emapp/db';
 import type { AgentCapabilities } from '@emapp/shared-types';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { and, asc, desc, eq, isNull } from 'drizzle-orm';
+
+import {
+  PermissionResolutionCache,
+  PermissionService,
+} from '../../common/authz/permission.service';
 
 import type { LoginDto } from './dto/login.dto';
 import type { SignupDto } from './dto/signup.dto';
@@ -50,6 +56,14 @@ export interface UserProfile {
   // the BE reveal endpoint is the authority. Optional/add-only; only the
   // `/me` (loadProfile) path populates it.
   view_owner_pii?: boolean;
+  // IAM slice 4 — the actor's EXACT effective permission-set on the active
+  // org scope, resolved live through `PermissionService` (the slice-2 engine:
+  // covering `role_assignments` ⋈ `role_permissions`, implication closure
+  // expanded). ADDITIVE / add-only: nothing GATES on this yet (the FE cutover
+  // is slice 5); `policy.ts` + the guards stay the live enforcer. Only the
+  // `/me` (loadProfile) path populates it. Same optional/add-only pattern as
+  // `view_owner_pii`.
+  permissions?: string[];
 }
 
 const ACCESS_TTL_SEC = 15 * 60;
@@ -108,7 +122,10 @@ function isEmailDuplicate(err: unknown): boolean {
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly jwt: JwtService) {}
+  constructor(
+    private readonly jwt: JwtService,
+    private readonly permissions: PermissionService,
+  ) {}
 
   // ── signup: ONE atomic transaction (D.21). org+user+membership+credential
   // +audit+session either all commit or all roll back. No second store, so
@@ -579,6 +596,17 @@ export class AuthService {
         : row.role === 'agent'
           ? Boolean(row.capabilities?.view_owner_pii)
           : false;
+
+    // IAM slice 4 — the actor's effective permission-set on the active org
+    // scope, resolved live through the slice-2 engine. ONE resolve (a fresh
+    // per-request cache, a single `resolveAssignments` query inside one
+    // `withTenant` — RLS-scoped to this org). ADDITIVE: this is computed and
+    // returned, but NOTHING gates on it (the FE cutover is slice 5); `policy.ts`
+    // + the guards remain the live enforcer. Failure to resolve must never
+    // break `/me` — degrade to an empty set (the FE treats absent/empty as
+    // "no extra grants", the safe default, exactly like `view_owner_pii`).
+    const permissions = await this.resolveEffectivePermissions(row.userId, row.orgId);
+
     return {
       id: row.userId,
       name: row.userName,
@@ -587,7 +615,31 @@ export class AuthService {
       role: row.role,
       organization: { id: row.orgId, name: row.orgName, slug: row.orgSlug },
       view_owner_pii: viewOwnerPii,
+      permissions,
     };
+  }
+
+  // IAM slice 4 — resolve the user's effective permissions on the org scope
+  // via the slice-2 `PermissionService` engine. One `withTenant` (RLS-scoped),
+  // one fresh `PermissionResolutionCache` ⇒ exactly one resolve query
+  // (≤3 round-trips: BEGIN/SET-ROLE, SET-config, the resolve SELECT). Sorted
+  // for a stable, deterministic `/me` payload. Best-effort: any error degrades
+  // to an empty set so `/me` stays available (additive, non-gating field).
+  private async resolveEffectivePermissions(userId: string, orgId: string): Promise<string[]> {
+    try {
+      const effective = await withTenant(orgId, async (tx) => {
+        const cache = new PermissionResolutionCache();
+        return this.permissions.effectivePermissions(
+          { id: userId, orgId },
+          { type: 'org', id: orgId },
+          tx,
+          cache,
+        );
+      });
+      return [...effective].sort();
+    } catch {
+      return [];
+    }
   }
 
   // G1b helper — best-effort audit_log write for login failure events.

@@ -12,6 +12,7 @@ import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useArchiveOwner, useOwner } from '@/hooks/use-owners';
 import { useHasPermission } from '@/hooks/use-permissions';
+import { useSessionProfile } from '@/hooks/use-session';
 import { ApiClientError } from '@/lib/api/errors';
 
 /**
@@ -53,12 +54,19 @@ export default function OwnerDetailPage() {
   const { data, isLoading, isError, error } = useOwner(id);
   const archive = useArchiveOwner();
   const [actionError, setActionError] = useState<string | null>(null);
-  // IAM slice 5b — offer the reveal button only to actors who hold the
-  // `owners.reveal_pii` permission (resolved from `/me`). Supersedes the
-  // legacy role + `view_owner_pii`-flag check (D.54 / D2-DEF-3): managers and
-  // any agent granted reveal hold the permission; viewers never do. The BE
-  // reveal endpoint remains the authoritative gate regardless of this hint.
-  const canReveal = useHasPermission('owners.reveal_pii');
+  // PII reveal authority. The BE reveal endpoint (`resolveOwnerPiiFidelity`)
+  // gates on the LEGACY capability model — manager always · agent iff its
+  // `view_owner_pii` capability is granted · viewer never — NOT the engine
+  // `owners.reveal_pii` role-permission. `/me` exposes `view_owner_pii`
+  // computed by that EXACT same logic, so we gate the button on it → FE === BE.
+  // (Gating on `useHasPermission('owners.reveal_pii')` was a split-brain: it
+  // HID the button from an agent the org granted PII access to via the
+  // capabilities panel — the engine agent role excludes reveal_pii and no
+  // per-assignment grant path exists yet. When reveal_pii migrates to a
+  // per-assignment engine grant, `/me.view_owner_pii` moves with the BE gate,
+  // so this stays correct.) The BE endpoint is the authoritative gate regardless.
+  const { data: profile } = useSessionProfile();
+  const canReveal = profile?.view_owner_pii === true;
   // Archive is a write — gate the "ארכוב" button on `owners.archive`.
   const canArchive = useHasPermission('owners.archive');
 

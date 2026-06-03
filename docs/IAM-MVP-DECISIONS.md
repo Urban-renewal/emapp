@@ -127,6 +127,32 @@ They are provably correct by code inspection but not end-to-end testable without
 biased seeding. Add the regression tests alongside the role-administration slice
 (below), when those scenarios become reachable.
 
+### D-G.2 — Second provisioning instance: PROVIDER ONBOARDING (found by audit + fixed)
+
+After fixing signup/invite, a SYSTEMATIC AUDIT of every membership-creation site
+(reconciled against every `role_assignments` mutation) found a SECOND instance of
+the same class: **`ProviderOnboardingService.onboard`** (a Provider Admin creating
+a tenant org) created the org + first-manager membership but NO assignment → the
+onboarded manager would be locked out on accept. Fixed identically: an org-scope
+**OWNER** grant for the founding user, inside the same `withProvider` (BYPASSRLS)
+tx, `grantedBy: null` (provider-initiated; the FK references org users and the
+actor is a `provider_user`, mirroring `invitedBy: null`). Same anti-bias flow: a
+LOCKED RED test (`provider-onboarding-provisioning.spec.ts`) drives the real
+`onboard()` and asserts the OWNER set through the engine (never seeds an
+assignment); fix by a separate agent (spec byte-identical); code + security
+reviewers **PASS** (0 findings). Verified: provisioning spec GREEN; full provider
+suite (133) green; typecheck + eslint clean.
+
+**Audit result — the class is now closed for PRODUCTION paths:** the only
+remaining membership-creators are the **seed scripts** (`seed-dev.ts`,
+`seed-volume.ts`) — DEV/DEMO tooling, not production. They insert memberships
+without assignments, so a FRESH re-seed of a dev DB would leave seeded users with
+zero engine permissions (the current local/seeded DBs are fine — the 0043/0044
+backfill covered them at migration time). Fixing the seeds is a low-priority
+DEV-tooling follow-up (no production impact). `members.service.updateCapabilities`
+(membership `capabilities` JSONB) is orthogonal to the role/permission set (the
+legacy D.54 PII-reveal flag, see D-D) — not a provisioning gap.
+
 **Surfaced future slice (NOT a gap in current behavior):** there is **no
 org-role administration API** yet (assign/revoke org roles, create Admins,
 custom roles). `canAssignRole` (the anti-escalation tier guard) exists but has no

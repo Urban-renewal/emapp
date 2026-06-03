@@ -67,6 +67,10 @@ test.describe('§E-J9 — Sidebar role gating (Members + Audit are Manager-only)
     // Benign catch-all (notifications / etc) — return empty list so
     // the dashboard renders without 404s in the console.
     await page.route('**/api/v1/**', async (route) => {
+      // Let /me reach the mock-backend — it returns the role's effective
+      // PERMISSIONS, which the slice-5b client-side sidebar gating needs.
+      // Everything else → empty list.
+      if (/\/api\/v1\/me(\?|$)/.test(route.request().url())) return route.fallback();
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -119,6 +123,10 @@ test.describe('§E-J9 — Sidebar role gating (Members + Audit are Manager-only)
     await seedRoleCookie(context, 'agent');
 
     await page.route('**/api/v1/**', async (route) => {
+      // Let /me reach the mock-backend — it returns the role's effective
+      // PERMISSIONS, which the slice-5b client-side sidebar gating needs.
+      // Everything else → empty list.
+      if (/\/api\/v1\/me(\?|$)/.test(route.request().url())) return route.fallback();
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -149,6 +157,10 @@ test.describe('§E-J9 — Sidebar role gating (Members + Audit are Manager-only)
     await seedRoleCookie(context, 'manager');
 
     await page.route('**/api/v1/**', async (route) => {
+      // Let /me reach the mock-backend — it returns the role's effective
+      // PERMISSIONS, which the slice-5b client-side sidebar gating needs.
+      // Everything else → empty list.
+      if (/\/api\/v1\/me(\?|$)/.test(route.request().url())) return route.fallback();
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

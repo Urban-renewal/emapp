@@ -74,6 +74,67 @@ governance. Introduced dedicated permissions:
   the form; Viewer/Agent do not. web typecheck + eslint clean; FE assignment
   specs (20) + no-GET-fallback DoD green; code-reviewer **PASS**.
 
+### D-G — Assignment PROVISIONING gap (CRITICAL — found + fixed this round)
+
+**Problem (production-breaking).** The slice-5a cutover made the engine
+(`AuthorizationGuard` ⋈ `PermissionService`) the live authorization gate on all
+27 org controllers — it resolves permissions from `role_assignments`. A one-time
+migration backfill (0043/0044) created assignments for users that existed THEN,
+but **no application code path created/updated/removed a `role_assignments`
+row** — not signup, not member-invite, not invite-accept, not role-update, not
+revoke. So in production: every NEW signup is locked out of their own org; every
+newly-invited member is locked out (403 everywhere) even after accepting; role
+changes don't take effect (engine resolves the STALE set); revoked members could
+retain grants. The pre-existing test suite passed because those specs SEED
+`role_assignments` themselves via raw SQL — a setup biased toward the author,
+which masked the gap.
+
+**How it was caught (methodology — owner's anti-bias requirement).** Author/
+reviewer/fixer were SEPARATE agents: (1) a test agent wrote 5 RED lifecycle tests
+that drive the REAL service methods (`signup`/`create`/`acceptInvite`/`updateRole`
+/`revoke`) and assert effective permissions THROUGH THE ENGINE, never seeding an
+assignment; (2) an INDEPENDENT reviewer adversarially verified the tests are
+honest, complete, and non-vacuous (esp. the revoke test asserts a non-empty set
+BEFORE revoke so it can't pass trivially) — PASS; (3) a different agent wrote the
+fix; (4) code + security reviewers passed it. The 5 tests fail RED on the old
+code (engine resolves `[]`) and GREEN on the fix.
+
+**Fix.** Provision org-scope `role_assignments` in all four lifecycle paths,
+atomic with the membership op, audited (`role.grant`/`change`/`revoke`, no PII):
+signup → OWNER (D-A); invite → the role-matched system role; updateRole →
+retarget the assignment; revoke → delete the user's assignments.
+
+**Hardening from review (2 findings, both fixed + re-reviewed PASS).**
+(a) `updateRole`'s retarget set excludes Owner/Admin (`manageableRoleIds` =
+manager/agent/viewer only) so a member role-change can never strip/clobber an
+Owner/Admin grant, and the defensive insert fires only when the target has NO
+org-scope system assignment (no double-grant). (b) `revoke` now deletes ALL the
+user's assignments in the org (org + project scope) via a `user_id` predicate
+scoped by the `tenant_isolation` RLS USING clause (can't reach another org), so a
+project-scope leftover can't re-grant on rejoin.
+
+**Verified.** 5/5 provisioning tests GREEN; full `@emapp/api` suite green on the
+local DB; typecheck + eslint clean; spec byte-identical through the fix (the fix
+author did not weaken the tests). code-reviewer + security-reviewer **PASS** (the
+original CRITICAL + both MEDs resolved; 0 open findings).
+
+**Follow-up NIT (non-blocking, both reviewers agreed):** the Owner-preservation
+(updateRole can't strip an Owner) and project-scope-revoke behaviors are
+DEFENSIVE for scenarios UNREACHABLE in MVP (no app path mints a 2nd Owner/Admin;
+no app path creates a project-scope `role_assignments` row at runtime — the live
+project-assignment flow writes the legacy `project_assignments` table, see D-D).
+They are provably correct by code inspection but not end-to-end testable without
+biased seeding. Add the regression tests alongside the role-administration slice
+(below), when those scenarios become reachable.
+
+**Surfaced future slice (NOT a gap in current behavior):** there is **no
+org-role administration API** yet (assign/revoke org roles, create Admins,
+custom roles). `canAssignRole` (the anti-escalation tier guard) exists but has no
+caller. Role administration is currently only the member-invite/role-update
+surface (capped at manager/agent/viewer). Building the Admin/custom-role
+administration API — with `canAssignRole` wired + the D-G defensive tests — is
+the natural next enterprise slice.
+
 ---
 
 ## DEFERRED — additive / non-breaking (documented with safety)

@@ -21,7 +21,7 @@ import {
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
-import { AuthzResource } from '../../common/authz/authz.decorators';
+import { RequirePermission } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -33,12 +33,12 @@ import { ContractorsService } from './contractors.service';
 const UuidParam = new ZodValidationPipe(z.string().uuid());
 
 @Controller('contractors')
-@AuthzResource('contractors')
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class ContractorsController {
   constructor(private readonly contractors: ContractorsService) {}
 
   @Get()
+  @RequirePermission('contractors.read')
   async list(
     @CurrentUser() user: AccessTokenPayload,
     @Query(new ZodValidationPipe(ListContractorsQuery)) query: ListContractorsQueryDto,
@@ -47,6 +47,7 @@ export class ContractorsController {
   }
 
   @Post()
+  @RequirePermission('contractors.create')
   async create(
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(CreateContractorInput)) body: CreateContractor,
@@ -55,11 +56,13 @@ export class ContractorsController {
   }
 
   @Get(':id')
+  @RequirePermission('contractors.read')
   async get(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.contractors.get(user, id) };
   }
 
   @Patch(':id')
+  @RequirePermission('contractors.update')
   async update(
     @CurrentUser() user: AccessTokenPayload,
     @Param('id', UuidParam) id: string,
@@ -70,6 +73,7 @@ export class ContractorsController {
 
   @Delete(':id')
   @HttpCode(204)
+  @RequirePermission('contractors.archive')
   async archive(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     await this.contractors.archive(user, id);
   }

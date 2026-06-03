@@ -21,7 +21,7 @@ import {
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
-import { AuthzResource } from '../../common/authz/authz.decorators';
+import { RequirePermission } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -32,16 +32,17 @@ import { ProjectsService } from './projects.service';
 
 const UuidParam = new ZodValidationPipe(z.string().uuid());
 
-// Thin controller: guards (auth + tenant) + Zod validation only. ALL
-// authorization (D.17 role matrix) and data access (withTenant) live in
-// the service. Every route is /api/v1/projects (global prefix, D.10).
+// Thin controller: guards (auth + tenant) + Zod validation only. Authorization
+// is the engine permission gate (slice-5a @RequirePermission, resolved by
+// AuthorizationGuard); record-scoping (agent → assigned project) + data access
+// (withTenant) live in the service. Every route is /api/v1/projects (D.10).
 @Controller('projects')
-@AuthzResource('projects')
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class ProjectsController {
   constructor(private readonly projects: ProjectsService) {}
 
   @Get()
+  @RequirePermission('projects.read')
   async list(
     @CurrentUser() user: AccessTokenPayload,
     @Query(new ZodValidationPipe(ListProjectsQuery)) query: ListProjectsQueryDto,
@@ -50,11 +51,13 @@ export class ProjectsController {
   }
 
   @Get(':id')
+  @RequirePermission('projects.read')
   async get(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.projects.get(user, id) };
   }
 
   @Post()
+  @RequirePermission('projects.create')
   async create(
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(CreateProjectInput)) body: CreateProject,
@@ -63,6 +66,7 @@ export class ProjectsController {
   }
 
   @Patch(':id')
+  @RequirePermission('projects.update')
   async update(
     @CurrentUser() user: AccessTokenPayload,
     @Param('id', UuidParam) id: string,
@@ -73,6 +77,7 @@ export class ProjectsController {
 
   @Delete(':id')
   @HttpCode(204)
+  @RequirePermission('projects.archive')
   async archive(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     await this.projects.archive(user, id);
   }

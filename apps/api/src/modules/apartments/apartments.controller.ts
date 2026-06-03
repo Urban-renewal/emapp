@@ -21,7 +21,7 @@ import {
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
-import { AuthzResource } from '../../common/authz/authz.decorators';
+import { RequirePermission } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -32,16 +32,18 @@ import { ApartmentsService } from './apartments.service';
 
 const UuidParam = new ZodValidationPipe(z.string().uuid());
 
-// Thin controller: guards + Zod only. Authz (D.17) + via-parent scoping +
-// withTenant live in the service. Apartments are addressed nested under
-// their building (list/create) and directly by id (read/update/del).
+// Thin controller: guards + Zod only. Authorization is the engine permission
+// gate (slice-5a @RequirePermission); the FINE agent gate
+// (requireAgentCapability('edit_project_data')) + via-parent assigned-project
+// scoping + withTenant stay in the service. Apartments are addressed nested
+// under their building (list/create) and directly by id (read/update/del).
 @Controller()
-@AuthzResource('apartments')
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class ApartmentsController {
   constructor(private readonly apartments: ApartmentsService) {}
 
   @Get('buildings/:buildingId/apartments')
+  @RequirePermission('apartments.read')
   async list(
     @CurrentUser() user: AccessTokenPayload,
     @Param('buildingId', UuidParam) buildingId: string,
@@ -51,6 +53,7 @@ export class ApartmentsController {
   }
 
   @Post('buildings/:buildingId/apartments')
+  @RequirePermission('apartments.create')
   async create(
     @CurrentUser() user: AccessTokenPayload,
     @Param('buildingId', UuidParam) buildingId: string,
@@ -60,11 +63,13 @@ export class ApartmentsController {
   }
 
   @Get('apartments/:id')
+  @RequirePermission('apartments.read')
   async get(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.apartments.get(user, id) };
   }
 
   @Patch('apartments/:id')
+  @RequirePermission('apartments.update')
   async update(
     @CurrentUser() user: AccessTokenPayload,
     @Param('id', UuidParam) id: string,
@@ -75,6 +80,7 @@ export class ApartmentsController {
 
   @Delete('apartments/:id')
   @HttpCode(204)
+  @RequirePermission('apartments.archive')
   async archive(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     await this.apartments.archive(user, id);
   }

@@ -47,7 +47,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
-import { AuthzAction, AuthzResource } from '../../common/authz/authz.decorators';
+import { RequirePermission } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -59,7 +59,6 @@ import { encodeSseFrame, ImportsService } from './imports.service';
 const UuidParam = new ZodValidationPipe(z.string().uuid());
 
 @Controller('imports')
-@AuthzResource('imports')
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class ImportsController {
   private readonly logger = new Logger(ImportsController.name);
@@ -73,6 +72,7 @@ export class ImportsController {
   // POST/download throttle (30/min).
   @Post()
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @RequirePermission('imports.run')
   async create(
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(CreateImportInput)) body: CreateImport,
@@ -85,6 +85,7 @@ export class ImportsController {
   // restricted to imports whose projectId is in their assignments).
   // Returns { data, page } directly — the D.16 list envelope shape.
   @Get()
+  @RequirePermission('imports.read')
   async list(
     @CurrentUser() user: AccessTokenPayload,
     @Query(new ZodValidationPipe(ListImportsQuery)) query: ListImportsQueryDto,
@@ -93,6 +94,7 @@ export class ImportsController {
   }
 
   @Get(':id')
+  @RequirePermission('imports.read')
   async get(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.imports.get(user, id) };
   }
@@ -106,7 +108,7 @@ export class ImportsController {
   // so a future policy change that differentiates create vs update
   // doesn't silently misroute.
   @Post(':id/start')
-  @AuthzAction('update')
+  @RequirePermission('imports.map')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @HttpCode(200)
   async start(
@@ -122,11 +124,13 @@ export class ImportsController {
   // re-fetches via GET /imports/:id to render the new terminal state.
   @Delete(':id')
   @HttpCode(204)
+  @RequirePermission('imports.cancel')
   async cancel(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     await this.imports.cancel(user, id);
   }
 
   @Get(':id/errors')
+  @RequirePermission('imports.read')
   async listErrors(
     @CurrentUser() user: AccessTokenPayload,
     @Param('id', UuidParam) id: string,
@@ -142,7 +146,7 @@ export class ImportsController {
   // v5 audit fix (HIGH security): POST default-maps to `create`; the
   // wizard mutates an existing row → `update`. See start() above.
   @Post(':id/mapping')
-  @AuthzAction('update')
+  @RequirePermission('imports.map')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @HttpCode(200)
   async submitMapping(
@@ -172,6 +176,7 @@ export class ImportsController {
    *  EventSource per import (the polling state shares cleanly). */
   @Get(':id/stream')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @RequirePermission('imports.read')
   async stream(
     @CurrentUser() user: AccessTokenPayload,
     @Param('id', UuidParam) id: string,

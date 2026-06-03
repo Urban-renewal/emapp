@@ -23,7 +23,7 @@ import {
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
-import { AuthzResource } from '../../common/authz/authz.decorators';
+import { RequirePermission } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -34,13 +34,17 @@ import { TasksService } from './tasks.service';
 
 const UuidParam = new ZodValidationPipe(z.string().uuid());
 
+// Engine permission gate (slice-5a @RequirePermission) is the coarse layer; the
+// FINE agent gate (manage_tasks OR the narrow assignee path) + task project-
+// scoping (assertTaskVisibleForAgent) stay in the service. Assignee add/remove
+// are task-write actions → create/archive of the task's assignee set.
 @Controller()
-@AuthzResource('tasks')
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class TasksController {
   constructor(private readonly tasks: TasksService) {}
 
   @Get('tasks')
+  @RequirePermission('tasks.read')
   async list(
     @CurrentUser() user: AccessTokenPayload,
     @Query(new ZodValidationPipe(ListTasksQuery)) query: ListTasksQueryDto,
@@ -49,6 +53,7 @@ export class TasksController {
   }
 
   @Post('tasks')
+  @RequirePermission('tasks.create')
   async create(
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(CreateTaskInput)) body: CreateTask,
@@ -57,11 +62,13 @@ export class TasksController {
   }
 
   @Get('tasks/:id')
+  @RequirePermission('tasks.read')
   async get(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.tasks.get(user, id) };
   }
 
   @Patch('tasks/:id')
+  @RequirePermission('tasks.update')
   async update(
     @CurrentUser() user: AccessTokenPayload,
     @Param('id', UuidParam) id: string,
@@ -72,16 +79,19 @@ export class TasksController {
 
   @Delete('tasks/:id')
   @HttpCode(204)
+  @RequirePermission('tasks.archive')
   async archive(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     await this.tasks.archive(user, id);
   }
 
   @Get('tasks/:id/assignees')
+  @RequirePermission('tasks.read')
   async listAssignees(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.tasks.listAssignees(user, id) };
   }
 
   @Post('tasks/:id/assignees')
+  @RequirePermission('tasks.create')
   async addAssignee(
     @CurrentUser() user: AccessTokenPayload,
     @Param('id', UuidParam) id: string,
@@ -92,6 +102,7 @@ export class TasksController {
 
   @Delete('tasks/:id/assignees/:userId')
   @HttpCode(204)
+  @RequirePermission('tasks.archive')
   async removeAssignee(
     @CurrentUser() user: AccessTokenPayload,
     @Param('id', UuidParam) id: string,

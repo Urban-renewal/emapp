@@ -15,7 +15,7 @@ import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
-import { AuthzAction, AuthzResource } from '../../common/authz/authz.decorators';
+import { RequirePermission } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -34,16 +34,21 @@ import { OwnersService } from './owners.service';
 
 const UuidParam = new ZodValidationPipe(z.string().uuid());
 
-// Thin controller: guards + Zod only. Authz (D.17) + withTenant + all PII
-// handling live in the service. Owner LOOKUP is POST /owners/search with
-// the PII in the BODY (never the URL) so it cannot leak into access logs.
+// Thin controller: guards + Zod only. Engine permission gate
+// (slice-5a @RequirePermission) is the coarse layer; the FINE owner gates
+// (canViewOwners / view_owner_pii fidelity / edit_project_data + the ownership
+// project-scope join) + withTenant + all PII handling live in the service.
+// Owner LOOKUP is POST /owners/search with the PII in the BODY (never the URL)
+// so it cannot leak into access logs — but it is semantically a READ
+// (`owners.read`), as is the per-owner reveal-pii (the cleartext gate is the
+// service's `view_owner_pii`, NOT a separate coarse permission).
 @Controller('owners')
-@AuthzResource('owners')
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class OwnersController {
   constructor(private readonly owners: OwnersService) {}
 
   @Get()
+  @RequirePermission('owners.read')
   async list(
     @CurrentUser() user: AccessTokenPayload,
     @Query(new ZodValidationPipe(ListOwnersQuery)) query: ListOwnersQueryDto,
@@ -61,7 +66,7 @@ export class OwnersController {
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('search')
   @HttpCode(200)
-  @AuthzAction('read') // a lookup, not a write — any org role
+  @RequirePermission('owners.read') // a lookup, not a write — owners.read coarse gate
   async search(
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(OwnerSearchDto)) body: OwnerSearch,
@@ -70,6 +75,7 @@ export class OwnersController {
   }
 
   @Post()
+  @RequirePermission('owners.create')
   async create(
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(CreateOwnerDto)) body: CreateOwner,
@@ -78,25 +84,27 @@ export class OwnersController {
   }
 
   @Get(':id')
+  @RequirePermission('owners.read')
   async get(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.owners.get(user, id) };
   }
 
   // D.54 — reveal-on-demand cleartext PII for ONE owner. POST (not GET) so the
   // owner id + result never land in access logs / browser history, and so it is
-  // a deliberate per-owner action (audited, ISO A.12.4). `read` coarse action
-  // (any org role passes the matrix); the fine `view_owner_pii` gate + scope +
-  // audit live in the service. Throttled like /search — reveal is sensitive and
-  // legitimate UX is one click per owner.
+  // a deliberate per-owner action (audited, ISO A.12.4). The COARSE gate is
+  // `owners.read` (everyone who can see owners reaches here); the FINE
+  // `view_owner_pii` fidelity gate + scope + audit live in the service.
+  // Throttled like /search — reveal is sensitive and legitimate UX is one click.
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post(':id/reveal-pii')
   @HttpCode(200)
-  @AuthzAction('read')
+  @RequirePermission('owners.read')
   async revealPii(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.owners.revealPii(user, id) };
   }
 
   @Patch(':id')
+  @RequirePermission('owners.update')
   async update(
     @CurrentUser() user: AccessTokenPayload,
     @Param('id', UuidParam) id: string,
@@ -107,6 +115,7 @@ export class OwnersController {
 
   @Delete(':id')
   @HttpCode(204)
+  @RequirePermission('owners.archive')
   async archive(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     await this.owners.archive(user, id);
   }

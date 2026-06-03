@@ -18,7 +18,7 @@ import {
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
-import { AuthzResource } from '../../common/authz/authz.decorators';
+import { RequirePermission } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -29,13 +29,17 @@ import { ProjectAssignmentsService } from './project-assignments.service';
 
 const UuidParam = new ZodValidationPipe(z.string().uuid());
 
+// A project assignment IS a project-scoped role grant in the new model (§3/§7):
+// list → roles.read, create → roles.assign, unassign → roles.revoke. These are
+// Admin/Owner governance permissions — the Manager + Agent roles lack them
+// (documented (B) divergence vs the legacy manager-write / agent-read matrix).
 @Controller()
-@AuthzResource('project_assignments')
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class ProjectAssignmentsController {
   constructor(private readonly assignments: ProjectAssignmentsService) {}
 
   @Get('projects/:projectId/assignments')
+  @RequirePermission('roles.read')
   async list(
     @CurrentUser() user: AccessTokenPayload,
     @Param('projectId', UuidParam) projectId: string,
@@ -46,6 +50,7 @@ export class ProjectAssignmentsController {
   }
 
   @Post('projects/:projectId/assignments')
+  @RequirePermission('roles.assign')
   async create(
     @CurrentUser() user: AccessTokenPayload,
     @Param('projectId', UuidParam) projectId: string,
@@ -56,6 +61,7 @@ export class ProjectAssignmentsController {
 
   @Delete('assignments/:id')
   @HttpCode(204)
+  @RequirePermission('roles.revoke')
   async unassign(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     await this.assignments.unassign(user, id);
   }

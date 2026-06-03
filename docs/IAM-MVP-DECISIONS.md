@@ -63,6 +63,16 @@ governance. Introduced dedicated permissions:
   agent/viewer = read, external_read = none). code-reviewer **PASS**;
   security-reviewer found 1 CRITICAL (DB-layer pin not updated → suite red) which
   was fixed and re-verified green.
+  **FE half (DV-ORG-9 dead-control killed).** The assignments page gated its
+  write controls on `isManager = membersQuery.isSuccess` — TRUE for a Viewer
+  (holds `members.read` → `/members` 200s) who lacks `project_assignments.manage`
+  → Viewer saw a form that 403s on submit (dead control). Pre-existing, but only
+  now fixable because the BE exposes the precise permission. The page now gates
+  writes on `useHasPermission('project_assignments.manage')` (slice-5b
+  single-source FE gate), keeping `/members` only for the dropdown/name lookup
+  (Manager reaches it via the `export.run ⇒ members.read` closure). Manager sees
+  the form; Viewer/Agent do not. web typecheck + eslint clean; FE assignment
+  specs (20) + no-GET-fallback DoD green; code-reviewer **PASS**.
 
 ---
 
@@ -142,11 +152,20 @@ migrates the service layer off `user.role`. Non-blocking, fail-closed.
 - authz API specs: `permissions` + `policy-equivalence` + `policy` (422),
   `permission.service` + `agent-capabilities` (34) — green.
 - DB-layer: `iam-foundation-schema.spec.ts` (19) — green after the 0045 pin fix.
-- typecheck (`@emapp/api`) + eslint (changed files) — clean.
-- Reviewers: code-reviewer PASS; security-reviewer CRITICAL fixed + re-verified.
+- **Full `@emapp/api` suite on local: 80 files, 983 passed, 199 skipped, 0
+  failed** (56s) — includes the historically-flaky specs (provider-audit,
+  imports.s8, export.s10); the ERROR lines in the log are synthetic test
+  scenarios, not failures.
+- FE: web typecheck clean; eslint clean on the changed page; FE assignment
+  adapter+api specs (20) green; `app-forms-no-get-fallback` DoD check green.
+- typecheck (`@emapp/api` + `@emapp/web`) + eslint (changed files) — clean.
+- Reviewers: code-reviewer PASS (BE + FE); security-reviewer CRITICAL fixed +
+  re-verified.
 
 ## What remains before the owner's final merge
 
-1. Broader regression on local (full API suite minus the known-flaky specs noted
-   in MEMORY) + the DV-persona regression ("dead controls → ~0").
-2. Owner's examination + merge of `iam/fixes` → `main` (no auto-merge).
+1. Owner's examination + merge of `iam/fixes` → `main` (no auto-merge). The
+   integration branch carries the full verified stack (slices 1-5b → 0044 Owner
+   backfill → project-assignment BE+FE → this decisions doc).
+2. Post-MVP (additive, non-breaking, documented above): D-C caching (with
+   Redis), D-D record-scoping → assignment-model, D-E `policy.ts` removal.

@@ -16,6 +16,7 @@ import {
   useProjectAssignmentList,
   useUnassignProjectAssignment,
 } from '@/hooks/use-assignments';
+import { useHasPermission } from '@/hooks/use-permissions';
 import { ApiClientError } from '@/lib/api/errors';
 import { listMembers } from '@/lib/api/members';
 import { useDisplayLocale } from '@/lib/locale';
@@ -24,18 +25,22 @@ import { useDisplayLocale } from '@/lib/locale';
  * Project Assignments page (D.17 — read=ALL, write=MGR).
  *
  * The Wire shape carries only IDs; to render human names we side-load
- * `/members` (Manager-only) and JOIN client-side. For Agent / Viewer
- * the members fetch 403s → `lookup` stays undefined → adapter degrades
- * to `userIdShort`. The 403 is the SIGNAL we use to decide whether to
- * render the assign-form (only Manager can create; this matches the
- * BE's AuthorizationGuard exactly so the UI never offers a button that
- * can't succeed).
+ * `/members` and JOIN client-side. `members.read` is held by Owner/Admin/
+ * Viewer directly and by Manager via the `export.run ⇒ members.read`
+ * closure; an Agent's fetch 403s → `lookup` stays undefined → adapter
+ * degrades to `userIdShort`.
  *
- * `retry: false` on the members query: a Manager's first request
- * either returns 200 (cached for 30s afterwards) or 5xx (rare); a
- * non-Manager's request returns 403 immediately and we don't want
- * three exponential-backoff retries (~7s) before the UI settles into
- * its read-only mode.
+ * WRITE controls (assign-form, unassign) gate on the PRECISE permission
+ * `project_assignments.manage` (Owner/Admin/Manager) via `useHasPermission`,
+ * NOT on the /members 403 — because a Viewer holds `members.read` (so
+ * /members 200s) but NOT `project_assignments.manage`. Gating writes on the
+ * members fetch would render a dead control for Viewers that 403s on submit
+ * (DV-ORG-9). The permission gate matches the BE AuthorizationGuard exactly.
+ *
+ * `retry: false` on the members query: the first request either returns 200
+ * (cached for 30s afterwards) or 5xx (rare); an Agent's request returns 403
+ * immediately and we don't want three exponential-backoff retries (~7s)
+ * before the UI settles into its read-only (name-degraded) mode.
  */
 export default function ProjectAssignmentsPage() {
   const params = useParams<{ id: string }>();
@@ -65,7 +70,15 @@ export default function ProjectAssignmentsPage() {
     return m;
   }, [membersQuery.data]);
 
-  const isManager = membersQuery.isSuccess;
+  // `membersLoaded` = the /members side-load succeeded (gives us the userId→
+  // {name,email} lookup + the eligible-member dropdown). `canManage` = the
+  // actor actually holds `project_assignments.manage` (Owner/Admin/Manager) —
+  // the PRECISE gate (IAM slice-5b, DV-ORG-9: never render a dead control).
+  // We gate write controls on BOTH: a Viewer holds `members.read` (so /members
+  // 200s) but NOT `project_assignments.manage`, so without the permission gate
+  // it would see an assign-form / unassign button that 403s on submit.
+  const membersLoaded = membersQuery.isSuccess;
+  const canManage = useHasPermission('project_assignments.manage');
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const list = useProjectAssignmentList(projectId, { limit: 25, cursor }, lookup);
   // TanStack's structural sharing keeps `list.data.items` stable across
@@ -148,9 +161,10 @@ export default function ProjectAssignmentsPage() {
         </Button>
       </div>
 
-      {/* Assign form — Manager-only. Hidden while the members query
-          is in flight or after it 403s for non-Managers. */}
-      {isManager && (
+      {/* Assign form — gated on the `project_assignments.manage` permission
+          (Owner/Admin/Manager). Also needs the members side-load for the
+          dropdown, so we require both. Hidden for Viewer/Agent. */}
+      {canManage && membersLoaded && (
         <div className="rounded-md border bg-card p-4">
           <h2 className="mb-3 text-base font-semibold">{t('assignSection')}</h2>
           {/* §S1-SEC1 — method="post" defense in depth. */}
@@ -255,7 +269,7 @@ export default function ProjectAssignmentsPage() {
                   {t('assignedAt', { rel: a.assignedRelative })}
                 </p>
               </div>
-              {isManager && a.active && (
+              {canManage && a.active && (
                 <Button
                   type="button"
                   variant="outline"

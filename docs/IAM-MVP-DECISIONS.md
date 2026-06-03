@@ -210,7 +210,14 @@ rows on org/project hard-delete (`scope_id` has no FK — but orphans never reso
 a deleted org has no RLS context, a deleted project is never a check target);
 roster/engine drift if an Owner is demoted via the member surface (safe direction,
 documented); test-factory orgs created without an Owner assignment (fixture drift,
-not production — real orgs get an Owner via signup/onboard).
+not production — real orgs get an Owner via signup/onboard); \*\*the DV-ORG-9
+`/members`-200/403 proxy gate still gates the task-detail page's add/remove-assignee
+
+- archive controls (`tasks/[id]/page.tsx`) on `isManager` instead of the precise
+  permissions (`tasks.update`/`tasks.archive`)\*\* — PRE-EXISTING on `main` (not a
+  regression of this branch), safe direction (under-shows controls to an agent the
+  BE would allow; no 403-on-click, no leak). Same fix pattern as the assignments
+  page (D-B FE half); migrate it to `useHasPermission` in a FE-polish follow-up.
 
 ---
 

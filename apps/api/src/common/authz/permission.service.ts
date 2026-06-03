@@ -41,7 +41,7 @@
  */
 import { roleAssignments, rolePermissions, type TenantTx } from '@emapp/db';
 import { Injectable } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq, gt, isNull, or, sql } from 'drizzle-orm';
 
 import { PERMISSION_IMPLICATIONS, PERMISSION_SET, type Permission } from './permissions';
 import { SYSTEM_ROLE_BY_KEY, type SystemRoleKey } from './system-roles';
@@ -226,7 +226,14 @@ export class PermissionService {
       })
       .from(roleAssignments)
       .innerJoin(rolePermissions, eq(rolePermissions.roleId, roleAssignments.roleId))
-      .where(eq(roleAssignments.userId, user.id));
+      // Time-boxed grants: an assignment past its expiry must NOT resolve as live
+      // (silent privilege-retention otherwise). NULL expiry = never expires.
+      .where(
+        and(
+          eq(roleAssignments.userId, user.id),
+          or(isNull(roleAssignments.expiresAt), gt(roleAssignments.expiresAt, sql`now()`)),
+        ),
+      );
 
     return raw.map((r) => ({
       // scope_type is a CHECK-constrained text column ∈ {'org','project'}.

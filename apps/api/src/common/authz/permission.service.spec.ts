@@ -92,6 +92,21 @@ async function assign(
   }
 }
 
+async function assignExpired(userId: string, key: SystemRoleKey, scopeId: string): Promise<void> {
+  const roleId = await systemRoleId(key);
+  const c = await providerPool.connect();
+  try {
+    await c.query(
+      `INSERT INTO role_assignments (user_id, role_id, scope_type, scope_id, granted_at, expires_at)
+       VALUES ($1, $2, 'org', $3, now() - interval '2 hours', now() - interval '1 hour')
+       ON CONFLICT (user_id, role_id, scope_type, scope_id) DO NOTHING`,
+      [userId, roleId, scopeId],
+    );
+  } finally {
+    c.release();
+  }
+}
+
 function actor(id: string): AuthzUser {
   return { id, orgId: org.id };
 }
@@ -242,6 +257,16 @@ describe('PermissionService — scope resolution (§7 / G4)', () => {
     const userId = await seedUser();
     // Assign in the OTHER org at org scope; resolving inside `org` must see nothing.
     await assign(userId, 'owner', 'org', other.id);
+    await withTenant(org.id, async (tx) => {
+      const cache = new PermissionResolutionCache();
+      const effective = await svc.effectivePermissions(actor(userId), orgScope, tx, cache);
+      expect(effective.size).toBe(0);
+    });
+  });
+
+  it('an EXPIRED assignment is excluded (no privilege retention past expiry)', async () => {
+    const userId = await seedUser();
+    await assignExpired(userId, 'owner', org.id); // owner, but expired 1h ago
     await withTenant(org.id, async (tx) => {
       const cache = new PermissionResolutionCache();
       const effective = await svc.effectivePermissions(actor(userId), orgScope, tx, cache);

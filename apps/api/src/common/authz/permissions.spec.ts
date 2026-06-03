@@ -173,9 +173,16 @@ const EXPECTED_ROLE_PERMS: Record<string, string[]> = {
         'owners.reveal_pii',
         'export.run',
         'project_assignments.manage',
+        'audit.read', // governance read — Manager+ only (legacy audit:MGR)
       ].includes(p),
   ),
-  viewer: reads.filter((p) => p !== 'owners.reveal_pii'),
+  // Viewer: operational reads only — governance reads (members/roles/audit/org)
+  // are excluded (least-privilege; legacy had them at Manager+).
+  viewer: reads.filter(
+    (p) =>
+      p !== 'owners.reveal_pii' &&
+      !['members.', 'roles.', 'audit.', 'org.'].some((g) => p.startsWith(g)),
+  ),
   external_read: [
     'projects.read',
     'buildings.read',

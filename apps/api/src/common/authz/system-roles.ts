@@ -91,13 +91,22 @@ const AGENT_EXCLUDE = new Set<Permission>([
   'owners.reveal_pii', // granted per-assignment later, not by default (§4)
   'export.run',
   'project_assignments.manage', // staffing projects is a Manager act, not Agent (legacy MGR)
+  'audit.read', // audit log is governance — Manager+ only (legacy audit:MGR). Agent must NOT read it.
 ]);
 const AGENT: readonly Permission[] = ALL_OPERATIONAL.filter(
   (p) => !AGENT_EXCLUDE.has(p) && !p.startsWith('org.'),
 );
 
-// ── Viewer: read only, every resource, PII masked (no reveal_pii). ─────────
-const VIEWER: readonly Permission[] = ALL_READS.filter((p) => p !== 'owners.reveal_pii');
+// ── Viewer: read-only of OPERATIONAL data, PII masked. GOVERNANCE reads
+//    (members / roles / audit / org settings) are EXCLUDED — a read-only viewer
+//    must NOT see the audit log, org settings, role config, or the member roster
+//    (least-privilege; legacy had those reads at Manager+ only; the members
+//    contract + sidebar e2e tests pin this). Manager+/Admin/Owner still reach
+//    members.read + audit.read via the `export.run ⇒ <r>.read` closure.
+const VIEWER_READ_EXCLUDE = ['members.', 'roles.', 'audit.', 'org.'] as const;
+const VIEWER: readonly Permission[] = ALL_READS.filter(
+  (p) => p !== 'owners.reveal_pii' && !VIEWER_READ_EXCLUDE.some((g) => p.startsWith(g)),
+);
 
 // ── External-Read: read of the shared subset, NO owner PII. The shared subset
 //    is the project-facing read surface a stakeholder (contractor/lawyer/bank)

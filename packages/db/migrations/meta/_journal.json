@@ -330,6 +330,13 @@
       "when": 1780671600000,
       "tag": "0046_iam_rls_system_role_delete_fix",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1780758000000,
+      "tag": "0047_iam_narrow_viewer_agent_governance_reads",
+      "breakpoints": true
     }
   ]
 }

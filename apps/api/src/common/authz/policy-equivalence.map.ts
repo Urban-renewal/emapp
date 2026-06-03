@@ -425,32 +425,14 @@ export const KNOWN_DIVERGENCES: readonly KnownDivergence[] = [
   // so engine === legacy EXACTLY (Manager staffs projects = legacy MGR; Agent reads
   // assignments = legacy read: ALL). They are intentionally absent from this list.
 
-  // ── (C) Read surface widens to "all reads" (Viewer / Agent gain) ───────────
-  {
-    role: 'viewer',
-    resource: 'members',
-    action: 'read',
-    permission: 'members.read',
-    direction: 'new',
-    reason:
-      '(C) Legacy: members.read was Manager-only. New: Viewer = every `*.read` (PII masked), so Viewer gains members.read (org roster visibility; no PII). NOTE this is the read-widen change, distinct from (B) which removes Manager WRITE governance.',
-  },
-  {
-    role: 'agent',
-    resource: 'audit',
-    action: 'read',
-    permission: 'audit.read',
-    direction: 'new',
-    reason:
-      '(C) Legacy: audit.read was Manager-only. New: audit.read is part of the all-reads surface the Agent role holds. (Row-level audit scope is enforced separately; this is the coarse permission only.)',
-  },
-  {
-    role: 'viewer',
-    resource: 'audit',
-    action: 'read',
-    permission: 'audit.read',
-    direction: 'new',
-    reason:
-      '(C) Legacy: audit.read was Manager-only. New: Viewer = every `*.read`, so the Viewer role holds audit.read.',
-  },
+  // ── (C) GOVERNANCE READS stay Manager+ — Viewer/Agent do NOT widen ─────────
+  // The earlier model widened Viewer (= every `*.read`) and Agent to hold the
+  // GOVERNANCE reads `members.read` + `audit.read`, recorded here as a (C)
+  // divergence. That was a least-privilege OVER-REACH (a read-only Viewer / a
+  // scoped Agent could read the org's member roster + audit log) — caught by the
+  // members contract + sidebar e2e tests. The Viewer/Agent roles now EXCLUDE the
+  // governance reads (members/roles/audit/org), re-aligning with the legacy
+  // `audit:MGR` / `members:MGR` matrix — so these cells are EQUAL, not divergent,
+  // and are intentionally absent from this list. (Manager/Admin/Owner still reach
+  // `members.read`/`audit.read` via the `export.run ⇒ <r>.read` closure.)
 ];

@@ -455,4 +455,55 @@ describe('IAM 0043 · RLS — tenant isolation + system-role cross-org read', ()
     );
     expect(row!.name).toBe('Owner');
   });
+
+  // ── DELETE is governed by USING ONLY (NOT WITH CHECK). The cross-org system-
+  //    row visibility intended for SELECT must NOT leak into DELETE, else any
+  //    tenant could wipe a SYSTEM role / its permissions GLOBALLY (every org).
+  //    Uses a throwaway, never-assigned probe system role so the assertion is
+  //    non-destructive to the real seed; cleaned up via BYPASSRLS regardless.
+  it("app_user (Org B) CANNOT cross-tenant DELETE a SYSTEM role's permissions", async () => {
+    const key = `__rls_probe_perms_${Date.now()}__`;
+    const [r] = await pquery<{ id: string }>(
+      `INSERT INTO roles (org_id, key, name, is_system) VALUES (NULL, $1, 'RLS Probe', true) RETURNING id`,
+      [key],
+    );
+    const probeId = r!.id;
+    await pquery(
+      `INSERT INTO role_permissions (role_id, permission) VALUES ($1, 'projects.read')`,
+      [probeId],
+    );
+    try {
+      await withTenant(orgB.id, async (tx) =>
+        tx.execute(sql`DELETE FROM role_permissions WHERE role_id = ${probeId}`),
+      );
+      const remaining = await pquery(`SELECT 1 AS one FROM role_permissions WHERE role_id = $1`, [
+        probeId,
+      ]);
+      expect(
+        remaining,
+        'cross-tenant DELETE must NOT remove a system role permission',
+      ).toHaveLength(1);
+    } finally {
+      await pquery(`DELETE FROM role_permissions WHERE role_id = $1`, [probeId]);
+      await pquery(`DELETE FROM roles WHERE id = $1`, [probeId]);
+    }
+  });
+
+  it('app_user (Org B) CANNOT cross-tenant DELETE a SYSTEM role row', async () => {
+    const key = `__rls_probe_role_${Date.now()}__`;
+    const [r] = await pquery<{ id: string }>(
+      `INSERT INTO roles (org_id, key, name, is_system) VALUES (NULL, $1, 'RLS Probe Role', true) RETURNING id`,
+      [key],
+    );
+    const probeId = r!.id; // no permissions/assignments → no FK protection masking the RLS gap
+    try {
+      await withTenant(orgB.id, async (tx) =>
+        tx.execute(sql`DELETE FROM roles WHERE id = ${probeId}`),
+      );
+      const remaining = await pquery(`SELECT 1 AS one FROM roles WHERE id = $1`, [probeId]);
+      expect(remaining, 'cross-tenant DELETE must NOT remove a system role').toHaveLength(1);
+    } finally {
+      await pquery(`DELETE FROM roles WHERE id = $1`, [probeId]);
+    }
+  });
 });

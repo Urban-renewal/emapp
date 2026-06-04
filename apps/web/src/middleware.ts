@@ -1,8 +1,8 @@
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import createMiddleware from 'next-intl/middleware';
 
 import { routing } from './i18n/routing';
+import { buildCspHeader } from './lib/csp';
 
 const intlMiddleware = createMiddleware(routing);
 
@@ -148,11 +148,35 @@ export default function middleware(req: NextRequest) {
   const hasProviderToken = req.cookies.has('provider_access_token');
   const hasTenantToken = req.cookies.has('tenant_access_token');
 
+  // §MQA-1 — per-request CSP nonce. Next.js App Router emits INLINE bootstrap +
+  // RSC-flight scripts (`self.__next_f.push(...)`); a static `script-src 'self'`
+  // blocked them, so the whole production app rendered BLANK (hydration threw
+  // "Connection closed"). We mint a nonce and set the CSP on BOTH the request
+  // headers (Next extracts the nonce + applies it to its inline scripts during
+  // SSR) and every response we return (the browser enforces it). `btoa` +
+  // `crypto.randomUUID` are edge-runtime-safe (no Buffer). See
+  // docs/DV-FINDINGS-DISPOSITION.md MQA-1.
+  const nonce = btoa(crypto.randomUUID());
+  const isDev = process.env.NODE_ENV !== 'production';
+  const csp = buildCspHeader(nonce, isDev);
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-nonce', nonce);
+  requestHeaders.set('Content-Security-Policy', csp);
+  // The request the page render sees — carries the nonce so Next can apply it.
+  // Built from `req.url` (not `req`) so next-intl re-derives `nextUrl` while the
+  // cloned headers (incl. the original Cookie + our nonce/CSP) propagate to the
+  // render; this also keeps the unit-test request mock constructible.
+  const reqWithNonce = new NextRequest(req.url, { headers: requestHeaders });
+  const applyCsp = <T extends NextResponse>(res: T): T => {
+    res.headers.set('Content-Security-Policy', csp);
+    return res;
+  };
+
   // Locale-agnostic public routes (/sign/<jwt>): skip both gates and
   // next-intl so the URL stays short + the JWT-bearer flow is the only
   // auth mechanism.
   if (isLocaleAgnosticPublic(pathname)) {
-    return NextResponse.next();
+    return applyCsp(NextResponse.next({ request: { headers: requestHeaders } }));
   }
 
   // V10-S4 follow-up — narrow defer for locale-less `/provider*` paths
@@ -168,7 +192,7 @@ export default function middleware(req: NextRequest) {
   // redirect behavior the M8/M13-M15 tests rely on (saves one
   // round-trip vs deferring everything to intl).
   if (!hasLocalePrefix(pathname) && /^\/provider(\/|$)/.test(pathname) && hasProviderToken) {
-    return intlMiddleware(req);
+    return applyCsp(intlMiddleware(reqWithNonce));
   }
 
   // V10-S3 — Provider-tier auth page (`/<locale>/provider/login`):
@@ -181,7 +205,7 @@ export default function middleware(req: NextRequest) {
     const localeMatch = pathname.match(/^\/([a-z]{2})\//);
     const locale = localeMatch ? localeMatch[1] : 'he';
     url.pathname = `/${locale}/provider`;
-    return NextResponse.redirect(url);
+    return applyCsp(NextResponse.redirect(url));
   }
 
   // V11 A.S14a — Tenant-tier auth page (`/<locale>/tenant/login`):
@@ -194,7 +218,7 @@ export default function middleware(req: NextRequest) {
     const localeMatch = pathname.match(/^\/([a-z]{2})\//);
     const locale = localeMatch ? localeMatch[1] : 'he';
     url.pathname = `/${locale}/portal`;
-    return NextResponse.redirect(url);
+    return applyCsp(NextResponse.redirect(url));
   }
 
   // Org-tier auth pages (/login, /signup): bounce away ANY user
@@ -209,7 +233,7 @@ export default function middleware(req: NextRequest) {
     const localeMatch = pathname.match(/^\/([a-z]{2})\//);
     const locale = localeMatch ? localeMatch[1] : 'he';
     url.pathname = `/${locale}`;
-    return NextResponse.redirect(url);
+    return applyCsp(NextResponse.redirect(url));
   }
 
   // V10-S4 — Provider tier paths require the provider cookie.
@@ -229,9 +253,9 @@ export default function middleware(req: NextRequest) {
       const localeMatch = pathname.match(/^\/([a-z]{2})\//);
       const locale = localeMatch ? localeMatch[1] : 'he';
       url.pathname = `/${locale}/provider/login`;
-      return NextResponse.redirect(url);
+      return applyCsp(NextResponse.redirect(url));
     }
-    return intlMiddleware(req);
+    return applyCsp(intlMiddleware(reqWithNonce));
   }
 
   // V11 A.S14a — Tenant tier gate. /<locale>/portal/* requires
@@ -247,9 +271,9 @@ export default function middleware(req: NextRequest) {
       const localeMatch = pathname.match(/^\/([a-z]{2})\//);
       const locale = localeMatch ? localeMatch[1] : 'he';
       url.pathname = `/${locale}/tenant/login`;
-      return NextResponse.redirect(url);
+      return applyCsp(NextResponse.redirect(url));
     }
-    return intlMiddleware(req);
+    return applyCsp(intlMiddleware(reqWithNonce));
   }
 
   // Non-provider dashboard paths require the org cookie.
@@ -261,10 +285,10 @@ export default function middleware(req: NextRequest) {
     const localeMatch = pathname.match(/^\/([a-z]{2})\//);
     const locale = localeMatch ? localeMatch[1] : 'he';
     url.pathname = `/${locale}/login`;
-    return NextResponse.redirect(url);
+    return applyCsp(NextResponse.redirect(url));
   }
 
-  return intlMiddleware(req);
+  return applyCsp(intlMiddleware(reqWithNonce));
 }
 
 /**

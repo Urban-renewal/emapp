@@ -1,26 +1,39 @@
-import type { Document, DocumentType } from '@emapp/shared-types';
+import type { Document } from '@emapp/shared-types';
 
 import { stripBidiOverrides } from '@/lib/bidi';
 import { formatRelative } from '@/lib/format';
 import type { DocumentViewModel } from '@/models/document.vm';
 
-const TYPE_LABELS_HE: Record<DocumentType, string> = {
-  contract: 'הסכם',
+// `Document['type']` is FREE TEXT (tolerant read) — the label map covers the
+// curated `DocumentTypeEnum` types AND legacy generic ones for display, with a
+// fallback for anything else (so an unknown type never renders blank).
+const TYPE_LABELS_HE: Record<string, string> = {
+  // real urban-renewal types (BE seeds/imports)
+  agreement: 'הסכם',
+  blueprint: 'תוכנית / שרטוט',
+  regulation: 'תקנון / רגולציה',
   permit: 'אישור / היתר',
-  id_document: 'ת.ז.',
-  floor_plan: 'תוכנית קומה',
   financial: 'מסמך פיננסי',
   other: 'אחר',
+  // legacy generic types (back-compat display)
+  contract: 'חוזה',
+  id_document: 'ת.ז.',
+  floor_plan: 'תוכנית קומה',
 };
+const FALLBACK_LABEL_HE = 'מסמך';
 
-const TYPE_LABELS_EN: Record<DocumentType, string> = {
-  contract: 'Contract',
+const TYPE_LABELS_EN: Record<string, string> = {
+  agreement: 'Agreement',
+  blueprint: 'Blueprint',
+  regulation: 'Regulation',
   permit: 'Permit',
-  id_document: 'ID Document',
-  floor_plan: 'Floor Plan',
   financial: 'Financial',
   other: 'Other',
+  contract: 'Contract',
+  id_document: 'ID Document',
+  floor_plan: 'Floor Plan',
 };
+const FALLBACK_LABEL_EN = 'Document';
 
 export function toDocumentViewModel(d: Document, locale: 'he' | 'en' = 'he'): DocumentViewModel {
   const labels = locale === 'he' ? TYPE_LABELS_HE : TYPE_LABELS_EN;
@@ -32,7 +45,7 @@ export function toDocumentViewModel(d: Document, locale: 'he' | 'en' = 'he'): Do
     // ONLY line of defense for that view.
     name: stripBidiOverrides(d.name),
     type: d.type,
-    typeLabel: labels[d.type],
+    typeLabel: labels[d.type] ?? (locale === 'he' ? FALLBACK_LABEL_HE : FALLBACK_LABEL_EN),
     mimeType: d.mimeType,
     sizeBytes: d.sizeBytes,
     sizeLabel: formatBytes(d.sizeBytes),

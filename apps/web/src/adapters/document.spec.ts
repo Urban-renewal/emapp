@@ -35,14 +35,30 @@ function baseDoc(over: Partial<import('@emapp/shared-types').Document> = {}) {
 }
 
 describe('toDocumentViewModel', () => {
-  it('1) HE labels cover every type', () => {
-    const k = Object.keys(DOCUMENT_TYPE_LABELS_HE).sort();
-    expect(k).toEqual([...DocumentTypeEnum.options].sort());
+  it('1) HE labels cover every curated upload type', () => {
+    for (const t of DocumentTypeEnum.options) {
+      expect(DOCUMENT_TYPE_LABELS_HE[t], `HE label for ${t}`).toBeTruthy();
+    }
   });
 
-  it('2) EN labels cover every type', () => {
-    const k = Object.keys(DOCUMENT_TYPE_LABELS_EN).sort();
-    expect(k).toEqual([...DocumentTypeEnum.options].sort());
+  it('2) EN labels cover every curated upload type', () => {
+    for (const t of DocumentTypeEnum.options) {
+      expect(DOCUMENT_TYPE_LABELS_EN[t], `EN label for ${t}`).toBeTruthy();
+    }
+  });
+
+  it('2b) the REAL urban-renewal types parse + have labels (DV-MGR-DOCS regression)', () => {
+    for (const t of ['agreement', 'blueprint', 'regulation']) {
+      const vm = toDocumentViewModel(baseDoc({ type: t }));
+      expect(vm.type).toBe(t);
+      expect(vm.typeLabel, `label for ${t}`).toBeTruthy();
+    }
+  });
+
+  it('2c) an unknown free-text type parses + falls back to a non-blank label', () => {
+    const vm = toDocumentViewModel(baseDoc({ type: 'some_imported_type' }));
+    expect(vm.type).toBe('some_imported_type');
+    expect(vm.typeLabel, 'must never be blank').toBeTruthy();
   });
 
   it('3) sizeLabel: bytes when under 1KB', () => {

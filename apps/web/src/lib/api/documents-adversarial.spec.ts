@@ -89,7 +89,7 @@ describe('Documents API — wire shape adversarial', () => {
     ) as unknown as typeof fetch;
     const result = await createDocument({
       name: 'test.pdf',
-      type: 'contract',
+      type: 'agreement',
       mimeType: 'application/pdf',
       sizeBytes: 100,
       contentHash: 'a'.repeat(64),

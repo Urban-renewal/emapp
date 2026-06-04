@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { ListPageShell } from '@/components/ui/list-page-shell';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useNoteList } from '@/hooks/use-notes';
+import { useHasPermission } from '@/hooks/use-permissions';
 import { listMembers } from '@/lib/api/members';
 import { useDisplayLocale } from '@/lib/locale';
 
@@ -45,14 +46,17 @@ export default function NotesPage() {
 
   const { data, isLoading, isError, refetch } = useNoteList({ limit: 25, cursor }, lookup);
   const items = data?.items ?? [];
+  const canCreate = useHasPermission('notes.create');
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
-        <Button asChild>
-          <Link href="/notes/new">{t('create')}</Link>
-        </Button>
+        {canCreate && (
+          <Button asChild>
+            <Link href="/notes/new">{t('create')}</Link>
+          </Button>
+        )}
       </div>
 
       <ListPageShell

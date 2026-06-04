@@ -8,7 +8,7 @@ import { Body, Controller, Get, Param, Put, Query, UseGuards } from '@nestjs/com
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
-import { AuthzResource } from '../../common/authz/authz.decorators';
+import { RequirePermission } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -21,15 +21,16 @@ const UuidParam = new ZodValidationPipe(z.string().uuid());
 
 // Thin controller: guards + Zod only. The locked Phase-1 constraint
 // trigger makes ownership composition ATOMIC per apartment, so the only
-// write is a full-set REPLACE (PUT). Reads: active ownerships + the
-// masked apartment→owners view (docs/09 §3.13).
+// write is a full-set REPLACE (PUT) — one permission `ownerships.set` (D.25),
+// NOT a CRUD quad. Reads: active ownerships + the masked apartment→owners view
+// (docs/09 §3.13). Record-scoping + withTenant stay in the service.
 @Controller()
-@AuthzResource('ownerships')
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class OwnershipsController {
   constructor(private readonly ownerships: OwnershipsService) {}
 
   @Get('apartments/:apartmentId/ownerships')
+  @RequirePermission('ownerships.read')
   async list(
     @CurrentUser() user: AccessTokenPayload,
     @Param('apartmentId', UuidParam) apartmentId: string,
@@ -39,6 +40,7 @@ export class OwnershipsController {
   }
 
   @Get('apartments/:apartmentId/owners')
+  @RequirePermission('ownerships.read')
   async apartmentOwners(
     @CurrentUser() user: AccessTokenPayload,
     @Param('apartmentId', UuidParam) apartmentId: string,
@@ -48,8 +50,10 @@ export class OwnershipsController {
   }
 
   // Atomic full-set replace (locked-invariant-faithful). Body owners must
-  // be empty (clear) or sum to exactly 100.
+  // be empty (clear) or sum to exactly 100. The single `ownerships.set`
+  // permission gates the (PUT) — legacy create/update/delete all map here.
   @Put('apartments/:apartmentId/ownerships')
+  @RequirePermission('ownerships.set')
   async replaceSet(
     @CurrentUser() user: AccessTokenPayload,
     @Param('apartmentId', UuidParam) apartmentId: string,

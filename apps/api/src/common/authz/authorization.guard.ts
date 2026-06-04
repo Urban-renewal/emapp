@@ -1,51 +1,87 @@
+import { withTenant } from '@emapp/db';
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 
 import type { AccessTokenPayload } from '../../modules/auth/auth.service';
 
-import { AUTHZ_ACTION, AUTHZ_RESOURCE } from './authz.decorators';
-import { can, type Action, type Resource, type Role } from './policy';
-
-const VERB_TO_ACTION: Record<string, Action> = {
-  GET: 'read',
-  POST: 'create',
-  PUT: 'update',
-  PATCH: 'update',
-  DELETE: 'delete',
-};
+import { AUTHZ_PERMISSION, AUTHZ_TENANT_ONLY } from './authz.decorators';
+import { PermissionResolutionCache, PermissionService, type AuthzUser } from './permission.service';
+import type { Permission } from './permissions';
 
 /**
- * The SINGLE D.17 role-enforcement point. Runs AFTER AuthGuard +
- * TenantGuard (so req.user is set). Reads the controller's declared
- * resource + the (verb-defaulted, optionally overridden) action and
- * consults the one POLICY table. Fail-CLOSED: missing metadata, missing
- * role, or a denied (role,resource,action) → 403 `forbidden` (D.16).
+ * SLICE 5a — the SINGLE authorization point, now ENGINE-BACKED.
  *
- * Record-level scoping (agent→assigned, note author, self-notifications)
- * remains in the service; this guard only guarantees a coarsely-forbidden
- * role can never reach that code — eliminating the "a new slice forgot
- * requireManager → silent privilege escalation" class of bug.
+ * Runs AFTER AuthGuard + TenantGuard (so `req.user` is set + the org is
+ * resolved). Reads the handler's `@RequirePermission('<permission>')` and asks
+ * the live `PermissionService` engine: does this user hold that permission on
+ * the request's ORG scope? — the same decision the slice-3 shadow-equivalence
+ * proof certifies cell-for-cell against the legacy `policy.ts`. `policy.ts` is
+ * no longer consulted at request time (it stays as the equivalence oracle,
+ * deleted in slice 6).
+ *
+ * COARSE vs RECORD scope (unchanged contract). This guard is the COARSE
+ * org-scope permission gate the legacy role-matrix guard used to be: it answers
+ * "may this role/permission touch this resource AT ALL", at org scope — exactly
+ * what `policy.can(role, resource, action)` answered. RECORD-level scoping
+ * (agent → assigned project; note author; self-scoped notifications) is
+ * UNCHANGED and still enforced in the service, now expressed as the assignment
+ * scope (§5/§7). An agent who coarsely holds `buildings.update` here still hits
+ * `requireAgentCapability` + the assigned-project check in the service.
+ *
+ * Fail-CLOSED. A handler with NEITHER `@RequirePermission` NOR `@TenantScoped`
+ * → 403 (a route added without an authz declaration is a misconfiguration, not
+ * an open door). Missing `req.user` / missing org → 403.
+ *
+ * PERF / TX (G5; a prior reviewer flagged this for here). The guard opens ONE
+ * short `withTenant(orgId)` and a FRESH `PermissionResolutionCache`, so the
+ * decision costs exactly ONE resolve query (assignments ⋈ role_permissions,
+ * RLS-scoped to this org). The cache is keyed by userId and never escapes the
+ * request — one org / one tx / one cache per request, no cross-request bleed.
+ * `@TenantScoped` handlers (the `NO_ENGINE_EQUIVALENT` self/RLS-scoped surfaces)
+ * short-circuit BEFORE any query — they cost zero round-trips.
  */
 @Injectable()
 export class AuthorizationGuard implements CanActivate {
-  canActivate(ctx: ExecutionContext): boolean {
-    const resource = Reflect.getMetadata(AUTHZ_RESOURCE, ctx.getClass()) as Resource | undefined;
-    if (!resource) {
-      // A domain controller without @AuthzResource is a misconfiguration,
-      // not an open door. Deny.
-      throw new ForbiddenException({ error: { code: 'forbidden' } });
-    }
+  // Stateless engine. The guard is constructed zero-DI (`new AuthorizationGuard()`
+  // in every controller's @UseGuards), so it instantiates the service itself —
+  // PermissionService has no injected dependencies (it takes the tx + cache per
+  // call). One instance per controller; the engine holds no per-request state.
+  private readonly permissions = new PermissionService();
 
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
+    const handler = ctx.getHandler();
     const req = ctx.switchToHttp().getRequest<FastifyRequest & { user?: AccessTokenPayload }>();
+    const user = req.user;
 
-    const override = Reflect.getMetadata(AUTHZ_ACTION, ctx.getHandler()) as Action | undefined;
-    const action = override ?? VERB_TO_ACTION[req.method ?? ''];
-    if (!action) throw new ForbiddenException({ error: { code: 'forbidden' } });
+    // `@TenantScoped` — authorized by tenant membership only (a documented
+    // NO_ENGINE_EQUIVALENT surface: shares list/perms-edit, notifications self
+    // mark-read). AuthGuard + TenantGuard already proved an authenticated org
+    // member; RLS + service self-scoping govern the rows. No engine query.
+    if (Reflect.getMetadata(AUTHZ_TENANT_ONLY, handler) === true) {
+      if (!user?.sub || !user.orgId) {
+        throw new ForbiddenException({ error: { code: 'forbidden' } });
+      }
+      return true;
+    }
 
-    const role = req.user?.role as Role | undefined;
-    if (!role || !can(role, resource, action)) {
+    const permission = Reflect.getMetadata(AUTHZ_PERMISSION, handler) as Permission | undefined;
+    if (!permission) {
+      // A domain route with neither @RequirePermission nor @TenantScoped is a
+      // misconfiguration, not an open door. Deny.
       throw new ForbiddenException({ error: { code: 'forbidden' } });
     }
+
+    if (!user?.sub || !user.orgId) {
+      throw new ForbiddenException({ error: { code: 'forbidden' } });
+    }
+
+    const actor: AuthzUser = { id: user.sub, orgId: user.orgId };
+    const allowed = await withTenant(user.orgId, async (tx) => {
+      const cache = new PermissionResolutionCache();
+      return this.permissions.can(actor, permission, { type: 'org', id: user.orgId }, tx, cache);
+    });
+
+    if (!allowed) throw new ForbiddenException({ error: { code: 'forbidden' } });
     return true;
   }
 }

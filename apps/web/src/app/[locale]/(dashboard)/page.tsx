@@ -1,8 +1,9 @@
 import type { OrgStats } from '@emapp/shared-types';
-import { CalendarDays, MessageSquare, Pin, Plus } from 'lucide-react';
+import { CalendarDays, MessageSquare } from 'lucide-react';
 import { cookies } from 'next/headers';
-import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
+
+import { HomeActions } from './_components/home-actions';
 
 /**
  * V11 A.S3 — ManagerHome reskin per
@@ -13,9 +14,9 @@ import { getTranslations } from 'next-intl/server';
  *     aggregates). Active projects / Residents / Signatures received /
  *     Pending — all real numbers. Falls back to "—" if the request
  *     fails so the page never crashes the dashboard.
- *   - Two action buttons: primary "פרויקט חדש" → /projects/new
- *     (live); secondary "משימת שטח" disabled with "בקרוב" hint
- *     (Field Tasks is Phase 2 per docs/03 §1.2).
+ *   - Action button "פרויקט חדש" → /projects/new (live, permission-gated
+ *     in the `HomeActions` client island). The secondary "משימת שטח"
+ *     placeholder was removed (ship-or-hide; Field Tasks is Phase 2).
  *   - Two-column section: WeekCalendar empty state on the left
  *     (will receive real data in A.S12 once B.S6/B.S7 ship the
  *     Calendar service + ICS); Conversations empty state on the
@@ -112,24 +113,10 @@ export default async function HomePage() {
         ))}
       </div>
 
-      {/* Action buttons — primary New Project + secondary Field Task (disabled) */}
-      <div className="flex flex-wrap gap-3">
-        <Link href="/projects/new" className="btn btn-primary btn-lg">
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          <span>{t('action.newProject')}</span>
-        </Link>
-        <button
-          type="button"
-          disabled
-          aria-disabled="true"
-          title={t('action.fieldTaskHint')}
-          aria-label={`${t('action.fieldTask')} — ${t('action.fieldTaskHint')}`}
-          className="btn btn-secondary btn-lg disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Pin className="h-4 w-4" aria-hidden="true" />
-          <span>{t('action.fieldTask')}</span>
-        </button>
-      </div>
+      {/* Action buttons — IAM slice 5b: permission-gated New Project CTA in a
+       *  client island; the disabled "Field Task" placeholder was removed
+       *  (ship-or-hide). See `_components/home-actions.tsx`. */}
+      <HomeActions />
 
       {/* Two-column section: WeekCalendar + Conversations (both empty states) */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">

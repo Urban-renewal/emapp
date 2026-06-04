@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { useHasPermission } from '@/hooks/use-permissions';
 import { useProjectList } from '@/hooks/use-projects';
 
 /**
@@ -47,6 +48,9 @@ export default function ProjectsPage() {
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [view, setView] = useState<'cards' | 'table'>('cards');
   const [query, setQuery] = useState('');
+  // IAM slice 5b — the "פרויקט חדש" CTA renders only for actors holding
+  // `projects.create` (agents/viewers never do → no dead create button).
+  const canCreate = useHasPermission('projects.create');
   const { data, isLoading, isError, refetch } = useProjectList({ limit: 25, cursor });
 
   const items = useMemo(() => data?.items ?? [], [data?.items]);
@@ -157,10 +161,12 @@ export default function ProjectsPage() {
           </button>
         </div>
 
-        <Link href="/projects/new" className="btn btn-primary">
-          <Plus className="h-[15px] w-[15px]" aria-hidden="true" />
-          <span>{t('create')}</span>
-        </Link>
+        {canCreate && (
+          <Link href="/projects/new" className="btn btn-primary">
+            <Plus className="h-[15px] w-[15px]" aria-hidden="true" />
+            <span>{t('create')}</span>
+          </Link>
+        )}
       </div>
 
       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>

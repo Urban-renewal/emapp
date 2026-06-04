@@ -21,7 +21,7 @@ import {
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
-import { AuthzResource } from '../../common/authz/authz.decorators';
+import { RequirePermission } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -32,13 +32,17 @@ import { NotesService } from './notes.service';
 
 const UuidParam = new ZodValidationPipe(z.string().uuid());
 
+// Notes: any org write-role authors; manager-or-AUTHOR edits/deletes (the
+// authorship record-scope lives in the service — NOT a capability). The engine
+// permission gate is the coarse layer; viewer is denied at the gate (holds no
+// notes.create/update/archive).
 @Controller('notes')
-@AuthzResource('notes')
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class NotesController {
   constructor(private readonly notes: NotesService) {}
 
   @Get()
+  @RequirePermission('notes.read')
   async list(
     @CurrentUser() user: AccessTokenPayload,
     @Query(new ZodValidationPipe(ListNotesQuery)) query: ListNotesQueryDto,
@@ -47,6 +51,7 @@ export class NotesController {
   }
 
   @Post()
+  @RequirePermission('notes.create')
   async create(
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(CreateNoteInput)) body: CreateNote,
@@ -55,11 +60,13 @@ export class NotesController {
   }
 
   @Get(':id')
+  @RequirePermission('notes.read')
   async get(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.notes.get(user, id) };
   }
 
   @Patch(':id')
+  @RequirePermission('notes.update')
   async update(
     @CurrentUser() user: AccessTokenPayload,
     @Param('id', UuidParam) id: string,
@@ -70,6 +77,7 @@ export class NotesController {
 
   @Delete(':id')
   @HttpCode(204)
+  @RequirePermission('notes.archive')
   async archive(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     await this.notes.archive(user, id);
   }

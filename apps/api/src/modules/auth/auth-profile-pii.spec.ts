@@ -20,6 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { providerPool } from '../../../../../packages/db/src/client';
 import { createTestOrg, type TestOrg } from '../../../../../packages/db/test/factories';
 import { setupTestDatabase } from '../../../../../packages/db/test/setup';
+import { PermissionService } from '../../common/authz/permission.service';
 
 import { AuthService } from './auth.service';
 
@@ -65,7 +66,7 @@ async function seedMember(
 
 beforeAll(async () => {
   await setupTestDatabase();
-  svc = new AuthService(new JwtService({ secret: serverEnv.JWT_SECRET }));
+  svc = new AuthService(new JwtService({ secret: serverEnv.JWT_SECRET }), new PermissionService());
   org = await createTestOrg(`def3-${Date.now()}`, `def3-${Date.now()}`);
 }, 90_000);
 

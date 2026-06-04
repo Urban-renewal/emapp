@@ -1,9 +1,9 @@
-import type { DocumentType } from '@emapp/shared-types';
-
 export interface DocumentViewModel {
   id: string;
   name: string;
-  type: DocumentType;
+  /** Free text on the BE (seeds/imports use agreement/blueprint/regulation);
+   *  `typeLabel` is the resolved Hebrew/English display string. */
+  type: string;
   typeLabel: string;
   mimeType: string;
   sizeBytes: number;

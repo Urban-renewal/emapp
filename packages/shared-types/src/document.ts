@@ -16,11 +16,22 @@ import { HttpOrHttpsUrlSchema, HttpsUrlSchema } from './safe-url';
 //    they are stored-XSS vectors; download is also forced to attachment.
 //  - `sizeBytes` is hard-bounded here (defense-in-depth) and again at the
 //    presigned-PUT content-length-range.
-//  - `type` has no locked enum; this constrained set is the contract
-//    (FE maps to Hebrew labels). Recorded as a contract choice, not a
-//    schema deviation.
+//  - `type` is FREE TEXT on the `documents` table (no DB enum). Seeds, imports
+//    and migrations write the REAL urban-renewal types (`agreement` /
+//    `blueprint` / `regulation`). The READ schema below therefore parses `type`
+//    as a tolerant string — it MUST NEVER throw on an unrecognised value, or the
+//    whole list `.parse` fails and the documents surface (and the signature
+//    document-picker) silently break (the DV-MGR-DOCS ship-blocker). The
+//    `DocumentTypeEnum` below is the CURATED set the UI offers on upload + the
+//    canonical label keys — NOT a wire validator for reads.
 
 export const DocumentTypeEnum = z.enum([
+  // REAL urban-renewal types the BE seeds/imports use (these were the
+  // DV-MGR-DOCS gap — the FE enum didn't include them):
+  'agreement', // הסכם — the core urban-renewal signed doc
+  'blueprint', // תוכנית / שרטוט
+  'regulation', // תקנון / רגולציה
+  // legacy generic types (kept for back-compat with existing data + uploads):
   'contract',
   'permit',
   'id_document',
@@ -57,7 +68,12 @@ export const DocumentSchema = z.object({
   projectId: z.string().uuid().nullable(),
   apartmentId: z.string().uuid().nullable(),
   name: z.string().min(1).max(255),
-  type: DocumentTypeEnum,
+  // TOLERANT (free-text on the BE): the READ schema must parse ANY stored type
+  // (seeds/imports use agreement/blueprint/regulation; future imports may use
+  // others). Never an enum here — a single bad row must not break the whole
+  // list `.parse` (DV-MGR-DOCS). The FE label-map handles known types + falls
+  // back for the rest. Upload/patch still validate against `DocumentTypeEnum`.
+  type: z.string().min(1).max(64),
   mimeType: DocumentMimeEnum,
   sizeBytes: z.number().int().min(0).max(DOCUMENT_MAX_SIZE_BYTES),
   contentHash: z.string().min(1).max(128),

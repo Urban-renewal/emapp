@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { useHasPermission } from '@/hooks/use-permissions';
 import { useSignatureRequestList } from '@/hooks/use-signature-requests';
 
 const STATUS_FILTERS: (SignatureRequestStatus | 'all')[] = [
@@ -22,6 +23,8 @@ export default function SignatureRequestsPage() {
   const tp = useTranslations('projects');
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<SignatureRequestStatus | 'all'>('all');
+  // IAM slice 5b — "create" CTA gated on `signature_requests.send`.
+  const canCreate = useHasPermission('signature_requests.send');
   const { data, isLoading, isError, refetch } = useSignatureRequestList({
     limit: 25,
     cursor,
@@ -47,9 +50,11 @@ export default function SignatureRequestsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
-        <Button asChild>
-          <Link href="/signature-requests/new">{t('create')}</Link>
-        </Button>
+        {canCreate && (
+          <Button asChild>
+            <Link href="/signature-requests/new">{t('create')}</Link>
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

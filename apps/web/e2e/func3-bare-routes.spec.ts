@@ -35,6 +35,10 @@ test.describe('§FUNC-3 — bare list routes redirect to the projects hub', () =
       // Benign catch-all for the browser-side list/notification fetches the
       // projects page makes after it renders.
       await page.route('**/api/v1/**', async (route) => {
+        // /me must reach the mock-backend — the projects hub's "create project"
+        // CTA gates on `projects.create` from the actor's effective permissions
+        // (slice-5b client-side gating). Everything else → empty list.
+        if (/\/api\/v1\/me(\?|$)/.test(route.request().url())) return route.fallback();
         await route.fulfill({
           status: 200,
           contentType: 'application/json',

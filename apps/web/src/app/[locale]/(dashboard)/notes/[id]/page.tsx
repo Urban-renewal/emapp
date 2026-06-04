@@ -12,19 +12,20 @@ import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
 import { useArchiveNote, useNote, useUpdateNote } from '@/hooks/use-notes';
+import { useHasPermission } from '@/hooks/use-permissions';
 import { ApiClientError } from '@/lib/api/errors';
 import { listMembers } from '@/lib/api/members';
 import { useDisplayLocale } from '@/lib/locale';
 
 /**
- * Note detail (D.17 — read=ALL; update/delete = Manager OR original
- * author per the BE service-layer check).
+ * Note detail (D.17 — read=ALL; update/delete = Manager OR original author
+ * per the BE service-layer check).
  *
- * The FE always renders the edit + archive buttons; the BE returns
- * 403 `forbidden` to anyone who isn't Manager/author. We surface that
- * code as a localized message via `useApiErrorHandler`. This keeps
- * the FE simple (no role-OR-author client-side branching that would
- * have to mirror the service logic).
+ * IAM slice 5b: the edit form + archive controls render only for actors who
+ * hold `notes.update` / `notes.archive` (managers + agents; viewers never).
+ * The BE keeps the finer-grained "manager OR author" check — an agent who
+ * isn't the author still 403s; that 403 surfaces as a localized message via
+ * `useApiErrorHandler`. A viewer simply sees the note read-only.
  */
 export default function NoteDetailPage() {
   const params = useParams<{ id: string }>();
@@ -53,6 +54,8 @@ export default function NoteDetailPage() {
   const { data: note, isLoading, isError, error } = useNote(id, lookup);
   const updateMutation = useUpdateNote();
   const archiveMutation = useArchiveNote();
+  const canEdit = useHasPermission('notes.update');
+  const canArchive = useHasPermission('notes.archive');
 
   const [bodyDraft, setBodyDraft] = useState<string | null>(null);
   const [pinnedDraft, setPinnedDraft] = useState<boolean | null>(null);
@@ -160,56 +163,70 @@ export default function NoteDetailPage() {
       </div>
 
       <div className="rounded-md border bg-card p-4">
-        <form
-          method="post"
-          action=""
-          onSubmit={(e) => {
-            e.preventDefault();
-            onSave();
-          }}
-          className="space-y-3"
-        >
+        {canEdit ? (
+          <form
+            method="post"
+            action=""
+            onSubmit={(e) => {
+              e.preventDefault();
+              onSave();
+            }}
+            className="space-y-3"
+          >
+            <div className="space-y-1">
+              <label htmlFor="body" className="text-sm font-medium">
+                {t('field.body')}
+              </label>
+              <textarea
+                id="body"
+                rows={10}
+                value={currentBody}
+                onChange={(e) => setBodyDraft(e.target.value)}
+                className="w-full rounded-md border px-3 py-2 text-sm"
+                disabled={note.isArchived}
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                id="pinned"
+                type="checkbox"
+                checked={currentPinned}
+                onChange={(e) => setPinnedDraft(e.target.checked)}
+                disabled={note.isArchived}
+                className="rounded"
+              />
+              <label htmlFor="pinned" className="text-sm">
+                {t('field.pinned')}
+              </label>
+            </div>
+
+            {editError.serverError && (
+              <p className="text-sm text-destructive">{editError.serverError}</p>
+            )}
+
+            <div className="flex items-center justify-end">
+              <Button
+                type="submit"
+                disabled={!dirty || note.isArchived || updateMutation.isPending}
+              >
+                {updateMutation.isPending ? t('saving') : t('save')}
+              </Button>
+            </div>
+          </form>
+        ) : (
+          /* IAM slice 5b — read-only note body for actors without
+             `notes.update` (e.g. viewer); no editable form, no save button. */
           <div className="space-y-1">
-            <label htmlFor="body" className="text-sm font-medium">
-              {t('field.body')}
-            </label>
-            <textarea
-              id="body"
-              rows={10}
-              value={currentBody}
-              onChange={(e) => setBodyDraft(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm"
-              disabled={note.isArchived}
-            />
+            <span className="text-sm font-medium">{t('field.body')}</span>
+            <p className="whitespace-pre-wrap text-sm">
+              <NameDisplay name={currentBody} />
+            </p>
           </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              id="pinned"
-              type="checkbox"
-              checked={currentPinned}
-              onChange={(e) => setPinnedDraft(e.target.checked)}
-              disabled={note.isArchived}
-              className="rounded"
-            />
-            <label htmlFor="pinned" className="text-sm">
-              {t('field.pinned')}
-            </label>
-          </div>
-
-          {editError.serverError && (
-            <p className="text-sm text-destructive">{editError.serverError}</p>
-          )}
-
-          <div className="flex items-center justify-end">
-            <Button type="submit" disabled={!dirty || note.isArchived || updateMutation.isPending}>
-              {updateMutation.isPending ? t('saving') : t('save')}
-            </Button>
-          </div>
-        </form>
+        )}
       </div>
 
-      {!note.isArchived && (
+      {!note.isArchived && canArchive && (
         <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4">
           <h2 className="mb-2 text-base font-semibold text-destructive">{t('archiveSection')}</h2>
           <p className="mb-3 text-xs text-muted-foreground">{t('archiveHint')}</p>

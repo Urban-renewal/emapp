@@ -1,6 +1,7 @@
 import { and, eq, isNull } from 'drizzle-orm';
 
 import { AuditService } from '../audit/audit.service';
+import { roleAssignments, roles } from '../schema/iam';
 import { memberships, users } from '../schema/tenancy';
 import { withBootstrap } from '../wrappers/with-bootstrap';
 
@@ -79,15 +80,52 @@ export async function inviteOrgMember(
       .returning({ id: memberships.id });
     if (!m) throw new Error('member: membership insert returned no row');
 
-    await new AuditService(tx, { ip: p.ip, userAgent: p.userAgent }).log({
-      orgId: p.orgId,
-      actorId: p.invitedBy,
-      actorType: 'user',
-      action: 'member.invite',
-      targetTable: 'memberships',
-      targetId: m.id,
-      afterState: { role: p.role }, // no PII in audit
-    });
+    // IAM slice 5 — provision the invited member's authorization. The engine
+    // resolves permissions from `role_assignments`; without a row the invited
+    // member resolves to ZERO permissions (403 everywhere) even after they
+    // accept. Map the legacy `memberships.role` to the same-named system role
+    // and grant an org-scope assignment, atomic with the membership (same
+    // withBootstrap tx). Granting at INVITE time is safe: the pending member
+    // can't authenticate until accept, so an early grant is inert until then.
+    const [systemRole] = await tx
+      .select({ id: roles.id })
+      .from(roles)
+      .where(and(isNull(roles.orgId), eq(roles.isSystem, true), eq(roles.key, p.role)))
+      .limit(1);
+    if (!systemRole) throw new Error(`member: system role '${p.role}' not found (seed missing)`);
+    await tx
+      .insert(roleAssignments)
+      .values({
+        userId,
+        roleId: systemRole.id,
+        scopeType: 'org',
+        scopeId: p.orgId,
+        grantedBy: p.invitedBy,
+      })
+      // Idempotent: an existing user re-invited to the same org+role keeps one
+      // canonical org assignment (the unique index is (user,role,scope)).
+      .onConflictDoNothing();
+
+    await new AuditService(tx, { ip: p.ip, userAgent: p.userAgent }).logMany([
+      {
+        orgId: p.orgId,
+        actorId: p.invitedBy,
+        actorType: 'user',
+        action: 'member.invite',
+        targetTable: 'memberships',
+        targetId: m.id,
+        afterState: { role: p.role }, // no PII in audit
+      },
+      {
+        orgId: p.orgId,
+        actorId: p.invitedBy,
+        actorType: 'user',
+        action: 'role.grant',
+        targetTable: 'role_assignments',
+        targetId: userId,
+        afterState: { role: p.role, scope: 'org' }, // no PII
+      },
+    ]);
 
     return { userId, membershipId: m.id, isExistingUser };
   });

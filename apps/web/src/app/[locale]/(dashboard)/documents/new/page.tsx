@@ -23,7 +23,7 @@ export default function NewDocumentPage() {
   const tp = useTranslations('projects');
   const router = useRouter();
   const upload = useUploadDocument();
-  const [type, setType] = useState<DocumentType>('contract');
+  const [type, setType] = useState<DocumentType>('agreement');
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);

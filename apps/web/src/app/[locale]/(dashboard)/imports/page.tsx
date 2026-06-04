@@ -9,11 +9,14 @@ import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useImportList } from '@/hooks/use-imports';
+import { useHasPermission } from '@/hooks/use-permissions';
 
 export default function ImportsPage() {
   const t = useTranslations('imports');
   const tp = useTranslations('projects');
   const [cursor, setCursor] = useState<string | undefined>(undefined);
+  // IAM slice 5b — the "upload" CTA (starts an import) gated on `imports.run`.
+  const canRun = useHasPermission('imports.run');
   const { data, isLoading, isError, refetch } = useImportList({ limit: 25, cursor });
 
   if (isLoading) return <ListSkeleton rows={6} />;
@@ -35,9 +38,11 @@ export default function ImportsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
-        <Button asChild>
-          <Link href="/imports/new">{t('upload')}</Link>
-        </Button>
+        {canRun && (
+          <Button asChild>
+            <Link href="/imports/new">{t('upload')}</Link>
+          </Button>
+        )}
       </div>
 
       {items.length === 0 ? (

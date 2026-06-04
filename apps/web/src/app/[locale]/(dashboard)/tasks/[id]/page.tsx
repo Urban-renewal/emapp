@@ -12,6 +12,7 @@ import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
+import { useHasPermission } from '@/hooks/use-permissions';
 import {
   useAddTaskAssignee,
   useArchiveTask,
@@ -27,15 +28,15 @@ import { useDisplayLocale } from '@/lib/locale';
 /**
  * Task detail page (D.17 read=ALL with Agent service-layer scoping).
  *
- * Capabilities branch on the same /members 403-vs-200 signal we use
- * on the assignments page — Manager-only resource means the side-load
- * succeeds only for Manager. The page therefore exposes:
- *  - **Always:** status select (Agent allowed on their own assigned
- *    tasks per the BE; Viewer 403s the PATCH); description textarea
- *    (Agent allowed on own; Viewer 403).
- *  - **Manager-only (revealed when membersQuery.isSuccess):**
- *    title/priority/dueAt editing, archive button, add/remove
- *    assignees (with member-picker dropdown).
+ * IAM slice 5b — gating cut over to effective permissions:
+ *  - The status + description edit form renders only with `tasks.update`
+ *    (manager + agent hold it; viewer never → no dead edit form for the
+ *    read-only viewer). The BE still service-layer-scopes an agent to their
+ *    OWN assigned tasks; a cross-task PATCH 403s and surfaces as a message.
+ *  - Manager-only extras (add/remove assignees, archive) stay gated by the
+ *    `/members` 403-vs-200 side-load signal (`isManager`) — a coarse proxy
+ *    that the slice-2 engine will replace when a dedicated capability is
+ *    wired; kept as-is here to avoid scope-creep.
  *
  * Defense in depth on top of the BE AuthorizationGuard + service-layer
  * restrictions; the BE remains the authoritative gate.
@@ -62,6 +63,8 @@ export default function TaskDetailPage() {
     retry: false,
   });
   const isManager = membersQuery.isSuccess;
+  // IAM slice 5b — the base status/description edit form gates on this.
+  const canUpdate = useHasPermission('tasks.update');
   const lookup = useMemo<Map<string, AssignmentMemberLookup> | undefined>(() => {
     if (!membersQuery.data) return undefined;
     const m = new Map<string, AssignmentMemberLookup>();
@@ -210,63 +213,83 @@ export default function TaskDetailPage() {
         </Button>
       </div>
 
-      {/* Editable surface — status + description. Agent/Viewer get a
-          forbidden message on Save if their PATCH attempt fails the BE
-          guard. */}
+      {/* Editable surface — status + description. IAM slice 5b: rendered only
+          with `tasks.update` (manager + agent); the read-only viewer gets a
+          plain read view instead of a dead form. The BE still scopes an agent
+          to their OWN tasks (a cross-task PATCH 403s → localized message). */}
       <div className="rounded-md border bg-card p-4">
         <h2 className="mb-3 text-base font-semibold">{t('editSection')}</h2>
-        <form
-          method="post"
-          action=""
-          onSubmit={(e) => {
-            e.preventDefault();
-            onSave();
-          }}
-          className="space-y-3"
-        >
-          <div className="space-y-1">
-            <label htmlFor="status" className="text-sm font-medium">
-              {t('field.status')}
-            </label>
-            <select
-              id="status"
-              value={currentStatus}
-              onChange={(e) => setStatusDraft(e.target.value as TaskStatus)}
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-              disabled={task.isArchived}
-            >
-              {TaskStatusEnum.options.map((s) => (
-                <option key={s} value={s} dir="auto">
-                  {tst(s)}
-                </option>
-              ))}
-            </select>
-          </div>
+        {canUpdate ? (
+          <form
+            method="post"
+            action=""
+            onSubmit={(e) => {
+              e.preventDefault();
+              onSave();
+            }}
+            className="space-y-3"
+          >
+            <div className="space-y-1">
+              <label htmlFor="status" className="text-sm font-medium">
+                {t('field.status')}
+              </label>
+              <select
+                id="status"
+                value={currentStatus}
+                onChange={(e) => setStatusDraft(e.target.value as TaskStatus)}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                disabled={task.isArchived}
+              >
+                {TaskStatusEnum.options.map((s) => (
+                  <option key={s} value={s} dir="auto">
+                    {tst(s)}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <div className="space-y-1">
-            <label htmlFor="description" className="text-sm font-medium">
-              {t('field.description')}
-            </label>
-            <textarea
-              id="description"
-              rows={4}
-              value={currentDesc}
-              onChange={(e) => setDescDraft(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm"
-              disabled={task.isArchived}
-            />
-          </div>
+            <div className="space-y-1">
+              <label htmlFor="description" className="text-sm font-medium">
+                {t('field.description')}
+              </label>
+              <textarea
+                id="description"
+                rows={4}
+                value={currentDesc}
+                onChange={(e) => setDescDraft(e.target.value)}
+                className="w-full rounded-md border px-3 py-2 text-sm"
+                disabled={task.isArchived}
+              />
+            </div>
 
-          {editError.serverError && (
-            <p className="text-sm text-destructive">{editError.serverError}</p>
-          )}
+            {editError.serverError && (
+              <p className="text-sm text-destructive">{editError.serverError}</p>
+            )}
 
-          <div className="flex items-center justify-end">
-            <Button type="submit" disabled={!dirty || task.isArchived || updateMutation.isPending}>
-              {updateMutation.isPending ? t('saving') : t('save')}
-            </Button>
+            <div className="flex items-center justify-end">
+              <Button
+                type="submit"
+                disabled={!dirty || task.isArchived || updateMutation.isPending}
+              >
+                {updateMutation.isPending ? t('saving') : t('save')}
+              </Button>
+            </div>
+          </form>
+        ) : (
+          /* Read-only view for actors without `tasks.update` (e.g. viewer). */
+          <div className="space-y-3 text-sm">
+            <div className="space-y-1">
+              <span className="font-medium">{t('field.status')}</span>
+              <div>{tst(currentStatus)}</div>
+            </div>
+            <div className="space-y-1">
+              <span className="font-medium">{t('field.description')}</span>
+              <p className="whitespace-pre-wrap text-muted-foreground">
+                {currentDesc ? <NameDisplay name={currentDesc} /> : '—'}
+              </p>
+            </div>
           </div>
-        </form>
+        )}
       </div>
 
       {/* Assignees — read-only for everyone; Manager-only add/remove. */}

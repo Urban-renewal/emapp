@@ -56,6 +56,58 @@ const requestLog: Array<{ method: string; url: string; body: string; cookie: str
 
 const DEFAULT_PORT = 9999;
 
+// IAM slice 5b — `/me` now ships the actor's effective PERMISSIONS (the FE gates
+// controls/nav on them client-side via `useHasPermission`, NOT the legacy role
+// string). The mock must mirror that or every permission-gated control vanishes
+// in e2e. These sets mirror the resolved engine sets (system-roles.ts + the
+// `export.run ⇒ <r>.read` closure), narrowed to the strings the FE actually
+// gates on. `view_owner_pii` mirrors the BE reveal authority (manager always).
+
+/** Manager effective gate-permissions (incl. members.read + audit.read via the
+ *  export.run closure). NOT members.invite / org.settings.read (governance). */
+const MANAGER_PERMISSIONS = [
+  'projects.create',
+  'projects.archive',
+  'buildings.create',
+  'apartments.create',
+  'owners.create',
+  'owners.archive',
+  'owners.reveal_pii',
+  'documents.create',
+  'contractors.create',
+  'contractors.archive',
+  'notes.create',
+  'notes.update',
+  'notes.archive',
+  'tasks.create',
+  'tasks.update',
+  'signature_requests.send',
+  'imports.run',
+  'export.run',
+  'project_assignments.manage',
+  'members.read',
+  'audit.read',
+] as const;
+
+/** Agent: operational writes on assigned scope; NO governance reads, no
+ *  project/owner creation, no reveal/export/staffing. */
+const AGENT_PERMISSIONS = [
+  'projects.archive',
+  'buildings.create',
+  'apartments.create',
+  'owners.archive',
+  'documents.create',
+  'contractors.create',
+  'contractors.archive',
+  'notes.create',
+  'notes.update',
+  'notes.archive',
+  'tasks.create',
+  'tasks.update',
+  'signature_requests.send',
+  'imports.run',
+] as const;
+
 /** Seed-dev manager identity (mirrors packages/db/scripts/seed-dev.ts). */
 export const SEED_MANAGER = {
   id: '00000000-0000-4000-8000-000000000001',
@@ -63,6 +115,8 @@ export const SEED_MANAGER = {
   email: 'manager@alpha.dev',
   role: 'manager',
   avatarColor: '#0f766e',
+  permissions: [...MANAGER_PERMISSIONS],
+  view_owner_pii: true,
   organization: {
     id: '00000000-0000-4000-8000-000000000002',
     name: 'Alpha',
@@ -77,6 +131,8 @@ export const SEED_AGENT = {
   email: 'agent@alpha.dev',
   role: 'agent',
   avatarColor: '#1d4ed8',
+  permissions: [...AGENT_PERMISSIONS],
+  view_owner_pii: false,
 } as const;
 
 export const SEED_VIEWER = {
@@ -86,6 +142,10 @@ export const SEED_VIEWER = {
   email: 'viewer@alpha.dev',
   role: 'viewer',
   avatarColor: '#a16207',
+  // Read-only of operational data — holds NONE of the gated write/governance
+  // controls (no members.read/audit.read → Members+Audit nav hidden).
+  permissions: [],
+  view_owner_pii: false,
 } as const;
 
 /** Provider Admin (Tier 3) — D.37. Mirrors the shape `/api/v1/provider/me`

@@ -1,6 +1,6 @@
 'use client';
 
-import { Building2, FileSignature, FileText, ListChecks } from 'lucide-react';
+import { Building2, FileSignature, ListChecks } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { useHasPermission } from '@/hooks/use-permissions';
 import { useArchiveProject, useProject } from '@/hooks/use-projects';
 import { ApiClientError } from '@/lib/api/errors';
 
@@ -59,6 +60,9 @@ export default function ProjectDetailPage() {
   const id = params?.id;
   const { data, isLoading, isError, error } = useProject(id);
   const archive = useArchiveProject();
+  // IAM slice 5b — permission gates (UX; BE is authoritative).
+  const canArchive = useHasPermission('projects.archive');
+  const canExport = useHasPermission('export.run');
   const [actionError, setActionError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>('tenants');
 
@@ -134,25 +138,17 @@ export default function ProjectDetailPage() {
                   <span>{t('archived')}</span>
                 </span>
               )}
-              <div className="ms-auto flex items-center gap-1.5">
-                {/* §V11 A.S15 — Excel export wired to B.S10 contract
-                 *  (GET /api/v1/projects/:id/export?format=xlsx). The
-                 *  button is now LIVE (returns the localized
-                 *  `notReady` toast until B.S10 lands; surface stays
-                 *  the same once the BE ships). */}
-                <ExportXlsxButton projectId={data.id} fallbackName={data.name} />
-                <button
-                  type="button"
-                  disabled
-                  aria-disabled="true"
-                  title={t('export.pdfComingSoon')}
-                  aria-label={`${t('export.pdf')} — ${t('export.pdfComingSoon')}`}
-                  className="btn btn-secondary btn-sm disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <FileText className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>{t('export.pdf')}</span>
-                </button>
-              </div>
+              {/* IAM slice 5b — Excel export gates on `export.run` (manager +;
+               *  agent/viewer never → no dead export button). The disabled
+               *  "PDF" placeholder ("בקרוב") was a coming-soon dead control;
+               *  ship-or-hide → removed until the PDF export BE slice lands. */}
+              {canExport && (
+                <div className="ms-auto flex items-center gap-1.5">
+                  {/* §V11 A.S15 — Excel export wired to B.S10 contract
+                   *  (GET /api/v1/projects/:id/export?format=xlsx). */}
+                  <ExportXlsxButton projectId={data.id} fallbackName={data.name} />
+                </div>
+              )}
             </div>
 
             <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
@@ -343,7 +339,7 @@ export default function ProjectDetailPage() {
                 </div>
               </section>
 
-              {!data.isArchived && (
+              {!data.isArchived && canArchive && (
                 <div className="flex items-center justify-end gap-2 pt-2">
                   <Button
                     variant="outline"

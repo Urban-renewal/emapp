@@ -26,6 +26,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { providerPool } from '../../../../../packages/db/src/client';
 import { createTestOrg, type TestOrg } from '../../../../../packages/db/test/factories';
 import { setupTestDatabase } from '../../../../../packages/db/test/setup';
+import { PermissionService } from '../../common/authz/permission.service';
 
 import { AuthService } from './auth.service';
 import { hashPassword } from './password';
@@ -60,7 +61,7 @@ function codeOf(e: unknown): string | undefined {
 
 beforeAll(async () => {
   await setupTestDatabase();
-  svc = new AuthService(new JwtService({ secret: serverEnv.JWT_SECRET }));
+  svc = new AuthService(new JwtService({ secret: serverEnv.JWT_SECRET }), new PermissionService());
   const tag = `d49-login-${Date.now()}`;
   org = await createTestOrg(tag, tag);
   email = `manager-${org.id}@test.local`;

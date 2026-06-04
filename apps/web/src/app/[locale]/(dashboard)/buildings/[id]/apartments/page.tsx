@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useApartmentList } from '@/hooks/use-apartments';
+import { useHasPermission } from '@/hooks/use-permissions';
 
 export default function ApartmentsPage() {
   const t = useTranslations('apartments');
@@ -16,6 +17,8 @@ export default function ApartmentsPage() {
   const params = useParams<{ id: string }>();
   const buildingId = params?.id;
   const [cursor, setCursor] = useState<string | undefined>(undefined);
+  // IAM slice 5b — "add apartment" CTA gated on `apartments.create`.
+  const canCreate = useHasPermission('apartments.create');
   const { data, isLoading, isError, refetch } = useApartmentList(buildingId, {
     limit: 25,
     cursor,
@@ -40,9 +43,11 @@ export default function ApartmentsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
-        <Button asChild>
-          <Link href={`/buildings/${buildingId}/apartments/new`}>{t('create')}</Link>
-        </Button>
+        {canCreate && (
+          <Button asChild>
+            <Link href={`/buildings/${buildingId}/apartments/new`}>{t('create')}</Link>
+          </Button>
+        )}
       </div>
 
       <p className="text-sm">

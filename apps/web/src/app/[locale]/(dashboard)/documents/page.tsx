@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useDocumentList } from '@/hooks/use-documents';
+import { useHasPermission } from '@/hooks/use-permissions';
 
 /**
  * V11 A.S8 — DocsPage reskin per
@@ -44,6 +45,8 @@ export default function DocumentsPage() {
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [view, setView] = useState<'cards' | 'table'>('cards');
   const [query, setQuery] = useState('');
+  // IAM slice 5b — "upload" CTA (creates a document) gated on `documents.create`.
+  const canCreate = useHasPermission('documents.create');
   const { data, isLoading, isError, refetch } = useDocumentList({ limit: 25, cursor });
 
   const items = useMemo(() => data?.items ?? [], [data?.items]);
@@ -150,10 +153,12 @@ export default function DocumentsPage() {
           <span>{t('signaturesEntry')}</span>
         </Link>
 
-        <Link href="/documents/new" className="btn btn-primary">
-          <Plus className="h-[15px] w-[15px]" aria-hidden="true" />
-          <span>{t('upload')}</span>
-        </Link>
+        {canCreate && (
+          <Link href="/documents/new" className="btn btn-primary">
+            <Plus className="h-[15px] w-[15px]" aria-hidden="true" />
+            <span>{t('upload')}</span>
+          </Link>
+        )}
       </div>
 
       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>

@@ -63,7 +63,9 @@ test.describe('§E-J8 — Agent assigned-only projects', () => {
     // Benign catch-all.
     await page.route('**/api/v1/**', async (route) => {
       const url = new URL(route.request().url());
-      if (url.pathname === '/api/v1/projects') {
+      // /me must reach the mock-backend (role's effective permissions for the
+      // slice-5b client-side gating); /projects is stubbed below.
+      if (url.pathname === '/api/v1/me' || url.pathname === '/api/v1/projects') {
         await route.fallback();
         return;
       }
@@ -125,11 +127,12 @@ test.describe('§E-J8 — Agent assigned-only projects', () => {
     const projectLinks = page.getByRole('link', { name: /תמ"א/ });
     await expect(projectLinks).toHaveCount(1);
 
-    // §AXIS-V — the "create" CTA is still visible (FE doesn't role-
-    // gate; the BE rejects non-Manager POSTs with 403). Documented
-    // observation, not a polished UX — see J9 spec comment.
-    // The HE label is "צור פרויקט" per messages/he.json projects.create.
-    await expect(page.getByRole('link', { name: 'צור פרויקט' })).toBeVisible();
+    // §AXIS-V — the "create project" CTA is HIDDEN for an Agent. IAM slice 5b
+    // gates it on the `projects.create` permission, which the Agent role does
+    // NOT hold — so the FE no longer renders a dead control that 403s on click
+    // (the DV-ORG-9 class). The project name + the count-of-1 above are the
+    // render-proof. The HE label is "צור פרויקט" (messages/he.json).
+    await expect(page.getByRole('link', { name: 'צור פרויקט' })).toBeHidden();
 
     // §AXIS-U — URL stays on /he/projects.
     expect(page.url()).toMatch(/\/he\/projects$/);

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { ListPageShell } from '@/components/ui/list-page-shell';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { useHasPermission } from '@/hooks/use-permissions';
 import { useTaskList } from '@/hooks/use-tasks';
 
 /**
@@ -15,15 +16,15 @@ import { useTaskList } from '@/hooks/use-tasks';
  *
  * The BE returns ONLY rows the caller may see (Manager/Viewer → org;
  * Agent → own assignments). The FE doesn't replicate this filter — it
- * just renders what the wire delivers. The "create" button renders
- * regardless of role; non-Managers hitting the form get a localized
- * forbidden message via the BE 403 (defense in depth on top of the BE
- * AuthorizationGuard).
+ * just renders what the wire delivers. IAM slice 5b: the "create" CTA now
+ * renders only for actors holding `tasks.create` (manager + agent; viewer
+ * never) — no more dead button. BE AuthorizationGuard stays authoritative.
  */
 export default function TasksPage() {
   const t = useTranslations('tasks');
   const tp = useTranslations('projects');
   const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const canCreate = useHasPermission('tasks.create');
   const { data, isLoading, isError, refetch } = useTaskList({ limit: 25, cursor });
   const items = data?.items ?? [];
 
@@ -31,9 +32,11 @@ export default function TasksPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
-        <Button asChild>
-          <Link href="/tasks/new">{t('create')}</Link>
-        </Button>
+        {canCreate && (
+          <Button asChild>
+            <Link href="/tasks/new">{t('create')}</Link>
+          </Button>
+        )}
       </div>
 
       <ListPageShell

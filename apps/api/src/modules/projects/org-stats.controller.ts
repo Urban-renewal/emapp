@@ -1,7 +1,7 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
-import { AuthzResource } from '../../common/authz/authz.decorators';
+import { RequirePermission } from '../../common/authz/authz.decorators';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthGuard } from '../auth/guards/auth.guard';
@@ -18,18 +18,18 @@ import { ProjectsService } from './projects.service';
  * scoped), and `/projects/stats` would collide with the `/projects/:id`
  * UUID-validated route.
  *
- * Authz reuses the `projects` resource → all org users (manager/agent/
- * viewer) can read; tenant + provider tiers are denied at the guard level
- * (per the D.17 policy matrix). RLS isolation is enforced via withTenant
- * inside the service.
+ * Authz reuses the `projects.read` permission → all org users
+ * (manager/agent/viewer) can read; tenant + provider tiers hold no org
+ * role_assignment, so the engine denies them. RLS isolation is enforced via
+ * withTenant inside the service.
  */
 @Controller('org')
-@AuthzResource('projects')
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class OrgStatsController {
   constructor(private readonly projects: ProjectsService) {}
 
   @Get('stats')
+  @RequirePermission('projects.read')
   async stats(@CurrentUser() user: AccessTokenPayload) {
     return { data: await this.projects.orgStats(user) };
   }

@@ -14,9 +14,18 @@ const MODULES_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'modules
  * not capability-based (so they legitimately do not call requireAgentCapability /
  * agentHasCapability). Each must stay justified:
  *   - notes.*  → D.17 AUTHORSHIP scoping (manager-or-author edits; viewer 403 at
- *     the coarse gate). No per-agent capability governs notes.
- *   - notifications.markRead / markAllRead → a SELF update, RLS-scoped to the
- *     actor's own rows (user_id = app.user_id). Any role, own rows only.
+ *     the coarse gate). No per-agent capability governs notes. Still detected by
+ *     the slice-5a scanner because notes carries @RequirePermission('notes.*')
+ *     and `notes.{create,update,archive}` are agent-write cells in POLICY.
+ *
+ * SLICE 5a NOTE — notifications.markRead / markAllRead are NO LONGER in this
+ * allowlist. The cutover marks them `@TenantScoped()` (a NO_ENGINE_EQUIVALENT
+ * self/RLS surface — the catalog has no `notifications.*` permission), so the
+ * scanner no longer classifies them as permission-gated agent-write endpoints at
+ * all. They are not "an agent write missing a capability gate"; they are
+ * authorized by tenant membership + RLS self-scope, which the guard enforces
+ * directly. Keeping them here would now be STALE (the scanner does not detect
+ * them), which the "no stale entries" test rightly rejects.
  *
  * Adding an entry here is a deliberate, reviewed decision (CODEOWNERS routes
  * apps/api to the owner) — it asserts "this agent-write endpoint is gated by
@@ -26,8 +35,6 @@ const ALLOWLIST = new Set<string>([
   'notes/notes.controller.ts#create',
   'notes/notes.controller.ts#update',
   'notes/notes.controller.ts#archive',
-  'notifications/notifications.controller.ts#markAllRead',
-  'notifications/notifications.controller.ts#markRead',
 ]);
 
 describe('architecture: D.54 fail-open guard (every agent-loosened write endpoint gates the capability)', () => {

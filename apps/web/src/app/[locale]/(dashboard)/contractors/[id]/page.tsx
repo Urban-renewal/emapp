@@ -8,12 +8,13 @@ import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
 import { useArchiveContractor, useContractor } from '@/hooks/use-contractors';
+import { useHasPermission } from '@/hooks/use-permissions';
 import { ApiClientError } from '@/lib/api/errors';
 
 /**
- * Contractor detail (read=ALL; archive=MGR). The PATCH/edit surface
- * is deferred to a future polish slice; the detail card today shows
- * the fields + an archive action.
+ * Contractor detail (read=ALL). IAM slice 5b: the archive action renders only
+ * for actors holding `contractors.archive` (no dead archive button for
+ * agent/viewer). The PATCH/edit surface is deferred to a future polish slice.
  */
 export default function ContractorDetailPage() {
   const params = useParams<{ id: string }>();
@@ -23,6 +24,7 @@ export default function ContractorDetailPage() {
   const tp = useTranslations('projects');
   const { data: c, isLoading, isError, error } = useContractor(id);
   const archive = useArchiveContractor();
+  const canArchive = useHasPermission('contractors.archive');
 
   const archiveError = useApiErrorHandler({
     codeOverrides: { forbidden: () => t('forbiddenArchive') },
@@ -112,7 +114,7 @@ export default function ContractorDetailPage() {
         )}
       </div>
 
-      {!c.isArchived && (
+      {!c.isArchived && canArchive && (
         <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4">
           <h2 className="mb-2 text-base font-semibold text-destructive">{t('archiveSection')}</h2>
           <p className="mb-3 text-xs text-muted-foreground">{t('archiveHint')}</p>

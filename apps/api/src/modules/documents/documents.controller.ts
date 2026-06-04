@@ -24,7 +24,7 @@ import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
-import { AuthzResource } from '../../common/authz/authz.decorators';
+import { RequirePermission } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -35,16 +35,19 @@ import { DocumentsService } from './documents.service';
 
 const UuidParam = new ZodValidationPipe(z.string().uuid());
 
-// Thin controller: guards + Zod only. D.17 (manager write / any-role read,
-// agent record-scoped) + withTenant + presign-after-authorize all live in
-// the service. r2Key is never accepted nor returned.
+// Thin controller: guards + Zod only. Engine permission gate (slice-5a
+// @RequirePermission) is the coarse layer; the FINE agent gate
+// (requireAgentCapability('manage_documents')) + doc/project visibility scoping
+// + withTenant + presign-after-authorize stay in the service. r2Key is never
+// accepted nor returned. finalize is a document write (POST → documents.create
+// cell, matching the legacy verb→action default); download stays a read.
 @Controller('documents')
-@AuthzResource('documents')
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class DocumentsController {
   constructor(private readonly documents: DocumentsService) {}
 
   @Get()
+  @RequirePermission('documents.read')
   async list(
     @CurrentUser() user: AccessTokenPayload,
     @Query(new ZodValidationPipe(ListDocumentsQuery)) query: ListDocumentsQueryDto,
@@ -57,6 +60,7 @@ export class DocumentsController {
   // x-throttle-bypass still skips these in CI.
   @Post()
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @RequirePermission('documents.create')
   async create(
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(CreateDocumentInput)) body: CreateDocument,
@@ -65,18 +69,21 @@ export class DocumentsController {
   }
 
   @Get(':id')
+  @RequirePermission('documents.read')
   async get(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.documents.get(user, id) };
   }
 
   @Get(':id/download')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @RequirePermission('documents.read')
   async download(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.documents.getDownloadUrl(user, id) };
   }
 
   @Post(':id/finalize')
   @HttpCode(200)
+  @RequirePermission('documents.create')
   async finalize(
     @CurrentUser() user: AccessTokenPayload,
     @Param('id', UuidParam) id: string,
@@ -86,6 +93,7 @@ export class DocumentsController {
   }
 
   @Patch(':id')
+  @RequirePermission('documents.update')
   async update(
     @CurrentUser() user: AccessTokenPayload,
     @Param('id', UuidParam) id: string,
@@ -96,6 +104,7 @@ export class DocumentsController {
 
   @Delete(':id')
   @HttpCode(204)
+  @RequirePermission('documents.archive')
   async archive(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     await this.documents.archive(user, id);
   }

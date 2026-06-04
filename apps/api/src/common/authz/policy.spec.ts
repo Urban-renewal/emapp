@@ -14,7 +14,8 @@ import { ExecutionContext } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 
 import { AuthorizationGuard } from './authorization.guard';
-import { AUTHZ_ACTION, AUTHZ_RESOURCE } from './authz.decorators';
+import { AUTHZ_PERMISSION, AUTHZ_TENANT_ONLY } from './authz.decorators';
+import type { Permission } from './permissions';
 import {
   can,
   canProvider,
@@ -236,79 +237,64 @@ describe('D.49 PROVIDER_POLICY matrix — read + operational-write invariant', (
   });
 });
 
-// ── AuthorizationGuard fail-closed semantics (pure unit) ────────────────
+// ── AuthorizationGuard fail-closed semantics (pure unit, slice-5a) ──────────
+//
+// The cutover made the guard ENGINE-backed: the ALLOW path resolves
+// `PermissionService.can(user, permission, org-scope)` against the DB and is
+// covered cell-for-cell by the real-DB shadow-equivalence proof
+// (`policy-equivalence.spec.ts`). These pure-unit tests pin the DB-INDEPENDENT
+// fail-closed branches — the structural guarantees that no endpoint is silently
+// ungated — which never touch the engine:
+//
+//   - a handler with NEITHER @RequirePermission NOR @TenantScoped → 403,
+//   - missing `req.user` (sub/orgId) → 403,
+//   - @TenantScoped short-circuits to ALLOW for an authenticated org member
+//     WITHOUT any engine query (the NO_ENGINE_EQUIVALENT self/RLS surfaces),
+//     and still fails closed when the actor is unauthenticated.
 function fakeCtx(opts: {
-  resource?: Resource;
-  actionOverride?: Action;
-  method?: string;
-  role?: Role | undefined;
+  permission?: Permission;
+  tenantScoped?: boolean;
+  user?: { sub: string; orgId: string } | undefined;
 }): ExecutionContext {
   const handler = (): void => undefined;
   const klass = class Ctrl {};
-  if (opts.resource) Reflect.defineMetadata(AUTHZ_RESOURCE, opts.resource, klass);
-  if (opts.actionOverride) Reflect.defineMetadata(AUTHZ_ACTION, opts.actionOverride, handler);
+  if (opts.permission) Reflect.defineMetadata(AUTHZ_PERMISSION, opts.permission, handler);
+  if (opts.tenantScoped) Reflect.defineMetadata(AUTHZ_TENANT_ONLY, true, handler);
   return {
     getClass: () => klass,
     getHandler: () => handler,
     switchToHttp: () => ({
-      getRequest: () => ({
-        method: opts.method ?? 'GET',
-        user: opts.role ? { role: opts.role } : undefined,
-      }),
+      getRequest: () => ({ user: opts.user }),
     }),
   } as unknown as ExecutionContext;
 }
 
-describe('AuthorizationGuard — fail-closed enforcement', () => {
+const ACTOR = { sub: '00000000-0000-4000-8000-000000000abc', orgId: 'org-1' };
+
+describe('AuthorizationGuard — fail-closed enforcement (engine-backed)', () => {
   const g = new AuthorizationGuard();
 
-  it('allows a permitted (role,resource,verb)', () => {
-    expect(g.canActivate(fakeCtx({ resource: 'projects', method: 'POST', role: 'manager' }))).toBe(
-      true,
-    );
+  it('fails CLOSED when a handler declares NEITHER @RequirePermission NOR @TenantScoped', async () => {
+    await expect(g.canActivate(fakeCtx({ user: ACTOR }))).rejects.toThrow(/Forbidden|forbidden/);
   });
 
-  it('DENIES a forbidden role (viewer create projects) → 403', () => {
-    expect(() =>
-      g.canActivate(fakeCtx({ resource: 'projects', method: 'POST', role: 'viewer' })),
-    ).toThrow(/Forbidden|forbidden/);
+  it('fails CLOSED on a permission-gated handler with no authenticated user', async () => {
+    await expect(
+      g.canActivate(fakeCtx({ permission: 'projects.read', user: undefined })),
+    ).rejects.toThrow();
   });
 
-  it('DENIES agent create projects (manager-only write)', () => {
-    expect(() =>
-      g.canActivate(fakeCtx({ resource: 'projects', method: 'POST', role: 'agent' })),
-    ).toThrow();
+  it('fails CLOSED on a permission-gated handler whose user lacks orgId', async () => {
+    await expect(
+      g.canActivate(fakeCtx({ permission: 'projects.read', user: { sub: ACTOR.sub, orgId: '' } })),
+    ).rejects.toThrow();
   });
 
-  it('fails CLOSED when @AuthzResource is missing (misconfig ≠ open door)', () => {
-    expect(() => g.canActivate(fakeCtx({ method: 'GET', role: 'manager' }))).toThrow();
+  it('@TenantScoped ALLOWS an authenticated org member without any engine query', async () => {
+    await expect(g.canActivate(fakeCtx({ tenantScoped: true, user: ACTOR }))).resolves.toBe(true);
   });
 
-  it('fails CLOSED when there is no authenticated role', () => {
-    expect(() =>
-      g.canActivate(fakeCtx({ resource: 'projects', method: 'GET', role: undefined })),
-    ).toThrow();
-  });
-
-  it('honours an action override (POST /owners/search is a READ)', () => {
-    expect(
-      g.canActivate(
-        fakeCtx({ resource: 'owners', method: 'POST', actionOverride: 'read', role: 'viewer' }),
-      ),
-    ).toBe(true); // viewer may READ owners
-    expect(() =>
-      g.canActivate(fakeCtx({ resource: 'owners', method: 'POST', role: 'viewer' })),
-    ).toThrow(); // but viewer may NOT create
-  });
-
-  it('maps verbs: GET→read, POST→create, PUT/PATCH→update, DELETE→delete', () => {
-    expect(g.canActivate(fakeCtx({ resource: 'projects', method: 'GET', role: 'viewer' }))).toBe(
-      true,
-    );
-    for (const m of ['PUT', 'PATCH', 'DELETE', 'POST']) {
-      expect(() =>
-        g.canActivate(fakeCtx({ resource: 'projects', method: m, role: 'viewer' })),
-      ).toThrow();
-    }
+  it('@TenantScoped still fails CLOSED for an unauthenticated actor', async () => {
+    await expect(g.canActivate(fakeCtx({ tenantScoped: true, user: undefined }))).rejects.toThrow();
   });
 });

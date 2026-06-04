@@ -6,6 +6,7 @@ export * from './provider';
 export * from './projects';
 export * from './collaboration';
 export * from './artifacts';
+export * from './iam';
 export * from './imports';
 export * from './mapping-templates';
 export * from './auth-sessions';

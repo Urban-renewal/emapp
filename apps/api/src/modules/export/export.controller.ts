@@ -13,7 +13,7 @@ import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
-import { AuthzResource } from '../../common/authz/authz.decorators';
+import { RequirePermission } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -33,10 +33,14 @@ const FormatQuery = z.object({ format: z.enum(['xlsx', 'pdf']).default('xlsx') }
  *
  * `GET /api/v1/projects/:id/export?format=xlsx|pdf`
  *
- *   - Mounted under `projects/:id/export` so the existing `projects`
- *     entry in POLICY (read = ALL) gates access. Gate-6 (policy.ts)
- *     stays untouched: this surface declares no new authz resource.
- *   - Manager/Agent/Viewer all pass `projects:read`. Agent's
+ *   - Mounted under `projects/:id/export` and gated by the engine
+ *     permission `projects.read` (slice-5a). It declares no new authz
+ *     resource. NOTE: `export.run` is a DISTINCT permission (Manager/Admin
+ *     hold it) governing the bulk-export PII surface — but the coarse gate
+ *     here stays `projects.read` to preserve the pre-cutover behaviour
+ *     (read = every org role), with PII fidelity + agent scope enforced in
+ *     the composer. Tightening this to `export.run` is a follow-up decision.
+ *   - Manager/Agent/Viewer all pass `projects.read`. Agent's
  *     scope-to-assigned-projects is enforced inside the composer
  *     (`ExportComposerService`) by INNER-JOINing `project_assignments`
  *     on the project load — matches the posture of
@@ -54,7 +58,6 @@ const FormatQuery = z.object({ format: z.enum(['xlsx', 'pdf']).default('xlsx') }
  *     form because the partner's project names are Hebrew).
  */
 @Controller('projects/:id/export')
-@AuthzResource('projects')
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class ExportController {
   constructor(
@@ -69,6 +72,7 @@ export class ExportController {
   // (verified via auth controller usage).
   @Throttle({ default: { limit: 10, ttl: 3_600_000 } })
   @Get()
+  @RequirePermission('projects.read')
   async export(
     @Res({ passthrough: true }) reply: FastifyReply,
     @CurrentUser() user: AccessTokenPayload,

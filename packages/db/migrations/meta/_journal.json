@@ -302,6 +302,41 @@
       "when": 1780326000000,
       "tag": "0042_membership_view_owner_pii",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1780412400000,
+      "tag": "0043_iam_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1780498800000,
+      "tag": "0044_iam_primary_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1780585200000,
+      "tag": "0045_iam_project_assignment_perms",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1780671600000,
+      "tag": "0046_iam_rls_system_role_delete_fix",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1780758000000,
+      "tag": "0047_iam_narrow_viewer_agent_governance_reads",
+      "breakpoints": true
     }
   ]
 }

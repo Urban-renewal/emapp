@@ -41,3 +41,59 @@ PRs #231–240 are **closed** (this file is the reference). Rationale: pre-IAM e
 ## Open backlog after this (post-MVP, none block the IAM merge)
 
 DV-PROV-AUDIT (MED, provider audit read endpoint) · DV-CON-1 (contractor consent) · DV-ORG-1/ORG-2 (UX/KPI polish) · DV-MGR-OWNER-ACTIONS (wire the 4 owner quick-actions).
+
+## MQA-1 — CRITICAL ship-blocker (found 2026-06-04, manual QA on production build)
+
+**Finding.** EVERY FE page renders **blank (white)** in the production build. Root
+cause: `apps/web/next.config.ts` sets `script-src 'self'` for `NODE_ENV=production`
+(line 82) with **no nonce and no `'unsafe-inline'`**. The doc-comment (line 48)
+reasons only about Tailwind ("ships zero inline scripts") and MISSES that **Next.js
+App Router itself emits inline bootstrap + RSC-flight scripts** (`self.__next_f.push(...)`).
+The browser blocks those inline scripts → `self.__next_f` stays `[]` → the React
+Flight client throws `Error: Connection closed.` → hydration never runs → blank page.
+
+**Proof (real browser, prod build via `start-prod-local.ps1`):**
+
+- planted inline `<script>` did NOT execute (`inlineScriptExecutes:false`) → CSP blocks ALL inline.
+- `self.__next_f` length `0` despite 6 inline `<script>` tags present in the SSR HTML.
+- console: `Error: Connection closed.` on every load; `bodyText` length 0 (white).
+- SSR HTML itself is COMPLETE (`curl` → 65 KB, `"error":null`, form present) → it is purely the CSP blocking client hydration, not an SSR error.
+
+**Scope / severity.** Affects production (`NODE_ENV=production`) on every FE route.
+No Cloudflare `_headers` / wrangler / Pages-Function CSP override exists in the repo,
+so the next.config CSP is authoritative in all envs. Dev (`unsafe-inline 'unsafe-eval'`)
+masked it; jsdom/Playwright-on-dev never exercised the prod CSP — same class as the
+S1 GET-fallback lesson. **Blocks ALL manual QA** (nothing renders) AND would ship a
+blank app. NOT a browser-state artifact (a stale MSW service-worker was found + cleared
+first, but the blank persisted with `swCount:0`).
+
+**Disposition:** ✅ **FIXED** (nonce-based CSP, the official Next pattern). Owner
+approved the approach (Gate-6). Changes:
+
+- NEW `apps/web/src/lib/csp.ts` — single source for the CSP. PROD `script-src
+'self' 'nonce-<v>' 'strict-dynamic'` (NO `unsafe-*`); DEV unchanged
+  (`'unsafe-inline' 'unsafe-eval'` for Fast Refresh/HMR).
+- `apps/web/src/middleware.ts` — mints a per-request nonce (`btoa(crypto.randomUUID())`,
+  edge-safe), sets the CSP on BOTH the request headers (Next nonces its inline
+  scripts) and every response (`applyCsp` over the redirects + the next-intl
+  pass-through, rebuilt via `new NextRequest(req.url, { headers })`).
+- `apps/web/next.config.ts` — CSP removed from static `securityHeaders` (the 4
+  non-nonce headers stay); a static header can't mint a per-request nonce.
+- `apps/web/src/middleware.spec.ts` — M10\* rewritten to assert the new mechanism
+  behaviorally (`buildScriptSrc`/`buildCspHeader`) + CSP-no-longer-static + R2
+  connect-src lock-step.
+
+**Verified (real browser, prod `next start`):** login page RENDERS, form present,
+`self.__next_f` populated (6), console 100% clean (0 CSP violations / 0 errors);
+within a single response ALL 19 script tags incl. the inline `self.__next_f`
+bootstrap carry the SAME nonce matching the response CSP header. Tests: middleware
+46/46, proxy-CSP 25/25, typecheck + lint clean. **@security-reviewer: PASS**
+(0 CRITICAL / 0 HIGH; confirmed root-cause not plaster). Plaster (`'unsafe-inline'`
+in prod) was rejected — would gut XSS defense on a PII app.
+
+_Follow-up (non-blocking, from security review):_ tighten M10d so the FE
+connect-src must ⊇ ALL browser-fetch hosts the API helmet declares (not just R2) —
+today it asserts the R2 subset (same as the original M10b). Also a stale dev MSW
+service-worker can independently blank a same-origin prod page in your browser —
+clear it (DevTools → Application → Service Workers → Unregister) if a page is blank
+after this fix.

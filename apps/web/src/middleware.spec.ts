@@ -22,6 +22,7 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { describe, expect, it, vi } from 'vitest';
 
+import { buildCspHeader, buildScriptSrc, CSP_CONNECT_SRC } from './lib/csp';
 import middleware from './middleware';
 
 vi.mock('next-intl/middleware', () => ({
@@ -387,103 +388,99 @@ describe('middleware — provider/login page (V10-S2 + V10-S3 closures)', () => 
   });
 });
 
-describe('next.config.ts security headers (§v9-P0-5 closure pin)', () => {
-  it('M10) next.config.ts declares the required security headers (CLOSED §v9-P0-5)', async () => {
-    // Read the config file as text and grep for the rules. This avoids
-    // executing the Next.js plugin chain in a unit test.
+describe('CSP — nonce-based, per-request (§MQA-1 + §v9-P0-5)', () => {
+  // §MQA-1 — the CSP moved from a STATIC next.config header to a PER-REQUEST
+  // nonce built in `src/lib/csp.ts` + applied in `middleware.ts`. A static
+  // `script-src 'self'` blocked Next's inline bootstrap + RSC-flight scripts and
+  // rendered the whole prod app BLANK. These tests lock the new mechanism + the
+  // unchanged security invariants (no unconditional unsafe-* in prod; connect-src
+  // R2 lock-step with the API helmet). We assert on the BUILDER OUTPUT (behavioral)
+  // rather than grepping a config literal, so the test tracks real behaviour.
+
+  it('M10) PROD script-src uses a nonce + strict-dynamic and NEVER unsafe-*', () => {
+    const prod = buildScriptSrc('TESTNONCE', /* isDev */ false);
+    expect(prod).toContain("'nonce-TESTNONCE'");
+    expect(prod).toContain("'strict-dynamic'");
+    expect(prod).not.toMatch(/unsafe-(inline|eval)/);
+  });
+
+  it('M10a) DEV script-src keeps unsafe-inline + unsafe-eval (Fast Refresh / HMR)', () => {
+    const dev = buildScriptSrc('TESTNONCE', /* isDev */ true);
+    expect(dev).toMatch(/unsafe-inline/);
+    expect(dev).toMatch(/unsafe-eval/);
+  });
+
+  it('M10b) the full CSP header carries every required directive + the R2 host', () => {
+    const csp = buildCspHeader('TESTNONCE', false);
+    for (const directive of [
+      "default-src 'self'",
+      "script-src 'self' 'nonce-TESTNONCE' 'strict-dynamic'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data:",
+      "font-src 'self' data:",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ]) {
+      expect(csp).toContain(directive);
+    }
+    // §csp-r2 — without R2 the browser blocks the presigned-PUT upload silently.
+    expect(csp).toContain(CSP_CONNECT_SRC);
+    expect(CSP_CONNECT_SRC).toMatch(/https:\/\/\*\.r2\.cloudflarestorage\.com/);
+  });
+
+  it('M10c) the CSP is set PER REQUEST in middleware, NOT statically in next.config', async () => {
     const { readFileSync } = await import('fs');
     const { fileURLToPath } = await import('url');
     const { dirname, join } = await import('path');
     const here = dirname(fileURLToPath(import.meta.url));
     const config = readFileSync(join(here, '..', 'next.config.ts'), 'utf8');
+    const mw = readFileSync(join(here, 'middleware.ts'), 'utf8');
+
+    // The non-nonce static headers stay in next.config (they have no per-request value).
     expect(config).toMatch(/X-Frame-Options.*DENY/);
     expect(config).toMatch(/X-Content-Type-Options.*nosniff/);
     expect(config).toMatch(/Referrer-Policy.*strict-origin-when-cross-origin/);
-    expect(config).toMatch(/Content-Security-Policy/);
     expect(config).toMatch(/Permissions-Policy/);
-    // §P0-3 — CSP `unsafe-inline` AND `unsafe-eval` on SCRIPT-src are
-    // DEV-ONLY (Next.js dev inline bootstrap + react-refresh require
-    // both). They MUST be inside an IS_DEV ternary that falls back to
-    // strict `script-src 'self'` in prod. A bare unconditional unsafe-*
-    // on script-src would mean prod is running with it (security
-    // violation).
-    //
-    // Approach: extract every DOUBLE-QUOTED literal in the file that
-    // STARTS WITH "script-src ". These are the actual CSP directive
-    // values (comments / docstrings use other quoting). Any such
-    // literal with unsafe-* must coexist with a `:` (ternary) AND a
-    // strict `"script-src 'self'"` literal — the prod fallback.
-    const scriptSrcLiterals = [...config.matchAll(/"(script-src [^"]*)"/g)].map((m) => m[1] ?? '');
-    expect(scriptSrcLiterals.length).toBeGreaterThanOrEqual(2); // dev + prod
-    let sawProdStrict = false;
-    let sawDevUnsafe = false;
-    for (const lit of scriptSrcLiterals) {
-      if (lit === "script-src 'self'") sawProdStrict = true;
-      if (/unsafe-(inline|eval)/.test(lit)) sawDevUnsafe = true;
-    }
-    expect(sawProdStrict).toBe(true);
-    if (sawDevUnsafe) {
-      // The ternary structure: `IS_DEV ? <unsafe> : <strict>`.
-      expect(config).toMatch(
-        /IS_DEV\s*\?\s*"script-src[^"]*unsafe-[^"]*"\s*:\s*"script-src 'self'"/,
-      );
-    }
-    // Verify IS_DEV is defined as a NODE_ENV !== 'production' check.
-    expect(config).toMatch(/IS_DEV\s*=\s*process\.env\[.NODE_ENV.\]\s*!==\s*['"]production['"]/);
-
-    // §csp-r2 — connect-src MUST include the R2 storage host. The FE
-    // upload contract (documents.ts:uploadToPresigned + imports.ts:
-    // uploadToPresignedXhr) calls PUT directly to a presigned R2 URL
-    // from the browser. Without this directive the browser blocks the
-    // PUT silently (no JS-readable error other than `TypeError:
-    // Failed to fetch`); uploads break in every browser environment.
-    // The matching API helmet allowlist lives in apps/api/src/main.ts
-    // (`connectSrc: [..., 'https://*.r2.cloudflarestorage.com']`).
-    // The two MUST stay in lock-step — divergence here was caught by
-    // browser smoke on 2026-05-25.
-    expect(config).toMatch(/connect-src[^"]*https:\/\/\*\.r2\.cloudflarestorage\.com/);
+    // CSP must NOT be a static next.config header ENTRY anymore (a static header
+    // cannot mint a per-request nonce → the MQA-1 blank-prod regression). We
+    // match the header-object key form so the explanatory doc-comment (which
+    // names the moved header) does not trip the assertion.
+    expect(config).not.toMatch(/key:\s*['"]Content-Security-Policy['"]/);
+    // Middleware builds + sets the CSP and the x-nonce on every request.
+    expect(mw).toMatch(/buildCspHeader/);
+    expect(mw).toMatch(/['"]Content-Security-Policy['"]/);
+    expect(mw).toMatch(/x-nonce/);
   });
 
-  it('M10b) FE connect-src host allowlist matches API helmet connectSrc (lock-step)', async () => {
-    // Generic family-defense: every host the FE direct-fetches MUST
-    // appear in BOTH the FE next.config.ts CSP and the API helmet
-    // connectSrc. If a future contract adds (e.g.) a payment-gateway
-    // host to the API but forgets the FE side, the upload-class bug
-    // recurs. We extract the host-pattern set from each file and
-    // assert FE ⊇ {non-self entries from API} (modulo Sentry which
-    // is FE-only when the browser SDK lands — see PERF-M3 in
-    // next.config.ts).
+  it('M10d) FE connect-src host allowlist matches API helmet connectSrc (lock-step)', async () => {
+    // Generic family-defense: every host the FE direct-fetches MUST appear in
+    // BOTH the FE CSP (now `src/lib/csp.ts`) and the API helmet connectSrc. If a
+    // future contract adds a host to the API but forgets the FE, the upload-class
+    // bug recurs. R2 (browser presigned PUT) is the host both sides must allow.
     const { readFileSync } = await import('fs');
     const { fileURLToPath } = await import('url');
     const { dirname, join } = await import('path');
     const here = dirname(fileURLToPath(import.meta.url));
-    const feConfig = readFileSync(join(here, '..', 'next.config.ts'), 'utf8');
-    // here = apps/web/src → up 3 levels to repo root, then apps/api/src/main.ts.
     const apiMain = readFileSync(
       join(here, '..', '..', '..', 'apps', 'api', 'src', 'main.ts'),
       'utf8',
     );
 
-    // FE: extract the connect-src literal (single line) → host tokens.
-    const feLine = feConfig.match(/"(connect-src [^"]*)"/)?.[1] ?? '';
+    // FE: the single source of truth is now CSP_CONNECT_SRC.
     const feHosts = new Set(
-      feLine
-        .replace(/^connect-src\s*/, '')
+      CSP_CONNECT_SRC.replace(/^connect-src\s*/, '')
         .split(/\s+/)
         .filter((h) => h.length > 0 && h !== "'self'"),
     );
-
     // API: extract the `connectSrc: [...]` array entries.
     const apiBlock = apiMain.match(/connectSrc:\s*\[([\s\S]*?)\]/)?.[1] ?? '';
     const apiHosts = new Set(
       [...apiBlock.matchAll(/'(https?:\/\/[^']+)'/g)].map((m) => m[1]!).filter(Boolean),
     );
 
-    // The FE must allow every API-listed host EXCEPT pure server-side
-    // ones. The current contract: R2 (browser PUT) is the only one
-    // that BOTH sides must allow.
-    const requiredOnFe = ['https://*.r2.cloudflarestorage.com'];
-    for (const host of requiredOnFe) {
+    const requiredOnBoth = ['https://*.r2.cloudflarestorage.com'];
+    for (const host of requiredOnBoth) {
       expect(apiHosts.has(host), `API helmet must allow ${host} (connectSrc)`).toBe(true);
       expect(feHosts.has(host), `FE CSP must allow ${host} (connect-src)`).toBe(true);
     }

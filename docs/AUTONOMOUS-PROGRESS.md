@@ -9,8 +9,9 @@ future external e-sign integration) and the **Hebrew signed-PDF "mess"**.
 
 1. ✅ Signed-doc 500 on non-Hebrew names — FIXED (encodeSafe) + pushed (7f55b3c).
 2. ✅ Signed-doc permission split-brain — FIXED + SOLID refactor (b6f1602).
-3. ⏳ Ghost documents / NoSuchKey (no upload-status column → 5 surfaces serve
-   byte-less docs; worst: signature recorded against never-stored bytes). NEXT-ish.
+3. 🟡 Ghost documents / NoSuchKey — DOWNLOAD path FIXED + E2E-verified (843aa4e,
+   migration 0049 + uploaded_at gate on getDownloadUrl). Slice 2 = the same gate
+   on tenant-portal / contractor-portal / signature create+preview surfaces.
 4. ⏳ No scheduler at all → R2 PII-byte leak, signature-expiry never finalizes/
    notifies, "overdue" inert. Foundational.
 5. ✅ task_assigned not fired on manager-create-with-assignees — FIXED (26963a6).

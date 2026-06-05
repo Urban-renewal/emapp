@@ -1,16 +1,24 @@
 'use client';
 
+import { ApartmentStatusEnum, type ApartmentStatus } from '@emapp/shared-types';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
+import { APARTMENT_STATUS_LABELS_EN, APARTMENT_STATUS_LABELS_HE } from '@/adapters/apartment';
 import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
-import { useApartment, useArchiveApartment } from '@/hooks/use-apartments';
+import {
+  useApartment,
+  useArchiveApartment,
+  useUpdateApartmentStatus,
+} from '@/hooks/use-apartments';
+import { useHasPermission } from '@/hooks/use-permissions';
 import { ApiClientError } from '@/lib/api/errors';
+import { useDisplayLocale } from '@/lib/locale';
 
 export default function ApartmentDetailPage() {
   const t = useTranslations('apartments');
@@ -20,7 +28,20 @@ export default function ApartmentDetailPage() {
   const id = params?.id;
   const { data, isLoading, isError, error } = useApartment(id);
   const archive = useArchiveApartment();
+  const updateStatus = useUpdateApartmentStatus();
+  const canUpdate = useHasPermission('apartments.update');
+  const locale = useDisplayLocale();
   const [actionError, setActionError] = useState<string | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<ApartmentStatus | ''>('');
+
+  // The [id] route does a SOFT navigation (no remount) between apartments, so
+  // local state survives. Reset the unsaved status draft when the apartment
+  // changes — otherwise an un-saved selection on apartment A would pre-fill
+  // (and could be saved onto) apartment B. (code-review CRITICAL.)
+  useEffect(() => {
+    setPendingStatus('');
+    setActionError(null);
+  }, [id]);
 
   if (isLoading) return <ListSkeleton withRows={false} />;
   if (isError) {
@@ -36,6 +57,21 @@ export default function ApartmentDetailPage() {
   }
   if (!data) return null;
   const buildingId = data.buildingId;
+  const statusLabels = locale === 'he' ? APARTMENT_STATUS_LABELS_HE : APARTMENT_STATUS_LABELS_EN;
+  const effectiveStatus: ApartmentStatus = pendingStatus || data.status;
+
+  async function onSaveStatus() {
+    if (!id || !data) return;
+    const next = pendingStatus || data.status;
+    if (next === data.status) return;
+    setActionError(null);
+    try {
+      await updateStatus.mutateAsync({ id, status: next });
+      setPendingStatus('');
+    } catch {
+      setActionError(t('statusUpdateFailed'));
+    }
+  }
 
   async function onArchive() {
     if (!id) return;
@@ -79,6 +115,38 @@ export default function ApartmentDetailPage() {
           </Button>
         )}
       </div>
+
+      {canUpdate && !data.isArchived && (
+        <div className="rounded-md border bg-card p-4">
+          <h2 className="text-sm font-semibold">{t('statusSection')}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t('statusHint')}</p>
+          <div className="mt-3 flex items-center gap-2">
+            <label htmlFor="apartment-status" className="sr-only">
+              {t('statusSection')}
+            </label>
+            <select
+              id="apartment-status"
+              className="rounded-md border bg-background px-3 py-2 text-sm"
+              value={effectiveStatus}
+              onChange={(e) => setPendingStatus(e.target.value as ApartmentStatus)}
+              disabled={updateStatus.isPending}
+            >
+              {ApartmentStatusEnum.options.map((s) => (
+                <option key={s} value={s}>
+                  {statusLabels[s]}
+                </option>
+              ))}
+            </select>
+            <Button
+              size="sm"
+              onClick={onSaveStatus}
+              disabled={updateStatus.isPending || effectiveStatus === data.status}
+            >
+              {updateStatus.isPending ? t('statusSaving') : t('statusSave')}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {data.notes && (
         <div className="rounded-md border bg-card p-4">

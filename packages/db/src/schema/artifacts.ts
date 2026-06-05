@@ -36,6 +36,10 @@ export const documents = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
+    /** 0049 — set by a SUCCESSFUL finalize. NULL = bytes not confirmed in R2;
+     *  serving read paths require this NOT NULL so a never-finalised "ghost"
+     *  document is never listed/downloaded (was the NoSuchKey bug). */
+    uploadedAt: timestamp('uploaded_at', { withTimezone: true }),
   },
   (table) => ({
     r2KeyUnique: uniqueIndex('documents_r2_key_unique').on(table.r2Key),

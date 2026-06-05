@@ -299,6 +299,12 @@ describe('DOCUMENTS · DEEP · audit trail (ISO A.12.4)', () => {
     const at = await manager('au2');
     const c = await createDoc(at, validDoc());
     const id = ((c.body['data'] as Json)['document'] as Json)['id'] as string;
+    // 0049 — download requires a finalised doc (else ghost → 404).
+    await call(`/documents/${id}/finalize`, {
+      method: 'POST',
+      cookie: `access_token=${at}`,
+      body: JSON.stringify({ sizeBytes: 1024, contentHash: 'sha256:deadbeef' }),
+    });
     await call(`/documents/${id}/download`, { cookie: `access_token=${at}` });
     await call(`/documents/${id}/download`, { cookie: `access_token=${at}` });
     const audit = await call('/audit?limit=100', { cookie: `access_token=${at}` });
@@ -399,6 +405,12 @@ describe('DOCUMENTS · DEEP · runtime latency budget', () => {
       const at = await manager('rt');
       const c = await createDoc(at, validDoc({ name: 'lat.pdf' }));
       const id = ((c.body['data'] as Json)['document'] as Json)['id'] as string;
+      // 0049 — download requires a finalised doc.
+      await call(`/documents/${id}/finalize`, {
+        method: 'POST',
+        cookie: `access_token=${at}`,
+        body: JSON.stringify({ sizeBytes: 1024, contentHash: 'sha256:deadbeef' }),
+      });
       const ms: number[] = [];
       for (let i = 0; i < 5; i++) {
         const t0 = Date.now();

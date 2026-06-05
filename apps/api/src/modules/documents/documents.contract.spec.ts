@@ -103,6 +103,20 @@ async function createDoc(at: string, body: Json): Promise<Res> {
   });
 }
 
+/** 0049 — create THEN finalize, so the doc is SERVABLE (download requires
+ *  uploaded_at, set by a successful finalize). Mirrors the real
+ *  create→upload→finalize lifecycle; a doc that is only created is a "ghost". */
+async function createFinalizedDoc(at: string, body: Json = validDoc()): Promise<string> {
+  const created = await createDoc(at, body);
+  const id = ((created.body['data'] as Json)['document'] as Json)['id'] as string;
+  await call(`/documents/${id}/finalize`, {
+    method: 'POST',
+    cookie: `access_token=${at}`,
+    body: JSON.stringify({ sizeBytes: body['sizeBytes'], contentHash: body['contentHash'] }),
+  });
+  return id;
+}
+
 beforeAll(async () => {
   try {
     const res = await fetch(`${API}/health`, { signal: AbortSignal.timeout(2500) });
@@ -225,8 +239,7 @@ describe('CONTRACT · documents · CRUD + finalize + isolation', () => {
 
   ct('DOC9 download own → 200 {url,expiresInSeconds}', async () => {
     const at = await manager('dl');
-    const created = await createDoc(at, validDoc());
-    const id = ((created.body['data'] as Json)['document'] as Json)['id'] as string;
+    const id = await createFinalizedDoc(at); // 0049 — download requires finalize
     const d = await call(`/documents/${id}/download`, { cookie: `access_token=${at}` });
     expect(d.status).toBe(200);
     const data = d.body['data'] as Json;

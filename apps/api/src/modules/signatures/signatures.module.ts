@@ -7,12 +7,14 @@ import { STORAGE_PROVIDER, storageProviderFactory } from '../documents/storage';
 import { EMAIL_PROVIDER, emailProviderFactory } from '../members/invite-email';
 import { NotificationsModule } from '../notifications/notifications.module';
 
+import { PdfSignedDocumentRenderer } from './pdf-signed-document.renderer';
 import { PublicSignController } from './public-sign.controller';
 import { PublicSignService } from './public-sign.service';
 import { SignatureRequestsController } from './signature-requests.controller';
 import { SignatureRequestsService } from './signature-requests.service';
 import { SIGNATURE_TOKEN_SECRET, SignatureTokenService } from './signature-token.service';
 import { SignedDocumentService } from './signed-document.service';
+import { SIGNED_DOCUMENT_RENDERER } from './signed-document.types';
 
 /** Phase 5 — signatures module.
  *
@@ -44,6 +46,9 @@ import { SignedDocumentService } from './signed-document.service';
     SignatureTokenService,
     SignatureRequestsService,
     SignedDocumentService,
+    // SOLID seam — bind the renderer abstraction to the built-in pdf-lib impl.
+    // Swap this useClass for an external e-sign integration with no other change.
+    { provide: SIGNED_DOCUMENT_RENDERER, useClass: PdfSignedDocumentRenderer },
     PublicSignService,
     {
       provide: SIGNATURE_TOKEN_SECRET,

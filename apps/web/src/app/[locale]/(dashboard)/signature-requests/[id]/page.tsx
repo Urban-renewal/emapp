@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { useSessionProfile } from '@/hooks/use-session';
 import { useCancelSignatureRequest, useSignatureRequest } from '@/hooks/use-signature-requests';
 import { ApiClientError } from '@/lib/api/errors';
 import { fetchSignedDocument } from '@/lib/api/signature-requests';
@@ -20,6 +21,13 @@ export default function SignatureRequestDetailPage() {
   const id = params?.id;
   const { data, isLoading, isError, error } = useSignatureRequest(id);
   const cancel = useCancelSignatureRequest();
+  // The signed certificate carries decrypted owner PII (signer name + the
+  // signature), so the download button is gated on the SAME signal as the
+  // owner-detail PII reveal: `/me.view_owner_pii` (manager always · agent iff
+  // capability granted · viewer never) — mirrors the BE fidelity gate, so the
+  // button never shows for someone the endpoint would 403.
+  const { data: profile } = useSessionProfile();
+  const canDownloadSigned = profile?.view_owner_pii === true;
   const [actionError, setActionError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
 
@@ -101,7 +109,7 @@ export default function SignatureRequestDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {data.signedRelative && (
+          {data.signedRelative && canDownloadSigned && (
             <Button variant="outline" onClick={onDownloadSigned} disabled={downloading}>
               {downloading ? t('downloadingSigned') : t('downloadSigned')}
             </Button>

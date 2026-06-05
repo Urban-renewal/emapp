@@ -83,27 +83,29 @@ export class SignatureRequestsController {
    *  SIGNED request has one; otherwise the service throws 404. Returns the
    *  PDF binary directly (not the {data} envelope) via the Fastify reply.
    *
-   *  Gate = `owners.reveal_pii` (NOT `signature_requests.read`): the artifact
-   *  contains decrypted owner PII (the signer's name + their signature image),
-   *  so it must require the SAME permission as revealing owner PII — else a
-   *  Viewer / Contractor / agent-without-reveal_pii (all of whom hold
-   *  signature_requests.read) could export cleartext PII they cannot see on
-   *  screen (D.47 / D.50). The service additionally reuses the SR read path
-   *  for the agent record-scope (assigned-project) visibility check. */
+   *  Coarse gate = `owners.read`; the FINE PII gate (`resolveOwnerPiiFidelity
+   *  === 'unmasked'` — manager always · agent iff `view_owner_pii` capability ·
+   *  viewer never) lives in the service, EXACTLY mirroring POST
+   *  /owners/:id/reveal-pii. The artifact carries decrypted owner PII (signer
+   *  name + signature), so its gate must match the on-screen PII-reveal gate —
+   *  NOT engine `owners.reveal_pii`, which excludes a capability-granted agent
+   *  (the split-brain we removed). The service also reuses the SR read path for
+   *  the agent record-scope (assigned-project) visibility check. Content-type
+   *  comes from the renderer (the artifact may not always be a PDF). */
   @Get(':id/signed-document')
-  @RequirePermission('owners.reveal_pii')
+  @RequirePermission('owners.read')
   async signedDocument(
     @CurrentUser() user: AccessTokenPayload,
     @Param('id', UuidParam) id: string,
     @Res() reply: FastifyReply,
   ): Promise<void> {
-    const { pdf, fileName } = await this.signedDocuments.generate(user, id);
+    const { bytes, contentType, fileName } = await this.signedDocuments.generate(user, id);
     await reply
-      .header('Content-Type', 'application/pdf')
+      .header('Content-Type', contentType)
       .header('Content-Disposition', `attachment; filename="${fileName}"`)
-      .header('Content-Length', String(pdf.length))
+      .header('Content-Length', String(bytes.length))
       .header('Cache-Control', 'no-store')
-      .send(Buffer.from(pdf));
+      .send(Buffer.from(bytes));
   }
 
   /** Cancel = state transition (pending → cancelled). D.46: manager OR an agent

@@ -7,16 +7,43 @@ future external e-sign integration) and the **Hebrew signed-PDF "mess"**.
 
 ## Verified gap backlog (from the 4 independent audits)
 
-1. ✅ Signed-doc 500 on non-Hebrew names — FIXED (encodeSafe) + pushed.
-2. Signed-doc permission split-brain (FE button ungated + BE engine-gate ≠ legacy
-   view_owner_pii) — IN PROGRESS this session.
-3. Ghost documents / NoSuchKey (no upload-status column → 5 surfaces serve
-   byte-less docs; worst: signature recorded against never-stored bytes).
-4. No scheduler at all → R2 PII-byte leak, signature-expiry never finalizes/notifies,
-   "overdue" inert. Foundational.
-5. task_assigned not fired on manager-create-with-assignees path.
-6. Import: dryRun dead-ends; ownerships persist via destructive set-replace;
-   undo impossible (no change-ledger). The preview+undo build.
+1. ✅ Signed-doc 500 on non-Hebrew names — FIXED (encodeSafe) + pushed (7f55b3c).
+2. ✅ Signed-doc permission split-brain — FIXED + SOLID refactor (b6f1602).
+3. ⏳ Ghost documents / NoSuchKey (no upload-status column → 5 surfaces serve
+   byte-less docs; worst: signature recorded against never-stored bytes). NEXT-ish.
+4. ⏳ No scheduler at all → R2 PII-byte leak, signature-expiry never finalizes/
+   notifies, "overdue" inert. Foundational.
+5. ✅ task_assigned not fired on manager-create-with-assignees — FIXED (26963a6).
+6. ⏳ Import preview + undo (owner's #1 priority). The big build — design below.
+
+## NEXT: import preview + undo (design ready, from audit-3)
+
+- **Migration (Gate-6, hand-authored .sql + \_journal.json):**
+  - `import_changes` ledger: (id, org_id, import_job_id FK, entity_table, entity_id,
+    action ∈ created|attached|ownership_ended|ownership_inserted, prev_ended_at, created_at).
+  - import_jobs: add a preview-terminal status `awaiting_confirm` (between validating
+    and persisting) + optional `confirmed_at`.
+- **Worker (persistStage):** after validate, if preview mode → compute inventory
+  (created vs attached counts + the set-replace impact) and stop at `awaiting_confirm`
+  WITHOUT writing domain rows. On confirm → run persist, writing one import_changes
+  row per change (the batch resolvers already know created-vs-attached per row; the
+  ownership set-replace must log `ownership_ended` with prev_ended_at).
+- **Endpoints:** POST /imports/:id/confirm (commit), /cancel (discard, already exists
+  for pre-persist), /undo (reverse via ledger inside one tx: delete ownership_inserted,
+  un-end ownership_ended, soft-archive created rows that nothing else references — per
+  D.05 prefer archivedAt over hard delete; order ownerships→apartments→buildings→owners).
+- **FE:** preview screen (inventory + validation errors) + אישור/ביטול; "בטל ייבוא"
+  (undo) button on a completed import. "Pending until logout" = no timer auto-cancel.
+- **Owner note "preview for all files":** Excel-only today; the preview/confirm pattern
+  applies to the import pipeline. (Document upload already has create→PUT→finalize; the
+  ghost-doc fix #3 is the analogous integrity gate there.)
+
+## Session log
+
+- This session: fixed #1, #2 (+SOLID renderer seam), #5. 4 commits on
+  feat/in-app-notifications, all pushed, all reviewed (security PASS) + tested.
+  Continuing the loop toward #6 (import preview+undo) → then #3 (ghost-docs) →
+  #4 (scheduler, which also lights up signature-expiry + overdue + R2 sweeper).
 
 ## Decisions
 

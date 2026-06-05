@@ -553,6 +553,7 @@ _(no body)_
 | `fileSizeBytes` | integer | yes | minimum=1, maximum=52428800 |
 | `idempotencyKey` | string | no | pattern="^[A-Za-z0-9_-]{16,64}$" |
 | `projectId` | string | yes | format="uuid" |
+| `requireConfirm` | boolean | no | — |
 
 
 **Response**

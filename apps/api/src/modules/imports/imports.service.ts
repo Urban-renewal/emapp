@@ -101,6 +101,9 @@ const CANCELLABLE: ReadonlySet<ImportJobView['status']> = new Set([
   'validating',
   'persisting',
   'awaiting_mapping',
+  // 0048 — a preview-paused import is cancellable: this IS the "discard a bad
+  // Excel" path (DELETE purges the bytes; nothing was persisted).
+  'awaiting_confirm',
 ]);
 
 function toView(row: typeof importJobs.$inferSelect): ImportJobView {

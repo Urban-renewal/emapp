@@ -138,6 +138,15 @@ export async function startImport(id: string): Promise<ImportJob> {
   return ImportDataSchema.parse({ data: res.data }).data;
 }
 
+/** POST /imports/:id/confirm — 0048 preview→confirm: commit a preview-paused
+ *  import (status 'awaiting_confirm'); the server re-queues a real run. */
+export async function confirmImport(id: string): Promise<ImportJob> {
+  const res = await apiClient.post<unknown>(`/imports/${id}/confirm`, {});
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  // Endpoint returns { data: { import: ImportJob } }.
+  return z.object({ import: ImportJobSchema }).parse(res.data).import;
+}
+
 /** DELETE /imports/:id — cancel (only valid in CANCELLABLE states). */
 export async function cancelImport(id: string): Promise<void> {
   const res = await apiClient.delete<unknown>(`/imports/${id}`);

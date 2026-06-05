@@ -168,11 +168,36 @@ async function buildSignatureCertificatePdf(d: CertData): Promise<Uint8Array> {
   // This is SINGLE-LEVEL bidi (Hebrew runs reversed, LTR runs kept, laid
   // out right→left) — sufficient for names + labels + embedded numbers in
   // this certificate; NOT a full Unicode Bidi Algorithm (no nested levels).
+  // Helvetica (a StandardFont, WinAnsi) THROWS on any codepoint it can't
+  // encode, and the embedded Heebo is a Hebrew subset. Owner/document names
+  // are user-supplied and may contain Arabic, Cyrillic, CJK, or emoji — which
+  // would crash PDF generation (500). Sanitize per-run: keep what the chosen
+  // font can encode, replace the rest with '?', so a non-Hebrew/non-Latin name
+  // degrades gracefully instead of failing the whole certificate.
+  // (Full Arabic-script rendering would need an Arabic font — follow-up.)
+  const encodeSafe = (font: typeof helv | typeof heebo, s: string): string => {
+    try {
+      font.widthOfTextAtSize(s, 1);
+      return s;
+    } catch {
+      return [...s]
+        .map((ch) => {
+          try {
+            font.widthOfTextAtSize(ch, 1);
+            return ch;
+          } catch {
+            return '?';
+          }
+        })
+        .join('');
+    }
+  };
   const drawRtlMixed = (text: string, size: number, color = navy): void => {
     let x = right;
     for (const run of splitRuns(text)) {
       const font = run.heb ? heebo : helv;
-      const glyphs = run.heb ? [...run.text].reverse().join('') : run.text;
+      const raw = run.heb ? [...run.text].reverse().join('') : run.text;
+      const glyphs = encodeSafe(font, raw);
       const w = font.widthOfTextAtSize(glyphs, size);
       x -= w;
       page.drawText(glyphs, { x, y, size, font, color });

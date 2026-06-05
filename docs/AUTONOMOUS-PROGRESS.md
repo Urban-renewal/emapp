@@ -41,6 +41,20 @@ future external e-sign integration) and the **Hebrew signed-PDF "mess"**.
   applies to the import pipeline. (Document upload already has create→PUT→finalize; the
   ghost-doc fix #3 is the analogous integrity gate there.)
 
+## Session tally (this autonomous run — 13 commits, all pushed + verified)
+
+- ✅ #1 signed-doc 500-on-non-Hebrew-names (7f55b3c)
+- ✅ #2 permission split-brain + SOLID renderer seam (b6f1602)
+- ✅ #5 task_assigned on create-with-assignees (26963a6)
+- ✅ #6 import PREVIEW→confirm — backend + FE + E2E (c23cb1b/ef7d24a/b57c8a2)
+- ✅ #3 ghost-docs / NoSuchKey — ALL 5 surfaces gated + E2E (843aa4e org-download,
+  4deb3d5 signature-create+preview = audit's worst F5, 370bedd portal+contractor)
+- Each: typecheck+lint+tests green, migrations 0048/0049 applied to local DB.
+  REMAINING (designed, not yet built): #4 scheduler (signature-expiry transition +
+  overdue + R2 PII-byte sweeper — the "what happens over time" answer); #6 undo
+  (deferred-by-risk, D-A3); B-A1 Hebrew render (needs owner visual confirmation).
+  Gate-6 migrations (0048/0049) await owner merge.
+
 ## Session log
 
 - This session: fixed #1, #2 (+SOLID renderer seam), #5. 4 commits on

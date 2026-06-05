@@ -20,7 +20,7 @@ import type {
   TenantPortalSignature,
 } from '@emapp/shared-types';
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 
 import { flushSessionCache } from '../auth/session-validity';
 import type { TenantTokenPayload } from '../auth/tenant/tenant-auth.guard';
@@ -249,6 +249,8 @@ export class PortalService {
         .where(
           and(
             isNull(documents.archivedAt),
+            // 0049 — never advertise a ghost doc (never-stored bytes) to a resident.
+            isNotNull(documents.uploadedAt),
             // Inner-query: tenant's own apartment ids. inArray with a
             // subquery is a single round-trip; no separate fetch.
             inArray(documents.apartmentId, ownedApts),

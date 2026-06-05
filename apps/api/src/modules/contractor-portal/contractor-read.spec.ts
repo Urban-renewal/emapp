@@ -134,6 +134,7 @@ async function seed(): Promise<void> {
           r2Key: `org/${orgA.id}/doc/${randomUUID()}.pdf`,
           contentHash: 'sha256:' + 'd'.repeat(64),
           uploadedBy: orgA.users[0]!.id,
+          uploadedAt: new Date(), // 0049 — finalised so it's listed/served
         })
         .returning({ id: documents.id });
       return d!.id;

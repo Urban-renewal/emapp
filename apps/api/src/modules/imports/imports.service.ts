@@ -123,6 +123,8 @@ function toView(row: typeof importJobs.$inferSelect): ImportJobView {
     okRows: row.okRows,
     failedRows: row.failedRows,
     dryRun: row.dryRun,
+    requireConfirm: row.requireConfirm,
+    confirmedAt: row.confirmedAt,
     createdBy: row.createdBy,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -423,6 +425,7 @@ export class ImportsService {
               fileSizeBytes: input.fileSizeBytes,
               fileContentHash,
               dryRun: input.dryRun ?? false,
+              requireConfirm: input.requireConfirm ?? false,
               createdBy: user.sub,
               idempotencyKey: input.idempotencyKey ?? null,
             })
@@ -1156,6 +1159,95 @@ export class ImportsService {
 
     const { _templateId, ...rowView } = updated;
     return { import: toView(rowView as typeof importJobs.$inferSelect), templateId: _templateId };
+  }
+
+  /**
+   * 0048 — confirm a preview-paused import (status='awaiting_confirm'). Stamps
+   * confirmed_at and re-queues a FULL real run from 'queued' (which persists
+   * this time, because the worker's isPreviewPending → false once confirmed_at
+   * is set). Mirrors submitMapping: creator-only + run_imports capability, the
+   * status-flip + audit commit BEFORE the pg-boss send, best-effort re-enqueue
+   * with backoff. The retained R2 file (awaiting_confirm did not purge) is
+   * re-parsed by the fresh run. The alternative action is DELETE /imports/:id
+   * (cancel), which discards + purges — so a bad Excel never reaches the org.
+   */
+  async confirm(user: AccessTokenPayload, id: string): Promise<{ import: ImportJob }> {
+    const updated = await withTenant(
+      user.orgId,
+      async (tx) => {
+        const [row] = await tx.select().from(importJobs).where(eq(importJobs.id, id)).limit(1);
+        if (!row) throw NOT_FOUND;
+        if (row.projectId) await this.assertProjectVisible(tx, user, row.projectId);
+        else if (user.role === 'agent') throw NOT_FOUND;
+        await requireAgentCapability(tx, user, 'run_imports');
+        if (row.createdBy !== user.sub) throw FORBIDDEN;
+        if (row.status !== 'awaiting_confirm') {
+          throw new ConflictException({
+            error: { code: 'import_not_awaiting_confirm', message: `status is ${row.status}` },
+          });
+        }
+        const now = new Date();
+        const updResult = await tx
+          .update(importJobs)
+          .set({
+            status: 'queued',
+            confirmedAt: now,
+            startedAt: null,
+            finishedAt: null,
+            processedRows: 0,
+            okRows: 0,
+            failedRows: 0,
+            updatedAt: now,
+          })
+          .where(and(eq(importJobs.id, id), eq(importJobs.status, 'awaiting_confirm')));
+        const rowCount = (updResult as unknown as { rowCount?: number }).rowCount ?? 0;
+        if (rowCount === 0) {
+          throw new ConflictException({
+            error: {
+              code: 'import_status_changed',
+              message: 'row is no longer awaiting_confirm (concurrent cancel?)',
+            },
+          });
+        }
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'import.confirmed',
+          targetTable: 'import_jobs',
+          targetId: id,
+          sessionId: user.sid,
+        });
+        return {
+          ...row,
+          status: 'queued' as const,
+          confirmedAt: now,
+          startedAt: null as Date | null,
+          finishedAt: null as Date | null,
+          processedRows: 0,
+          okRows: 0,
+          failedRows: 0,
+          updatedAt: now,
+        };
+      },
+      { userId: user.sub },
+    );
+
+    try {
+      await sendWithRetry(() =>
+        this.producer.send(
+          IMPORT_JOB_NAME,
+          { jobId: id, orgId: user.orgId, createdBy: user.sub },
+          { singletonKey: id },
+        ),
+      );
+    } catch (e) {
+      this.logger.warn(
+        `re-enqueue after import.confirmed failed (import=${id}); row is queued, ` +
+          `orphan-sweeper will retry: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+    }
+    return { import: toView(updated as typeof importJobs.$inferSelect) };
   }
 
   /** Stream progress over an SSE writer until the job reaches a

@@ -59,6 +59,9 @@ export const ImportStatusEnum = z.enum([
   'failed',
   'cancelled',
   'awaiting_mapping',
+  // 0048 — preview pause: validated + inventory computed, NOT persisted;
+  // awaiting the manager's confirm (→ real run) or cancel (→ discard).
+  'awaiting_confirm',
 ]);
 export type ImportStatus = z.infer<typeof ImportStatusEnum>;
 
@@ -75,6 +78,9 @@ export const ImportJobSchema = z.object({
   okRows: z.number().int().min(0),
   failedRows: z.number().int().min(0),
   dryRun: z.boolean(),
+  /** 0048 — preview→confirm flow flags. */
+  requireConfirm: z.boolean(),
+  confirmedAt: z.coerce.date().nullable(),
   createdBy: z.string().uuid(),
   // §P0-4 — dates traverse the wire as ISO strings (JSON.stringify of a
   // Date emits ISO 8601). `z.date()` is STRICT (expects a Date instance)
@@ -98,6 +104,13 @@ export const CreateImportInput = z
     fileSizeBytes: z.number().int().min(1).max(IMPORT_MAX_SIZE_BYTES),
     fileContentHash: Sha256HexLowerSchema,
     dryRun: z.boolean().optional().default(false),
+    /** 0048 — preview→confirm: when true the import pauses at
+     *  'awaiting_confirm' after validate (nothing persisted) until the manager
+     *  confirms. Omitted ⇒ false (service defaults via `?? false`), keeping the
+     *  existing auto-persist contract; the web wizard sets it true so a bad
+     *  Excel can be reviewed + cancelled. (Left `.optional()` — not
+     *  `.default()` — so callers/tests need not supply it.) */
+    requireConfirm: z.boolean().optional(),
     // v8 Sec-15 / SOLID-1: format-constrained to make guessing /
     // enumerating other Managers' keys infeasible. The DB's partial
     // UNIQUE index is on (org_id, idempotency_key) — without a format

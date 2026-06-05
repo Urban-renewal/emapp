@@ -196,6 +196,7 @@ describe('Phase 6 S8 · §A — POST /imports (create)', () => {
       fileSizeBytes: 8192,
       fileContentHash: 'b'.repeat(64),
       dryRun: false,
+      requireConfirm: false,
     });
 
     expect(result.import.status).toBe('queued');
@@ -230,6 +231,7 @@ describe('Phase 6 S8 · §A — POST /imports (create)', () => {
         fileSizeBytes: 1024,
         fileContentHash: 'c'.repeat(64),
         dryRun: false,
+        requireConfirm: false,
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
@@ -242,6 +244,7 @@ describe('Phase 6 S8 · §A — POST /imports (create)', () => {
         fileSizeBytes: 1024,
         fileContentHash: 'd'.repeat(64),
         dryRun: false,
+        requireConfirm: false,
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
@@ -253,6 +256,7 @@ describe('Phase 6 S8 · §A — POST /imports (create)', () => {
       fileSizeBytes: 2048,
       fileContentHash: 'e'.repeat(64),
       dryRun: false,
+      requireConfirm: false,
     });
     const blob = JSON.stringify(result);
     expect(blob).not.toMatch(/r2[_-]?key/i);
@@ -266,6 +270,7 @@ describe('Phase 6 S8 · §A — POST /imports (create)', () => {
       fileSizeBytes: 4096,
       fileContentHash: 'f'.repeat(64),
       dryRun: false,
+      requireConfirm: false,
     });
     // After Wave 4 C-2 (PR #151) the presign create now emits TWO audit
     // rows: 'import.created' (the row insert) + 'import.upload_url_minted'
@@ -308,6 +313,7 @@ describe('Phase 6 S8 · §A — POST /imports (create)', () => {
       fileSizeBytes: 4096,
       fileContentHash: '7'.repeat(64),
       dryRun: false,
+      requireConfirm: false,
     });
     // v8 SOLID-4 (Agent A): the wire `fileName` is now sanitised too,
     // not just the audit. Pre-v8 the row's wire representation kept

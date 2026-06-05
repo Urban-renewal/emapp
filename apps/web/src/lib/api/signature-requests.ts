@@ -66,6 +66,23 @@ export async function getSignatureRequest(id: string): Promise<SignatureRequest>
   return SignatureRequestDataSchema.parse({ data: res.data }).data;
 }
 
+/**
+ * Download the SIGNED ARTIFACT — a generated signature-certificate PDF. The
+ * endpoint streams a binary (not the {data} envelope), so we fetch it raw
+ * (same-origin → cookie carried) and hand back a Blob. Only a SIGNED request
+ * has one (else 404). The caller triggers the browser save.
+ */
+export async function fetchSignedDocument(id: string): Promise<Blob> {
+  const res = await fetch(`/api/v1/signature-requests/${id}/signed-document`, {
+    credentials: 'same-origin',
+    headers: { Accept: 'application/pdf' },
+  });
+  if (!res.ok) {
+    throw new ApiClientError({ code: res.status === 404 ? 'not_found' : 'download_failed' });
+  }
+  return res.blob();
+}
+
 export async function createSignatureRequest(
   body: CreateSignatureRequest,
 ): Promise<SignatureRequestCreateResponse> {

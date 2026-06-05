@@ -12,6 +12,7 @@ import { PublicSignService } from './public-sign.service';
 import { SignatureRequestsController } from './signature-requests.controller';
 import { SignatureRequestsService } from './signature-requests.service';
 import { SIGNATURE_TOKEN_SECRET, SignatureTokenService } from './signature-token.service';
+import { SignedDocumentService } from './signed-document.service';
 
 /** Phase 5 — signatures module.
  *
@@ -42,6 +43,7 @@ import { SIGNATURE_TOKEN_SECRET, SignatureTokenService } from './signature-token
   providers: [
     SignatureTokenService,
     SignatureRequestsService,
+    SignedDocumentService,
     PublicSignService,
     {
       provide: SIGNATURE_TOKEN_SECRET,

@@ -432,4 +432,46 @@ describe('Phase 5 · Signatures · FUNCTIONAL — QA-manager sign-off', () => {
       expect(noteJson).not.toContain('<svg'); // no signature material
     },
   );
+
+  // ─── F7: downloadable SIGNED ARTIFACT (the "download signed doc" fix) ──
+  ft(
+    'F7 signed-document: a signed request yields a downloadable PDF; unsigned/absent → 404',
+    async () => {
+      const at = await signup('f7');
+      const doc = await createDocument(at);
+      const owner = await createOwner(at);
+      const { token, requestId } = await createSignatureRequest(at, doc, owner);
+
+      // Before signing: no artifact yet → 404.
+      const before = await fetch(`${API}/signature-requests/${requestId}/signed-document`, {
+        headers: { 'x-throttle-bypass': BYPASS, cookie: `access_token=${at}` },
+      });
+      expect(before.status).toBe(404);
+
+      // Sign it.
+      const sign = await call(`/sign/${token}`, {
+        method: 'POST',
+        body: JSON.stringify({ signatureSvg: VALID_SVG }),
+      });
+      expect(sign.status).toBe(200);
+
+      // Now the signed artifact downloads: real PDF bytes + headers.
+      const dl = await fetch(`${API}/signature-requests/${requestId}/signed-document`, {
+        headers: { 'x-throttle-bypass': BYPASS, cookie: `access_token=${at}` },
+      });
+      expect(dl.status).toBe(200);
+      expect(dl.headers.get('content-type')).toContain('application/pdf');
+      expect(dl.headers.get('content-disposition')).toContain('attachment');
+      const bytes = Buffer.from(await dl.arrayBuffer());
+      expect(bytes.length).toBeGreaterThan(1000);
+      expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-'); // valid PDF magic
+
+      // A non-existent request id → generic 404 (no oracle).
+      const absent = await fetch(
+        `${API}/signature-requests/00000000-0000-0000-0000-000000000000/signed-document`,
+        { headers: { 'x-throttle-bypass': BYPASS, cookie: `access_token=${at}` } },
+      );
+      expect(absent.status).toBe(404);
+    },
+  );
 });

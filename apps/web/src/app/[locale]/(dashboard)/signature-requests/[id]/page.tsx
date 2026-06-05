@@ -10,6 +10,7 @@ import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useCancelSignatureRequest, useSignatureRequest } from '@/hooks/use-signature-requests';
 import { ApiClientError } from '@/lib/api/errors';
+import { fetchSignedDocument } from '@/lib/api/signature-requests';
 
 export default function SignatureRequestDetailPage() {
   const t = useTranslations('signatureRequests');
@@ -20,6 +21,7 @@ export default function SignatureRequestDetailPage() {
   const { data, isLoading, isError, error } = useSignatureRequest(id);
   const cancel = useCancelSignatureRequest();
   const [actionError, setActionError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
 
   if (isLoading) return <ListSkeleton withRows={false} />;
   if (isError) {
@@ -34,6 +36,27 @@ export default function SignatureRequestDetailPage() {
     );
   }
   if (!data) return null;
+
+  async function onDownloadSigned() {
+    if (!id) return;
+    setActionError(null);
+    setDownloading(true);
+    try {
+      const blob = await fetchSignedDocument(id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `signed-${id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setActionError(t('downloadSignedFailed'));
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   async function onCancel() {
     if (!id) return;
@@ -77,11 +100,18 @@ export default function SignatureRequestDetailPage() {
             {t('createdAt', { rel: data.createdRelative })}
           </p>
         </div>
-        {data.isCancellable && (
-          <Button variant="destructive" onClick={onCancel} disabled={cancel.isPending}>
-            {cancel.isPending ? t('cancelling') : t('cancel')}
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {data.signedRelative && (
+            <Button variant="outline" onClick={onDownloadSigned} disabled={downloading}>
+              {downloading ? t('downloadingSigned') : t('downloadSigned')}
+            </Button>
+          )}
+          {data.isCancellable && (
+            <Button variant="destructive" onClick={onCancel} disabled={cancel.isPending}>
+              {cancel.isPending ? t('cancelling') : t('cancel')}
+            </Button>
+          )}
+        </div>
       </div>
 
       {actionError && <p className="text-sm text-destructive">{actionError}</p>}

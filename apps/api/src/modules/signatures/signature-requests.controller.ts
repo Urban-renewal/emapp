@@ -4,8 +4,19 @@ import {
   type CreateSignatureRequest,
   type ListSignatureRequestsQueryDto,
 } from '@emapp/shared-types';
-import { Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
@@ -17,6 +28,7 @@ import { AuthGuard } from '../auth/guards/auth.guard';
 import { TenantGuard } from '../auth/guards/tenant.guard';
 
 import { SignatureRequestsService } from './signature-requests.service';
+import { SignedDocumentService } from './signed-document.service';
 
 const UuidParam = new ZodValidationPipe(z.string().uuid());
 
@@ -30,7 +42,10 @@ const UuidParam = new ZodValidationPipe(z.string().uuid());
 @Controller('signature-requests')
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class SignatureRequestsController {
-  constructor(private readonly signatureRequests: SignatureRequestsService) {}
+  constructor(
+    private readonly signatureRequests: SignatureRequestsService,
+    private readonly signedDocuments: SignedDocumentService,
+  ) {}
 
   @Get()
   @RequirePermission('signature_requests.read')
@@ -61,6 +76,34 @@ export class SignatureRequestsController {
   @RequirePermission('signature_requests.read')
   async get(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.signatureRequests.get(user, id) };
+  }
+
+  /** Download the SIGNED ARTIFACT — a generated signature-certificate PDF
+   *  (signer + document hash + signed-at + the rendered signature). Only a
+   *  SIGNED request has one; otherwise the service throws 404. Returns the
+   *  PDF binary directly (not the {data} envelope) via the Fastify reply.
+   *
+   *  Gate = `owners.reveal_pii` (NOT `signature_requests.read`): the artifact
+   *  contains decrypted owner PII (the signer's name + their signature image),
+   *  so it must require the SAME permission as revealing owner PII — else a
+   *  Viewer / Contractor / agent-without-reveal_pii (all of whom hold
+   *  signature_requests.read) could export cleartext PII they cannot see on
+   *  screen (D.47 / D.50). The service additionally reuses the SR read path
+   *  for the agent record-scope (assigned-project) visibility check. */
+  @Get(':id/signed-document')
+  @RequirePermission('owners.reveal_pii')
+  async signedDocument(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', UuidParam) id: string,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const { pdf, fileName } = await this.signedDocuments.generate(user, id);
+    await reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="${fileName}"`)
+      .header('Content-Length', String(pdf.length))
+      .header('Cache-Control', 'no-store')
+      .send(Buffer.from(pdf));
   }
 
   /** Cancel = state transition (pending → cancelled). D.46: manager OR an agent

@@ -5,6 +5,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { AuthModule } from '../auth/auth.module';
 import { STORAGE_PROVIDER, storageProviderFactory } from '../documents/storage';
 import { EMAIL_PROVIDER, emailProviderFactory } from '../members/invite-email';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 import { PublicSignController } from './public-sign.controller';
 import { PublicSignService } from './public-sign.service';
@@ -27,6 +28,7 @@ import { SIGNATURE_TOKEN_SECRET, SignatureTokenService } from './signature-token
 @Module({
   imports: [
     AuthModule, // brings AuthGuard, TenantGuard, JwtService(JWT_SECRET) for Manager auth
+    NotificationsModule, // exports NotificationsProducerService (post-sign in-app notify)
     JwtModule.register({
       // Module-level secret is unused for SignatureTokenService (it
       // passes the secret in each call's options) but JwtModule requires

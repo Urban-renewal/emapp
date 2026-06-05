@@ -385,4 +385,51 @@ describe('Phase 5 · Signatures · FUNCTIONAL — QA-manager sign-off', () => {
       expect(secondBody.data?.signedAt).toBe(firstBody.data?.signedAt);
     },
   );
+
+  // ─── F6: in-app notification generation on sign (was Phase-5 deferred) ──
+  // The IN-APP half of T5.7. A resident signing must surface a
+  // `signature_received` notification to the SR creator (manager/agent),
+  // not only an email. Pins the producer + the RLS-scoped insert path.
+  ft(
+    'F6 in-app notify: resident sign → manager gets a signature_received notification',
+    async () => {
+      const at = await signup('f6');
+
+      // Baseline: a fresh manager has zero unread (locked self-scope RLS).
+      const before = await call('/notifications/unread-count', { cookie: `access_token=${at}` });
+      expect(before.status).toBe(200);
+      expect((before.body as { data?: { count?: number } }).data?.count).toBe(0);
+
+      const doc = await createDocument(at);
+      const owner = await createOwner(at);
+      const { token } = await createSignatureRequest(at, doc, owner);
+
+      const sign = await call(`/sign/${token}`, {
+        method: 'POST',
+        body: JSON.stringify({ signatureSvg: VALID_SVG }),
+      });
+      expect(sign.status).toBe(200);
+
+      // The bell increments — the producer wrote a row scoped to the
+      // manager (app.user_id = recipient satisfies the locked WITH CHECK).
+      const after = await call('/notifications/unread-count', { cookie: `access_token=${at}` });
+      expect(after.status).toBe(200);
+      expect((after.body as { data?: { count?: number } }).data?.count).toBeGreaterThanOrEqual(1);
+
+      // And the row is the right type with a non-PII Hebrew title/body.
+      const list = await call('/notifications?limit=20', { cookie: `access_token=${at}` });
+      expect(list.status).toBe(200);
+      const rows = (list.body as { data?: Array<Record<string, unknown>> }).data ?? [];
+      const note = rows.find((r) => r.type === 'signature_received');
+      expect(note, 'a signature_received notification should exist').toBeTruthy();
+      expect(note!.title).toBe('התקבלה חתימה');
+      // PII guard — the row stores only the ownerId UUID (in metadata) +
+      // the document name; the actual PII (national_id / phone / signature
+      // SVG) must NEVER reach the unencrypted notifications row.
+      const noteJson = JSON.stringify(note);
+      expect(noteJson).not.toMatch(/\b\d{9}\b/); // no raw national_id
+      expect(noteJson).not.toMatch(/05\d{8}/); // no raw Israeli phone
+      expect(noteJson).not.toContain('<svg'); // no signature material
+    },
+  );
 });

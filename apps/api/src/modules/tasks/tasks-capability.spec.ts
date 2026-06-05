@@ -296,6 +296,23 @@ describe('task_assigned in-app notification on assign', () => {
     expect(arg.body ?? '').not.toMatch(/05\d{8}/);
   }, 30_000);
 
+  it('TASK-N3) create WITH assigneeIds emits task_assigned to EACH assignee', async () => {
+    const emit = vi.fn(
+      async (_input: { type: string; recipientId: string; orgId: string }): Promise<boolean> =>
+        true,
+    );
+    const spySvc = new TasksService(calendarStub, { emit } as never);
+    await spySvc.create(manager(), {
+      title: 'bulk-assign',
+      projectId: assignedProjectId,
+      assigneeIds: [agentId],
+    });
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit.mock.calls[0]![0].type).toBe('task_assigned');
+    expect(emit.mock.calls[0]![0].recipientId).toBe(agentId);
+    expect(emit.mock.calls[0]![0].orgId).toBe(org.id);
+  }, 30_000);
+
   it('TASK-N2) a notify failure NEVER fails the assignment (best-effort isolation)', async () => {
     const emit = vi.fn(async () => {
       throw new Error('notify boom');

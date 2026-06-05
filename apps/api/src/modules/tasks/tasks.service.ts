@@ -305,7 +305,7 @@ export class TasksService {
   }
 
   async create(user: AccessTokenPayload, input: CreateTask): Promise<Task> {
-    const created = await withTenant(
+    const { created, assignedUserIds } = await withTenant(
       user.orgId,
       async (tx) => {
         // D.46 — agent: the new task must be scoped to a visible project/
@@ -356,10 +356,30 @@ export class TasksService {
           afterState: { title: row.title, assignees: assigneeIds.length },
           sessionId: user.sid,
         });
-        return toTask(row);
+        return { created: toTask(row), assignedUserIds: assigneeIds };
       },
       { userId: user.sub },
     );
+    // In-app task_assigned notification for assignees attached AT CREATE time
+    // (the bulk path) — was missing; only the separate addAssignee notified, so
+    // a task created-with-assignees left everyone un-notified. Best-effort,
+    // after commit, self-guarded (a notify failure never fails create). Same
+    // shape + non-PII body (task title only) as addAssignee.
+    for (const uid of assignedUserIds) {
+      try {
+        await this.notifications.emit({
+          orgId: user.orgId,
+          recipientId: uid,
+          type: 'task_assigned',
+          title: 'הוקצתה לך משימה',
+          body: `המשימה "${created.title}" הוקצתה לך.`,
+          link: null,
+          metadata: { taskId: created.id },
+        });
+      } catch {
+        // swallowed: task already committed; notification is best-effort.
+      }
+    }
     // V11 B.S7 (D.38) — after-tx ICS dispatch. Only if the task has
     // a scheduled time; CalendarEmailService also short-circuits on
     // no-attendees, but we avoid even the inner DB read for the common

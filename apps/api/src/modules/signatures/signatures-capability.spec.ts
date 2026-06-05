@@ -96,8 +96,8 @@ async function seedDoc(projectId: string): Promise<string> {
   const c = await providerPool.connect();
   try {
     const r = await c.query<{ id: string }>(
-      `INSERT INTO documents (org_id, project_id, name, type, mime_type, size_bytes, r2_key, content_hash, uploaded_by)
-       VALUES ($1, $2, 'd.pdf', 'contract', 'application/pdf', 100, $3, 'h', $4) RETURNING id`,
+      `INSERT INTO documents (org_id, project_id, name, type, mime_type, size_bytes, r2_key, content_hash, uploaded_by, uploaded_at)
+       VALUES ($1, $2, 'd.pdf', 'contract', 'application/pdf', 100, $3, 'h', $4, now()) RETURNING id`,
       [org.id, projectId, `org/${org.id}/doc/${randomUUID()}`, managerId],
     );
     return r.rows[0]!.id;

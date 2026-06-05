@@ -80,12 +80,17 @@ export class SignatureRequestsService {
         id: documents.id,
         name: documents.name,
         archivedAt: documents.archivedAt,
+        uploadedAt: documents.uploadedAt,
       })
       .from(documents)
       .where(eq(documents.id, documentId))
       .limit(1);
-    if (!row || row.archivedAt) throw NOT_FOUND;
-    return row;
+    // 0049 — a signature request may only target a FINALISED document. Else a
+    // resident could be sent a link whose document was never stored (the
+    // preview 404s, yet the signature would record against absent bytes — the
+    // audit's worst ghost finding). uploaded_at IS NULL → 404.
+    if (!row || row.archivedAt || !row.uploadedAt) throw NOT_FOUND;
+    return { id: row.id, name: row.name, archivedAt: row.archivedAt };
   }
 
   /** Validate the owner exists in the manager's org. Returns the row or

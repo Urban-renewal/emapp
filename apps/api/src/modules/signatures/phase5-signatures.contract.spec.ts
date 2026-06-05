@@ -113,6 +113,8 @@ async function signup(tag: string): Promise<Manager> {
 }
 
 async function createDocument(at: string): Promise<string> {
+  const sizeBytes = 1024;
+  const contentHash = 'sha256:phase5-audit-' + Math.random().toString(36).slice(2);
   const r = await call('/documents', {
     method: 'POST',
     cookie: `access_token=${at}`,
@@ -120,8 +122,8 @@ async function createDocument(at: string): Promise<string> {
       name: 'תמא38-חוזה.pdf',
       type: 'contract',
       mimeType: 'application/pdf',
-      sizeBytes: 1024,
-      contentHash: 'sha256:phase5-audit-' + Math.random().toString(36).slice(2),
+      sizeBytes,
+      contentHash,
     }),
   });
   if (r.status !== 201 && r.status !== 200) {
@@ -130,6 +132,13 @@ async function createDocument(at: string): Promise<string> {
   const body = r.body as { data?: { document?: { id?: string } } };
   const id = body.data?.document?.id;
   if (!id) throw new Error(`no document.id in response: ${r.raw}`);
+  // 0049 — finalise so the doc may be sent for signature (ghost → 404).
+  const fin = await call(`/documents/${id}/finalize`, {
+    method: 'POST',
+    cookie: `access_token=${at}`,
+    body: JSON.stringify({ sizeBytes, contentHash }),
+  });
+  if (fin.status !== 200) throw new Error(`finalize doc failed ${fin.status}: ${fin.raw}`);
   return id;
 }
 

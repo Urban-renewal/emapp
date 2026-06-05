@@ -98,6 +98,8 @@ async function signup(tag: string): Promise<string> {
 }
 
 async function createDocument(at: string): Promise<string> {
+  const sizeBytes = 1024;
+  const contentHash = 'sha256:func-' + Math.random().toString(36).slice(2);
   const r = await call('/documents', {
     method: 'POST',
     cookie: `access_token=${at}`,
@@ -105,15 +107,23 @@ async function createDocument(at: string): Promise<string> {
       name: 'תמא38-חוזה.pdf',
       type: 'contract',
       mimeType: 'application/pdf',
-      sizeBytes: 1024,
-      contentHash: 'sha256:func-' + Math.random().toString(36).slice(2),
+      sizeBytes,
+      contentHash,
     }),
   });
   if (r.status !== 201 && r.status !== 200) {
     throw new Error(`create doc failed ${r.status}: ${r.raw}`);
   }
-  const body = r.body as { data?: { document?: { id?: string } } };
-  return body.data!.document!.id!;
+  const id = (r.body as { data?: { document?: { id?: string } } }).data!.document!.id!;
+  // 0049 — finalize so the doc is FINALISED; a signature request may only
+  // target a finalised doc (a ghost can't be sent for signature).
+  const fin = await call(`/documents/${id}/finalize`, {
+    method: 'POST',
+    cookie: `access_token=${at}`,
+    body: JSON.stringify({ sizeBytes, contentHash }),
+  });
+  if (fin.status !== 200) throw new Error(`finalize doc failed ${fin.status}: ${fin.raw}`);
+  return id;
 }
 
 function validId(seed: number): string {

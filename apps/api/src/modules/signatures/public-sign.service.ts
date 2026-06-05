@@ -133,11 +133,14 @@ export class PublicSignService {
             name: documents.name,
             r2Key: documents.r2Key,
             archivedAt: documents.archivedAt,
+            uploadedAt: documents.uploadedAt,
           })
           .from(documents)
           .where(eq(documents.id, req.documentId))
           .limit(1);
-        if (!doc || doc.archivedAt) throw INVALID_TOKEN;
+        // 0049 — defence-in-depth: never show a resident a preview of a doc
+        // whose bytes were never stored (generic INVALID_TOKEN, no oracle).
+        if (!doc || doc.archivedAt || !doc.uploadedAt) throw INVALID_TOKEN;
 
         // v8 §v8-S3 — name now pgcrypto-encrypted; decrypt inside
         // the same tx (app.encryption_key GUC is set by withTenant).

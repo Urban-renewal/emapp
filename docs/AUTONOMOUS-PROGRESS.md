@@ -14,7 +14,8 @@ future external e-sign integration) and the **Hebrew signed-PDF "mess"**.
 4. ⏳ No scheduler at all → R2 PII-byte leak, signature-expiry never finalizes/
    notifies, "overdue" inert. Foundational.
 5. ✅ task_assigned not fired on manager-create-with-assignees — FIXED (26963a6).
-6. ⏳ Import preview + undo (owner's #1 priority). The big build — design below.
+6. 🟡 Import PREVIEW→confirm — DONE + E2E-verified (c23cb1b/ef7d24a/b57c8a2).
+   UNDO — deferred-by-risk (see D-A3). Owner's #1; preview is the main protection.
 
 ## NEXT: import preview + undo (design ready, from audit-3)
 
@@ -59,6 +60,19 @@ future external e-sign integration) and the **Hebrew signed-PDF "mess"**.
   gate as POST /owners/:id/reveal-pii (manager always · agent iff view_owner_pii ·
   viewer never). Removes the engine `owners.reveal_pii` split-brain. FE button
   gates on `profile.view_owner_pii` (mirrors the owner-detail reveal button).
+
+- **D-A3 (import UNDO — deferred-by-risk, NOT skipped lightly):** the undo
+  DELETES/reverts org data (the ownership set-replace means undo must DELETE
+  import-created ownerships AND REVIVE the prior ownerships the import ended).
+  A bug here corrupts who-owns-what — the core regulated data. Building
+  data-deletion logic UNSUPERVISED is the single highest-blast-radius thing in
+  this roadmap. AND the PREVIEW (now shipped) already prevents the main case (a
+  bad Excel never persists until a human confirms). So the undo's urgency
+  dropped. DECISION: implement the `import_changes` ledger RECORDING (additive,
+  safe) when resumed, but gate the DELETE/revive endpoint behind owner review
+  before enabling — do not ship delete-logic unreviewed. Design is in
+  "NEXT: import preview + undo" above. PROCEEDING to #3 (ghost-docs) meanwhile —
+  lower-risk, API-only, and the actual NoSuchKey bug the owner hit.
 
 ## Blockers / skipped (need owner or visual confirmation)
 

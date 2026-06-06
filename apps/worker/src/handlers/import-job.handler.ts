@@ -130,7 +130,8 @@ type Status =
   | 'done'
   | 'failed'
   | 'cancelled'
-  | 'awaiting_mapping';
+  | 'awaiting_mapping'
+  | 'awaiting_confirm';
 
 /** Extract a row's canonical-field values from the parsed cell vector,
  *  given the resolved mapping. Returns a ValidatedRow ready for S6's
@@ -532,6 +533,10 @@ const FORWARD: Record<Status, Status | null> = {
   // (with mapping_template_id set), and re-enqueues a new pg-boss job.
   // This handler does NOT forward-progress past awaiting_mapping.
   awaiting_mapping: null,
+  // 0048 preview seam: like awaiting_mapping, terminal-for-this-attempt. The
+  // confirm endpoint stamps confirmed_at + re-queues at 'queued' for a full
+  // real run; the handler never forward-progresses past awaiting_confirm.
+  awaiting_confirm: null,
 };
 
 export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
@@ -668,7 +673,16 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
         }
 
         const current = await this.readStatus(payload);
-        const next = FORWARD[current];
+        let next = FORWARD[current];
+        // 0048 preview gate: an import flagged require_confirm PAUSES after
+        // validate — inventory (ok/failed counts + import_job_errors) is
+        // computed, but NO domain rows are written — until the manager confirms
+        // (POST /imports/:id/confirm stamps confirmed_at + re-queues a full real
+        // run). Mirrors the awaiting_mapping pause; protects the org from a bad
+        // Excel. Only reroutes the validating→persisting edge.
+        if (current === 'validating' && next === 'persisting') {
+          if (await this.isPreviewPending(payload)) next = 'awaiting_confirm';
+        }
         if (next === null) {
           // Terminal state reached — done, failed, or cancelled.
           // Nothing more to do for the state machine; idempotent
@@ -731,6 +745,28 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
           throw new NonRetryableJobError('import_job not visible', 'job_not_visible');
         }
         return row.status as Status;
+      },
+      { userId: payload.createdBy },
+    );
+  }
+
+  /** 0048 — true iff this import wants a preview pause and hasn't been
+   *  confirmed yet (require_confirm AND confirmed_at IS NULL). Drives the
+   *  validating→awaiting_confirm reroute. After POST /confirm stamps
+   *  confirmed_at and re-queues, this returns false → the full re-run persists. */
+  private async isPreviewPending(payload: ImportJobPayload): Promise<boolean> {
+    return withTenant(
+      payload.orgId,
+      async (tx: TenantTx): Promise<boolean> => {
+        const [row] = await tx
+          .select({
+            requireConfirm: importJobs.requireConfirm,
+            confirmedAt: importJobs.confirmedAt,
+          })
+          .from(importJobs)
+          .where(eq(importJobs.id, payload.jobId))
+          .limit(1);
+        return row?.requireConfirm === true && row.confirmedAt === null;
       },
       { userId: payload.createdBy },
     );

@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 
 import { db, memberships, projectAssignments, users } from '@emapp/db';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { providerPool } from '../../../../../packages/db/src/client';
 import { createTestOrg, type TestOrg } from '../../../../../packages/db/test/factories';
@@ -30,6 +30,9 @@ let unassignedProjectId: string;
 const MGR_SID = '00000000-0000-4000-8000-0000000000c1';
 const AGENT_SID = '00000000-0000-4000-8000-0000000000c2';
 const calendarStub = {} as never;
+// addAssignee fires a best-effort in-app notification; stub it so the
+// capability tests (which assert authz, not notifications) don't crash.
+const notificationsStub = { emit: async (): Promise<boolean> => true } as never;
 
 function manager(): AccessTokenPayload {
   return {
@@ -87,7 +90,7 @@ async function assignAgent(taskId: string): Promise<void> {
 
 beforeAll(async () => {
   await setupTestDatabase();
-  svc = new TasksService(calendarStub);
+  svc = new TasksService(calendarStub, notificationsStub);
   const tag = `d46-task-${Date.now()}`;
   org = await createTestOrg(tag, tag);
   managerId = org.users[0]!.id;
@@ -266,5 +269,61 @@ describe('D.54 — narrow assignee task update (status/notes/done only)', () => 
     await assignAgent(id);
     const upd = await svc.update(agent(), id, { title: 'full-mgmt' });
     expect(upd.title).toBe('full-mgmt');
+  }, 30_000);
+});
+
+// QA-TASK-NOTIF-1 fix — "task sent" = in-app notification to the assignee.
+describe('task_assigned in-app notification on assign', () => {
+  it('TASK-N1) addAssignee emits task_assigned to the newly-assigned user (non-PII title only)', async () => {
+    const emit = vi.fn(
+      async (_input: {
+        orgId: string;
+        recipientId: string;
+        type: string;
+        body?: string | null;
+      }): Promise<boolean> => true,
+    );
+    const spySvc = new TasksService(calendarStub, { emit } as never);
+    const id = await seedTask(assignedProjectId);
+    await spySvc.addAssignee(manager(), id, { userId: agentId });
+    expect(emit).toHaveBeenCalledTimes(1);
+    const arg = emit.mock.calls[0]![0];
+    expect(arg.type).toBe('task_assigned');
+    expect(arg.recipientId).toBe(agentId); // delivered to the ASSIGNEE, not the actor
+    expect(arg.orgId).toBe(org.id);
+    // PII guard: the body carries only the org-visible task title, no national_id/phone.
+    expect(arg.body ?? '').not.toMatch(/\b\d{9}\b/);
+    expect(arg.body ?? '').not.toMatch(/05\d{8}/);
+  }, 30_000);
+
+  it('TASK-N3) create WITH assigneeIds emits task_assigned to EACH assignee', async () => {
+    const emit = vi.fn(
+      async (_input: { type: string; recipientId: string; orgId: string }): Promise<boolean> =>
+        true,
+    );
+    const spySvc = new TasksService(calendarStub, { emit } as never);
+    await spySvc.create(manager(), {
+      title: 'bulk-assign',
+      projectId: assignedProjectId,
+      assigneeIds: [agentId],
+    });
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit.mock.calls[0]![0].type).toBe('task_assigned');
+    expect(emit.mock.calls[0]![0].recipientId).toBe(agentId);
+    expect(emit.mock.calls[0]![0].orgId).toBe(org.id);
+  }, 30_000);
+
+  it('TASK-N2) a notify failure NEVER fails the assignment (best-effort isolation)', async () => {
+    const emit = vi.fn(async () => {
+      throw new Error('notify boom');
+    });
+    const spySvc = new TasksService(calendarStub, { emit } as never);
+    const id = await seedTask(assignedProjectId);
+    // The stub throws directly. addAssignee's own try/catch around the emit
+    // (defense-in-depth, in addition to the producer self-guarding) is what
+    // keeps the already-committed assignment from failing. Assert it resolves.
+    await expect(spySvc.addAssignee(manager(), id, { userId: agentId })).resolves.toMatchObject({
+      userId: agentId,
+    });
   }, 30_000);
 });

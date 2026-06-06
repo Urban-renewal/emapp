@@ -7,6 +7,7 @@ import { useCallback } from 'react';
 import { toImportViewModel, toImportViewModels } from '@/adapters/import';
 import {
   cancelImport,
+  confirmImport,
   createImport,
   getImport,
   listImportErrors,
@@ -83,6 +84,7 @@ export function useUploadImport() {
       projectId: string;
       file: File;
       dryRun?: boolean;
+      requireConfirm?: boolean;
       onProgress?: (loaded: number, total: number) => void;
     }) => {
       const contentHash = await sha256OfBlob(args.file);
@@ -92,6 +94,7 @@ export function useUploadImport() {
         fileSizeBytes: args.file.size,
         fileContentHash: contentHash,
         dryRun: args.dryRun ?? false,
+        requireConfirm: args.requireConfirm ?? false,
       };
       const created = await createImport(body);
       const mime =
@@ -110,6 +113,16 @@ export function useCancelImport() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => cancelImport(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: IMPORTS_KEY });
+    },
+  });
+}
+
+export function useConfirmImport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => confirmImport(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: IMPORTS_KEY });
     },

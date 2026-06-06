@@ -24,6 +24,7 @@ import { agentHasCapability, requireAgentCapability } from '../../common/authz/a
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CalendarEmailService } from '../calendar-email/calendar-email.service';
+import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
 export interface TaskListPage {
   data: Task[];
@@ -81,7 +82,10 @@ export class TasksService {
   // archive. Injected lazily (constructor) so tests can override with
   // a stub provider; the service itself swallows failures so a broken
   // email path NEVER fails a task write.
-  constructor(private readonly calendarEmail: CalendarEmailService) {}
+  constructor(
+    private readonly calendarEmail: CalendarEmailService,
+    private readonly notifications: NotificationsProducerService,
+  ) {}
 
   /**
    * D.46 — manage_tasks agent scope. A task is editable by an agent only if its
@@ -301,7 +305,7 @@ export class TasksService {
   }
 
   async create(user: AccessTokenPayload, input: CreateTask): Promise<Task> {
-    const created = await withTenant(
+    const { created, assignedUserIds } = await withTenant(
       user.orgId,
       async (tx) => {
         // D.46 — agent: the new task must be scoped to a visible project/
@@ -352,10 +356,30 @@ export class TasksService {
           afterState: { title: row.title, assignees: assigneeIds.length },
           sessionId: user.sid,
         });
-        return toTask(row);
+        return { created: toTask(row), assignedUserIds: assigneeIds };
       },
       { userId: user.sub },
     );
+    // In-app task_assigned notification for assignees attached AT CREATE time
+    // (the bulk path) — was missing; only the separate addAssignee notified, so
+    // a task created-with-assignees left everyone un-notified. Best-effort,
+    // after commit, self-guarded (a notify failure never fails create). Same
+    // shape + non-PII body (task title only) as addAssignee.
+    for (const uid of assignedUserIds) {
+      try {
+        await this.notifications.emit({
+          orgId: user.orgId,
+          recipientId: uid,
+          type: 'task_assigned',
+          title: 'הוקצתה לך משימה',
+          body: `המשימה "${created.title}" הוקצתה לך.`,
+          link: null,
+          metadata: { taskId: created.id },
+        });
+      } catch {
+        // swallowed: task already committed; notification is best-effort.
+      }
+    }
     // V11 B.S7 (D.38) — after-tx ICS dispatch. Only if the task has
     // a scheduled time; CalendarEmailService also short-circuits on
     // no-attendees, but we avoid even the inner DB read for the common
@@ -536,13 +560,18 @@ export class TasksService {
     taskId: string,
     input: AssignTask,
   ): Promise<TaskAssignee> {
+    let result: { row: TaskAssignee; taskTitle: string };
     try {
-      return await withTenant(
+      result = await withTenant(
         user.orgId,
         async (tx) => {
           // D.46 — agent: project assignment (404) + manage_tasks (403).
           const [task] = await tx
-            .select({ projectId: tasks.projectId, apartmentId: tasks.apartmentId })
+            .select({
+              projectId: tasks.projectId,
+              apartmentId: tasks.apartmentId,
+              title: tasks.title,
+            })
             .from(tasks)
             .where(eq(tasks.id, taskId))
             .limit(1);
@@ -568,7 +597,10 @@ export class TasksService {
             afterState: { taskId, userId: input.userId },
             sessionId: user.sid,
           });
-          return { id: row.id, taskId: row.taskId, userId: row.userId, assignedAt: row.assignedAt };
+          return {
+            row: { id: row.id, taskId: row.taskId, userId: row.userId, assignedAt: row.assignedAt },
+            taskTitle: task.title,
+          };
         },
         { userId: user.sub },
       );
@@ -578,6 +610,26 @@ export class TasksService {
       }
       throw e;
     }
+    // In-app notification to the newly-assigned user — the "task sent"
+    // signal so an assignee learns of work in real time, not only via the
+    // calendar email. Fired AFTER the tx commits. The producer self-guards,
+    // but we ALSO try/catch here (defense-in-depth, same posture as the
+    // post-sign notify) so a notify failure can NEVER fail the assignment.
+    // The task title is org-visible, non-PII; never pass owner/national_id/phone.
+    try {
+      await this.notifications.emit({
+        orgId: user.orgId,
+        recipientId: input.userId,
+        type: 'task_assigned',
+        title: 'הוקצתה לך משימה',
+        body: `המשימה "${result.taskTitle}" הוקצתה לך.`,
+        link: null,
+        metadata: { taskId },
+      });
+    } catch {
+      // swallowed: the assignment already committed; notification is best-effort.
+    }
+    return result.row;
   }
 
   async removeAssignee(user: AccessTokenPayload, taskId: string, userId: string): Promise<void> {

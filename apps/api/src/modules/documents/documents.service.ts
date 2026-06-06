@@ -173,9 +173,15 @@ export class DocumentsService {
     tx: TenantTx,
     user: AccessTokenPayload,
     id: string,
+    /** 0049 — the DOWNLOAD path passes true so a never-finalised "ghost" doc
+     *  is never served (its presigned URL would 404 on R2 = NoSuchKey).
+     *  Default false: get/patch/archive/finalize must still operate on a
+     *  not-yet-uploaded doc (you can manage/cancel a failed upload). */
+    requireUploaded = false,
   ): Promise<DocumentRow> {
     const [row] = await tx.select().from(documents).where(eq(documents.id, id)).limit(1);
     if (!row || row.archivedAt) throw NOT_FOUND;
+    if (requireUploaded && !row.uploadedAt) throw NOT_FOUND;
     await this.assertDocVisibleForAgent(tx, user, row);
     return row;
   }
@@ -292,7 +298,9 @@ export class DocumentsService {
     const result = await withTenant(
       user.orgId,
       async (tx) => {
-        const row = await this.loadVisible(tx, user, id);
+        // requireUploaded=false: finalize loads the not-yet-uploaded doc in
+        // order to confirm + stamp uploaded_at below.
+        const row = await this.loadVisible(tx, user, id, false);
         await requireAgentCapability(tx, user, 'manage_documents');
         // Layer 1: client-consistency.
         let mismatch = input.sizeBytes !== row.sizeBytes || input.contentHash !== row.contentHash;
@@ -337,7 +345,8 @@ export class DocumentsService {
         }
         const [updated] = await tx
           .update(documents)
-          .set({ updatedAt: new Date() })
+          // 0049 — mark the upload confirmed: from here the doc is servable.
+          .set({ updatedAt: new Date(), uploadedAt: new Date() })
           .where(eq(documents.id, row.id))
           .returning();
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
@@ -378,7 +387,8 @@ export class DocumentsService {
     const { r2Key, name } = await withTenant(
       user.orgId,
       async (tx) => {
-        const row = await this.loadVisible(tx, user, id);
+        // 0049 — require finalised: a ghost's presigned URL would 404 (NoSuchKey).
+        const row = await this.loadVisible(tx, user, id, true);
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,

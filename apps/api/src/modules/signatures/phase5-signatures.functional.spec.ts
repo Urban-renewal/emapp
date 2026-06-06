@@ -98,6 +98,8 @@ async function signup(tag: string): Promise<string> {
 }
 
 async function createDocument(at: string): Promise<string> {
+  const sizeBytes = 1024;
+  const contentHash = 'sha256:func-' + Math.random().toString(36).slice(2);
   const r = await call('/documents', {
     method: 'POST',
     cookie: `access_token=${at}`,
@@ -105,15 +107,23 @@ async function createDocument(at: string): Promise<string> {
       name: 'תמא38-חוזה.pdf',
       type: 'contract',
       mimeType: 'application/pdf',
-      sizeBytes: 1024,
-      contentHash: 'sha256:func-' + Math.random().toString(36).slice(2),
+      sizeBytes,
+      contentHash,
     }),
   });
   if (r.status !== 201 && r.status !== 200) {
     throw new Error(`create doc failed ${r.status}: ${r.raw}`);
   }
-  const body = r.body as { data?: { document?: { id?: string } } };
-  return body.data!.document!.id!;
+  const id = (r.body as { data?: { document?: { id?: string } } }).data!.document!.id!;
+  // 0049 — finalize so the doc is FINALISED; a signature request may only
+  // target a finalised doc (a ghost can't be sent for signature).
+  const fin = await call(`/documents/${id}/finalize`, {
+    method: 'POST',
+    cookie: `access_token=${at}`,
+    body: JSON.stringify({ sizeBytes, contentHash }),
+  });
+  if (fin.status !== 200) throw new Error(`finalize doc failed ${fin.status}: ${fin.raw}`);
+  return id;
 }
 
 function validId(seed: number): string {
@@ -383,6 +393,95 @@ describe('Phase 5 · Signatures · FUNCTIONAL — QA-manager sign-off', () => {
       const secondBody = second.body as { data?: { signedAt?: string } };
       // Bodies must match exactly — the idempotency interceptor replays.
       expect(secondBody.data?.signedAt).toBe(firstBody.data?.signedAt);
+    },
+  );
+
+  // ─── F6: in-app notification generation on sign (was Phase-5 deferred) ──
+  // The IN-APP half of T5.7. A resident signing must surface a
+  // `signature_received` notification to the SR creator (manager/agent),
+  // not only an email. Pins the producer + the RLS-scoped insert path.
+  ft(
+    'F6 in-app notify: resident sign → manager gets a signature_received notification',
+    async () => {
+      const at = await signup('f6');
+
+      // Baseline: a fresh manager has zero unread (locked self-scope RLS).
+      const before = await call('/notifications/unread-count', { cookie: `access_token=${at}` });
+      expect(before.status).toBe(200);
+      expect((before.body as { data?: { count?: number } }).data?.count).toBe(0);
+
+      const doc = await createDocument(at);
+      const owner = await createOwner(at);
+      const { token } = await createSignatureRequest(at, doc, owner);
+
+      const sign = await call(`/sign/${token}`, {
+        method: 'POST',
+        body: JSON.stringify({ signatureSvg: VALID_SVG }),
+      });
+      expect(sign.status).toBe(200);
+
+      // The bell increments — the producer wrote a row scoped to the
+      // manager (app.user_id = recipient satisfies the locked WITH CHECK).
+      const after = await call('/notifications/unread-count', { cookie: `access_token=${at}` });
+      expect(after.status).toBe(200);
+      expect((after.body as { data?: { count?: number } }).data?.count).toBeGreaterThanOrEqual(1);
+
+      // And the row is the right type with a non-PII Hebrew title/body.
+      const list = await call('/notifications?limit=20', { cookie: `access_token=${at}` });
+      expect(list.status).toBe(200);
+      const rows = (list.body as { data?: Array<Record<string, unknown>> }).data ?? [];
+      const note = rows.find((r) => r.type === 'signature_received');
+      expect(note, 'a signature_received notification should exist').toBeTruthy();
+      expect(note!.title).toBe('התקבלה חתימה');
+      // PII guard — the row stores only the ownerId UUID (in metadata) +
+      // the document name; the actual PII (national_id / phone / signature
+      // SVG) must NEVER reach the unencrypted notifications row.
+      const noteJson = JSON.stringify(note);
+      expect(noteJson).not.toMatch(/\b\d{9}\b/); // no raw national_id
+      expect(noteJson).not.toMatch(/05\d{8}/); // no raw Israeli phone
+      expect(noteJson).not.toContain('<svg'); // no signature material
+    },
+  );
+
+  // ─── F7: downloadable SIGNED ARTIFACT (the "download signed doc" fix) ──
+  ft(
+    'F7 signed-document: a signed request yields a downloadable PDF; unsigned/absent → 404',
+    async () => {
+      const at = await signup('f7');
+      const doc = await createDocument(at);
+      const owner = await createOwner(at);
+      const { token, requestId } = await createSignatureRequest(at, doc, owner);
+
+      // Before signing: no artifact yet → 404.
+      const before = await fetch(`${API}/signature-requests/${requestId}/signed-document`, {
+        headers: { 'x-throttle-bypass': BYPASS, cookie: `access_token=${at}` },
+      });
+      expect(before.status).toBe(404);
+
+      // Sign it.
+      const sign = await call(`/sign/${token}`, {
+        method: 'POST',
+        body: JSON.stringify({ signatureSvg: VALID_SVG }),
+      });
+      expect(sign.status).toBe(200);
+
+      // Now the signed artifact downloads: real PDF bytes + headers.
+      const dl = await fetch(`${API}/signature-requests/${requestId}/signed-document`, {
+        headers: { 'x-throttle-bypass': BYPASS, cookie: `access_token=${at}` },
+      });
+      expect(dl.status).toBe(200);
+      expect(dl.headers.get('content-type')).toContain('application/pdf');
+      expect(dl.headers.get('content-disposition')).toContain('attachment');
+      const bytes = Buffer.from(await dl.arrayBuffer());
+      expect(bytes.length).toBeGreaterThan(1000);
+      expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-'); // valid PDF magic
+
+      // A non-existent request id → generic 404 (no oracle).
+      const absent = await fetch(
+        `${API}/signature-requests/00000000-0000-0000-0000-000000000000/signed-document`,
+        { headers: { 'x-throttle-bypass': BYPASS, cookie: `access_token=${at}` } },
+      );
+      expect(absent.status).toBe(404);
     },
   );
 });

@@ -102,7 +102,7 @@ export interface AgentWriteEndpoint {
   key: string;
 }
 
-interface ParsedMethod {
+export interface ParsedMethod {
   name: string;
   decorators: string;
   body: string;
@@ -150,13 +150,53 @@ function trailingDecorators(before: string): string {
 }
 
 /**
+ * Given the index of the `(` that opens a method's parameter list, return the
+ * index of the method BODY's opening `{` — the first `{` after the matching `)`
+ * that is NOT nested inside a `<...>` generic in the return-type annotation.
+ * Returns -1 if none.
+ *
+ * Why this exists (D.54 wall correctness): the naive `indexOf('{', afterName)`
+ * is fooled by an inline-object RETURN TYPE — `): Promise<{ import: ImportJob }> {`
+ * — whose `{` precedes the body, so `braceMatch` would extract only the type
+ * literal and the real body (with its `requireAgentCapability` gate) goes
+ * unscanned → a FALSE "ungated side door". Default object params (`(o = {...})`)
+ * are the same trap. We instead paren-match the param list, then take the first
+ * `{` at angle-bracket depth 0. `>` is only decremented when depth>0 so a `=>`
+ * function-type return value is handled too.
+ */
+function findBodyBrace(src: string, paramOpen: number): number {
+  let pdepth = 0;
+  let i = paramOpen;
+  for (; i < src.length; i++) {
+    const c = src[i];
+    if (c === '(') pdepth++;
+    else if (c === ')') {
+      pdepth--;
+      if (pdepth === 0) {
+        i++;
+        break;
+      }
+    }
+  }
+  let adepth = 0;
+  for (; i < src.length; i++) {
+    const c = src[i];
+    if (c === '<') adepth++;
+    else if (c === '>') {
+      if (adepth > 0) adepth--;
+    } else if (c === '{' && adepth === 0) return i;
+  }
+  return -1;
+}
+
+/**
  * Extract `async <name>(...) { ... }` methods with their preceding decorators.
  * ASSUMPTION: every route handler and every mutating service method in this
  * codebase is `async` (they all `await withTenant(...)`). A non-`async` write
  * handler would be invisible to the scan — acceptable under the current
  * convention, called out so a future reviewer can broaden the regex if it changes.
  */
-function parseMethods(src: string): ParsedMethod[] {
+export function parseMethods(src: string): ParsedMethod[] {
   const out: ParsedMethod[] = [];
   const re = /(?:\n|^)[ \t]*(?:public |private |protected )?async (\w+)\s*\(/g;
   let m: RegExpExecArray | null;
@@ -164,7 +204,8 @@ function parseMethods(src: string): ParsedMethod[] {
     const name = m[1] ?? '';
     const lineStart = src.lastIndexOf('\n', m.index) + 1;
     const decorators = trailingDecorators(src.slice(0, lineStart));
-    const brace = src.indexOf('{', re.lastIndex);
+    // re.lastIndex points just past the `(` that opens the parameter list.
+    const brace = findBodyBrace(src, re.lastIndex - 1);
     if (brace === -1) continue;
     out.push({ name, decorators, body: braceMatch(src, brace) });
   }

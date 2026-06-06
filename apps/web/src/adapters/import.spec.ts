@@ -40,6 +40,8 @@ function baseImport(over: Partial<import('@emapp/shared-types').ImportJob> = {})
     okRows: 48,
     failedRows: 2,
     dryRun: false,
+    requireConfirm: false,
+    confirmedAt: null,
     createdBy: '11111111-1111-1111-1111-111111111111',
     createdAt: new Date('2026-05-20T10:00:00Z'),
     updatedAt: new Date('2026-05-20T10:00:30Z'),

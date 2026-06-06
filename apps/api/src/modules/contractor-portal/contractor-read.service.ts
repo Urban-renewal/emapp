@@ -23,7 +23,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm';
 
 import { STORAGE_PROVIDER, safeDownloadFilename } from '../documents/storage';
 
@@ -182,6 +182,8 @@ export class ContractorReadService {
             // are NEVER exposed to a contractor (D.46).
             isNull(documents.apartmentId),
             isNull(documents.archivedAt),
+            // 0049 — never list/serve a ghost doc to an external contractor.
+            isNotNull(documents.uploadedAt),
           ),
         )
         .orderBy(asc(documents.name)),
@@ -213,6 +215,8 @@ export class ContractorReadService {
             eq(documents.projectId, ctx.projectId),
             isNull(documents.apartmentId),
             isNull(documents.archivedAt),
+            // 0049 — never list/serve a ghost doc to an external contractor.
+            isNotNull(documents.uploadedAt),
           ),
         )
         .limit(1);

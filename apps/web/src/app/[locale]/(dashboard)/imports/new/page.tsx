@@ -73,6 +73,10 @@ export default function NewImportPage() {
         projectId,
         file,
         dryRun,
+        // 0048 — preview by default: the import pauses at 'awaiting_confirm'
+        // (nothing persisted) so a bad Excel can be reviewed + cancelled before
+        // it touches the org. dryRun (validate-only, never persist) is separate.
+        requireConfirm: !dryRun,
         onProgress: (loaded, total) => setProgress({ loaded, total }),
       });
       router.push(`/imports/${job.id}`);

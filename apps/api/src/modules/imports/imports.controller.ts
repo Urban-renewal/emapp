@@ -157,6 +157,18 @@ export class ImportsController {
     return { data: await this.imports.submitMapping(user, id, body) };
   }
 
+  /** POST /imports/:id/confirm — 0048 preview→confirm. Commit a preview-paused
+   *  import (status='awaiting_confirm'): re-queues a full real run that
+   *  persists. Creator-only (in the service). `imports.map` coarse gate (same
+   *  as mapping — it mutates an existing row's lifecycle, not a fresh create). */
+  @Post(':id/confirm')
+  @RequirePermission('imports.map')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @HttpCode(200)
+  async confirm(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
+    return { data: await this.imports.confirm(user, id) };
+  }
+
   /** SSE progress stream. See file header for full explanation.
    *
    *  v8-S2 (security/perf P0): @Throttle bounds NEW stream opens per

@@ -22,10 +22,18 @@ export type OrgRole = z.infer<typeof OrgRoleEnum>;
 // none (they are read-only). Defaults: everything OFF except
 // `view_owners` (ON, PII masked per D.47).
 //
-// NOTE (canary): only `edit_project_data` is ENFORCED today (buildings +
-// apartments writes). The other five are stored but not yet wired — their
-// resources stay manager-only in POLICY until a follow-up enforces them,
-// so a stored `true` grants nothing prematurely.
+// NOTE (enforcement status — updated 2026-06-06; the old "only edit_project_data
+// is wired" canary is OBSOLETE): 6 of 7 capabilities are now ENFORCED at the
+// service layer via `requireAgentCapability`/`agentHasCapability`:
+//   • edit_project_data — buildings + apartments writes
+//   • manage_documents  — documents writes/finalize
+//   • manage_signatures — signature-request writes
+//   • manage_tasks      — task writes
+//   • run_imports       — import start/mapping/confirm
+//   • view_owners       — owner reads (OwnersService.assertAgentCanViewOwners)
+// The 7th, `view_owner_pii`, gates PII FIDELITY (unmasked vs masked) on owner
+// read / reveal-pii / signed-document via `resolveOwnerPiiFidelity`. A stored
+// `true` now actually grants the scoped capability — it is NO LONGER inert.
 // ───────────────────────────────────────────────────────────────────
 export const AGENT_CAPABILITY_KEYS = [
   'edit_project_data',

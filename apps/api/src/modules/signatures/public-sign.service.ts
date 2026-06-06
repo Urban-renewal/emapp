@@ -30,6 +30,7 @@ import {
   safeDownloadFilename,
 } from '../documents/storage';
 import { EMAIL_PROVIDER } from '../members/invite-email';
+import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
 import { notifyAfterSign } from './signature-link-delivery';
 import { SignatureTokenService } from './signature-token.service';
@@ -72,6 +73,7 @@ export class PublicSignService {
     private readonly tokenService: SignatureTokenService,
     @Inject(STORAGE_PROVIDER) private readonly storage: IStorageProvider,
     @Inject(EMAIL_PROVIDER) private readonly email: IEmailProvider,
+    private readonly notifications: NotificationsProducerService,
   ) {}
 
   /** GET /sign/:token — preview. Loads document + owner names + mints a
@@ -131,11 +133,14 @@ export class PublicSignService {
             name: documents.name,
             r2Key: documents.r2Key,
             archivedAt: documents.archivedAt,
+            uploadedAt: documents.uploadedAt,
           })
           .from(documents)
           .where(eq(documents.id, req.documentId))
           .limit(1);
-        if (!doc || doc.archivedAt) throw INVALID_TOKEN;
+        // 0049 — defence-in-depth: never show a resident a preview of a doc
+        // whose bytes were never stored (generic INVALID_TOKEN, no oracle).
+        if (!doc || doc.archivedAt || !doc.uploadedAt) throw INVALID_TOKEN;
 
         // v8 §v8-S3 — name now pgcrypto-encrypted; decrypt inside
         // the same tx (app.encryption_key GUC is set by withTenant).
@@ -377,7 +382,11 @@ export class PublicSignService {
         // connection (same governed pattern as SignatureRequestsService.create).
         return {
           signedAt: signatureRow.signedAt,
+          orgId: claims.orgId,
+          documentId: req.documentId,
+          ownerId: req.ownerId,
           notify: {
+            managerUserId: mgr?.id ?? null,
             managerEmail: mgr?.email ?? null,
             residentEmail: own?.email ?? null,
             ownerName: ownerNameSign ?? 'בעל דירה',
@@ -406,6 +415,24 @@ export class PublicSignService {
         this.logger.error(
           `[sign] notifyAfterSign threw unexpectedly: ${e instanceof Error ? e.message : 'unknown'}`,
         );
+      }
+
+      // In-app notification (the generation half — was Phase 5 deferred).
+      // Delivered to the SR creator (manager/agent) ALONGSIDE the email so
+      // the org sees the signature land in real time, not only over email.
+      // Self-guarded + best-effort: a notify failure NEVER fails the sign.
+      // PII rule: only the document name (already org-visible) — no owner
+      // name / national_id / phone in the unencrypted notification row.
+      if (result.notify.managerUserId) {
+        await this.notifications.emit({
+          orgId: result.orgId,
+          recipientId: result.notify.managerUserId,
+          type: 'signature_received',
+          title: 'התקבלה חתימה',
+          body: `המסמך "${result.notify.documentName}" נחתם.`,
+          link: null,
+          metadata: { documentId: result.documentId, ownerId: result.ownerId },
+        });
       }
 
       return { signedAt: result.signedAt };

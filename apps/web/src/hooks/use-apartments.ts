@@ -1,6 +1,6 @@
 'use client';
 
-import type { Apartment, CreateApartment } from '@emapp/shared-types';
+import type { Apartment, ApartmentStatus, CreateApartment } from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
@@ -10,6 +10,7 @@ import {
   createApartment,
   getApartment,
   listApartments,
+  updateApartmentStatus,
   type ApartmentListPage,
 } from '@/lib/api/apartments';
 import { useDisplayLocale } from '@/lib/locale';
@@ -74,6 +75,17 @@ export function useArchiveApartment() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => archiveApartment(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: APARTMENTS_KEY });
+    },
+  });
+}
+
+export function useUpdateApartmentStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: ApartmentStatus }) =>
+      updateApartmentStatus(id, status),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: APARTMENTS_KEY });
     },

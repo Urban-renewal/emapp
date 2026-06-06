@@ -11,7 +11,7 @@ import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useImportProgress } from '@/hooks/use-import-progress';
-import { useCancelImport, useImport } from '@/hooks/use-imports';
+import { useCancelImport, useConfirmImport, useImport } from '@/hooks/use-imports';
 import { ApiClientError } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
 
@@ -29,6 +29,7 @@ export default function ImportDetailPage() {
   const isLiveCandidate = data ? !data.isTerminal : true;
   const sse = useImportProgress(id && isLiveCandidate ? id : undefined);
   const cancel = useCancelImport();
+  const confirm = useConfirmImport();
   const [actionError, setActionError] = useState<string | null>(null);
 
   if (isLoading) return <ListSkeleton withRows={false} />;
@@ -83,6 +84,16 @@ export default function ImportDetailPage() {
     }
   }
 
+  async function onConfirm() {
+    if (!id) return;
+    setActionError(null);
+    try {
+      await confirm.mutateAsync(id);
+    } catch {
+      setActionError(t('confirmFailed'));
+    }
+  }
+
   return (
     <div className="space-y-6">
       <p className="text-sm">
@@ -121,12 +132,38 @@ export default function ImportDetailPage() {
             </p>
           )}
         </div>
-        {data.isCancellable && (
+        {data.isCancellable && status !== 'awaiting_confirm' && (
           <Button variant="outline" size="sm" onClick={onCancel} disabled={cancel.isPending}>
             {cancel.isPending ? t('cancelling') : t('cancel')}
           </Button>
         )}
       </div>
+
+      {/* 0048 — preview pause: the import validated but persisted NOTHING.
+          The manager reviews the inventory and confirms (→ real load) or
+          cancels (→ discard). Protects the org from a bad Excel. */}
+      {status === 'awaiting_confirm' && (
+        <div className="space-y-3 rounded-md border border-amber-300 bg-amber-50 p-4">
+          <h2 className="text-sm font-semibold text-amber-900">{t('previewTitle')}</h2>
+          <p className="text-sm text-amber-800">{t('previewHint')}</p>
+          <p className="text-sm text-amber-900">
+            {t('previewSummary', { ok: counters.okRows, failed: counters.failedRows })}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={onConfirm} disabled={confirm.isPending}>
+              {confirm.isPending ? t('confirming') : t('confirmLoad')}
+            </Button>
+            <Button variant="outline" onClick={onCancel} disabled={cancel.isPending}>
+              {t('cancel')}
+            </Button>
+            {counters.failedRows > 0 && (
+              <Link href={`/imports/${id}/errors`} className="text-sm underline">
+                {t('viewErrors')}
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Progress bar (when totalRows is known) */}
       {progressPct !== null && (

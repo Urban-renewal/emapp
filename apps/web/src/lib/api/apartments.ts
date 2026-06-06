@@ -3,7 +3,12 @@
  *
  * v9-post-audit-SOLID-4 — branching uses `isOk()` consistently.
  */
-import { ApartmentSchema, type Apartment, type CreateApartment } from '@emapp/shared-types';
+import {
+  ApartmentSchema,
+  type Apartment,
+  type ApartmentStatus,
+  type CreateApartment,
+} from '@emapp/shared-types';
 import { z } from 'zod';
 
 import { apiClient, isList, isOk } from '../api-client';
@@ -47,6 +52,22 @@ export async function createApartment(
 ): Promise<Apartment> {
   // §v9-P0-3 — idempotent create POST.
   const res = await apiClient.postIdempotent<unknown>(`/buildings/${buildingId}/apartments`, body);
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return ApartmentDataSchema.parse({ data: res.data }).data;
+}
+
+/**
+ * Update an apartment's signature-collection status (PATCH /apartments/:id).
+ * The BE already exposes this (RequirePermission 'apartments.update') and
+ * manages statusChangedAt server-side; the FE simply had no control wired
+ * (functionality-without-a-button — QA-APT-STATUS-1). Status-only body keeps
+ * the surface minimal; the PATCH DTO accepts a partial.
+ */
+export async function updateApartmentStatus(
+  id: string,
+  status: ApartmentStatus,
+): Promise<Apartment> {
+  const res = await apiClient.patch<unknown>(`/apartments/${id}`, { status });
   if (!isOk(res)) throw new ApiClientError(res.error);
   return ApartmentDataSchema.parse({ data: res.data }).data;
 }

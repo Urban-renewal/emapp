@@ -157,6 +157,7 @@ async function makeDocument(
         r2Key: `org/${o.id}/doc/${Date.now()}-${Math.random()}.pdf`,
         contentHash: 'sha256:' + 'd'.repeat(64),
         uploadedBy: o.users[0]!.id,
+        uploadedAt: new Date(), // 0049 — finalised so it's listed
         archivedAt: archived ? new Date() : null,
       })
       .returning({ id: documents.id });

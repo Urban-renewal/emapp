@@ -14,6 +14,7 @@ const STATUS_LABELS_HE: Record<ImportStatus, string> = {
   validating: 'מאמת',
   persisting: 'כותב',
   awaiting_mapping: 'ממתין למיפוי',
+  awaiting_confirm: 'ממתין לאישור',
   done: 'הושלם',
   failed: 'נכשל',
   cancelled: 'בוטל',
@@ -25,6 +26,7 @@ const STATUS_LABELS_EN: Record<ImportStatus, string> = {
   validating: 'Validating',
   persisting: 'Persisting',
   awaiting_mapping: 'Awaiting Mapping',
+  awaiting_confirm: 'Awaiting Confirmation',
   done: 'Done',
   failed: 'Failed',
   cancelled: 'Cancelled',
@@ -36,6 +38,7 @@ const STATUS_COLORS: Record<ImportStatus, ImportViewModel['statusColor']> = {
   validating: 'amber',
   persisting: 'amber',
   awaiting_mapping: 'amber',
+  awaiting_confirm: 'amber',
   done: 'emerald',
   failed: 'red',
   cancelled: 'gray',
@@ -50,6 +53,7 @@ const CANCELLABLE_STATES = new Set<ImportStatus>([
   'validating',
   'persisting',
   'awaiting_mapping',
+  'awaiting_confirm',
 ]);
 
 function formatBytes(n: number): string {

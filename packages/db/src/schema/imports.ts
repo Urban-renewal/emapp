@@ -60,6 +60,13 @@ export const importJobs = pgTable(
     /** T6.5 — dry-run skips persistence stage. */
     dryRun: boolean('dry_run').notNull().default(false),
 
+    /** 0048 — preview→confirm: when true, the worker PAUSES at
+     *  'awaiting_confirm' after validate (no domain rows written) until the
+     *  manager confirms. `confirmedAt` is stamped by POST /imports/:id/confirm,
+     *  which re-queues a full real run. Protects the org from a bad Excel. */
+    requireConfirm: boolean('require_confirm').notNull().default(false),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+
     /** Future-mapping templates (S4). Nullable until then. */
     mappingTemplateId: uuid('mapping_template_id'),
 

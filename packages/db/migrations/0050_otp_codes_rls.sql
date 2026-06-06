@@ -15,6 +15,20 @@
 ALTER TABLE otp_codes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE otp_codes FORCE ROW LEVEL SECURITY;
 
-CREATE POLICY tenant_isolation ON otp_codes
-  USING (org_id = current_setting('app.organization_id', true)::uuid)
-  WITH CHECK (org_id = current_setting('app.organization_id', true)::uuid);
+-- Guarded CREATE POLICY (idempotent) — matches the repo convention since 0021;
+-- CREATE POLICY has no IF NOT EXISTS, so a manual re-apply / partial-failure
+-- replay would otherwise error.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'otp_codes'
+      AND policyname = 'tenant_isolation'
+  ) THEN
+    CREATE POLICY tenant_isolation ON otp_codes
+      USING (org_id = current_setting('app.organization_id', true)::uuid)
+      WITH CHECK (org_id = current_setting('app.organization_id', true)::uuid);
+  END IF;
+END;
+$$;

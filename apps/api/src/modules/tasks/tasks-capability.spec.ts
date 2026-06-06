@@ -327,3 +327,63 @@ describe('task_assigned in-app notification on assign', () => {
     });
   }, 30_000);
 });
+
+// H2 — the ICS UPDATE re-send must be gated on a real calendar-field change,
+// not fired on every edit of a scheduled task (which previously re-mailed every
+// external attendee on a status flip / assignee change / etc.).
+describe('H2 — calendar ICS UPDATE fires only on a real calendar-field change', () => {
+  function makeSpySvc(): {
+    spySvc: TasksService;
+    sendInvite: ReturnType<typeof vi.fn>;
+  } {
+    const sendInvite = vi.fn(
+      async (): Promise<{ sent: number; skipped: number; failed: number }> => ({
+        sent: 0,
+        skipped: 0,
+        failed: 0,
+      }),
+    );
+    const spySvc = new TasksService({ sendInviteForTask: sendInvite } as never, notificationsStub);
+    return { spySvc, sendInvite };
+  }
+
+  const SCHED = new Date('2026-07-01T09:00:00.000Z');
+
+  it('TASK-CAL1) a non-calendar edit (status) on a scheduled task does NOT re-send the ICS', async () => {
+    const { spySvc, sendInvite } = makeSpySvc();
+    const t = await spySvc.create(manager(), {
+      title: 'sched',
+      projectId: assignedProjectId,
+      scheduledAt: SCHED,
+    });
+    sendInvite.mockClear(); // drop the CREATE invite; assert only the UPDATE path
+    await spySvc.update(manager(), t.id, { status: 'in_progress' });
+    expect(sendInvite).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it('TASK-CAL2) a calendar edit (title) on a scheduled task re-sends an ICS UPDATE', async () => {
+    const { spySvc, sendInvite } = makeSpySvc();
+    const t = await spySvc.create(manager(), {
+      title: 'sched',
+      projectId: assignedProjectId,
+      scheduledAt: SCHED,
+    });
+    sendInvite.mockClear();
+    await spySvc.update(manager(), t.id, { title: 'renamed' });
+    expect(sendInvite).toHaveBeenCalledTimes(1);
+    expect(sendInvite.mock.calls[0]![2]).toBe('update');
+  }, 30_000);
+
+  it('TASK-CAL3) clearing scheduledAt still fires CANCEL (a calendar state transition)', async () => {
+    const { spySvc, sendInvite } = makeSpySvc();
+    const t = await spySvc.create(manager(), {
+      title: 'sched',
+      projectId: assignedProjectId,
+      scheduledAt: SCHED,
+    });
+    sendInvite.mockClear();
+    await spySvc.update(manager(), t.id, { scheduledAt: null });
+    expect(sendInvite).toHaveBeenCalledTimes(1);
+    expect(sendInvite.mock.calls[0]![2]).toBe('cancel');
+  }, 30_000);
+});

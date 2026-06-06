@@ -8,7 +8,7 @@ import {
   type IEmailProvider,
 } from '@emapp/db';
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 
 import {
   CalendarService,
@@ -20,6 +20,22 @@ import { EMAIL_PROVIDER } from '../members/invite-email';
 
 /** What kind of email this is — drives ICS METHOD + subject prefix. */
 export type CalendarEmailAction = 'create' | 'update' | 'cancel';
+
+type CalendarSendCounts = { sent: number; skipped: number; failed: number };
+
+/**
+ * Phase-1 result of `sendInviteForTask`: either an early-exit outcome (`skip`)
+ * or the prepared payload (`send`) to dispatch OUTSIDE the read tx. Explicit
+ * discriminated union (the `?: never` arms) so `'skip' in prepared` narrows
+ * cleanly instead of widening `.skip` to `… | undefined`.
+ */
+type PreparedCalendar =
+  | { kind: 'skip'; counts: CalendarSendCounts }
+  | {
+      kind: 'send';
+      attendees: Array<IcsAttendeeInput & { _attendeeId: string }>;
+      icsInput: { task: IcsTaskInput; organizer: IcsOrganizerInput; attendees: IcsAttendeeInput[] };
+    };
 
 /**
  * Calendar email service — V11 B.S7 (D.38).
@@ -82,7 +98,12 @@ export class CalendarEmailService {
     taskId: string,
     action: CalendarEmailAction,
   ): Promise<{ sent: number; skipped: number; failed: number }> {
-    return withTenant(orgId, async (tx) => {
+    // Phase 1 — READ everything inside a short tenant tx and return either an
+    // early-exit outcome (`skip`) or the prepared payload (`send`). NOTHING
+    // external runs here, so the pooled connection is released as soon as the
+    // reads finish (H2: the Resend calls used to run INSIDE this tx, holding a
+    // DB connection across N external round-trips).
+    const prepared = await withTenant(orgId, async (tx): Promise<PreparedCalendar> => {
       // 1. Load task — must exist + (for non-cancel) have scheduled_at.
       const [task] = await tx
         .select({
@@ -101,13 +122,13 @@ export class CalendarEmailService {
 
       if (!task) {
         this.logger.warn(`task ${taskId} not found in org ${orgId}; skip ICS send`);
-        return { sent: 0, skipped: 1, failed: 0 };
+        return { kind: 'skip', counts: { sent: 0, skipped: 1, failed: 0 } };
       }
       if (!task.scheduledAt) {
         // No-op for tasks without a calendar time. (Common case: a
         // Manager creates a non-calendar to-do that uses the same
         // `tasks` table but doesn't go on the WeekCalendar.)
-        return { sent: 0, skipped: 1, failed: 0 };
+        return { kind: 'skip', counts: { sent: 0, skipped: 1, failed: 0 } };
       }
 
       // 2. Load organizer (the user who created the task) — name + email.
@@ -120,7 +141,7 @@ export class CalendarEmailService {
         // Shouldn't happen — createdBy is FK NOT NULL — but guard
         // against the row being archived/removed via provider tier.
         this.logger.warn(`organizer ${task.createdBy} not found; skip ICS send`);
-        return { sent: 0, skipped: 1, failed: 0 };
+        return { kind: 'skip', counts: { sent: 0, skipped: 1, failed: 0 } };
       }
 
       // 3. Load external attendees + their (decrypted) name + email.
@@ -138,7 +159,7 @@ export class CalendarEmailService {
         .where(and(eq(taskExternalAttendees.taskId, taskId), isNull(owners.archivedAt)));
 
       if (attendeeRows.length === 0) {
-        return { sent: 0, skipped: 0, failed: 0 };
+        return { kind: 'skip', counts: { sent: 0, skipped: 0, failed: 0 } };
       }
 
       // 4. Decrypt names in ONE pgcrypto round-trip via the batched
@@ -184,84 +205,77 @@ export class CalendarEmailService {
           email: a.email,
         })),
       };
-      const ics =
-        action === 'cancel'
-          ? this.calendar.generateCancel(icsInput)
-          : this.calendar.generateRequest(icsInput);
-      const icsContentType =
-        action === 'cancel' ? 'text/calendar; method=CANCEL' : 'text/calendar; method=REQUEST';
+      return { kind: 'send', attendees, icsInput };
+    });
 
-      // 6. Per-attendee send + idempotency UPDATE. Run in parallel —
-      //    each attendee is independent; one failure doesn't gate
-      //    the rest. Failures are logged but never thrown.
-      let sent = 0;
-      let failed = 0;
-      await Promise.all(
-        attendees.map(async (a) => {
-          // Skip attendees with no email — the ICS still mentions
-          // them (CN line with mailto:NONE), but we can't deliver an
-          // invite. The B.S5 ics_sent_at column stays null so a
-          // future "did we email this owner?" report shows they
-          // never got the invite.
-          if (!a.email || a.email.length === 0) {
-            return;
-          }
-          try {
-            const result = await this.email.send({
-              to: a.email,
-              subject: this.buildSubject(task.title, action),
-              text: this.buildPlainBody(task.title, action),
-              attachments: [
-                {
-                  filename: 'event.ics',
-                  content: ics,
-                  contentType: icsContentType,
-                },
-              ],
-              tags: {
-                source: 'calendar',
-                taskId: task.id,
-                action,
-              },
-            });
-            if (result.status === 'rejected') {
-              this.logger.warn(
-                `email rejected for attendee ${a._attendeeId}: ${result.error ?? 'unknown'}`,
-              );
-              failed += 1;
-              return;
-            }
-            // Record delivery. The column update is per-attendee so a
-            // partial-failure leaves a precise audit of who got it.
-            if (action === 'cancel') {
-              await tx
-                .update(taskExternalAttendees)
-                .set({ icsCancelledAt: new Date() })
-                .where(eq(taskExternalAttendees.id, a._attendeeId));
-            } else {
-              await tx
-                .update(taskExternalAttendees)
-                .set({ icsSentAt: new Date() })
-                .where(eq(taskExternalAttendees.id, a._attendeeId));
-            }
-            sent += 1;
-          } catch (err) {
-            this.logger.error(
-              `email send threw for attendee ${a._attendeeId}: ${
-                err instanceof Error ? err.message : String(err)
-              }`,
+    if (prepared.kind === 'skip') return prepared.counts;
+    const { attendees, icsInput } = prepared;
+
+    // Phase 2 — generate the ICS (pure) and send per-attendee OUTSIDE any tx.
+    // Run in parallel; each attendee is independent and one failure doesn't
+    // gate the rest. Failures are logged, counted, never thrown.
+    const ics =
+      action === 'cancel'
+        ? this.calendar.generateCancel(icsInput)
+        : this.calendar.generateRequest(icsInput);
+    const icsContentType =
+      action === 'cancel' ? 'text/calendar; method=CANCEL' : 'text/calendar; method=REQUEST';
+
+    let sent = 0;
+    let failed = 0;
+    const deliveredAttendeeIds: string[] = [];
+    await Promise.all(
+      attendees.map(async (a) => {
+        // Skip attendees with no email — the ICS still mentions them (CN line
+        // with mailto:NONE), but we can't deliver an invite. No marker is
+        // written (the B.S5 ics_sent_at column stays null) so a future "did we
+        // email this owner?" report shows they never got it.
+        if (!a.email || a.email.length === 0) {
+          return;
+        }
+        try {
+          const result = await this.email.send({
+            to: a.email,
+            subject: this.buildSubject(icsInput.task.title, action),
+            text: this.buildPlainBody(icsInput.task.title, action),
+            attachments: [{ filename: 'event.ics', content: ics, contentType: icsContentType }],
+            tags: { source: 'calendar', taskId: icsInput.task.taskId, action },
+          });
+          if (result.status === 'rejected') {
+            this.logger.warn(
+              `email rejected for attendee ${a._attendeeId}: ${result.error ?? 'unknown'}`,
             );
             failed += 1;
+            return;
           }
-        }),
-      );
+          deliveredAttendeeIds.push(a._attendeeId);
+          sent += 1;
+        } catch (err) {
+          this.logger.error(
+            `email send threw for attendee ${a._attendeeId}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+          failed += 1;
+        }
+      }),
+    );
 
-      return {
-        sent,
-        skipped: attendees.length - sent - failed,
-        failed,
-      };
-    });
+    // Phase 3 — record delivery markers in a SECOND short tx: ONE batched
+    // UPDATE over only the successfully-delivered attendees. This preserves the
+    // per-row B.S5 audit semantics (a rejected / no-email / threw row keeps a
+    // null marker). The single timestamp is correct — the column is a
+    // "did we send" marker, not a re-send guard.
+    if (deliveredAttendeeIds.length > 0) {
+      await withTenant(orgId, async (tx) => {
+        await tx
+          .update(taskExternalAttendees)
+          .set(action === 'cancel' ? { icsCancelledAt: new Date() } : { icsSentAt: new Date() })
+          .where(inArray(taskExternalAttendees.id, deliveredAttendeeIds));
+      });
+    }
+
+    return { sent, skipped: attendees.length - sent - failed, failed };
   }
 
   private buildSubject(title: string, action: CalendarEmailAction): string {

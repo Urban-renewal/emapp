@@ -78,9 +78,23 @@ treat the "verified clean" sections as high-confidence, not absolute.
   today (rows are HMAC-only; the OTP service uses the BYPASSRLS pool pre-auth), but it's
   the one customer-adjacent table breaking the FORCE-RLS-org-scoped invariant. Fix: add
   a tenant_isolation policy + FORCE, or REVOKE app_user DML.
-- **M2 — Export endpoint gated on `projects.read`, not `export.run`** → Viewer & Agent
-  can run bulk exports (export.controller.ts:75; self-acknowledged). PII is masked in the
-  composer so not a cleartext leak, but contradicts "viewer = read-only, no export".
+- **M2 — ⚠️ RECLASSIFIED (2026-06-06): a multi-layer policy INCONSISTENCY, NOT a clean
+  bug — needs an OWNER decision, do NOT flip the gate.** The endpoint gates on
+  `projects.read` (export.controller.ts:75), which Manager+Agent+Viewer all hold. The
+  obvious "fix" (tighten to `export.run`) is a TRAP: the engine catalog excludes
+  `export.run` from Agent (system-roles.ts:92), BUT D.54 + B.S10 + the composer unit
+  tests (export.s10.spec.ts 2c:335, "agent WITH assignment composes the project";
+  376 "agent without view_owner_pii exports MASKED") + the controller comment (82-84)
+  all treat **agent-scoped masked export as INTENDED**. Tightening to `export.run` would
+  403 the agent HTTP path while those composer tests stay GREEN (they call the service
+  directly, bypassing the controller guard) — silent breakage, false test confidence.
+  Layered contradictions found: (a) role catalog says agent≠export, D.54 says agent=masked-
+  export; (b) the FE button gates on `export.run` (export-xlsx-button via projects/[id]/
+  page.tsx:65) so it's hidden from Agent AND Viewer, yet the controller comment says
+  "FE shows it to manager+agent" (stale). The ONLY clear-cut part: Viewer (pure read-only)
+  exporting contradicts the role model — but even that is masked-PII, not a cleartext leak.
+  REQUIRED DECISION (owner): is agent-scoped masked export in/out? is viewer export in/out?
+  Then align catalog + controller + FE + D.54 to ONE answer. No code change made.
 - **M3 — Import ownership SET-REPLACE silently end-dates ALL pre-existing active owners
   of any touched apartment.** import-job.handler.ts:1670-1689. By-design (D.25) + soft
   (ended_at), but a re-import of one apartment ends owners not in the new file — a footgun.

@@ -124,6 +124,33 @@ over-claimed by the audit agents** — caught by tracing the actual service bodi
 - **H4 (no scheduler):** unchanged — foundational, owner-flagged "skip if too complex".
   Stays deferred; the real residue is R2-purge-retry (PII byte retention) + stuck-queued
   recovery, both designed in "NEXT" above.
+- **M2 RECLASSIFIED (export authz) — do NOT flip the gate, owner decision needed.**
+  Looked like a clean 1-line tighten (`projects.read`→`export.run`). It is NOT: agent-
+  scoped MASKED export is intended per D.54/B.S10 + the composer tests, but the engine
+  catalog excludes export.run from Agent — a genuine contradiction across catalog /
+  controller / FE / D.54. Tightening would silently 403 the agent HTTP path while the
+  composer unit tests (which bypass the controller) stay green. Verified, documented in
+  SYSTEM-STATE-AUDIT.md M2, surfaced for owner. THIRD audit finding corrected by tracing
+  the actual code+tests before acting.
+
+## ⚖️ Owner decisions queued (do NOT resolve unilaterally — surfaced, not actioned)
+
+These came up during the autonomous pass and are policy/spec choices, not mechanical fixes:
+
+1. **Export authz policy (M2).** Is agent-scoped masked export IN or OUT? Is viewer export
+   IN or OUT? Today the controller allows all three (projects.read); the role catalog,
+   D.54, the FE button, and the controller comment disagree with each other. Pick one
+   answer, then align catalog + controller gate + FE gate + D.54. (See SYSTEM-STATE M2.)
+2. **H2 calendar email — apply the deferred fix?** Move the Resend loop out of the
+   calendar tx + gate 'update' on a real calendar-field delta. Real but moderate surgery
+   on a working path; low MVP impact. Recommend yes, but after a green smoke. (SYSTEM-STATE H2.)
+3. **H4 scheduler — build it?** Foundational; unblocks signature-expiry finalize/notify,
+   overdue firing, AND the R2 PII-byte purge-retry (the real retention leak). Owner flagged
+   "skip if too complex" — confirm whether to invest now or post-MVP.
+4. **Import UNDO delete-endpoint (D-A3).** Ledger recording is safe/additive; the
+   DELETE/revive endpoint touches core who-owns-what data and is gated behind owner review.
+5. **Hebrew signed-PDF render (B-A1).** Needs a visual eyeball on a candidate (bidi-js or
+   rasterize-to-PNG) — isolated behind ISignedDocumentRenderer, one class swap.
 
 ## Blockers / skipped (need owner or visual confirmation)
 

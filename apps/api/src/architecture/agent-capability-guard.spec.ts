@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Resource } from '../common/authz/policy';
 
-import { findAgentWriteEndpoints } from './agent-capability-guard';
+import { findAgentWriteEndpoints, parseMethods } from './agent-capability-guard';
 
 const MODULES_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'modules');
 
@@ -86,6 +86,37 @@ describe('architecture: D.54 fail-open guard (every agent-loosened write endpoin
         `gate detection broke:\n` +
         missing.map((r) => `  - ${r}`).join('\n'),
     ).toEqual([]);
+  });
+
+  // Regression pin for the scanner's body-brace detection. An inline-object
+  // RETURN TYPE (`): Promise<{...}> {`) or a default-object PARAM (`(o = {...})`)
+  // must NOT be mistaken for the method body — otherwise the real body (and its
+  // requireAgentCapability gate) goes unscanned, producing a FALSE "ungated
+  // side door". This is exactly what bit imports.confirm. Keep these green so a
+  // future scanner refactor can't silently re-introduce the false positive.
+  it('parseMethods extracts the true body past inline-{ return types and default-object params', () => {
+    const src = [
+      'class X {',
+      '  async confirm(user: A, id: string): Promise<{ import: ImportJob }> {',
+      "    await requireAgentCapability(tx, user, 'run_imports');",
+      '    return { import: row };',
+      '  }',
+      '  async opts(o = { a: 1 }): Promise<void> {',
+      "    await agentHasCapability(tx, user, 'run_imports');",
+      '  }',
+      '  async plain(id: string): Promise<ImportJobView> {',
+      '    return view;',
+      '  }',
+      '}',
+    ].join('\n');
+    const methods = parseMethods(src);
+    const byName = new Map(methods.map((m) => [m.name, m.body]));
+    // The gate lives in the BODY, not the return-type literal → must be captured.
+    expect(byName.get('confirm')).toContain('requireAgentCapability');
+    expect(byName.get('confirm')).toContain('return { import: row }');
+    expect(byName.get('opts')).toContain('agentHasCapability');
+    // Sanity: a normal signature still parses correctly (no regression).
+    expect(byName.get('plain')).toContain('return view');
   });
 
   it('allowlist has no stale entries (re-gated/removed endpoints must leave it)', () => {

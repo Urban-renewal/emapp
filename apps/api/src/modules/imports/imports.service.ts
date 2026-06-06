@@ -760,11 +760,27 @@ export class ImportsService {
     // row while the first is still active is a producer-side no-op
     // (one extra layer of idempotency on top of the FE's button
     // debounce).
-    await this.producer.send(
-      IMPORT_JOB_NAME,
-      { jobId: id, orgId: user.orgId, createdBy: user.sub },
-      { singletonKey: id },
-    );
+    //
+    // M6 — wrap in the SAME exponential-backoff retry as submitMapping/confirm.
+    // start() previously used a BARE producer.send: a transient pg-boss / Neon
+    // blip both threw a 500 to the user AND left the row stuck at
+    // status='queued' with no job. Best-effort — a final failure logs and falls
+    // through (the row is already 'queued'; a manual /start re-enqueues via the
+    // singletonKey, and the orphan sweeper will retry).
+    try {
+      await sendWithRetry(() =>
+        this.producer.send(
+          IMPORT_JOB_NAME,
+          { jobId: id, orgId: user.orgId, createdBy: user.sub },
+          { singletonKey: id },
+        ),
+      );
+    } catch (e) {
+      this.logger.warn(
+        `enqueue on /start failed (import=${id}) after 4 attempts with backoff; ` +
+          `row is queued, orphan-sweeper will retry: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+    }
 
     return this.get(user, id);
   }

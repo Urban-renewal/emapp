@@ -57,6 +57,30 @@ const REQUEST_AUDIT_ACTION = 'provider.request.received';
 // system-injected reasons vs human-entered ones).
 const SYSTEM_REASON_FALLBACK = 'auto: provider request received (pre-validation audit)';
 
+/**
+ * L1 — scrub query-param VALUES from a URL before it lands in the
+ * provider_audit_log. The PATH (incl. UUID path-params — not PII) and the
+ * query-param KEYS are kept (forensic "which filter/cursor was probed"), but
+ * every VALUE is redacted so a future provider endpoint that accepts PII in a
+ * query param can never leak it into the audit trail. No provider endpoint
+ * takes PII in a query string today; this is defense-in-depth.
+ */
+export function scrubUrlForAudit(url: string): string {
+  const qIdx = url.indexOf('?');
+  if (qIdx === -1) return url;
+  const path = url.slice(0, qIdx);
+  const query = url.slice(qIdx + 1);
+  if (query.length === 0) return path;
+  const redacted = query
+    .split('&')
+    .map((pair) => {
+      const eq = pair.indexOf('=');
+      return eq === -1 ? pair : `${pair.slice(0, eq)}=[redacted]`;
+    })
+    .join('&');
+  return `${path}?${redacted}`;
+}
+
 @Injectable()
 export class ProviderRequestAuditInterceptor implements NestInterceptor {
   intercept(ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
@@ -97,10 +121,10 @@ export class ProviderRequestAuditInterceptor implements NestInterceptor {
         targetTable: null as unknown as string | undefined,
         metadata: {
           method: req.method,
-          // `req.url` includes the query string; useful for reviewing
-          // exactly which filter / cursor was being probed. URL
-          // length is naturally bounded by Fastify's maxParamLength.
-          url: req.url,
+          // Path + query-param KEYS (which filter / cursor was probed); query
+          // VALUES are redacted (L1) so a future PII-in-query-param endpoint
+          // can't leak into the audit row. Length bounded by maxParamLength.
+          url: scrubUrlForAudit(req.url),
           // Was the caller-supplied access_reason present + non-empty?
           // Helps Ops distinguish "no header at all" (likely scanner)
           // from "low-quality header" (likely human).
@@ -127,7 +151,7 @@ export class ProviderRequestAuditInterceptor implements NestInterceptor {
           action: REQUEST_AUDIT_ACTION,
           metadata: {
             method: req.method,
-            url: req.url,
+            url: scrubUrlForAudit(req.url),
             callerReasonPresent: headerStr !== undefined,
             callerReasonRejected: true,
           },

@@ -90,6 +90,41 @@ future external e-sign integration) and the **Hebrew signed-PDF "mess"**.
   "NEXT: import preview + undo" above. PROCEEDING to #3 (ghost-docs) meanwhile —
   lower-risk, API-only, and the actual NoSuchKey bug the owner hit.
 
+## 2026-06-06 — SYSTEM-STATE HIGH findings re-verified (owner away, per-recommendation)
+
+Worked the H1→H4 recommendation list. CRITICAL outcome: **two of the four HIGHs were
+over-claimed by the audit agents** — caught by tracing the actual service bodies before
+"fixing". (Owner hates false findings; verification before action paid off.)
+
+- **D-A4 (H1 REFUTED — do NOT "fix"):** the capability-matrix audit said agents can
+  update projects / set ownerships / manage contractors / mint+revoke share links with
+  no gate. FALSE — every write calls `this.requireManager(user)` (projects 456/496,
+  ownerships 242, contractors 101/146/193, shares 193/242/280). The audit saw the coarse
+  engine grant + the missing `requireAgentCapability` and stopped — it never read the
+  service body where `requireManager` (a stricter gate) blocks agents outright. The
+  `if(role==='agent')` lines it cited are scope checks in READ methods. Net: manager-only
+  today, as D.17 intends. Only LOW residue: the engine coarse grant is wider than the
+  effective permission (redundant, not exploitable). No code change. SYSTEM-STATE-AUDIT.md
+  H1 downgraded to REFUTED with file:line evidence.
+- **H3 FIXED (provider login-failure audit):** added best-effort `recordLoginFailure`
+  to provider-auth.service.ts — both failure branches (already-locked window + verify)
+  now write a `login_failed` provider_audit_log row. `metadata.passwordValid` separates
+  stolen-password+MFA-block from spray, no password stored, no client oracle, count-bump
+  NOT gated on the audit (lockout stays robust if audit table is down). Zero schema change
+  (action_type free-text matches 0034 CHECK). typecheck+lint green. Test: blocked on the
+  M4 provider-seed gap (no in-suite provider user; verifying test is env-gated). Mirrors
+  3 existing audited paths exactly.
+- **H2 corrected to PARTIALLY REAL (not fixed yet):** the in-tx Resend loop
+  (calendar-email.service.ts:199-257) + spurious 'update' on non-calendar edits
+  (tasks.service.ts:482) are real; the "idempotency/rollback bug" framing is wrong (the
+  dispatch is after-tx fire-and-forget; ICS UPDATE re-send is intended). Recommended fix
+  (move sends out of the calendar tx + gate 'update' on a real calendar-field delta) is
+  documented in the audit doc — deferred (moderate surgery on a working path; lower value
+  than H3 now that the framing is corrected).
+- **H4 (no scheduler):** unchanged — foundational, owner-flagged "skip if too complex".
+  Stays deferred; the real residue is R2-purge-retry (PII byte retention) + stuck-queued
+  recovery, both designed in "NEXT" above.
+
 ## Blockers / skipped (need owner or visual confirmation)
 
 - **B-A1 (Hebrew PDF "mess"):** owner reports the downloaded Hebrew cert looks like

@@ -12,35 +12,60 @@ treat the "verified clean" sections as high-confidence, not absolute.
 - **Tenant isolation + PII at-rest/on-wire: strong, no confirmed leak.** RLS is
   FORCE everywhere + a CI ratchet fails the build on raw-db use. Cross-org,
   provider-audit, contractor/tenant narrow scopes all verified clean.
-- **But the sweep found NEW real issues we'd missed — see below.** The sharpest
-  are an agent over-permissioning gap, a calendar-email duplicate-send bug, an
-  un-audited provider-login-failure path, and the (already-known) absence of any
-  scheduler causing a PII-byte-retention leak.
+- **The sweep found real issues we'd missed — but also over-claimed two of its four
+  HIGHs.** After file:line re-verification (2026-06-06): H1 (agent over-permissioning)
+  is **REFUTED** — those writes are manager-only via `requireManager`, the audit missed
+  the guard. H2 (calendar duplicate-send) is **partially real** (sends-in-tx + spurious
+  re-send), partially overstated (no idempotency/rollback bug). H3 (un-audited provider
+  login failure) was **real and is now FIXED**. H4 (no scheduler → PII-byte retention
+  leak) stands. Lesson logged: verify the service body, not just the catalog.
 
 ## CONFIRMED issues — ranked (NEW unless noted)
 
 ### 🔴 HIGH
 
-- **H1 — Agent can issue/revoke contractor SHARE LINKS + update projects + replace
-  ownerships with NO capability gate.** The engine-backed authz migration gave the
-  Agent role `projects.update/archive`, `ownerships.set`, `contractors.*`,
-  `shares.create/revoke`, `mapping_templates.manage` at the coarse layer, but those
-  services have NO `requireAgentCapability` gate (unlike documents/signatures/tasks/
-  imports/buildings/apartments/owners). Record-scope (assigned projects) still holds,
-  so it's not cross-tenant — but WITHIN an assigned project an agent can mint an
-  external contractor share link (data-egress-adjacent) and end-replace ownerships,
-  which D.17 intended as manager-only. Files: services in projects/ownerships/
-  contractors/shares lack capability calls; divergence map policy-equivalence.map.ts:262-386.
-- **H2 — Calendar (ICS) email re-sends to every attendee on EVERY task edit; the
-  `ics_sent_at` idempotency column is written but never read; sends run INSIDE the
-  withTenant tx.** calendar-email.service.ts:85,199-257 (loop of external Resend
-  calls inside the tx) + trigger tasks.service.ts:483. Result: apartment owners get
-  duplicate/spurious calendar invites; a DB connection is held across external I/O;
-  a rollback after a send re-sends on retry. The clearest integrity BUG found.
-- **H3 — Provider login FAILURES are not audited.** provider-auth.service.ts:166-177
-  locks after 5 failures but writes no provider_audit_log row on failure (org + tenant
-  tiers DO audit failures). Brute-force/credential-stuffing against the most-privileged,
-  cross-tenant, MFA-mandated actor is forensically invisible until a success.
+- **H1 — ❌ REFUTED (FALSE FINDING, 2026-06-06).** The capability-matrix audit claimed
+  agents could update/archive projects, set ownerships, and manage contractors/shares
+  with no gate. **This was wrong — the audit agent saw the coarse engine grant + the
+  absent `requireAgentCapability` call, but MISSED that every one of these write methods
+  calls `this.requireManager(user)`, a STRICTER gate that blocks agents entirely.**
+  Verified file:line: `projects.service.ts` update:456 / archive:496 → requireManager;
+  `ownerships.service.ts` set:242 → requireManager; `contractors.service.ts`
+  create:101/update:146/archive:193 → requireManager (def:48); `shares.service.ts`
+  create:193/update:242/revoke:280 → requireManager (def:73). The `if(role==='agent')`
+  blocks the audit pointed at are SCOPE checks in READ/assert methods (→404 on
+  unassigned), not the write gates. Net effect: these writes are **manager-only today**,
+  exactly as D.17 intends. The only real (LOW) residue: the engine coarse grant is
+  _wider than the effective permission_ (redundant, not exploitable — the service
+  hard-gates). No code change. Lesson: an authz audit MUST trace the service body, not
+  just the permission catalog + divergence map.
+- **H2 — ⚠️ PARTIALLY REAL (re-verified 2026-06-06; original framing overstated).**
+  What's REAL: (a) the external Resend sends run inside the _calendar service's own_
+  withTenant tx (calendar-email.service.ts:199-257) → a pooled DB connection is held
+  across N external round-trips (perf/pool concern); (b) `'update'` fires on ANY edit
+  of an already-scheduled task (tasks.service.ts:482, the was-scheduled∧is-scheduled
+  branch), incl. edits that change no calendar field → spurious re-sends. What's
+  OVERSTATED: the send is NOT inside the _task-update_ tx — `fireCalendarEmail` is
+  `void`-dispatched AFTER that tx closes (tasks.service.ts:206,476, fire-and-forget
+  `.catch(()=>{})`). `ics_sent_at` written-never-read is NOT an idempotency bug — an
+  ICS UPDATE re-send is the _intended_ calendar semantic (clients refresh on SEQUENCE);
+  the column is an audit/"did-we-email" marker, and CREATE fires once on the not→set
+  transition. "Rollback re-sends on retry" — there is no retry mechanism. Recommended
+  (deferred, not yet done): move the Resend loop OUTSIDE the calendar tx (read in tx1
+  → send → stamp ics_sent_at in tx2), and gate `'update'` on a real calendar-field
+  delta (scheduledAt/title/attendees changed) to suppress spurious sends.
+- **H3 — ✅ FIXED (2026-06-06).** The failure path (provider-auth.service.ts) bumped
+  `failedLoginCount`/`lockedUntil` but wrote no `provider_audit_log` row — only success
+  did. Now both failure branches (already-locked window + verify) write a best-effort
+  `login_failed` audit row via a shared `recordLoginFailure` helper. `metadata` carries
+  `{ passwordValid, locked, phase }` — `passwordValid` distinguishes a stolen-password +
+  MFA-block (high signal) from a wrong-password spray WITHOUT storing the password; no
+  client oracle leaks (the thrown `invalid` is byte-identical for every branch); the
+  count-bump (the brute-force security control) is NOT gated on the audit write. Zero
+  schema change (`action_type` free-text matches the 0034 CHECK). Test coverage: blocked
+  on the same gap as M4 — no in-suite provider-user seed exists (provider users only via
+  bootstrap-provider-admin.ts), so a verifying black-box test is env-gated/CI-skipped.
+  Code mirrors three existing audited paths exactly (success insert + org + tenant tiers).
 - **H4 — No scheduler exists → the "orphan-sweeper" referenced 6× is fiction →
   PII-bearing import R2 bytes whose purge failed are NEVER retried (retention leak),
   and a re-enqueue-failed import sits `queued` forever.** (Known #4; reconfirmed with

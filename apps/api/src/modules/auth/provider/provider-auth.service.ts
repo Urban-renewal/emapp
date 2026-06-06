@@ -10,7 +10,7 @@ import {
   providerUsers,
 } from '@emapp/db';
 import type { ProviderProfile } from '@emapp/shared-types';
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { and, eq, isNull } from 'drizzle-orm';
 import { Secret, TOTP } from 'otpauth';
@@ -78,6 +78,8 @@ function sha256(raw: string): string {
 
 @Injectable()
 export class ProviderAuthService {
+  private readonly logger = new Logger(ProviderAuthService.name);
+
   constructor(private readonly jwt: JwtService) {}
 
   // Single generic failure for EVERY rejection path (unknown / disabled /
@@ -129,6 +131,14 @@ export class ProviderAuthService {
 
     if (p.lockedUntil && p.lockedUntil.getTime() > Date.now()) {
       await dummyVerify(dto.password); // silent lock, timing parity
+      // Forensic audit (H3): a login ATTEMPT against an already-locked account
+      // is a strong ongoing-brute-force signal. Best-effort — auditing must
+      // never gate the (timing-parity) throw, so a write failure is swallowed.
+      await this.recordLoginFailure(p.id, ip, userAgent, {
+        passwordValid: null,
+        locked: true,
+        phase: 'locked_window',
+      });
       throw invalid;
     }
 
@@ -166,6 +176,10 @@ export class ProviderAuthService {
     if (!passOk || !mfaOk) {
       const failed = (p.failed ?? 0) + 1;
       const locked = failed >= MAX_FAILED;
+      // The count-bump is the brute-force SECURITY control — it must commit
+      // independently and is NOT gated on the audit write (else an attacker who
+      // can perturb the audit table could disable lockout). The forensic audit
+      // (H3) is layered best-effort on top.
       await db
         .update(providerUsers)
         .set({
@@ -173,6 +187,17 @@ export class ProviderAuthService {
           lockedUntil: locked ? new Date(Date.now() + LOCK_MS) : null,
         })
         .where(eq(providerUsers.id, p.id));
+      // The org + tenant tiers already audit auth failures; the provider tier
+      // (most-privileged, cross-tenant, MFA-mandated) MUST too — else credential-
+      // stuffing is invisible until a success. `passwordValid` distinguishes a
+      // stolen-password + MFA-block (high signal) from a wrong-password spray,
+      // WITHOUT storing the password. No client oracle leaks (`invalid` is
+      // identical for every branch).
+      await this.recordLoginFailure(p.id, ip, userAgent, {
+        passwordValid: passOk,
+        locked,
+        phase: 'verify',
+      });
       throw invalid;
     }
 
@@ -212,6 +237,48 @@ export class ProviderAuthService {
     });
 
     return { accessToken: this.signAccess(p.id, jwtRole, sid), refreshToken: rawRefresh };
+  }
+
+  /**
+   * Best-effort forensic write for a FAILED provider login (H3). Shared by both
+   * failure branches (already-locked window + verify). Swallows its own errors:
+   * an audit-write failure must never convert a 401 into a 500 or perturb the
+   * anti-enumeration timing. Uses the bootstrap `db` pool — this is a pre-auth
+   * path with no provider session/org context (documented D.21 exception, same
+   * as the success-path insert). `reason`/`actionType` are generic so no PII or
+   * which-factor-failed oracle is ever persisted; `metadata` carries only
+   * booleans/strings (never the password or MFA code).
+   */
+  private async recordLoginFailure(
+    providerUserId: string,
+    ip: string | null | undefined,
+    userAgent: string | null | undefined,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await db.insert(providerAuditLog).values({
+        providerUserId,
+        reason: 'provider login failed',
+        actionType: 'login_failed',
+        ip: ip ?? null,
+        userAgent: userAgent ?? null,
+        startedAt: new Date(),
+        metadata,
+      });
+    } catch (err) {
+      // Best-effort: never gate the auth throw on audit availability (a write
+      // failure must not turn a 401 into a 500 or perturb anti-enum timing).
+      // BUT do NOT swallow silently (security-review MED-2): a forensic control
+      // that can go dark undetected defeats H3's purpose. Emit a non-blocking,
+      // PII-free warning so a dead audit pipeline (CHECK drift, pool exhaustion)
+      // is observable. No password/MFA/email is logged — only the provider id
+      // and the error message.
+      this.logger.error(
+        `provider login-failure audit write failed for ${providerUserId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   async refresh(rawToken: string): Promise<{ accessToken: string; refreshToken: string }> {

@@ -391,7 +391,7 @@ export class TasksService {
   }
 
   async update(user: AccessTokenPayload, id: string, input: UpdateTask): Promise<Task> {
-    const { updated, hadScheduledBefore } = await withTenant(
+    const { updated, hadScheduledBefore, calendarFieldChanged } = await withTenant(
       user.orgId,
       async (tx) => {
         const [before] = await tx.select().from(tasks).where(eq(tasks.id, id)).limit(1);
@@ -469,7 +469,24 @@ export class TasksService {
           afterState: { status: row.status },
           sessionId: user.sid,
         });
-        return { updated: toTask(row), hadScheduledBefore: hadScheduledBeforeLocal };
+        // H2 — did an edit actually change a CALENDAR-relevant field? Only these
+        // affect the ICS payload (title/description/location/scheduledAt/duration).
+        // Used below to suppress a spurious ICS UPDATE re-send when the edit
+        // touched only non-calendar fields (status/priority/dueAt/type/assignees)
+        // — otherwise every task edit re-mails every external attendee.
+        const calendarFieldChanged =
+          (input.title !== undefined && input.title !== before.title) ||
+          (input.description !== undefined && input.description !== before.description) ||
+          (input.location !== undefined && input.location !== before.location) ||
+          (input.durationMinutes !== undefined &&
+            input.durationMinutes !== before.durationMinutes) ||
+          (input.scheduledAt !== undefined &&
+            (input.scheduledAt?.getTime() ?? null) !== (before.scheduledAt?.getTime() ?? null));
+        return {
+          updated: toTask(row),
+          hadScheduledBefore: hadScheduledBeforeLocal,
+          calendarFieldChanged,
+        };
       },
       { userId: user.sub },
     );
@@ -480,7 +497,11 @@ export class TasksService {
     //   - was-not AND still-not           → no-op
     const hasScheduledNow = updated.scheduledAt !== null;
     if (hadScheduledBefore && hasScheduledNow) {
-      this.fireCalendarEmail(user.orgId, updated.id, 'update');
+      // H2 — re-send the ICS UPDATE only when a calendar field actually changed.
+      // A non-calendar edit (status/priority/assignee/etc.) must NOT re-mail
+      // every external attendee. (CANCEL/CREATE below are themselves calendar
+      // state transitions, so they always fire.)
+      if (calendarFieldChanged) this.fireCalendarEmail(user.orgId, updated.id, 'update');
     } else if (hadScheduledBefore && !hasScheduledNow) {
       this.fireCalendarEmail(user.orgId, updated.id, 'cancel');
     } else if (!hadScheduledBefore && hasScheduledNow) {

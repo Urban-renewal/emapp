@@ -14,12 +14,15 @@ import {
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { resolveNotificationRecipients } from '../notifications/notification-recipients';
+import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
 export interface NoteListPage {
   data: Note[];
@@ -56,6 +59,10 @@ function toNote(r: typeof notes.$inferSelect): Note {
  */
 @Injectable()
 export class NotesService {
+  private readonly logger = new Logger(NotesService.name);
+
+  constructor(private readonly notifications: NotificationsProducerService) {}
+
   private agentVisibility(user: AccessTokenPayload): SQL | undefined {
     if (user.role !== 'agent') return undefined;
     // own OR org-level OR project in an active assignment.
@@ -188,7 +195,13 @@ export class NotesService {
 
   async create(user: AccessTokenPayload, input: CreateNote): Promise<Note> {
     if (user.role === 'viewer') throw FORBIDDEN;
-    return withTenant(
+    // P5.S3 / D-O7 — note_added recipients, resolved INSIDE the tx (an org-
+    // scoped read satisfying the producer's recipient∈org invariant) but
+    // EMITTED after commit. A notification must NEVER fail the note create, so
+    // resolution self-guards to []. Declared here to survive the tx scope.
+    let notifyRecipientIds: string[] = [];
+
+    const note = await withTenant(
       user.orgId,
       async (tx) => {
         if (input.projectId) await this.assertProjectVisible(tx, user, input.projectId);
@@ -217,10 +230,60 @@ export class NotesService {
           targetId: row.id,
           sessionId: user.sid,
         });
+
+        // D-O7 — resolve recipients through the ONE central helper (no inline
+        // recipient logic). Project context: a note may be attached directly to
+        // a project, or to an apartment (apartment → building → project), or to
+        // neither (org-level). When there is NO project context we pass
+        // projectId=undefined and the engine still notifies managers-always.
+        // Wrapped so a resolver hiccup never rolls back the note create.
+        try {
+          let notifyProjectId = row.projectId;
+          if (!notifyProjectId && row.apartmentId) {
+            const [apt] = await tx
+              .select({ projectId: buildings.projectId })
+              .from(apartments)
+              .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
+              .where(eq(apartments.id, row.apartmentId))
+              .limit(1);
+            notifyProjectId = apt?.projectId ?? null;
+          }
+          notifyRecipientIds = await resolveNotificationRecipients(tx, user.orgId, {
+            projectId: notifyProjectId,
+            actorUserId: user.sub,
+          });
+        } catch {
+          notifyRecipientIds = [];
+        }
         return toNote(row);
       },
       { userId: user.sub },
     );
+
+    // Fire-and-forget AFTER commit. PII DECISION: a note's free-text `body` may
+    // be sensitive (it can mention residents, money, disputes), so it is NEVER
+    // placed in the notification body. The notification carries only a generic
+    // static label; the noteId in metadata lets a recipient open the real note
+    // through the normal RLS-scoped read. emitMany self-guards, and we also
+    // try/catch at the call site: a notify failure must never 500 the create.
+    if (notifyRecipientIds.length > 0) {
+      try {
+        await this.notifications.emitMany(notifyRecipientIds, {
+          orgId: user.orgId,
+          type: 'note_added',
+          title: 'הערה חדשה נוספה',
+          body: 'נוספה הערה חדשה.',
+          link: null,
+          metadata: { noteId: note.id },
+        });
+      } catch (e) {
+        this.logger.error(
+          `note_added notify failed (note=${note.id}): ${e instanceof Error ? e.message : 'unknown'}`,
+        );
+      }
+    }
+
+    return note;
   }
 
   async update(user: AccessTokenPayload, id: string, input: UpdateNote): Promise<Note> {

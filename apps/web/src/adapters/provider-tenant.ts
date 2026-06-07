@@ -31,6 +31,7 @@ export function toTenantListItemVM(
     createdRelative: formatRelative(row.createdAt, locale),
     createdAtIso: row.createdAt.toISOString(),
     isArchived: row.archivedAt !== null,
+    isSuspended: row.suspendedAt !== null,
     userCount: row.counts.users,
     projectCount: row.counts.projects,
     ownerCount: row.counts.owners,

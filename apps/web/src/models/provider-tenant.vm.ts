@@ -27,6 +27,8 @@ export interface ProviderTenantListItemVM {
   createdAtIso: string;
   /** D.07 — display "ארכוב" badge when set. */
   isArchived: boolean;
+  /** D.49 — display "מושעה" (frozen) badge when set; distinct from archived. */
+  isSuspended: boolean;
   /** Flat formatted counts for table cells. */
   userCount: number;
   projectCount: number;

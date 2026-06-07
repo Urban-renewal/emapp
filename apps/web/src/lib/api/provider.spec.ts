@@ -91,6 +91,7 @@ const VALID_TENANT_LIST = {
       slug: 'alpha',
       createdAt: '2026-04-25T10:00:00Z',
       archivedAt: null,
+      suspendedAt: null,
       counts: { users: 3, projects: 1, owners: 3 },
     },
   ],

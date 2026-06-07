@@ -107,6 +107,7 @@ export class ProviderTenantsService {
             slug: organizations.slug,
             createdAt: organizations.createdAt,
             archivedAt: organizations.archivedAt,
+            suspendedAt: organizations.suspendedAt,
             usersCount,
             projectsCount,
             ownersCount,
@@ -146,6 +147,7 @@ export class ProviderTenantsService {
         slug: r.slug,
         createdAt: r.createdAt,
         archivedAt: r.archivedAt,
+        suspendedAt: r.suspendedAt,
         counts: {
           users: Number(r.usersCount),
           projects: Number(r.projectsCount),

@@ -633,7 +633,8 @@
       "loadFailed": "טעינת רשימת הלקוחות נכשלה.",
       "empty": "אין לקוחות.",
       "countsLine": "{users} משתמשים · {projects} פרויקטים · {owners} בעלי דירות",
-      "createTenant": "לקוח חדש"
+      "createTenant": "לקוח חדש",
+      "suspended": "מושעה"
     },
     "onboard": {
       "title": "יצירת לקוח חדש",

@@ -168,6 +168,7 @@ export const SEED_PROVIDER_TENANTS = [
     slug: 'alpha-dev',
     createdAt: '2026-01-15T10:00:00.000Z',
     archivedAt: null,
+    suspendedAt: null,
     counts: { users: 5, projects: 3, owners: 42 },
   },
   {
@@ -176,6 +177,7 @@ export const SEED_PROVIDER_TENANTS = [
     slug: 'beta-tama',
     createdAt: '2026-02-20T10:00:00.000Z',
     archivedAt: null,
+    suspendedAt: null,
     counts: { users: 2, projects: 1, owners: 18 },
   },
 ] as const;

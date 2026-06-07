@@ -110,6 +110,7 @@
       "orgSlugLabel": "מזהה ארגון (אופציונלי)",
       "orgSlugPlaceholder": "alpha-dev",
       "orgSlugHint": "מלא רק אם אתה בעלים של דירה ביותר מארגון אחד.",
+      "orgSlugPrefilled": "מזהה הארגון מולא עבורך מתוך הקישור. אפשר לשנות אם צריך.",
       "codeLabel": "קוד אימות",
       "sendCode": "שלח קוד",
       "sending": "שולח...",

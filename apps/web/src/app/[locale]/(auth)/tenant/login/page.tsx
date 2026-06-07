@@ -3,9 +3,9 @@
 import { type OtpRequestDto, type OtpVerifyDto } from '@emapp/shared-types';
 import { isValidIsraeliPhone } from '@emapp/validators';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { apiClient, isOk } from '@/lib/api-client';
@@ -17,6 +17,12 @@ import { applyValidationErrors } from '@/lib/errors';
  * Two-step flow per D.20 + `apps/api/src/modules/auth/tenant/otp.controller.ts`:
  *   1. Phone entry (+ optional org-slug if the resident owns
  *      apartments across multiple developers' orgs, per D.30/F2).
+ *      A `?org=<slug>` query param (P4 #7) pre-fills the org-slug field
+ *      so a multi-org resident arriving via a slug-carrying login link
+ *      lands on a ready-to-submit form. The slug is a public org id
+ *      (zero PII) — a convenience pre-fill only; the BE re-authorizes by
+ *      phone + slug + OTP, so a wrong/forged slug just yields the same
+ *      generic no-op. A single-org resident (no `?org=`) is unaffected.
  *      POSTs `/api/v1/auth/otp/request` — always returns generic 200
  *      (anti-enumeration; we never reveal whether the phone matches
  *      a known owner).
@@ -66,6 +72,31 @@ import { applyValidationErrors } from '@/lib/errors';
  */
 const RESEND_COOLDOWN_SEC = 30;
 
+/**
+ * P4 #7 — multi-org resident deep-link. The tenant-login URL a resident
+ * receives can carry `?org=<slug>` so a resident who owns apartments
+ * across ≥2 developer orgs lands on a form whose org-slug field is
+ * already filled (the BE's F2 path needs the slug to disambiguate; the
+ * resident never knows it). The slug is a PUBLIC org identifier
+ * (`organizations.slug`, zero PII) — it is a convenience pre-fill ONLY.
+ * The BE remains the sole authority (phone + slug + OTP); a wrong/forged
+ * slug just yields the same generic anti-enum no-op.
+ *
+ * Sanitize defensively: a slug is `[a-z0-9-]` (matches the org-creation
+ * slugifier). Lower-case, strip anything else, and cap at the schema max
+ * (100, `OtpRequestSchema.org_slug`). An empty result → no pre-fill (the
+ * single-org resident is unaffected; the field stays optional/empty).
+ */
+const SLUG_MAX_LEN = 100;
+export function sanitizeOrgSlug(raw: string | null | undefined): string {
+  if (typeof raw !== 'string') return '';
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '')
+    .slice(0, SLUG_MAX_LEN);
+}
+
 export default function TenantLoginPage() {
   const t = useTranslations('auth.tenant');
   const tCommon = useTranslations('auth');
@@ -102,6 +133,21 @@ export default function TenantLoginPage() {
   const phoneForm = useForm<OtpRequestDto>();
   const codeForm = useForm<OtpVerifyDto>();
 
+  // P4 #7 — multi-org deep-link. Read `?org=<slug>` off the URL and
+  // pre-fill the (already-existing, optional) org-slug field so a
+  // multi-org resident's form is ready to submit. `useMemo` keeps the
+  // derived value stable across re-renders (same pattern as the provider
+  // audit deep-link). The slug is sanitized (public id, never trusted for
+  // anything security-sensitive — the BE re-authorizes).
+  const searchParams = useSearchParams();
+  const deepLinkSlug = useMemo(() => sanitizeOrgSlug(searchParams?.get('org')), [searchParams]);
+  /** True once the deep-link slug has been written into the form field —
+   *  drives the small "filled for you from your link" hint. We render the
+   *  hint off the live field value so it disappears if the user clears the
+   *  field, and we only show it for a non-empty deep-link slug. */
+  const orgSlugFieldValue = phoneForm.watch('org_slug');
+  const showPrefilledHint = deepLinkSlug.length > 0 && orgSlugFieldValue === deepLinkSlug;
+
   /** Ref on the wrapper form for the auto-submit-on-6-digits effect. */
   const codeFormRef = useRef<HTMLFormElement | null>(null);
   /** Tracks the last 6-digit code value that the auto-submit effect
@@ -118,6 +164,20 @@ export default function TenantLoginPage() {
    *  the user reaches 6 digits. RHF's `watch` is the canonical hook
    *  for cross-rendering an input value into an effect. */
   const codeValue = codeForm.watch('code');
+
+  // P4 #7 — pre-fill the org-slug field from the `?org=<slug>` deep-link
+  // exactly once on mount (when present). `setValue` (not `defaultValues`)
+  // because the slug is derived asynchronously from `useSearchParams`,
+  // which is null on the very first render. We deliberately do NOT keep
+  // re-applying it on every render — once set, the field is the user's to
+  // edit (they can correct or clear it). The empty-slug case is a no-op,
+  // so a single-org resident is entirely unaffected.
+  useEffect(() => {
+    if (deepLinkSlug.length === 0) return;
+    phoneForm.setValue('org_slug', deepLinkSlug);
+    // Intentionally mount-once on the derived slug; phoneForm is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkSlug]);
 
   // Tick the resend cooldown once per second while it's positive.
   useEffect(() => {
@@ -329,6 +389,11 @@ export default function TenantLoginPage() {
               <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                 {t('orgSlugHint')}
               </span>
+              {showPrefilledHint && (
+                <span className="text-[11px]" style={{ color: 'var(--success-700)' }} role="status">
+                  {t('orgSlugPrefilled')}
+                </span>
+              )}
               {phoneForm.formState.errors.org_slug && (
                 <span className="text-xs" style={{ color: 'var(--danger-700)' }}>
                   {phoneForm.formState.errors.org_slug.message}

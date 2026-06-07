@@ -5,6 +5,7 @@ import {
   AuditService,
   documents,
   owners,
+  ownerships,
   signatureRequests,
   withTenant,
   type IEmailProvider,
@@ -121,6 +122,39 @@ export class SignatureRequestsService {
     return row;
   }
 
+  /** Feature A (D.25) — the RENTER SIGNATURE GATE (the load-bearing guarantee).
+   *
+   *  A renter never signs. This is the ONLY server-side chokepoint where an
+   *  apartment's people are resolved into the owner-ids a signing link is minted
+   *  for: the bulk/single owner-ids are CLIENT-supplied (the FE expands
+   *  "building/project owners" → id list — see BulkCreateSignatureRequestInput),
+   *  and `SignatureRequestsService` is otherwise relationship-agnostic (it takes
+   *  `ownerId` directly). So the exclusion CANNOT live in the ownerships service
+   *  (which never sees a signature request) — it must live HERE, the assembly
+   *  point, or a forged/stale client-supplied renter id would still get a link.
+   *
+   *  Rule: an owner is INELIGIBLE to sign iff they are a RENTER somewhere active
+   *  (≥1 active `relationship='renter'` ownership row) AND own NOTHING active
+   *  (NO active `relationship='owner'` row). A person who owns any apartment is
+   *  a legitimate signer; a person with no ownership rows at all (e.g. a freshly
+   *  seeded owner) is unaffected — so this is a precise exclusion of pure
+   *  renters, not a blanket "must own something" rule. Runs inside the caller's
+   *  withTenant tx (RLS-scoped to the org). Returns the renter-only id subset.
+   */
+  private async resolveRenterOnly(tx: TenantTx, ownerIds: string[]): Promise<Set<string>> {
+    if (ownerIds.length === 0) return new Set();
+    const rows = await tx
+      .select({
+        ownerId: ownerships.ownerId,
+        isOwner: sql<boolean>`bool_or(${ownerships.relationship} = 'owner')`,
+        isRenter: sql<boolean>`bool_or(${ownerships.relationship} = 'renter')`,
+      })
+      .from(ownerships)
+      .where(and(inArray(ownerships.ownerId, ownerIds), sql`${ownerships.endedAt} IS NULL`))
+      .groupBy(ownerships.ownerId);
+    return new Set(rows.filter((r) => r.isRenter && !r.isOwner).map((r) => r.ownerId));
+  }
+
   /** Create a signature request and mint its JWT token.
    *
    *  Flow:
@@ -166,6 +200,15 @@ export class SignatureRequestsService {
         // inherits the document's project scope.
         if (user.role === 'agent') await this.assertDocVisibleForAgent(tx, user, input.documentId);
         await requireAgentCapability(tx, user, 'manage_signatures');
+
+        // Feature A (D.25) RENTER GATE — a renter can NEVER be issued a signing
+        // link. No-oracle 404 (same shape as a foreign/archived owner): a
+        // forged/stale client-supplied renter id is indistinguishable from
+        // "never existed". Runs BEFORE PII decrypt (defense-in-depth: an
+        // ineligible owner must not trigger national_id/phone decryption).
+        if ((await this.resolveRenterOnly(tx, [input.ownerId])).has(input.ownerId)) {
+          throw NOT_FOUND;
+        }
         const own = await this.loadOwnerWithPii(tx, input.ownerId);
 
         // Block a duplicate pending request for the same (doc, owner).
@@ -315,6 +358,14 @@ export class SignatureRequestsService {
           .where(inArray(owners.id, ownerIds));
         const visibleSet = new Set(visibleRows.map((r) => r.id));
 
+        // Feature A (D.25) RENTER GATE — one batched query identifies owners who
+        // are renter-only (renter somewhere active, owner nowhere) so they are
+        // NEVER minted a signing link. A renter is a per-owner `failed`
+        // (reason 'owner_is_renter'), never aborting the batch — same posture as
+        // an owner_not_found. This is the load-bearing exclusion (the ownerIds
+        // are client-supplied; this is the server's resolution chokepoint).
+        const renterOnlySet = await this.resolveRenterOnly(tx, ownerIds);
+
         const audit = new AuditService(tx, { ip: user.ip, userAgent: user.userAgent });
         const bundles: Array<{
           ownerId: string;
@@ -332,6 +383,12 @@ export class SignatureRequestsService {
           if (!visibleSet.has(m.ownerId)) {
             // Foreign/archived/non-existent id — no-oracle, no row. Batch continues.
             bundles.push({ ...m, outcome: 'failed', reason: 'owner_not_found' });
+            continue;
+          }
+          if (renterOnlySet.has(m.ownerId)) {
+            // Feature A (D.25): a renter cannot sign. Skip minting/inserting for
+            // this owner; the rest of the batch is unaffected.
+            bundles.push({ ...m, outcome: 'failed', reason: 'owner_is_renter' });
             continue;
           }
           const [inserted] = await tx

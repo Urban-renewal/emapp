@@ -25,6 +25,7 @@ export function toOwnershipViewModel(o: ApartmentOwner): OwnershipViewModel {
     nationalIdMasked: o.nationalIdMasked,
     phoneMasked: o.phoneMasked,
     ownershipPct: o.ownershipPct,
+    relationship: o.relationship,
     role: o.role,
   };
 }

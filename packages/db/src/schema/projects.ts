@@ -208,6 +208,14 @@ export const ownerships = pgTable(
       .references(() => owners.id, { onDelete: 'restrict' }),
     ownershipPct: numeric('ownership_pct', { precision: 5, scale: 2 }).notNull(),
     role: text('role'),
+    // Feature A (P2 / D.25 sum-trigger change) — owner vs renter. A renter
+    // does NOT sign and is EXCLUDED from the 100% ownership sum (the D.25
+    // constraint trigger sums `relationship = 'owner'` rows only). Renters
+    // store ownership_pct = 0 (column stays NOT NULL — option (a)). Closed
+    // set enforced by a DB CHECK (('owner','renter')) AND the Zod enum at
+    // the API edge. DISTINCT from the pre-existing `role` text column above
+    // (values like 'primary') — do NOT overload `role`.
+    relationship: text('relationship').notNull().default('owner'),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     endedAt: timestamp('ended_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

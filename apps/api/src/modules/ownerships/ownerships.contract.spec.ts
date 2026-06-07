@@ -179,8 +179,8 @@ describe('CONTRACT · ownerships · set-replace', () => {
     const o1 = await newOwner(at);
     const o2 = await newOwner(at);
     const r = await putSet(at, apt, [
-      { ownerId: o1, ownershipPct: 60, role: 'primary' },
-      { ownerId: o2, ownershipPct: 40 },
+      { ownerId: o1, ownershipPct: 60, relationship: 'owner', role: 'primary' },
+      { ownerId: o2, ownershipPct: 40, relationship: 'owner' },
     ]);
     expect(r.status, r.raw).toBeGreaterThanOrEqual(200);
     expect(r.status).toBeLessThan(300);
@@ -198,16 +198,18 @@ describe('CONTRACT · ownerships · set-replace', () => {
     const at = await manager('inv');
     const apt = await newApartment(at);
     const o1 = await newOwner(at);
-    const zero = await putSet(at, apt, [{ ownerId: o1, ownershipPct: 0 }]);
+    const zero = await putSet(at, apt, [{ ownerId: o1, ownershipPct: 0, relationship: 'owner' }]);
     expect(zero.status).toBe(400);
-    const over = await putSet(at, apt, [{ ownerId: o1, ownershipPct: 150 }]);
+    const over = await putSet(at, apt, [{ ownerId: o1, ownershipPct: 150, relationship: 'owner' }]);
     expect(over.status).toBe(400);
     const dup = await putSet(at, apt, [
-      { ownerId: o1, ownershipPct: 50 },
-      { ownerId: o1, ownershipPct: 50 },
+      { ownerId: o1, ownershipPct: 50, relationship: 'owner' },
+      { ownerId: o1, ownershipPct: 50, relationship: 'owner' },
     ]);
     expect(dup.status, 'duplicate ownerId not rejected').toBe(400);
-    const unknown = await putSet(at, apt, [{ ownerId: o1, ownershipPct: 100, x: 1 }]);
+    const unknown = await putSet(at, apt, [
+      { ownerId: o1, ownershipPct: 100, relationship: 'owner', x: 1 },
+    ]);
     expect(unknown.status, 'unknown field not rejected (strict)').toBe(400);
     expect((unknown.body['error'] as Json)?.['code']).toBe('validation_error');
   });
@@ -217,11 +219,11 @@ describe('CONTRACT · ownerships · set-replace', () => {
     const apt = await newApartment(at);
     const o1 = await newOwner(at);
     const o2 = await newOwner(at);
-    const half = await putSet(at, apt, [{ ownerId: o1, ownershipPct: 50 }]);
+    const half = await putSet(at, apt, [{ ownerId: o1, ownershipPct: 50, relationship: 'owner' }]);
     expect(half.status, 'a 50-only set must be rejected (≠100)').toBe(400);
     const over = await putSet(at, apt, [
-      { ownerId: o1, ownershipPct: 70 },
-      { ownerId: o2, ownershipPct: 40 },
+      { ownerId: o1, ownershipPct: 70, relationship: 'owner' },
+      { ownerId: o2, ownershipPct: 40, relationship: 'owner' },
     ]);
     expect(over.status).toBe(400);
   });
@@ -232,11 +234,13 @@ describe('CONTRACT · ownerships · set-replace', () => {
     const o1 = await newOwner(at);
     const o2 = await newOwner(at);
     const o3 = await newOwner(at);
-    const first = await putSet(at, apt, [{ ownerId: o1, ownershipPct: 100 }]);
+    const first = await putSet(at, apt, [
+      { ownerId: o1, ownershipPct: 100, relationship: 'owner' },
+    ]);
     expect(first.status).toBeLessThan(300);
     const second = await putSet(at, apt, [
-      { ownerId: o2, ownershipPct: 60 },
-      { ownerId: o3, ownershipPct: 40 },
+      { ownerId: o2, ownershipPct: 60, relationship: 'owner' },
+      { ownerId: o3, ownershipPct: 40, relationship: 'owner' },
     ]);
     expect(second.status).toBeLessThan(300);
     const list = await call(`/apartments/${apt}/ownerships`, { cookie: `access_token=${at}` });
@@ -253,7 +257,7 @@ describe('CONTRACT · ownerships · set-replace', () => {
     const at = await manager('clr');
     const apt = await newApartment(at);
     const o1 = await newOwner(at);
-    await putSet(at, apt, [{ ownerId: o1, ownershipPct: 100 }]);
+    await putSet(at, apt, [{ ownerId: o1, ownershipPct: 100, relationship: 'owner' }]);
     const cleared = await putSet(at, apt, []);
     expect(cleared.status, cleared.raw).toBeLessThan(300);
     const list = await call(`/apartments/${apt}/ownerships`, { cookie: `access_token=${at}` });
@@ -263,12 +267,12 @@ describe('CONTRACT · ownerships · set-replace', () => {
   ct('OWS7 unknown apartment → 404; unknown ownerId → 404', async () => {
     const at = await manager('nf');
     const bad = await putSet(at, '00000000-0000-0000-0000-0000000000bb', [
-      { ownerId: await newOwner(at), ownershipPct: 100 },
+      { ownerId: await newOwner(at), ownershipPct: 100, relationship: 'owner' },
     ]);
     expect(bad.status).toBe(404);
     const apt = await newApartment(at);
     const r2 = await putSet(at, apt, [
-      { ownerId: '00000000-0000-0000-0000-0000000000cc', ownershipPct: 100 },
+      { ownerId: '00000000-0000-0000-0000-0000000000cc', ownershipPct: 100, relationship: 'owner' },
     ]);
     expect(r2.status).toBe(404);
   });
@@ -277,7 +281,9 @@ describe('CONTRACT · ownerships · set-replace', () => {
     const atA = await manager('iso-a');
     const aptA = await newApartment(atA);
     const atB = await manager('iso-b');
-    const cross = await putSet(atB, aptA, [{ ownerId: await newOwner(atB), ownershipPct: 100 }]);
+    const cross = await putSet(atB, aptA, [
+      { ownerId: await newOwner(atB), ownershipPct: 100, relationship: 'owner' },
+    ]);
     expect(cross.status, 'org B wrote into org A apartment').toBe(404);
   });
 
@@ -291,7 +297,7 @@ describe('CONTRACT · ownerships · set-replace', () => {
       body: JSON.stringify({ name: 'Viewed', national_id: nid }),
     });
     const ownerId = (oc.body['data'] as Json)['id'] as string;
-    await putSet(at, apt, [{ ownerId, ownershipPct: 100 }]);
+    await putSet(at, apt, [{ ownerId, ownershipPct: 100, relationship: 'owner' }]);
     const r = await call(`/apartments/${apt}/owners`, { cookie: `access_token=${at}` });
     expect(r.status).toBe(200);
     const row = (r.body['data'] as Json[])[0] as Json;

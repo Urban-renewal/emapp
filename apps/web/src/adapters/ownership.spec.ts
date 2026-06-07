@@ -29,6 +29,7 @@ function baseApartmentOwner(over: Partial<import('@emapp/shared-types').Apartmen
     updatedAt: new Date('2026-05-20T10:00:00Z'),
     ownershipId: 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb',
     ownershipPct: 50,
+    relationship: 'owner',
     role: 'spouse',
     ...over,
   });

@@ -1,13 +1,14 @@
 'use client';
 
-import { SetOwnershipsInput } from '@emapp/shared-types';
+import { CreateOwnerInput, SetOwnershipsInput, type Relationship } from '@emapp/shared-types';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { useOwnerList } from '@/hooks/use-owners';
+import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
+import { useCreateOwner, useOwnerList } from '@/hooks/use-owners';
 import { useApartmentOwners, useSetOwnerships } from '@/hooks/use-ownerships';
 import { ApiClientError } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
@@ -15,6 +16,7 @@ import { cn } from '@/lib/utils';
 interface Row {
   ownerId: string;
   ownershipPct: number;
+  relationship: Relationship;
 }
 
 const SUM_EPSILON = 0.001;
@@ -22,6 +24,7 @@ const SUM_EPSILON = 0.001;
 export default function ApartmentOwnershipsPage() {
   const t = useTranslations('ownerships');
   const tp = useTranslations('projects');
+  const to = useTranslations('owners');
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const apartmentId = params?.id;
@@ -45,6 +48,7 @@ export default function ApartmentOwnershipsPage() {
       current.data?.items.map((o) => ({
         ownerId: o.ownerId,
         ownershipPct: o.ownershipPct,
+        relationship: o.relationship,
       })) ?? [],
     [current.data],
   );
@@ -57,8 +61,18 @@ export default function ApartmentOwnershipsPage() {
     [seedRows],
   );
 
-  const sum = useMemo(() => rows.reduce((a, r) => a + (r.ownershipPct || 0), 0), [rows]);
-  const sumValid = rows.length === 0 || Math.abs(sum - 100) <= SUM_EPSILON;
+  // Feature A — only OWNERS count toward the 100% invariant (renters
+  // carry pct 0 and are excluded). This mirrors `SetOwnershipsInput`'s
+  // refine; the UI hint just reflects the same rule (single source of
+  // truth is the shared schema, re-checked at `onSave`).
+  const ownerSum = useMemo(
+    () =>
+      rows.filter((r) => r.relationship === 'owner').reduce((a, r) => a + (r.ownershipPct || 0), 0),
+    [rows],
+  );
+  const hasOwners = useMemo(() => rows.some((r) => r.relationship === 'owner'), [rows]);
+  // Legal end states for the OWNER sum: 0 (no owners / cleared) or 100.
+  const sumValid = !hasOwners || Math.abs(ownerSum - 100) <= SUM_EPSILON;
   const dupeIds = useMemo(() => {
     const seen = new Set<string>();
     const dupes = new Set<string>();
@@ -75,7 +89,7 @@ export default function ApartmentOwnershipsPage() {
   function addRow() {
     const candidate = availableOwners.find((o) => !rows.some((r) => r.ownerId === o.id));
     if (!candidate) return;
-    setRows((rs) => [...rs, { ownerId: candidate.id, ownershipPct: 0 }]);
+    setRows((rs) => [...rs, { ownerId: candidate.id, ownershipPct: 0, relationship: 'owner' }]);
   }
 
   function removeRow(idx: number) {
@@ -86,11 +100,34 @@ export default function ApartmentOwnershipsPage() {
     setRows((rs) => rs.map((r, i) => (i === idx ? { ...r, ...next } : r)));
   }
 
+  // Switching a row to 'renter' forces pct → 0 (a renter holds no
+  // ownership stake); switching back to 'owner' leaves the editable
+  // field for the user to set.
+  function updateRelationship(idx: number, relationship: Relationship) {
+    setRows((rs) =>
+      rs.map((r, i) =>
+        i === idx
+          ? { ...r, relationship, ownershipPct: relationship === 'renter' ? 0 : r.ownershipPct }
+          : r,
+      ),
+    );
+  }
+
+  // Inline create — when a freshly created owner lands, append it as a
+  // new owner row so it's immediately part of the atomic set-replace.
+  function onOwnerCreated(ownerId: string) {
+    setRows((rs) => [...rs, { ownerId, ownershipPct: 0, relationship: 'owner' }]);
+  }
+
   async function onSave() {
     if (!apartmentId) return;
     setServerError(null);
     const body = {
-      owners: rows.map((r) => ({ ownerId: r.ownerId, ownershipPct: r.ownershipPct })),
+      owners: rows.map((r) => ({
+        ownerId: r.ownerId,
+        ownershipPct: r.ownershipPct,
+        relationship: r.relationship,
+      })),
     };
     const parsed = SetOwnershipsInput.safeParse(body);
     if (!parsed.success) {
@@ -124,6 +161,7 @@ export default function ApartmentOwnershipsPage() {
       </p>
       <h1 className="text-2xl font-bold">{t('title')}</h1>
       <p className="text-xs text-muted-foreground">{t('hint')}</p>
+      <p className="text-xs text-muted-foreground">{t('renterHint')}</p>
 
       <div className="space-y-2">
         {rows.length === 0 ? (
@@ -132,6 +170,7 @@ export default function ApartmentOwnershipsPage() {
           rows.map((r, idx) => {
             const owner = availableOwners.find((o) => o.id === r.ownerId);
             const isDupe = dupeIds.has(r.ownerId);
+            const isRenter = r.relationship === 'renter';
             return (
               <div
                 key={`${r.ownerId}-${idx}`}
@@ -154,14 +193,27 @@ export default function ApartmentOwnershipsPage() {
                   ))}
                   {owner === undefined && <option value={r.ownerId}>{r.ownerId}</option>}
                 </select>
+                <select
+                  value={r.relationship}
+                  onChange={(e) => updateRelationship(idx, e.target.value as Relationship)}
+                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                  aria-label={t('relationshipLabel')}
+                >
+                  <option value="owner">{t('relationship.owner')}</option>
+                  <option value="renter">{t('relationship.renter')}</option>
+                </select>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
                   max="100"
                   value={r.ownershipPct}
+                  disabled={isRenter}
                   onChange={(e) => updateRow(idx, { ownershipPct: Number(e.target.value || 0) })}
-                  className="w-24 rounded-md border px-3 py-2 text-end text-sm"
+                  className={cn(
+                    'w-24 rounded-md border px-3 py-2 text-end text-sm',
+                    isRenter && 'cursor-not-allowed bg-muted text-muted-foreground',
+                  )}
                   aria-label={t('shareLabel')}
                 />
                 <span className="text-xs text-muted-foreground">%</span>
@@ -180,14 +232,32 @@ export default function ApartmentOwnershipsPage() {
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Button type="button" variant="outline" size="sm" onClick={addRow}>
           {t('addRow')}
         </Button>
+        <InlineCreateOwner
+          labels={{
+            open: t('addPerson'),
+            name: to('field.name'),
+            nationalId: to('field.nationalId'),
+            phone: to('field.phone'),
+            create: to('create'),
+            creating: to('creating'),
+            cancel: tp('cancel'),
+            idExists: to('field.idExists'),
+            createFailed: to('createFailed'),
+            required: tp('field.required'),
+          }}
+          onCreated={onOwnerCreated}
+        />
         <div
-          className={cn('text-sm font-medium', sumValid ? 'text-foreground' : 'text-destructive')}
+          className={cn(
+            'ms-auto text-sm font-medium',
+            sumValid ? 'text-foreground' : 'text-destructive',
+          )}
         >
-          {t('sumLabel', { sum: sum.toFixed(2) })}
+          {t('sumLabel', { sum: ownerSum.toFixed(2) })}
         </div>
       </div>
 
@@ -210,5 +280,154 @@ export default function ApartmentOwnershipsPage() {
         </Button>
       </div>
     </div>
+  );
+}
+
+interface InlineCreateOwnerLabels {
+  open: string;
+  name: string;
+  nationalId: string;
+  phone: string;
+  create: string;
+  creating: string;
+  cancel: string;
+  idExists: string;
+  createFailed: string;
+  required: string;
+}
+
+/**
+ * Inline "+ אדם חדש" — a mini owner-create form that REUSES the same
+ * `/owners` POST (via `useCreateOwner` → `createOwner` → idempotent POST)
+ * as the standalone owner-create page, so no separate page trip is
+ * needed. On success the new owner becomes selectable as a new ownership
+ * row in the SAME flow; the atomic set-replace PUT is unchanged.
+ */
+function InlineCreateOwner({
+  labels,
+  onCreated,
+}: {
+  labels: InlineCreateOwnerLabels;
+  onCreated: (ownerId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [nationalId, setNationalId] = useState('');
+  const [phone, setPhone] = useState('');
+  const [fieldError, setFieldError] = useState<string | null>(null);
+  const mutation = useCreateOwner();
+  const { serverError, handle, reset } = useApiErrorHandler({
+    codeOverrides: {
+      owner_exists: () => labels.idExists,
+    },
+    fallback: () => labels.createFailed,
+  });
+
+  function close() {
+    setOpen(false);
+    setName('');
+    setNationalId('');
+    setPhone('');
+    setFieldError(null);
+    reset();
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    reset();
+    setFieldError(null);
+    // Reuse the shared write-contract for validation — single source of
+    // truth, no re-encoded field rules. `phone` is omitted when blank.
+    const candidate = {
+      name,
+      national_id: nationalId,
+      ...(phone.trim() ? { phone } : {}),
+    };
+    const parsed = CreateOwnerInput.safeParse(candidate);
+    if (!parsed.success) {
+      setFieldError(parsed.error.issues[0]?.message ?? labels.required);
+      return;
+    }
+    try {
+      const owner = await mutation.mutateAsync(parsed.data);
+      onCreated(owner.id);
+      close();
+    } catch (err) {
+      handle(err);
+    }
+  }
+
+  if (!open) {
+    return (
+      <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
+        {labels.open}
+      </Button>
+    );
+  }
+
+  return (
+    // method="post" — defense in depth; this form carries national_id
+    // (D.19 PII). A GET fallback would leak it to the URL/logs.
+    <form
+      method="post"
+      action=""
+      onSubmit={onSubmit}
+      className="w-full space-y-3 rounded-md border bg-card p-3"
+    >
+      <div className="space-y-1">
+        <label htmlFor="inline-owner-name" className="text-sm font-medium">
+          {labels.name}
+        </label>
+        <input
+          id="inline-owner-name"
+          type="text"
+          autoComplete="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="w-full rounded-md border px-3 py-2 text-sm"
+        />
+      </div>
+      <div className="space-y-1">
+        <label htmlFor="inline-owner-id" className="text-sm font-medium">
+          {labels.nationalId}
+        </label>
+        <input
+          id="inline-owner-id"
+          type="text"
+          inputMode="numeric"
+          maxLength={9}
+          autoComplete="off"
+          dir="ltr"
+          value={nationalId}
+          onChange={(e) => setNationalId(e.target.value)}
+          className="w-full rounded-md border px-3 py-2 font-mono text-sm"
+        />
+      </div>
+      <div className="space-y-1">
+        <label htmlFor="inline-owner-phone" className="text-sm font-medium">
+          {labels.phone}
+        </label>
+        <input
+          id="inline-owner-phone"
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          dir="ltr"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          className="w-full rounded-md border px-3 py-2 font-mono text-sm"
+        />
+      </div>
+      {fieldError && <p className="text-xs text-destructive">{fieldError}</p>}
+      {serverError && <p className="text-xs text-destructive">{serverError}</p>}
+      <div className="flex items-center justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={close}>
+          {labels.cancel}
+        </Button>
+        <Button type="submit" size="sm" disabled={mutation.isPending}>
+          {mutation.isPending ? labels.creating : labels.create}
+        </Button>
+      </div>
+    </form>
   );
 }

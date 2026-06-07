@@ -44,8 +44,9 @@ export default function ProviderTenantsPage() {
         </Button>
       </div>
 
-      {/* Name search — no <form> (avoids a GET-fallback surface); Enter or the
-          button applies it. A new search resets the cursor to the first page. */}
+      {/* Name search — deliberately NOT an HTML form element (avoids any GET-
+          fallback surface); Enter or the button applies it, and a new search
+          resets the cursor to the first page. */}
       <div className="flex items-center gap-2">
         <input
           type="search"

@@ -16,7 +16,7 @@ export default function OwnersPage() {
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   // IAM slice 5b — create CTA gated on `owners.create` (UX; BE is authoritative).
   const canCreate = useHasPermission('owners.create');
-  const { data, isLoading, isError, refetch } = useOwnerList({ limit: 25, cursor });
+  const { data, isLoading, isError, error, refetch } = useOwnerList({ limit: 25, cursor });
   const items = data?.items ?? [];
 
   return (
@@ -33,11 +33,14 @@ export default function OwnersPage() {
       <ListPageShell
         isLoading={isLoading}
         isError={isError}
+        error={error}
         itemCount={items.length}
         page={data?.page}
         cursor={cursor}
         loadFailedLabel={t('loadFailed')}
         emptyLabel={t('empty')}
+        accessDeniedTitle={tp('accessDeniedTitle')}
+        accessDeniedBody={tp('accessDeniedBody')}
         retryLabel={tp('retry')}
         nextLabel={tp('next')}
         resetLabel={tp('resetToFirstPage')}

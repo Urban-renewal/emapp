@@ -25,7 +25,7 @@ export default function ProviderTenantsPage() {
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [searchInput, setSearchInput] = useState('');
   const [q, setQ] = useState<string | undefined>(undefined);
-  const { data, isLoading, isError, refetch } = useProviderTenants({ limit: 25, cursor, q });
+  const { data, isLoading, isError, error, refetch } = useProviderTenants({ limit: 25, cursor, q });
   const items = data?.items ?? [];
 
   function onSearch(): void {
@@ -80,11 +80,14 @@ export default function ProviderTenantsPage() {
       <ListPageShell
         isLoading={isLoading}
         isError={isError}
+        error={error}
         itemCount={items.length}
         page={data?.page}
         cursor={cursor}
         loadFailedLabel={t('loadFailed')}
         emptyLabel={t('empty')}
+        accessDeniedTitle={tp('accessDeniedTitle')}
+        accessDeniedBody={tp('accessDeniedBody')}
         retryLabel={tp('retry')}
         nextLabel={tp('next')}
         resetLabel={tp('resetToFirstPage')}

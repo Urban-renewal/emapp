@@ -13,6 +13,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
@@ -20,6 +21,8 @@ import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { resolveNotificationRecipients } from '../notifications/notification-recipients';
+import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
 export interface ApartmentListPage {
   data: Apartment[];
@@ -70,6 +73,10 @@ const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
  */
 @Injectable()
 export class ApartmentsService {
+  private readonly logger = new Logger(ApartmentsService.name);
+
+  constructor(private readonly notifications: NotificationsProducerService) {}
+
   // 404 unless the building is visible (org via RLS +, for agents, an
   // active assignment on its parent project).
   private async assertBuildingVisible(
@@ -202,7 +209,16 @@ export class ApartmentsService {
   }
 
   async update(user: AccessTokenPayload, id: string, input: UpdateApartment): Promise<Apartment> {
-    return withTenant(
+    // P5.S3 / D-O7 — apartment_status_changed recipients, resolved INSIDE the
+    // tx but EMITTED after commit. ONLY populated when the status ACTUALLY
+    // changes (a no-op status update emits nothing). A notification must NEVER
+    // fail the update, so resolution self-guards to []. Declared here to
+    // survive the tx scope; the status transition is captured alongside.
+    let notifyRecipientIds: string[] = [];
+    let fromStatus: string | null = null;
+    let toStatus: string | null = null;
+
+    const apartment = await withTenant(
       user.orgId,
       async (tx) => {
         const [before] = await tx.select().from(apartments).where(eq(apartments.id, id)).limit(1);
@@ -228,6 +244,26 @@ export class ApartmentsService {
         if (input.status !== undefined && input.status !== before.status) {
           patch.status = input.status;
           patch.statusChangedAt = new Date();
+          fromStatus = before.status;
+          toStatus = input.status;
+
+          // D-O7 — resolve recipients ONLY on a REAL status change, through the
+          // ONE central helper (no inline recipient logic). The apartment's
+          // project comes from apartment → building → project. Wrapped so a
+          // resolver hiccup never rolls back the apartment update.
+          try {
+            const [bldg] = await tx
+              .select({ projectId: buildings.projectId })
+              .from(buildings)
+              .where(eq(buildings.id, before.buildingId))
+              .limit(1);
+            notifyRecipientIds = await resolveNotificationRecipients(tx, user.orgId, {
+              projectId: bldg?.projectId ?? null,
+              actorUserId: user.sub,
+            });
+          } catch {
+            notifyRecipientIds = [];
+          }
         }
 
         const [row] = await tx
@@ -251,6 +287,39 @@ export class ApartmentsService {
       },
       { userId: user.sub },
     );
+
+    // Fire-and-forget AFTER commit, ONLY when the status actually changed (a
+    // no-op status update leaves notifyRecipientIds empty → no emit). Apartment
+    // number + status are NOT PII (same-org visible labels), so they may sit in
+    // the body. emitMany self-guards, and we also try/catch at the call site: a
+    // notify failure must never 500 the update.
+    // `toStatus` is non-null IFF the status actually changed (set together with
+    // recipients inside the changed-guard). A no-op status update leaves both
+    // null/empty → no emit.
+    if (toStatus !== null && notifyRecipientIds.length > 0) {
+      try {
+        await this.notifications.emitMany(notifyRecipientIds, {
+          orgId: user.orgId,
+          type: 'apartment_status_changed',
+          title: 'סטטוס דירה עודכן',
+          body: `דירה ${apartment.number} → ${toStatus}`,
+          link: null,
+          metadata: {
+            apartmentId: apartment.id,
+            fromStatus,
+            toStatus,
+          },
+        });
+      } catch (e) {
+        this.logger.error(
+          `apartment_status_changed notify failed (apartment=${apartment.id}): ${
+            e instanceof Error ? e.message : 'unknown'
+          }`,
+        );
+      }
+    }
+
+    return apartment;
   }
 
   // Soft delete = archivedAt (CLAUDE.md hard rule). Idempotent. Preserves

@@ -136,7 +136,9 @@ org's own security. Specifically:
   rules engine; the ENUMS stay locked.
 - **Document custom CATEGORIES** — map org labels → the canonical doc-type enum (future).
 - **Reminder cadence** for unsigned owners — NOT built yet; when added, a per-org policy.
-- **Branding (logo/colors)** — post-MVP; UI colors are global today (fine for MVP).
+- **Branding (logo/colors)** — post-MVP; UI colors are global today. Its PREREQUISITE is
+  consolidating the FE token layers to one source — see `docs/ARCHITECTURE-fe-design-tokens.md`
+  (per-org branding = the org's tokens override the default, once there's a single token source).
 
 ### C. LOCKED — never per-org (the crisp boundary)
 

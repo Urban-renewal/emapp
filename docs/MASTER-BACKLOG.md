@@ -1,152 +1,161 @@
-# EMAPP — MASTER BACKLOG (single source of truth, 2026-06-07)
+# EMAPP — MASTER BACKLOG (single ordered execution plan, 2026-06-07)
 
-Everything remaining, consolidated from ALL sources (6-persona catalog, per-org-policy
-sweep, decisions-for-owner, code-debt sweep, audit backlog, design analysis). This is THE
-list — stop discovering piecemeal; it's all here. Honest caveat: this consolidates every
-finding from the SYSTEMATIC sweeps (code-grounded). Real live-usage could still surface
-edge cases, but nothing systematic is hidden from this list.
+Everything remaining, in ONE list, ordered by the **optimal fix sequence** (a professional
+prioritization: launch-gate → cheap-now-expensive-later → foundations → trust → core-loop →
+generic per-org → completeness → polish). **Nothing is "deferred for technical reasons"** —
+the ONLY things that wait are 3 external accounts you open + 2 inputs only you provide. The
+rest is all in the order below. Caveat: consolidated from systematic code-grounded sweeps;
+a one-org beta will surface the real edge cases (see the beta note).
 
-Legend: 🔴 blocker · 🟠 high · 🟡 med · ⚪ low · 🔒 decision-needed · 🌐 external/paid ·
-💤 deferred-out-of-MVP. Effort: S(hours) M(day(s)) L(week-ish).
-
----
-
-## ✅ DONE this session (~16 PRs — context, so you see the ground covered)
-
-SMS provider + signature-SMS + bulk-send + manager-resend (P1/P2/P3/P5) · B-AGENT-1
-(agent effective-permissions, killed the split-brain) · viewer/agent dead-controls · M2
-export-gate · B-RESIDENT-1 resident self-resend · B-PROVIDER-1 --reset-mfa ·
-contractor lastAccessedAt + status/type render · provider suspended-badge + name-search ·
-agent KPI scoping · functional project-types (consent threshold) · B-PROVIDER-2 provider
-self-audit · document_uploaded notification · perf-gate de-flake · P9 (verified already
-done) · the 6-persona catalog + the per-org-config architecture docs.
+Tags: 🔴blocker 🟠high 🟡med ⚪low · effort S(hours) M(days) L(week) · 🌐external 🧩your-input
 
 ---
 
-## 🔒 A. DECISIONS FOR YOU (unblock the rest — pick & I/the-fresh-session proceed)
+## ⏩ PARALLEL from day 1 (NOT code — your action; gates production)
 
-- **D-O6 — agent task visibility.** Today assignee-based (documented). Pick: (a) keep ·
-  (b) auto-assign creator on create [recommended, small] · (c) project-scope agent task
-  reads [model change]. → governs the "agent can't see tasks on their project" HIGH.
-- **D-O1..D-O5 confirmations** (I shipped a default; confirm or override — none blocks):
-  D-O1 SMS=Inforu · D-O2 always-SMS-when-phone · D-O3 bulk token in WhatsApp deeplink ·
-  D-O4 bulk dedup-race deferred · D-O5 export=Manager-only.
-- (D-O7 notifications + the owner/renter answers + import-complete = ALREADY DECIDED.)
+- 🌐 **SMS account (Inforu/019)** → `SMS_PROVIDER_USER/TOKEN/SENDER` in Infisical. Prod
+  fail-fast until set, so SMS never silently no-ops. _Without this the core loop is dead._
+- 🌐 **Email provider (Resend) keys** → gates member invites, signature emails, AND the
+  calendar `.ics` invites (calendar works with Google/Outlook/Apple via email — no Google
+  API needed).
+- 🌐 **Domain + deploy config** → `PUBLIC_APP_URL` / CORS to the real domain.
+- 🧩 **Design artifact** (for the re-skin — Phase 10) · 🧩 **pricing model** (for billing —
+  Phase 8). Provide when ready; everything else is built regardless.
 
-## 🟢 B. PHASE 0 — READINESS FOUNDATIONS (build FIRST; enable everything else)
+## ✅ Already DONE this run (~16 PRs — context)
 
-- **OrgSettings config resolver** 🟠 S — typed Zod `OrgSettings` (defaults) +
-  `getOrgSettings(tx,orgId)` over the existing `organizations.settings` jsonb (NO
-  migration). The one seam every per-org policy reads.
-- **Design-token single-source posture** 🟡 S — make `globals.css` tokens canonical; add a
-  "no new inline hex/HSL" rule (lint guard); inline→classes migrates incrementally.
-
-## 🟠 C. FEATURES (the data/logic track)
-
-- **Feature A — owner/renter + inline entry** 🟠 L — per `FEATURE-owner-renter-design.md`.
-  Schema + the D.25 trigger migration (HIGH-RISK, verify-locally + security-review) +
-  service + signature-flow (exclude renters) + FE toggle + inline-create. (Closes your
-  concern #2.)
-- **Notifications engine (config-driven) + remaining types** 🟠 M — build
-  `resolveNotificationRecipients` (default=D-O7: managers-always + scope); RETROFIT
-  document_uploaded (#274, currently agents-only) onto it; wire apartment_status_changed +
-  note_added (→ project) + share_revoked (→ manager). mention=skip MVP.
-- **import-complete** 🟡 M — new `notification_type` enum value (small migration) + emit on
-  import finish to the runner (+ managers via the engine).
-
-## 🟣 D. PER-ORG CONFIGURABLE DOMAINS (the spine instances — default = today's behavior)
-
-Each: config key under `organizations.settings` + read via `getOrgSettings`, UI later.
-
-- **Messaging templates** 🟡 M — 11 hardcoded Hebrew templates (signature invite
-  email/SMS/WhatsApp, signed-confirm, manager-notify, member invite, OTP SMS, calendar
-  emails) → per-org overridable copy.
-- **Sender identity** 🟡 S — "EMAPP" name in SMS/email → per-org brand name.
-- **Locale + timezone** 🟡 S — `he` / Asia/Jerusalem defaults → per-org.
-- **Signature link TTL** ⚪ S — 7d default → per-org.
-- **Signature delivery channels** (D-O2) 🟡 S — which/order, per-org.
-- **Per-org consent-threshold defaults** ⚪ S — per-type default map → per-org override.
-- **Limits** ⚪ S — bulk cap (200), list page-size → per-org.
-- **Security controls — TIGHTEN-ONLY** ⚪ M — OTP/lockout/throttles configurable but
-  clamped ≤ secure default; token TTLs LOCKED. (See the security-floor caveat.)
-- _Incremental:_ capability presets · per-project caps (catalog #8) · per-org default share
-  template · custom task/doc types · apartment/project status automation.
-
-## 🟠 E. GAP-CATALOG REMNANTS (the per-persona tail — see PERSONA-GAP-CATALOG.md)
-
-**Agent**
-
-- 🟠 sidebar nav not capability-gated (Owners shown to an agent without view_owners → 404).
-  S. (B-AGENT-1 fixed /me; the sidebar item still needs gating.)
-- 🟠 tasks-by-assignee-not-project → governed by **D-O6** above.
-- 🟡 403 indistinguishable from a network error on scoped lists (list-page-shell). S.
-- 🟡 no agent "home / my assignments" surface. M.
-- ⚪ contradictory {view_owners:false, view_owner_pii:true} silently inert (validate at PATCH). S.
-
-**Resident**
-
-- 🟠 no-phone resident can't log in OR sign (no fallback). M. (Needs a product call: require
-  phone, or add an email/manual path.)
-- 🟠 multi-org resident hits silent "≥2 → no SMS"; deep-link tenant login with org slug
-  pre-filled from the SMS. M.
-- 🟡 no inline document preview on /sign (signs a legal doc maybe unread). M.
-- 🟡 dead-link screen has no recovery CTA. S.
-- 🟡 can't self-update own phone/email (wrong number = locked out). M.
-- ⚪ 10-min session expiry kicks them out with no message. S.
-- ⚪ portal document download deferred (list-only). M.
-- ⚪ canvas-only signing (a11y — no typed-name/upload fallback). M.
-- ⚪ dead SMS gateway is silent (log-only) — add ops alerting. M.
-
-**Contractor**
-
-- 🟠 4 dead share permissions (tenants/notes/team/upload) + the **national_id footgun** =
-  **A3** below. (Migration to strip the dead keys + remove the toggles.)
-- 🟡 no majority-threshold context on the CONTRACTOR progress bar (the functional-types work
-  added it to the MANAGER project detail; surface it on the contractor view too). S.
-- 🟡 share token rides in the URL (referrer/log/history leak; 30-day) → exchange for an
-  httpOnly cookie on first load. M.
-- ⚪ no onboarding / expiry-visibility / revocation-feedback. M.
-- ⚪ no progress-report export for the contractor. M.
-- ⚪ no milestone notifications. M.
-
-**Provider-Admin**
-
-- 🟠 no audit EXPORT for a compliance request (cursor JSON only) → CSV/NDJSON stream. M.
-- 🟡 perf: add a `(started_at desc, id desc)` index for the self-audit before the table
-  grows (sec-review MED follow-up). S (migration).
-- ⚪ 9/13 PCSidebar items are locked stubs; /provider/onboard reachable only via a button. S.
-- ⚪ access-reason gate is sessionStorage-soft (BE re-validates — not a hole). S.
-- 💤 impersonation / view-as for support · billing/quota/plan · GDPR export/delete (D.49
-  defers purge) — post-MVP, your call when revenue/compliance demands.
-
-## 🟡 F. AUDIT / TECH-DEBT BACKLOG
-
-- **A3 — dead share perms + national_id footgun** 🟠 M — strip tenants/notes/team/upload
-  from `SharePermissionsSchema` + the FE form; needs a JSONB-cleanup migration for existing
-  rows (do it RIGHT, not a UI-only plaster). (= the Contractor HIGH above.)
-- **A2 — tests for under-tested auth paths** 🟡 M — coverage-add (test-author task).
-- **A4 — export.service national_id JSDoc** ⚪ — VERIFIED already clear; mark closed.
-- **Minor code follow-ups** (low) — metrics pool-counter (`instrument.ts:26`); buildings
-  read-vs-write call-site split; provider-me follow-up; policy.ts owners-scoping; D-O4
-  partial-unique-index for bulk dedup-race.
-
-## 🎨 G. DESIGN TRACK (parallel, non-blocking; activates when a design arrives)
-
-- Token consolidation + re-skin per `ARCHITECTURE-fe-design-tokens.md` (re-theme one screen
-  → expand; inline→classes per screen; then per-org branding overrides the tokens).
-
-## 🌐 H. EXTERNAL DEPENDENCIES (paid / prod-only — code is ready, needs the account/key)
-
-- **SMS account (Inforu/019)** — open it; put `SMS_PROVIDER_USER/TOKEN/SENDER` in Infisical.
-  Until then prod refuses to boot (fail-fast) so SMS never silently no-ops. (D-O1 checklist.)
-- **Email provider (Resend)** — wire the real provider in prod (Fake in dev today).
-- **Domain** — deploy-time config; `PUBLIC_APP_URL` / CORS origins set to the real domain.
+SMS provider + signature-SMS + bulk-send + manager-resend · B-AGENT-1 (split-brain killed) ·
+viewer/agent dead-controls · M2 export-gate · B-RESIDENT-1 resident resend · B-PROVIDER-1
+--reset-mfa · contractor lastAccessedAt + status/type · provider suspended-badge + search ·
+agent KPI scoping · functional project-types (consent threshold) · B-PROVIDER-2 self-audit ·
+document_uploaded notification · perf de-flake · P9 (verified) · the full architecture +
+catalog docs.
 
 ---
 
-## How I'd run it (sequencing)
+# THE ORDERED PLAN (top = do first)
 
-Fresh session: **Phase 0 (B)** → **Feature A (C)** → **notifications engine + import-complete
-(C)** → **per-org domains by value (D: messaging/sender/locale first)** → **gap tail by
-severity (E, then A3 in F)**. Design track (G) runs in parallel when a design lands.
-External (H) is yours to action anytime. Decisions (A) unblock the fastest — answer D-O6.
+## Phase 1 — Foundation seams (cheap, unblock everything else)
+
+1. **OrgSettings resolver** 🟠 S — typed `OrgSettings` Zod (defaults) + `getOrgSettings(tx,
+orgId)` over the existing `organizations.settings` jsonb (NO migration). The one seam
+   every per-org policy reads. _Do first — Phases 6–8 build on it._
+2. **Design-token single-source posture** 🟡 S — make `globals.css` tokens canonical + a
+   "no new inline hex/HSL" lint guard. Enables the re-skin + per-org branding later.
+
+## Phase 2 — Data-model change WHILE TABLES ARE SMALL (cost-of-delay)
+
+3. **Feature A — owner/renter + inline person entry** 🟠 L — `relationship` column + the
+   D.25 trigger migration (HIGH-RISK: verify on local DB, security-review the trigger) +
+   service + signature-flow excludes renters + FE toggle + inline-create. _Cheap now on
+   empty tables; painful after prod data. (Your concern #2.)_
+
+## Phase 3 — Trust & security (B2B table stakes)
+
+4. **A3 — dead share perms + national_id footgun** 🟠 M — strip tenants/notes/team/upload
+   from `SharePermissionsSchema` + the FE form (the manager must not think they can leak a
+   national_id to a contractor); JSONB-cleanup migration for existing rows (root-cause, not
+   UI-only).
+5. **Contractor share-token URL→httpOnly cookie** 🟡 M — exchange the 30-day URL token for
+   an httpOnly cookie on first load (stop referrer/history/log leakage).
+
+## Phase 4 — Core-loop correctness (the signature journey works end-to-end)
+
+6. **Resident no-phone login/sign path** 🟠 M — today a phone-less owner can't log in OR
+   sign. Decide + build the fallback (require phone, or email/manual path).
+7. **Resident multi-org login** 🟠 M — deep-link tenant login with the org slug pre-filled
+   from the SMS (stop the silent "≥2 orgs → no code" dead-end).
+8. **Resident dead-link recovery CTA** 🟡 S — the invalid-link screen offers "request a new
+   link" instead of "phone the developer".
+9. **Resident self-update contact info** 🟡 M — a wrong phone/email currently locks them out
+   with no self-fix.
+10. **Resident inline document preview on /sign** 🟡 M — show the PDF before they draw a
+    signature (trust + legal-soundness).
+11. **Agent sidebar Owners gate** 🟠 S — hide the Owners nav for an agent without
+    view_owners (B-AGENT-1 fixed /me; the nav item still shows → 404).
+12. **Agent tasks-by-project** 🟠 M — per **decision D-O6**: recommended (b) auto-assign the
+    creator on create (non-deviating); or (c) project-scope agent task reads. _Answer D-O6._
+13. **Agent 403-vs-network distinction** 🟡 S — a permission 403 must look different from an
+    outage on scoped lists (list-page-shell).
+14. **Agent home / "my assignments"** 🟡 M — a landing surface scoped to the agent's work.
+
+## Phase 5 — Notifications & operational visibility (build CONFIG-DRIVEN per the spine)
+
+15. **Notification engine** 🟠 M — `resolveNotificationRecipients` reads `settings.
+notifications`, default = D-O7 (managers always + scope − actor). **Retrofit
+    document_uploaded (#274, agents-only today) onto it.**
+16. **Remaining notification types** 🟡 M — apartment_status_changed + note_added (→
+    project) + share_revoked (→ relevant + managers). mention = skip MVP.
+17. **import-complete** 🟡 M — new `notification_type` enum value (small migration) + emit
+    on import finish to the runner (+ managers via the engine).
+18. **Dead SMS-gateway alerting** 🟡 M — page ops when the gateway rejects (today log-only).
+
+## Phase 6 — The generic per-org system (default = today's behavior; UI incremental)
+
+19. **Messaging templates** 🟡 M — the 11 hardcoded Hebrew templates (signature invite
+    email/SMS/WhatsApp, signed-confirm, manager-notify, member invite, OTP SMS, calendar
+    emails) → per-org overridable copy via `settings.messaging`.
+20. **Sender identity (brand name)** 🟡 S — "EMAPP" in SMS/email → per-org name.
+21. **Locale + timezone** 🟡 S — `he` / Asia/Jerusalem defaults → per-org.
+22. **Signature link TTL + delivery channels** 🟡 S — 7d + channel selection → per-org.
+23. **Per-org consent-threshold defaults** ⚪ S — per-type default map → per-org override.
+24. **Limits** ⚪ S — bulk cap (200), list page-size → per-org.
+25. **Security controls (TIGHTEN-ONLY)** ⚪ M — OTP/lockout/throttles configurable but
+    clamped ≤ the secure default; token TTLs stay locked.
+26. **Capability presets + per-project caps** 🟡 M — preset bundles ("field/office agent") +
+    per-project capability overrides (catalog #8), as data extensions of the existing
+    effective-permission resolver (don't fork it).
+27. **Per-org default share template** ⚪ S — the manager's new-share baseline.
+28. **Custom task / document types** ⚪ M — org-defined type lists (task type is already free
+    text; doc categories map to the canonical enum).
+29. **Status automation** ⚪ M — per-org on-transition actions for apartment/project status
+    (the enums stay locked; the automation is configurable).
+
+## Phase 7 — Provider / platform completeness
+
+30. **Provider audit EXPORT** 🟠 M — CSV/NDJSON stream for a compliance request.
+31. **Provider self-audit perf index** 🟡 S — `(started_at desc, id desc)` before the table
+    grows.
+32. **Provider impersonation / view-as** 🟡 L — time-boxed, reason-gated, audited read-only
+    support access.
+33. **GDPR export / delete** 🟡 L — per-org data export + hard-delete for a departing
+    customer (D.49 deferred purge — now in scope).
+34. **PCSidebar stubs + onboard nav** ⚪ S — wire/hide the 9 locked stubs; surface onboarding.
+35. **Access-reason hardening** ⚪ S — per-action reason (today sessionStorage-soft; BE
+    re-validates, so not a hole — polish).
+36. **Contractor: threshold context + onboarding/expiry + progress export + milestone
+    notify** 🟡 M — surface the majority-threshold on the contractor progress bar; show
+    shared-by/expires; a PII-free progress export; opt-in milestone emails.
+
+## Phase 8 — Billing / quota (when the pricing model is decided 🧩)
+
+37. **Plans / quota / usage-metering** 🟡 L — subscription + per-org limits + overage
+    signals. _Build once you define the tiers._
+
+## Phase 9 — Polish · a11y · tests · minor debt
+
+38. **Resident polish** ⚪ — session-expiry message; portal document download; canvas-signing
+    a11y (typed-name / upload fallback).
+39. **A2 — auth test coverage** 🟡 M.
+40. **A4 — close** ⚪ — JSDoc already clear; mark done.
+41. **Minor code follow-ups** ⚪ — metrics pool-counter; buildings read/write call-site
+    split; policy.ts owners-scoping; D-O4 partial-unique-index (bulk dedup-race);
+    provider-me follow-up.
+
+## Phase 10 — Design re-skin (parallel; activates when the design artifact 🧩 arrives)
+
+42. Token consolidation + re-skin per `ARCHITECTURE-fe-design-tokens.md` — one screen first,
+    then expand; inline→classes per screen; then per-org branding overrides the tokens. The
+    data layer is never touched.
+
+---
+
+## 🧪 Recommended checkpoint: ONE-ORG BETA after Phase 4
+
+Run a focused beta with a SINGLE real org once the core loop (Phases 1–4) is solid + the SMS
+account is live. Real usage surfaces the true 20% that no code sweep catches — and it's cheap
+to fix with one org, not a hundred. Feed its findings back in before broad launch.
+
+## Decisions still open (don't block, but resolve when convenient)
+
+D-O6 (Phase-4 #12 — pick b or c) · D-O1..D-O5 (confirm-or-override the shipped defaults).

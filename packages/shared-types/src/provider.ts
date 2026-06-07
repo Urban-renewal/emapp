@@ -248,6 +248,53 @@ export const ProviderAuditItemSchema = z.object({
 export type ProviderAuditItem = z.infer<typeof ProviderAuditItemSchema>;
 
 // ───────────────────────────────────────────────────────────────────
+// GET /provider/audit/self — the PROVIDER'S OWN action log (provider_audit_log),
+// distinct from /provider/audit (the CUSTOMERS' audit_log). Answers the D.37
+// accountability question: "who on our team accessed customer X, when, and why?"
+// The provider_audit_log table is bounded by the provider team's own activity
+// (not 30M customer rows), so it does NOT need the SA-4 mandatory date bound;
+// optional filters + a keyset cursor (started_at desc, id) are enough.
+// ───────────────────────────────────────────────────────────────────
+export const ProviderSelfAuditQuerySchema = z
+  .object({
+    /** Filter to actions that TOUCHED this customer org (GIN-indexed array). */
+    affectedOrgId: z.string().uuid().optional(),
+    /** action_type PREFIX match (same identifier shape the writer emits). */
+    actionType: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(/^[a-z][a-z0-9_.-]*$/i, 'actionType must be a dot-separated identifier prefix')
+      .optional(),
+    fromDate: z.coerce.date().optional(),
+    toDate: z.coerce.date().optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(25),
+    cursor: z.string().min(1).optional(),
+  })
+  .refine((q) => !(q.fromDate && q.toDate) || q.fromDate <= q.toDate, 'fromDate must be <= toDate');
+export type ProviderSelfAuditQuery = z.infer<typeof ProviderSelfAuditQuerySchema>;
+
+export const ProviderSelfAuditItemSchema = z.object({
+  id: z.string().uuid(),
+  /** Which provider admin performed the action (accountability subject). */
+  providerUserId: z.string().uuid(),
+  /** The mandatory access-reason recorded at action time (D.37). */
+  reason: z.string(),
+  actionType: z.string(),
+  targetTable: z.string().nullable(),
+  targetRecordId: z.string().uuid().nullable(),
+  /** Customer orgs this action touched — answers "who accessed org X". */
+  affectedOrgs: z.array(z.string().uuid()).nullable(),
+  /** Provider-internal accountability (the actor's own IP / UA). */
+  ip: z.string().nullable(),
+  userAgent: z.string().nullable(),
+  startedAt: z.coerce.date(),
+  endedAt: z.coerce.date().nullable(),
+  queryCount: z.number().int().nonnegative().nullable(),
+});
+export type ProviderSelfAuditItem = z.infer<typeof ProviderSelfAuditItemSchema>;
+
+// ───────────────────────────────────────────────────────────────────
 // GET /provider/system-health — read-only gauges.
 // Numbers only — no per-row data, no PII surface possible.
 // ───────────────────────────────────────────────────────────────────

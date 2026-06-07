@@ -8,6 +8,13 @@
  * `provider.audit.searched` row it WRITES goes into the provider
  * audit table.
  *
+ * `GET /provider/audit/self` (B-PROVIDER-2) — reads `provider_audit_log`
+ * itself, so the provider's OWN actions are now readable in-product (the
+ * D.37 accountability payoff: "who on our team accessed customer X, when,
+ * why?"). See `selfSearch`. (Perf follow-up: an all-providers ORDER BY
+ * started_at is not served by idx_provider_audit_user_time — add a
+ * (started_at DESC, id DESC) index before this table grows large.)
+ *
  * Filters (all optional; AND-combined):
  *   - orgId    — exact match
  *   - action   — PREFIX match (e.g. 'import.' → all import.* rows).
@@ -30,10 +37,16 @@
  * write time (per v8.5 SOLID #7 fix). The Provider sees only what
  * customers' own admins see — same fields, no decryption.
  */
-import { auditLog, withProvider } from '@emapp/db';
-import type { ApiList, ProviderAuditItem, ProviderAuditQuery } from '@emapp/shared-types';
+import { auditLog, providerAuditLog, withProvider } from '@emapp/db';
+import type {
+  ApiList,
+  ProviderAuditItem,
+  ProviderAuditQuery,
+  ProviderSelfAuditItem,
+  ProviderSelfAuditQuery,
+} from '@emapp/shared-types';
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, gte, like, lt, lte, or, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, like, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 
 import { decodeCursorOrThrow, encodeCursor } from '../../common/keyset-cursor';
 
@@ -165,6 +178,122 @@ export class ProviderAuditService {
         targetTable: r.targetTable,
         targetId: r.targetId,
         createdAt: r.createdAt,
+      })),
+      page: {
+        limit: query.limit,
+        cursor: nextCursor,
+        has_more: hasMore,
+      },
+    };
+  }
+
+  /**
+   * B-PROVIDER-2 — read the PROVIDER'S OWN action log (`provider_audit_log`),
+   * the table every cross-tenant access already writes to but nothing read.
+   * Answers D.37's accountability question ("who on our team accessed customer
+   * X, when, why?"). Same keyset-cursor + explicit per-column allowlist as the
+   * customers' audit search; the read is itself audited
+   * (`provider.self_audit.searched`). The table is bounded by the provider
+   * team's own activity (not 30M customer rows), so no SA-4 mandatory date span.
+   */
+  async selfSearch(
+    actor: ProviderActor,
+    reason: string,
+    query: ProviderSelfAuditQuery,
+  ): Promise<ApiList<ProviderSelfAuditItem>> {
+    let cursorDecoded: { startedAt: Date; id: string } | null = null;
+    if (query.cursor) {
+      const dec = decodeCursorOrThrow(query.cursor);
+      cursorDecoded = { startedAt: new Date(dec.c), id: dec.i };
+    }
+    const fetchLimit = query.limit + 1;
+
+    const filters: SQL[] = [];
+    if (query.affectedOrgId) {
+      // GIN-indexed array containment: actions that touched this customer org.
+      filters.push(sql`${providerAuditLog.affectedOrgs} @> ARRAY[${query.affectedOrgId}]::uuid[]`);
+    }
+    if (query.actionType) {
+      filters.push(like(providerAuditLog.actionType, `${query.actionType}%`));
+    }
+    if (query.fromDate) filters.push(gte(providerAuditLog.startedAt, query.fromDate));
+    if (query.toDate) filters.push(lte(providerAuditLog.startedAt, query.toDate));
+    if (cursorDecoded) {
+      filters.push(
+        or(
+          lt(providerAuditLog.startedAt, cursorDecoded.startedAt),
+          and(
+            eq(providerAuditLog.startedAt, cursorDecoded.startedAt),
+            lt(providerAuditLog.id, cursorDecoded.id),
+          ),
+        )!,
+      );
+    }
+    const wherePred = filters.length === 0 ? undefined : and(...filters);
+
+    const rows = await withProvider(
+      actor.sub,
+      reason,
+      async (tx) => {
+        // Explicit per-column allowlist (SA-5) — never select() the whole row.
+        return tx
+          .select({
+            id: providerAuditLog.id,
+            providerUserId: providerAuditLog.providerUserId,
+            reason: providerAuditLog.reason,
+            actionType: providerAuditLog.actionType,
+            targetTable: providerAuditLog.targetTable,
+            targetRecordId: providerAuditLog.targetRecordId,
+            affectedOrgs: providerAuditLog.affectedOrgs,
+            ip: providerAuditLog.ip,
+            userAgent: providerAuditLog.userAgent,
+            startedAt: providerAuditLog.startedAt,
+            endedAt: providerAuditLog.endedAt,
+            queryCount: providerAuditLog.queryCount,
+          })
+          .from(providerAuditLog)
+          .where(wherePred)
+          .orderBy(desc(providerAuditLog.startedAt), desc(providerAuditLog.id))
+          .limit(fetchLimit);
+      },
+      {
+        ip: actor.ip,
+        userAgent: actor.userAgent,
+        targetTable: 'provider_audit_log',
+        action: 'provider.self_audit.searched',
+        metadata: {
+          endpoint: 'self-audit',
+          filter: {
+            affectedOrgId: query.affectedOrgId ?? null,
+            actionType: query.actionType ?? null,
+            fromDate: query.fromDate ? query.fromDate.toISOString() : null,
+            toDate: query.toDate ? query.toDate.toISOString() : null,
+            limit: query.limit,
+            cursor: query.cursor ?? null,
+          },
+        },
+      },
+    );
+
+    const hasMore = rows.length > query.limit;
+    const page = hasMore ? rows.slice(0, query.limit) : rows;
+    const next = hasMore && page.length > 0 ? page[page.length - 1] : null;
+    const nextCursor = next ? encodeCursor({ createdAt: next.startedAt, id: next.id }) : null;
+
+    return {
+      data: page.map((r) => ({
+        id: r.id,
+        providerUserId: r.providerUserId,
+        reason: r.reason,
+        actionType: r.actionType,
+        targetTable: r.targetTable,
+        targetRecordId: r.targetRecordId,
+        affectedOrgs: r.affectedOrgs,
+        ip: r.ip,
+        userAgent: r.userAgent,
+        startedAt: r.startedAt,
+        endedAt: r.endedAt,
+        queryCount: r.queryCount,
       })),
       page: {
         limit: query.limit,

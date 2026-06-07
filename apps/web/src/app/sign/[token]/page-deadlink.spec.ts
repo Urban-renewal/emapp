@@ -27,11 +27,16 @@
  * To drive the component to a chosen `stage` deterministically we replace
  * React's `useState` with an order-indexed queue: SignPage calls useState in
  * a fixed order
- *     [0] stage   [1] preview   [2] doneAt   [3] submitError   [4] canvasEmpty
- * and `seedState()` lets each test seed the slots it cares about (stage +
- * preview/doneAt as needed). `useEffect` is stubbed to a no-op so the real
- * fetch loader never runs and never overwrites the seeded stage. Everything
- * else (useRef/useCallback/useState plumbing) passes through to real React.
+ *     [0] stage  [1] preview  [2] doneAt  [3] submitError  [4] canvasEmpty
+ *     [5] previewFailed
+ * and `renderStage()` lets each test seed the slots it cares about (stage +
+ * preview/doneAt as needed). The cursor is reset to 0 before each render (see
+ * `renderStage`), mirroring the sibling `page.spec.ts` driver — this keeps the
+ * queue aligned to the page's hook order even as hooks are added/removed in
+ * page.tsx, instead of relying on a modulo-wrap that assumes a fixed call
+ * count per render. `useEffect` is stubbed to a no-op so the real fetch loader
+ * never runs and never overwrites the seeded stage. Everything else
+ * (useRef/useCallback/useState plumbing) passes through to real React.
  * --------------------------------------------------------------------------
  */
 import { createElement, type ReactNode } from 'react';
@@ -101,23 +106,23 @@ vi.mock('./_signature-canvas', () => ({
 }));
 
 // --- useState queue: drive `stage` (and friends) deterministically. ---
-// SignPage calls useState in this fixed order; seed the slots per test.
+// SignPage calls useState in this fixed order; seed the slots per test. The
+// cursor is reset to 0 by `renderStage` before each (single SSR) render, so it
+// stays aligned to the page's hook order regardless of how many useState calls
+// the page makes — mirroring the sibling page.spec.ts driver. Any slot the
+// test leaves `undefined` falls back to the hook's real initial value.
 let stateQueue: unknown[] = [];
+let stateCursor = 0;
 
 vi.mock('react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react')>();
-  let callIndex = 0;
   return {
     ...actual,
-    // Order-indexed seeding. SignPage calls useState exactly `stateQueue.length`
-    // (5) times per render, in a fixed order, BEFORE any early return — so the
-    // cursor wraps cleanly at the queue boundary, auto-resetting for the next
-    // render. No external reset hook needed (keeps the import block clean).
     useState: (initial: unknown) => {
-      if (stateQueue.length > 0 && callIndex >= stateQueue.length) callIndex = 0;
-      const idx = callIndex;
-      callIndex += 1;
-      const seeded = stateQueue.length > 0 && idx < stateQueue.length ? stateQueue[idx] : initial;
+      const idx = stateCursor;
+      stateCursor += 1;
+      const has = idx < stateQueue.length && stateQueue[idx] !== undefined;
+      const seeded = has ? stateQueue[idx] : typeof initial === 'function' ? initial() : initial;
       const setter = vi.fn();
       return [seeded, setter];
     },
@@ -135,14 +140,17 @@ function renderStage(states: {
   preview?: unknown;
   doneAt?: unknown;
 }): string {
-  // Slot order: [0]stage [1]preview [2]doneAt [3]submitError [4]canvasEmpty
+  // Slot order MUST mirror page.tsx's useState call order:
+  //   [0]stage [1]preview [2]doneAt [3]submitError [4]canvasEmpty [5]previewFailed
   stateQueue = [
     states.stage,
     states.preview ?? null,
     states.doneAt ?? null,
     null, // submitError
     true, // canvasEmpty
+    false, // previewFailed
   ];
+  stateCursor = 0;
   return renderToStaticMarkup(createElement(SignPage));
 }
 
@@ -165,6 +173,7 @@ function hasRecoveryCta(html: string): boolean {
 
 beforeEach(() => {
   stateQueue = [];
+  stateCursor = 0;
 });
 afterEach(() => {
   vi.clearAllMocks();

@@ -26,6 +26,18 @@
 export const CSP_CONNECT_SRC = "connect-src 'self' https://*.r2.cloudflarestorage.com";
 
 /**
+ * §csp-r2-frame (#10) — the resident /sign page embeds the document being
+ * signed in an <iframe> (token-scoped presigned R2 GET) so the resident SEES
+ * the legal doc before drawing a signature. Without `frame-src` the iframe
+ * falls back to `default-src 'self'` and the browser SILENTLY blocks the
+ * R2 origin — the preview never renders. We allow ONLY the R2 host (the same
+ * host already trusted in `connect-src` for presigned uploads/downloads); this
+ * adds no NEW origin to the trust surface. The iframe itself is sandboxed with
+ * NO `allow-scripts`/`allow-same-origin`, so the embedded PDF is inert.
+ */
+export const CSP_FRAME_SRC = "frame-src 'self' https://*.r2.cloudflarestorage.com";
+
+/**
  * The `script-src` directive.
  *  - PROD: nonce + `strict-dynamic`, no `unsafe-*`. `'self'` is only a CSP2
  *    fallback for browsers that ignore `strict-dynamic`; CSP3 browsers trust
@@ -52,6 +64,7 @@ export function buildCspHeader(nonce: string, isDev: boolean): string {
     // §PERF-M3 — `next/font/google` self-hosts; no gstatic allowance needed.
     "font-src 'self' data:",
     CSP_CONNECT_SRC,
+    CSP_FRAME_SRC,
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

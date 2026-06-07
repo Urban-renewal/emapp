@@ -13,7 +13,7 @@ import {
   tenantSessions,
 } from '@emapp/db';
 import { normalizeIsraeliPhone } from '@emapp/validators';
-import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
 
@@ -47,6 +47,8 @@ const JWT_AUD = 'emapp-tenant';
 
 @Injectable()
 export class OtpService {
+  private readonly logger = new Logger(OtpService.name);
+
   constructor(
     private readonly jwt: JwtService,
     @Inject(SMS_PROVIDER) private readonly sms: ISMSProvider,
@@ -132,7 +134,19 @@ export class OtpService {
       ip: ctx?.ip,
       userAgent: ctx?.userAgent,
     });
-    await this.sms.send(phone, `EMAPP: קוד האימות שלך ${code}. תקף ל-5 דקות.`);
+    const smsResult = await this.sms.send(phone, `EMAPP: קוד האימות שלך ${code}. תקף ל-5 דקות.`);
+    // sec-review MED: a real SMS gateway can REJECT a send (bad creds, http
+    // error, outage). The OTP row is already written and the caller gets the
+    // SAME generic response either way (anti-enumeration), but a failed delivery
+    // must be DETECTABLE — otherwise a dead gateway silently locks every resident
+    // out. Observability only; PII-free (org/owner UUIDs + the provider's status,
+    // never the phone or the code).
+    if (smsResult.status !== 'sent') {
+      this.logger.warn(
+        `OTP SMS not delivered (provider status=${smsResult.status}) for org=${matched.orgId} ` +
+          `owner=${matched.id}: ${smsResult.error ?? 'unknown'}`,
+      );
+    }
   }
 
   // Generic 401 on EVERY failure (unknown / expired / used / wrong code /

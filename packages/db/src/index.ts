@@ -102,6 +102,8 @@ export { FakeEmailProvider } from './providers/email/fake.provider';
 export type { ISMSProvider, SMSDeliveryResult } from './providers/sms/sms.interface';
 export { NoopSMSProvider } from './providers/sms/noop.provider';
 export { FakeSMSProvider } from './providers/sms/fake.provider';
+export { InforuSmsProvider, toInternational } from './providers/sms/inforu.provider';
+export type { InforuSmsConfig } from './providers/sms/inforu.provider';
 export type {
   IStorageProvider,
   UploadUrlOptions,

@@ -425,6 +425,92 @@ export class SignatureRequestsService {
     };
   }
 
+  /** Resend / remind — refresh an existing PENDING request's link and re-deliver.
+   *  Re-mints a NEW token (fresh jti + a new 7-day expiry), atomically swaps the
+   *  pending row's jti/expiresAt (the OLD link dies, the clock restarts), then
+   *  re-delivers via email/SMS/WhatsApp. Only a `pending` request can be resent —
+   *  a signed/cancelled one 409s. Same coarse + fine gate as create. */
+  async resend(user: AccessTokenPayload, id: string): Promise<SignatureRequestCreateResponse> {
+    const txOut = await withTenant(
+      user.orgId,
+      async (tx) => {
+        const [req] = await tx
+          .select({
+            id: signatureRequests.id,
+            documentId: signatureRequests.documentId,
+            ownerId: signatureRequests.ownerId,
+            status: signatureRequests.status,
+          })
+          .from(signatureRequests)
+          .where(eq(signatureRequests.id, id))
+          .limit(1);
+        if (!req) throw NOT_FOUND;
+        // D.46 — agent: the signature's document must be in an assigned project
+        // (404), then the manage_signatures capability (403). Manager passes.
+        if (user.role === 'agent') await this.assertDocVisibleForAgent(tx, user, req.documentId);
+        await requireAgentCapability(tx, user, 'manage_signatures');
+        if (req.status !== 'pending') {
+          throw new ConflictException({ error: { code: 'signature_request_not_pending' } });
+        }
+
+        // Re-mint a fresh token for the SAME request (new jti + new expiry).
+        const { token, jti, expiresAt } = this.tokenService.sign({
+          sub: req.id,
+          orgId: user.orgId,
+          documentId: req.documentId,
+          ownerId: req.ownerId,
+        });
+        // Atomic refresh — only if STILL pending (race vs a concurrent sign/cancel).
+        const [row] = await tx
+          .update(signatureRequests)
+          .set({ jti, expiresAt })
+          .where(and(eq(signatureRequests.id, id), eq(signatureRequests.status, 'pending')))
+          .returning();
+        if (!row) {
+          throw new ConflictException({ error: { code: 'signature_request_not_pending' } });
+        }
+
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'signature_request.resend',
+          targetTable: 'signature_requests',
+          targetId: id,
+          sessionId: user.sid,
+        });
+
+        const own = await this.loadOwnerWithPii(tx, req.ownerId);
+        const doc = await this.loadVisibleDocument(tx, req.documentId);
+        return {
+          row,
+          token,
+          documentName: doc.name,
+          ownerName: own.name,
+          ownerEmail: own.email,
+          ownerPhone: own.phonePlain,
+        };
+      },
+      { userId: user.sub },
+    );
+
+    const signUrl = `${PUBLIC_APP_URL}/sign/${txOut.token}`;
+    const delivery = await deliverSignatureLink(
+      this.email,
+      this.sms,
+      {
+        signUrl,
+        ownerName: txOut.ownerName,
+        ownerEmail: txOut.ownerEmail,
+        ownerPhone: txOut.ownerPhone,
+        documentName: txOut.documentName,
+      },
+      { error: (m): void => this.logger.error(m) },
+    );
+
+    return { request: this.toWire(txOut.row), signUrl, delivery };
+  }
+
   /** Load owner + decrypt phone for delivery. Email is plaintext citext;
    *  phone is pgcrypto-encrypted (D.19) and must be decrypted via
    *  pgp_sym_decrypt while the app.encryption_key GUC is set (i.e.

@@ -1,6 +1,8 @@
 import {
+  BulkCreateSignatureRequestInput,
   CreateSignatureRequestInput,
   ListSignatureRequestsQuery,
+  type BulkCreateSignatureRequest,
   type CreateSignatureRequest,
   type ListSignatureRequestsQueryDto,
 } from '@emapp/shared-types';
@@ -70,6 +72,21 @@ export class SignatureRequestsController {
     body: CreateSignatureRequest,
   ) {
     return { data: await this.signatureRequests.create(user, body) };
+  }
+
+  /** Bulk send — ONE document to MANY owners in a single action. Same coarse
+   *  permission + fine capability gate as create() (the service gates once for
+   *  the whole batch). Lower throttle limit than single-create because each
+   *  call fans out up to 200 requests + deliveries. */
+  @Post('bulk')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @RequirePermission('signature_requests.send')
+  async createBulk(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body(new ZodValidationPipe(BulkCreateSignatureRequestInput))
+    body: BulkCreateSignatureRequest,
+  ) {
+    return { data: await this.signatureRequests.createBulk(user, body) };
   }
 
   @Get(':id')

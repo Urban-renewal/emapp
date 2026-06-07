@@ -91,6 +91,46 @@ export const SignatureRequestCreateResponseSchema = z.object({
 });
 export type SignatureRequestCreateResponse = z.infer<typeof SignatureRequestCreateResponseSchema>;
 
+/** POST /signature-requests/bulk body — send ONE document to MANY owners in a
+ * single action (the manager's most-repeated task: a whole building's owners).
+ * The server SKIPS owners that already have a pending request for this document
+ * (no throw) so a partial-overlap bulk still sends to the rest. Capped to bound
+ * the per-request fan-out; the FE resolves "all owners in building/project" to
+ * the id list. */
+export const BulkCreateSignatureRequestInput = z
+  .object({
+    documentId: z.string().uuid(),
+    ownerIds: z.array(z.string().uuid()).min(1).max(200),
+  })
+  .strict();
+export type BulkCreateSignatureRequest = z.infer<typeof BulkCreateSignatureRequestInput>;
+
+/** Per-owner outcome of a bulk send. `created` = a new pending request + a
+ * delivery attempt; `skipped_existing` = that owner already had a pending
+ * request for this document; `failed` = owner not visible/in-org or an
+ * unexpected per-owner error (the rest still process). The token is NOT a
+ * first-class response field (no `signUrl`/`token` key); it appears only
+ * URL-encoded inside the manager's WhatsApp `deepLink` in the delivery report —
+ * exactly as single-create's `signUrl` does — so the manager can tap-send. */
+export const BulkSignatureResultSchema = z.object({
+  ownerId: z.string().uuid(),
+  outcome: z.enum(['created', 'skipped_existing', 'failed']),
+  requestId: z.string().uuid().optional(),
+  delivery: SignatureDeliveryReportSchema.optional(),
+  reason: z.string().optional(),
+});
+export type BulkSignatureResult = z.infer<typeof BulkSignatureResultSchema>;
+
+export const BulkSignatureRequestResponseSchema = z.object({
+  results: z.array(BulkSignatureResultSchema),
+  summary: z.object({
+    created: z.number().int().nonnegative(),
+    skipped: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+  }),
+});
+export type BulkSignatureRequestResponse = z.infer<typeof BulkSignatureRequestResponseSchema>;
+
 /** GET /signature-requests — keyset pagination + optional status filter. */
 export const ListSignatureRequestsQuery = z
   .object({

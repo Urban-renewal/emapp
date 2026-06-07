@@ -63,10 +63,20 @@ describe('PERF — aggregate signature progress uses an index path (D.51)', () =
       const res = await c.query<{ ['QUERY PLAN']: string }>(`EXPLAIN ${QUERY}`, [P]);
       const plan = res.rows.map((r) => r['QUERY PLAN']).join('\n');
 
+      // The D.51 guarantee this gate exists for: NO full-table scan on either
+      // table (the old `(d.project_id = P OR b.project_id = P)` shape seq-scanned
+      // both even with seqscan off — reintroduce it and these two fail).
       expect(plan, plan).not.toMatch(/Seq Scan on signature_requests/i);
       expect(plan, plan).not.toMatch(/Seq Scan on documents/i);
-      // Positive: the count resolves via the (document_id, status) index.
-      expect(plan, plan).toMatch(/idx_signature_requests_doc_status/i);
+      // Positive: signature_requests is reached via one of its purpose-built
+      // status indexes (an index path, not an incidental scan). Which one the
+      // planner picks — idx_signature_requests_doc_status (document_id, status)
+      // or idx_signature_requests_owner_status (… status) — is a legitimate,
+      // DATA-VOLUME-DEPENDENT cost choice (both avoid the full scan), so we
+      // accept either rather than flaking on the planner's pick as sibling specs
+      // seed more rows into the shared test DB. (Asserting one specific index on
+      // tiny test data can't predict the at-scale choice anyway.)
+      expect(plan, plan).toMatch(/idx_signature_requests_(doc_status|owner_status)/i);
     } finally {
       c.release();
     }

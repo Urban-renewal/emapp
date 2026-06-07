@@ -1,13 +1,14 @@
 'use client';
 
 import type {
+  SignatureDeliveryReport,
   TenantPortalApartment,
   TenantPortalDocument,
   TenantPortalMe,
   TenantPortalProgress,
   TenantPortalSignature,
 } from '@emapp/shared-types';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
 import {
@@ -23,6 +24,7 @@ import {
   getPortalMe,
   getPortalProgress,
   getPortalSignatures,
+  resendPortalSignature,
 } from '@/lib/api/portal';
 import { useDisplayLocale } from '@/lib/locale';
 import type {
@@ -113,5 +115,18 @@ export function usePortalProgress() {
     queryFn: getPortalProgress,
     staleTime: 30_000,
     select,
+  });
+}
+
+/** B-RESIDENT-1 — re-send my own pending signing link. On success, refresh the
+ *  signatures list so the new (refreshed) expiry is reflected. 0 retries
+ *  (mutation default) so a throttle/failed send isn't silently retried. */
+export function useResendPortalSignature() {
+  const qc = useQueryClient();
+  return useMutation<SignatureDeliveryReport, Error, string>({
+    mutationFn: (id: string) => resendPortalSignature(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [...PORTAL_KEY, 'signatures'] });
+    },
   });
 }

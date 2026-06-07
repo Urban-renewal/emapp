@@ -22,7 +22,7 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { describe, expect, it, vi } from 'vitest';
 
-import { buildCspHeader, buildScriptSrc, CSP_CONNECT_SRC } from './lib/csp';
+import { buildCspHeader, buildScriptSrc, CSP_CONNECT_SRC, CSP_FRAME_SRC } from './lib/csp';
 import middleware from './middleware';
 
 vi.mock('next-intl/middleware', () => ({
@@ -481,6 +481,11 @@ describe('CSP — nonce-based, per-request (§MQA-1 + §v9-P0-5)', () => {
     // §csp-r2 — without R2 the browser blocks the presigned-PUT upload silently.
     expect(csp).toContain(CSP_CONNECT_SRC);
     expect(CSP_CONNECT_SRC).toMatch(/https:\/\/\*\.r2\.cloudflarestorage\.com/);
+    // §csp-r2-frame (#10) — without R2 in frame-src the browser SILENTLY blocks
+    // the resident /sign inline document preview (<iframe> over the presigned
+    // R2 GET) under the default-src 'self' fallback.
+    expect(csp).toContain(CSP_FRAME_SRC);
+    expect(CSP_FRAME_SRC).toMatch(/https:\/\/\*\.r2\.cloudflarestorage\.com/);
   });
 
   it('M10c) the CSP is set PER REQUEST in middleware, NOT statically in next.config', async () => {

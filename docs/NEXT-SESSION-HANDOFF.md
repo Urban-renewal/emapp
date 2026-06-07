@@ -21,6 +21,11 @@ are designed/decided already — see the read order.
 
 ## 2. READ ORDER (do not skip — in this order)
 
+0. **`docs/ARCHITECTURE-per-org-configurable-policy.md`** — THE SPINE. Owner's foundational
+   directive: every cross-cutting policy (notification routing, permissions, channels,
+   thresholds) is **per-org configurable — a shipped DEFAULT the manager can override**,
+   built **policy-as-DATA + a generic engine**, never hardcoded per feature (SOLID
+   open/closed). Build notifications + permissions as INSTANCES of this, not ad-hoc.
 1. **`CLAUDE.md`** (repo root) — stack (NestJS+Fastify, Drizzle, Next 15, RLS+pgcrypto),
    the HARD RULES (withTenant/withProvider for every read; no `any`; Zod DTOs; /api/v1;
    `{data}` envelope; `national_id` not `tz`; PII encrypted+never-logged; soft-delete=
@@ -106,12 +111,15 @@ notification_type ADD VALUE 'import_completed'` (+ shared-types + db enum). Addi
    FE (owner/renter toggle + inline create). Tests + security review on the trigger.
 2. **import-complete** — `notification_type` enum add + emit on import finish to the user
    who ran it.
-3. **Notifications — owner-decided routing policy (see D-O7).** Build ONE central helper
-   `resolveNotificationRecipients(tx, orgId, { projectId?, relevantUserIds? })` =
-   (all active org managers) ∪ (active project-assigned agents if projectId) ∪
-   (relevantUserIds) − actor, deduped. THE MANAGER ALWAYS GETS EVERY NOTIFICATION.
+3. **Notifications — CONFIG-DRIVEN per the spine (read §0 doc first), default = D-O7.**
+   Build ONE generic engine `resolveNotificationRecipients(tx, orgId, { projectId?,
+relevantUserIds? })` that READS a per-org `notification_settings` config and FALLS BACK
+   to the D-O7 default = (all active org managers) ∪ (active project-assigned agents if
+   projectId) ∪ (relevantUserIds) − actor, deduped. THE MANAGER ALWAYS GETS EVERY
+   NOTIFICATION (in the default). Ship the default behavior now; the settings-page
+   "notifications" tab (already stubbed) is the override UI, incremental.
    - **RETROFIT `document_uploaded` (PR #274, merged)** — it currently notifies agents
-     ONLY; switch it to the helper so managers also receive it.
+     ONLY; switch it to the engine so managers also receive it.
    - Wire apartment_status_changed + note_added → `{projectId}`; share_revoked →
      `{relevantUserIds:[the contractor's project managers]}`; import-complete →
      `{relevantUserIds:[the import runner]}`; mention → skip (MVP, needs @-parsing).

@@ -24,6 +24,7 @@ import { agentHasCapability, requireAgentCapability } from '../../common/authz/a
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CalendarEmailService } from '../calendar-email/calendar-email.service';
+import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
 export interface TaskListPage {
@@ -313,7 +314,14 @@ export class TasksService {
    * `input.assigneeIds` still yields exactly ONE `task_assignees` row.
    */
   async create(user: AccessTokenPayload, input: CreateTask): Promise<Task> {
-    const { created, assignedUserIds } = await withTenant(
+    // P5 slice 2 / D-O7 — recipients for the task_assigned notification, resolved
+    // INSIDE the create tx (an org-scoped read, satisfying the producer's
+    // recipient∈org invariant) but EMITTED after commit. Declared here to survive
+    // the tx scope. A notification must NEVER fail the create, so resolution
+    // self-guards to []. (Same pattern as document_uploaded's retrofit.)
+    let notifyRecipientIds: string[] = [];
+
+    const { created } = await withTenant(
       user.orgId,
       async (tx) => {
         // D.46 — agent: the new task must be scoped to a visible project/
@@ -366,20 +374,36 @@ export class TasksService {
           afterState: { title: row.title, assignees: assigneeIds.length },
           sessionId: user.sid,
         });
-        return { created: toTask(row), assignedUserIds: assigneeIds };
+        // P5 slice 2 / D-O7 — resolve task_assigned recipients through the ONE
+        // central engine (`resolveNotificationRecipients`), no inline recipient
+        // logic. relevantUserIds = the task's assignees (creator INCLUDED here,
+        // but the engine drops the actor below); actorUserId = user.sub (the
+        // creator). We DELIBERATELY pass NO projectId: task_assigned is an
+        // entity/action event — it must NOT fan out to ALL project-assigned
+        // agents, only the assignees ∪ always-on managers (D-O7) − the actor.
+        // The creator is thus EXCLUDED from "a task was assigned to you" for
+        // their own task (closing the actor-exclusion deferred in D-O6).
+        // Wrapped so a resolver hiccup never rolls back the create.
+        try {
+          notifyRecipientIds = await resolveNotificationRecipients(tx, user.orgId, {
+            relevantUserIds: assigneeIds,
+            actorUserId: user.sub,
+          });
+        } catch {
+          notifyRecipientIds = [];
+        }
+        return { created: toTask(row) };
       },
       { userId: user.sub },
     );
-    // In-app task_assigned notification for assignees attached AT CREATE time
-    // (the bulk path) — was missing; only the separate addAssignee notified, so
-    // a task created-with-assignees left everyone un-notified. Best-effort,
-    // after commit, self-guarded (a notify failure never fails create). Same
-    // shape + non-PII body (task title only) as addAssignee.
-    for (const uid of assignedUserIds) {
+    // In-app task_assigned notification for the resolved recipient set (the
+    // OTHER assignees ∪ org managers − the creator). Best-effort, after commit,
+    // self-guarded (a notify failure never fails create). Body carries only the
+    // task title (org-visible, non-PII). emitMany dedupes + self-guards per id.
+    if (notifyRecipientIds.length > 0) {
       try {
-        await this.notifications.emit({
+        await this.notifications.emitMany(notifyRecipientIds, {
           orgId: user.orgId,
-          recipientId: uid,
           type: 'task_assigned',
           title: 'הוקצתה לך משימה',
           body: `המשימה "${created.title}" הוקצתה לך.`,
@@ -591,7 +615,7 @@ export class TasksService {
     taskId: string,
     input: AssignTask,
   ): Promise<TaskAssignee> {
-    let result: { row: TaskAssignee; taskTitle: string };
+    let result: { row: TaskAssignee; taskTitle: string; notifyRecipientIds: string[] };
     try {
       result = await withTenant(
         user.orgId,
@@ -628,9 +652,26 @@ export class TasksService {
             afterState: { taskId, userId: input.userId },
             sessionId: user.sid,
           });
+          // P5 slice 2 / D-O7 — resolve task_assigned recipients through the ONE
+          // central engine, no inline recipient logic. relevantUserIds = the
+          // newly-assigned user; actorUserId = user.sub (the assigner). NO
+          // projectId (entity/action event — assignees ∪ always-on managers −
+          // actor, NOT a project-wide fan-out). If the assigner assigns
+          // themselves they're dropped as the actor; the other managers still
+          // get it. Wrapped so a resolver hiccup never rolls back the assign.
+          let notifyRecipientIds: string[] = [];
+          try {
+            notifyRecipientIds = await resolveNotificationRecipients(tx, user.orgId, {
+              relevantUserIds: [input.userId],
+              actorUserId: user.sub,
+            });
+          } catch {
+            notifyRecipientIds = [];
+          }
           return {
             row: { id: row.id, taskId: row.taskId, userId: row.userId, assignedAt: row.assignedAt },
             taskTitle: task.title,
+            notifyRecipientIds,
           };
         },
         { userId: user.sub },
@@ -641,24 +682,25 @@ export class TasksService {
       }
       throw e;
     }
-    // In-app notification to the newly-assigned user — the "task sent"
-    // signal so an assignee learns of work in real time, not only via the
-    // calendar email. Fired AFTER the tx commits. The producer self-guards,
-    // but we ALSO try/catch here (defense-in-depth, same posture as the
-    // post-sign notify) so a notify failure can NEVER fail the assignment.
-    // The task title is org-visible, non-PII; never pass owner/national_id/phone.
-    try {
-      await this.notifications.emit({
-        orgId: user.orgId,
-        recipientId: input.userId,
-        type: 'task_assigned',
-        title: 'הוקצתה לך משימה',
-        body: `המשימה "${result.taskTitle}" הוקצתה לך.`,
-        link: null,
-        metadata: { taskId },
-      });
-    } catch {
-      // swallowed: the assignment already committed; notification is best-effort.
+    // In-app task_assigned notification to the resolved recipient set (the
+    // newly-assigned user ∪ org managers − the assigner). Fired AFTER the tx
+    // commits. The producer self-guards, but we ALSO try/catch here (defense-in-
+    // depth, same posture as the post-sign notify) so a notify failure can NEVER
+    // fail the assignment. The task title is org-visible, non-PII; never pass
+    // owner/national_id/phone. emitMany dedupes + self-guards per id.
+    if (result.notifyRecipientIds.length > 0) {
+      try {
+        await this.notifications.emitMany(result.notifyRecipientIds, {
+          orgId: user.orgId,
+          type: 'task_assigned',
+          title: 'הוקצתה לך משימה',
+          body: `המשימה "${result.taskTitle}" הוקצתה לך.`,
+          link: null,
+          metadata: { taskId },
+        });
+      } catch {
+        // swallowed: the assignment already committed; notification is best-effort.
+      }
     }
     return result.row;
   }

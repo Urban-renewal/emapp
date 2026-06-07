@@ -9,6 +9,7 @@ import {
   withTenant,
   type Project as ProjectRow,
 } from '@emapp/db';
+import { PROJECT_TYPE_DEFAULT_CONSENT_PCT } from '@emapp/shared-types';
 import type {
   CreateProject,
   OrgStats,
@@ -340,9 +341,13 @@ export class ProjectsService {
             type: input.type,
             status: input.status ?? 'planning',
             description: input.description ?? null,
+            // Functional type: the consent threshold DEFAULTS from the project's
+            // urban-renewal track (the legal majority that track requires) when
+            // the manager doesn't set one explicitly. Manager override always
+            // wins; the per-type defaults live in one editable map (shared-types).
             targetSignaturePct:
               input.targetSignaturePct === undefined || input.targetSignaturePct === null
-                ? null
+                ? String(PROJECT_TYPE_DEFAULT_CONSENT_PCT[input.type])
                 : String(input.targetSignaturePct),
             startedAt: input.startedAt ?? null,
             createdBy: user.sub,

@@ -14,6 +14,28 @@ import { z } from 'zod';
 export const ProjectTypeEnum = z.enum(['tama38_1', 'tama38_2', 'pinui_binui']);
 export type ProjectType = z.infer<typeof ProjectTypeEnum>;
 
+/**
+ * Default owner-CONSENT threshold (%) per urban-renewal track — the legal
+ * majority each track requires. This is what makes `type` FUNCTIONAL (not just a
+ * label): a project's `targetSignaturePct` defaults to this from its type at
+ * create time, and a manager may override it per project.
+ *
+ * INITIAL values from the legal majorities (refine to current statute — these
+ * thresholds have moved with recent amendments, so they are intentionally a
+ * single editable map, and per-project override is always available):
+ *  - tama38_1 (חיזוק / strengthening): 66% (two-thirds)
+ *  - tama38_2 (הריסה ובנייה / demolition-rebuild): 80% — a 2023 amendment lowers
+ *    it toward two-thirds for buildings with ≥4 units + >2 owners; kept at the
+ *    conservative 80% default until the owner confirms which regime applies.
+ *  - pinui_binui (evacuation-rebuild): 80% (a Knesset committee has approved a
+ *    reduction toward two-thirds; conservative default kept).
+ */
+export const PROJECT_TYPE_DEFAULT_CONSENT_PCT: Record<ProjectType, number> = {
+  tama38_1: 66,
+  tama38_2: 80,
+  pinui_binui: 80,
+};
+
 /** D.18 (LAW): locked project status set. Matches `project_status` pg enum. */
 export const ProjectStatusEnum = z.enum([
   'planning',

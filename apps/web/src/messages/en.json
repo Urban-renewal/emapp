@@ -251,7 +251,8 @@
       "name": "Project name",
       "type": "Type",
       "description": "Description",
-      "required": "Required"
+      "required": "Required",
+      "consentThreshold": "Required consent: {pct}%"
     },
     "types": {
       "tama38_1": "Tama 38/1",

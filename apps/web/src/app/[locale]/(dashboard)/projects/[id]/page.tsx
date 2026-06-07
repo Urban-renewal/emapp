@@ -152,7 +152,11 @@ export default function ProjectDetailPage() {
             </div>
 
             <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
-              {data.typeLabel} · {data.createdRelative}
+              {data.typeLabel}
+              {data.targetConsentPct !== null && (
+                <> · {t('field.consentThreshold', { pct: data.targetConsentPct })}</>
+              )}{' '}
+              · {data.createdRelative}
             </div>
 
             {/* KPI grid — wired to ProjectListItem stats. Contractor is still

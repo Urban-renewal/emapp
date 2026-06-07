@@ -57,6 +57,7 @@ export function toProjectViewModel(
     status: p.status,
     statusLabel: STATUS_LABELS[p.status],
     statusColor: STATUS_COLORS[p.status],
+    targetConsentPct: p.targetSignaturePct ?? null,
     description: p.description ? stripBidiOverrides(p.description) : null,
     isArchived: p.archivedAt !== null,
     createdRelative: formatRelative(p.createdAt, locale),

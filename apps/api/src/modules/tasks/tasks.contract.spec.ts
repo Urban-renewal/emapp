@@ -177,22 +177,32 @@ describe('CONTRACT · tasks', () => {
     expect((reopened.body['data'] as Json)['completedAt']).toBeNull();
   });
 
-  ct('TK8 assignees add/dup/invalid/list/remove', async () => {
+  ct('TK8 assignees auto-creator/dup/invalid/list/remove', async () => {
+    // D-O6: the creator (uid) is AUTO-ADDED as an assignee at create time, so a
+    // freshly-created task already carries exactly one assignee row for its
+    // creator. (Pre-D-O6 this test created the task then POSTed uid to ADD it;
+    // that add now correctly collides — see the dup assertion.) The manager
+    // black-box surface can't mint a SECOND same-org member (invite flow is not
+    // in this phase — see file header), so the add-success path is proven at the
+    // service layer in tasks-do6-creator-assignee.spec.ts; here we assert the
+    // now-correct creator-already-assigned reality end to end.
     const { at, uid } = await manager('as');
     const c = await createTask(at, { title: 'Assign me' });
     const id = (c.body['data'] as Json)['id'] as string;
-    const add = await call(`/tasks/${id}/assignees`, {
-      method: 'POST',
-      cookie: `access_token=${at}`,
-      body: JSON.stringify({ userId: uid }),
-    });
-    expect(add.status, add.raw).toBeLessThan(300);
+    // The creator is already on the list — no explicit add needed.
+    const list = await call(`/tasks/${id}/assignees`, { cookie: `access_token=${at}` });
+    expect(
+      (list.body['data'] as Json[]).some((a) => a['userId'] === uid),
+      'creator auto-assigned at create (D-O6)',
+    ).toBe(true);
+    // Re-adding the creator now (correctly) collides — the unique constraint
+    // surfaces as 409 assignee_exists (the same code the old explicit-dup hit).
     const dup = await call(`/tasks/${id}/assignees`, {
       method: 'POST',
       cookie: `access_token=${at}`,
       body: JSON.stringify({ userId: uid }),
     });
-    expect(dup.status).toBe(409);
+    expect(dup.status, dup.raw).toBe(409);
     expect((dup.body['error'] as Json)?.['code']).toBe('assignee_exists');
     const bad = await call(`/tasks/${id}/assignees`, {
       method: 'POST',
@@ -201,8 +211,6 @@ describe('CONTRACT · tasks', () => {
     });
     expect(bad.status).toBe(400);
     expect((bad.body['error'] as Json)?.['code']).toBe('invalid_assignee');
-    const list = await call(`/tasks/${id}/assignees`, { cookie: `access_token=${at}` });
-    expect((list.body['data'] as Json[]).some((a) => a['userId'] === uid)).toBe(true);
     const del = await call(`/tasks/${id}/assignees/${uid}`, {
       method: 'DELETE',
       cookie: `access_token=${at}`,

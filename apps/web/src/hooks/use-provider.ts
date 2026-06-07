@@ -49,7 +49,7 @@ import type { ProviderTenantDetailVM, ProviderTenantListItemVM } from '@/models/
 
 const PROVIDER_KEY = ['provider'] as const;
 
-export function useProviderTenants(query: { limit?: number; cursor?: string } = {}) {
+export function useProviderTenants(query: { limit?: number; cursor?: string; q?: string } = {}) {
   const locale = useDisplayLocale();
   const reason = readProviderReason();
   const select = useCallback(

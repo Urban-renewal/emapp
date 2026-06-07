@@ -635,7 +635,10 @@
       "empty": "No tenants.",
       "countsLine": "{users} users · {projects} projects · {owners} owners",
       "createTenant": "New tenant",
-      "suspended": "Suspended"
+      "suspended": "Suspended",
+      "searchPlaceholder": "Search tenants by name…",
+      "search": "Search",
+      "searchClear": "Clear"
     },
     "onboard": {
       "title": "Create a new tenant",

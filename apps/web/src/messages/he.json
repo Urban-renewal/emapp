@@ -635,7 +635,10 @@
       "empty": "אין לקוחות.",
       "countsLine": "{users} משתמשים · {projects} פרויקטים · {owners} בעלי דירות",
       "createTenant": "לקוח חדש",
-      "suspended": "מושעה"
+      "suspended": "מושעה",
+      "searchPlaceholder": "חיפוש לקוח לפי שם…",
+      "search": "חפש",
+      "searchClear": "נקה"
     },
     "onboard": {
       "title": "יצירת לקוח חדש",

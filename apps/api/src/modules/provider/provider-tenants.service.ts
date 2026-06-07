@@ -19,7 +19,7 @@
 import { organizations, withProvider } from '@emapp/db';
 import type { ApiList, ListTenantsQuery, TenantListItem } from '@emapp/shared-types';
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, lt, or, sql } from 'drizzle-orm';
 
 import { decodeCursorOrThrow, encodeCursor } from '../../common/keyset-cursor';
 
@@ -100,6 +100,15 @@ export class ProviderTenantsService {
             )
           : undefined;
 
+        // Optional name search. Escape LIKE wildcards (% _ \) so a query like
+        // "50%" is a LITERAL substring, not a match-all (Postgres ILIKE's
+        // default escape char is backslash). The value is bound as a parameter
+        // by drizzle's ilike() — no string concatenation into SQL.
+        const qPred = query.q
+          ? ilike(organizations.name, `%${query.q.replace(/[%_\\]/g, '\\$&')}%`)
+          : undefined;
+        const wherePred = cursorPred && qPred ? and(cursorPred, qPred) : (cursorPred ?? qPred);
+
         return tx
           .select({
             id: organizations.id,
@@ -113,7 +122,7 @@ export class ProviderTenantsService {
             ownersCount,
           })
           .from(organizations)
-          .where(cursorPred)
+          .where(wherePred)
           .orderBy(desc(organizations.createdAt), desc(organizations.id))
           .limit(fetchLimit);
       },
@@ -129,6 +138,7 @@ export class ProviderTenantsService {
           filter: {
             limit: query.limit,
             cursor: query.cursor ?? null,
+            q: query.q ?? null,
           },
         },
       },

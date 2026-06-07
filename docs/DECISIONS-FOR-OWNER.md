@@ -28,3 +28,17 @@ rather than stopping to ask. Review and override any you disagree with.
 - **COST NOTE:** This means an owner with BOTH email and phone gets contacted on both → ~1 SMS cost per such request. If you'd rather SMS only when there's no email (cheaper, less reach), that's a one-line change in `deliverSignatureLink`.
 - **REVERSIBLE:** Yes — gate SMS on `!ctx.ownerEmail`, or add a per-org / per-request channel-preference setting (a natural follow-up enhancement).
 - **NEEDS-YOU:** Confirm the always-SMS-when-phone default, or tell me to switch to SMS-only-when-no-email.
+
+## D-O3 · Bulk signature-send token exposure (in the WhatsApp deep-link)
+
+- **DECISION:** The bulk-send response (`POST /signature-requests/bulk`) returns a per-owner delivery report. The signing token is NOT a first-class field, but it IS present URL-encoded inside each owner's `delivery.whatsapp.deepLink` — exactly as the existing single-create `signUrl` is — so the manager can tap-send via WhatsApp. The separated test-author flagged this (consistent, not a new leak; the endpoint is gated by `signature_requests.send`).
+- **WHY:** WhatsApp is a manager-driven channel; the deep-link must carry the link. Stripping it would break manual WhatsApp send. Kept consistent with single-create.
+- **EXPOSURE NOTE:** A BULK response can carry up to 200 single-use 7-day tokens (vs 1 for single-create). If a bulk response is ever logged/screenshotted wholesale, that's a larger surface. It's returned to the manager FE over HTTPS and not logged server-side; pino redacts `/sign/` URLs (note: the deep-link encodes it as `%2Fsign%2F`).
+- **REVERSIBLE / NEEDS-YOU:** If you want bulk treated as lower-trust, I can OMIT the `whatsapp.deepLink` from the BULK report (auto email+SMS still deliver) while keeping it for single-create. Say the word.
+
+## D-O4 · Bulk-send duplicate-prevention is best-effort under CONCURRENT submits (MED, deferred)
+
+- **CONTEXT:** Bulk-send skips owners that already have a PENDING request for the doc (a SELECT-then-skip). Under SERIAL retry (the common "did it work? click again") this prevents duplicates. But there is NO DB unique constraint, so two TRULY-CONCURRENT identical bulks (or a bulk racing a single-create) could both pass the skip-check and both insert → a duplicate pending request + a second signing link to the same owner. (Security review MED.)
+- **WHY DEFERRED, not fixed now:** the proper fix is a partial unique index `CREATE UNIQUE INDEX … ON signature_requests (document_id, owner_id) WHERE status='pending'` — a Gate-6 migration that ALSO changes single-create's error handling (a racing insert would then raise 23505, which both paths must map to a clean "already pending" instead of a 500). That cross-path change + the migration's risk of failing on any pre-existing duplicate is best done as its own focused task, not rushed. Likelihood is LOW (requires simultaneous double-submit; the FE debounces + the endpoint is throttled 10/min).
+- **NEEDS-YOU:** none — flagged for a follow-up task (added to AUTONOMOUS-BACKLOG). Tell me if you want it prioritized.
+- **The sec-review HIGH (corrupt-ciphertext could abort the whole batch) WAS fixed** in this slice: the insert tx now does a decrypt-free `SELECT id` for visibility and PII is decrypted per-owner in ISOLATED txs during delivery — so a corrupt/key-drifted owner only fails ITS delivery, never the committed batch (regression test BULK-14).

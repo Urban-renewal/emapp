@@ -13,6 +13,9 @@ import {
 } from '@emapp/db';
 import type {
   CreateSignatureRequest,
+  BulkCreateSignatureRequest,
+  BulkSignatureRequestResponse,
+  BulkSignatureResult,
   SignatureRequest,
   SignatureRequestCreateResponse,
   SignatureDeliveryReport,
@@ -27,7 +30,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, desc, eq, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
@@ -248,6 +251,177 @@ export class SignatureRequestsService {
       request: this.toWire(txOut.row),
       signUrl,
       delivery,
+    };
+  }
+
+  /** Bulk send — ONE document to MANY owners in a single action (the manager's
+   *  most-repeated task: a whole building's owners). Per-owner outcome:
+   *   - created          → a new pending request + a delivery attempt
+   *   - skipped_existing → owner already had a pending request for this doc
+   *   - failed           → owner not visible/in-org (or a per-owner insert race)
+   *  A bad/duplicate owner NEVER aborts the batch. The signing token is sent
+   *  via the delivery channels only — it is NEVER returned in the response.
+   *
+   *  Shape mirrors create(): all DB work in ONE tenant tx (gate once, batch the
+   *  already-pending lookup), then deliver OUTSIDE the tx with bounded
+   *  concurrency so no DB connection is held across the external SMS/email I/O. */
+  async createBulk(
+    user: AccessTokenPayload,
+    input: BulkCreateSignatureRequest,
+  ): Promise<BulkSignatureRequestResponse> {
+    const ownerIds = [...new Set(input.ownerIds)];
+
+    // Mint a token per owner OUTSIDE the tx (in-process, idempotent).
+    const minted = ownerIds.map((ownerId) => {
+      const requestId = randomUUID();
+      const { token, jti, expiresAt } = this.tokenService.sign({
+        sub: requestId,
+        orgId: user.orgId,
+        documentId: input.documentId,
+        ownerId,
+      });
+      return { ownerId, requestId, token, jti, expiresAt };
+    });
+
+    const prepared = await withTenant(
+      user.orgId,
+      async (tx) => {
+        // Gate ONCE for the whole bulk (document visibility + agent capability).
+        const doc = await this.loadVisibleDocument(tx, input.documentId);
+        if (user.role === 'agent') await this.assertDocVisibleForAgent(tx, user, input.documentId);
+        await requireAgentCapability(tx, user, 'manage_signatures');
+
+        // Owners that already have a PENDING request for this doc → skip (1 query).
+        const existing = await tx
+          .select({ ownerId: signatureRequests.ownerId })
+          .from(signatureRequests)
+          .where(
+            and(
+              eq(signatureRequests.documentId, input.documentId),
+              inArray(signatureRequests.ownerId, ownerIds),
+              eq(signatureRequests.status, 'pending'),
+            ),
+          );
+        const pendingSet = new Set(existing.map((r) => r.ownerId));
+
+        // Visibility via a CHEAP id-only SELECT (RLS-scoped). It does NO pgcrypto
+        // decrypt, so — unlike loadOwnerWithPii — it cannot RAISE on a corrupt-
+        // ciphertext owner and abort the whole batch tx (sec-review HIGH). PII is
+        // decrypted later, per-owner, in ISOLATED txs during delivery, so a bad
+        // owner only fails ITS delivery, never the committed batch.
+        const visibleRows = await tx
+          .select({ id: owners.id })
+          .from(owners)
+          .where(inArray(owners.id, ownerIds));
+        const visibleSet = new Set(visibleRows.map((r) => r.id));
+
+        const audit = new AuditService(tx, { ip: user.ip, userAgent: user.userAgent });
+        const bundles: Array<{
+          ownerId: string;
+          requestId: string;
+          token: string;
+          outcome: 'created' | 'skipped_existing' | 'failed';
+          reason?: string;
+        }> = [];
+
+        for (const m of minted) {
+          if (pendingSet.has(m.ownerId)) {
+            bundles.push({ ...m, outcome: 'skipped_existing' });
+            continue;
+          }
+          if (!visibleSet.has(m.ownerId)) {
+            // Foreign/archived/non-existent id — no-oracle, no row. Batch continues.
+            bundles.push({ ...m, outcome: 'failed', reason: 'owner_not_found' });
+            continue;
+          }
+          const [inserted] = await tx
+            .insert(signatureRequests)
+            .values({
+              id: m.requestId,
+              orgId: user.orgId,
+              documentId: input.documentId,
+              ownerId: m.ownerId,
+              jti: m.jti,
+              status: 'pending',
+              expiresAt: m.expiresAt,
+              createdBy: user.sub,
+            })
+            .returning({ id: signatureRequests.id });
+          if (!inserted) {
+            bundles.push({ ...m, outcome: 'failed', reason: 'insert_conflict' });
+            continue;
+          }
+          await audit.log({
+            orgId: user.orgId,
+            actorId: user.sub,
+            actorType: 'user',
+            action: 'signature_request.create',
+            targetTable: 'signature_requests',
+            targetId: m.requestId,
+            sessionId: user.sid,
+          });
+          bundles.push({ ...m, outcome: 'created' });
+        }
+        return { documentName: doc.name, bundles };
+      },
+      { userId: user.sub },
+    );
+
+    // Deliver OUTSIDE the gate/insert tx, bounded-concurrency. Each created
+    // owner's PII is decrypted in its OWN short withTenant tx, so a corrupt-
+    // ciphertext / key-drift owner only fails ITS delivery — the committed
+    // request row and every other owner are unaffected (sec-review HIGH).
+    const DELIVERY_CONCURRENCY = 8;
+    const results: BulkSignatureResult[] = [];
+    for (let i = 0; i < prepared.bundles.length; i += DELIVERY_CONCURRENCY) {
+      const chunk = prepared.bundles.slice(i, i + DELIVERY_CONCURRENCY);
+      const chunkResults = await Promise.all(
+        chunk.map(async (b): Promise<BulkSignatureResult> => {
+          if (b.outcome !== 'created') {
+            return { ownerId: b.ownerId, outcome: b.outcome, reason: b.reason };
+          }
+          let pii: { name: string; email: string | null; phonePlain: string | null };
+          try {
+            pii = await withTenant(user.orgId, (tx) => this.loadOwnerWithPii(tx, b.ownerId), {
+              userId: user.sub,
+            });
+          } catch {
+            // The request IS created; only its delivery PII failed to decrypt
+            // (corrupt ciphertext / key drift). Report created, no delivery.
+            // PII-free warn (ownerId is a UUID) so a GLOBAL key/config outage —
+            // which would make every owner here silently undeliverable — is
+            // observable to ops, not masked as a per-owner success (sec-review LOW).
+            this.logger.warn(
+              `bulk delivery: owner PII decrypt failed for owner=${b.ownerId} ` +
+                `(request created, delivery skipped)`,
+            );
+            return { ownerId: b.ownerId, outcome: 'created', requestId: b.requestId };
+          }
+          const delivery = await deliverSignatureLink(
+            this.email,
+            this.sms,
+            {
+              signUrl: `${PUBLIC_APP_URL}/sign/${b.token}`,
+              ownerName: pii.name,
+              ownerEmail: pii.email,
+              ownerPhone: pii.phonePlain,
+              documentName: prepared.documentName,
+            },
+            { error: (msg): void => this.logger.error(msg) },
+          );
+          return { ownerId: b.ownerId, outcome: 'created', requestId: b.requestId, delivery };
+        }),
+      );
+      results.push(...chunkResults);
+    }
+
+    return {
+      results,
+      summary: {
+        created: results.filter((r) => r.outcome === 'created').length,
+        skipped: results.filter((r) => r.outcome === 'skipped_existing').length,
+        failed: results.filter((r) => r.outcome === 'failed').length,
+      },
     };
   }
 

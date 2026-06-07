@@ -90,6 +90,30 @@ future external e-sign integration) and the **Hebrew signed-PDF "mess"**.
   "NEXT: import preview + undo" above. PROCEEDING to #3 (ghost-docs) meanwhile —
   lower-risk, API-only, and the actual NoSuchKey bug the owner hit.
 
+## 2026-06-06 (session 2) — owner-directed: merge all PRs + work the queue to the end
+
+Merged 7 PRs to main; corrected another false finding. All CI-green, security-reviewed
+where security-sensitive. Verify-before-fix caught a THIRD fully-false audit finding (M5).
+
+- **#251** Sentry-DSN guard · **#252** in-app notifications + H3 provider-login-failure
+  audit + agent-capability-scanner fix + H1/H2/M2 corrections + L3 · **#253** H2 calendar
+  ICS (re-send only on real change + sends out of tx) · **#254** M6 import /start enqueue
+  retry · **#255** L1 redact query-value PII from provider audit URL · **#256** M1
+  otp_codes RLS (Gate-6 — owner-approved merge).
+- **M5 REFUTED (FALSE — do NOT "fix"):** "member provisioning dead / members._ grantable
+  by nobody / settings unreachable" is contradicted by code — signup grants the creator
+  OWNER (auth.service.ts:169-199), 0044 backfilled existing orgs' primary→Owner, the invite
+  helper assigns roles, Owner holds members._, and the FE nav is permission-gated
+  (sidebar.tsx:92-129). Provisioning WORKS via the org Owner. Only by-design residue: Admin
+  role unreachable (not needed/not an MVP role) + non-primary managers lack governance
+  (intended §11.1). See SYSTEM-STATE-AUDIT.md M5. CI/IAM audit over-claim tally: H1 + M5
+  fully false; H2 + M2 partially over-claimed; H3 + M1 + M6 + L1 + L3 real & fixed.
+- **CI-fix interlude (in #252):** the import preview→confirm work tripped two real CI
+  failures fixed before merge — the agent-capability wall false-positived on imports.confirm
+  (parseMethods scanned an inline-{ return type as the body → couldn't see the gate; fixed
+  with findBodyBrace + regression test), and the j6 e2e + imports-stream allowlists needed
+  the new required ImportJobSchema fields (requireConfirm/confirmedAt).
+
 ## 2026-06-06 — SYSTEM-STATE HIGH findings re-verified (owner away, per-recommendation)
 
 Worked the H1→H4 recommendation list. CRITICAL outcome: **two of the four HIGHs were

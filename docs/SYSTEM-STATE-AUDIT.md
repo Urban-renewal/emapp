@@ -103,10 +103,24 @@ treat the "verified clean" sections as high-confidence, not absolute.
   reuse is CI-skipped without env vars (auth.contract.spec.ts:612); tenant OTP rate-limit/
   attempt-lockout/replay-after-use/real-success untested; refresh reuse-detection
   chain-purge-of-other-sessions unverified; concurrent double-refresh TOCTOU untested.
-- **M5 — Member provisioning is effectively DEAD in the MVP.** Owner/Admin system roles
-  have no backfill, so `members.invite/update/remove` are grantable by nobody → the
-  Manager sees a `members` nav item where every action 403s, and `/settings` is unreachable
-  for all roles. Orphaned screens + can't actually add a team member via the engine path.
+- **M5 — ❌ REFUTED (FALSE FINDING, 2026-06-06).** Claimed Owner/Admin have "no backfill"
+  so members._ is "grantable by nobody", the Manager sees a members nav where every action
+  403s, and /settings is unreachable for all. **Every clause is contradicted by code:**
+  (1) signup atomically grants the creator an org-scope OWNER role_assignment alongside the
+  membership — auth.service.ts:169-199, comment "never an org with no admin"; (2) migration
+  0044 backfilled each existing org's PRIMARY manager → Owner (0044:11-16), and 0043
+  backfilled all other memberships → same-named system roles; (3) Owner holds members._ +
+  org.settings._ (system-roles.ts:62), so the Owner CAN invite/manage members, and the
+  invite helper assigns each invited member's system role at invite time
+  (helpers/members.ts:90-107); (4) the FE sidebar gates the members / audit / settings nav
+  on `members.read` / `audit.read` / `org.settings.read` (sidebar.tsx:92-129, "IAM slice
+  5b") — a non-Owner manager doesn't SEE the members nav, so there is no "403 on every
+  action" screen. Member provisioning WORKS (via the org Owner = its primary manager).
+  Only genuine residue (LOW, by-design): (a) the engine `Admin` role is unreachable today
+  (no `roles.assign` endpoint) but is not needed — Owner covers governance, and Admin is
+  not one of the 6 MVP roles; (b) non-primary managers lack members._ (governance) — the
+  intended one-Owner-per-org model (Decision §11.1 / 0044), NOT a bug. Widening governance
+  to all managers would be a deliberate policy change, not a fix. No code change.
 - **M6 — import start/submitMapping/confirm commit `queued` then producer.send OUT of tx**
   → send-failure leaves a stuck `queued` row; `start()` lacks even the retry wrapper the
   other two have. Recovery depends on the non-existent sweeper (H4).

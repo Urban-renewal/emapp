@@ -23,6 +23,11 @@ export interface ProjectViewModel {
   statusColor: 'gray' | 'amber' | 'emerald' | 'red';
   /** Raw status kept on the VM for branching in components / filters. */
   status: ProjectStatus;
+  /** Required owner-CONSENT threshold (%) for this project — defaulted from the
+   *  urban-renewal track (the type) at create, overridable per project. Makes
+   *  the type FUNCTIONAL: it sets the legal majority the project must reach.
+   *  null only for legacy rows created before the default existed. */
+  targetConsentPct: number | null;
   /** Locked-schema alignment: project rows have no description/target on the wire
    *  for new rows by default; we surface what's present, null otherwise. */
   description: string | null;

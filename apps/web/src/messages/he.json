@@ -251,7 +251,8 @@
       "name": "שם הפרויקט",
       "type": "סוג",
       "description": "תיאור",
-      "required": "שדה חובה"
+      "required": "שדה חובה",
+      "consentThreshold": "סף הסכמה נדרש: {pct}%"
     },
     "types": {
       "tama38_1": "תמ\"א 38/1",

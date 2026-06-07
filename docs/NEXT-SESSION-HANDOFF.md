@@ -104,7 +104,31 @@ notification_type ADD VALUE 'import_completed'` (+ shared-types + db enum). Addi
 - **Paid APIs (SMS/domain):** build to the API-KEY boundary, stub (Noop/env), document
   the go-live steps. Never block on a real key — that's prod-only.
 
-## 6. The task list (in order)
+## 6. The work plan — TWO PARALLEL TRACKS on a shared, stable data core
+
+The owner's standing directive: **a generic, modular system — separation of concerns +
+single-source-of-truth data — READY for a future design + per-org customization, without
+building the design now.** Because the data/logic core is decoupled from presentation,
+work runs as TWO non-blocking tracks. Build **Phase 0 (readiness) FIRST** — it's what
+"be ready" concretely means; then Track A proceeds, Track B activates when a design lands.
+
+### Phase 0 — READINESS FOUNDATIONS (build these FIRST — the enabling seams)
+
+These make every later design swap + per-org customization a clean drop-in, not a refactor.
+
+1. **`OrgSettings` config foundation** (bounded, high-leverage, NO migration —
+   `organizations.settings` jsonb already exists, `tenancy.ts:24`): a typed Zod
+   `OrgSettings` schema (defaults baked in) + `getOrgSettings(tx, orgId)` resolver that
+   parses the jsonb over the defaults. This ONE resolver is the seam every per-org policy
+   (notifications, messaging, locale, thresholds…) reads from. Ship it empty-but-typed; the
+   defaults ARE today's behavior. See `ARCHITECTURE-per-org-configurable-policy.md`.
+2. **Design-token single-source POSTURE** (no design needed yet —
+   `ARCHITECTURE-fe-design-tokens.md`): make `globals.css` tokens the ONE canonical source;
+   add the rule (ideally a lint guard) "new code uses tokens, never ad-hoc inline hex/HSL";
+   migrate inline→classes INCREMENTALLY as screens are touched (not big-bang). Then a future
+   design = a token swap, and per-org branding = the org's tokens override the default.
+
+### Track A — FEATURES (the data/logic track, sequential)
 
 1. **Feature A** — owner/renter + inline entry, per `FEATURE-owner-renter-design.md`.
    Schema → migration (the careful part) → service → signature-flow (exclude renters) →
@@ -127,5 +151,19 @@ relevantUserIds? })` that READS a per-org `notification_settings` config and FAL
 4. (optional) per-project agent capabilities — a bigger data-model change; confirm with
    the owner first (it's the only remaining "manager grants permissions" enhancement; the
    per-entity-TYPE grant already works via members → capabilities).
+5. **Gap-catalog tail** — work `docs/PERSONA-GAP-CATALOG.md` top-down by severity: the
+   MED/LOW per-persona items + A3 (dead share perms + national_id footgun — needs a JSONB
+   migration to do right, not a UI-only plaster). Each as its own small PR.
 
-Open the run with: _"Read docs/NEXT-SESSION-HANDOFF.md, then start Feature A."_
+### Track B — DESIGN (activates when a design arrives; parallel, non-blocking)
+
+The data layer is never touched here. Per `ARCHITECTURE-fe-design-tokens.md`:
+
+1. Bring the design as `tokens.css`/Figma-tokens → map to `globals.css` (the one source).
+2. Re-theme ONE screen first to validate, then expand. Consolidate inline→classes per
+   screen as you go.
+3. Per-org branding then = the org's tokens override the default (the spine pattern).
+   This track does NOT block Track A and Track A does not block it — that separation is the
+   payoff of the modular design.
+
+Open the run with: _"Read docs/NEXT-SESSION-HANDOFF.md, then build Phase 0, then Feature A."_

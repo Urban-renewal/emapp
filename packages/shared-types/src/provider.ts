@@ -23,6 +23,9 @@ import { z } from 'zod';
 export const ListTenantsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   cursor: z.string().min(1).optional(),
+  /** Case-insensitive substring search on the org NAME — so an operator can
+   *  find one customer org without paging blindly through the cursor. */
+  q: z.string().trim().min(1).max(100).optional(),
 });
 export type ListTenantsQuery = z.infer<typeof ListTenantsQuerySchema>;
 

@@ -23,8 +23,16 @@ export default function ProviderTenantsPage() {
   const t = useTranslations('provider.tenants');
   const tp = useTranslations('projects'); // borrows: archived / next / resetToFirstPage labels
   const [cursor, setCursor] = useState<string | undefined>(undefined);
-  const { data, isLoading, isError, refetch } = useProviderTenants({ limit: 25, cursor });
+  const [searchInput, setSearchInput] = useState('');
+  const [q, setQ] = useState<string | undefined>(undefined);
+  const { data, isLoading, isError, refetch } = useProviderTenants({ limit: 25, cursor, q });
   const items = data?.items ?? [];
+
+  function onSearch(): void {
+    const trimmed = searchInput.trim();
+    setQ(trimmed.length > 0 ? trimmed : undefined);
+    setCursor(undefined); // a new search resets pagination to the first page
+  }
 
   return (
     <div className="space-y-6">
@@ -34,6 +42,39 @@ export default function ProviderTenantsPage() {
         <Button asChild size="sm">
           <Link href="/provider/onboard">{t('createTenant')}</Link>
         </Button>
+      </div>
+
+      {/* Name search — deliberately NOT an HTML form element (avoids any GET-
+          fallback surface); Enter or the button applies it, and a new search
+          resets the cursor to the first page. */}
+      <div className="flex items-center gap-2">
+        <input
+          type="search"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') onSearch();
+          }}
+          placeholder={t('searchPlaceholder')}
+          aria-label={t('searchPlaceholder')}
+          className="w-full max-w-xs rounded-md border px-3 py-1.5 text-sm"
+        />
+        <Button size="sm" variant="outline" onClick={onSearch}>
+          {t('search')}
+        </Button>
+        {q && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setSearchInput('');
+              setQ(undefined);
+              setCursor(undefined);
+            }}
+          >
+            {t('searchClear')}
+          </Button>
+        )}
       </div>
 
       <ListPageShell

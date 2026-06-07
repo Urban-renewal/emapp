@@ -118,13 +118,14 @@ export interface TenantListPage {
 
 export async function listTenants(
   reason: string,
-  query: { limit?: number; cursor?: string } = {},
+  query: { limit?: number; cursor?: string; q?: string } = {},
 ): Promise<TenantListPage> {
   // FE-side defensive parse on the query — never send a malformed cursor.
   const parsed = ListTenantsQuerySchema.parse(query);
   const params = new URLSearchParams();
   params.set('limit', String(parsed.limit));
   if (parsed.cursor) params.set('cursor', parsed.cursor);
+  if (parsed.q) params.set('q', parsed.q);
   const qs = params.toString();
   const res = await apiClient.getList<unknown>(
     `/provider/tenants${qs ? `?${qs}` : ''}`,

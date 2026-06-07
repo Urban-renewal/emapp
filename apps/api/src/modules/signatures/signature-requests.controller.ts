@@ -135,4 +135,15 @@ export class SignatureRequestsController {
   async cancel(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.signatureRequests.cancel(user, id) };
   }
+
+  /** Resend / remind — refresh a PENDING request's link (new token + 7-day
+   *  expiry) and re-deliver. Same coarse `signature_requests.send` + fine
+   *  manage_signatures gate as create (the service enforces both). */
+  @Post(':id/resend')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @HttpCode(200)
+  @RequirePermission('signature_requests.send')
+  async resend(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
+    return { data: await this.signatureRequests.resend(user, id) };
+  }
 }

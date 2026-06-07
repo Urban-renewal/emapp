@@ -33,6 +33,7 @@ import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
 import {
   DOWNLOAD_URL_TTL_SECONDS,
@@ -85,7 +86,10 @@ function toDocument(r: DocumentRow): Document {
 export class DocumentsService {
   private readonly logger = new Logger(DocumentsService.name);
 
-  constructor(@Inject(STORAGE_PROVIDER) private readonly storage: IStorageProvider) {}
+  constructor(
+    @Inject(STORAGE_PROVIDER) private readonly storage: IStorageProvider,
+    private readonly notifications: NotificationsProducerService,
+  ) {}
 
   private async assertProjectVisible(
     tx: TenantTx,
@@ -188,6 +192,11 @@ export class DocumentsService {
 
   async create(user: AccessTokenPayload, input: CreateDocument): Promise<DocumentUploadResponse> {
     const r2Key = newDocumentKey(user.orgId);
+    // #6 — recipients for the document_uploaded notification. Resolved INSIDE the
+    // tx (an org-scoped read, satisfying the producer's "recipient ∈ org"
+    // invariant) but EMITTED after commit. Declared here to survive the tx scope.
+    // A notification must NEVER fail the upload, so resolution self-guards to [].
+    let notifyAgentIds: string[] = [];
 
     const row = await withTenant(
       user.orgId,
@@ -236,6 +245,37 @@ export class DocumentsService {
           afterState: { name: r.name, type: r.type, sizeBytes: r.sizeBytes },
           sessionId: user.sid,
         });
+
+        // #6 — best-effort: the project's assigned agents (minus the uploader)
+        // get a document_uploaded notification. Resolve the project from the
+        // doc's projectId, or via apartment → building for a per-apartment
+        // agreement. Wrapped so a resolver hiccup never rolls back the upload.
+        try {
+          let notifyProjectId = r.projectId;
+          if (!notifyProjectId && r.apartmentId) {
+            const [apt] = await tx
+              .select({ projectId: buildings.projectId })
+              .from(apartments)
+              .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
+              .where(eq(apartments.id, r.apartmentId))
+              .limit(1);
+            notifyProjectId = apt?.projectId ?? null;
+          }
+          if (notifyProjectId) {
+            const team = await tx
+              .select({ userId: projectAssignments.userId })
+              .from(projectAssignments)
+              .where(
+                and(
+                  eq(projectAssignments.projectId, notifyProjectId),
+                  isNull(projectAssignments.unassignedAt),
+                ),
+              );
+            notifyAgentIds = team.map((t) => t.userId).filter((id) => id !== user.sub);
+          }
+        } catch {
+          notifyAgentIds = [];
+        }
         return r;
       },
       { userId: user.sub },
@@ -270,6 +310,31 @@ export class DocumentsService {
       // not a client error. Correct status matters for monitoring/alerting
       // and lets the client safely retry. (Audit finding 2026-05-20.)
       throw new ServiceUnavailableException({ error: { code: 'storage_unavailable' } });
+    }
+
+    // #6 — fire-and-forget AFTER a successful presign (a doc that failed presign
+    // was archived above + threw, so it never reaches here). emitMany self-guards:
+    // a notification failure never throws and never affects this response. Body
+    // carries only the document NAME (a same-org visible label), never PII.
+    if (notifyAgentIds.length > 0) {
+      // try/catch at the CALL SITE too (not only the producer's internal self-
+      // guard): the "a notification never fails the upload" contract must hold
+      // here even if a future producer change throws synchronously. The doc is
+      // already committed + presigned; a notify failure must not 500 the upload.
+      try {
+        await this.notifications.emitMany(notifyAgentIds, {
+          orgId: user.orgId,
+          type: 'document_uploaded',
+          title: 'מסמך חדש בפרויקט',
+          body: `המסמך "${row.name}" הועלה.`,
+          link: null,
+          metadata: { documentId: row.id },
+        });
+      } catch (e) {
+        this.logger.error(
+          `document_uploaded notify failed (doc=${row.id}): ${e instanceof Error ? e.message : 'unknown'}`,
+        );
+      }
     }
 
     return {

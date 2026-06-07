@@ -43,6 +43,15 @@ rather than stopping to ask. Review and override any you disagree with.
 - **THE REAL RESIDUAL FRICTION (narrower):** "I created a task and it vanished from my list." The minimal, NON-deviating fix is to auto-add the creator as an assignee on task-create (the creator is implicitly a stakeholder) — this keeps the assignee-based read model intact while removing the vanish. The broader option (project-scope agent task reads) is a bigger model change.
 - **NEEDS-YOU (pick one):** (a) keep assignee-based reads as-is; (b) auto-assign the creator on create (small, recommended); (c) project-scope agent task reads (model change). I implemented none yet — your call, since it changes documented behavior.
 
+## D-O7 · Notification routing — document_uploaded → assigned agents (and the rest)
+
+- **CONTEXT:** the notifications infra exists, but 5 of 7 defined types were NEVER emitted (apartment_status_changed, document_uploaded, note_added, share_revoked, mention), and there's no import-complete type at all. The "who gets notified" routing per event was unspecified.
+- **DECISION (this slice):** wired **document_uploaded** → notify the project's ASSIGNED AGENTS (the people working that project), EXCLUDING the uploader. Best-effort (never fails the upload), body = the doc name only (no PII). Chosen because it's the least-ambiguous routing (assigned agents clearly want to know a new doc landed) and reveals nothing they can't already see.
+- **REVERSIBLE / NEEDS-YOU (routing preferences):** tell me your preference and I wire the rest the same way:
+  - Should MANAGERS also get document_uploaded (org-wide oversight), or just assigned agents? (I chose agents-only.)
+  - apartment_status_changed → assigned agents? note_added → ? share_revoked → the manager who shared? mention → needs @-parsing (a small feature).
+  - **import-complete** (the catalog's explicit ask) needs a NEW enum value → a small additive migration (deferred per the no-rushed-migration rule); recipient is unambiguous (the user who ran the import). Want it next?
+
 ## D-O5 · Export = Manager/Admin/Owner only (closed the viewer/agent leak)
 
 - **DECISION:** `GET /projects/:id/export` now gates on `export.run` instead of `projects.read`. This closes the M2 leak (a read-only Viewer held projects.read and could hand-roll a bulk export, contradicting "viewer = read-only, no export"). export.run is held by Manager/Admin/Owner; Agent and Viewer are excluded — matching the role model (system-roles excludes export.run from Agent).

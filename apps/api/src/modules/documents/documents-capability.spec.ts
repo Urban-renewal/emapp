@@ -17,6 +17,7 @@ import { providerPool } from '../../../../../packages/db/src/client';
 import { createTestOrg, type TestOrg } from '../../../../../packages/db/test/factories';
 import { setupTestDatabase } from '../../../../../packages/db/test/setup';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
 import { DocumentsService } from './documents.service';
 
@@ -103,7 +104,7 @@ async function seedDoc(projectId: string | null): Promise<string> {
 
 beforeAll(async () => {
   await setupTestDatabase();
-  svc = new DocumentsService(storage);
+  svc = new DocumentsService(storage, new NotificationsProducerService());
   const tag = `d46-doc-${Date.now()}`;
   org = await createTestOrg(tag, tag);
   managerId = org.users[0]!.id;

@@ -36,6 +36,13 @@ rather than stopping to ask. Review and override any you disagree with.
 - **EXPOSURE NOTE:** A BULK response can carry up to 200 single-use 7-day tokens (vs 1 for single-create). If a bulk response is ever logged/screenshotted wholesale, that's a larger surface. It's returned to the manager FE over HTTPS and not logged server-side; pino redacts `/sign/` URLs (note: the deep-link encodes it as `%2Fsign%2F`).
 - **REVERSIBLE / NEEDS-YOU:** If you want bulk treated as lower-trust, I can OMIT the `whatsapp.deepLink` from the BULK report (auto email+SMS still deliver) while keeping it for single-create. Say the word.
 
+## D-O6 · Agent task VISIBILITY is assignee-based by design — NOT changed (deliberation)
+
+- **WHAT THE WALKTHROUGH FLAGGED:** an agent assigned to a project sees its owners/documents but NOT its tasks unless they're individually a task-assignee; worse, an agent who creates a task on their project doesn't see it in their own list (they aren't auto-added as an assignee).
+- **WHY I DID NOT "FIX" IT:** verifying the code, `tasks.service.ts:96` documents this as INTENTIONAL — "read visibility stays assignee-based (taskAssignees) — a separate concern from write." Task reads are personal-assignment-scoped (you see tasks assigned to you), while task WRITES are project-capability-scoped. Re-scoping agent task reads to "all tasks on my assigned projects" would change that documented model — a product decision, and per your standing rule I do not deviate from a documented decision unilaterally.
+- **THE REAL RESIDUAL FRICTION (narrower):** "I created a task and it vanished from my list." The minimal, NON-deviating fix is to auto-add the creator as an assignee on task-create (the creator is implicitly a stakeholder) — this keeps the assignee-based read model intact while removing the vanish. The broader option (project-scope agent task reads) is a bigger model change.
+- **NEEDS-YOU (pick one):** (a) keep assignee-based reads as-is; (b) auto-assign the creator on create (small, recommended); (c) project-scope agent task reads (model change). I implemented none yet — your call, since it changes documented behavior.
+
 ## D-O5 · Export = Manager/Admin/Owner only (closed the viewer/agent leak)
 
 - **DECISION:** `GET /projects/:id/export` now gates on `export.run` instead of `projects.read`. This closes the M2 leak (a read-only Viewer held projects.read and could hand-roll a bulk export, contradicting "viewer = read-only, no export"). export.run is held by Manager/Admin/Owner; Agent and Viewer are excluded — matching the role model (system-roles excludes export.run from Agent).

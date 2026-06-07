@@ -78,3 +78,84 @@ feature.
    caps as data extensions of it (do not fork the resolver).
 3. For ANY new cross-cutting behavior, ask first: "is this a per-org policy?" If yes →
    default + config + generic engine, never a hardcode.
+
+---
+
+# The complete policy-domain map (grounded code sweep, 2026-06-07)
+
+## The config store ALREADY EXISTS — no migration to start
+
+`organizations.settings` is a `jsonb NOT NULL DEFAULT '{}'` column
+(`packages/db/src/schema/tenancy.ts:24`) that is **currently UNUSED**. It is the home for
+per-org config — add namespaced keys (`settings.notifications`, `settings.messaging`,
+`settings.locale`, …) with NO schema migration. The **settings PAGE shell also exists**
+(`apps/web/.../settings`, 5 tabs: general[wired] / team / notifications[stub] /
+integrations[stub] / security[stub]) — the override UI has a home too. Build a typed
+`OrgSettings` Zod schema (defaults baked in) + a `getOrgSettings(tx, orgId)` resolver that
+parses `organizations.settings` over the defaults. That ONE resolver feeds every domain.
+
+## ⚠️ SECURITY FLOOR — a non-negotiable caveat on "configurable"
+
+Some policies are SECURITY controls. "Per-org configurable" must mean **the org may make
+them STRICTER, never weaker than the secure default** — the shipped default is a FLOOR, and
+a few are fully LOCKED. Otherwise a compromised manager (or a careless one) could weaken the
+org's own security. Specifically:
+
+- **LOCKED (never per-org):** access-token TTL (org 15m / provider 30m / tenant 10m — the
+  tenant 10m is a stolen-phone hedge), refresh-token TTLs, the argon2-bound signup/login
+  throttles. Loosening these is a vuln.
+- **Tighten-only (floor = the secure default):** OTP attempts (5) / lockout (15m) / rate
+  limit (3 per 15m); failed-login lockout (5 / 15m); the read/write throttles. An org may
+  set them STRICTER; the engine clamps any value to ≤ the secure default.
+
+## The map
+
+### A. SPINE INSTANCES to build (config-driven, default = current behavior)
+
+| Domain                                                                                                                                                    | Today (file:line)                                                                                                                             | Config key                                                      | Default                        |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------ |
+| **Notification routing + channels**                                                                                                                       | hardcoded per emit                                                                                                                            | `settings.notifications[event]` → recipients + channels         | D-O7 (managers always + scope) |
+| **Outbound message templates** (11 of them: signature invite email/SMS/WhatsApp, signed-confirm, manager-notify, member invite, OTP SMS, calendar emails) | hardcoded Hebrew strings in `signature-link-delivery.ts:82-205`, `otp.service.ts:137`, `members/invite-email.ts`, `calendar-email.service.ts` | `settings.messaging[template]` (subject/body, with `{{vars}}`)  | the current Hebrew copy        |
+| **Sender identity**                                                                                                                                       | global "EMAPP" name + one SMS sender/email-from                                                                                               | `settings.branding.senderName` / per-org email-from             | "EMAPP" / env sender           |
+| **Locale + timezone**                                                                                                                                     | `'he'` (`i18n/routing.ts:5`), `Asia/Jerusalem` (5+ format sites)                                                                              | `settings.locale`, `settings.timezone`                          | he / Asia/Jerusalem            |
+| **Signature link TTL**                                                                                                                                    | `7d` (`signature-token.service.ts:36`)                                                                                                        | `settings.signatures.linkTtlDays`                               | 7                              |
+| **Signature delivery channels** (D-O2)                                                                                                                    | "SMS-if-phone + email-if-email + WhatsApp" (`signature-link-delivery.ts:233-264`)                                                             | `settings.signatures.channels` (which + order)                  | all available                  |
+| **Per-type consent default**                                                                                                                              | global `PROJECT_TYPE_DEFAULT_CONSENT_PCT`                                                                                                     | `settings.consent[type]` (org default; project still overrides) | 66/80/80                       |
+| **Bulk cap / list page-size default**                                                                                                                     | bulk 200, default limit 25                                                                                                                    | `settings.limits.*`                                             | 200 / 25                       |
+
+### B. INCREMENTAL extensions (same pattern, post-default)
+
+- **Agent capability PRESETS** ("field agent"/"office agent") → `settings.capabilityPresets` →
+  applied via the EXISTING per-agent capability mechanism (do not fork the resolver).
+- **Per-PROJECT capability overrides** (catalog #8) → capabilities on `project_assignments`;
+  the `agent-effective-permissions` resolver extends its data source, not its logic.
+- **Per-org DEFAULT share template** → `settings.shareDefaults` (the new-share baseline the
+  manager sets; `share-defaults.ts` consults it first).
+- **Custom task TYPES** — already free-text (`task.ts:19`); add an org preset list (UI guidance).
+- **Apartment-status / project-status AUTOMATION** (on-transition actions) — future per-org
+  rules engine; the ENUMS stay locked.
+- **Document custom CATEGORIES** — map org labels → the canonical doc-type enum (future).
+- **Reminder cadence** for unsigned owners — NOT built yet; when added, a per-org policy.
+- **Branding (logo/colors)** — post-MVP; UI colors are global today (fine for MVP).
+
+### C. LOCKED — never per-org (the crisp boundary)
+
+The 6 roles / 3 tiers (D.17, D.20) · project status enum (D.18) · project type enum (D.18) ·
+apartment status enum · task status + priority · the notification EVENT vocabulary (the
+types; only their routing is configurable) · the share-permission SCHEMA shape (D.46; only
+its defaults are configurable) · PII pgcrypto encryption + the `national_id` field model
+(D.19) · RLS (`withTenant`/`withProvider`) · the ownership sum=100 trigger (D.25) · the
+`{data}` envelope (D.16) · the `/api/v1` prefix (D.10) · the security-locked token TTLs.
+When genericness would touch any of these, it STOPS at the contract edge.
+
+## Build priority (phased — do NOT build it all at once)
+
+1. **Foundation:** the `OrgSettings` schema + `getOrgSettings` resolver over
+   `organizations.settings` (no migration). One typed seam everything reads.
+2. **First instance:** notifications (the engine + D-O7 default) — already the next task.
+3. **High-value, low-risk:** messaging templates + sender name + locale/timezone (these are
+   the classic "make it ours" knobs; all read the same settings resolver).
+4. **Incremental:** the §B extensions, each as data + the existing engine, exposed via the
+   settings tabs as they mature.
+   The DEFAULT behavior is unchanged at every step; customization is additive. That is the
+   guarantee that "later changes don't shake the system."

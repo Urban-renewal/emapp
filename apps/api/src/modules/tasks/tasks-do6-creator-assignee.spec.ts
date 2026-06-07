@@ -46,9 +46,14 @@ let yId: string;
 let zId: string;
 
 const calendarStub = {} as never;
-// create() fires a best-effort in-app task_assigned notification per assignee;
-// stub emit so the proof (which asserts assignee STATE, not notifications) runs.
-const notificationsStub = { emit: async (): Promise<boolean> => true } as never;
+// create() fires a best-effort in-app task_assigned notification via the engine
+// (emitMany over the resolved recipient set); stub BOTH the producer methods so
+// the proof (which asserts assignee STATE, not notifications) runs without the
+// real notify path. P5 slice 2: the create path now calls emitMany, not emit.
+const notificationsStub = {
+  emit: async (): Promise<boolean> => true,
+  emitMany: async (): Promise<number> => 0,
+} as never;
 
 function agentPayload(sub: string): AccessTokenPayload {
   return {

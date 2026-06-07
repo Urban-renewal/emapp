@@ -18,6 +18,7 @@ import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 
+import { effectiveAgentPermissions } from '../../common/authz/agent-effective-permissions';
 import {
   PermissionResolutionCache,
   PermissionService,
@@ -643,7 +644,16 @@ export class AuthService {
     // + the guards remain the live enforcer. Failure to resolve must never
     // break `/me` — degrade to an empty set (the FE treats absent/empty as
     // "no extra grants", the safe default, exactly like `view_owner_pii`).
-    const permissions = await this.resolveEffectivePermissions(row.userId, row.orgId);
+    const rolePermissions = await this.resolveEffectivePermissions(row.userId, row.orgId);
+    // B-AGENT-1 — an agent's EFFECTIVE permissions = role ∧ capability flags
+    // (minus the manager-only writes). This makes /me (and thus the FE's write-
+    // control gating) match the services' requireAgentCapability / requireManager
+    // enforcement, so an agent no longer sees write buttons that 403 mid-flow.
+    // Managers/viewers: the resolved role set IS already effective.
+    const permissions =
+      row.role === 'agent'
+        ? effectiveAgentPermissions(rolePermissions, row.capabilities)
+        : rolePermissions;
 
     return {
       id: row.userId,

@@ -1,10 +1,20 @@
 import { isOrgSuspended, shares, withTenant } from '@emapp/db';
 import type { SharePermissions } from '@emapp/shared-types';
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { FastifyRequest } from 'fastify';
 
 import { ShareTokenService } from './share-token.service';
+
+// Throttle the access-tracking write so a valid contractor read is not a DB
+// write on every request — once per 5 min is plenty for an engagement signal.
+const LAST_ACCESS_THROTTLE_MS = 5 * 60 * 1000;
 
 /**
  * D2-DEF-1 — ContractorAuthGuard. A PARALLEL auth tier, deliberately
@@ -36,6 +46,8 @@ export interface ContractorContext {
 
 @Injectable()
 export class ContractorAuthGuard implements CanActivate {
+  private readonly logger = new Logger(ContractorAuthGuard.name);
+
   constructor(private readonly shareToken: ShareTokenService) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -54,7 +66,7 @@ export class ContractorAuthGuard implements CanActivate {
     const share = await withTenant(payload.orgId, async (tx) => {
       if (await isOrgSuspended(tx, payload.orgId)) return null;
       const [row] = await tx
-        .select({ permissions: shares.permissions })
+        .select({ permissions: shares.permissions, lastAccessedAt: shares.lastAccessedAt })
         .from(shares)
         .where(
           and(
@@ -65,7 +77,30 @@ export class ContractorAuthGuard implements CanActivate {
           ),
         )
         .limit(1);
-      return row ?? null;
+      if (!row) return null;
+
+      // Best-effort access tracking — surfaces "did the partner ever open the
+      // link?" to the manager (shares.lastAccessedAt was written nowhere before).
+      // Throttled + try/catch: access-tracking must NEVER break or slow a valid
+      // contractor read, and runs under the same org-RLS app_user that managers
+      // already use to write shares.
+      const last = row.lastAccessedAt ? row.lastAccessedAt.getTime() : 0;
+      if (Date.now() - last > LAST_ACCESS_THROTTLE_MS) {
+        try {
+          await tx
+            .update(shares)
+            // Defense-in-depth: re-assert not-revoked so the WRITE predicate is
+            // never narrower than the validated-read predicate (it can't drift
+            // into touching a same-org share that wasn't the one we authorized).
+            .set({ lastAccessedAt: new Date() })
+            .where(and(eq(shares.id, payload.shareId), isNull(shares.revokedAt)));
+        } catch (e) {
+          this.logger.warn(
+            `contractor lastAccessedAt update skipped: ${(e as Error).constructor.name}`,
+          );
+        }
+      }
+      return { permissions: row.permissions };
     });
     if (!share) throw new UnauthorizedException({ error: { code: 'invalid_token' } });
 

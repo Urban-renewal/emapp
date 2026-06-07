@@ -5,8 +5,14 @@ import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
+import {
+  PROJECT_STATUS_COLORS,
+  PROJECT_STATUS_LABELS,
+  PROJECT_TYPE_LABELS,
+} from '@/adapters/project';
 import { Button } from '@/components/ui/button';
 import { NameDisplay } from '@/components/ui/name-display';
+import { StatusBadge } from '@/components/ui/status-badge';
 import {
   getContractorDocuments,
   getContractorDownloadUrl,
@@ -83,9 +89,23 @@ export default function ContractorSharePage() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
-      <h1 className="text-2xl font-bold">
-        {project.data ? <NameDisplay name={project.data.project.name} /> : t('loading')}
-      </h1>
+      <div className="flex flex-col gap-2">
+        <h1 className="text-2xl font-bold">
+          {project.data ? <NameDisplay name={project.data.project.name} /> : t('loading')}
+        </h1>
+        {/* D.46 promised name/type/STATUS — the lifecycle stage is a contractor's
+            primary question; the BE already returns it, the FE just dropped it. */}
+        {project.data && (
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge color={PROJECT_STATUS_COLORS[project.data.project.status]}>
+              {PROJECT_STATUS_LABELS[project.data.project.status]}
+            </StatusBadge>
+            <span className="text-sm text-muted-foreground">
+              {PROJECT_TYPE_LABELS[project.data.project.type]}
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* Aggregate progress — counts only, never who. */}
       {project.data?.permissions.signatures && progress.data && (

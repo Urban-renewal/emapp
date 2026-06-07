@@ -1,13 +1,17 @@
 /**
  * D2-DEF-1 — contractor read-tier API client.
  *
- * A contractor has NO org/tenant session: the share-access token (from the
- * share-link URL) IS the credential, presented as `Authorization: Bearer
- * <token>` (the Next proxy forwards it verbatim to the BE
- * ContractorAuthGuard). Every response is defensively Zod-parsed.
+ * A contractor has NO org/tenant session. The share-access token is the
+ * credential, but as of Phase 3 #5 it is NO LONGER passed as a `Bearer`
+ * header from the URL: the share-link landing (`share/[token]/route.ts`)
+ * exchanged the URL token for an **httpOnly** cookie
+ * (`contractor_access_token`). These same-origin calls carry that cookie
+ * automatically (`credentials: 'same-origin'` in api-client); the Next proxy
+ * forwards the Cookie header verbatim to the BE ContractorAuthGuard, which
+ * reads `req.cookies['contractor_access_token']`. The token is never in JS —
+ * httpOnly — so nothing here ever holds or forwards it.
  *
- * The token is held by the calling page in component state only (it comes
- * from the URL) — never written to the TanStack cache or storage here.
+ * Every response is defensively Zod-parsed.
  */
 import {
   ContractorDocumentSchema,
@@ -25,39 +29,32 @@ import { apiClient, isOk } from '../api-client';
 
 import { ApiClientError } from './errors';
 
-function auth(token: string) {
-  return { headers: { Authorization: `Bearer ${token}` } };
-}
-
 const ProjectData = z.object({ data: ContractorProjectViewSchema });
 const ProgressData = z.object({ data: ContractorProgressSchema });
 const DocumentsData = z.object({ data: z.array(ContractorDocumentSchema) });
 const DownloadData = z.object({ data: ContractorDownloadSchema });
 
-export async function getContractorProject(token: string): Promise<ContractorProjectView> {
-  const res = await apiClient.get<unknown>('/contractor/project', auth(token));
+export async function getContractorProject(): Promise<ContractorProjectView> {
+  const res = await apiClient.get<unknown>('/contractor/project');
   if (!isOk(res)) throw new ApiClientError(res.error);
   return ProjectData.parse({ data: res.data }).data;
 }
 
-export async function getContractorProgress(token: string): Promise<ContractorProgress> {
-  const res = await apiClient.get<unknown>('/contractor/progress', auth(token));
+export async function getContractorProgress(): Promise<ContractorProgress> {
+  const res = await apiClient.get<unknown>('/contractor/progress');
   if (!isOk(res)) throw new ApiClientError(res.error);
   return ProgressData.parse({ data: res.data }).data;
 }
 
-export async function getContractorDocuments(token: string): Promise<ContractorDocument[]> {
-  const res = await apiClient.get<unknown>('/contractor/documents', auth(token));
+export async function getContractorDocuments(): Promise<ContractorDocument[]> {
+  const res = await apiClient.get<unknown>('/contractor/documents');
   // The list endpoint returns a bare `{ data: [...] }` (no page envelope).
   if (!isOk(res)) throw new ApiClientError(res.error);
   return DocumentsData.parse({ data: res.data }).data;
 }
 
-export async function getContractorDownloadUrl(
-  token: string,
-  docId: string,
-): Promise<ContractorDownload> {
-  const res = await apiClient.get<unknown>(`/contractor/documents/${docId}/download`, auth(token));
+export async function getContractorDownloadUrl(docId: string): Promise<ContractorDownload> {
+  const res = await apiClient.get<unknown>(`/contractor/documents/${docId}/download`);
   if (!isOk(res)) throw new ApiClientError(res.error);
   return DownloadData.parse({ data: res.data }).data;
 }

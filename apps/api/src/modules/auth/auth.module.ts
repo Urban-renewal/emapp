@@ -1,5 +1,4 @@
 import { serverEnv } from '@emapp/config';
-import { NoopSMSProvider } from '@emapp/db';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 
@@ -16,6 +15,7 @@ import { ProviderAuthService } from './provider/provider-auth.service';
 import { ProviderMeController } from './provider/provider-me.controller';
 import { OtpController } from './tenant/otp.controller';
 import { OtpService, SMS_PROVIDER } from './tenant/otp.service';
+import { smsProviderFactory } from './tenant/sms-provider.factory';
 import { TenantAuthGuard } from './tenant/tenant-auth.guard';
 
 @Module({
@@ -44,10 +44,11 @@ import { TenantAuthGuard } from './tenant/tenant-auth.guard';
     ProviderAuthGuard,
     OtpService,
     TenantAuthGuard,
-    // ISMSProvider behind a token — NoopSMSProvider now; the real Israeli
-    // provider (019/Inforu) is a later swap here, configured via Infisical
-    // (D.20 — provider swap, not an architecture change).
-    { provide: SMS_PROVIDER, useClass: NoopSMSProvider },
+    // ISMSProvider behind a token. The factory picks the real Israeli gateway
+    // (Inforu) when SMS_PROVIDER_* creds are present, fails fast in production
+    // if they're missing, and falls back to Noop in dev/test (D.20). Wiring
+    // the real provider is now a pure Infisical config swap — no code change.
+    { provide: SMS_PROVIDER, useFactory: smsProviderFactory },
   ],
   exports: [
     AuthService,

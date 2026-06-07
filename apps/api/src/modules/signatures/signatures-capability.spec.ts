@@ -48,6 +48,10 @@ const tokenStub = {
   }),
 } as never;
 const emailStub = { sendSignatureLink: async () => undefined } as never;
+const smsStub = {
+  send: async () => ({ id: 'stub', status: 'sent' as const }),
+  healthCheck: async () => undefined,
+} as never;
 
 function manager(): AccessTokenPayload {
   return {
@@ -145,7 +149,7 @@ async function seedSigReq(documentId: string): Promise<string> {
 
 beforeAll(async () => {
   await setupTestDatabase();
-  svc = new SignatureRequestsService(tokenStub, emailStub);
+  svc = new SignatureRequestsService(tokenStub, emailStub, smsStub);
   const tag = `d46-sig-${Date.now()}`;
   org = await createTestOrg(tag, tag);
   managerId = org.users[0]!.id;

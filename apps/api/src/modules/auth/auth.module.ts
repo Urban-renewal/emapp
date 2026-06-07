@@ -59,6 +59,9 @@ import { TenantAuthGuard } from './tenant/tenant-auth.guard';
     OtpService,
     TenantAuthGuard,
     JwtModule,
+    // Export the SMS provider so other modules (e.g. signatures) can deliver
+    // via the same single configured gateway instance (D.20).
+    SMS_PROVIDER,
   ],
 })
 export class AuthModule {}

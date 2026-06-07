@@ -8,6 +8,7 @@ import {
   signatureRequests,
   withTenant,
   type IEmailProvider,
+  type ISMSProvider,
   type TenantTx,
 } from '@emapp/db';
 import type {
@@ -31,6 +32,7 @@ import { and, desc, eq, lt, or, sql, type SQL } from 'drizzle-orm';
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { SMS_PROVIDER } from '../auth/tenant/otp.service';
 import { EMAIL_PROVIDER } from '../members/invite-email';
 
 import { deliverSignatureLink } from './signature-link-delivery';
@@ -67,6 +69,7 @@ export class SignatureRequestsService {
   constructor(
     private readonly tokenService: SignatureTokenService,
     @Inject(EMAIL_PROVIDER) private readonly email: IEmailProvider,
+    @Inject(SMS_PROVIDER) private readonly sms: ISMSProvider,
   ) {}
 
   /** Validate the document is visible in the manager's org and not
@@ -230,6 +233,7 @@ export class SignatureRequestsService {
     // (the signUrl is the primary deliverable).
     const delivery: SignatureDeliveryReport = await deliverSignatureLink(
       this.email,
+      this.sms,
       {
         signUrl,
         ownerName: txOut.ownerName,

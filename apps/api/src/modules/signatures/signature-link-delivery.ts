@@ -3,21 +3,22 @@
  *
  * Three channels per docs/03 §9 + user-approved MVP scope:
  *  - Email   (Resend → IEmailProvider)  ← automated, free 3K/month tier
+ *  - SMS     (ISMSProvider, Inforu)      ← automated; the primary channel for
+ *                                          phone-only owners (most of them)
  *  - WhatsApp deep-link (wa.me URL)      ← Manager-driven, no API cost
- *  - SMS    (ISMSProvider, Inforu)       ← deferred to first paying
- *                                          customer (post-MVP)
  *
- * Design: the BE returns an honest per-channel report. Email is sent
- * server-to-server (fire-and-await with a timeout fallback). WhatsApp
- * is a `wa.me/<phone>?text=...` deep-link returned to the Manager FE,
- * which opens the Manager's own WhatsApp app when tapped. SMS is gated
- * by `process.env.SMS_PROVIDER_ENABLED` and reports unavailable in MVP.
+ * Design: the BE returns an honest per-channel report. Email AND SMS are sent
+ * server-to-server through their injected providers. WhatsApp is a
+ * `wa.me/<phone>?text=...` deep-link returned to the Manager FE, which opens
+ * the Manager's own WhatsApp app when tapped. The SMS provider is Noop in dev
+ * (logs, no send) and the real Israeli gateway in prod once creds are in
+ * Infisical (the factory fails the prod boot if they're missing).
  *
  * SECURITY: token never appears in logs (pino redact catches /sign/...
  * URLs). Hebrew text is generated server-side; no user-controlled HTML
  * makes it into the email body un-escaped.
  */
-import { type IEmailProvider } from '@emapp/db';
+import { type IEmailProvider, type ISMSProvider } from '@emapp/db';
 
 /** HTML entity escape — same shape as the D.27 invite-email helper.
  *  All user-controlled fields go through this before they touch HTML. */
@@ -171,6 +172,19 @@ export function buildResidentInviteEmail(input: SignatureEmailInput): {
   return { to: input.to, subject, html, text, tags: { kind: 'signature_invite' } };
 }
 
+/** Resident invite SMS — short Hebrew body, link-forward (SMS segment limits).
+ *  No PII beyond the owner's name; the signing link is a 7-day single-use JWT. */
+export function buildResidentInviteSms(input: {
+  ownerName: string;
+  documentName: string;
+  signUrl: string;
+}): string {
+  return (
+    `שלום ${input.ownerName}, התבקשת לחתום על ${input.documentName}: ` +
+    `${input.signUrl} (בתוקף ל-7 ימים)`
+  );
+}
+
 /** WhatsApp deep-link — the Manager taps it on their phone to open
  *  their own WhatsApp with the message pre-filled to the resident.
  *  Returns null if phone shape is unusable. */
@@ -216,11 +230,14 @@ export interface SignatureLinkReport {
   sms: ChannelResult;
 }
 
-/** Deliver via the three channels. Email is the only one that does
- *  actual I/O (server-to-server send). WhatsApp returns a deep-link
- *  the FE renders as a button. SMS is gated for MVP. */
+/** Deliver via the three channels. Email + SMS do actual I/O (server-to-server
+ *  send). WhatsApp returns a deep-link the FE renders as a button. SMS goes
+ *  through the injected `ISMSProvider`: the real Israeli gateway in prod (when
+ *  creds are configured), Noop in dev — so this is auto-delivery for the
+ *  (common) phone-only owner who has no email on file. */
 export async function deliverSignatureLink(
   email: IEmailProvider,
+  sms: ISMSProvider,
   ctx: SignatureLinkContext,
   logger: { error: (m: string) => void },
 ): Promise<SignatureLinkReport> {
@@ -240,12 +257,9 @@ export async function deliverSignatureLink(
     ? { available: true, status: 'ready', deepLink: waLink }
     : { available: false, reason: 'no_phone_on_file_or_unparseable' };
 
-  // SMS is gated for MVP — `SMS_PROVIDER_ENABLED=1` flips it on once
-  // 019/Inforu is in Infisical (post first paying customer).
-  const smsRes: ChannelResult =
-    process.env['SMS_PROVIDER_ENABLED'] === '1'
-      ? { available: false, reason: 'sms_implementation_pending_s6_followup' }
-      : { available: false, reason: 'sms_provider_not_configured' };
+  const smsRes: ChannelResult = ctx.ownerPhone
+    ? await sendInviteSms(sms, ctx, logger)
+    : { available: false, reason: 'no_phone_on_file' };
 
   return { email: emailRes, whatsapp: whatsappRes, sms: smsRes };
 }
@@ -320,9 +334,12 @@ async function sendOne(
     }
     return { available: true, status: res.status, to: maskEmail(msg.to) };
   } catch (e: unknown) {
+    // Log the error TYPE only — a throwing email client can echo the request
+    // body (which embeds the signing token) in e.message. (Same hardening as
+    // the SMS throw path.)
     logger.error(
       `[signature-delivery:${tag}] email send threw for ${maskEmail(msg.to)}: ${
-        e instanceof Error ? e.message : 'unknown'
+        e instanceof Error ? e.constructor.name : 'unknown'
       }`,
     );
     return { available: false, reason: `${tag}_send_failed` };
@@ -363,8 +380,39 @@ async function sendInviteEmail(
     // the failure with the masked address only and report unavailable.
     logger.error(
       `[signature-delivery] email send threw for ${maskEmail(ctx.ownerEmail)}: ` +
-        `${e instanceof Error ? e.message : 'unknown'}`,
+        `${e instanceof Error ? e.constructor.name : 'unknown'}`,
     );
     return { available: false, reason: 'email_send_failed' };
+  }
+}
+
+async function sendInviteSms(
+  sms: ISMSProvider,
+  ctx: SignatureLinkContext,
+  logger: { error: (m: string) => void },
+): Promise<ChannelResult> {
+  if (!ctx.ownerPhone) return { available: false, reason: 'no_phone_on_file' };
+  try {
+    const body = buildResidentInviteSms({
+      ownerName: ctx.ownerName,
+      documentName: ctx.documentName,
+      signUrl: ctx.signUrl,
+    });
+    const res = await sms.send(ctx.ownerPhone, body);
+    if (res.status === 'rejected') {
+      // Never log the phone or the signing URL (the URL embeds the token).
+      logger.error(`[signature-delivery:sms] rejected: ${res.error ?? 'unknown'}`);
+      return { available: false, reason: 'sms_rejected' };
+    }
+    return { available: true, status: res.status };
+  } catch (e: unknown) {
+    // Do NOT interpolate e.message — a throwing SMS client may echo the request
+    // URL (which embeds the signing token) or the recipient phone into its error
+    // text. Log only the error TYPE (matches the email path's masking discipline
+    // + the file's "token never appears in logs" guarantee).
+    logger.error(
+      `[signature-delivery:sms] send threw: ${e instanceof Error ? e.constructor.name : 'unknown'}`,
+    );
+    return { available: false, reason: 'sms_send_failed' };
   }
 }

@@ -20,3 +20,11 @@ rather than stopping to ask. Review and override any you disagree with.
   - The provider maps only `StatusId===1` → `sent`, everything else → `rejected`. Confirm Inforu's success code is 1 and whether they expose an "accepted/queued" code we should map to `queued` (the contract supports it; today queued is folded into rejected).
   - On success the result `id` is the literal `'inforu'`, not a per-message id. If Inforu returns a message id in the response, wire it into `parseResponse` so sends are correlatable/de-dupable.
   - `toInternational` is a permissive FORMATTER, not a validator (the caller — OtpService.normalizeIsraeliPhone + owner-entry validation — is the gate). Garbage numbers are forwarded and the gateway rejects them. Confirm that's acceptable vs. adding provider-side length validation.
+
+## D-O2 · Signature-link channel strategy = send SMS whenever a phone is on file
+
+- **DECISION:** When a manager creates a signature request, the link auto-sends via EVERY available channel: email (if email on file) AND SMS (if phone on file), plus the WhatsApp deep-link is always returned for the manager to tap. SMS is no longer gated — it goes through the real provider in prod / Noop in dev.
+- **WHY:** Israeli apartment owners are phone-first — most have a phone, many have no email on file (the schema makes email nullable, phone the primary contact). Sending SMS whenever a phone exists MAXIMIZES reach (the core job is collecting signatures). Email is best-effort on top.
+- **COST NOTE:** This means an owner with BOTH email and phone gets contacted on both → ~1 SMS cost per such request. If you'd rather SMS only when there's no email (cheaper, less reach), that's a one-line change in `deliverSignatureLink`.
+- **REVERSIBLE:** Yes — gate SMS on `!ctx.ownerEmail`, or add a per-org / per-request channel-preference setting (a natural follow-up enhancement).
+- **NEEDS-YOU:** Confirm the always-SMS-when-phone default, or tell me to switch to SMS-only-when-no-email.

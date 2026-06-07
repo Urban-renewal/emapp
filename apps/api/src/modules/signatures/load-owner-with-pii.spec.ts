@@ -110,8 +110,9 @@ describe('v8.5 SignatureRequestsService.loadOwnerWithPii — single-query in-SQL
     // Construct with stub deps — only loadOwnerWithPii is exercised
     // here; it doesn't touch email/tokenService.
     svc = new SignatureRequestsService(
-      undefined as never, // emailProvider
       undefined as never, // tokenService
+      undefined as never, // emailProvider
+      undefined as never, // smsProvider
     );
   });
 

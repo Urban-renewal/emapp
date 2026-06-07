@@ -1,13 +1,4 @@
-import {
-  Controller,
-  ForbiddenException,
-  Get,
-  HttpException,
-  Param,
-  Query,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, HttpException, Param, Query, Res, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
@@ -72,23 +63,21 @@ export class ExportController {
   // (verified via auth controller usage).
   @Throttle({ default: { limit: 10, ttl: 3_600_000 } })
   @Get()
-  @RequirePermission('projects.read')
+  @RequirePermission('export.run')
   async export(
     @Res({ passthrough: true }) reply: FastifyReply,
     @CurrentUser() user: AccessTokenPayload,
     @Param('id', UuidParam) projectId: string,
     @Query(new ZodValidationPipe(FormatQuery)) query: { format: 'xlsx' | 'pdf' },
   ): Promise<Buffer> {
-    // Belt-and-braces: viewer is technically allowed but the FE only
-    // shows the button to manager+agent. If we ever need to restrict
-    // exports to writes-only roles, flip this — for now it matches
-    // `projects:read = ALL`.
-    if (user.role !== 'manager' && user.role !== 'agent' && user.role !== 'viewer') {
-      // Wave 5 E-C3: D.16 envelope requires `message` per CLAUDE.md.
-      throw new ForbiddenException({
-        error: { code: 'forbidden', message: 'export not permitted for this role' },
-      });
-    }
+    // M2 fix — the endpoint now gates on `export.run` (Manager/Admin/Owner),
+    // not `projects.read`. This closes the viewer/agent export leak: a read-only
+    // Viewer holds projects.read and could previously hand-roll a bulk export,
+    // contradicting "viewer = read-only, no export". The engine guard is the
+    // single gate; the old belt-and-braces role allow-list (which permitted
+    // viewer/agent) is removed. Agent-scoped masked export (D.54) is deferred —
+    // see DECISIONS-FOR-OWNER D-O5. The composer still enforces agent project-
+    // scope + PII fidelity for any future export.run grant.
 
     // Wave 6 EXP-H1 (redteam audit 2026-05-28) — DB-backed per-user
     // rate limit. The @Throttle decorator above is in-memory + per-

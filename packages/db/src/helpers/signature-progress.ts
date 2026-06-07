@@ -41,16 +41,37 @@ import type { TenantTx } from '../wrappers/with-tenant';
  * `sql\`${projects.id}\``). Internal aliases are `pd_a` / `pd_b` so this can
  * be embedded inside a query that already aliases `a`/`b`.
  */
-export function projectSignatureDocIdsSql(projectId: string | SQL): SQL {
+/**
+ * ONE doc-resolution definition (project-level docs ∪ apartment-level docs),
+ * with the project match applied to BOTH paths via the caller's predicate.
+ * The two exported adapters below (`= id` and `IN <set>`) are thin wrappers, so
+ * the single-project and project-set callers share the same UNION shape +
+ * partial-index alignment — no copy-pasted query to drift (SOLID open/closed).
+ */
+function signatureDocIdsSql(projectMatch: (projectCol: SQL) => SQL): SQL {
   return sql`
     SELECT d.id FROM documents d
-      WHERE d.project_id = ${projectId} AND d.archived_at IS NULL
+      WHERE ${projectMatch(sql`d.project_id`)} AND d.archived_at IS NULL
     UNION
     SELECT d.id FROM documents d
       INNER JOIN apartments pd_a ON pd_a.id = d.apartment_id
       INNER JOIN buildings pd_b ON pd_b.id = pd_a.building_id
-      WHERE pd_b.project_id = ${projectId} AND d.archived_at IS NULL
+      WHERE ${projectMatch(sql`pd_b.project_id`)} AND d.archived_at IS NULL
   `;
+}
+
+export function projectSignatureDocIdsSql(projectId: string | SQL): SQL {
+  return signatureDocIdsSql((col) => sql`${col} = ${projectId}`);
+}
+
+/**
+ * Same doc-resolution, scoped to a SET of projects (e.g. an agent's assigned
+ * projects). `projectIds` is an SQL subquery yielding `project_id` rows (e.g. a
+ * CTE reference). Used by the agent-scoped home KPIs so the count reflects only
+ * the agent's assignments — same index path as the single-project form.
+ */
+export function projectSetSignatureDocIdsSql(projectIds: SQL): SQL {
+  return signatureDocIdsSql((col) => sql`${col} IN (${projectIds})`);
 }
 
 // Type ALIAS (not interface) so drizzle's `tx.execute<T>` accepts it — its

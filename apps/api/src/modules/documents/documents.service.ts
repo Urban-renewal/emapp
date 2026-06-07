@@ -33,6 +33,7 @@ import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
 import {
@@ -196,7 +197,7 @@ export class DocumentsService {
     // tx (an org-scoped read, satisfying the producer's "recipient ∈ org"
     // invariant) but EMITTED after commit. Declared here to survive the tx scope.
     // A notification must NEVER fail the upload, so resolution self-guards to [].
-    let notifyAgentIds: string[] = [];
+    let notifyRecipientIds: string[] = [];
 
     const row = await withTenant(
       user.orgId,
@@ -246,10 +247,16 @@ export class DocumentsService {
           sessionId: user.sid,
         });
 
-        // #6 — best-effort: the project's assigned agents (minus the uploader)
-        // get a document_uploaded notification. Resolve the project from the
-        // doc's projectId, or via apartment → building for a per-apartment
-        // agreement. Wrapped so a resolver hiccup never rolls back the upload.
+        // #6 / D-O7 — best-effort recipient resolution through the ONE central
+        // helper (`resolveNotificationRecipients`). Result per the D-O7 default:
+        // all ACTIVE org managers + the project's ACTIVE assigned agents, MINUS
+        // the uploader (actor-excluded). This RETROFIT (was assigned-agents-only)
+        // makes managers receive document_uploaded per D-O7 while keeping agents.
+        // Resolve the project from the doc's projectId, or via apartment →
+        // building for a per-apartment agreement. Wrapped so a resolver hiccup
+        // never rolls back the upload.
+        // NEXT EMIT TO SWITCH OVER: task_assigned — retrofit it onto this same
+        // helper in a follow-up slice (do NOT hand-roll its recipients).
         try {
           let notifyProjectId = r.projectId;
           if (!notifyProjectId && r.apartmentId) {
@@ -261,20 +268,12 @@ export class DocumentsService {
               .limit(1);
             notifyProjectId = apt?.projectId ?? null;
           }
-          if (notifyProjectId) {
-            const team = await tx
-              .select({ userId: projectAssignments.userId })
-              .from(projectAssignments)
-              .where(
-                and(
-                  eq(projectAssignments.projectId, notifyProjectId),
-                  isNull(projectAssignments.unassignedAt),
-                ),
-              );
-            notifyAgentIds = team.map((t) => t.userId).filter((id) => id !== user.sub);
-          }
+          notifyRecipientIds = await resolveNotificationRecipients(tx, user.orgId, {
+            projectId: notifyProjectId,
+            actorUserId: user.sub,
+          });
         } catch {
-          notifyAgentIds = [];
+          notifyRecipientIds = [];
         }
         return r;
       },
@@ -316,13 +315,13 @@ export class DocumentsService {
     // was archived above + threw, so it never reaches here). emitMany self-guards:
     // a notification failure never throws and never affects this response. Body
     // carries only the document NAME (a same-org visible label), never PII.
-    if (notifyAgentIds.length > 0) {
+    if (notifyRecipientIds.length > 0) {
       // try/catch at the CALL SITE too (not only the producer's internal self-
       // guard): the "a notification never fails the upload" contract must hold
       // here even if a future producer change throws synchronously. The doc is
       // already committed + presigned; a notify failure must not 500 the upload.
       try {
-        await this.notifications.emitMany(notifyAgentIds, {
+        await this.notifications.emitMany(notifyRecipientIds, {
           orgId: user.orgId,
           type: 'document_uploaded',
           title: 'מסמך חדש בפרויקט',

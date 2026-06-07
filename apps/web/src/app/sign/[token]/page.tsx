@@ -8,6 +8,7 @@ import {
   type PublicSignPreview,
   type PublicSignSubmitResponse,
 } from '@emapp/shared-types';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -154,10 +155,27 @@ export default function SignPage() {
   }
 
   if (stage === 'invalid') {
+    // Recovery affordance (P4 #8). Anti-enumeration is PRESERVED: the
+    // copy below never discloses WHY the token failed (expired vs
+    // cancelled vs forged vs already-signed all reach this same block).
+    // The recovery path is generic — log into the resident portal and
+    // self-resend a fresh link (B-RESIDENT-1: POST /portal/signatures/
+    // :id/resend) — and reveals nothing about the failed token.
+    //
+    // The /sign route is locale-LESS; residents are Hebrew-default, so
+    // we link to the he-prefixed tenant login (it lives under [locale]).
     return (
       <main className="mx-auto max-w-2xl p-6">
         <h1 className="text-2xl font-bold">{t('invalidTitle')}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{t('invalidBody')}</p>
+        <p className="mt-4 text-sm text-muted-foreground">{t('invalidRecoveryHint')}</p>
+        <Link
+          href="/he/tenant/login"
+          className="mt-3 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+        >
+          {t('invalidRecoveryCta')}
+        </Link>
+        <p className="mt-3 text-xs text-muted-foreground">{t('invalidContactManager')}</p>
       </main>
     );
   }

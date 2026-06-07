@@ -72,9 +72,17 @@ with a note, not stalled.
 
 ## Task ledger
 
-| #    | Task                        | Risk | Builder                           | Test-author                    | Review | Mgr verify                          | PR  | Status  |
-| ---- | --------------------------- | ---- | --------------------------------- | ------------------------------ | ------ | ----------------------------------- | --- | ------- |
-| P1-1 | OrgSettings config resolver | low  | schema+resolver, pure-fn/DB split | 46 tests (41 unit + 5 real-DB) | PASS   | typecheck+lint+46 tests + read code | —   | ✅ done |
+| #    | Task                                 | Risk | Builder                                          | Test-author                                 | Review | Mgr verify                          | PR   | Status    |
+| ---- | ------------------------------------ | ---- | ------------------------------------------------ | ------------------------------------------- | ------ | ----------------------------------- | ---- | --------- |
+| P1-1 | OrgSettings config resolver          | low  | schema+resolver, pure-fn/DB split                | 46 tests (41 unit + 5 real-DB)              | PASS   | typecheck+lint+46 tests + read code | #284 | ✅ merged |
+| P1-2 | design-token posture + ratchet guard | low  | canonical-source doc + inline-color ratchet spec | adversarial probe, +rgb/rgba, baseline 58/9 | PASS   | typecheck+lint+guard + read code    | —    | ✅ done   |
+
+### P1-2 — notes
+
+- Established `globals.css :root` as the canonical color-token source (+ a `tailwind.config.ts` breadcrumb for the known globals↔tailwind hex duplication) and a static RATCHET guard (`app-no-new-inline-colors.spec.ts`, wired into `pnpm test`) that blocks NEW inline-color debt without refactoring existing (Phase-10 work).
+- **Separation caught a false-confidence gap (the owner's worst case):** the builder's guard was blind to `rgba()` — 44 of 58 occurrences = 76% of the true debt — so a builder could have shipped unlimited new `rgba()` debt with the guard green. The adversarial test-author added `rgb/rgba` and re-measured the honest baseline (14/7 → **58/9**).
+- Reviewer independently reproduced 58/9 + verified near-zero false-positive risk (read all 48 rgba matches; tested the worst evasion candidate). Documented honest limits (named colors, `.ts` scope) rather than ship a guard that false-positives.
+- Manager fixed a stale-comment NIT, ran typecheck+lint+guard, read the spec. Closure proven.
 
 ### P1-1 — notes
 

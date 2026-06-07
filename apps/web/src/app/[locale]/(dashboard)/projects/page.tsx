@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { isPermissionDenied } from '@/components/ui/list-page-shell';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useHasPermission } from '@/hooks/use-permissions';
@@ -51,7 +52,7 @@ export default function ProjectsPage() {
   // IAM slice 5b — the "פרויקט חדש" CTA renders only for actors holding
   // `projects.create` (agents/viewers never do → no dead create button).
   const canCreate = useHasPermission('projects.create');
-  const { data, isLoading, isError, refetch } = useProjectList({ limit: 25, cursor });
+  const { data, isLoading, isError, error, refetch } = useProjectList({ limit: 25, cursor });
 
   const items = useMemo(() => data?.items ?? [], [data?.items]);
   const page = data?.page;
@@ -76,6 +77,23 @@ export default function ProjectsPage() {
     );
   }
   if (isError) {
+    // §P4-#13 — a 403 permission denial is terminal (the actor lacks
+    // `projects.read` for this scope); show an access-denied state with
+    // NO retry. Network / 5xx keeps the retryable banner. Same branch
+    // logic as ListPageShell (shared `isPermissionDenied`) — this page
+    // renders a bespoke cards/table view so it can't use the shell.
+    if (isPermissionDenied(error)) {
+      return (
+        <div className="space-y-1" role="status">
+          <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+            {t('accessDeniedTitle')}
+          </p>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            {t('accessDeniedBody')}
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="space-y-3">
         <p className="text-sm" style={{ color: 'var(--danger-700)' }}>

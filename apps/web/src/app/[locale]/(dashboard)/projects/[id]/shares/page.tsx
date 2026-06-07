@@ -285,11 +285,14 @@ export default function ProjectSharesPage() {
       <ListPageShell
         isLoading={sharesQuery.isLoading}
         isError={sharesQuery.isError}
+        error={sharesQuery.error}
         itemCount={items.length}
         page={sharesQuery.data?.page}
         cursor={cursor}
         loadFailedLabel={t('loadFailed')}
         emptyLabel={t('empty')}
+        accessDeniedTitle={tp('accessDeniedTitle')}
+        accessDeniedBody={tp('accessDeniedBody')}
         retryLabel={tp('retry')}
         nextLabel={tp('next')}
         resetLabel={tp('resetToFirstPage')}

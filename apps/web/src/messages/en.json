@@ -134,6 +134,8 @@
     "loading": "Loading...",
     "empty": "No projects yet. Click \"Create Project\" to add one.",
     "loadFailed": "Failed to load list",
+    "accessDeniedTitle": "You don't have access to this",
+    "accessDeniedBody": "Your role doesn't include permission to view this list. Contact a manager if you need access.",
     "createFailed": "Failed to create project",
     "retry": "Retry",
     "next": "Next",

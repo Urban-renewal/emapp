@@ -227,11 +227,14 @@ export default function ProjectAssignmentsPage() {
       <ListPageShell
         isLoading={list.isLoading}
         isError={list.isError}
+        error={list.error}
         itemCount={items.length}
         page={list.data?.page}
         cursor={cursor}
         loadFailedLabel={t('loadFailed')}
         emptyLabel={t('empty')}
+        accessDeniedTitle={tp('accessDeniedTitle')}
+        accessDeniedBody={tp('accessDeniedBody')}
         retryLabel={tp('retry')}
         nextLabel={tp('next')}
         resetLabel={tp('resetToFirstPage')}

@@ -4,6 +4,7 @@ import {
   buildingSections,
   buildings,
   projectAssignments,
+  projectSetSignatureDocIdsSql,
   projects,
   withTenant,
   type Project as ProjectRow,
@@ -272,20 +273,48 @@ export class ProjectsService {
   }
 
   /**
-   * Org-wide stats for the home dashboard KPI cards. Single round-trip,
-   * four COUNTs against indexed tables. All scoped by RLS via withTenant.
+   * Home dashboard KPI cards. Single round-trip, four COUNTs against indexed
+   * tables. Manager/viewer see ORG-WIDE counts; an AGENT sees counts scoped to
+   * their ASSIGNED projects only — org-wide numbers would both mislead the agent
+   * (contradicting their visible project list) and leak org scale to a scoped
+   * user. The agent scope reuses the SAME indexed doc-resolution as the portal/
+   * contractor progress (projectSetSignatureDocIdsSql), so there is one
+   * definition of "a project's signature docs", not a copy. Still one round-trip.
    */
   async orgStats(user: AccessTokenPayload): Promise<OrgStats> {
     return withTenant(
       user.orgId,
       async (tx) => {
-        const result = await tx.execute(sql`
-          SELECT
-            (SELECT COUNT(*)::int FROM projects WHERE archived_at IS NULL) AS active_projects,
-            (SELECT COUNT(DISTINCT owner_id)::int FROM ownerships WHERE ended_at IS NULL) AS residents,
-            (SELECT COUNT(*)::int FROM signature_requests WHERE status = 'signed') AS signatures_received,
-            (SELECT COUNT(*)::int FROM signature_requests WHERE status = 'pending') AS signatures_pending
-        `);
+        const result =
+          user.role === 'agent'
+            ? await tx.execute(sql`
+                WITH assigned AS (
+                  SELECT project_id FROM project_assignments
+                    WHERE user_id = ${user.sub} AND unassigned_at IS NULL
+                )
+                SELECT
+                  (SELECT COUNT(*)::int FROM projects p
+                     WHERE p.archived_at IS NULL
+                       AND p.id IN (SELECT project_id FROM assigned)) AS active_projects,
+                  (SELECT COUNT(DISTINCT o.owner_id)::int FROM ownerships o
+                     INNER JOIN apartments a ON a.id = o.apartment_id
+                     INNER JOIN buildings b ON b.id = a.building_id
+                     WHERE o.ended_at IS NULL
+                       AND b.project_id IN (SELECT project_id FROM assigned)) AS residents,
+                  (SELECT COUNT(*)::int FROM signature_requests sr
+                     WHERE sr.status = 'signed'
+                       AND sr.document_id IN (${projectSetSignatureDocIdsSql(sql`SELECT project_id FROM assigned`)})) AS signatures_received,
+                  (SELECT COUNT(*)::int FROM signature_requests sr
+                     WHERE sr.status = 'pending'
+                       AND sr.document_id IN (${projectSetSignatureDocIdsSql(sql`SELECT project_id FROM assigned`)})) AS signatures_pending
+              `)
+            : await tx.execute(sql`
+                SELECT
+                  (SELECT COUNT(*)::int FROM projects WHERE archived_at IS NULL) AS active_projects,
+                  (SELECT COUNT(DISTINCT owner_id)::int FROM ownerships WHERE ended_at IS NULL) AS residents,
+                  (SELECT COUNT(*)::int FROM signature_requests WHERE status = 'signed') AS signatures_received,
+                  (SELECT COUNT(*)::int FROM signature_requests WHERE status = 'pending') AS signatures_pending
+              `);
         const r = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
         return {
           activeProjects: Number(r['active_projects'] ?? 0),

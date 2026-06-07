@@ -15,6 +15,7 @@ import {
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
@@ -22,6 +23,8 @@ import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { ShareTokenService } from '../contractor-portal/share-token.service';
+import { resolveNotificationRecipients } from '../notifications/notification-recipients';
+import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
 export interface ShareListPage {
   data: Share[];
@@ -67,7 +70,12 @@ function toShare(r: typeof shares.$inferSelect): Share {
  */
 @Injectable()
 export class SharesService {
-  constructor(private readonly shareToken: ShareTokenService) {}
+  private readonly logger = new Logger(SharesService.name);
+
+  constructor(
+    private readonly shareToken: ShareTokenService,
+    private readonly notifications: NotificationsProducerService,
+  ) {}
 
   private requireManager(user: AccessTokenPayload): void {
     if (user.role !== 'manager') throw FORBIDDEN;
@@ -278,18 +286,39 @@ export class SharesService {
   // Idempotent: revoking an already-revoked share is a no-op success.
   async revoke(user: AccessTokenPayload, id: string): Promise<void> {
     this.requireManager(user);
+    // P5.S4 — share_revoked notification. A revoke is a security-relevant admin
+    // action on a project: the project team (assigned agents + managers-always,
+    // minus the actor) should know a contractor lost access. Recipients are
+    // resolved INSIDE the tx (org-scoped read → satisfies the producer's
+    // recipient∈org invariant) but EMITTED post-commit. Declared here to survive
+    // the tx scope; a null payload (share missing / already-revoked) → no emit.
+    // A notification must NEVER fail the revoke, so resolution self-guards to [].
+    let notifyRecipientIds: string[] = [];
+    let notifyProjectId = '';
+    let notifyContractorName = '';
+
     await withTenant(
       user.orgId,
       async (tx) => {
         // D.49 — suspended org: shares are inert (404), same as the read paths.
         if (await isOrgSuspended(tx, user.orgId)) throw NOT_FOUND;
         const [before] = await tx
-          .select({ id: shares.id, revokedAt: shares.revokedAt })
+          .select({
+            id: shares.id,
+            revokedAt: shares.revokedAt,
+            projectId: shares.projectId,
+            // contractors.name is the contractor's BUSINESS/company name — org-
+            // internal business data, NOT personal PII. contactEmail/contactPhone
+            // ARE personal data and are deliberately NOT read here (kept out of
+            // the notification body per the PII rule).
+            contractorName: contractors.name,
+          })
           .from(shares)
+          .innerJoin(contractors, eq(contractors.id, shares.contractorId))
           .where(eq(shares.id, id))
           .limit(1);
         if (!before) throw NOT_FOUND;
-        if (before.revokedAt) return;
+        if (before.revokedAt) return; // already revoked → idempotent no-op, no emit
         await tx
           .update(shares)
           .set({ revokedAt: new Date(), revokedBy: user.sub, updatedAt: new Date() })
@@ -303,9 +332,45 @@ export class SharesService {
           targetId: id,
           sessionId: user.sid,
         });
+
+        // Best-effort recipient resolution through the ONE central helper
+        // (single source of truth — no inline recipient logic). Wrapped so a
+        // resolver hiccup never rolls back the revoke.
+        try {
+          notifyRecipientIds = await resolveNotificationRecipients(tx, user.orgId, {
+            projectId: before.projectId,
+            actorUserId: user.sub,
+          });
+          notifyProjectId = before.projectId;
+          notifyContractorName = before.contractorName;
+        } catch {
+          notifyRecipientIds = [];
+        }
       },
       { userId: user.sub },
     );
+
+    // Fire-and-forget AFTER commit. The revoke (revoked_at write + response) is
+    // already durable; emitMany self-guards, and the call site try/catch upholds
+    // the "a notification never fails the revoke" contract even if a future
+    // producer change throws synchronously. Body carries only the contractor
+    // COMPANY name (org-internal business label) — never personal PII.
+    if (notifyRecipientIds.length > 0) {
+      try {
+        await this.notifications.emitMany(notifyRecipientIds, {
+          orgId: user.orgId,
+          type: 'share_revoked',
+          title: 'גישת קבלן בוטלה',
+          body: `הרשאת ${notifyContractorName} בוטלה.`,
+          link: null,
+          metadata: { shareId: id, projectId: notifyProjectId },
+        });
+      } catch (e) {
+        this.logger.error(
+          `share_revoked notify failed (share=${id}): ${e instanceof Error ? e.message : 'unknown'}`,
+        );
+      }
+    }
   }
 }
 

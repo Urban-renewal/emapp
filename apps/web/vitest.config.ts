@@ -26,6 +26,16 @@ export default mergeConfig(
         '@': path.resolve(here, 'src'),
       },
     },
+    // Use React's automatic JSX runtime when transforming `.tsx` sources that
+    // a spec renders (e.g. `sidebar.spec.ts` renders the real <Sidebar> via
+    // react-dom/server). Without this, esbuild emits the classic
+    // `React.createElement` form which expects a `React` binding in the
+    // component's module scope → `React is not defined` at render. This is a
+    // test-harness-only setting; the Next.js app build has its own JSX
+    // pipeline and is unaffected.
+    esbuild: {
+      jsx: 'automatic',
+    },
     test: {
       include: ['src/**/*.spec.ts'],
       environment: 'node',

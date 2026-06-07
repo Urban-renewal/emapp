@@ -841,7 +841,16 @@
       "name": "Name",
       "nationalId": "National ID",
       "phone": "Phone",
+      "phoneReadOnlyNote": "To change your phone, contact the team",
       "email": "Email",
+      "emailEmpty": "No email on file",
+      "emailEdit": "Edit",
+      "emailAdd": "Add email",
+      "emailSave": "Save",
+      "emailSaving": "Saving...",
+      "emailCancel": "Cancel",
+      "emailPlaceholder": "name@example.com",
+      "emailError": "Couldn't save. Check the email address and try again.",
       "loadFailed": "Failed to load your details."
     },
     "progress": {

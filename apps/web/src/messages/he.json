@@ -841,7 +841,16 @@
       "name": "שם",
       "nationalId": "ת.ז.",
       "phone": "טלפון",
+      "phoneReadOnlyNote": "לשינוי מספר הטלפון, פנו לצוות",
       "email": "אימייל",
+      "emailEmpty": "לא הוזן אימייל",
+      "emailEdit": "עריכה",
+      "emailAdd": "הוספת אימייל",
+      "emailSave": "שמירה",
+      "emailSaving": "שומר...",
+      "emailCancel": "ביטול",
+      "emailPlaceholder": "name@example.com",
+      "emailError": "השמירה נכשלה. בדקו את כתובת האימייל ונסו שוב.",
       "loadFailed": "טעינת הפרטים נכשלה."
     },
     "progress": {

@@ -43,14 +43,18 @@ rather than stopping to ask. Review and override any you disagree with.
 - **THE REAL RESIDUAL FRICTION (narrower):** "I created a task and it vanished from my list." The minimal, NON-deviating fix is to auto-add the creator as an assignee on task-create (the creator is implicitly a stakeholder) — this keeps the assignee-based read model intact while removing the vanish. The broader option (project-scope agent task reads) is a bigger model change.
 - **NEEDS-YOU (pick one):** (a) keep assignee-based reads as-is; (b) auto-assign the creator on create (small, recommended); (c) project-scope agent task reads (model change). I implemented none yet — your call, since it changes documented behavior.
 
-## D-O7 · Notification routing — document_uploaded → assigned agents (and the rest)
+## D-O7 · Notification routing — OWNER-DECIDED POLICY (one central recipient rule)
 
-- **CONTEXT:** the notifications infra exists, but 5 of 7 defined types were NEVER emitted (apartment_status_changed, document_uploaded, note_added, share_revoked, mention), and there's no import-complete type at all. The "who gets notified" routing per event was unspecified.
-- **DECISION (this slice):** wired **document_uploaded** → notify the project's ASSIGNED AGENTS (the people working that project), EXCLUDING the uploader. Best-effort (never fails the upload), body = the doc name only (no PII). Chosen because it's the least-ambiguous routing (assigned agents clearly want to know a new doc landed) and reveals nothing they can't already see.
-- **REVERSIBLE / NEEDS-YOU (routing preferences):** tell me your preference and I wire the rest the same way:
-  - Should MANAGERS also get document_uploaded (org-wide oversight), or just assigned agents? (I chose agents-only.)
-  - apartment_status_changed → assigned agents? note_added → ? share_revoked → the manager who shared? mention → needs @-parsing (a small feature).
-  - **import-complete** (the catalog's explicit ask) needs a NEW enum value → a small additive migration (deferred per the no-rushed-migration rule); recipient is unambiguous (the user who ran the import). Want it next?
+- **CONTEXT:** the notifications infra exists, but 5 of 7 defined types were NEVER emitted (apartment_status_changed, document_uploaded, note_added, share_revoked, mention), and there's no import-complete type at all.
+- **OWNER POLICY (FINAL — implement this; do NOT route per-type ad-hoc):**
+  1. **Project-scoped events** (document uploaded, apartment status changed, note added on a project) → EVERYONE ASSIGNED TO THE PROJECT (active `project_assignments`).
+  2. **Entity / action events** (share revoked, other entity operations) → everyone the action is RELEVANT to.
+  3. **A MANAGER ALWAYS receives EVERY notification** (org-wide oversight) — in addition to the scoped recipients above.
+  4. The ACTOR is excluded from their OWN action (you aren't notified of what you just did) — managers too, only for their own action.
+- **DESIGN (SOLID — one source of truth):** build ONE central helper —
+  `resolveNotificationRecipients(tx, orgId, { projectId?, relevantUserIds? }) = (all active org managers) ∪ (active project-assigned agents if projectId) ∪ (relevantUserIds ?? []) − actor`, deduped. Every emit site calls it; do NOT hand-roll recipients per type.
+- **⚠️ RETROFIT NEEDED:** `document_uploaded` (PR #274, already merged) currently notifies ASSIGNED AGENTS ONLY — it predates this policy. The fresh session MUST switch it to the central helper so MANAGERS also receive it (agents kept). Per-type context under the policy: document_uploaded / apartment_status_changed / note_added → `{projectId}`; share_revoked → `{relevantUserIds: [the shared contractor's project managers]}` (managers always included by the helper); import-complete → `{relevantUserIds: [the import runner]}`; mention → skip for MVP.
+- **import-complete** needs a NEW `notification_type` enum value → a small additive migration; recipient = the import runner (+ managers, via the helper).
 
 ## D-O5 · Export = Manager/Admin/Owner only (closed the viewer/agent leak)
 

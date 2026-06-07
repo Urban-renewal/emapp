@@ -106,9 +106,16 @@ notification_type ADD VALUE 'import_completed'` (+ shared-types + db enum). Addi
    FE (owner/renter toggle + inline create). Tests + security review on the trigger.
 2. **import-complete** — `notification_type` enum add + emit on import finish to the user
    who ran it.
-3. **Remaining notification types** (per D-O7): apartment_status_changed + note_added →
-   project's assigned agents (reuse the `document_uploaded` pattern in
-   `documents.service.ts`); share_revoked → the manager who revoked; mention → skip (MVP).
+3. **Notifications — owner-decided routing policy (see D-O7).** Build ONE central helper
+   `resolveNotificationRecipients(tx, orgId, { projectId?, relevantUserIds? })` =
+   (all active org managers) ∪ (active project-assigned agents if projectId) ∪
+   (relevantUserIds) − actor, deduped. THE MANAGER ALWAYS GETS EVERY NOTIFICATION.
+   - **RETROFIT `document_uploaded` (PR #274, merged)** — it currently notifies agents
+     ONLY; switch it to the helper so managers also receive it.
+   - Wire apartment_status_changed + note_added → `{projectId}`; share_revoked →
+     `{relevantUserIds:[the contractor's project managers]}`; import-complete →
+     `{relevantUserIds:[the import runner]}`; mention → skip (MVP, needs @-parsing).
+   - Do NOT hand-roll recipients per type — one helper, reused (SOLID).
 4. (optional) per-project agent capabilities — a bigger data-model change; confirm with
    the owner first (it's the only remaining "manager grants permissions" enhancement; the
    per-entity-TYPE grant already works via members → capabilities).

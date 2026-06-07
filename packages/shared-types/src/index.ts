@@ -19,6 +19,11 @@ export * from './note';
 export * from './audit';
 export * from './project-assignment';
 export * from './member';
+// P1-1 — per-org configurable policy seam (the spine). Typed `OrgSettings`
+// schema + defaults; `getOrgSettings(tx, orgId)` in @emapp/api parses
+// `organizations.settings` jsonb over these. The single source every future
+// per-org policy domain reads.
+export * from './org-settings';
 export * from './document';
 export * from './signature-request';
 export * from './import';

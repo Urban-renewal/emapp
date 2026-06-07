@@ -63,6 +63,7 @@ export * from './helpers/share-defaults';
 export * from './helpers/apply-share-permissions';
 export * from './helpers/resolve-share';
 export * from './helpers/signature-progress';
+export * from './helpers/reap-expired-rows';
 export * from './helpers/org-suspension';
 export * from './helpers/notifications';
 export * from './helpers/idempotency';

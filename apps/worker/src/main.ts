@@ -25,6 +25,7 @@
  * pg-boss, and real IJobHandler instances.
  */
 import { env, pool, reloadEnv } from '@emapp/db';
+import { REAPER_CRON_HOURLY, REAPER_JOB_NAME } from '@emapp/jobs';
 // eslint-disable-next-line import/no-named-as-default
 import PgBoss from 'pg-boss';
 // eslint-disable-next-line import/no-named-as-default
@@ -32,6 +33,7 @@ import pino from 'pino';
 
 import { registerCrashHandlers, registerSignalHandlers, smokeTestDb } from './bootstrap';
 import { ImportJobHandler } from './handlers/import-job.handler';
+import { ReaperHandler } from './handlers/reaper.handler';
 import {
   LegacyAliasResolver,
   MappingResolverChain,
@@ -193,6 +195,42 @@ async function main(): Promise<void> {
     log.info({ name: importHandler.name }, 'handler registered');
   } catch (e: unknown) {
     log.error({ err: e instanceof Error ? e.message : 'unknown' }, 'handler registration failed');
+    process.exit(1);
+  }
+
+  // Phase 3 #5a — periodic-runner infrastructure + first consumer.
+  // Two steps, both idempotent across deploys:
+  //   1. registerHandler() — createQueue(reaper:expired-rows) + work():
+  //      the CONSUMER side. pg-boss requires the queue to exist before a
+  //      schedule can target it (the schedule row FKs to the queue).
+  //   2. boss.schedule(name, cron) — the PRODUCER side: pg-boss's own
+  //      cron timekeeper (enabled by default in v10) sends an empty-
+  //      payload job to that queue on every cron fire. Re-scheduling an
+  //      existing name UPSERTs the cron, so a redeploy with a changed
+  //      cadence just updates the row — no duplicate schedules.
+  // Concurrency 1: a single hourly maintenance tick needs no parallelism,
+  // and keeping it serial means two overlapping ticks can never race on
+  // the same DELETE.
+  const reaperHandler = new ReaperHandler();
+  try {
+    await registerHandler({
+      boss: boss as unknown as BossLike,
+      registration: {
+        handler: reaperHandler,
+        payloadSchema: reaperHandler.payloadSchema,
+      },
+      concurrency: 1,
+      log: {
+        info: (msg, meta) => log.info(meta ?? {}, msg),
+        warn: (msg, meta) => log.warn(meta ?? {}, msg),
+        error: (msg, meta) => log.error(meta ?? {}, msg),
+      },
+      signal: shutdownController.signal,
+    });
+    await boss.schedule(REAPER_JOB_NAME, REAPER_CRON_HOURLY);
+    log.info({ name: reaperHandler.name, cron: REAPER_CRON_HOURLY }, 'reaper scheduled');
+  } catch (e: unknown) {
+    log.error({ err: e instanceof Error ? e.message : 'unknown' }, 'reaper registration failed');
     process.exit(1);
   }
 

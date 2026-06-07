@@ -18,6 +18,7 @@ import type {
   BulkSignatureResult,
   SignatureRequest,
   SignatureRequestCreateResponse,
+  SignatureRequestLinkResponse,
   SignatureDeliveryReport,
   ListSignatureRequestsQueryDto,
 } from '@emapp/shared-types';
@@ -509,6 +510,93 @@ export class SignatureRequestsService {
     );
 
     return { request: this.toWire(txOut.row), signUrl, delivery };
+  }
+
+  /** Retrieve the signing link for a PENDING request — the phone-less-owner
+   *  path (P4). An owner with NO phone can't be SMS'd the link and can't
+   *  self-serve the SMS-OTP portal, so the manager copies this link and
+   *  delivers it OUT-OF-BAND (WhatsApp / email / paper). Returns ONLY
+   *  { request, signUrl } — NO delivery I/O (this is a read-with-side-effect,
+   *  not a send).
+   *
+   *  Single-source-of-truth: the original JWT is never stored (only its `jti`),
+   *  so it can't be reconstructed. We re-mint a fresh token + new 7-day expiry
+   *  and atomically swap the row's jti/expiresAt WHERE still pending — exactly
+   *  like resend(), minus the email/SMS send. The prior link dies; the DB row's
+   *  jti remains the one live credential. Only a `pending` request yields a
+   *  link (a signed/cancelled one 409s — there's nothing to deliver).
+   *
+   *  AUTHZ — the signUrl is a BEARER credential, so this MUST match the send
+   *  path: coarse `signature_requests.send` (controller) + fine
+   *  manage_signatures capability + agent document-visibility (here). A Viewer
+   *  / unprivileged Agent is rejected before the token is minted. Returning the
+   *  link to an authorized manager does not widen exposure — that same manager
+   *  can already resend() it via SMS/email. The token is NEVER logged. */
+  async getLink(user: AccessTokenPayload, id: string): Promise<SignatureRequestLinkResponse> {
+    const txOut = await withTenant(
+      user.orgId,
+      async (tx) => {
+        const [req] = await tx
+          .select({
+            id: signatureRequests.id,
+            documentId: signatureRequests.documentId,
+            ownerId: signatureRequests.ownerId,
+            status: signatureRequests.status,
+          })
+          .from(signatureRequests)
+          .where(eq(signatureRequests.id, id))
+          .limit(1);
+        if (!req) throw NOT_FOUND;
+        // D.46 — agent: the signature's document must be in an assigned project
+        // (404), then the manage_signatures capability (403). Manager passes
+        // both. Gate BEFORE minting so a rejected actor never receives a token.
+        if (user.role === 'agent') await this.assertDocVisibleForAgent(tx, user, req.documentId);
+        await requireAgentCapability(tx, user, 'manage_signatures');
+        if (req.status !== 'pending') {
+          throw new ConflictException({ error: { code: 'signature_request_not_pending' } });
+        }
+
+        // Re-mint a fresh token for the SAME request (new jti + new expiry).
+        const { token, jti, expiresAt } = this.tokenService.sign({
+          sub: req.id,
+          orgId: user.orgId,
+          documentId: req.documentId,
+          ownerId: req.ownerId,
+        });
+        // Atomic refresh — only if STILL pending (race vs concurrent sign/cancel).
+        const [row] = await tx
+          .update(signatureRequests)
+          .set({ jti, expiresAt })
+          .where(and(eq(signatureRequests.id, id), eq(signatureRequests.status, 'pending')))
+          .returning();
+        if (!row) {
+          throw new ConflictException({ error: { code: 'signature_request_not_pending' } });
+        }
+
+        // Audit the link RETRIEVAL distinctly from resend — a manager copying
+        // the bearer link for out-of-band delivery is a security-relevant event
+        // (who pulled the credential, when) even though no SMS/email was sent.
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'signature_request.link_retrieve',
+          targetTable: 'signature_requests',
+          targetId: id,
+          sessionId: user.sid,
+        });
+
+        return { row, token };
+      },
+      { userId: user.sub },
+    );
+
+    // signUrl embeds the freshly-minted JWT — the manager's out-of-band payload.
+    // NEVER logged (no logger call references it).
+    return {
+      request: this.toWire(txOut.row),
+      signUrl: `${PUBLIC_APP_URL}/sign/${txOut.token}`,
+    };
   }
 
   /** Resident self-resend (B-RESIDENT-1) — a logged-in apartment owner (tenant

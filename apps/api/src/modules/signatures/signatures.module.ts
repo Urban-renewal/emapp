@@ -73,5 +73,8 @@ import { SIGNED_DOCUMENT_RENDERER } from './signed-document.types';
     // re-registering it here keeps the module self-contained.
     { provide: EMAIL_PROVIDER, useFactory: emailProviderFactory },
   ],
+  // Exported so the Tenant Portal can reuse the resident self-resend
+  // (B-RESIDENT-1) without re-wiring the token service + providers.
+  exports: [SignatureRequestsService],
 })
 export class SignaturesModule {}

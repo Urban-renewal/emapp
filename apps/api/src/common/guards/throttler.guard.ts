@@ -47,6 +47,14 @@ export class ConfigurableThrottlerGuard extends ThrottlerGuard {
     if (user && typeof user.sub === 'string' && user.sub.length > 0) {
       return `u:${user.sub}`;
     }
+    // Tenant-tier routes (TenantAuthGuard) attach `req.tenant`, not `req.user`.
+    // Key per-OWNER so an SMS-sending tenant write (portal resend) is throttled
+    // by the authenticated owner, not just per-IP (a stolen-token holder could
+    // otherwise rotate egress IPs to exceed the per-owner cap). sec-review MED.
+    const tenant = (req as { tenant?: { sub?: unknown } }).tenant;
+    if (tenant && typeof tenant.sub === 'string' && tenant.sub.length > 0) {
+      return `t:${tenant.sub}`;
+    }
     const ip = (req as { ip?: unknown }).ip;
     return typeof ip === 'string' && ip.length > 0 ? `ip:${ip}` : 'anon';
   }

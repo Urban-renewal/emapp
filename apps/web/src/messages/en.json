@@ -861,7 +861,11 @@
       "expiresAt": "Expires {rel}",
       "signedAt": "Signed {rel}",
       "createdAt": "Created {rel}",
-      "smsHint": "The signing link is sent to you via SMS and does not appear here (the link IS the one-time credential)."
+      "smsHint": "The signing link is sent to you via SMS and does not appear here (the link IS the one-time credential).",
+      "resend": "Send me the link again",
+      "resending": "Sending...",
+      "resentHint": "A fresh link was sent to your phone.",
+      "resendError": "Couldn't send. Try again in a few minutes."
     }
   },
   "settings": {

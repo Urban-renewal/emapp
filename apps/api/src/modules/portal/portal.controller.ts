@@ -1,7 +1,11 @@
-import { Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpCode, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { TenantAuthGuard, type TenantTokenPayload } from '../auth/tenant/tenant-auth.guard';
+import { SignatureRequestsService } from '../signatures/signature-requests.service';
 
 import { PortalService } from './portal.service';
 
@@ -25,7 +29,10 @@ import { PortalService } from './portal.service';
 @Controller('portal')
 @UseGuards(TenantAuthGuard)
 export class PortalController {
-  constructor(private readonly portal: PortalService) {}
+  constructor(
+    private readonly portal: PortalService,
+    private readonly signatures: SignatureRequestsService,
+  ) {}
 
   @Get('me')
   async getMe(@Req() req: FastifyRequest) {
@@ -68,6 +75,28 @@ export class PortalController {
    * the guard with `missing_token`. Returns 204 No Content; idempotent
    * (a second call after revoke just no-ops).
    */
+  /**
+   * `POST /portal/signatures/:id/resend` (B-RESIDENT-1) — the resident re-sends
+   * THEIR OWN pending signing link to their on-file phone/email when they lost
+   * or expired it. Own-record scoped in the service (not-own / not-pending →
+   * no-oracle 404). Heavily throttled — each call sends an SMS. Returns only the
+   * per-channel DELIVERY STATUS; the link is delivered out-of-band, never here.
+   */
+  @Post('signatures/:id/resend')
+  @Throttle({ default: { limit: 3, ttl: 600_000 } })
+  async resendSignature(
+    @Req() req: FastifyRequest,
+    @Param('id', new ZodValidationPipe(z.string().uuid())) id: string,
+  ) {
+    const tenant = (req as FastifyRequest & { tenant: TenantTokenPayload }).tenant;
+    return {
+      data: await this.signatures.resendForOwner(tenant.orgId, tenant.sub, id, {
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+      }),
+    };
+  }
+
   @Post('logout')
   @HttpCode(204)
   async logout(@Req() req: FastifyRequest, @Res({ passthrough: true }) res: FastifyReply) {

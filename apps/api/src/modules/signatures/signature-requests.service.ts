@@ -511,6 +511,92 @@ export class SignatureRequestsService {
     return { request: this.toWire(txOut.row), signUrl, delivery };
   }
 
+  /** Resident self-resend (B-RESIDENT-1) — a logged-in apartment owner (tenant
+   *  tier) re-sends THEIR OWN pending signing link to their on-file phone/email
+   *  when they lost or expired it (the portal's only write path). OWN-RECORD
+   *  scoped: the request must belong to this owner AND be pending, else a
+   *  no-oracle 404. Re-mints a fresh token + a new 7-day expiry (old link dies,
+   *  clock restarts) and delivers. Returns ONLY the per-channel delivery STATUS —
+   *  the token/link is delivered out-of-band (SMS/email) and is NEVER in the
+   *  response, so the token-bearing WhatsApp deep-link is stripped. */
+  async resendForOwner(
+    orgId: string,
+    ownerId: string,
+    requestId: string,
+    ctx?: { ip?: string; userAgent?: string },
+  ): Promise<SignatureDeliveryReport> {
+    const txOut = await withTenant(orgId, async (tx) => {
+      const [req] = await tx
+        .select({
+          id: signatureRequests.id,
+          documentId: signatureRequests.documentId,
+          status: signatureRequests.status,
+        })
+        .from(signatureRequests)
+        .where(and(eq(signatureRequests.id, requestId), eq(signatureRequests.ownerId, ownerId)))
+        .limit(1);
+      // No-oracle: not-found / not-this-owner's / not-pending all → 404.
+      if (!req || req.status !== 'pending') throw NOT_FOUND;
+
+      const { token, jti, expiresAt } = this.tokenService.sign({
+        sub: req.id,
+        orgId,
+        documentId: req.documentId,
+        ownerId,
+      });
+      const [row] = await tx
+        .update(signatureRequests)
+        .set({ jti, expiresAt })
+        .where(
+          and(
+            eq(signatureRequests.id, requestId),
+            eq(signatureRequests.ownerId, ownerId),
+            eq(signatureRequests.status, 'pending'),
+          ),
+        )
+        .returning({ id: signatureRequests.id });
+      if (!row) throw NOT_FOUND;
+
+      await new AuditService(tx, { ip: ctx?.ip, userAgent: ctx?.userAgent }).log({
+        orgId,
+        actorType: 'system',
+        action: 'signature_request.resend_by_owner',
+        targetTable: 'signature_requests',
+        targetId: requestId,
+        // No 'tenant' ActorType exists (a new one is Gate-6), so attribute the
+        // authenticated owner here so an abusive resend is traceable to them
+        // (sec-review LOW). ownerId is a UUID — not PII.
+        afterState: { resent_by_owner: ownerId },
+      });
+
+      const own = await this.loadOwnerWithPii(tx, ownerId);
+      const doc = await this.loadVisibleDocument(tx, req.documentId);
+      return {
+        token,
+        documentName: doc.name,
+        ownerName: own.name,
+        ownerEmail: own.email,
+        ownerPhone: own.phonePlain,
+      };
+    });
+
+    const delivery = await deliverSignatureLink(
+      this.email,
+      this.sms,
+      {
+        signUrl: `${PUBLIC_APP_URL}/sign/${txOut.token}`,
+        ownerName: txOut.ownerName,
+        ownerEmail: txOut.ownerEmail,
+        ownerPhone: txOut.ownerPhone,
+        documentName: txOut.documentName,
+      },
+      { error: (m): void => this.logger.error(m) },
+    );
+    // Strip the token-bearing WhatsApp deep-link — the resident receives the
+    // link out-of-band (SMS/email), never as a credential in the HTTP response.
+    return { ...delivery, whatsapp: { available: false, reason: 'delivered_out_of_band' } };
+  }
+
   /** Load owner + decrypt phone for delivery. Email is plaintext citext;
    *  phone is pgcrypto-encrypted (D.19) and must be decrypted via
    *  pgp_sym_decrypt while the app.encryption_key GUC is set (i.e.

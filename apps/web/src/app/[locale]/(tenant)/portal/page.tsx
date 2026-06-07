@@ -11,8 +11,9 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
+import { Button } from '@/components/ui/button';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
 import {
@@ -21,6 +22,7 @@ import {
   usePortalMe,
   usePortalProgress,
   usePortalSignatures,
+  useResendPortalSignature,
 } from '@/hooks/use-portal';
 
 /**
@@ -101,6 +103,13 @@ export default function TenantPortalPage() {
   const apts = usePortalApartments();
   const docs = usePortalDocuments();
   const sigs = usePortalSignatures();
+  const resend = useResendPortalSignature();
+  const [resentIds, setResentIds] = useState<Set<string>>(new Set());
+  function onResend(id: string): void {
+    resend.mutate(id, {
+      onSuccess: () => setResentIds((prev) => new Set(prev).add(id)),
+    });
+  }
   const progress = usePortalProgress();
 
   const meState = viewState(me);
@@ -543,6 +552,31 @@ export default function TenantPortalPage() {
                           ? t('signatures.expiresAt', { rel: s.expiresRelative })
                           : t('signatures.createdAt', { rel: s.createdRelative })}
                     </div>
+                    {s.status === 'pending' && (
+                      <div className="mt-2">
+                        {resentIds.has(s.id) ? (
+                          <span className="text-[11px]" style={{ color: 'var(--success-700)' }}>
+                            {t('signatures.resentHint')}
+                          </span>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onResend(s.id)}
+                            disabled={resend.isPending && resend.variables === s.id}
+                          >
+                            {resend.isPending && resend.variables === s.id
+                              ? t('signatures.resending')
+                              : t('signatures.resend')}
+                          </Button>
+                        )}
+                        {resend.isError && resend.variables === s.id && (
+                          <span className="ms-2 text-[11px]" style={{ color: 'var(--danger-700)' }}>
+                            {t('signatures.resendError')}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </li>
               ))}

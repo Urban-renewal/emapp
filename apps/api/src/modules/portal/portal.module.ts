@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module';
+import { SignaturesModule } from '../signatures/signatures.module';
 
 import { PortalController } from './portal.controller';
 import { PortalService } from './portal.service';
@@ -8,11 +9,11 @@ import { PortalService } from './portal.service';
 /**
  * V11 B.S4 — Tenant Portal (D.40).
  *
- * Imports AuthModule for the shared JwtModule used by TenantAuthGuard.
- * No write endpoints in V11; PortalService is the only provider.
+ * Imports AuthModule (shared JwtModule for TenantAuthGuard) + SignaturesModule
+ * (B-RESIDENT-1 — the resident self-resend reuses SignatureRequestsService).
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, SignaturesModule],
   controllers: [PortalController],
   providers: [PortalService],
 })

@@ -18,11 +18,13 @@
  * render tree.
  */
 import {
+  SignatureDeliveryReportSchema,
   TenantPortalApartmentSchema,
   TenantPortalDocumentSchema,
   TenantPortalMeSchema,
   TenantPortalProgressSchema,
   TenantPortalSignatureSchema,
+  type SignatureDeliveryReport,
   type TenantPortalApartment,
   type TenantPortalDocument,
   type TenantPortalMe,
@@ -71,4 +73,18 @@ export async function getPortalProgress(): Promise<TenantPortalProgress[]> {
   const res = await apiClient.get<unknown>('/portal/progress');
   if (!isOk(res)) throw new ApiClientError(res.error);
   return ProgressDataSchema.parse({ data: res.data }).data;
+}
+
+const ResendDataSchema = z.object({ data: SignatureDeliveryReportSchema });
+
+/** `POST /portal/signatures/:id/resend` (B-RESIDENT-1) — re-send MY OWN pending
+ *  signing link to my on-file phone/email. The link itself is delivered out-of-
+ *  band (SMS/email); the response carries only the per-channel delivery status. */
+export async function resendPortalSignature(id: string): Promise<SignatureDeliveryReport> {
+  const res = await apiClient.post<unknown>(
+    `/portal/signatures/${encodeURIComponent(id)}/resend`,
+    {},
+  );
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return ResendDataSchema.parse({ data: res.data }).data;
 }

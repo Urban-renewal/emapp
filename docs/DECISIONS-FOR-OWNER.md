@@ -36,6 +36,13 @@ rather than stopping to ask. Review and override any you disagree with.
 - **EXPOSURE NOTE:** A BULK response can carry up to 200 single-use 7-day tokens (vs 1 for single-create). If a bulk response is ever logged/screenshotted wholesale, that's a larger surface. It's returned to the manager FE over HTTPS and not logged server-side; pino redacts `/sign/` URLs (note: the deep-link encodes it as `%2Fsign%2F`).
 - **REVERSIBLE / NEEDS-YOU:** If you want bulk treated as lower-trust, I can OMIT the `whatsapp.deepLink` from the BULK report (auto email+SMS still deliver) while keeping it for single-create. Say the word.
 
+## D-O5 · Export = Manager/Admin/Owner only (closed the viewer/agent leak)
+
+- **DECISION:** `GET /projects/:id/export` now gates on `export.run` instead of `projects.read`. This closes the M2 leak (a read-only Viewer held projects.read and could hand-roll a bulk export, contradicting "viewer = read-only, no export"). export.run is held by Manager/Admin/Owner; Agent and Viewer are excluded — matching the role model (system-roles excludes export.run from Agent).
+- **WHY:** The role contract says viewer = no export. Gating on export.run is the role-model-consistent close; it also excludes Agent (consistent with the catalog excluding export.run from Agent).
+- **TENSION (documented):** D.54 + the composer unit tests treat agent-scoped MASKED export as intended. Those test the SERVICE (composeProjectExport) directly and still pass; only the ENDPOINT now requires export.run, so agent export is unreachable via the API. If you WANT agent-masked-export for MVP, the deliberate change is: grant Agent export.run AND decouple the `export.run ⇒ <resource>.read` implication closure from the governance reads (members/audit) so it doesn't over-grant. That's a careful follow-up, not an MVP blocker.
+- **REVERSIBLE / NEEDS-YOU:** Confirm "export = Manager+ only" for MVP, or tell me to enable agent-masked-export (with the closure work).
+
 ## D-O4 · Bulk-send duplicate-prevention is best-effort under CONCURRENT submits (MED, deferred)
 
 - **CONTEXT:** Bulk-send skips owners that already have a PENDING request for the doc (a SELECT-then-skip). Under SERIAL retry (the common "did it work? click again") this prevents duplicates. But there is NO DB unique constraint, so two TRULY-CONCURRENT identical bulks (or a bulk racing a single-create) could both pass the skip-check and both insert → a duplicate pending request + a second signing link to the same owner. (Security review MED.)

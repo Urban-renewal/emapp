@@ -110,6 +110,7 @@
       "orgSlugLabel": "Organization slug (optional)",
       "orgSlugPlaceholder": "alpha-dev",
       "orgSlugHint": "Fill only if you own an apartment in more than one organization.",
+      "orgSlugPrefilled": "The organization slug was filled in for you from your link. You can change it if needed.",
       "codeLabel": "Verification code",
       "sendCode": "Send code",
       "sending": "Sending...",

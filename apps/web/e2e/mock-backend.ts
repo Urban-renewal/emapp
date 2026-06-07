@@ -70,6 +70,10 @@ const MANAGER_PERMISSIONS = [
   'projects.archive',
   'buildings.create',
   'apartments.create',
+  // owners.read — the Owners nav item gates on this (P4 #11). Managers hold it
+  // (ALL_OPERATIONAL reads); listing it keeps the mock effective set in sync
+  // with the FE sidebar gate so the Owners link renders in e2e.
+  'owners.read',
   'owners.create',
   'owners.archive',
   'owners.reveal_pii',
@@ -95,6 +99,11 @@ const AGENT_PERMISSIONS = [
   'projects.archive',
   'buildings.create',
   'apartments.create',
+  // owners.read — the default seed-dev agent has the `view_owners` capability
+  // ON (j18 default set), so their EFFECTIVE permissions include owners.read
+  // (BE `agent-effective-permissions` keeps it iff view_owners). The Owners nav
+  // item (P4 #11) gates on this; mirror it so the link renders for the agent.
+  'owners.read',
   'owners.archive',
   'documents.create',
   'contractors.create',
@@ -143,8 +152,10 @@ export const SEED_VIEWER = {
   role: 'viewer',
   avatarColor: '#a16207',
   // Read-only of operational data — holds NONE of the gated write/governance
-  // controls (no members.read/audit.read → Members+Audit nav hidden).
-  permissions: [],
+  // controls (no members.read/audit.read → Members+Audit nav hidden). Holds
+  // owners.read (VIEWER role = all operational reads, PII masked) → the Owners
+  // nav item (P4 #11) renders for the viewer (j9 positive control).
+  permissions: ['owners.read'],
   view_owner_pii: false,
 } as const;
 

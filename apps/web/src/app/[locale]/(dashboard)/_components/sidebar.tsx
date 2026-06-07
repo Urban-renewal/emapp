@@ -92,6 +92,14 @@ export function Sidebar({ userName, userRole, tier }: Props) {
   const canReadMembers = useHasPermission('members.read');
   const canReadAudit = useHasPermission('audit.read');
   const canReadSettings = useHasPermission('org.settings.read');
+  // P4 #11 — the Owners nav item is capability-gated: an agent WITHOUT the
+  // `view_owners` capability does NOT hold `owners.read` in their effective set
+  // (BE `agent-effective-permissions` filters `owners.read` on `view_owners`),
+  // so clicking Owners would 403/404. Gate the item on the effective read
+  // permission — correct for every role (managers/viewers hold `owners.read`;
+  // an agent holds it iff view_owners is ON) and any future capability, with
+  // NO `role === 'agent'` math. UX only; the BE guard stays authoritative.
+  const canReadOwners = useHasPermission('owners.read');
   const rawPath = usePathname() ?? '/';
   // Strip the `/he` or `/en` locale prefix so item.href can be compared
   // against the unprefixed app paths.
@@ -103,7 +111,12 @@ export function Sidebar({ userName, userRole, tier }: Props) {
   const items: NavItem[] = [
     { href: '/', labelKey: 'home', icon: Home, enabled: true },
     { href: '/projects', labelKey: 'projects', icon: FileText, enabled: true },
-    { href: '/owners', labelKey: 'owners', icon: Users, enabled: true },
+    // Owners — gated on `owners.read` (see canReadOwners above). Inserted in
+    // its nav slot (between Projects and Imports) iff the actor holds the read,
+    // so an agent without view_owners never sees a link that would 403.
+    ...(canReadOwners
+      ? [{ href: '/owners', labelKey: 'owners', icon: Users, enabled: true } as NavItem]
+      : []),
     { href: '/imports', labelKey: 'imports', icon: FileSpreadsheet, enabled: true },
     { href: '/documents', labelKey: 'documents', icon: FileText, enabled: true },
     {

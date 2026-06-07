@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useArchiveDocument, useDocument, useDownloadDocument } from '@/hooks/use-documents';
+import { useHasPermission } from '@/hooks/use-permissions';
 import { ApiClientError } from '@/lib/api/projects';
 
 export default function DocumentDetailPage() {
@@ -20,6 +21,8 @@ export default function DocumentDetailPage() {
   const { data, isLoading, isError, error } = useDocument(id);
   const archive = useArchiveDocument();
   const download = useDownloadDocument();
+  const canDownload = useHasPermission('documents.download');
+  const canArchive = useHasPermission('documents.archive');
   const [actionError, setActionError] = useState<string | null>(null);
 
   if (isLoading) return <ListSkeleton withRows={false} />;
@@ -94,12 +97,12 @@ export default function DocumentDetailPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {!data.isArchived && (
+          {canDownload && !data.isArchived && (
             <Button size="sm" onClick={onDownload} disabled={download.isPending}>
               {download.isPending ? t('downloading') : t('download')}
             </Button>
           )}
-          {!data.isArchived && (
+          {canArchive && !data.isArchived && (
             <Button variant="outline" size="sm" onClick={onArchive} disabled={archive.isPending}>
               {archive.isPending ? tp('archiving') : tp('archive')}
             </Button>

@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { useHasPermission } from '@/hooks/use-permissions';
 import { useSessionProfile } from '@/hooks/use-session';
 import { useCancelSignatureRequest, useSignatureRequest } from '@/hooks/use-signature-requests';
 import { ApiClientError } from '@/lib/api/errors';
@@ -28,6 +29,7 @@ export default function SignatureRequestDetailPage() {
   // button never shows for someone the endpoint would 403.
   const { data: profile } = useSessionProfile();
   const canDownloadSigned = profile?.view_owner_pii === true;
+  const canCancel = useHasPermission('signature_requests.cancel');
   const [actionError, setActionError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
 
@@ -114,7 +116,7 @@ export default function SignatureRequestDetailPage() {
               {downloading ? t('downloadingSigned') : t('downloadSigned')}
             </Button>
           )}
-          {data.isCancellable && (
+          {canCancel && data.isCancellable && (
             <Button variant="destructive" onClick={onCancel} disabled={cancel.isPending}>
               {cancel.isPending ? t('cancelling') : t('cancel')}
             </Button>

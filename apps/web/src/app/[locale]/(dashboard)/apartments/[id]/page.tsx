@@ -30,6 +30,7 @@ export default function ApartmentDetailPage() {
   const archive = useArchiveApartment();
   const updateStatus = useUpdateApartmentStatus();
   const canUpdate = useHasPermission('apartments.update');
+  const canArchive = useHasPermission('apartments.archive');
   const locale = useDisplayLocale();
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingStatus, setPendingStatus] = useState<ApartmentStatus | ''>('');
@@ -109,7 +110,7 @@ export default function ApartmentDetailPage() {
           </div>
           {data.factsLine && <p className="text-xs text-muted-foreground">{data.factsLine}</p>}
         </div>
-        {!data.isArchived && (
+        {canArchive && !data.isArchived && (
           <Button variant="outline" size="sm" onClick={onArchive} disabled={archive.isPending}>
             {archive.isPending ? tp('archiving') : tp('archive')}
           </Button>

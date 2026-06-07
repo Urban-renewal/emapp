@@ -32,14 +32,8 @@ interface Res {
 // any extra key must be rejected.
 const PERMS = {
   overview: { on: true },
-  tenants: {
-    on: true,
-    fields: { name: true, phone: false, email: false, national_id: false, note: false },
-  },
-  documents: { on: true, actions: { download: true, upload: false } },
+  documents: { on: true, actions: { download: true } },
   signatures: { on: false },
-  notes: { on: false },
-  team: { on: false },
 };
 
 async function call(path: string, init?: RequestInit & { cookie?: string }): Promise<Res> {
@@ -219,10 +213,12 @@ describe('CONTRACT · shares', () => {
     const patched = await call(`/shares/${id}`, {
       method: 'PATCH',
       cookie: `access_token=${at}`,
-      body: JSON.stringify({ permissions: { ...PERMS, notes: { on: true } } }),
+      body: JSON.stringify({ permissions: { ...PERMS, signatures: { on: true } } }),
     });
     expect(patched.status).toBe(200);
-    expect(((patched.body['data'] as Json)['permissions'] as Json)['notes']).toEqual({ on: true });
+    expect(((patched.body['data'] as Json)['permissions'] as Json)['signatures']).toEqual({
+      on: true,
+    });
 
     const del = await call(`/shares/${id}`, { method: 'DELETE', cookie: `access_token=${at}` });
     expect(del.status).toBe(204);

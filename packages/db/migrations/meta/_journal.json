@@ -365,6 +365,13 @@
 			"when": 1781103600000,
 			"tag": "0051_ownership_relationship",
 			"breakpoints": true
+		},
+		{
+			"idx": 52,
+			"version": "7",
+			"when": 1781190000000,
+			"tag": "0052_shares_perms_drop_dead_keys",
+			"breakpoints": true
 		}
 	]
 }

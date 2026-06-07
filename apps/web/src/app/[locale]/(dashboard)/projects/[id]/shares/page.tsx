@@ -152,67 +152,16 @@ export default function ProjectSharesPage() {
             {/* D.46 — make the least-privilege contractor posture explicit. */}
             <p className="text-xs text-muted-foreground">{t('permissionsHint')}</p>
 
+            {/* A3 (L4): tenants/notes/team toggles + the national_id and
+                document-upload sub-toggles were removed — they were DEAD
+                controls the contractor read-path never consulted (national_id
+                was additionally a PII footgun). The form now offers exactly
+                the keys the contractor tier enforces. */}
             <PermToggle
               label={t('perm.overview')}
               checked={perms.overview.on}
               onChange={(on) => setPerms({ ...perms, overview: { on } })}
             />
-
-            <PermToggle
-              label={t('perm.tenants')}
-              checked={perms.tenants.on}
-              onChange={(on) => setPerms({ ...perms, tenants: { ...perms.tenants, on } })}
-            />
-            {!perms.tenants.on && (
-              <p className="ms-6 text-xs text-muted-foreground">{t('perm.tenantsOffHint')}</p>
-            )}
-            {perms.tenants.on && (
-              <div className="ms-6 space-y-1 text-xs text-muted-foreground">
-                <SubToggle
-                  label={t('perm.tenantsField.phone')}
-                  checked={perms.tenants.fields.phone}
-                  onChange={(v) =>
-                    setPerms({
-                      ...perms,
-                      tenants: { ...perms.tenants, fields: { ...perms.tenants.fields, phone: v } },
-                    })
-                  }
-                />
-                <SubToggle
-                  label={t('perm.tenantsField.email')}
-                  checked={perms.tenants.fields.email}
-                  onChange={(v) =>
-                    setPerms({
-                      ...perms,
-                      tenants: { ...perms.tenants, fields: { ...perms.tenants.fields, email: v } },
-                    })
-                  }
-                />
-                <SubToggle
-                  label={t('perm.tenantsField.national_id')}
-                  checked={perms.tenants.fields.national_id}
-                  onChange={(v) =>
-                    setPerms({
-                      ...perms,
-                      tenants: {
-                        ...perms.tenants,
-                        fields: { ...perms.tenants.fields, national_id: v },
-                      },
-                    })
-                  }
-                />
-                <SubToggle
-                  label={t('perm.tenantsField.note')}
-                  checked={perms.tenants.fields.note}
-                  onChange={(v) =>
-                    setPerms({
-                      ...perms,
-                      tenants: { ...perms.tenants, fields: { ...perms.tenants.fields, note: v } },
-                    })
-                  }
-                />
-              </div>
-            )}
 
             <PermToggle
               label={t('perm.documents')}
@@ -234,19 +183,6 @@ export default function ProjectSharesPage() {
                     })
                   }
                 />
-                <SubToggle
-                  label={t('perm.documentAction.upload')}
-                  checked={perms.documents.actions.upload}
-                  onChange={(v) =>
-                    setPerms({
-                      ...perms,
-                      documents: {
-                        ...perms.documents,
-                        actions: { ...perms.documents.actions, upload: v },
-                      },
-                    })
-                  }
-                />
               </div>
             )}
 
@@ -258,16 +194,6 @@ export default function ProjectSharesPage() {
             {perms.signatures.on && (
               <p className="ms-6 text-xs text-muted-foreground">{t('perm.signaturesHint')}</p>
             )}
-            <PermToggle
-              label={t('perm.notes')}
-              checked={perms.notes.on}
-              onChange={(on) => setPerms({ ...perms, notes: { on } })}
-            />
-            <PermToggle
-              label={t('perm.team')}
-              checked={perms.team.on}
-              onChange={(on) => setPerms({ ...perms, team: { on } })}
-            />
           </fieldset>
 
           {createError.serverError && (

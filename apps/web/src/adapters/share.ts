@@ -8,7 +8,7 @@ import type { Share } from '@emapp/shared-types';
 
 import { formatRelative } from '@/lib/format';
 import type { DisplayLocale } from '@/lib/locale';
-import { countActiveSections } from '@/models/share.vm';
+import { SHARE_SECTION_COUNT, countActiveSections } from '@/models/share.vm';
 import type { ShareViewModel } from '@/models/share.vm';
 
 export function toShareViewModel(
@@ -24,7 +24,7 @@ export function toShareViewModel(
     contractorIdShort: s.contractorId.replace(/-/g, '').slice(0, 8),
     contractorName: contractorIdToName?.get(s.contractorId),
     permissions: s.permissions,
-    permissionSummary: `${active} / 6`,
+    permissionSummary: `${active} / ${SHARE_SECTION_COUNT}`,
     isRevoked: s.revokedAt !== null,
     lastAccessedAtIso: s.lastAccessedAt ? s.lastAccessedAt.toISOString() : null,
     lastAccessedRelative: s.lastAccessedAt ? formatRelative(s.lastAccessedAt, locale) : null,

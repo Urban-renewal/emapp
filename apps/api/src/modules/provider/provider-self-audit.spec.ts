@@ -475,13 +475,16 @@ describe('GET /provider/audit/self — B-PROVIDER-2 self-audit reader', () => {
       'endedAt',
       'queryCount',
     ].sort();
+    // Per-row KEY allowlist is the real proof that no extra column (incl.
+    // `metadata`) reaches the wire — robust to other specs' rows in the shared
+    // table (a crude JSON substring search would false-positive on a sibling
+    // spec whose REASON text contains the word "metadata").
     for (const item of ours) {
       expect(Object.keys(item).sort()).toEqual(ALLOWED);
     }
-    // The seeded metadata held a 'secret' — confirm it never reaches the wire.
-    const blob = JSON.stringify(res.data);
-    expect(blob).not.toContain('do-not-leak');
-    expect(blob).not.toContain('metadata');
+    // The seeded metadata held a unique 'do-not-leak' secret — confirm it never
+    // reaches the wire for ANY row (the metadata column is never projected).
+    expect(JSON.stringify(res.data)).not.toContain('do-not-leak');
   });
 
   it('BP2-8) affectedOrgId is a parameterised uuid[] containment — no injection / no widening', async () => {

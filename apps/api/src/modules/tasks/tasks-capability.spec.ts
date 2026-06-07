@@ -161,19 +161,27 @@ describe('D.46 — manage_tasks agent enforcement', () => {
   it('TASK-8) addAssignee: agent w/o cap → 403; with cap → allowed', async () => {
     const id = await seedTask(assignedProjectId);
     await setCap(false);
-    await expect(svc.addAssignee(agent(), id, { userId: managerId })).rejects.toBeInstanceOf(
+    // D-O6: the manager who seeded the task is now its creator-assignee, so we
+    // exercise the add-success path with a DIFFERENT user (agentId, not yet an
+    // assignee of this task) — assigning managerId would now (correctly) 409
+    // assignee_exists, which is a different code path than the 403/allow we test
+    // here. The capability gate is what's under test; the chosen user is incidental.
+    await expect(svc.addAssignee(agent(), id, { userId: agentId })).rejects.toBeInstanceOf(
       ForbiddenException,
     );
     await setCap(true);
-    const a = await svc.addAssignee(agent(), id, { userId: managerId });
+    const a = await svc.addAssignee(agent(), id, { userId: agentId });
     expect(a.id).toBeTruthy();
   }, 30_000);
 
   it('TASK-9) removeAssignee: agent with cap (assigned task) → allowed', async () => {
     await setCap(true);
     const id = await seedTask(assignedProjectId);
-    await svc.addAssignee(agent(), id, { userId: managerId });
-    await expect(svc.removeAssignee(agent(), id, managerId)).resolves.toBeUndefined();
+    // D-O6: managerId is already the creator-assignee of this seeded task, so add
+    // a non-creator (agentId) for a clean add→remove round-trip (adding managerId
+    // would 409). The capability-scoped removeAssignee is what's under test.
+    await svc.addAssignee(agent(), id, { userId: agentId });
+    await expect(svc.removeAssignee(agent(), id, agentId)).resolves.toBeUndefined();
   }, 30_000);
 
   it('TASK-10) manager creates/updates any task (capability no-op)', async () => {
@@ -296,7 +304,7 @@ describe('task_assigned in-app notification on assign', () => {
     expect(arg.body ?? '').not.toMatch(/05\d{8}/);
   }, 30_000);
 
-  it('TASK-N3) create WITH assigneeIds emits task_assigned to EACH assignee', async () => {
+  it('TASK-N3) create WITH assigneeIds emits task_assigned to EACH assignee (incl. the auto-added creator, D-O6)', async () => {
     const emit = vi.fn(
       async (_input: { type: string; recipientId: string; orgId: string }): Promise<boolean> =>
         true,
@@ -307,10 +315,15 @@ describe('task_assigned in-app notification on assign', () => {
       projectId: assignedProjectId,
       assigneeIds: [agentId],
     });
-    expect(emit).toHaveBeenCalledTimes(1);
-    expect(emit.mock.calls[0]![0].type).toBe('task_assigned');
-    expect(emit.mock.calls[0]![0].recipientId).toBe(agentId);
-    expect(emit.mock.calls[0]![0].orgId).toBe(org.id);
+    // D-O6: the assignee set is now {creator (manager), agentId} — deduped — so a
+    // task_assigned notification fires for EACH, the creator included. (Pre-D-O6
+    // only agentId was an assignee → a single emit.) Assert both recipients,
+    // order-independent, each exactly once; all task_assigned to this org.
+    expect(emit).toHaveBeenCalledTimes(2);
+    const calls = emit.mock.calls.map((c) => c[0]);
+    expect(calls.every((a) => a.type === 'task_assigned')).toBe(true);
+    expect(calls.every((a) => a.orgId === org.id)).toBe(true);
+    expect(calls.map((a) => a.recipientId).sort()).toEqual([managerId, agentId].sort());
   }, 30_000);
 
   it('TASK-N2) a notify failure NEVER fails the assignment (best-effort isolation)', async () => {

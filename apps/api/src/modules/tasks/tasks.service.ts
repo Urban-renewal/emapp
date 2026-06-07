@@ -304,6 +304,14 @@ export class TasksService {
     return toTask(row);
   }
 
+  /**
+   * Create a task. D-O6 — the creating user (`user.sub`) is auto-added to
+   * the task's assignee set. Task READ visibility for agents is
+   * assignee-based (see `loadVisible`/`list`), so without auto-assigning
+   * the creator a freshly-created task would VANISH from its creator's
+   * view. The assignee `Set` de-dups, so a creator who also appears in
+   * `input.assigneeIds` still yields exactly ONE `task_assignees` row.
+   */
   async create(user: AccessTokenPayload, input: CreateTask): Promise<Task> {
     const { created, assignedUserIds } = await withTenant(
       user.orgId,
@@ -337,7 +345,9 @@ export class TasksService {
           throw new InternalServerErrorException({
             error: { code: 'insert_no_row', message: 'unexpected db state' },
           });
-        const assigneeIds = [...new Set(input.assigneeIds ?? [])];
+        // D-O6 — auto-assign the creator. The Set de-dups, so a creator who
+        // is also in input.assigneeIds yields exactly one task_assignees row.
+        const assigneeIds = [...new Set([user.sub, ...(input.assigneeIds ?? [])])];
         if (assigneeIds.length > 0) {
           for (const uid of assigneeIds) await this.assertMember(tx, user.orgId, uid);
           await tx

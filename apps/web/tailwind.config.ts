@@ -19,6 +19,15 @@
  *   4. Heebo at 3 weights (400/500/700) per PR #47 LCP gain. Loaded
  *      via next/font in `[locale]/layout.tsx`; this config only
  *      references `var(--font-heebo)`.
+ *
+ * CANONICAL COLOR SOURCE (P1-2): `src/app/globals.css` `:root` is the
+ * single source of truth for color. The raw-hex `navy`/`ink`/`success`/
+ * `warning`/`danger` values below DUPLICATE the `--navy-*`/`--ink-*`/…
+ * CSS vars in globals.css and MUST be kept in lock-step until this side
+ * is rebased onto `hsl(var(--…))` refs (incremental Phase-10 work, see
+ * docs/ARCHITECTURE-fe-design-tokens.md). Components must use these
+ * tokens/utilities, never new inline hex/hsl — enforced by
+ * `src/app-no-new-inline-colors.spec.ts`.
  */
 import type { Config } from 'tailwindcss';
 import rtl from 'tailwindcss-rtl';

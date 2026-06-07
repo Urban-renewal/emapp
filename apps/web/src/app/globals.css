@@ -4,6 +4,29 @@
  * in A.S1 PR-1 (V11 canary, Track A). Companion: `tailwind.config.ts`
  * (Tailwind palette mapping).
  *
+ * ━━━ CANONICAL COLOR SOURCE (P1-2) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * This file's `:root` CSS custom properties are THE single source of
+ * truth for color in the web app. Components MUST consume colors via
+ * these tokens (`var(--text)`, `var(--navy-900)`, …) or the Tailwind
+ * classes that map to them in `tailwind.config.ts` (`text-foreground`,
+ * `bg-navy-900`, …). Do NOT introduce new inline hex (`#rrggbb`) or
+ * `hsl()/hsla()` literals in component `style={{…}}` / `className` /
+ * SVG attributes — that fractures the single source and breaks the
+ * future re-skin + per-org branding (which override tokens here).
+ * A static ratchet enforces this: `src/app-no-new-inline-colors.spec.ts`
+ * fails the build if the inline-color count increases.
+ *
+ * KNOWN DUPLICATION (documented, NOT yet removed — incremental
+ * Phase-10 consolidation per docs/ARCHITECTURE-fe-design-tokens.md):
+ * the partner palette is declared TWICE — once here as CSS vars
+ * (`--navy-*`, `--ink-*`, `--success-*`, `--warning-*`, `--danger-*`)
+ * and once in `tailwind.config.ts` `theme.extend.colors` as raw hex.
+ * The two must be kept in lock-step until the Tailwind side is rebased
+ * onto `hsl(var(--…))` references (the same way the shadcn aliases
+ * already are). Ripping out the duplication now is OUT OF SCOPE for
+ * P1-2 — this comment is the breadcrumb for that follow-up slice.
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ *
  * Layout:
  *   1. @tailwind directives — unchanged.
  *   2. :root — shadcn HSL vars UNCHANGED + partner semantic aliases ADDED.

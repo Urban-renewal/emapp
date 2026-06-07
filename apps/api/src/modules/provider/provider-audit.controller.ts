@@ -9,9 +9,12 @@
  */
 import {
   ProviderAuditQuerySchema,
+  ProviderSelfAuditQuerySchema,
   type ApiList,
   type ProviderAuditItem,
   type ProviderAuditQuery,
+  type ProviderSelfAuditItem,
+  type ProviderSelfAuditQuery,
 } from '@emapp/shared-types';
 import { Controller, Get, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
@@ -43,5 +46,20 @@ export class ProviderAuditController {
     @Query(new ZodValidationPipe(ProviderAuditQuerySchema)) query: ProviderAuditQuery,
   ): Promise<ApiList<ProviderAuditItem>> {
     return this.svc.search(actor, reason, query);
+  }
+
+  /**
+   * `GET /api/v1/provider/audit/self` (B-PROVIDER-2) — the PROVIDER'S OWN action
+   * log (provider_audit_log), distinct from `GET /provider/audit` (customers').
+   * Same two-layer provider gate + mandatory access-reason + self-audit
+   * interceptor. Answers D.37: "who on our team accessed customer X, when, why?"
+   */
+  @Get('self')
+  async selfSearch(
+    @CurrentProvider() actor: ProviderPrincipal,
+    @AccessReason() reason: string,
+    @Query(new ZodValidationPipe(ProviderSelfAuditQuerySchema)) query: ProviderSelfAuditQuery,
+  ): Promise<ApiList<ProviderSelfAuditItem>> {
+    return this.svc.selfSearch(actor, reason, query);
   }
 }

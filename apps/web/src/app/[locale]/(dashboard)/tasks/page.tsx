@@ -25,7 +25,7 @@ export default function TasksPage() {
   const tp = useTranslations('projects');
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const canCreate = useHasPermission('tasks.create');
-  const { data, isLoading, isError, refetch } = useTaskList({ limit: 25, cursor });
+  const { data, isLoading, isError, error, refetch } = useTaskList({ limit: 25, cursor });
   const items = data?.items ?? [];
 
   return (
@@ -42,11 +42,14 @@ export default function TasksPage() {
       <ListPageShell
         isLoading={isLoading}
         isError={isError}
+        error={error}
         itemCount={items.length}
         page={data?.page}
         cursor={cursor}
         loadFailedLabel={t('loadFailed')}
         emptyLabel={t('empty')}
+        accessDeniedTitle={tp('accessDeniedTitle')}
+        accessDeniedBody={tp('accessDeniedBody')}
         retryLabel={tp('retry')}
         nextLabel={tp('next')}
         resetLabel={tp('resetToFirstPage')}

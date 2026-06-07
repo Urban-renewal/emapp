@@ -44,7 +44,7 @@ export default function NotesPage() {
     return m;
   }, [membersQuery.data]);
 
-  const { data, isLoading, isError, refetch } = useNoteList({ limit: 25, cursor }, lookup);
+  const { data, isLoading, isError, error, refetch } = useNoteList({ limit: 25, cursor }, lookup);
   const items = data?.items ?? [];
   const canCreate = useHasPermission('notes.create');
 
@@ -62,11 +62,14 @@ export default function NotesPage() {
       <ListPageShell
         isLoading={isLoading}
         isError={isError}
+        error={error}
         itemCount={items.length}
         page={data?.page}
         cursor={cursor}
         loadFailedLabel={t('loadFailed')}
         emptyLabel={t('empty')}
+        accessDeniedTitle={tp('accessDeniedTitle')}
+        accessDeniedBody={tp('accessDeniedBody')}
         retryLabel={tp('retry')}
         nextLabel={tp('next')}
         resetLabel={tp('resetToFirstPage')}

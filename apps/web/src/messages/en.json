@@ -633,7 +633,8 @@
       "loadFailed": "Failed to load tenants.",
       "empty": "No tenants.",
       "countsLine": "{users} users · {projects} projects · {owners} owners",
-      "createTenant": "New tenant"
+      "createTenant": "New tenant",
+      "suspended": "Suspended"
     },
     "onboard": {
       "title": "Create a new tenant",

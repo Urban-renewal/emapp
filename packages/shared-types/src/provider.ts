@@ -37,6 +37,10 @@ export const TenantListItemSchema = z.object({
   slug: z.string(),
   createdAt: z.coerce.date(),
   archivedAt: z.coerce.date().nullable(),
+  /** Non-null ⇒ the org is FROZEN (suspended, D.49) — distinct from archivedAt
+   *  soft-delete. Surfaced in the list so an operator can see frozen orgs while
+   *  scanning, without opening each detail view. */
+  suspendedAt: z.coerce.date().nullable(),
   /** Aggregated counts for the dashboard view. */
   counts: z.object({
     users: z.number().int().nonnegative(),

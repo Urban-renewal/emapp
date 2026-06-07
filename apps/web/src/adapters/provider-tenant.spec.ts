@@ -26,6 +26,7 @@ const SAMPLE_LIST_ROW = Object.freeze({
   slug: 'alpha',
   createdAt: new Date('2026-04-25T10:00:00Z'),
   archivedAt: null,
+  suspendedAt: null,
   counts: { users: 3, projects: 1, owners: 3 },
 });
 
@@ -72,6 +73,15 @@ describe('§provider-tenant.toTenantListItemVM', () => {
       'he',
     );
     expect(vm.isArchived).toBe(true);
+  });
+
+  it('2b) suspended row sets isSuspended=true (distinct from archived)', () => {
+    const vm = toTenantListItemVM(
+      { ...SAMPLE_LIST_ROW, suspendedAt: new Date('2026-05-02T00:00:00Z') },
+      'he',
+    );
+    expect(vm.isSuspended).toBe(true);
+    expect(vm.isArchived).toBe(false);
   });
 
   it('3) toTenantListItemVMs preserves order and length', () => {

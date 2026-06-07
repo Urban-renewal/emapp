@@ -7,6 +7,16 @@ the ONLY things that wait are 3 external accounts you open + 2 inputs only you p
 rest is all in the order below. Caveat: consolidated from systematic code-grounded sweeps;
 a one-org beta will surface the real edge cases (see the beta note).
 
+**Reconciliation note (2026-06-07):** this list was cross-checked against the project's OWN
+documented-issue ledgers (OPEN-ITEMS-v8, AUDIT-V1-1, FINDINGS-REGISTER, STATE-OF-PRODUCT,
+SYSTEM-STATE-AUDIT, DV-FINDINGS, V10-FE-INLINE, DECISIONS-V12, GATES, MASTER-PLAN-V11). Those
+are mostly **stale ledgers**: of 14 high-impact findings re-verified against current code, **9
+were already FIXED** (provider FE login, projects/documents indexes, owners.name encryption,
+otp_codes RLS, trustProxy=1-hop, provider-role-from-DB, CSV formula-injection, dashboard KPIs,
+R2 file_deleted_at, #227 proxy). The genuinely-open engineering items are folded in below
+(Phase 3 #5a + the Pre-launch Hardening + Deferred-by-Decision registers). False findings were
+dropped, not listed.
+
 Tags: 🔴blocker 🟠high 🟡med ⚪low · effort S(hours) M(days) L(week) · 🌐external 🧩your-input
 
 ---
@@ -58,6 +68,13 @@ orgId)` over the existing `organizations.settings` jsonb (NO migration). The one
    UI-only).
 5. **Contractor share-token URL→httpOnly cookie** 🟡 M — exchange the 30-day URL token for
    an httpOnly cookie on first load (stop referrer/history/log leakage).
+   5a. **Scheduler / periodic runner (H4) — VERIFIED OPEN** 🟠 M — no `.schedule()` job exists;
+   the "orphan-sweeper" referenced in code is fiction. Build one pg-boss CRON runner. It is
+   foundational + carries a PII-retention angle, so it sits in the trust tier. **Unblocks
+   (its tail, all VERIFIED open):** R2 PII-byte purge-RETRY on failed imports (Israeli
+   privacy / right-to-erasure) · session/otp/cache_kv/notifications reapers (L5) · signature
+   `expired` status + transition + notify (L6 — no `expired` enum value today) · task
+   due-date / overdue firing (L7 — badge computes but nothing fires).
 
 ## Phase 4 — Core-loop correctness (the signature journey works end-to-end)
 
@@ -149,6 +166,48 @@ notifications`, default = D-O7 (managers always + scope − actor). **Retrofit
     data layer is never touched.
 
 ---
+
+## 🔒 PRE-LAUNCH HARDENING (Gate-5 — before prod, mostly small; from the audit reconciliation)
+
+VERIFIED-open hardening that gates production (do alongside the Phase-0-from-day-1 externals):
+
+- **PROVIDER_DATABASE_URL fail-fast (SA-1) — VERIFIED OPEN** 🟠 S — `client.ts:121` +
+  `worker/main.ts:119` fall back to `DATABASE_URL` when unset → the provider pool silently
+  loses BYPASSRLS role separation. Drop the fallback for non-test; add a boot probe asserting
+  the provider role. _Deploy-safety._
+- **Dedicated `SHARE_TOKEN_SECRET` (SEC-7) — VERIFIED OPEN** ⚪ S — `share-token.service.ts:65`
+  reuses `JWT_SECRET` (code comments it as "PL hardening pending"). Give the contractor share
+  token its own secret (mirrors the signature-token separation) so one leak ≠ all tiers.
+- **Gate-5 prod-deploy checklist (GATES.md)** 🌐 — the deploy-time wiring: Resend real
+  provider at the factory (= the email external) · R2 real-provider swap + the R1–R4 storage
+  attestation · D.28 presigned-URL confidentiality re-check. _Owner + deploy._
+- **getMe SSR self-hop (PERF-2 / D.53)** 🟡 — decided to fix at the deploy layer (direct
+  server→API call + timeout) paired with DB colocation. Pre-launch (PL1).
+- **3-round-trip CI gate (D.52)** ⚪ S — pin `withTenant` round-trips at the spec-safe floor of
+  3 as a regression test. Pre-launch.
+- **FUNC-1 owner empty-email** ⚪ S — re-verify: the create _blocker_ appears resolved
+  (`owner.ts:80` `.nullable().optional()` accepts `""`); the residual is a minor data-quality
+  nuance (store `""` vs `null`). Coerce `"" → undefined` in the FE form. _Low._
+
+## 📋 DEFERRED BY DECISION (documented CHOICES, not missed gaps — listed for completeness)
+
+These have decision records; they are intentionally not-now. Surfaced so nothing is hidden:
+
+- **Class-2 legacy↔engine strangler** (~37 service sites still scope by legacy JWT `user.role`
+  vs engine assignments; PII capability split-brain root). SAFE until custom roles exist;
+  bounded; complete via parallel-write + equivalence proof + cutover. _(CHAIN-RISK-REGISTER.)_
+- **Optimistic locking on PATCH races (M-7)** → V12 (no observed real-world race).
+- **Provider audit tamper-evidence (SA-2)** `row_hash`/`prev_hash` chain → enterprise-prospect
+  trigger (not MVP).
+- **AUDIT-V1-1 provider-tier hardening cluster** — a set of MED items (SRP refactor of
+  `withProvider` CC-3/SA-10/SA-11, ISP `ProviderActor` CC-4, audit-on-rejected-request SA-6,
+  audit-tx-ordering SA-7, access-reason quality CC-2, audit-search date-cap SA-4, per-controller
+  rate-limits SA-9). **Partly already done** (trustProxy, provider-role-from-DB, login-failure
+  audit were verified FIXED) — the rest is **verify-then-fix** when Phase 7 (provider) is built,
+  NOT taken on faith. _(AUDIT-V1-1-PHASE6.5-FINDINGS.)_
+- **§v8 scale-tier deferrals** — `withProvider` audit two-tx ordering, `audit_log` RLS
+  `WITH CHECK (actor_id)`, ImportJobHandler SRP decomposition, `withTenant` round-trip collapse.
+  Pre-scale, not pre-launch. _(OPEN-ITEMS-v8.)_
 
 ## 🧪 Recommended checkpoint: ONE-ORG BETA after Phase 4
 

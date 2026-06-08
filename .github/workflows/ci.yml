@@ -138,6 +138,16 @@ jobs:
       # value is a test-only literal (NOT the prod value).
       SIGNATURE_TOKEN_SECRET: ci-test-signature-token-secret-min-44-chars-ok-ok
       THROTTLE_TEST_BYPASS: contract-suite
+      # Public self-service signup is INACTIVE by default in production
+      # (PUBLIC_SIGNUP_ENABLED unset/'0' → POST /auth/signup 404, refines
+      # D.21). The black-box contract suite bootstraps EVERY org via
+      # `POST /auth/signup` over HTTP, so the conformance API server (and
+      # ONLY this test server) must run with the flag ON or ~18 contract
+      # specs would 404 at bootstrap. This does NOT weaken the prod default:
+      # it lives solely in the conformance job's env, the schema default in
+      # packages/config/src/env.ts stays '0', and no prod/staging env sets it.
+      # See docs/decision-records/disable-public-signup.md.
+      PUBLIC_SIGNUP_ENABLED: '1'
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6

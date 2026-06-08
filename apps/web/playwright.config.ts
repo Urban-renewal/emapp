@@ -93,6 +93,11 @@ export default defineConfig({
       // started by ./e2e/global-setup.ts. The mock listens on 9999
       // by default; override via E2E_MOCK_BACKEND_PORT.
       API_BACKEND_URL: `http://127.0.0.1:${process.env['E2E_MOCK_BACKEND_PORT'] ?? '9999'}`,
+      // §signup-flag — public signup is OFF by default in prod (PR #315), so
+      // /he/signup redirects to /login. The auth-url-leak e2e suite verifies the
+      // signup FORM never leaks credentials into the URL — that form must render
+      // for the test, so the flag is forced ON here (e2e-only; prod stays '0').
+      NEXT_PUBLIC_SIGNUP_ENABLED: '1',
     },
     reuseExistingServer: !process.env['CI'],
     timeout: 180_000,

@@ -119,7 +119,11 @@ export {
   type R2SdkDeps,
   type R2ClientTuning,
 } from './providers/storage/r2-factory';
-export { FakeStorageProvider } from './providers/storage/fake.provider';
+export {
+  FakeStorageProvider,
+  STORAGE_NOT_CONFIGURED_MESSAGE,
+  type FakeStorageProviderOptions,
+} from './providers/storage/fake.provider';
 export type { ICacheProvider } from './providers/cache/cache.interface';
 export { PostgresCacheProvider } from './providers/cache/postgres.provider';
 export { FakeCacheProvider } from './providers/cache/fake.provider';

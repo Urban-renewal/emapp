@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { serverEnv } from '@emapp/config';
 import {
   AuditService,
+  DEFAULT_EMAIL_FROM,
+  buildEmailFrom,
   decryptOwnerName,
   documents,
   encryptField,
@@ -24,6 +26,7 @@ import {
 } from '@nestjs/common';
 import { and, eq, gt, sql } from 'drizzle-orm';
 
+import { getOrgSettings } from '../../common/org-settings.resolver';
 import {
   DOWNLOAD_URL_TTL_SECONDS,
   STORAGE_PROVIDER,
@@ -377,6 +380,24 @@ export class PublicSignService {
           },
         });
 
+        // P6 — resolve the org's branding.senderName into the From DISPLAY
+        // name (the address stays the verified system From). Built ONLY via
+        // buildEmailFrom (single source — header safety). Best-effort: a
+        // settings-read failure must NOT break the sign / the notifications —
+        // fall back to DEFAULT_EMAIL_FROM. (getOrgSettings is itself fail-soft;
+        // the try/catch is belt-and-suspenders, matching #306.) Resolved INSIDE
+        // this withTenant tx so organizations.settings is RLS-scoped.
+        let emailFrom = DEFAULT_EMAIL_FROM;
+        try {
+          const settings = await getOrgSettings(tx, claims.orgId);
+          emailFrom = buildEmailFrom(settings.branding.senderName, DEFAULT_EMAIL_FROM);
+        } catch (e: unknown) {
+          this.logger.warn(
+            `org-settings read failed for post-sign From display-name (org=${claims.orgId}); ` +
+              `using default From: ${e instanceof Error ? e.message : 'unknown'}`,
+          );
+        }
+
         // Bundle data needed for post-sign emails (T5.7). Fire AFTER
         // the tx commits so a slow Resend call never holds a DB
         // connection (same governed pattern as SignatureRequestsService.create).
@@ -385,6 +406,7 @@ export class PublicSignService {
           orgId: claims.orgId,
           documentId: req.documentId,
           ownerId: req.ownerId,
+          emailFrom,
           notify: {
             managerUserId: mgr?.id ?? null,
             managerEmail: mgr?.email ?? null,
@@ -408,6 +430,7 @@ export class PublicSignService {
             signedAt: result.signedAt,
           },
           { error: (m): void => this.logger.error(m) },
+          result.emailFrom,
         );
       } catch (e: unknown) {
         // notifyAfterSign already catches per-channel; this is a guard

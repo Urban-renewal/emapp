@@ -85,7 +85,7 @@ export function NotificationsConfig() {
         </p>
       )}
       {isError && (
-        <p className="text-[11px]" role="alert" style={{ color: 'var(--danger, #b91c1c)' }}>
+        <p className="text-[11px]" role="alert" style={{ color: 'var(--danger-700)' }}>
           {t('loadError')}
         </p>
       )}
@@ -112,7 +112,7 @@ export function NotificationsConfig() {
           </fieldset>
 
           {channels.length === 0 && (
-            <p className="text-[11px]" role="alert" style={{ color: 'var(--danger, #b91c1c)' }}>
+            <p className="text-[11px]" role="alert" style={{ color: 'var(--danger-700)' }}>
               {t('atLeastOne')}
             </p>
           )}
@@ -127,16 +127,12 @@ export function NotificationsConfig() {
                 {mutation.isPending ? t('saving') : t('save')}
               </button>
               {mutation.isSuccess && !dirty && (
-                <span className="text-[11px]" style={{ color: 'var(--success, #15803d)' }}>
+                <span className="text-[11px]" style={{ color: 'var(--success-700)' }}>
                   {t('saved')}
                 </span>
               )}
               {mutation.isError && (
-                <span
-                  className="text-[11px]"
-                  role="alert"
-                  style={{ color: 'var(--danger, #b91c1c)' }}
-                >
+                <span className="text-[11px]" role="alert" style={{ color: 'var(--danger-700)' }}>
                   {t('saveError')}
                 </span>
               )}

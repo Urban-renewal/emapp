@@ -24,7 +24,7 @@ const baseData: SignedCertificateData = {
   // The exact shapes the old hand-rolled bidi mirror-reversed: Hebrew + an
   // embedded number + a Hebrew address with a house number, in one name.
   documentName: 'הסכם התחדשות עירונית — דירה 12, רחוב הרצל 5',
-  documentHash: 'a3f1c0de9b8a7766554433221100ffeeddccbbaa00112233445566778899aabb',
+  documentHash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
   authMethod: 'public_link_v1',
   signedAt: new Date('2026-06-05T09:30:00.000Z'),
   ownerName: 'ישראל ישראלי',

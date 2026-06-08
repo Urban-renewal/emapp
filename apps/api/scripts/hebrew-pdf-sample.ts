@@ -19,7 +19,7 @@ async function main(): Promise<void> {
     // plus a Hebrew address with a house number — the exact shapes that the
     // old hand-rolled bidi garbled.
     documentName: 'הסכם התחדשות עירונית — דירה 12, רחוב הרצל 5, תל אביב',
-    documentHash: 'a3f1c0de9b8a7766554433221100ffeeddccbbaa00112233445566778899aabb',
+    documentHash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
     authMethod: 'public_link_v1',
     signedAt: new Date('2026-06-05T09:30:00.000Z'),
     ownerName: 'ישראל ישראלי',

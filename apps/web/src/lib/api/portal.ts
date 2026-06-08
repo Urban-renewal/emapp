@@ -88,3 +88,14 @@ export async function resendPortalSignature(id: string): Promise<SignatureDelive
   if (!isOk(res)) throw new ApiClientError(res.error);
   return ResendDataSchema.parse({ data: res.data }).data;
 }
+
+/** `PATCH /portal/me` (P4) — the resident self-updates their OWN email.
+ *  Pass `null` to clear it. The BE re-selects + returns the masked `me`
+ *  row; we re-parse it through the same `MeDataSchema` so the cache update
+ *  is schema-validated. EMAIL only (phone/national_id are immutable here —
+ *  the BE `.strict()` DTO rejects any other key). */
+export async function updatePortalContact(email: string | null): Promise<TenantPortalMe> {
+  const res = await apiClient.patch<unknown>('/portal/me', { email });
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return MeDataSchema.parse({ data: res.data }).data;
+}

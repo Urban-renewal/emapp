@@ -23,6 +23,7 @@ import {
   usePortalProgress,
   usePortalSignatures,
   useResendPortalSignature,
+  useUpdatePortalContact,
 } from '@/hooks/use-portal';
 
 /**
@@ -351,7 +352,7 @@ export default function TenantPortalPage() {
           </p>
         ) : (
           <dl
-            className="grid gap-x-6 gap-y-1.5 text-sm"
+            className="grid items-center gap-x-6 gap-y-2.5 text-sm"
             style={{ gridTemplateColumns: '120px 1fr', color: 'var(--text)' }}
           >
             <dt style={{ color: 'var(--text-muted)' }}>{t('identity.name')}</dt>
@@ -363,22 +364,27 @@ export default function TenantPortalPage() {
             <dd className="tabular" dir="ltr">
               {me.data.nationalIdMasked}
             </dd>
+            {/* Phone is READ-ONLY this slice (P4): it's the SMS-OTP auth
+                factor, so a change must OTP-verify the new number first
+                (deferred Gate-6 slice). Show the masked phone + a note. */}
             {me.data.phoneMasked && (
               <>
                 <dt style={{ color: 'var(--text-muted)' }}>{t('identity.phone')}</dt>
-                <dd className="tabular" dir="ltr">
-                  {me.data.phoneMasked}
+                <dd className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="tabular" dir="ltr">
+                    {me.data.phoneMasked}
+                  </span>
+                  <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    {t('identity.phoneReadOnlyNote')}
+                  </span>
                 </dd>
               </>
             )}
-            {me.data.email && (
-              <>
-                <dt style={{ color: 'var(--text-muted)' }}>{t('identity.email')}</dt>
-                <dd className="break-all" dir="ltr">
-                  <NameDisplay name={me.data.email} />
-                </dd>
-              </>
-            )}
+            {/* Email — the ONLY self-editable contact field this slice. */}
+            <dt style={{ color: 'var(--text-muted)' }}>{t('identity.email')}</dt>
+            <dd>
+              <EmailRow email={me.data.email} />
+            </dd>
           </dl>
         )}
       </Section>
@@ -646,6 +652,105 @@ function StatTile({ label, value }: StatTileProps) {
         {value}
       </div>
     </div>
+  );
+}
+
+/**
+ * Inline self-edit affordance for the EMAIL row (P4). EMAIL is the only
+ * self-editable contact field this slice — phone is the OTP auth factor
+ * (deferred) and national_id is immutable. The BE `PortalUpdateContactSchema`
+ * is `.strict()`, so the wire only ever carries `{ email }`.
+ *
+ * Form discipline (FE DoD): a real form element with `method="post"` +
+ * `action=""` (defense-in-depth — no GET-fallback credential/PII leak in
+ * the SSR HTML) and an inline `onSubmit` that `preventDefault()`s and
+ * drives the mutation. An empty trimmed value clears the email (sends
+ * `null`, which the BE accepts via `.nullable()`).
+ */
+function EmailRow({ email }: { email: string | null }) {
+  const t = useTranslations('portal');
+  const update = useUpdatePortalContact();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(email ?? '');
+
+  function startEdit(): void {
+    setValue(email ?? '');
+    update.reset();
+    setEditing(true);
+  }
+
+  function cancel(): void {
+    update.reset();
+    setEditing(false);
+  }
+
+  function onSubmit(e: React.FormEvent<HTMLFormElement>): void {
+    e.preventDefault();
+    const trimmed = value.trim();
+    update.mutate(trimmed === '' ? null : trimmed, {
+      onSuccess: () => setEditing(false),
+    });
+  }
+
+  if (!editing) {
+    return (
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+        {email ? (
+          <span className="break-all" dir="ltr">
+            <NameDisplay name={email} />
+          </span>
+        ) : (
+          <span style={{ color: 'var(--text-muted)' }}>{t('identity.emailEmpty')}</span>
+        )}
+        <Button variant="outline" size="sm" onClick={startEdit}>
+          {email ? t('identity.emailEdit') : t('identity.emailAdd')}
+        </Button>
+      </span>
+    );
+  }
+
+  return (
+    <form
+      method="post"
+      action=""
+      onSubmit={onSubmit}
+      className="flex flex-wrap items-center gap-2"
+      noValidate
+    >
+      <label className="sr-only" htmlFor="portal-email">
+        {t('identity.email')}
+      </label>
+      <input
+        id="portal-email"
+        name="email"
+        type="email"
+        dir="ltr"
+        className="input"
+        style={{ maxWidth: 260 }}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        disabled={update.isPending}
+        autoComplete="email"
+        placeholder={t('identity.emailPlaceholder')}
+      />
+      <Button type="submit" size="sm" disabled={update.isPending}>
+        {update.isPending ? t('identity.emailSaving') : t('identity.emailSave')}
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={cancel}
+        disabled={update.isPending}
+      >
+        {t('identity.emailCancel')}
+      </Button>
+      {update.isError && (
+        <span className="text-[11px]" style={{ color: 'var(--danger-700)' }}>
+          {t('identity.emailError')}
+        </span>
+      )}
+    </form>
   );
 }
 

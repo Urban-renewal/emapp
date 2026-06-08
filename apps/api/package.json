@@ -54,7 +54,7 @@
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.1.24",
     "@types/adm-zip": "^0.5.8",
-    "@types/node": "^20.0.0",
+    "@types/node": "^20.19.42",
     "@types/webpack-node-externals": "^3.0.4",
     "adm-zip": "^0.5.17",
     "fastify": "^5.0.0",

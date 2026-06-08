@@ -27,3 +27,6 @@ apps/web/public/mockServiceWorker.js
 start-dev-local.ps1
 mfa-code.ps1
 packages/db/scripts/_tmp_*.ts
+
+# Throwaway scratch output (eyeball PDFs, scratch fixtures) — never commit.
+/tmp/

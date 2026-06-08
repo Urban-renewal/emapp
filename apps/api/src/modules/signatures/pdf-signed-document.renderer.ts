@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
+import { toVisualRuns } from './bidi-reorder';
 import { HEEBO_HEBREW_400_WOFF_B64 } from './heebo-font';
 import type {
   ISignedDocumentRenderer,
@@ -14,11 +15,13 @@ import type {
  * (pdf-lib). One implementation of ISignedDocumentRenderer — swappable for an
  * external e-sign integration without touching SignedDocumentService.
  *
- * KNOWN ISSUE (tracked, see docs/AUTONOMOUS-PROGRESS.md B-A1): the Hebrew
- * layout uses a hand-rolled single-level bidi (manual reversal + per-run x).
- * It is correct for simple labels but reportedly renders messy in some viewers.
- * Because this is now isolated behind the interface, the fix (proper UBA via
- * bidi-js, or rasterise-Hebrew-to-image) is a single-class change here.
+ * Hebrew layout uses the real Unicode Bidi Algorithm (`bidi-js`, see
+ * `./bidi-reorder`): the logical string is reordered to VISUAL order with an
+ * RTL base direction, then segmented into font-runs by script and drawn
+ * left-to-right. This handles mixed content — Hebrew + digits/Latin/dates
+ * ("דירה 12", "רחוב הרצל 5") — correctly, with numbers kept left-to-right
+ * inside RTL text. (Previously a hand-rolled single-level reversal garbled
+ * any mixed line; that is the bug this renderer no longer has.)
  */
 @Injectable()
 export class PdfSignedDocumentRenderer implements ISignedDocumentRenderer {
@@ -30,22 +33,11 @@ export class PdfSignedDocumentRenderer implements ISignedDocumentRenderer {
 
 // ── pdf-lib certificate composition ──────────────────────────────────────────
 // pdf-lib has no native bidi AND the embedded Heebo woff is a HEBREW SUBSET
-// (no Latin glyphs / digits). So we split each string into runs by script and
-// render each run with the right font (Heebo for Hebrew, Helvetica for
-// ASCII/digits/punct), laying runs out right-to-left.
-function isHebrew(ch: string): boolean {
-  return /[֐-׿]/.test(ch);
-}
-function splitRuns(s: string): { text: string; heb: boolean }[] {
-  const runs: { text: string; heb: boolean }[] = [];
-  for (const ch of s) {
-    const heb = isHebrew(ch);
-    const last = runs[runs.length - 1];
-    if (last && last.heb === heb) last.text += ch;
-    else runs.push({ text: ch, heb });
-  }
-  return runs;
-}
+// (no Latin glyphs / digits). `./bidi-reorder` (bidi-js) maps a logical string
+// to VISUAL order under the Unicode Bidi Algorithm; here we segment that visual
+// string into runs by script and render each with the right font (Heebo for
+// Hebrew, Helvetica for ASCII/digits/punct), drawing runs LEFT-TO-RIGHT in
+// visual order at computed x, right-aligned to the RTL margin.
 
 async function buildSignatureCertificatePdf(d: SignedCertificateData): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
@@ -83,16 +75,22 @@ async function buildSignatureCertificatePdf(d: SignedCertificateData): Promise<U
         .join('');
     }
   };
-  // Draw Hebrew/mixed text right-aligned, run-by-run with per-script font.
+  // Draw Hebrew/mixed text right-aligned. `toVisualRuns` (bidi-js) returns the
+  // string in VISUAL order, already segmented into per-script font runs; we
+  // draw them LEFT-TO-RIGHT (no manual reversal — UBA owns letter+run order).
+  // Right-alignment: lay the runs out starting at `right - totalWidth` so the
+  // visually-last glyph lands on the RTL margin.
   const drawRtlMixed = (text: string, size: number, color = navy): void => {
-    let x = right;
-    for (const run of splitRuns(text)) {
+    const runs = toVisualRuns(text).map((run) => {
       const font = run.heb ? heebo : helv;
-      const raw = run.heb ? [...run.text].reverse().join('') : run.text;
-      const glyphs = encodeSafe(font, raw);
-      const w = font.widthOfTextAtSize(glyphs, size);
-      x -= w;
-      page.drawText(glyphs, { x, y, size, font, color });
+      const glyphs = encodeSafe(font, run.text);
+      return { font, glyphs, width: font.widthOfTextAtSize(glyphs, size) };
+    });
+    const totalWidth = runs.reduce((sum, r) => sum + r.width, 0);
+    let x = right - totalWidth;
+    for (const run of runs) {
+      page.drawText(run.glyphs, { x, y, size, font: run.font, color });
+      x += run.width;
     }
   };
   // LTR value, left-aligned (hashes/timestamps — pure ASCII).

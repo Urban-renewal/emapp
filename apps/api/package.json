@@ -35,6 +35,7 @@
     "@node-rs/argon2": "^2.0.2",
     "@pdf-lib/fontkit": "^1.1.1",
     "@sentry/node": "^8.0.0",
+    "bidi-js": "1.0.3",
     "drizzle-orm": "^0.45.2",
     "exceljs": "^4.4.0",
     "ical-generator": "^10.2.0",

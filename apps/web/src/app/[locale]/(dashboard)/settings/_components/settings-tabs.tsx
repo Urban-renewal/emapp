@@ -7,6 +7,8 @@ import { useState } from 'react';
 
 import { NameDisplay } from '@/components/ui/name-display';
 
+import { NotificationsConfig } from './notifications-config';
+
 /**
  * V11 A.S10 client island — tab switcher + per-tab content. Lifted
  * out of the page-level Server Component so the Server Component can
@@ -155,14 +157,7 @@ export function SettingsTabs({ user, organization }: Props) {
         </section>
       )}
 
-      {tab === 'notifications' && (
-        <ComingSoonTabBody
-          headingId="set-notif-h"
-          section={t('notifications.section')}
-          description={t('notifications.description')}
-          comingSoon={t('comingSoon')}
-        />
-      )}
+      {tab === 'notifications' && <NotificationsConfig />}
 
       {tab === 'integrations' && (
         <ComingSoonTabBody

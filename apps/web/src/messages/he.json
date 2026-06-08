@@ -527,7 +527,14 @@
       "rooms": "חדרים",
       "sizeSqm": "מ\"ר",
       "status": "סטטוס",
-      "notes": "הערות"
+      "notes": "הערות",
+      "unitType": "סוג היחידה"
+    },
+    "unitType": {
+      "apt": "דירה (מגורים)",
+      "shop": "מסחר/חנות",
+      "office": "משרד",
+      "mixed": "מעורב"
     }
   },
   "signatureRequests": {

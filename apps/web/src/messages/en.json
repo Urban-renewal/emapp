@@ -459,6 +459,7 @@
     "download": "Download",
     "downloading": "Preparing...",
     "downloadFailed": "Download failed.",
+    "uploadIncomplete": "This document's upload did not complete — please re-upload.",
     "searchPlaceholder": "Search document, type…",
     "noResults": "No results match the search",
     "viewCards": "Cards view",

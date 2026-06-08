@@ -208,3 +208,114 @@ export function resolveOrgSettings(raw: unknown): OrgSettings {
   const parsed = OrgSettingsSchema.safeParse(raw ?? {});
   return parsed.success ? parsed.data : DEFAULT_ORG_SETTINGS;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// THE WRITE contract — the PATCH body for `PATCH /api/v1/org/settings`
+// (P6-1: the admin write surface for the seam).
+//
+// A PATCH is a PARTIAL override: a caller sends only the namespaces/leaves it
+// wants to change, and the BE deep-merges that over the stored jsonb (so an
+// untouched namespace — and untouched LEAVES within a touched namespace — are
+// preserved, never clobbered). The patch is a TRUE partial: every leaf is
+// `.optional()` WITHOUT a default, so an absent leaf stays ABSENT after parse.
+// `{ signatures: { linkTtlDays: 30 } }` parses to EXACTLY
+// `{ signatures: { linkTtlDays: 30 } }` (NO `channels` key) — the service merge
+// then preserves the org's stored `channels`. `{ notifications: {} }` and `{}`
+// are no-ops.
+//
+// WHY NOT `.deepPartial()`: `.deepPartial()` keeps each leaf's baked `.default`,
+// so parsing one leaf would INJECT every sibling leaf's default — the service
+// spread `{ ...storedNs, ...patchVal }` would then RESET the unsent siblings to
+// their defaults (silent data loss). `.deepPartial()` also rebuilds the nested
+// namespace objects WITHOUT `.strict()`, so a stray leaf was silently STRIPPED
+// instead of 400'd. Both are fixed by deriving the patch from the read schema's
+// field definitions with defaults STRIPPED and `.strict()` reapplied per
+// namespace (below).
+//
+// REJECT UNKNOWN KEYS — every namespace object AND the top level is `.strict()`.
+// A typo'd namespace (`{ notificatons: … }`) or a stray leaf
+// (`{ branding: { color: … } }`) is a 400, not a silently-stored (or silently-
+// stripped) junk key. (The fail-soft READ path tolerates junk for resilience;
+// the WRITE path is strict so the stored value stays clean — defense in depth,
+// not contradiction.)
+//
+// VALUE BOUNDS are the SAME sub-schema constraints as the read side — the patch
+// is DERIVED from `OrgSettingsObject` (single source of truth, cannot drift):
+// `signatures.linkTtlDays` stays int 1..90, `limits.bulkCap` int 1..1000,
+// `branding.emailFrom` a valid email, `messaging.templates` values stay strict,
+// etc. A PATCH that violates a bound is a 400 — no clamping of an out-of-range
+// value into range (that would silently accept a different value than the
+// caller sent). The SECURITY-FLOOR tighten-only rule (a loosening clamp) is
+// enforced in the BE service, NOT here — see
+// `apps/api/.../org-settings.service.ts` `TIGHTEN_ONLY` and the SECURITY FLOOR
+// note atop this file (no floored knob is modeled in this seam YET, by design,
+// so the registry is wired-but-empty).
+//
+// No `.catch` anywhere on the patch — we never want a malformed PATCH to
+// silently degrade to a default and persist that; a bad write must be a loud
+// 400, unlike a bad READ which fails soft.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Peel any chain of `.default(...)` wrappers off a schema, returning the inner
+ *  schema with its bounds intact but no default applied. (A leaf wrapped in
+ *  `.default(x)` would otherwise INJECT `x` when the key is absent — exactly the
+ *  data-loss footgun the patch must avoid.) */
+function stripDefault<T extends z.ZodTypeAny>(schema: T): z.ZodTypeAny {
+  let current: z.ZodTypeAny = schema;
+  while (current instanceof z.ZodDefault) {
+    current = current._def.innerType as z.ZodTypeAny;
+  }
+  return current;
+}
+
+/** Derive the PATCH form of one top-level field from its READ definition:
+ *  - an OBJECT namespace → each leaf default-stripped + `.optional()`, the whole
+ *    namespace `.strict()` (stray leaf → error) and itself `.optional()`;
+ *  - a SCALAR namespace (`locale`/`timezone`) → default-stripped + `.optional()`.
+ *  Bounds (`.min`/`.max`/`.email`/enum/strict record values) are carried over
+ *  verbatim from the read schema — nothing is weakened. */
+function toPatchField(field: z.ZodTypeAny): z.ZodTypeAny {
+  const inner = stripDefault(field);
+  if (inner instanceof z.ZodObject) {
+    const patchShape: Record<string, z.ZodTypeAny> = {};
+    for (const [leafKey, leafSchema] of Object.entries(inner.shape as z.ZodRawShape)) {
+      patchShape[leafKey] = stripDefault(leafSchema).optional();
+    }
+    return z.object(patchShape).strict().optional();
+  }
+  return inner.optional();
+}
+
+const orgSettingsPatchShape = Object.fromEntries(
+  Object.entries(OrgSettingsObject.shape as z.ZodRawShape).map(([key, field]) => [
+    key,
+    toPatchField(field),
+  ]),
+) as Record<keyof typeof OrgSettingsObject.shape, z.ZodTypeAny>;
+
+export const OrgSettingsPatchSchema = z.object(orgSettingsPatchShape).strict();
+
+/**
+ * The PATCH body TYPE — a TRUE one-level-deep partial of `OrgSettings`: every
+ * top-level namespace optional, and within an OBJECT namespace every leaf
+ * optional too (so the FE can send `{ signatures: { linkTtlDays } }` without
+ * `channels`). Derived from `OrgSettings` itself (not re-inferred from the
+ * runtime schema, whose dynamic shape erases precise leaf types) so the FE keeps
+ * full leaf-level type-checking AND the type cannot drift from the read shape.
+ * Scalar namespaces (`locale`/`timezone`) keep their exact literal/string type.
+ */
+export type OrgSettingsPatch = {
+  [K in keyof OrgSettings]?: OrgSettings[K] extends readonly unknown[]
+    ? OrgSettings[K]
+    : OrgSettings[K] extends object
+      ? Partial<OrgSettings[K]>
+      : OrgSettings[K];
+};
+
+/** The top-level namespace keys of the settings tree — the audit "changed"
+ *  surface (NAMES ONLY; never values). Derived from the base object so it can
+ *  never drift from the schema. */
+export const ORG_SETTINGS_NAMESPACES = Object.keys(OrgSettingsObject.shape) as Array<
+  keyof typeof OrgSettingsObject.shape
+>;
+export type OrgSettingsNamespace = (typeof ORG_SETTINGS_NAMESPACES)[number];

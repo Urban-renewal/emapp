@@ -35,6 +35,15 @@ export const serverEnv = createEnv({
      *  whenever this is unset or NODE_ENV is not development. NEVER set in
      *  staging/production. */
     DEV_AUTH_BYPASS: z.string().optional(),
+    /** Public self-service signup gate (owner-approved, refines D.21). The
+     *  active B2B onboarding path is provider-led (`POST /provider/tenants`
+     *  → invite first manager → `/auth/accept-invite`), so `POST /auth/signup`
+     *  is INACTIVE by default: when this is anything other than '1' the route
+     *  behaves as if it does not exist (404, before any work). Set to '1' to
+     *  restore the original self-service signup behavior. The signup route +
+     *  service + DTO + D.21 `withBootstrap` are all RETAINED, just unreachable
+     *  while this is off. See docs/decision-records/disable-public-signup.md. */
+    PUBLIC_SIGNUP_ENABLED: z.string().default('0'),
     PORT_API: z.coerce.number().default(3000),
     PORT_WEB: z.coerce.number().default(3001),
   },

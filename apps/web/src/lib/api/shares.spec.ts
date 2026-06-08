@@ -37,16 +37,8 @@ const CONTRACTOR_ID = 'abcdef12-3456-4789-8abc-def012345678';
 
 const DEFAULT_PERMS = {
   overview: { on: true },
-  tenants: {
-    on: false,
-    // `name` is `z.literal(true)` in the shared-types schema; widening
-    // it to `boolean` here would make the cast to CreateShare unsound.
-    fields: { name: true as const, phone: false, email: false, national_id: false, note: false },
-  },
-  documents: { on: false, actions: { download: true, upload: false } },
+  documents: { on: false, actions: { download: true } },
   signatures: { on: false },
-  notes: { on: false },
-  team: { on: false },
 };
 
 const SAMPLE = {

@@ -9,7 +9,13 @@ import {
   withTenant,
   type TenantTx,
 } from '@emapp/db';
-import type { ApartmentOwner, Ownership, SetOwnerships } from '@emapp/shared-types';
+import {
+  RelationshipSchema,
+  SetOwnershipsInput,
+  type ApartmentOwner,
+  type Ownership,
+  type SetOwnerships,
+} from '@emapp/shared-types';
 import {
   BadRequestException,
   ForbiddenException,
@@ -41,6 +47,11 @@ function toOwnership(r: typeof ownerships.$inferSelect): Ownership {
     apartmentId: r.apartmentId,
     ownerId: r.ownerId,
     ownershipPct: Number(r.ownershipPct),
+    // Feature A (D.25): owner vs renter. The DB column is `text` (CHECK
+    // ('owner','renter')) so we narrow it through the shared-types enum —
+    // the single source of truth for the closed set — rather than a bare
+    // cast. A row outside the set is a data-integrity bug, not a 200.
+    relationship: RelationshipSchema.parse(r.relationship),
     role: r.role,
     startedAt: r.startedAt,
     endedAt: r.endedAt,
@@ -178,6 +189,7 @@ export class OwnershipsService {
           .select({
             ownershipId: ownerships.id,
             ownershipPct: ownerships.ownershipPct,
+            relationship: ownerships.relationship,
             role: ownerships.role,
             id: owners.id,
             organizationId: owners.orgId,
@@ -216,6 +228,10 @@ export class OwnershipsService {
       archivedAt: r.archivedAt,
       ownershipId: r.ownershipId,
       ownershipPct: Number(r.ownershipPct),
+      // Feature A (D.25) — surface owner/renter on the masked projection.
+      // PII handling is IDENTICAL for both (name/national_id/phone masked the
+      // same above); relationship only governs display + the signature gate.
+      relationship: RelationshipSchema.parse(r.relationship),
       role: r.role,
     }));
     return {
@@ -247,8 +263,16 @@ export class OwnershipsService {
           await this.assertApartmentVisible(tx, user, apartmentId);
 
           if (input.owners.length > 0) {
-            const sum = input.owners.reduce((a, o) => a + o.ownershipPct, 0);
-            if (Math.abs(sum - 100) > 0.001) throw SUM_INVALID;
+            // Feature A (D.25): only OWNERS count toward the 100% invariant
+            // (renters carry pct 0, excluded) and each row's pct↔relationship
+            // rule (owner ⇒ >0, renter ⇒ ===0) must hold. We re-run the
+            // SHARED-TYPES schema (single source of truth) rather than
+            // re-implement the sum here, so this in-app 400 agrees EXACTLY with
+            // the DB constraint trigger predicate `... AND relationship='owner'`.
+            // The controller already Zod-validated; this is the defense-in-depth
+            // re-guard the existing contract mandated (it mapped a re-summed
+            // mismatch to ownership_sum_invalid).
+            if (!SetOwnershipsInput.safeParse(input).success) throw SUM_INVALID;
 
             // All referenced owners must exist & be active in this org
             // (RLS scopes the query to the caller's org).
@@ -275,6 +299,11 @@ export class OwnershipsService {
                   apartmentId,
                   ownerId: o.ownerId,
                   ownershipPct: String(o.ownershipPct),
+                  // Feature A (D.25) — persist owner/renter per row. The atomic
+                  // end-all + insert-new invariant is UNCHANGED; the row simply
+                  // carries `relationship` now. The DB trigger sums only
+                  // 'owner' rows; renters (pct 0) ride along, excluded.
+                  relationship: o.relationship,
                   role: o.role ?? null,
                 })),
               )

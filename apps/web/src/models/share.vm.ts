@@ -37,35 +37,28 @@ export interface ShareViewModel {
 }
 
 /** Helper exported for the share form — counts the top-level "on"
- *  toggles (overview/tenants/documents/signatures/notes/team).
- *  Pure; same value the adapter writes to `permissionSummary`. */
+ *  toggles (overview/documents/signatures). Pure; same value the adapter
+ *  writes to `permissionSummary`. (A3: tenants/notes/team removed as dead.) */
 export function countActiveSections(perms: SharePermissions): number {
-  return [
-    perms.overview.on,
-    perms.tenants.on,
-    perms.documents.on,
-    perms.signatures.on,
-    perms.notes.on,
-    perms.team.on,
-  ].filter(Boolean).length;
+  return [perms.overview.on, perms.documents.on, perms.signatures.on].filter(Boolean).length;
 }
+
+/** Number of top-level permission sections — keeps the `N / TOTAL` summary
+ *  in sync with the schema (A3: was 6, now 3). */
+export const SHARE_SECTION_COUNT = 3;
 
 /**
  * D.46 — the default permission set the contractor share form starts from.
  * Mirrors the BE `defaultSharePermissions()` (kept in sync):
  *  - overview ON, signature PROGRESS ON (aggregate-only)
- *  - OWNERS / PII (`tenants`) OFF — never by default
  *  - documents OFF (manager-selected)
- *  - notes / team OFF
+ *
+ * A3 (L4): owners/PII (`tenants`), `notes`, `team`, and document `upload`
+ * removed — DEAD keys the contractor read-path never consulted
+ * (national_id was additionally a PII footgun).
  */
 export const SHARE_DEFAULT_PERMISSIONS: SharePermissions = {
   overview: { on: true },
-  tenants: {
-    on: false,
-    fields: { name: true, phone: false, email: false, national_id: false, note: false },
-  },
-  documents: { on: false, actions: { download: true, upload: false } },
+  documents: { on: false, actions: { download: true } },
   signatures: { on: true },
-  notes: { on: false },
-  team: { on: false },
 };

@@ -243,38 +243,21 @@ const SPLIT_PATTERNS: number[][] = [
 ];
 
 // Contractor permission presets (must satisfy sharePermissionsSchema).
+// A3 (L4): tenants/notes/team + document upload removed as DEAD keys.
 const PERM_FULL: SharePermissions = {
   overview: { on: true },
-  tenants: {
-    on: true,
-    fields: { name: true, phone: true, email: true, national_id: false, note: true },
-  },
-  documents: { on: true, actions: { download: true, upload: true } },
+  documents: { on: true, actions: { download: true } },
   signatures: { on: true },
-  notes: { on: true },
-  team: { on: true },
 };
 const PERM_DOCS_ONLY: SharePermissions = {
   overview: { on: true },
-  tenants: {
-    on: false,
-    fields: { name: true, phone: false, email: false, national_id: false, note: false },
-  },
-  documents: { on: true, actions: { download: true, upload: false } },
+  documents: { on: true, actions: { download: true } },
   signatures: { on: false },
-  notes: { on: false },
-  team: { on: false },
 };
 const PERM_SIGN_VIEW: SharePermissions = {
   overview: { on: true },
-  tenants: {
-    on: true,
-    fields: { name: true, phone: false, email: false, national_id: false, note: false },
-  },
-  documents: { on: true, actions: { download: true, upload: false } },
+  documents: { on: true, actions: { download: true } },
   signatures: { on: true },
-  notes: { on: false },
-  team: { on: false },
 };
 
 const SIGNATURE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="60" viewBox="0 0 200 60"><path d="M10 40 Q 30 10, 50 35 T 90 30 T 130 35 T 170 32 T 190 35" stroke="#1e3a8a" stroke-width="2.2" fill="none" stroke-linecap="round"/><text x="100" y="55" font-size="9" font-family="sans-serif" text-anchor="middle" fill="#64748b">חתימה דיגיטלית — דמו</text></svg>`;

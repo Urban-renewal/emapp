@@ -3,7 +3,7 @@
  *
  * Test IDs (D.33):
  *   T-4f-VM.S1   permissions pass through verbatim
- *   T-4f-VM.S2   permissionSummary = "<active> / 6"
+ *   T-4f-VM.S2   permissionSummary = "<active> / 3"
  *   T-4f-VM.S3   contractorIdShort = first 8 hex
  *   T-4f-VM.S4   contractorName resolved via lookup
  *   T-4f-VM.S5   contractorName undefined when lookup absent
@@ -36,37 +36,29 @@ describe('toShareViewModel', () => {
     expect(vm.permissions).toEqual(SHARE_DEFAULT_PERMISSIONS);
   });
 
-  it('T-4f-VM.S2) permissionSummary counts ON sections (D.46 default = 2 / 6)', () => {
+  it('T-4f-VM.S2) permissionSummary counts ON sections (D.46 default = 2 / 3)', () => {
     // D.46 default: `overview.on` + `signatures.on` (aggregate progress) are
-    // the 2 ON sections; owners/PII (tenants), documents, notes, team are OFF.
-    expect(toShareViewModel(base()).permissionSummary).toBe('2 / 6');
+    // the 2 ON sections; documents is OFF. (A3: tenants/notes/team removed as
+    // dead — the granted surface is exactly overview/documents/signatures.)
+    expect(toShareViewModel(base()).permissionSummary).toBe('2 / 3');
   });
 
-  it('T-D46) the FE default denies owners/PII + documents; mirrors the BE default', () => {
-    // Owners/PII OFF by default (D.46), documents manager-selected (OFF),
-    // overview + signature progress ON. Keeps the FE form's initial state in
-    // sync with the BE `defaultSharePermissions()`.
-    expect(SHARE_DEFAULT_PERMISSIONS.tenants.on).toBe(false);
+  it('T-D46) the FE default denies documents; mirrors the BE default', () => {
+    // Documents manager-selected (OFF), overview + signature progress ON.
+    // Keeps the FE form's initial state in sync with the BE
+    // `defaultSharePermissions()`.
     expect(SHARE_DEFAULT_PERMISSIONS.documents.on).toBe(false);
     expect(SHARE_DEFAULT_PERMISSIONS.overview.on).toBe(true);
     expect(SHARE_DEFAULT_PERMISSIONS.signatures.on).toBe(true);
-    expect(SHARE_DEFAULT_PERMISSIONS.notes.on).toBe(false);
-    expect(SHARE_DEFAULT_PERMISSIONS.team.on).toBe(false);
   });
 
-  it('T-4f-VM.S2b) countActiveSections — every section on yields 6', () => {
+  it('T-4f-VM.S2b) countActiveSections — every section on yields 3', () => {
     const allOn: SharePermissions = {
       overview: { on: true },
-      tenants: {
-        on: true,
-        fields: { name: true, phone: true, email: true, national_id: true, note: true },
-      },
-      documents: { on: true, actions: { download: true, upload: true } },
+      documents: { on: true, actions: { download: true } },
       signatures: { on: true },
-      notes: { on: true },
-      team: { on: true },
     };
-    expect(countActiveSections(allOn)).toBe(6);
+    expect(countActiveSections(allOn)).toBe(3);
   });
 
   it('T-4f-VM.S3) contractorIdShort = first 8 hex chars (no dashes)', () => {

@@ -8,26 +8,11 @@
  * deferred, but the default + the perms-driven resolvers are the security
  * contract that tier will be built on.
  */
-import {
-  canDownloadDocuments,
-  canViewTenantNationalId,
-  canViewTenantPhone,
-  canViewTenants,
-  defaultSharePermissions,
-  signatureScopeForShare,
-} from '@emapp/db';
+import { canDownloadDocuments, defaultSharePermissions, signatureScopeForShare } from '@emapp/db';
 import { describe, expect, it } from 'vitest';
 
 describe('D.46 — default contractor share permissions', () => {
   const def = defaultSharePermissions();
-
-  it('OWNERS / PII are OFF by default (never, not even masked)', () => {
-    expect(def.tenants.on).toBe(false);
-    // The perms-driven resolvers deny every owner field on the default share.
-    expect(canViewTenants(def)).toBe(false);
-    expect(canViewTenantPhone(def)).toBe(false);
-    expect(canViewTenantNationalId(def)).toBe(false);
-  });
 
   it('documents are manager-SELECTED (OFF by default)', () => {
     expect(def.documents.on).toBe(false);
@@ -39,9 +24,13 @@ describe('D.46 — default contractor share permissions', () => {
     expect(def.signatures.on).toBe(true);
   });
 
-  it('notes + team are OFF by default', () => {
-    expect(def.notes.on).toBe(false);
-    expect(def.team.on).toBe(false);
+  // A3 (L4): owners/PII (`tenants`), `notes`, `team`, and document `upload`
+  // were removed as DEAD keys — the contractor read-path never consulted
+  // them, so a default that "denies" them is now structurally impossible
+  // (the keys don't exist). Owner-PII OFF is enforced structurally instead:
+  // there is no owners endpoint in the contractor tier at all.
+  it('the granted surface is exactly overview / documents / signatures', () => {
+    expect(Object.keys(def).sort()).toEqual(['documents', 'overview', 'signatures']);
   });
 });
 

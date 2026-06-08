@@ -118,6 +118,7 @@ _(no body)_
 | `rooms` | unknown | no | — |
 | `sizeSqm` | unknown | no | — |
 | `status` | string | no | enum=["pending","contacted","meeting","signed","refused","unreachable"] |
+| `unitType` | string | no | enum=["apt","shop","office","mixed"] |
 
 
 **Response**
@@ -363,6 +364,7 @@ _(no body)_
 | `rooms` | unknown | no | — |
 | `sizeSqm` | unknown | no | — |
 | `status` | string | no | enum=["pending","contacted","meeting","signed","refused","unreachable"] |
+| `unitType` | string | no | enum=["apt","shop","office","mixed"] |
 
 
 **Response**

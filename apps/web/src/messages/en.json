@@ -79,6 +79,18 @@
     "tagline": "Urban Renewal",
     "navLandmark": "Primary navigation"
   },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "description": "An unexpected error occurred. Our team has been notified. You can try again or return home.",
+    "retry": "Try again",
+    "home": "Back to home",
+    "referenceId": "Support reference id"
+  },
+  "notFoundPage": {
+    "title": "Page not found",
+    "description": "The page you were looking for doesn't exist or has been removed.",
+    "home": "Back to home"
+  },
   "auth": {
     "loginTitle": "Sign In",
     "loginSubtitle": "Enter your credentials to continue",
@@ -459,6 +471,7 @@
     "download": "Download",
     "downloading": "Preparing...",
     "downloadFailed": "Download failed.",
+    "uploadIncomplete": "This document's upload did not complete — please re-upload.",
     "searchPlaceholder": "Search document, type…",
     "noResults": "No results match the search",
     "viewCards": "Cards view",
@@ -482,11 +495,18 @@
     "hint": "All shares must sum to exactly 100%. Empty list = clear all ownerships.",
     "ownerLabel": "Owner",
     "shareLabel": "Share",
+    "relationshipLabel": "Type",
+    "relationship": {
+      "owner": "Owner",
+      "renter": "Renter"
+    },
+    "renterHint": "A renter does not sign and is not counted toward the 100% ownership; their share is always 0.",
     "addRow": "Add row",
+    "addPerson": "+ New person",
     "removeRow": "Remove",
     "emptyRows": "No active ownerships. Click \"Add row\" to add one.",
-    "sumLabel": "Total: {sum}%",
-    "sumMustBe100": "Shares must sum to exactly 100, or clear all by removing every row.",
+    "sumLabel": "Total (owners): {sum}%",
+    "sumMustBe100": "Owner shares must sum to exactly 100 (renters excluded), or clear all by removing every owner.",
     "duplicate": "The same owner cannot appear twice.",
     "clientInvalid": "Ownership data is invalid.",
     "serverSumInvalid": "Server rejected the shares: invalid sum. Confirm 100%.",
@@ -520,7 +540,14 @@
       "rooms": "Rooms",
       "sizeSqm": "m²",
       "status": "Status",
-      "notes": "Notes"
+      "notes": "Notes",
+      "unitType": "Unit type"
+    },
+    "unitType": {
+      "apt": "Apartment (residential)",
+      "shop": "Shop / retail",
+      "office": "Office",
+      "mixed": "Mixed-use"
     }
   },
   "signatureRequests": {
@@ -965,6 +992,61 @@
       "readOnly": "You don't have permission to update organization settings. View only.",
       "noPermission": "You don't have permission to view organization settings."
     },
+    "branding": {
+      "section": "Sender identity",
+      "description": "The organization display name shown on outbound messages (used as the email From display name).",
+      "senderName": "Sender name",
+      "senderNameHint": "Up to 120 characters. Shown as the display name on outbound messages.",
+      "senderNameRequired": "Enter a sender name (1 to 120 characters).",
+      "emailFrom": "Custom from-address",
+      "emailFromPlaceholder": "Not set",
+      "emailFromNote": "A custom from-address requires verification of a domain you own. For now this is read-only and messages are sent from the verified system address.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "saveError": "Save failed. Please try again.",
+      "loading": "Loading settings…",
+      "loadError": "Failed to load settings.",
+      "readOnly": "You don't have permission to update organization settings. View only.",
+      "noPermission": "You don't have permission to view organization settings."
+    },
+    "localization": {
+      "section": "Language & timezone",
+      "description": "The organization's default language and preferred timezone.",
+      "locale": "Language",
+      "localeOption": {
+        "he": "עברית",
+        "en": "English",
+        "ar": "العربية"
+      },
+      "timezone": "Timezone",
+      "timezoneHint": "The timezone stored as the organization's preference.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "saveError": "Save failed. Please try again.",
+      "loading": "Loading settings…",
+      "loadError": "Failed to load settings.",
+      "readOnly": "You don't have permission to update organization settings. View only.",
+      "noPermission": "You don't have permission to view organization settings."
+    },
+    "limits": {
+      "section": "Operational limits",
+      "description": "Convenience limits for bulk actions and list page size (not security controls).",
+      "bulkCap": "Max rows per bulk action",
+      "bulkCapHint": "An integer between {min} and {max}.",
+      "defaultPageSize": "Default page size",
+      "defaultPageSizeHint": "An integer between {min} and {max}.",
+      "outOfBounds": "Value is out of the allowed range.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "saveError": "Save failed. Please try again.",
+      "loading": "Loading settings…",
+      "loadError": "Failed to load settings.",
+      "readOnly": "You don't have permission to update organization settings. View only.",
+      "noPermission": "You don't have permission to view organization settings."
+    },
     "integrations": {
       "section": "Integrations",
       "description": "Signature providers, document management, and mail delivery integrations. The final list depends on the launch plan."
@@ -1091,23 +1173,12 @@
     },
     "perm": {
       "overview": "Project overview",
-      "tenants": "Owner details (tenants)",
-      "tenantsOffHint": "Owner details are hidden from the contractor (default).",
       "signaturesHint": "The contractor sees an aggregate progress percentage only — never who signed.",
-      "tenantsField": {
-        "phone": "Phone",
-        "email": "Email",
-        "national_id": "National ID",
-        "note": "Notes"
-      },
       "documents": "Documents",
       "documentAction": {
-        "download": "Download",
-        "upload": "Upload"
+        "download": "Download"
       },
-      "signatures": "Signatures",
-      "notes": "Notes",
-      "team": "Team"
+      "signatures": "Signatures"
     }
   },
   "contractorView": {

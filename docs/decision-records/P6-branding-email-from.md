@@ -69,6 +69,17 @@ best-effort with default-From fallback on any read failure):
 - `apps/api/src/modules/members/members.service.ts` — authenticated Manager
   invite; resolved via a short `withTenant(user.orgId, getOrgSettings)` read
   before the send.
+- The **signature-delivery** email sites (wired in the follow-up, PR #307):
+  `signature-link-delivery.ts` (`deliverSignatureLink` / `notifyAfterSign` /
+  `sendOne` / `sendInviteEmail`) now take an optional `from` and set
+  `message.from` at the `email.send` boundary; the From is resolved at the
+  callers via `resolveFromForOrg(tx, orgId)` =
+  `buildEmailFrom(getOrgSettings(tx, orgId).branding.senderName, DEFAULT_EMAIL_FROM)`
+  (best-effort, default-From fallback) — the 4 `deliverSignatureLink` call sites
+  in `signature-requests.service.ts` and the `notifyAfterSign` call site in
+  `public-sign.service.ts`. Covered by 6 real-DB tests
+  (`signature-email-from.spec.ts`): From applied, default fallback,
+  header-injection neutralized end-to-end, no token logged.
 
 **Left on the system default** (no clean org/tenant tx — NOT contorted):
 
@@ -77,15 +88,9 @@ best-effort with default-From fallback on any read failure):
   `{}` (so `senderName` is `'EMAPP'` = the default anyway). There is no
   `withTenant(orgId)` tx in scope and `getOrgSettings` requires a `TenantTx`;
   resolving here would contort the architecture for zero behavior change.
-- The **signature-link delivery** helpers
-  (`apps/api/src/modules/signatures/signature-link-delivery.ts`:
-  `deliverSignatureLink` / `notifyAfterSign` and their call sites in
-  `signature-requests.service.ts` + `public-sign.service.ts`) were left on the
-  system default in THIS slice to keep the blast radius focused on the two
-  named send sites. They have org context (their callers run/resolve under the
-  org) and are a **mechanical follow-up**: thread an optional `from` through
-  their context objects and apply the same `buildEmailFrom`. Flagged as a
-  separate task.
+
+_(The signature-delivery helpers were originally left on the default in the
+first slice and have since been wired — see the Wired list above, PR #307.)_
 
 ## Best-effort contract
 

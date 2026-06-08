@@ -15,6 +15,7 @@ export const SAMPLE_APARTMENT_OWNERS: ApartmentOwner[] = [
     archivedAt: null,
     ownershipId: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee1',
     ownershipPct: 50,
+    relationship: 'owner',
     role: null,
   },
   {
@@ -30,6 +31,7 @@ export const SAMPLE_APARTMENT_OWNERS: ApartmentOwner[] = [
     archivedAt: null,
     ownershipId: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee2',
     ownershipPct: 50,
+    relationship: 'owner',
     role: null,
   },
 ];

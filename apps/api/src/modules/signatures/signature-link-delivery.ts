@@ -240,9 +240,14 @@ export async function deliverSignatureLink(
   sms: ISMSProvider,
   ctx: SignatureLinkContext,
   logger: { error: (m: string) => void },
+  /** P6 — the resolved From for this org: the verified system address with the
+   *  org's `branding.senderName` as the display name. Built ONLY via
+   *  `buildEmailFrom` at the call site (single source — this file never
+   *  hand-rolls a From). When omitted, the provider default From is used. */
+  from?: string,
 ): Promise<SignatureLinkReport> {
   const emailRes: ChannelResult = ctx.ownerEmail
-    ? await sendInviteEmail(email, ctx, logger)
+    ? await sendInviteEmail(email, ctx, logger, from)
     : { available: false, reason: 'no_email_on_file' };
 
   const waLink = ctx.ownerPhone
@@ -281,6 +286,9 @@ export async function notifyAfterSign(
   email: IEmailProvider,
   ctx: PostSignNotifyContext,
   logger: { error: (m: string) => void },
+  /** P6 — resolved From (per-org `branding.senderName` display name via
+   *  `buildEmailFrom`). Omitted → provider default From. */
+  from?: string,
 ): Promise<{ manager: ChannelResult; resident: ChannelResult }> {
   const manager: ChannelResult = ctx.managerEmail
     ? await sendOne(
@@ -293,6 +301,7 @@ export async function notifyAfterSign(
         }),
         'manager_notify',
         logger,
+        from,
       )
     : { available: false, reason: 'no_manager_email_on_file' };
 
@@ -306,6 +315,7 @@ export async function notifyAfterSign(
         }),
         'resident_confirm',
         logger,
+        from,
       )
     : { available: false, reason: 'no_email_on_file' };
 
@@ -323,9 +333,13 @@ async function sendOne(
   },
   tag: string,
   logger: { error: (m: string) => void },
+  from?: string,
 ): Promise<ChannelResult> {
   try {
-    const res = await email.send(msg);
+    // The From display name (when configured) is attached here, NOT inside the
+    // pure body-builders — they stay From-free. `from` is always pre-built by
+    // `buildEmailFrom` at the call site (single source for header safety).
+    const res = await email.send(from === undefined ? msg : { ...msg, from });
     if (res.status === 'rejected') {
       logger.error(
         `[signature-delivery:${tag}] email rejected for ${maskEmail(msg.to)}: ${res.error ?? 'unknown'}`,
@@ -350,6 +364,7 @@ async function sendInviteEmail(
   email: IEmailProvider,
   ctx: SignatureLinkContext,
   logger: { error: (m: string) => void },
+  from?: string,
 ): Promise<ChannelResult> {
   if (!ctx.ownerEmail) return { available: false, reason: 'no_email_on_file' };
   try {
@@ -359,7 +374,9 @@ async function sendInviteEmail(
       documentName: ctx.documentName,
       signUrl: ctx.signUrl,
     });
-    const res = await email.send(msg);
+    // Attach the per-org From display name here (the body-builder stays
+    // From-free). `from` is always pre-built via `buildEmailFrom`.
+    const res = await email.send(from === undefined ? msg : { ...msg, from });
     if (res.status === 'rejected') {
       // Provider gave a structured rejection — surface as generic
       // unavailable; never echo the provider's internal code (could be

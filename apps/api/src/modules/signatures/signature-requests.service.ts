@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { serverEnv } from '@emapp/config';
 import {
   AuditService,
+  DEFAULT_EMAIL_FROM,
+  buildEmailFrom,
   documents,
   owners,
   signatureRequests,
@@ -35,6 +37,7 @@ import { and, desc, eq, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import { getOrgSettings } from '../../common/org-settings.resolver';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { SMS_PROVIDER } from '../auth/tenant/otp.service';
 import { EMAIL_PROVIDER } from '../members/invite-email';
@@ -218,12 +221,15 @@ export class SignatureRequestsService {
 
         // Bundle the data delivery needs while we still have the tx
         // open (decryption uses pgcrypto + the app.encryption_key GUC).
+        // P6 — resolve the per-org From display name here too (RLS-scoped read).
+        const from = await this.resolveFromForOrg(tx, user.orgId);
         return {
           row: inserted,
           documentName: doc.name,
           ownerName: own.name,
           ownerEmail: own.email,
           ownerPhone: own.phonePlain,
+          from,
         };
       },
       { userId: user.sub },
@@ -246,6 +252,7 @@ export class SignatureRequestsService {
         documentName: txOut.documentName,
       },
       { error: (m): void => this.logger.error(m) },
+      txOut.from,
     );
 
     return {
@@ -363,7 +370,9 @@ export class SignatureRequestsService {
           });
           bundles.push({ ...m, outcome: 'created' });
         }
-        return { documentName: doc.name, bundles };
+        // P6 — resolve the per-org From ONCE for the whole batch (RLS-scoped).
+        const from = await this.resolveFromForOrg(tx, user.orgId);
+        return { documentName: doc.name, bundles, from };
       },
       { userId: user.sub },
     );
@@ -409,6 +418,7 @@ export class SignatureRequestsService {
               documentName: prepared.documentName,
             },
             { error: (msg): void => this.logger.error(msg) },
+            prepared.from,
           );
           return { ownerId: b.ownerId, outcome: 'created', requestId: b.requestId, delivery };
         }),
@@ -483,6 +493,7 @@ export class SignatureRequestsService {
 
         const own = await this.loadOwnerWithPii(tx, req.ownerId);
         const doc = await this.loadVisibleDocument(tx, req.documentId);
+        const from = await this.resolveFromForOrg(tx, user.orgId);
         return {
           row,
           token,
@@ -490,6 +501,7 @@ export class SignatureRequestsService {
           ownerName: own.name,
           ownerEmail: own.email,
           ownerPhone: own.phonePlain,
+          from,
         };
       },
       { userId: user.sub },
@@ -507,6 +519,7 @@ export class SignatureRequestsService {
         documentName: txOut.documentName,
       },
       { error: (m): void => this.logger.error(m) },
+      txOut.from,
     );
 
     return { request: this.toWire(txOut.row), signUrl, delivery };
@@ -659,12 +672,14 @@ export class SignatureRequestsService {
 
       const own = await this.loadOwnerWithPii(tx, ownerId);
       const doc = await this.loadVisibleDocument(tx, req.documentId);
+      const from = await this.resolveFromForOrg(tx, orgId);
       return {
         token,
         documentName: doc.name,
         ownerName: own.name,
         ownerEmail: own.email,
         ownerPhone: own.phonePlain,
+        from,
       };
     });
 
@@ -679,6 +694,7 @@ export class SignatureRequestsService {
         documentName: txOut.documentName,
       },
       { error: (m): void => this.logger.error(m) },
+      txOut.from,
     );
     // Strip the token-bearing WhatsApp deep-link — the resident receives the
     // link out-of-band (SMS/email), never as a credential in the HTTP response.
@@ -770,6 +786,29 @@ export class SignatureRequestsService {
       phonePlain: row.phone_plain,
       archivedAt: row.archived_at,
     };
+  }
+
+  /** P6 — resolve this org's outbound From: the verified system address with
+   *  the org's `branding.senderName` as the display name (or the system default
+   *  From when the org keeps the default / on a settings-read failure). Built
+   *  ONLY via `buildEmailFrom` — single source for header-safe From assembly;
+   *  this service never hand-rolls a From string. Resolved INSIDE the caller's
+   *  tenant tx (so `organizations.settings` is RLS-scoped). Best-effort: a read
+   *  failure must NOT break delivery / the manager's request — fall back to
+   *  `DEFAULT_EMAIL_FROM`. (`getOrgSettings` is itself fail-soft; the try/catch
+   *  is belt-and-suspenders, matching the #306 calendar-email pattern.) */
+  private async resolveFromForOrg(tx: TenantTx, orgId: string): Promise<string> {
+    try {
+      const settings = await getOrgSettings(tx, orgId);
+      return buildEmailFrom(settings.branding.senderName, DEFAULT_EMAIL_FROM);
+    } catch (err) {
+      this.logger.warn(
+        `org-settings read failed for From display-name (org=${orgId}); using default From: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return DEFAULT_EMAIL_FROM;
+    }
   }
 
   /** GET /signature-requests — Manager+Viewer see all in org; Agent sees

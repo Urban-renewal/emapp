@@ -661,7 +661,7 @@ function StatTile({ label, value }: StatTileProps) {
  * (deferred) and national_id is immutable. The BE `PortalUpdateContactSchema`
  * is `.strict()`, so the wire only ever carries `{ email }`.
  *
- * Form discipline (FE DoD): a real <form> with `method="post"` +
+ * Form discipline (FE DoD): a real form element with `method="post"` +
  * `action=""` (defense-in-depth — no GET-fallback credential/PII leak in
  * the SSR HTML) and an inline `onSubmit` that `preventDefault()`s and
  * drives the mutation. An empty trimmed value clears the email (sends

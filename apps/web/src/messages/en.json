@@ -965,6 +965,61 @@
       "readOnly": "You don't have permission to update organization settings. View only.",
       "noPermission": "You don't have permission to view organization settings."
     },
+    "branding": {
+      "section": "Sender identity",
+      "description": "The organization display name shown on outbound messages (used as the email From display name).",
+      "senderName": "Sender name",
+      "senderNameHint": "Up to 120 characters. Shown as the display name on outbound messages.",
+      "senderNameRequired": "Enter a sender name (1 to 120 characters).",
+      "emailFrom": "Custom from-address",
+      "emailFromPlaceholder": "Not set",
+      "emailFromNote": "A custom from-address requires verification of a domain you own. For now this is read-only and messages are sent from the verified system address.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "saveError": "Save failed. Please try again.",
+      "loading": "Loading settings…",
+      "loadError": "Failed to load settings.",
+      "readOnly": "You don't have permission to update organization settings. View only.",
+      "noPermission": "You don't have permission to view organization settings."
+    },
+    "localization": {
+      "section": "Language & timezone",
+      "description": "The organization's default language and preferred timezone.",
+      "locale": "Language",
+      "localeOption": {
+        "he": "עברית",
+        "en": "English",
+        "ar": "العربية"
+      },
+      "timezone": "Timezone",
+      "timezoneHint": "The timezone stored as the organization's preference.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "saveError": "Save failed. Please try again.",
+      "loading": "Loading settings…",
+      "loadError": "Failed to load settings.",
+      "readOnly": "You don't have permission to update organization settings. View only.",
+      "noPermission": "You don't have permission to view organization settings."
+    },
+    "limits": {
+      "section": "Operational limits",
+      "description": "Convenience limits for bulk actions and list page size (not security controls).",
+      "bulkCap": "Max rows per bulk action",
+      "bulkCapHint": "An integer between {min} and {max}.",
+      "defaultPageSize": "Default page size",
+      "defaultPageSizeHint": "An integer between {min} and {max}.",
+      "outOfBounds": "Value is out of the allowed range.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "saveError": "Save failed. Please try again.",
+      "loading": "Loading settings…",
+      "loadError": "Failed to load settings.",
+      "readOnly": "You don't have permission to update organization settings. View only.",
+      "noPermission": "You don't have permission to view organization settings."
+    },
     "integrations": {
       "section": "Integrations",
       "description": "Signature providers, document management, and mail delivery integrations. The final list depends on the launch plan."

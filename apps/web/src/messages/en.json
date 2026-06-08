@@ -527,7 +527,14 @@
       "rooms": "Rooms",
       "sizeSqm": "m²",
       "status": "Status",
-      "notes": "Notes"
+      "notes": "Notes",
+      "unitType": "Unit type"
+    },
+    "unitType": {
+      "apt": "Apartment (residential)",
+      "shop": "Shop / retail",
+      "office": "Office",
+      "mixed": "Mixed-use"
     }
   },
   "signatureRequests": {

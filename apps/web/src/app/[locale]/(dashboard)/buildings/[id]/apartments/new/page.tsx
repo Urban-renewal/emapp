@@ -2,13 +2,16 @@
 
 import {
   ApartmentStatusEnum,
+  ApartmentUnitTypeEnum,
   CreateApartmentInput,
   type ApartmentStatus,
+  type ApartmentUnitType,
   type CreateApartment,
 } from '@emapp/shared-types';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { APARTMENT_STATUS_LABELS_HE } from '@/adapters/apartment';
@@ -17,6 +20,14 @@ import { useCreateApartment } from '@/hooks/use-apartments';
 import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
 
 const STATUS_OPTIONS: ApartmentStatus[] = [...ApartmentStatusEnum.options];
+const UNIT_TYPE_OPTIONS: ApartmentUnitType[] = [...ApartmentUnitTypeEnum.options];
+
+// D.39 — which secondary fields each unit_type exposes. A shop/office has
+// no `rooms` (commercial floor area only); residential always does; mixed
+// keeps rooms optional. `sizeSqm` + `floor` apply to every type.
+function showsRooms(unitType: ApartmentUnitType): boolean {
+  return unitType === 'apt' || unitType === 'mixed';
+}
 
 export default function NewApartmentPage() {
   const t = useTranslations('apartments');
@@ -30,11 +41,25 @@ export default function NewApartmentPage() {
     register,
     handleSubmit,
     setError,
+    setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<CreateApartment>({
     resolver: zodResolver(CreateApartmentInput),
-    defaultValues: { status: 'pending' },
+    defaultValues: { status: 'pending', unitType: 'apt' },
   });
+
+  const unitType = watch('unitType') ?? 'apt';
+  const roomsVisible = showsRooms(unitType);
+
+  // When the selected type hides `rooms` (shop / office), drop any value the
+  // user already typed so a stale `rooms` is never submitted for a commercial
+  // unit. Re-runs only when visibility flips.
+  useEffect(() => {
+    if (!roomsVisible) {
+      setValue('rooms', null, { shouldValidate: false, shouldDirty: true });
+    }
+  }, [roomsVisible, setValue]);
 
   const { serverError, handle, reset } = useApiErrorHandler<CreateApartment>({
     setError,
@@ -73,7 +98,24 @@ export default function NewApartmentPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="space-y-1">
+          <label htmlFor="unitType" className="text-sm font-medium">
+            {t('field.unitType')}
+          </label>
+          <select
+            id="unitType"
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+            {...register('unitType')}
+          >
+            {UNIT_TYPE_OPTIONS.map((u) => (
+              <option key={u} value={u}>
+                {t(`unitType.${u}`)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className={roomsVisible ? 'grid grid-cols-3 gap-3' : 'grid grid-cols-2 gap-3'}>
           <div className="space-y-1">
             <label htmlFor="floor" className="text-sm font-medium">
               {t('field.floor')}
@@ -88,21 +130,23 @@ export default function NewApartmentPage() {
               })}
             />
           </div>
-          <div className="space-y-1">
-            <label htmlFor="rooms" className="text-sm font-medium">
-              {t('field.rooms')}
-            </label>
-            <input
-              id="rooms"
-              type="number"
-              step="0.5"
-              min="0"
-              className="w-full rounded-md border px-3 py-2 text-sm"
-              {...register('rooms', {
-                setValueAs: (v: unknown) => (v === '' || v === null ? null : Number(v)),
-              })}
-            />
-          </div>
+          {roomsVisible && (
+            <div className="space-y-1">
+              <label htmlFor="rooms" className="text-sm font-medium">
+                {t('field.rooms')}
+              </label>
+              <input
+                id="rooms"
+                type="number"
+                step="0.5"
+                min="0"
+                className="w-full rounded-md border px-3 py-2 text-sm"
+                {...register('rooms', {
+                  setValueAs: (v: unknown) => (v === '' || v === null ? null : Number(v)),
+                })}
+              />
+            </div>
+          )}
           <div className="space-y-1">
             <label htmlFor="sizeSqm" className="text-sm font-medium">
               {t('field.sizeSqm')}

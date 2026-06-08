@@ -28,13 +28,18 @@ async function main(): Promise<void> {
   };
 
   const renderer = new PdfSignedDocumentRenderer();
-  const { bytes } = await renderer.render(data);
+  try {
+    const { bytes } = await renderer.render(data);
 
-  const out = resolve(__dirname, '../../../tmp/hebrew-pdf-sample.pdf');
-  mkdirSync(dirname(out), { recursive: true });
-  writeFileSync(out, bytes);
-  // eslint-disable-next-line no-console -- one-off script, not app code.
-  console.log(`Wrote ${bytes.length} bytes → ${out}`);
+    const out = resolve(__dirname, '../../../tmp/hebrew-pdf-sample.pdf');
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, bytes);
+    // eslint-disable-next-line no-console -- one-off script, not app code.
+    console.log(`Wrote ${bytes.length} bytes → ${out}`);
+  } finally {
+    // The renderer holds a singleton Chromium open; close it so the script exits.
+    await renderer.onModuleDestroy();
+  }
 }
 
 void main();

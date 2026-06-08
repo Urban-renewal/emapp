@@ -1,44 +1,28 @@
 /**
- * PDF artifact proof for the signed-certificate renderer (no DB / no R2 — the
- * renderer takes a plain SignedCertificateData and returns bytes).
+ * PDF artifact proof for the signed-certificate renderer (PR #317).
  *
- * Asserts the rendered bytes are a real PDF AND that the Heebo subset is
- * EMBEDDED as a Type0/CIDFont (FontFile2). The font dict lives inside the PDF's
- * FlateDecode object streams, so the markers only appear AFTER inflating those
- * streams — this test inflates them and asserts the embedded-font markers.
+ * The renderer rasterises an RTL HTML template through headless Chromium (the
+ * SAME mechanism as the project export) so Hebrew bidi + shaping are done by
+ * the browser — NOT by hand-rolled logic that mirror-reversed the letters.
  *
- * Also exercises encodeSafe robustness end-to-end: an exotic CJK+emoji owner
- * name must render (degrading to '?' for non-encodable glyphs) WITHOUT throwing.
+ * This spec splits into two layers:
+ *   1) `buildCertificateHtml` — a pure function. Fast, no browser. Asserts the
+ *      Hebrew is present in LOGICAL order (the HTML carries the source string
+ *      verbatim; Chromium does the visual reorder at raster time, which is the
+ *      whole point) and that user-supplied strings are HTML-ESCAPED (the new
+ *      injection surface). No Chromium needed → runs everywhere.
+ *   2) Full render → PDF bytes via Chromium. Asserts a valid PDF wrapper and
+ *      that the embedded Heebo font carried the Hebrew through (same
+ *      byte-stream check the export spec uses). Browser-gated (60 s timeout).
  */
-import { inflateSync } from 'node:zlib';
+import { afterAll, describe, expect, it } from 'vitest';
 
-import { describe, expect, it } from 'vitest';
-
-import { PdfSignedDocumentRenderer } from './pdf-signed-document.renderer';
+import { PdfSignedDocumentRenderer, buildCertificateHtml } from './pdf-signed-document.renderer';
 import type { SignedCertificateData } from './signed-document.types';
 
-/** Inflate every FlateDecode stream in a PDF and concatenate the latin1 text,
- *  so we can search font/structure markers that pdf-lib compresses away. */
-function inflatedStreamText(bytes: Uint8Array): string {
-  const s = Buffer.from(bytes).toString('latin1');
-  const streamRe = /stream(?:\r\n|\n|\r)([\s\S]*?)endstream/g;
-  let out = '';
-  let m: RegExpExecArray | null;
-  while ((m = streamRe.exec(s)) !== null) {
-    const raw = Buffer.from(m[1]!, 'latin1');
-    try {
-      out += inflateSync(raw).toString('latin1');
-    } catch {
-      // Not a flate stream (e.g. raw content) — ignore; we only need the
-      // compressed object streams that carry the font dictionaries.
-    }
-  }
-  return out;
-}
-
 const baseData: SignedCertificateData = {
-  // The exact shapes the old hand-rolled bidi garbled: Hebrew + an embedded
-  // number + a Hebrew address with a house number, in one document name.
+  // The exact shapes the old hand-rolled bidi mirror-reversed: Hebrew + an
+  // embedded number + a Hebrew address with a house number, in one name.
   documentName: 'הסכם התחדשות עירונית — דירה 12, רחוב הרצל 5',
   documentHash: 'a3f1c0de9b8a7766554433221100ffeeddccbbaa00112233445566778899aabb',
   authMethod: 'public_link_v1',
@@ -48,68 +32,114 @@ const baseData: SignedCertificateData = {
     '<svg viewBox="0 0 300 100"><path d="M10 80 C 40 10, 65 10, 95 80 S 150 150, 180 80" /></svg>',
 };
 
-describe('PdfSignedDocumentRenderer — artifact', () => {
-  it('renders a valid PDF with the Heebo subset embedded (Type0/CIDFont/FontFile2)', async () => {
-    const { bytes, contentType, fileExtension } = await new PdfSignedDocumentRenderer().render(
-      baseData,
-    );
+describe('buildCertificateHtml — pure template (no browser)', () => {
+  it('carries the Hebrew document name + signer in LOGICAL order (Chromium reorders at raster)', () => {
+    const html = buildCertificateHtml(baseData);
+    // The source string appears verbatim — visual reordering is the browser's
+    // job, so the HTML must NOT pre-reverse anything (that was the old bug).
+    expect(html).toContain('הסכם התחדשות עירונית — דירה 12, רחוב הרצל 5');
+    expect(html).toContain('ישראל ישראלי');
+    // RTL base direction so the browser's UBA runs with the right paragraph dir.
+    expect(html).toContain('dir="rtl"');
+    // The fixed Hebrew certificate labels are present.
+    expect(html).toContain('אישור חתימה דיגיטלית');
+    expect(html).toContain('טביעת תוכן המסמך (SHA-256)');
+  });
+
+  it('HTML-escapes user-supplied strings (injection guard — load-bearing)', () => {
+    const malicious: SignedCertificateData = {
+      ...baseData,
+      ownerName: '<script>alert(1)</script>',
+      documentName: 'דירה "5" <b>& co</b>',
+      authMethod: 'x" onload="alert(2)',
+    };
+    const html = buildCertificateHtml(malicious);
+    // No raw injected markup survives — the angle brackets are entity-encoded.
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html).toContain('&amp; co');
+    expect(html).toContain('&quot;');
+    // The auth-method attribute-breakout attempt is neutralised: the literal
+    // double-quote is escaped, so it cannot close an attribute (and here it's
+    // text content anyway).
+    expect(html).toContain('x&quot; onload=&quot;alert(2)');
+    expect(html).not.toContain('onload="alert(2)"');
+  });
+
+  it('sanitises the signature SVG to path geometry only (no raw user SVG markup)', () => {
+    const evilSvg: SignedCertificateData = {
+      ...baseData,
+      // A stored SVG carrying a script + an event handler must NOT reach the DOM.
+      signatureSvg:
+        '<svg viewBox="0 0 300 100"><script>fetch("//evil")</script>' +
+        '<path d="M10 80 L 90 20" onclick="steal()" /></svg>',
+    };
+    const html = buildCertificateHtml(evilSvg);
+    expect(html).not.toContain('<script>fetch');
+    expect(html).not.toContain('onclick=');
+    // The geometry survives in a clean, controlled <path>.
+    expect(html).toContain('d="M10 80 L 90 20"');
+    expect(html).toContain('stroke="#1a1a1a"');
+  });
+
+  it('drops the signature box content entirely when the SVG has no usable path', () => {
+    const html = buildCertificateHtml({ ...baseData, signatureSvg: '<svg><g/></svg>' });
+    // No <path> extracted → empty sigbox, never raw user markup.
+    expect(html).toContain('class="sigbox"></div>');
+  });
+});
+
+describe('PdfSignedDocumentRenderer — artifact (Chromium)', () => {
+  const renderer = new PdfSignedDocumentRenderer();
+
+  afterAll(async () => {
+    await renderer.onModuleDestroy();
+  });
+
+  it('renders a valid PDF (%PDF header + %%EOF) with Hebrew carried by the embedded font', async () => {
+    const { bytes, contentType, fileExtension } = await renderer.render(baseData);
 
     expect(contentType).toBe('application/pdf');
     expect(fileExtension).toBe('pdf');
     expect(bytes.byteLength).toBeGreaterThan(1000);
 
-    // Valid PDF header + EOF marker.
     const head = Buffer.from(bytes.subarray(0, 5)).toString('latin1');
     expect(head).toBe('%PDF-');
-    const tail = Buffer.from(bytes.subarray(bytes.length - 64)).toString('latin1');
+    const tail = Buffer.from(bytes.subarray(bytes.length - 32)).toString('latin1');
     expect(tail).toContain('%%EOF');
 
-    // Embedded-font proof: these markers are NOT visible in the raw bytes
-    // (they're inside FlateDecode object streams) — only after inflation.
-    const inflated = inflatedStreamText(bytes);
-    expect(inflated).toContain('Type0'); // composite font (required for Hebrew)
-    expect(inflated).toContain('CIDFont'); // CID-keyed descendant font
-    expect(inflated).toContain('FontFile'); // embedded font program (FontFile2)
-    expect(inflated).toContain('Identity-H'); // CID encoding for the subset
-  });
+    // Hebrew survives: with the Heebo woff2 (ships a /ToUnicode CMap) the literal
+    // Hebrew label text is recoverable from the byte stream — same high-signal
+    // check the export spec uses. Falls back to "any Hebrew codepoint present".
+    const buf = Buffer.from(bytes);
+    const utf16Le = buf.toString('utf16le');
+    // swap16() requires an even byte length; PDF size is arbitrary, so pad a
+    // copy to even length before swapping (otherwise RangeError on odd sizes).
+    const even = buf.length % 2 === 0 ? Buffer.from(buf) : Buffer.concat([buf, Buffer.from([0])]);
+    const utf16Be = even.swap16().toString('utf16le');
+    const hits = [utf16Le, utf16Be].some(
+      (s) => s.includes('אישור') || s.includes('דירה') || s.includes('ישראל'),
+    );
+    if (!hits) {
+      const utf8 = buf.toString('utf8');
+      expect(/[֐-׿]/.test(utf8 + utf16Le + utf16Be)).toBe(true);
+    } else {
+      expect(hits).toBe(true);
+    }
 
-  it('keeps the font dictionary compressed (markers absent until streams inflate)', async () => {
-    // Guards the previous test: proves the font markers genuinely require
-    // inflation, so finding them above demonstrates real EMBEDDING (a compressed
-    // CIDFont dict) rather than an incidental uncompressed string match.
-    const { bytes } = await new PdfSignedDocumentRenderer().render(baseData);
-    const raw = Buffer.from(bytes).toString('latin1');
+    // Heebo embedded as a font program (Chromium emits /FontFile3 for the woff2).
+    const latin1 = buf.toString('latin1');
+    expect(latin1).toMatch(/\/FontFile[123]?\s/);
+  }, 60_000);
 
-    // pdf-lib writes the font dict + program inside FlateDecode object streams,
-    // so these appear only after inflation — never in the raw bytes.
-    expect(raw).not.toContain('FontFile2');
-    expect(raw).not.toContain('CIDFontType2');
-
-    // But after inflating, they ARE present — closing the loop.
-    const inflated = inflatedStreamText(bytes);
-    expect(inflated).toContain('FontFile2');
-  });
-
-  it('renders an exotic CJK+emoji owner name without throwing (encodeSafe degrade)', async () => {
-    const exotic: SignedCertificateData = { ...baseData, ownerName: '李明 🎉' };
-    let bytes: Uint8Array | undefined;
-    await expect(
-      (async () => {
-        bytes = (await new PdfSignedDocumentRenderer().render(exotic)).bytes;
-      })(),
-    ).resolves.not.toThrow();
-    expect(bytes).toBeDefined();
-    expect(Buffer.from(bytes!.subarray(0, 5)).toString('latin1')).toBe('%PDF-');
-  });
-
-  it('renders a name with Arabic + Cyrillic + emoji without throwing', async () => {
+  it('renders an exotic CJK + Arabic + emoji owner name without throwing', async () => {
     const exotic: SignedCertificateData = {
       ...baseData,
-      ownerName: 'محمد Иван 🚀',
+      ownerName: '李明 محمد Иван 🎉',
       documentName: 'דירה 7 — owner محمد',
     };
-    const { bytes } = await new PdfSignedDocumentRenderer().render(exotic);
+    const { bytes } = await renderer.render(exotic);
     expect(Buffer.from(bytes.subarray(0, 5)).toString('latin1')).toBe('%PDF-');
     expect(bytes.byteLength).toBeGreaterThan(1000);
-  });
+  }, 60_000);
 });

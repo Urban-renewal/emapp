@@ -29,6 +29,13 @@ import { applyValidationErrors } from '@/lib/errors';
  * same-origin proxy), `applyValidationErrors`, anti-enum generic message.
  */
 
+/**
+ * Public self-service signup gate (off by default). `NEXT_PUBLIC_SIGNUP_ENABLED`
+ * is inlined at build time; anything other than '1' hides the signup entry
+ * point. Mirrors the server-side `PUBLIC_SIGNUP_ENABLED` flag.
+ */
+const SIGNUP_ENABLED = process.env['NEXT_PUBLIC_SIGNUP_ENABLED'] === '1';
+
 export default function LoginPage() {
   const t = useTranslations('auth');
   const router = useRouter();
@@ -164,16 +171,24 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-5 text-center text-sm">
-          {t('noAccount')}{' '}
-          <Link
-            href="/signup"
-            className="font-medium underline"
-            style={{ color: 'var(--navy-700)' }}
-          >
-            {t('signup')}
-          </Link>
-        </p>
+        {/* Public self-service signup is INACTIVE by default (owner-approved,
+         *  refines D.21 — the active onboarding path is provider-led). The
+         *  signup entry point is gated behind NEXT_PUBLIC_SIGNUP_ENABLED (off
+         *  by default; inlined at build time). Set it to '1' to restore the
+         *  link. The /signup page itself redirects to /login while disabled.
+         *  See docs/decision-records/disable-public-signup.md. */}
+        {SIGNUP_ENABLED && (
+          <p className="mt-5 text-center text-sm">
+            {t('noAccount')}{' '}
+            <Link
+              href="/signup"
+              className="font-medium underline"
+              style={{ color: 'var(--navy-700)' }}
+            >
+              {t('signup')}
+            </Link>
+          </p>
+        )}
       </div>
     </div>
   );

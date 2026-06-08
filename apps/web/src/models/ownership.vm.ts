@@ -17,5 +17,8 @@ export interface OwnershipViewModel {
   nationalIdMasked: string;
   phoneMasked: string | null;
   ownershipPct: number;
+  /** Feature A — owner vs renter. Renters carry pct 0 and are excluded
+   *  from the 100% ownership sum (mirrors `SetOwnershipsInput`). */
+  relationship: 'owner' | 'renter';
   role: string | null;
 }

@@ -193,10 +193,13 @@ test.describe('§E-J2e — Ownerships set-replace (D.25 sum=100)', () => {
       page.getByRole('button', { name: 'שמור' }).click(),
     ]);
 
-    // §AXIS-A — exactly one PUT; body matches D.25 shape.
+    // §AXIS-A — exactly one PUT; body matches D.25 shape. Feature A:
+    // each entry now carries `relationship` ('owner' for a 100% holder).
     expect(putCount, 'exactly one PUT — atomic set-replace').toBe(1);
     const body = JSON.parse(putBody ?? '{}') as Record<string, unknown>;
-    expect(body['owners']).toEqual([{ ownerId: OWNER_ID, ownershipPct: 100 }]);
+    expect(body['owners']).toEqual([
+      { ownerId: OWNER_ID, ownershipPct: 100, relationship: 'owner' },
+    ]);
     // Sum invariant — proved by the BE's expected response shape +
     // the FE's `safeParse` before the PUT. We re-assert here:
     const owners = body['owners'] as Array<{ ownershipPct: number }>;

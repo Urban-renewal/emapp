@@ -22,11 +22,13 @@
 import {
   CreateSignatureRequestInput,
   SignatureRequestCreateResponseSchema,
+  SignatureRequestLinkResponseSchema,
   SignatureRequestSchema,
   type CreateSignatureRequest,
   type ListSignatureRequestsQueryDto,
   type SignatureRequest,
   type SignatureRequestCreateResponse,
+  type SignatureRequestLinkResponse,
 } from '@emapp/shared-types';
 import { z } from 'zod';
 
@@ -37,6 +39,7 @@ import { PageSchema } from './paging';
 
 const SignatureRequestDataSchema = z.object({ data: SignatureRequestSchema });
 const CreateResponseDataSchema = z.object({ data: SignatureRequestCreateResponseSchema });
+const LinkResponseDataSchema = z.object({ data: SignatureRequestLinkResponseSchema });
 
 export interface SignatureRequestListPage {
   items: SignatureRequest[];
@@ -90,6 +93,22 @@ export async function createSignatureRequest(
   const res = await apiClient.postIdempotent<unknown>(`/signature-requests`, body);
   if (!isOk(res)) throw new ApiClientError(res.error);
   return CreateResponseDataSchema.parse({ data: res.data }).data;
+}
+
+/**
+ * POST /signature-requests/:id/link — RETRIEVE the signing link for a PENDING
+ * request, to deliver OUT-OF-BAND (P4 phone-less owner). Re-mints a fresh token
+ * (the previously-sent link dies) and returns `{ request, signUrl }`.
+ *
+ * SECURITY: `signUrl` is a BEARER credential (full JWT). The caller copies it to
+ * the clipboard and must NOT persist it in the DOM longer than needed; never log
+ * it. 409 `signature_request_already_signed` / `signature_request_already_cancelled`
+ * if the request is no longer pending (the FE only offers this for pending).
+ */
+export async function retrieveSignatureLink(id: string): Promise<SignatureRequestLinkResponse> {
+  const res = await apiClient.post<unknown>(`/signature-requests/${id}/link`, {});
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return LinkResponseDataSchema.parse({ data: res.data }).data;
 }
 
 /** POST /signature-requests/:id/cancel — idempotent on cancelled,

@@ -10,7 +10,11 @@ import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useHasPermission } from '@/hooks/use-permissions';
 import { useSessionProfile } from '@/hooks/use-session';
-import { useCancelSignatureRequest, useSignatureRequest } from '@/hooks/use-signature-requests';
+import {
+  useCancelSignatureRequest,
+  useRetrieveSignatureLink,
+  useSignatureRequest,
+} from '@/hooks/use-signature-requests';
 import { ApiClientError } from '@/lib/api/errors';
 import { fetchSignedDocument } from '@/lib/api/signature-requests';
 
@@ -22,6 +26,7 @@ export default function SignatureRequestDetailPage() {
   const id = params?.id;
   const { data, isLoading, isError, error } = useSignatureRequest(id);
   const cancel = useCancelSignatureRequest();
+  const retrieveLink = useRetrieveSignatureLink();
   // The signed certificate carries decrypted owner PII (signer name + the
   // signature), so the download button is gated on the SAME signal as the
   // owner-detail PII reveal: `/me.view_owner_pii` (manager always · agent iff
@@ -30,8 +35,17 @@ export default function SignatureRequestDetailPage() {
   const { data: profile } = useSessionProfile();
   const canDownloadSigned = profile?.view_owner_pii === true;
   const canCancel = useHasPermission('signature_requests.cancel');
+  // P4 phone-less-owner path: a manager/authorized agent can RETRIEVE the
+  // signing link to deliver it out-of-band. Same coarse gate as the send path
+  // (the BE is authoritative — `.send` + the manage_signatures capability); a
+  // read-only Viewer must never see this control (the signUrl is a bearer cred).
+  const canRetrieveLink = useHasPermission('signature_requests.send');
   const [actionError, setActionError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  // Transient "copied" confirmation. We NEVER render the raw signUrl — it is a
+  // bearer credential; copy-to-clipboard is the only surface, and the flag
+  // resets after a few seconds so the page holds no signal of the live token.
+  const [linkCopied, setLinkCopied] = useState(false);
 
   if (isLoading) return <ListSkeleton withRows={false} />;
   if (isError) {
@@ -65,6 +79,32 @@ export default function SignatureRequestDetailPage() {
       setActionError(t('downloadSignedFailed'));
     } finally {
       setDownloading(false);
+    }
+  }
+
+  async function onCopySigningLink() {
+    if (!id) return;
+    setActionError(null);
+    setLinkCopied(false);
+    try {
+      const { signUrl } = await retrieveLink.mutateAsync(id);
+      // Copy immediately; never store signUrl in state / render it in the DOM.
+      await navigator.clipboard.writeText(signUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 4000);
+    } catch (e) {
+      if (e instanceof ApiClientError) {
+        if (e.code === 'signature_request_not_pending') {
+          setActionError(t('copyLinkNotPending'));
+        } else if (e.code === 'forbidden') {
+          setActionError(t('forbidden'));
+        } else {
+          setActionError(t('copyLinkFailed'));
+        }
+      } else {
+        // clipboard write rejection or network — generic, no signUrl leaked.
+        setActionError(t('copyLinkFailed'));
+      }
     }
   }
 
@@ -111,6 +151,15 @@ export default function SignatureRequestDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {canRetrieveLink && data.status === 'pending' && (
+            <Button variant="outline" onClick={onCopySigningLink} disabled={retrieveLink.isPending}>
+              {retrieveLink.isPending
+                ? t('copyLinkWorking')
+                : linkCopied
+                  ? t('copyLinkCopied')
+                  : t('copyLink')}
+            </Button>
+          )}
           {data.signedRelative && canDownloadSigned && (
             <Button variant="outline" onClick={onDownloadSigned} disabled={downloading}>
               {downloading ? t('downloadingSigned') : t('downloadSigned')}
@@ -123,6 +172,11 @@ export default function SignatureRequestDetailPage() {
           )}
         </div>
       </div>
+
+      {canRetrieveLink && data.status === 'pending' && (
+        <p className="text-xs text-muted-foreground">{t('copyLinkHint')}</p>
+      )}
+      {linkCopied && <p className="text-xs text-emerald-700">{t('copyLinkConfirm')}</p>}
 
       {actionError && <p className="text-sm text-destructive">{actionError}</p>}
 

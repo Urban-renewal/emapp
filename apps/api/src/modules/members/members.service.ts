@@ -1,8 +1,10 @@
 import {
   AuditService,
+  DEFAULT_EMAIL_FROM,
   MemberConflictError,
   acceptOrgInvite,
   authSessions,
+  buildEmailFrom,
   inviteOrgMember,
   memberships,
   roleAssignments,
@@ -33,6 +35,7 @@ import { JwtService } from '@nestjs/jwt';
 import { and, desc, eq, inArray, isNotNull, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
 
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import { getOrgSettings } from '../../common/org-settings.resolver';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { hashPassword } from '../auth/password';
 import { flushSessionCache } from '../auth/session-validity';
@@ -170,9 +173,25 @@ export class MembersService {
       // 500 the request (the manager can re-invite). The token is a
       // credential: never logged, never in an error message.
       try {
-        const r = await this.email.send(
-          buildInviteEmail({ to: input.email, name: input.name, token: inviteToken }),
-        );
+        // P6 — set the From DISPLAY name from the org's branding.senderName
+        // (the address stays the verified system From). Best-effort: a
+        // settings-read failure must NOT block the invite — fall back to the
+        // default From.
+        let from = DEFAULT_EMAIL_FROM;
+        try {
+          const settings = await withTenant(user.orgId, (tx) => getOrgSettings(tx, user.orgId));
+          from = buildEmailFrom(settings.branding.senderName, DEFAULT_EMAIL_FROM);
+        } catch (settingsErr) {
+          this.logger.warn(
+            `org-settings read failed for invite From (membership=${membershipId}); using default From: ${
+              settingsErr instanceof Error ? settingsErr.message : 'unknown'
+            }`,
+          );
+        }
+        const r = await this.email.send({
+          ...buildInviteEmail({ to: input.email, name: input.name, token: inviteToken }),
+          from,
+        });
         if (r.status === 'rejected') {
           // Non-PII operability signal (ISO A.12.4): membership id + provider
           // error only. NEVER the token, the link, or the email body.

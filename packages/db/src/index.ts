@@ -100,6 +100,7 @@ export type {
 } from './providers/email/email.interface';
 export { ResendEmailProvider } from './providers/email/resend.provider';
 export { FakeEmailProvider } from './providers/email/fake.provider';
+export { buildEmailFrom, DEFAULT_EMAIL_FROM } from './providers/email/email-from';
 export type { ISMSProvider, SMSDeliveryResult } from './providers/sms/sms.interface';
 export { NoopSMSProvider } from './providers/sms/noop.provider';
 export { FakeSMSProvider } from './providers/sms/fake.provider';

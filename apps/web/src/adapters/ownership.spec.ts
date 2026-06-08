@@ -58,6 +58,7 @@ describe('toOwnershipViewModel — §SOLID-H1', () => {
       'ownershipId',
       'ownershipPct',
       'phoneMasked',
+      'relationship',
       'role',
     ]);
     // explicitly: no `nationalId`, no `phone`, no `national_id`, no `email`, no `notes`

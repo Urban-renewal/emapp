@@ -56,6 +56,14 @@ const serverSchema = {
   R2_SECRET_ACCESS_KEY: z.string().min(1).optional(),
   R2_BUCKET: z.string().min(1).optional(),
   R2_ENDPOINT: z.string().url().optional(),
+
+  // The system-verified outbound From (P6). Optional at the schema level —
+  // `DEFAULT_EMAIL_FROM` (providers/email/email-from.ts) applies a baked
+  // fallback when unset so dev/test always has a value. This is the verified
+  // sender ADDRESS; a per-org `branding.senderName` only changes the DISPLAY
+  // name, never this address. May be a plain address (`no-reply@x.co.il`) or
+  // a display-name form (`EMAPP <no-reply@x.co.il>`).
+  EMAIL_FROM: z.string().min(1).optional(),
 } as const;
 
 /** All schema key names — used by reloadEnv() to diff. */

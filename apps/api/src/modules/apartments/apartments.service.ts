@@ -186,6 +186,10 @@ export class ApartmentsService {
             rooms: input.rooms === undefined || input.rooms === null ? null : String(input.rooms),
             status: input.status ?? 'pending',
             notes: input.notes ?? null,
+            // D.39 — persist the unit_type. CreateApartmentInput defaults it
+            // to 'apt' (the column's own NOT NULL DEFAULT), so it is always a
+            // concrete value here; the fallback keeps the non-null invariant.
+            unitType: input.unitType ?? 'apt',
           })
           .returning();
         if (!row)
@@ -199,7 +203,12 @@ export class ApartmentsService {
           action: 'apartment.create',
           targetTable: 'apartments',
           targetId: row.id,
-          afterState: { buildingId, number: row.number, status: row.status },
+          afterState: {
+            buildingId,
+            number: row.number,
+            status: row.status,
+            unitType: row.unitType,
+          },
           sessionId: user.sid,
         });
         return toApartment(row);
@@ -238,6 +247,10 @@ export class ApartmentsService {
         if (input.rooms !== undefined) {
           patch.rooms = input.rooms === null ? null : String(input.rooms);
         }
+        // D.39 — only touch unit_type when the PATCH actually sends it; an
+        // omitted field leaves the existing value (UpdateApartmentInput keeps
+        // unitType `.optional()` with no default for exactly this reason).
+        if (input.unitType !== undefined) patch.unitType = input.unitType;
         if (input.notes !== undefined) patch.notes = input.notes;
         // statusChangedAt tracks ONLY real status transitions (used for
         // stale-lead reporting later); unchanged status must not reset it.

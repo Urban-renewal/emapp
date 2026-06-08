@@ -61,6 +61,20 @@ export type DocumentMime = z.infer<typeof DocumentMimeEnum>;
 /** 50 MB hard ceiling (defense-in-depth; also enforced at the presign). */
 export const DOCUMENT_MAX_SIZE_BYTES = 52_428_800;
 
+/**
+ * Error-envelope `code` (D.16) for a document whose upload never finalised —
+ * a "ghost" row (tab closed mid-upload, transient error, or the 5-min presign
+ * expired). The download/preview path returns this DISTINCT code (HTTP 409)
+ * INSTEAD of the generic `not_found`, so the FE can show the OWNER an
+ * actionable "your upload didn't finish — re-upload" message.
+ *
+ * Single source of truth: the BE throws with this code, the FE switches on it.
+ * It is ONLY ever emitted for a document already authorised as visible to the
+ * caller — a foreign/unknown id still returns the generic `not_found`, so this
+ * code is never an existence oracle.
+ */
+export const DOCUMENT_UPLOAD_INCOMPLETE_CODE = 'document_upload_incomplete' as const;
+
 /** Wire representation — NEVER includes r2Key. */
 export const DocumentSchema = z.object({
   id: z.string().uuid(),

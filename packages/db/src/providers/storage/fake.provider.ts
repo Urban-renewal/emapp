@@ -7,6 +7,34 @@ import type {
   StorageObjectMeta,
 } from './storage.interface';
 
+/** Construction options for {@link FakeStorageProvider}. */
+export interface FakeStorageProviderOptions {
+  /**
+   * When `true`, `getUploadUrl`/`getDownloadUrl` THROW an actionable
+   * "storage not configured" error instead of returning a
+   * `https://fake-storage.test/…` URL that 404s downstream with no clue.
+   *
+   * This is the DEV-fallback safety flag: the API factory passes it ONLY
+   * in the dev branch (R2 incomplete AND not production AND not test), so
+   * a developer who forgot to set the R2_* secrets gets a clear error at
+   * the document upload/download/preview call site — instead of a
+   * mysterious 404 on a non-existent host.
+   *
+   * It MUST stay `false` (the default) for the in-memory test fakes: under
+   * `NODE_ENV==='test'` the storage/worker specs rely on the URL-minting +
+   * in-memory `objects` behaviour being unchanged. The in-memory
+   * `setObject`/`getObjectStream`/`head`/`delete` paths are NEVER affected
+   * by this flag — only the two URL-minting methods.
+   */
+  readonly failUrlsOutsideTest?: boolean;
+}
+
+/** Thrown by {@link FakeStorageProvider.getUploadUrl}/`getDownloadUrl`
+ *  when the provider was constructed with `failUrlsOutsideTest: true`
+ *  (dev with R2 unconfigured). Names no secrets — just the remedy. */
+export const STORAGE_NOT_CONFIGURED_MESSAGE =
+  'object storage is not configured — set R2_* in Infisical (see boot warning)';
+
 export class FakeStorageProvider implements IStorageProvider {
   public uploaded: Array<{ key: string; opts: UploadUrlOptions }> = [];
   public downloaded: Array<{ key: string; opts: DownloadUrlOptions }> = [];
@@ -16,12 +44,23 @@ export class FakeStorageProvider implements IStorageProvider {
    *  factory FAILS FAST in prod (D.28 governed pattern). */
   public readonly objects: Map<string, Buffer> = new Map();
 
+  /** See {@link FakeStorageProviderOptions.failUrlsOutsideTest}. Default
+   *  `false` so every existing test construction is byte-for-byte
+   *  unchanged. */
+  private readonly failUrlsOutsideTest: boolean;
+
+  constructor(options: FakeStorageProviderOptions = {}) {
+    this.failUrlsOutsideTest = options.failUrlsOutsideTest ?? false;
+  }
+
   async getUploadUrl(key: string, opts: UploadUrlOptions): Promise<string> {
+    if (this.failUrlsOutsideTest) throw new Error(STORAGE_NOT_CONFIGURED_MESSAGE);
     this.uploaded.push({ key, opts });
     return `https://fake-storage.test/upload/${key}?contentType=${opts.contentType}`;
   }
 
   async getDownloadUrl(key: string, opts: DownloadUrlOptions): Promise<string> {
+    if (this.failUrlsOutsideTest) throw new Error(STORAGE_NOT_CONFIGURED_MESSAGE);
     this.downloaded.push({ key, opts });
     return `https://fake-storage.test/download/${key}`;
   }

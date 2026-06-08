@@ -1,4 +1,15 @@
-import { Body, Controller, HttpCode, Post, Req, Res, UseGuards, UsePipes } from '@nestjs/common';
+import { serverEnv } from '@emapp/config';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  NotFoundException,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+  UsePipes,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
@@ -44,6 +55,16 @@ export class AuthController {
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
+    // Public self-service signup is INACTIVE by default (owner-approved, refines
+    // D.21 — the active onboarding path is provider-led). When the flag is off,
+    // the route behaves as if it does not exist: a 404 BEFORE any work (no
+    // argon2 hash, no DB, no privileged connection). Flip PUBLIC_SIGNUP_ENABLED
+    // to '1' to fully restore the original behavior. The service method, DTO,
+    // and D.21 `withBootstrap` are all retained — just unreachable while off.
+    // See docs/decision-records/disable-public-signup.md.
+    if (serverEnv.PUBLIC_SIGNUP_ENABLED !== '1') {
+      throw new NotFoundException();
+    }
     const result = await this.authService.signup(dto, req.ip, this.ua(req));
     // Anti-enumeration (D.14): duplicate email returns the SAME 201 status
     // with a neutral body — no email_taken / 409 / existence leak.

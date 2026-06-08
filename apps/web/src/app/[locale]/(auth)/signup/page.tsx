@@ -3,7 +3,7 @@
 import { SignupSchema, type SignupDto } from '@emapp/shared-types';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { redirect, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -12,7 +12,22 @@ import { Button } from '@/components/ui/button';
 import { apiClient, isOk } from '@/lib/api-client';
 import { applyValidationErrors } from '@/lib/errors';
 
+/**
+ * Public self-service signup gate (off by default). `NEXT_PUBLIC_SIGNUP_ENABLED`
+ * is inlined at build time; anything other than '1' disables the page. Mirrors
+ * the server-side `PUBLIC_SIGNUP_ENABLED` flag (POST /auth/signup → 404).
+ */
+const SIGNUP_ENABLED = process.env['NEXT_PUBLIC_SIGNUP_ENABLED'] === '1';
+
 export default function SignupPage() {
+  // Public self-service signup is INACTIVE by default (owner-approved, refines
+  // D.21 — the active onboarding path is provider-led). When disabled, this
+  // page bounces to /login. The page + form code are RETAINED intact for future
+  // reuse. See docs/decision-records/disable-public-signup.md.
+  if (!SIGNUP_ENABLED) {
+    redirect('/login');
+  }
+
   const t = useTranslations('auth');
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);

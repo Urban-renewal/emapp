@@ -79,6 +79,18 @@
     "tagline": "Urban Renewal",
     "navLandmark": "Primary navigation"
   },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "description": "An unexpected error occurred. Our team has been notified. You can try again or return home.",
+    "retry": "Try again",
+    "home": "Back to home",
+    "referenceId": "Support reference id"
+  },
+  "notFoundPage": {
+    "title": "Page not found",
+    "description": "The page you were looking for doesn't exist or has been removed.",
+    "home": "Back to home"
+  },
   "auth": {
     "loginTitle": "Sign In",
     "loginSubtitle": "Enter your credentials to continue",
@@ -527,7 +539,14 @@
       "rooms": "Rooms",
       "sizeSqm": "m²",
       "status": "Status",
-      "notes": "Notes"
+      "notes": "Notes",
+      "unitType": "Unit type"
+    },
+    "unitType": {
+      "apt": "Apartment (residential)",
+      "shop": "Shop / retail",
+      "office": "Office",
+      "mixed": "Mixed-use"
     }
   },
   "signatureRequests": {

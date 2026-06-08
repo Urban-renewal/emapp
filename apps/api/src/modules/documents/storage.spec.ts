@@ -4,8 +4,8 @@
  * is server-generated, org-partitioned and unguessable; the download
  * filename is sanitised (no header-injection / path / quotes).
  */
-import { FakeStorageProvider } from '@emapp/db';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { FakeStorageProvider, STORAGE_NOT_CONFIGURED_MESSAGE } from '@emapp/db';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   newDocumentKey,
@@ -13,6 +13,16 @@ import {
   safeDownloadFilename,
   storageProviderFactory,
 } from './storage';
+
+/** The 4 R2_* var NAMES the dev warning must enumerate. Mirrors
+ *  REQUIRED_R2_VARS in storage.ts (kept local so the test fails loudly if
+ *  the factory's list drifts). NO secret VALUES anywhere in this spec. */
+const REQUIRED_R2_VAR_NAMES = [
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'R2_BUCKET',
+  'R2_ENDPOINT',
+] as const;
 
 describe('Phase 4 · storage helpers', () => {
   const prev = process.env['NODE_ENV'];
@@ -66,6 +76,80 @@ describe('Phase 4 · storage helpers', () => {
     // new NODE_ENV.
     resetStorageProviderForTests();
     expect(() => storageProviderFactory()).toThrowError(/refusing to boot/i);
+  });
+
+  it('NODE_ENV=test + R2 incomplete → fake MINTS urls, no throw, no boot warning', async () => {
+    // Test mode must be byte-for-byte unchanged: the dev fail-loud flag is
+    // OFF, so the fake returns the usual fake-storage.test URLs and the
+    // factory does NOT emit the [storage] warning.
+    process.env['NODE_ENV'] = 'test';
+    resetStorageProviderForTests();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const p = storageProviderFactory();
+      expect(p).toBeInstanceOf(FakeStorageProvider);
+      await expect(p.getDownloadUrl('org/x/doc/1', { ttlSeconds: 120 })).resolves.toMatch(
+        /fake-storage\.test/,
+      );
+      await expect(
+        p.getUploadUrl('org/x/doc/1', {
+          contentType: 'application/pdf',
+          maxSizeBytes: 10_000_000,
+          ttlSeconds: 300,
+        }),
+      ).resolves.toMatch(/fake-storage\.test/);
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('NODE_ENV=development + R2 incomplete → warns ONCE (names only, no values) and the fake THROWS the actionable error', async () => {
+    // The dev fallback root-cause fix: instead of silently minting a
+    // fake-storage.test URL that 404s, the factory (1) emits ONE loud boot
+    // warning naming exactly the missing R2_* vars, and (2) hands back a
+    // fake whose getUploadUrl/getDownloadUrl THROW the actionable message.
+    process.env['NODE_ENV'] = 'development';
+    resetStorageProviderForTests();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const p = storageProviderFactory();
+      expect(p).toBeInstanceOf(FakeStorageProvider);
+
+      // (1) warned exactly once, naming each missing var, leaking no values.
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const msg = warnSpy.mock.calls[0]?.join(' ') ?? '';
+      for (const name of REQUIRED_R2_VAR_NAMES) {
+        expect(msg).toContain(name);
+      }
+      // No secret VALUES: the warning carries var NAMES only. We assert the
+      // message contains NO `NAME=value` assignment for any R2_* var — i.e.
+      // no `=` directly following a var name (which would imply a value was
+      // interpolated). Scans without a dynamic RegExp (lint-clean).
+      for (const name of REQUIRED_R2_VAR_NAMES) {
+        let from = msg.indexOf(name);
+        while (from !== -1) {
+          const after = msg.slice(from + name.length).trimStart();
+          expect(after.startsWith('=')).toBe(false);
+          from = msg.indexOf(name, from + name.length);
+        }
+      }
+
+      // (2) the returned fake fails LOUD on url mint with the shared,
+      // actionable message — NOT a silent fake-storage.test URL.
+      await expect(p.getDownloadUrl('org/x/doc/1', { ttlSeconds: 120 })).rejects.toThrow(
+        STORAGE_NOT_CONFIGURED_MESSAGE,
+      );
+      await expect(
+        p.getUploadUrl('org/x/doc/1', {
+          contentType: 'application/pdf',
+          maxSizeBytes: 10_000_000,
+          ttlSeconds: 300,
+        }),
+      ).rejects.toThrow(STORAGE_NOT_CONFIGURED_MESSAGE);
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it('factory is memoized — repeated calls return the SAME instance (v7 HIGH)', () => {

@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+// D.39 unit-type enum (apt|shop|office|mixed) is owned in ./project — the
+// nested wizard write path defined it first. Re-use that ONE source here
+// for the standalone apartment write boundary instead of redefining it
+// (a second `export const ApartmentUnitTypeEnum` would collide under the
+// `export *` barrel and drift over time). Same-package import only.
+import { ApartmentUnitTypeEnum } from './project';
+
 // Canonical Apartment contract (Doc 11 SoT; Phase 3 Slice 3).
 // Entity is "apartment" (NEVER "unit"); Hebrew UI "דירה" (CLAUDE.md).
 //
@@ -64,13 +71,27 @@ const apartmentWriteShape = {
   rooms: z.number().min(0).nullable().optional(),
   status: ApartmentStatusEnum.optional(),
   notes: z.string().max(2000).nullable().optional(),
+  // D.39 closed enum (apt|shop|office|mixed). Kept `.optional()` (NOT
+  // `.default('apt')`) on purpose:
+  //  - a `.default()` makes the Zod OUTPUT type non-optional while the
+  //    INPUT stays optional, which splits the inferred type and breaks
+  //    react-hook-form (one type for input+output) and every existing
+  //    caller that omits the field;
+  //  - under `.partial()` (PATCH) a default would silently reset an
+  //    existing shop/office back to 'apt' on any unrelated update.
+  // Backward-compat + the 'apt' fallback are enforced at the persistence
+  // layer instead (apartments.service `input.unitType ?? 'apt'`), which
+  // also mirrors the DB column's own NOT NULL DEFAULT 'apt'. The READ
+  // `ApartmentSchema.unitType` stays `z.string()` to tolerate any legacy
+  // free-text rows; this WRITE side is fail-closed to the 4 values.
+  unitType: ApartmentUnitTypeEnum.optional(),
 } as const;
 
-/** POST body — `number` required (Doc 09 §3.13). */
+/** POST body — `number` required (Doc 09 §3.13). `unitType` optional → 'apt'. */
 export const CreateApartmentInput = z.object(apartmentWriteShape).strict();
 export type CreateApartment = z.infer<typeof CreateApartmentInput>;
 
-/** PATCH body — every field optional. */
+/** PATCH body — every field optional; omitting `unitType` leaves it as-is. */
 export const UpdateApartmentInput = z.object(apartmentWriteShape).partial().strict();
 export type UpdateApartment = z.infer<typeof UpdateApartmentInput>;
 

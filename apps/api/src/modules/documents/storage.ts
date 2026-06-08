@@ -127,7 +127,58 @@ function createStorageProvider(): IStorageProvider {
         'GATES Gate-5 / DECISIONS D.28.',
     );
   }
-  return new FakeStorageProvider();
+  // Dev/test fallback: R2 is incomplete and we are NOT in production.
+  //
+  // The owner-confusion root-cause this branch fixes: previously we
+  // SILENTLY returned a plain FakeStorageProvider whose getUploadUrl/
+  // getDownloadUrl mint `https://fake-storage.test/…` URLs. The browser
+  // then 404s on document view/download/preview with NO clue why (the
+  // owner had a missing R2_ACCESS_KEY_ID and saw only "key does not
+  // exist"). Two changes make it OBVIOUS:
+  //
+  //   1. NODE_ENV!=='test' → emit a LOUD boot warning naming EXACTLY
+  //      which R2_* vars are empty (names only, never values).
+  //   2. NODE_ENV!=='test' → construct the fake with
+  //      `failUrlsOutsideTest: true`, so the next document upload/
+  //      download mint throws the actionable "storage not configured"
+  //      error instead of the silent 404-bound fake URL.
+  //
+  // Under NODE_ENV==='test' NEITHER applies — the fake behaves exactly
+  // as before (in-memory store, URLs minted, no warning, no throw) so
+  // the storage/worker specs are byte-for-byte unaffected.
+  const isTest = process.env['NODE_ENV'] === 'test';
+  if (!isTest) {
+    warnStorageNotConfigured();
+  }
+  return new FakeStorageProvider({ failUrlsOutsideTest: !isTest });
+}
+
+/** The 4 R2_* vars the storage layer requires (mirrors r2EnvIsComplete). */
+const REQUIRED_R2_VARS = [
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'R2_BUCKET',
+  'R2_ENDPOINT',
+] as const;
+
+/**
+ * Emit ONE loud, structured boot warning naming exactly which R2_* vars
+ * are empty. Names ONLY the missing variable NAMES — never their values —
+ * so nothing sensitive is logged. No app-wide logger is threaded through
+ * this composition-root factory, so a clearly-prefixed `console.warn` is
+ * the sanctioned channel here (it fires once, at boot, when the dev fake
+ * is selected).
+ */
+function warnStorageNotConfigured(): void {
+  const missing = REQUIRED_R2_VARS.filter((name) => !env[name]);
+  // Defensive: r2EnvIsComplete was false, so at least one is missing.
+  const missingList = missing.length > 0 ? missing.join(', ') : REQUIRED_R2_VARS.join(', ');
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[storage] ⚠️ R2 NOT CONFIGURED — missing env var(s): ${missingList}. ` +
+      'Document upload/download/preview will NOT work until these are set ' +
+      'in Infisical; using in-memory FakeStorageProvider.',
+  );
 }
 
 /**

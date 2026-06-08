@@ -1,4 +1,16 @@
-import { Controller, Get, HttpCode, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { PortalUpdateContactSchema, type PortalUpdateContactDto } from '@emapp/shared-types';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -24,7 +36,10 @@ import { PortalService } from './portal.service';
  * access_token has a different JWT audience (`emapp-api` per D.29)
  * and the TenantAuthGuard rejects it at verify().
  *
- * No write endpoints in V11 (D.40 — read-only own-data view).
+ * Mostly own-data READS; the few WRITES are own-record only, scoped by
+ * the JWT `sub` in the service (NOT by a request id): `PATCH /me` (P4 —
+ * self-update email), `POST /signatures/:id/resend` (B-RESIDENT-1) and
+ * `POST /logout` (M-1). (Supersedes the earlier D.40 "read-only" note.)
  */
 @Controller('portal')
 @UseGuards(TenantAuthGuard)
@@ -38,6 +53,30 @@ export class PortalController {
   async getMe(@Req() req: FastifyRequest) {
     const tenant = (req as FastifyRequest & { tenant: TenantTokenPayload }).tenant;
     return { data: await this.portal.getMe(tenant) };
+  }
+
+  /**
+   * `PATCH /portal/me` (P4) — the resident self-updates their OWN contact
+   * details. EMAIL only this slice (phone is the SMS-OTP auth factor →
+   * deferred to a Gate-6 slice that OTP-verifies the new number;
+   * national_id is immutable). `PortalUpdateContactSchema` is `.strict()`,
+   * so any `phone` / `national_id` / `name` key is a 400 — no
+   * mass-assignment. Own-row is enforced in the service WHERE
+   * (`id = tenant.sub`), NOT by RLS (which is org-scoped). Throttled
+   * (10 / 10min) — defends against email-cycling abuse. Returns the
+   * re-selected `{ data: <masked me> }`.
+   */
+  @Patch('me')
+  @Throttle({ default: { limit: 10, ttl: 600_000 } })
+  async updateContact(
+    @Req() req: FastifyRequest,
+    @Body(new ZodValidationPipe(PortalUpdateContactSchema)) dto: PortalUpdateContactDto,
+  ) {
+    const tenant = (req as FastifyRequest & { tenant: TenantTokenPayload }).tenant;
+    return this.portal.updateContact(tenant, dto, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Get('apartment')

@@ -2,19 +2,36 @@
  * #6 — document_uploaded notification fan-out (real-DB, deterministic).
  *
  * DocumentsService.create(user, input) emits, best-effort AFTER commit, a
- * `document_uploaded` notification to the project's ASSIGNED AGENTS
- * (project_assignments WHERE unassigned_at IS NULL), EXCLUDING the uploader
- * (user.sub). Project is resolved from input.projectId OR (apartment-level
- * doc) via apartment → building.projectId. Uses
- * NotificationsProducerService.emitMany(recipientIds, base).
+ * `document_uploaded` notification whose recipients are resolved through the ONE
+ * central helper `resolveNotificationRecipients` (D-O7 default). The recipient
+ * set is:
+ *
+ *   recipients = (ALL active org MANAGERS)              ← managers ALWAYS notified
+ *              ∪ (active project-assigned AGENTS)        ← only when a project resolves
+ *              − the UPLOADER (user.sub, the actor)      ← self-exclusion (managers too)
+ *
+ * Project is resolved from input.projectId OR (apartment-level doc) via
+ * apartment → building.projectId. Agents come from project_assignments WHERE
+ * unassigned_at IS NULL. Uses NotificationsProducerService.emitMany(ids, base).
+ *
+ * RETROFIT (PR #296): previously this notified assigned agents ONLY (managers
+ * excluded). Under D-O7 a manager receives EVERY notification, so a manager is
+ * now a recipient of document_uploaded UNLESS the manager is the uploader
+ * (actor-excluded). The seed has exactly ONE manager (createTestOrg seeds a
+ * single manager), so when THAT manager uploads, managers-always − actor leaves
+ * no other manager → the manager still gets nothing in manager-upload cases.
+ * When an AGENT uploads, the manager is NOT the actor → the manager IS notified.
  *
  * Correctness points under test (adversarial):
- *  - SELF-EXCLUSION: an assigned agent who is the uploader gets NOTHING.
- *  - The manager (uploader, NOT an assigned agent) gets NOTHING.
+ *  - SELF-EXCLUSION: the UPLOADER (agent OR manager) gets NOTHING for their own
+ *    upload — managers are NOT exempt from the actor-exclusion.
+ *  - MANAGERS-ALWAYS (D-O7): a manager who is NOT the uploader IS notified
+ *    (verified in N6-2, where an agent uploads).
  *  - ONLY assigned agents of the RIGHT project are notified (no cross-project
  *    / unassigned leakage; unassigned_at IS NOT NULL is excluded).
  *  - apartment→building→project resolution targets the correct project's team.
- *  - No recipients (no team / org-level doc) → 0 notifications, upload SUCCEEDS.
+ *  - Org-level / empty-project doc uploaded BY THE MANAGER → that manager is the
+ *    actor → 0 notifications (the only manager is excluded), upload SUCCEEDS.
  *  - Best-effort isolation: the document row + response exist regardless.
  *  - Body carries the doc NAME only (no PII).
  *
@@ -176,7 +193,7 @@ afterAll(() => {
 });
 
 describe('#6 — document_uploaded notification fan-out', () => {
-  it('N6-1) manager uploads project-level doc → BOTH assigned agents notified; manager (uploader) + stale + wrong-project agent NOT', async () => {
+  it('N6-1) manager uploads project-level doc → BOTH assigned agents notified; the (sole) manager-uploader is excluded as ACTOR + stale + wrong-project agent NOT', async () => {
     const name = `mgr-${randomUUID().slice(0, 8)}.pdf`;
     const res = await svc.create(payload(managerId, 'manager'), {
       ...doc(name),
@@ -199,7 +216,8 @@ describe('#6 — document_uploaded notification fan-out', () => {
       expect(n.metadata.documentId).toBe(docId);
     }
 
-    // uploader (manager, not an assigned agent) — none.
+    // uploader is the ONLY manager → managers-always − actor leaves no other
+    // manager, so the uploader gets nothing (excluded as the ACTOR, D-O7).
     expect(await notifsFor(managerId)).toHaveLength(0);
     // stale (unassigned_at set) — excluded.
     expect(await notifsFor(agentStale)).toHaveLength(0);
@@ -207,7 +225,7 @@ describe('#6 — document_uploaded notification fan-out', () => {
     expect(await notifsFor(agentC)).toHaveLength(0);
   }, 30_000);
 
-  it('N6-2) SELF-EXCLUSION: an assigned agent uploads → OTHER assigned agent notified, the UPLOADER does NOT', async () => {
+  it('N6-2) SELF-EXCLUSION + MANAGERS-ALWAYS: an assigned agent uploads → OTHER assigned agent AND the manager notified; the UPLOADER does NOT', async () => {
     const name = `agentA-${randomUUID().slice(0, 8)}.pdf`;
     const before = (await notifsFor(agentA)).length; // uploader's existing count
 
@@ -217,19 +235,27 @@ describe('#6 — document_uploaded notification fan-out', () => {
     });
     expect(res.document.id).toBeTruthy();
 
-    // agentA is the uploader → must NOT receive a new row.
+    // agentA is the uploader (actor) → must NOT receive a new row. Self-
+    // exclusion holds for agents exactly as for managers.
     const afterA = await notifsFor(agentA);
     expect(afterA).toHaveLength(before);
     expect(afterA.some((n) => n.body?.includes(name))).toBe(false);
 
     // agentB (the OTHER assigned agent) → gets exactly this new one.
     const b = await notifsFor(agentB);
-    const hit = b.filter((n) => n.body?.includes(name));
-    expect(hit).toHaveLength(1);
-    expect(hit[0]!.metadata.documentId).toBe(res.document.id);
+    const hitB = b.filter((n) => n.body?.includes(name));
+    expect(hitB).toHaveLength(1);
+    expect(hitB[0]!.metadata.documentId).toBe(res.document.id);
 
-    // manager / agentC still untouched by this upload.
-    expect((await notifsFor(managerId)).some((n) => n.body?.includes(name))).toBe(false);
+    // D-O7 managers-always: the manager is NOT the uploader here, so the
+    // RETROFIT (PR #296) now notifies the manager too — exactly ONE new row.
+    const mgr = await notifsFor(managerId);
+    const hitMgr = mgr.filter((n) => n.body?.includes(name));
+    expect(hitMgr).toHaveLength(1);
+    expect(hitMgr[0]!.type).toBe('document_uploaded');
+    expect(hitMgr[0]!.metadata.documentId).toBe(res.document.id);
+
+    // agentC (wrong project) still untouched by this upload.
     expect((await notifsFor(agentC)).some((n) => n.body?.includes(name))).toBe(false);
   }, 30_000);
 
@@ -270,8 +296,10 @@ describe('#6 — document_uploaded notification fan-out', () => {
     expect((await notifsFor(agentB)).some((n) => n.body?.includes(name))).toBe(false);
   }, 30_000);
 
-  it('N6-4) project with NO assigned agents → zero notifications, upload still succeeds', async () => {
-    // Fresh project (no assignments) under the same org.
+  it('N6-4) project with NO assigned agents, uploaded by the sole manager → zero notifications (managers-always set = {manager} − actor = ∅), upload still succeeds', async () => {
+    // Fresh project (no assignments) under the same org. Recipient set under
+    // D-O7 = (all managers) ∪ (assigned agents = none) − actor. The actor IS
+    // the only manager, so the set is empty → zero notifications.
     const name = `empty-${randomUUID().slice(0, 8)}.pdf`;
     const { emptyProjectId } = await withTenant(
       org.id,
@@ -305,7 +333,12 @@ describe('#6 — document_uploaded notification fan-out', () => {
     }
   }, 30_000);
 
-  it('N6-5) org-level doc (no projectId, no apartmentId — manager) → zero notifications, upload succeeds', async () => {
+  it('N6-5) org-level doc (no projectId, no apartmentId), uploaded by the sole manager → zero notifications, upload succeeds', async () => {
+    // D-O7 managers-always applies even with NO project (Rule 3 is unconditional;
+    // only the AGENT fan-out, Rule 1, needs a project). So an org-level doc DOES
+    // notify managers — but here the ONLY manager is the UPLOADER (actor), so the
+    // resolved set is {manager} − actor = ∅ → zero notifications. (A second,
+    // non-uploading manager WOULD be notified; the seed has only one.)
     const name = `orglevel-${randomUUID().slice(0, 8)}.pdf`;
     const res = await svc.create(payload(managerId, 'manager'), { ...doc(name) });
     expect(res.document.id).toBeTruthy();

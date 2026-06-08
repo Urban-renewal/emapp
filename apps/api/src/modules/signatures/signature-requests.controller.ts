@@ -146,4 +146,20 @@ export class SignatureRequestsController {
   async resend(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.signatureRequests.resend(user, id) };
   }
+
+  /** Retrieve the signing link for a PENDING request, to deliver OUT-OF-BAND
+   *  (P4 — the phone-less owner who can't be SMS'd and can't self-serve the
+   *  SMS-OTP portal). Re-mints a fresh token (prior link dies) and returns
+   *  { request, signUrl } with NO delivery. The signUrl is a BEARER credential,
+   *  so the gate matches the SEND path — coarse `signature_requests.send` here +
+   *  the fine manage_signatures capability in the service — NOT `.read` (a
+   *  Viewer must not be able to pull the credential). POST because it mutates
+   *  (re-mints jti); throttled like resend. */
+  @Post(':id/link')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @HttpCode(200)
+  @RequirePermission('signature_requests.send')
+  async getLink(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
+    return { data: await this.signatureRequests.getLink(user, id) };
+  }
 }

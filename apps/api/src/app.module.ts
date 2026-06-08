@@ -20,6 +20,7 @@ import { ImportsModule } from './modules/imports/imports.module';
 import { MembersModule } from './modules/members/members.module';
 import { NotesModule } from './modules/notes/notes.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { OrgModule } from './modules/org/org.module';
 import { OwnersModule } from './modules/owners/owners.module';
 import { OwnershipsModule } from './modules/ownerships/ownerships.module';
 import { PortalModule } from './modules/portal/portal.module';
@@ -89,6 +90,7 @@ import { QueueModule } from './queue/queue.module';
     AuditModule,
     ProjectAssignmentsModule,
     MembersModule,
+    OrgModule,
     SignaturesModule,
     QueueModule,
     ImportsModule,

@@ -31,6 +31,7 @@ import { ApartmentsService } from '../../modules/apartments/apartments.service';
 import type { AccessTokenPayload } from '../../modules/auth/auth.service';
 import { BuildingsService } from '../../modules/buildings/buildings.service';
 import { MembersService } from '../../modules/members/members.service';
+import { NotificationsProducerService } from '../../modules/notifications/notifications-producer.service';
 
 let buildingsSvc: BuildingsService;
 let apartmentsSvc: ApartmentsService;
@@ -101,7 +102,7 @@ async function storedCapabilities(userId: string): Promise<Record<string, boolea
 beforeAll(async () => {
   await setupTestDatabase();
   buildingsSvc = new BuildingsService();
-  apartmentsSvc = new ApartmentsService();
+  apartmentsSvc = new ApartmentsService(new NotificationsProducerService());
   membersSvc = new MembersService(new JwtService({ secret: serverEnv.JWT_SECRET }), {} as never);
   const tag = `d46-cap-${Date.now()}`;
   org = await createTestOrg(tag, tag);

@@ -20,7 +20,7 @@ export default function ContractorsPage() {
   const tp = useTranslations('projects');
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const canCreate = useHasPermission('contractors.create');
-  const { data, isLoading, isError, refetch } = useContractorList({ limit: 25, cursor });
+  const { data, isLoading, isError, error, refetch } = useContractorList({ limit: 25, cursor });
   const items = data?.items ?? [];
 
   return (
@@ -37,11 +37,14 @@ export default function ContractorsPage() {
       <ListPageShell
         isLoading={isLoading}
         isError={isError}
+        error={error}
         itemCount={items.length}
         page={data?.page}
         cursor={cursor}
         loadFailedLabel={t('loadFailed')}
         emptyLabel={t('empty')}
+        accessDeniedTitle={tp('accessDeniedTitle')}
+        accessDeniedBody={tp('accessDeniedBody')}
         retryLabel={tp('retry')}
         nextLabel={tp('next')}
         resetLabel={tp('resetToFirstPage')}

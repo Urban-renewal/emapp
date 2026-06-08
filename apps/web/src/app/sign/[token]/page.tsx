@@ -8,6 +8,7 @@ import {
   type PublicSignPreview,
   type PublicSignSubmitResponse,
 } from '@emapp/shared-types';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -51,6 +52,10 @@ export default function SignPage() {
   const [doneAt, setDoneAt] = useState<PublicSignSubmitResponse | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [canvasEmpty, setCanvasEmpty] = useState(true);
+  // Inline-preview load failure (PDF blocked by browser sandbox / R2
+  // outage / unsupported viewer) → fall back to the "open in new tab"
+  // affordance so the resident can still READ before they sign.
+  const [previewFailed, setPreviewFailed] = useState(false);
   const canvasHandleRef = useRef<SignatureCanvasHandle | null>(null);
 
   const setHandle = useCallback((h: SignatureCanvasHandle | null) => {
@@ -154,10 +159,27 @@ export default function SignPage() {
   }
 
   if (stage === 'invalid') {
+    // Recovery affordance (P4 #8). Anti-enumeration is PRESERVED: the
+    // copy below never discloses WHY the token failed (expired vs
+    // cancelled vs forged vs already-signed all reach this same block).
+    // The recovery path is generic — log into the resident portal and
+    // self-resend a fresh link (B-RESIDENT-1: POST /portal/signatures/
+    // :id/resend) — and reveals nothing about the failed token.
+    //
+    // The /sign route is locale-LESS; residents are Hebrew-default, so
+    // we link to the he-prefixed tenant login (it lives under [locale]).
     return (
       <main className="mx-auto max-w-2xl p-6">
         <h1 className="text-2xl font-bold">{t('invalidTitle')}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{t('invalidBody')}</p>
+        <p className="mt-4 text-sm text-muted-foreground">{t('invalidRecoveryHint')}</p>
+        <Link
+          href="/he/tenant/login"
+          className="mt-3 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+        >
+          {t('invalidRecoveryCta')}
+        </Link>
+        <p className="mt-3 text-xs text-muted-foreground">{t('invalidContactManager')}</p>
       </main>
     );
   }
@@ -179,6 +201,18 @@ export default function SignPage() {
   }
 
   if (!preview) return null;
+
+  // §RED-1 defense-in-depth — the wire schema already pins downloadUrl to
+  // `HttpsUrlSchema`, but we re-verify the protocol here before we EMBED
+  // or LINK it. A javascript:/data: URL that slipped past the schema
+  // would be an embedding/click XSS vector. `safeDocUrl` is the SINGLE
+  // value used by both the inline preview AND the open-in-new-tab link —
+  // one source, and it is exactly the document this token authorizes
+  // (the BE presigns the doc bound to signatureRequests.documentId,
+  // matched against the JWT claim; the FE never widens that scope).
+  const safeDocUrl = /^https:\/\//i.test(preview.document.downloadUrl)
+    ? preview.document.downloadUrl
+    : null;
 
   return (
     <main className="mx-auto max-w-2xl space-y-6 p-6">
@@ -212,18 +246,51 @@ export default function SignPage() {
         <p className="text-sm">
           <NameDisplay name={preview.document.name} />
         </p>
-        {/* §RED-1 defense-in-depth — `PublicSignPreviewSchema.document.downloadUrl`
-            is `HttpsUrlSchema` (scheme allowlist), but we re-verify the
-            protocol here before rendering the href. A javascript:/data:
-            URL that slipped past would XSS via the click target. */}
-        {/^https:\/\//i.test(preview.document.downloadUrl) ? (
+
+        {/* #10 — INLINE PREVIEW. A resident must SEE the legal document
+            before drawing a signature (trust + legal soundness). We embed
+            the token-scoped presigned URL directly above the canvas so the
+            doc is on-screen, not one click away.
+
+            Sandbox posture: `sandbox` with NO `allow-scripts` /
+            `allow-same-origin` / `allow-forms` flags — the embedded PDF
+            renders as an inert document; it cannot run script, read this
+            origin, or submit forms back. If the browser refuses to render
+            the PDF inline (some mobile browsers, or an R2 hiccup) the
+            `onError` handler flips to the new-tab fallback below. */}
+        {safeDocUrl ? (
+          <figure className="space-y-1">
+            <figcaption className="text-xs font-medium text-muted-foreground">
+              {t('previewTitle')}
+            </figcaption>
+            {previewFailed ? (
+              <p className="rounded-md border border-dashed bg-muted/30 p-3 text-xs text-muted-foreground">
+                {t('previewUnavailable')}
+              </p>
+            ) : (
+              <iframe
+                src={safeDocUrl}
+                title={t('previewTitle')}
+                sandbox=""
+                referrerPolicy="no-referrer"
+                onError={() => setPreviewFailed(true)}
+                className="h-[28rem] w-full rounded-md border bg-white"
+              />
+            )}
+          </figure>
+        ) : null}
+
+        {/* Open-in-new-tab affordance — kept as the canonical "read the
+            full document" action AND the fallback when inline embedding
+            isn't possible. Uses the SAME re-verified `safeDocUrl`. */}
+        {safeDocUrl ? (
           <a
-            href={preview.document.downloadUrl}
+            href={safeDocUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-block text-sm font-medium underline"
           >
-            {t('openDocument')}
+            {previewFailed ? t('openDocumentNewTab') : t('openDocument')}
           </a>
         ) : null}
         <p className="text-xs text-muted-foreground">

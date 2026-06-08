@@ -12,7 +12,9 @@ import {
   tenantSessions,
   withTenant,
 } from '@emapp/db';
+import type { TenantTx } from '@emapp/db';
 import type {
+  PortalUpdateContactDto,
   TenantPortalApartment,
   TenantPortalDocument,
   TenantPortalMe,
@@ -62,27 +64,91 @@ const PHONE_MASK = sql<
  * benefits comparison / tenant questions. Only the apartment + docs +
  * signatures triad is exposed.
  */
+/**
+ * The single masked-`me` projection — shared by `GET /portal/me` and the
+ * `PATCH /portal/me` re-select so both return the EXACT same shape
+ * (national_id + phone masked in-SQL per D.47; cleartext never leaves
+ * Postgres). Own-row scoped: `id = ownerId` (the JWT `sub`) +
+ * `archived_at IS NULL`. Throws the generic 404 when no row (no oracle).
+ */
+async function selectMaskedMe(tx: TenantTx, ownerId: string): Promise<TenantPortalMe> {
+  const [row] = await tx
+    .select({
+      id: owners.id,
+      organizationId: owners.orgId,
+      name: NAME_CLEAR,
+      email: owners.email,
+      nationalIdMasked: NID_MASK,
+      phoneMasked: PHONE_MASK,
+      createdAt: owners.createdAt,
+    })
+    .from(owners)
+    .where(and(eq(owners.id, ownerId), isNull(owners.archivedAt)))
+    .limit(1);
+  if (!row) throw NOT_FOUND;
+  return row;
+}
+
 @Injectable()
 export class PortalService {
   /** `GET /portal/me` — the tenant's own owner record. national_id + phone
    *  are MASKED in-SQL (D.47 — no cleartext PII on the wire). */
   async getMe(tenant: TenantTokenPayload): Promise<TenantPortalMe> {
+    return withTenant(tenant.orgId, (tx) => selectMaskedMe(tx, tenant.sub));
+  }
+
+  /**
+   * `PATCH /portal/me` — resident self-update of their OWN contact details
+   * (P4 — EMAIL only this slice; phone is DEFERRED, national_id IMMUTABLE).
+   * See docs/decision-records/P4-resident-self-update-contact.md.
+   *
+   * SECURITY CRUX (own-row, application-layer): the `owners` RLS policy is
+   * ORG-scoped (`org_id = app.organization_id`), NOT own-row — so RLS alone
+   * would let a resident update ANY owner in their org. The own-row
+   * guarantee is the WHERE clause: `id = tenant.sub` (the authed owner id
+   * from the verified JWT `sub`; there is NO id in the request). Drop that
+   * and this becomes an org-wide email overwrite. `archived_at IS NULL`
+   * excludes soft-deleted rows. 0 rows updated → NOT_FOUND (no oracle —
+   * same posture as the read paths). Touches ONLY `{ email, updatedAt }`;
+   * phone/national_id/name columns are never referenced.
+   */
+  async updateContact(
+    tenant: TenantTokenPayload,
+    input: PortalUpdateContactDto,
+    ctx: { ip?: string; userAgent?: string },
+  ): Promise<{ data: TenantPortalMe }> {
     return withTenant(tenant.orgId, async (tx) => {
-      const [row] = await tx
-        .select({
-          id: owners.id,
-          organizationId: owners.orgId,
-          name: NAME_CLEAR,
-          email: owners.email,
-          nationalIdMasked: NID_MASK,
-          phoneMasked: PHONE_MASK,
-          createdAt: owners.createdAt,
-        })
-        .from(owners)
+      const updated = await tx
+        .update(owners)
+        .set({ email: input.email, updatedAt: new Date() })
         .where(and(eq(owners.id, tenant.sub), isNull(owners.archivedAt)))
-        .limit(1);
-      if (!row) throw NOT_FOUND;
-      return row;
+        .returning({ id: owners.id });
+      // No row → either no such owner in this org, or it's archived. Same
+      // generic 404 as the read paths — never reveal which (no oracle).
+      if (updated.length === 0) throw NOT_FOUND;
+
+      // Best-effort audit (matches owners.service `{ changed: [...] }` +
+      // the portal `logout` writeAuditSafe pattern). FIELD NAMES ONLY —
+      // the email VALUE is never recorded (PII discipline). A write
+      // failure here must not surface to the resident.
+      try {
+        await tx.insert(auditLog).values({
+          orgId: tenant.orgId,
+          actorType: 'system',
+          action: 'portal.contact_update',
+          targetTable: 'owners',
+          targetId: tenant.sub,
+          afterState: { changed: ['email'] },
+          ip: ctx.ip,
+          userAgent: ctx.userAgent,
+        });
+      } catch {
+        // Best-effort: an audit-write failure must not fail the update.
+      }
+
+      // Re-select via the SAME masked projection getMe uses (single source
+      // of truth) so national_id/phone stay masked on the wire.
+      return { data: await selectMaskedMe(tx, tenant.sub) };
     });
   }
 

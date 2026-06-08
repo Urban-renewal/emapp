@@ -25,6 +25,7 @@ import {
   getPortalProgress,
   getPortalSignatures,
   resendPortalSignature,
+  updatePortalContact,
 } from '@/lib/api/portal';
 import { useDisplayLocale } from '@/lib/locale';
 import type {
@@ -127,6 +128,20 @@ export function useResendPortalSignature() {
     mutationFn: (id: string) => resendPortalSignature(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: [...PORTAL_KEY, 'signatures'] });
+    },
+  });
+}
+
+/** P4 — the resident self-updates their OWN email. Pass `null` to clear.
+ *  0 retries (mutation default) so a throttle/validation 4xx isn't silently
+ *  retried. On success, invalidate the `portal/me` query so the masked
+ *  identity card re-renders with the new email. */
+export function useUpdatePortalContact() {
+  const qc = useQueryClient();
+  return useMutation<TenantPortalMe, Error, string | null>({
+    mutationFn: (email: string | null) => updatePortalContact(email),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [...PORTAL_KEY, 'me'] });
     },
   });
 }

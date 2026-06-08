@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { serverEnv } from '@emapp/config';
 import {
   AuditService,
+  DEFAULT_EMAIL_FROM,
+  buildEmailFrom,
   documents,
   owners,
   ownerships,
@@ -19,6 +21,7 @@ import type {
   BulkSignatureResult,
   SignatureRequest,
   SignatureRequestCreateResponse,
+  SignatureRequestLinkResponse,
   SignatureDeliveryReport,
   ListSignatureRequestsQueryDto,
 } from '@emapp/shared-types';
@@ -35,6 +38,7 @@ import { and, desc, eq, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import { getOrgSettings } from '../../common/org-settings.resolver';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { SMS_PROVIDER } from '../auth/tenant/otp.service';
 import { EMAIL_PROVIDER } from '../members/invite-email';
@@ -260,12 +264,15 @@ export class SignatureRequestsService {
 
         // Bundle the data delivery needs while we still have the tx
         // open (decryption uses pgcrypto + the app.encryption_key GUC).
+        // P6 — resolve the per-org From display name here too (RLS-scoped read).
+        const from = await this.resolveFromForOrg(tx, user.orgId);
         return {
           row: inserted,
           documentName: doc.name,
           ownerName: own.name,
           ownerEmail: own.email,
           ownerPhone: own.phonePlain,
+          from,
         };
       },
       { userId: user.sub },
@@ -288,6 +295,7 @@ export class SignatureRequestsService {
         documentName: txOut.documentName,
       },
       { error: (m): void => this.logger.error(m) },
+      txOut.from,
     );
 
     return {
@@ -419,7 +427,9 @@ export class SignatureRequestsService {
           });
           bundles.push({ ...m, outcome: 'created' });
         }
-        return { documentName: doc.name, bundles };
+        // P6 — resolve the per-org From ONCE for the whole batch (RLS-scoped).
+        const from = await this.resolveFromForOrg(tx, user.orgId);
+        return { documentName: doc.name, bundles, from };
       },
       { userId: user.sub },
     );
@@ -465,6 +475,7 @@ export class SignatureRequestsService {
               documentName: prepared.documentName,
             },
             { error: (msg): void => this.logger.error(msg) },
+            prepared.from,
           );
           return { ownerId: b.ownerId, outcome: 'created', requestId: b.requestId, delivery };
         }),
@@ -539,6 +550,7 @@ export class SignatureRequestsService {
 
         const own = await this.loadOwnerWithPii(tx, req.ownerId);
         const doc = await this.loadVisibleDocument(tx, req.documentId);
+        const from = await this.resolveFromForOrg(tx, user.orgId);
         return {
           row,
           token,
@@ -546,6 +558,7 @@ export class SignatureRequestsService {
           ownerName: own.name,
           ownerEmail: own.email,
           ownerPhone: own.phonePlain,
+          from,
         };
       },
       { userId: user.sub },
@@ -563,9 +576,97 @@ export class SignatureRequestsService {
         documentName: txOut.documentName,
       },
       { error: (m): void => this.logger.error(m) },
+      txOut.from,
     );
 
     return { request: this.toWire(txOut.row), signUrl, delivery };
+  }
+
+  /** Retrieve the signing link for a PENDING request — the phone-less-owner
+   *  path (P4). An owner with NO phone can't be SMS'd the link and can't
+   *  self-serve the SMS-OTP portal, so the manager copies this link and
+   *  delivers it OUT-OF-BAND (WhatsApp / email / paper). Returns ONLY
+   *  { request, signUrl } — NO delivery I/O (this is a read-with-side-effect,
+   *  not a send).
+   *
+   *  Single-source-of-truth: the original JWT is never stored (only its `jti`),
+   *  so it can't be reconstructed. We re-mint a fresh token + new 7-day expiry
+   *  and atomically swap the row's jti/expiresAt WHERE still pending — exactly
+   *  like resend(), minus the email/SMS send. The prior link dies; the DB row's
+   *  jti remains the one live credential. Only a `pending` request yields a
+   *  link (a signed/cancelled one 409s — there's nothing to deliver).
+   *
+   *  AUTHZ — the signUrl is a BEARER credential, so this MUST match the send
+   *  path: coarse `signature_requests.send` (controller) + fine
+   *  manage_signatures capability + agent document-visibility (here). A Viewer
+   *  / unprivileged Agent is rejected before the token is minted. Returning the
+   *  link to an authorized manager does not widen exposure — that same manager
+   *  can already resend() it via SMS/email. The token is NEVER logged. */
+  async getLink(user: AccessTokenPayload, id: string): Promise<SignatureRequestLinkResponse> {
+    const txOut = await withTenant(
+      user.orgId,
+      async (tx) => {
+        const [req] = await tx
+          .select({
+            id: signatureRequests.id,
+            documentId: signatureRequests.documentId,
+            ownerId: signatureRequests.ownerId,
+            status: signatureRequests.status,
+          })
+          .from(signatureRequests)
+          .where(eq(signatureRequests.id, id))
+          .limit(1);
+        if (!req) throw NOT_FOUND;
+        // D.46 — agent: the signature's document must be in an assigned project
+        // (404), then the manage_signatures capability (403). Manager passes
+        // both. Gate BEFORE minting so a rejected actor never receives a token.
+        if (user.role === 'agent') await this.assertDocVisibleForAgent(tx, user, req.documentId);
+        await requireAgentCapability(tx, user, 'manage_signatures');
+        if (req.status !== 'pending') {
+          throw new ConflictException({ error: { code: 'signature_request_not_pending' } });
+        }
+
+        // Re-mint a fresh token for the SAME request (new jti + new expiry).
+        const { token, jti, expiresAt } = this.tokenService.sign({
+          sub: req.id,
+          orgId: user.orgId,
+          documentId: req.documentId,
+          ownerId: req.ownerId,
+        });
+        // Atomic refresh — only if STILL pending (race vs concurrent sign/cancel).
+        const [row] = await tx
+          .update(signatureRequests)
+          .set({ jti, expiresAt })
+          .where(and(eq(signatureRequests.id, id), eq(signatureRequests.status, 'pending')))
+          .returning();
+        if (!row) {
+          throw new ConflictException({ error: { code: 'signature_request_not_pending' } });
+        }
+
+        // Audit the link RETRIEVAL distinctly from resend — a manager copying
+        // the bearer link for out-of-band delivery is a security-relevant event
+        // (who pulled the credential, when) even though no SMS/email was sent.
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'signature_request.link_retrieve',
+          targetTable: 'signature_requests',
+          targetId: id,
+          sessionId: user.sid,
+        });
+
+        return { row, token };
+      },
+      { userId: user.sub },
+    );
+
+    // signUrl embeds the freshly-minted JWT — the manager's out-of-band payload.
+    // NEVER logged (no logger call references it).
+    return {
+      request: this.toWire(txOut.row),
+      signUrl: `${PUBLIC_APP_URL}/sign/${txOut.token}`,
+    };
   }
 
   /** Resident self-resend (B-RESIDENT-1) — a logged-in apartment owner (tenant
@@ -628,12 +729,14 @@ export class SignatureRequestsService {
 
       const own = await this.loadOwnerWithPii(tx, ownerId);
       const doc = await this.loadVisibleDocument(tx, req.documentId);
+      const from = await this.resolveFromForOrg(tx, orgId);
       return {
         token,
         documentName: doc.name,
         ownerName: own.name,
         ownerEmail: own.email,
         ownerPhone: own.phonePlain,
+        from,
       };
     });
 
@@ -648,6 +751,7 @@ export class SignatureRequestsService {
         documentName: txOut.documentName,
       },
       { error: (m): void => this.logger.error(m) },
+      txOut.from,
     );
     // Strip the token-bearing WhatsApp deep-link — the resident receives the
     // link out-of-band (SMS/email), never as a credential in the HTTP response.
@@ -739,6 +843,29 @@ export class SignatureRequestsService {
       phonePlain: row.phone_plain,
       archivedAt: row.archived_at,
     };
+  }
+
+  /** P6 — resolve this org's outbound From: the verified system address with
+   *  the org's `branding.senderName` as the display name (or the system default
+   *  From when the org keeps the default / on a settings-read failure). Built
+   *  ONLY via `buildEmailFrom` — single source for header-safe From assembly;
+   *  this service never hand-rolls a From string. Resolved INSIDE the caller's
+   *  tenant tx (so `organizations.settings` is RLS-scoped). Best-effort: a read
+   *  failure must NOT break delivery / the manager's request — fall back to
+   *  `DEFAULT_EMAIL_FROM`. (`getOrgSettings` is itself fail-soft; the try/catch
+   *  is belt-and-suspenders, matching the #306 calendar-email pattern.) */
+  private async resolveFromForOrg(tx: TenantTx, orgId: string): Promise<string> {
+    try {
+      const settings = await getOrgSettings(tx, orgId);
+      return buildEmailFrom(settings.branding.senderName, DEFAULT_EMAIL_FROM);
+    } catch (err) {
+      this.logger.warn(
+        `org-settings read failed for From display-name (org=${orgId}); using default From: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return DEFAULT_EMAIL_FROM;
+    }
   }
 
   /** GET /signature-requests — Manager+Viewer see all in org; Agent sees

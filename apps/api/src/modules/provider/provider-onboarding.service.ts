@@ -164,6 +164,14 @@ export class ProviderOnboardingService {
 
     // Best-effort delivery — the org is committed; a transient mail failure
     // must not 500. Record the FACT + cause (NEVER the token / link / body).
+    //
+    // P6 — From DISPLAY name is left on the SYSTEM DEFAULT here (no per-org
+    // branding.senderName resolve). This runs in PROVIDER context for a
+    // BRAND-NEW org whose `settings` is the default `{}` (senderName='EMAPP'
+    // = the default anyway), and there is no clean `withTenant(orgId)` tx in
+    // scope — `getOrgSettings` needs a TenantTx. Resolving here would contort
+    // the architecture for zero behavior change. Wired send sites (org
+    // context): members.service, calendar-email.service.
     try {
       const r = await this.email.send(
         buildInviteEmail({

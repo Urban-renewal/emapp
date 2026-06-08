@@ -25,7 +25,7 @@ export default function AuditPage() {
   const t = useTranslations('audit');
   const tp = useTranslations('projects');
   const [cursor, setCursor] = useState<string | undefined>(undefined);
-  const { data, isLoading, isError, refetch } = useAuditList({ limit: 25, cursor });
+  const { data, isLoading, isError, error, refetch } = useAuditList({ limit: 25, cursor });
   const items = data?.items ?? [];
 
   return (
@@ -40,11 +40,14 @@ export default function AuditPage() {
       <ListPageShell
         isLoading={isLoading}
         isError={isError}
+        error={error}
         itemCount={items.length}
         page={data?.page}
         cursor={cursor}
         loadFailedLabel={t('loadFailed')}
         emptyLabel={t('empty')}
+        accessDeniedTitle={tp('accessDeniedTitle')}
+        accessDeniedBody={tp('accessDeniedBody')}
         retryLabel={tp('retry')}
         nextLabel={tp('next')}
         resetLabel={tp('resetToFirstPage')}

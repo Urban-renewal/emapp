@@ -23,6 +23,12 @@ import { TasksService } from './tasks.service';
 let svc: TasksService;
 let org: TestOrg;
 let managerId: string;
+// A SECOND active manager in the same org. The D-O7 engine routes task_assigned
+// to "assignees ∪ ALL active managers − actor". With only the factory's single
+// manager (= the actor in the create/assign tests) the manager-set would always
+// collapse to ∅ and the "managers-always, actor-excluded" assertions would be
+// vacuous. mgr2 is the OTHER manager whose presence/absence makes them real.
+let manager2Id: string;
 let agentId: string;
 let assignedProjectId: string;
 let unassignedProjectId: string;
@@ -30,9 +36,14 @@ let unassignedProjectId: string;
 const MGR_SID = '00000000-0000-4000-8000-0000000000c1';
 const AGENT_SID = '00000000-0000-4000-8000-0000000000c2';
 const calendarStub = {} as never;
-// addAssignee fires a best-effort in-app notification; stub it so the
-// capability tests (which assert authz, not notifications) don't crash.
-const notificationsStub = { emit: async (): Promise<boolean> => true } as never;
+// addAssignee/create fire a best-effort in-app notification via the engine
+// (emitMany over the resolved recipient set); stub BOTH producer methods so the
+// capability tests (which assert authz, not notifications) don't crash. P5 slice
+// 2: the task_assigned path now calls emitMany, not the per-assignee emit.
+const notificationsStub = {
+  emit: async (): Promise<boolean> => true,
+  emitMany: async (): Promise<number> => 0,
+} as never;
 
 function manager(): AccessTokenPayload {
   return {
@@ -61,6 +72,22 @@ async function seedAgent(orgId: string): Promise<string> {
   await db
     .insert(memberships)
     .values({ userId: u!.id, orgId, role: 'agent', acceptedAt: new Date() });
+  return u!.id;
+}
+
+/** Seed a SECOND active manager in the org (for the D-O7 managers-always set). */
+async function seedManager(orgId: string): Promise<string> {
+  const [u] = await db
+    .insert(users)
+    .values({
+      email: `mgr2-${randomUUID()}@test.local`,
+      name: 'Manager2',
+      passwordHash: '$2b$12$x',
+    })
+    .returning({ id: users.id });
+  await db
+    .insert(memberships)
+    .values({ userId: u!.id, orgId, role: 'manager', acceptedAt: new Date() });
   return u!.id;
 }
 
@@ -97,6 +124,7 @@ beforeAll(async () => {
   assignedProjectId = org.projects[0]!.id;
   unassignedProjectId = org.projects[1]!.id;
   agentId = await seedAgent(org.id);
+  manager2Id = await seedManager(org.id);
   await db
     .insert(projectAssignments)
     .values({ projectId: assignedProjectId, userId: agentId, assignedBy: managerId });
@@ -161,19 +189,27 @@ describe('D.46 — manage_tasks agent enforcement', () => {
   it('TASK-8) addAssignee: agent w/o cap → 403; with cap → allowed', async () => {
     const id = await seedTask(assignedProjectId);
     await setCap(false);
-    await expect(svc.addAssignee(agent(), id, { userId: managerId })).rejects.toBeInstanceOf(
+    // D-O6: the manager who seeded the task is now its creator-assignee, so we
+    // exercise the add-success path with a DIFFERENT user (agentId, not yet an
+    // assignee of this task) — assigning managerId would now (correctly) 409
+    // assignee_exists, which is a different code path than the 403/allow we test
+    // here. The capability gate is what's under test; the chosen user is incidental.
+    await expect(svc.addAssignee(agent(), id, { userId: agentId })).rejects.toBeInstanceOf(
       ForbiddenException,
     );
     await setCap(true);
-    const a = await svc.addAssignee(agent(), id, { userId: managerId });
+    const a = await svc.addAssignee(agent(), id, { userId: agentId });
     expect(a.id).toBeTruthy();
   }, 30_000);
 
   it('TASK-9) removeAssignee: agent with cap (assigned task) → allowed', async () => {
     await setCap(true);
     const id = await seedTask(assignedProjectId);
-    await svc.addAssignee(agent(), id, { userId: managerId });
-    await expect(svc.removeAssignee(agent(), id, managerId)).resolves.toBeUndefined();
+    // D-O6: managerId is already the creator-assignee of this seeded task, so add
+    // a non-creator (agentId) for a clean add→remove round-trip (adding managerId
+    // would 409). The capability-scoped removeAssignee is what's under test.
+    await svc.addAssignee(agent(), id, { userId: agentId });
+    await expect(svc.removeAssignee(agent(), id, agentId)).resolves.toBeUndefined();
   }, 30_000);
 
   it('TASK-10) manager creates/updates any task (capability no-op)', async () => {
@@ -274,57 +310,77 @@ describe('D.54 — narrow assignee task update (status/notes/done only)', () => 
 
 // QA-TASK-NOTIF-1 fix — "task sent" = in-app notification to the assignee.
 describe('task_assigned in-app notification on assign', () => {
-  it('TASK-N1) addAssignee emits task_assigned to the newly-assigned user (non-PII title only)', async () => {
-    const emit = vi.fn(
-      async (_input: {
-        orgId: string;
-        recipientId: string;
-        type: string;
-        body?: string | null;
-      }): Promise<boolean> => true,
+  it('TASK-N1) addAssignee emits task_assigned via the engine to {newly-assigned ∪ managers − assigner} (non-PII title only)', async () => {
+    // P5 slice 2 / D-O7: the code now calls emitMany with the resolved recipient
+    // SET (not the old per-assignee emit). The assigner is manager() (managerId) —
+    // dropped as the actor; the OTHER manager (manager2Id) survives the
+    // managers-always rule; the newly-assigned agentId is the relevant user.
+    const emitMany = vi.fn(
+      async (
+        _recipients: readonly string[],
+        _base: { orgId: string; type: string; body?: string | null },
+      ): Promise<number> => 0,
     );
-    const spySvc = new TasksService(calendarStub, { emit } as never);
+    const spySvc = new TasksService(calendarStub, { emitMany } as never);
     const id = await seedTask(assignedProjectId);
     await spySvc.addAssignee(manager(), id, { userId: agentId });
-    expect(emit).toHaveBeenCalledTimes(1);
-    const arg = emit.mock.calls[0]![0];
-    expect(arg.type).toBe('task_assigned');
-    expect(arg.recipientId).toBe(agentId); // delivered to the ASSIGNEE, not the actor
-    expect(arg.orgId).toBe(org.id);
+    expect(emitMany).toHaveBeenCalledTimes(1);
+    const [recipients, base] = emitMany.mock.calls[0]!;
+    // recipient SET = {agentId} ∪ {managerId, manager2Id} − {managerId (assigner)}
+    expect([...recipients].sort()).toEqual([agentId, manager2Id].sort());
+    expect(recipients).not.toContain(managerId); // assigner (actor) excluded
+    expect(base.type).toBe('task_assigned');
+    expect(base.orgId).toBe(org.id);
     // PII guard: the body carries only the org-visible task title, no national_id/phone.
-    expect(arg.body ?? '').not.toMatch(/\b\d{9}\b/);
-    expect(arg.body ?? '').not.toMatch(/05\d{8}/);
+    expect(base.body ?? '').not.toMatch(/\b\d{9}\b/);
+    expect(base.body ?? '').not.toMatch(/05\d{8}/);
   }, 30_000);
 
-  it('TASK-N3) create WITH assigneeIds emits task_assigned to EACH assignee', async () => {
-    const emit = vi.fn(
-      async (_input: { type: string; recipientId: string; orgId: string }): Promise<boolean> =>
-        true,
+  it('TASK-N3) create WITH assigneeIds emits task_assigned via the engine to the D-O7 set (agent + OTHER managers, MINUS the creating manager/actor)', async () => {
+    // P5 slice 2 / D-O7 closure of D-O6 actor-exclusion: the code now calls
+    // emitMany with the RESOLVED recipient set. The creating manager (managerId)
+    // is the actor → EXCLUDED even though D-O6 still auto-assigns them as a
+    // task_assignees row. The explicitly-named agentId (relevant user) and the
+    // OTHER manager (manager2Id, managers-always) receive it. (Pre-P5 the code
+    // fired a per-assignee emit that INCLUDED the creator — the very self-notify
+    // bug this slice closes.)
+    const emitMany = vi.fn(
+      async (
+        _recipients: readonly string[],
+        _base: { type: string; orgId: string },
+      ): Promise<number> => 0,
     );
-    const spySvc = new TasksService(calendarStub, { emit } as never);
+    const spySvc = new TasksService(calendarStub, { emitMany } as never);
     await spySvc.create(manager(), {
       title: 'bulk-assign',
       projectId: assignedProjectId,
       assigneeIds: [agentId],
     });
-    expect(emit).toHaveBeenCalledTimes(1);
-    expect(emit.mock.calls[0]![0].type).toBe('task_assigned');
-    expect(emit.mock.calls[0]![0].recipientId).toBe(agentId);
-    expect(emit.mock.calls[0]![0].orgId).toBe(org.id);
+    expect(emitMany).toHaveBeenCalledTimes(1);
+    const [recipients, base] = emitMany.mock.calls[0]!;
+    expect(base.type).toBe('task_assigned');
+    expect(base.orgId).toBe(org.id);
+    // recipient SET = ({managerId(creator), agentId} ∪ {managerId, manager2Id}) − {managerId}
+    expect([...recipients].sort()).toEqual([agentId, manager2Id].sort());
+    expect(recipients).not.toContain(managerId); // creator (actor) self-notify CLOSED
   }, 30_000);
 
   it('TASK-N2) a notify failure NEVER fails the assignment (best-effort isolation)', async () => {
-    const emit = vi.fn(async () => {
+    // P5 slice 2: the code calls emitMany (NOT emit). The throwing stub MUST be
+    // emitMany or the isolation assertion is vacuous (a throwing emit is never
+    // invoked, so it could never have failed the assignment in the first place).
+    const emitMany = vi.fn(async () => {
       throw new Error('notify boom');
     });
-    const spySvc = new TasksService(calendarStub, { emit } as never);
+    const spySvc = new TasksService(calendarStub, { emitMany } as never);
     const id = await seedTask(assignedProjectId);
-    // The stub throws directly. addAssignee's own try/catch around the emit
-    // (defense-in-depth, in addition to the producer self-guarding) is what
-    // keeps the already-committed assignment from failing. Assert it resolves.
+    // addAssignee's own try/catch around emitMany (defense-in-depth, in addition
+    // to the producer self-guarding) keeps the already-committed assignment from
+    // failing. Assert it resolves AND that the throwing path was actually taken.
     await expect(spySvc.addAssignee(manager(), id, { userId: agentId })).resolves.toMatchObject({
       userId: agentId,
     });
+    expect(emitMany).toHaveBeenCalledTimes(1); // the throwing path WAS exercised
   }, 30_000);
 });
 

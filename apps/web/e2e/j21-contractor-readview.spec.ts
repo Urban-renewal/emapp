@@ -95,7 +95,12 @@ test.describe('§E-J21 — contractor read-view (D.46)', () => {
 
     // §AXIS-V — project name renders (page is public; no login bounce).
     await expect(page.getByRole('heading', { name: /הרצל/ })).toBeVisible({ timeout: 15_000 });
-    expect(page.url()).toContain('/contractor/share/');
+    // §AXIS-URL (P3 #5) — the landing token was exchanged for an httpOnly cookie
+    // and the browser was redirected to the CLEAN, token-less URL. Assert we are
+    // on `/he/contractor/share` (no trailing token) AND the token is gone from the
+    // address bar — the whole point of the URL→cookie change (no history/Referer leak).
+    expect(new URL(page.url()).pathname).toBe('/he/contractor/share');
+    expect(page.url()).not.toContain(TOKEN);
 
     // Aggregate progress: bar + "58 of 100 (58%)".
     await expect(page.getByText(/58.*100.*58%/)).toBeVisible({ timeout: 10_000 });

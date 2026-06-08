@@ -26,10 +26,15 @@ const intlMiddleware = createMiddleware(routing);
 const JWT_SHAPE = '[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+';
 const PUBLIC_ROUTE_REGEX = new RegExp(
   // D2-DEF-1 — `/<locale>/contractor/share/<jwt>` is the public contractor
-  // read-view landing: the share-access token (JWT in the path) IS the
-  // credential; no cookie. Same shape-pinning posture as accept-invite so a
-  // stray `/he/contractor/share/whatever` can't masquerade as public.
-  `^\\/[a-z]{2}\\/(login|signup|provider\\/login|tenant\\/login|accept-invite\\/${JWT_SHAPE}|contractor\\/share\\/${JWT_SHAPE})$`,
+  // read-view LANDING: the share-access token (JWT in the path) is exchanged
+  // for an httpOnly cookie by the Route Handler, then redirected to the
+  // token-less `/<locale>/contractor/share` (Phase 3 #5). BOTH are public —
+  // the contractor never holds an org `access_token`; the clean view
+  // authenticates via the `contractor_access_token` httpOnly cookie at the
+  // API layer (ContractorAuthGuard), NOT this middleware. The landing keeps
+  // the JWT-shape pinning so a stray `/he/contractor/share/whatever` can't
+  // masquerade as public; the clean path is an exact token-less segment.
+  `^\\/[a-z]{2}\\/(login|signup|provider\\/login|tenant\\/login|accept-invite\\/${JWT_SHAPE}|contractor\\/share(\\/${JWT_SHAPE})?)$`,
 );
 /**
  * Org-tier auth routes — bounce ANY user with `access_token` away.

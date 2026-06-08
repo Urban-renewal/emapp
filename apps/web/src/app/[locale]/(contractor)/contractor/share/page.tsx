@@ -1,7 +1,6 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
@@ -21,40 +20,43 @@ import {
 } from '@/lib/api/contractor';
 
 /**
- * D2-DEF-1 / D.46 — contractor read-view.
+ * D2-DEF-1 / D.46 — contractor read-view (CLEAN, token-less URL).
  *
- * Public page: the share-access token comes from the URL and is the sole
- * credential (Bearer, forwarded by the proxy to ContractorAuthGuard). The
- * view is structurally narrow — project + buildings + apartments
+ * Phase 3 #5 — the share-access token NO LONGER rides in the URL. The sibling
+ * `share/[token]/route.ts` exchanged the URL token for an **httpOnly** cookie
+ * (`contractor_access_token`) and redirected here. This page authenticates
+ * purely via that cookie: every `/contractor/*` API call is forwarded by the
+ * same-origin proxy with the cookie, and ContractorAuthGuard reads it. The
+ * token is therefore never in the address bar, browser history, `Referer`, or
+ * any JS-readable storage (httpOnly) on this page.
+ *
+ * The view is structurally narrow — project + buildings + apartments
  * (structural), AGGREGATE signature progress, and manager-shared documents.
  * NO owner data is ever requested or rendered (there is no owner endpoint).
  *
  * Each section degrades independently: a 403 (permission off) renders the
- * section as "not shared" rather than failing the page.
+ * section as "not shared" rather than failing the page. A hard failure on the
+ * project fetch (missing/invalid/expired/revoked cookie → the guard's generic
+ * 401) is the whole-page error — the link is dead (no oracle on WHY).
  */
 export default function ContractorSharePage() {
   const t = useTranslations('contractorView');
-  const params = useParams<{ token: string }>();
-  const token = params?.token ?? '';
 
-  // Key on the token (defense-in-depth) so two distinct share-links can
-  // never collide in the cache, even if a QueryProvider were ever shared.
+  // No token argument: the httpOnly cookie is the credential and is attached
+  // by the browser → proxy → guard. The FE never sees it (httpOnly).
   const project = useQuery({
-    queryKey: ['contractor', 'project', token],
-    queryFn: () => getContractorProject(token),
-    enabled: Boolean(token),
+    queryKey: ['contractor', 'project'],
+    queryFn: () => getContractorProject(),
     retry: false,
   });
   const progress = useQuery({
-    queryKey: ['contractor', 'progress', token],
-    queryFn: () => getContractorProgress(token),
-    enabled: Boolean(token),
+    queryKey: ['contractor', 'progress'],
+    queryFn: () => getContractorProgress(),
     retry: false,
   });
   const docs = useQuery({
-    queryKey: ['contractor', 'documents', token],
-    queryFn: () => getContractorDocuments(token),
-    enabled: Boolean(token),
+    queryKey: ['contractor', 'documents'],
+    queryFn: () => getContractorDocuments(),
     retry: false,
   });
 
@@ -63,7 +65,7 @@ export default function ContractorSharePage() {
   async function onDownload(docId: string) {
     setDownloadError(null);
     try {
-      const { url } = await getContractorDownloadUrl(token, docId);
+      const { url } = await getContractorDownloadUrl(docId);
       window.open(url, '_blank', 'noopener');
     } catch {
       setDownloadError(t('downloadFailed'));

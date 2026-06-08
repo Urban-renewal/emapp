@@ -22,7 +22,7 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { describe, expect, it, vi } from 'vitest';
 
-import { buildCspHeader, buildScriptSrc, CSP_CONNECT_SRC } from './lib/csp';
+import { buildCspHeader, buildScriptSrc, CSP_CONNECT_SRC, CSP_FRAME_SRC } from './lib/csp';
 import middleware from './middleware';
 
 vi.mock('next-intl/middleware', () => ({
@@ -183,6 +183,60 @@ describe('middleware — adversarial', () => {
   it('M20) /he/contractor/share/notajwt is NOT public — shape-pinned, falls through to the auth gate', () => {
     const res = middleware(mockReq({ pathname: '/he/contractor/share/notajwt' }));
     expect(res.status).toBe(307);
+  });
+
+  // ─── Phase 3 #5 — TOKEN-LESS clean contractor view (/he/contractor/share) ───
+  it('M20a) /he/contractor/share (token-less, clean view) is PUBLIC — unauthenticated contractor NOT bounced to /login', () => {
+    // After the [token]/route.ts exchange 303-redirects here, the visitor
+    // has NO org access_token (a contractor never holds one). The clean
+    // view authenticates via the httpOnly contractor_access_token cookie at
+    // the API layer, NOT here — so the middleware must let the page render.
+    const res = middleware(mockReq({ pathname: '/he/contractor/share' }));
+    expect(res.status).not.toBe(307);
+  });
+
+  it('M20b) /en/contractor/share (token-less) is public in the other locale too', () => {
+    const res = middleware(mockReq({ pathname: '/en/contractor/share' }));
+    expect(res.status).not.toBe(307);
+  });
+
+  it('M20c) ADVERSARIAL — /he/contractor/sharezzz (no exact segment boundary) is NOT public → bounced', () => {
+    // The regex must NOT accidentally open a prefix-extended path. The
+    // clean path is an EXACT token-less segment anchored by `$`. A
+    // `sharezzz` suffix means a malicious sibling page must hit the auth
+    // gate, not masquerade as the public surface.
+    const res = middleware(mockReq({ pathname: '/he/contractor/sharezzz' }));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toMatch(/\/he\/login$/);
+  });
+
+  it('M20d) ADVERSARIAL — /he/contractor/share/ (trailing slash, empty token) is NOT public → bounced', () => {
+    // A trailing slash with no token segment is neither the token-less
+    // clean path nor a JWT landing. Must NOT be treated as public.
+    const res = middleware(mockReq({ pathname: '/he/contractor/share/' }));
+    expect(res.status).toBe(307);
+  });
+
+  it('M20e) ADVERSARIAL — /he/contractor/share/../projects style sibling is NOT public', () => {
+    // A normalized path that escapes the share segment must not inherit
+    // the public allowance. (The regex anchors the exact segment; a
+    // `/he/contractor/projects` would not match `contractor/share`.)
+    const res = middleware(mockReq({ pathname: '/he/contractor/projects' }));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toMatch(/\/he\/login$/);
+  });
+
+  it('M20f) ADVERSARIAL — /he/contractor (bare, no /share) is NOT public → bounced', () => {
+    const res = middleware(mockReq({ pathname: '/he/contractor' }));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toMatch(/\/he\/login$/);
+  });
+
+  it('M20g) the token-less clean path is NOT bounced even WITH an org cookie (it is not an auth route)', () => {
+    // Unlike /login, the clean contractor view is not an AUTH_ROUTE, so an
+    // org-authenticated user is not redirected away from it.
+    const res = middleware(mockReq({ pathname: '/he/contractor/share', hasToken: true }));
+    expect(res.status).not.toBe(307);
   });
 
   it('M19) /he/accept-invite/<jwt>/extra is NOT a public route — anchoring prevents path injection', () => {
@@ -427,6 +481,11 @@ describe('CSP — nonce-based, per-request (§MQA-1 + §v9-P0-5)', () => {
     // §csp-r2 — without R2 the browser blocks the presigned-PUT upload silently.
     expect(csp).toContain(CSP_CONNECT_SRC);
     expect(CSP_CONNECT_SRC).toMatch(/https:\/\/\*\.r2\.cloudflarestorage\.com/);
+    // §csp-r2-frame (#10) — without R2 in frame-src the browser SILENTLY blocks
+    // the resident /sign inline document preview (<iframe> over the presigned
+    // R2 GET) under the default-src 'self' fallback.
+    expect(csp).toContain(CSP_FRAME_SRC);
+    expect(CSP_FRAME_SRC).toMatch(/https:\/\/\*\.r2\.cloudflarestorage\.com/);
   });
 
   it('M10c) the CSP is set PER REQUEST in middleware, NOT statically in next.config', async () => {

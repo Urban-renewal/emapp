@@ -43,6 +43,30 @@ export const TenantPortalMeSchema = z.object({
 export type TenantPortalMe = z.infer<typeof TenantPortalMeSchema>;
 
 /**
+ * `PATCH /portal/me` — resident self-update of their OWN contact details
+ * (P4 — EMAIL only this slice; see docs/decision-records/
+ * P4-resident-self-update-contact.md).
+ *
+ * `.strict()` is LOAD-BEARING: it rejects any extra key (`phone`,
+ * `national_id`, `name`) with a 400. This is the structural enforcement
+ * of two invariants at the DTO boundary — (1) national_id is IMMUTABLE,
+ * (2) phone change is DEFERRED to its own Gate-6 slice (phone is the
+ * SMS-OTP auth factor → changing it must OTP-verify the new number first).
+ * So the ONLY writable field is `email`; no mass-assignment surface.
+ *
+ * `email` is `.nullable()` — a resident may CLEAR their email (set null);
+ * the column is nullable `citext`. Trimmed + lowercased to match the
+ * `citext` collation and avoid a `" foo@x.com "` round-trip. `max(254)`
+ * is the RFC 5321 address limit.
+ */
+export const PortalUpdateContactSchema = z
+  .object({
+    email: z.string().trim().toLowerCase().email().max(254).nullable(),
+  })
+  .strict();
+export type PortalUpdateContactDto = z.infer<typeof PortalUpdateContactSchema>;
+
+/**
  * `GET /portal/progress` — AGGREGATE signature progress for each project
  * the tenant has an apartment in. Counts/percentages ONLY — NEVER any
  * other resident's individual data or PII (the scope-critical rule). The

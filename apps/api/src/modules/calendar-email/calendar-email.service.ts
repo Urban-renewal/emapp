@@ -1,4 +1,6 @@
 import {
+  DEFAULT_EMAIL_FROM,
+  buildEmailFrom,
   decryptOwnerNamesBatch,
   owners,
   taskExternalAttendees,
@@ -10,6 +12,7 @@ import {
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 
+import { getOrgSettings } from '../../common/org-settings.resolver';
 import {
   CalendarService,
   type IcsAttendeeInput,
@@ -35,6 +38,10 @@ type PreparedCalendar =
       kind: 'send';
       attendees: Array<IcsAttendeeInput & { _attendeeId: string }>;
       icsInput: { task: IcsTaskInput; organizer: IcsOrganizerInput; attendees: IcsAttendeeInput[] };
+      /** P6 — the resolved From for this org: the verified system address with
+       *  the org's `branding.senderName` as the display name (or the system
+       *  default From when the org keeps the default / on settings-read fail). */
+      from: string;
     };
 
 /**
@@ -205,11 +212,26 @@ export class CalendarEmailService {
           email: a.email,
         })),
       };
-      return { kind: 'send', attendees, icsInput };
+
+      // P6 — resolve the org's branding.senderName into the From DISPLAY name
+      // (the address stays the verified system From). Best-effort: a settings
+      // read failure must NOT break the send — fall back to DEFAULT_EMAIL_FROM.
+      let from = DEFAULT_EMAIL_FROM;
+      try {
+        const settings = await getOrgSettings(tx, orgId);
+        from = buildEmailFrom(settings.branding.senderName, DEFAULT_EMAIL_FROM);
+      } catch (err) {
+        this.logger.warn(
+          `org-settings read failed for From display-name (org=${orgId}); using default From: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+      return { kind: 'send', attendees, icsInput, from };
     });
 
     if (prepared.kind === 'skip') return prepared.counts;
-    const { attendees, icsInput } = prepared;
+    const { attendees, icsInput, from } = prepared;
 
     // Phase 2 — generate the ICS (pure) and send per-attendee OUTSIDE any tx.
     // Run in parallel; each attendee is independent and one failure doesn't
@@ -236,6 +258,7 @@ export class CalendarEmailService {
         try {
           const result = await this.email.send({
             to: a.email,
+            from,
             subject: this.buildSubject(icsInput.task.title, action),
             text: this.buildPlainBody(icsInput.task.title, action),
             attachments: [{ filename: 'event.ics', content: ics, contentType: icsContentType }],

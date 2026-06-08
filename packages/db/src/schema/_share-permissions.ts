@@ -1,31 +1,20 @@
 import { z } from 'zod';
 
-const tenantFieldsSchema = z
-  .object({
-    name: z.literal(true),
-    phone: z.boolean(),
-    email: z.boolean(),
-    national_id: z.boolean(),
-    note: z.boolean(),
-  })
-  .strict();
-
+// A3 (L4): `tenants`, `notes`, `team`, and `documents.actions.upload` were
+// DEAD keys (no contractor read-path consulted them) and `national_id` was a
+// PII footgun. Removed so the persisted JSONB + schema reflect the only keys
+// the contractor tier actually enforces. BYTE-EQUIVALENT to the shared-types
+// `SharePermissionsSchema`. The 0052 migration strips the dead paths from
+// every existing `shares.permissions` row so persisted data matches.
 const documentActionsSchema = z
   .object({
     download: z.boolean(),
-    upload: z.boolean(),
   })
   .strict();
 
 export const sharePermissionsSchema = z
   .object({
     overview: z.object({ on: z.boolean() }).strict(),
-    tenants: z
-      .object({
-        on: z.boolean(),
-        fields: tenantFieldsSchema,
-      })
-      .strict(),
     documents: z
       .object({
         on: z.boolean(),
@@ -33,8 +22,6 @@ export const sharePermissionsSchema = z
       })
       .strict(),
     signatures: z.object({ on: z.boolean() }).strict(),
-    notes: z.object({ on: z.boolean() }).strict(),
-    team: z.object({ on: z.boolean() }).strict(),
   })
   .strict();
 

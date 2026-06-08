@@ -1153,23 +1153,12 @@
     },
     "perm": {
       "overview": "סקירת פרויקט (overview)",
-      "tenants": "פרטי בעלי דירות (tenants)",
-      "tenantsOffHint": "פרטי בעלי הדירות מוסתרים מהקבלן (ברירת מחדל).",
       "signaturesHint": "הקבלן רואה אחוז התקדמות מצרפי בלבד — לעולם לא מי חתם.",
-      "tenantsField": {
-        "phone": "טלפון",
-        "email": "אימייל",
-        "national_id": "ת.ז.",
-        "note": "הערות"
-      },
       "documents": "מסמכים (documents)",
       "documentAction": {
-        "download": "הורדה",
-        "upload": "העלאה"
+        "download": "הורדה"
       },
-      "signatures": "חתימות (signatures)",
-      "notes": "הערות (notes)",
-      "team": "צוות (team)"
+      "signatures": "חתימות (signatures)"
     }
   },
   "contractorView": {

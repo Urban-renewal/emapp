@@ -197,7 +197,7 @@ afterAll(() => {
 const FULL = (): SharePermissions => ({
   ...defaultSharePermissions(),
   overview: { on: true },
-  documents: { on: true, actions: { download: true, upload: false } },
+  documents: { on: true, actions: { download: true } },
   signatures: { on: true },
 });
 
@@ -291,9 +291,7 @@ describe('D2-DEF-1 — contractor getDocuments (project-level only)', () => {
 
   it('documents OFF → 403', async () => {
     await expect(
-      svc.getDocuments(
-        ctx({ ...FULL(), documents: { on: false, actions: { download: false, upload: false } } }),
-      ),
+      svc.getDocuments(ctx({ ...FULL(), documents: { on: false, actions: { download: false } } })),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
@@ -319,7 +317,7 @@ describe('D2-DEF-1 — contractor download IDOR', () => {
   it('download capability OFF → 403', async () => {
     await expect(
       svc.getDownloadUrl(
-        ctx({ ...FULL(), documents: { on: true, actions: { download: false, upload: false } } }),
+        ctx({ ...FULL(), documents: { on: true, actions: { download: false } } }),
         fx.projectDocId,
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);

@@ -1153,23 +1153,12 @@
     },
     "perm": {
       "overview": "Project overview",
-      "tenants": "Owner details (tenants)",
-      "tenantsOffHint": "Owner details are hidden from the contractor (default).",
       "signaturesHint": "The contractor sees an aggregate progress percentage only — never who signed.",
-      "tenantsField": {
-        "phone": "Phone",
-        "email": "Email",
-        "national_id": "National ID",
-        "note": "Notes"
-      },
       "documents": "Documents",
       "documentAction": {
-        "download": "Download",
-        "upload": "Upload"
+        "download": "Download"
       },
-      "signatures": "Signatures",
-      "notes": "Notes",
-      "team": "Team"
+      "signatures": "Signatures"
     }
   },
   "contractorView": {

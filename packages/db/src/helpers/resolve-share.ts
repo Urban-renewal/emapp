@@ -9,26 +9,6 @@ export function canDownloadDocuments(perms: SharePermissions): boolean {
   return perms.documents.on && perms.documents.actions.download;
 }
 
-export function canUploadDocuments(perms: SharePermissions): boolean {
-  return perms.documents.on && perms.documents.actions.upload;
-}
-
-export function canViewTenants(perms: SharePermissions): boolean {
-  return perms.tenants.on;
-}
-
-export function canViewTenantPhone(perms: SharePermissions): boolean {
-  return perms.tenants.on && perms.tenants.fields.phone;
-}
-
-export function canViewTenantEmail(perms: SharePermissions): boolean {
-  return perms.tenants.on && perms.tenants.fields.email;
-}
-
-export function canViewTenantNationalId(perms: SharePermissions): boolean {
-  return perms.tenants.on && perms.tenants.fields.national_id;
-}
-
 export function canViewSignatures(perms: SharePermissions): boolean {
   return perms.signatures.on;
 }
@@ -43,12 +23,4 @@ export function canViewSignatures(perms: SharePermissions): boolean {
  */
 export function signatureScopeForShare(perms: SharePermissions): 'none' | 'aggregate' {
   return perms.signatures.on ? 'aggregate' : 'none';
-}
-
-export function canViewNotes(perms: SharePermissions): boolean {
-  return perms.notes.on;
-}
-
-export function canViewTeam(perms: SharePermissions): boolean {
-  return perms.team.on;
 }

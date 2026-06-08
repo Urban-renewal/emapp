@@ -14,29 +14,24 @@ import { z } from 'zod';
 // putting contact PII in the grant call and matches the Contractors slice
 // (recorded doc-drift — D-note in PROGRESS; no Gate-2 deviation).
 
-const tenantFields = z
-  .object({
-    name: z.literal(true),
-    phone: z.boolean(),
-    email: z.boolean(),
-    national_id: z.boolean(),
-    note: z.boolean(),
-  })
-  .strict();
-
+// A3 (L4): `tenants`, `notes`, `team`, and `documents.actions.upload` were
+// DEAD permission keys — the contractor read-path (contractor-read.service /
+// contractor-auth.guard) never consulted them, so a manager toggling them on
+// granted NOTHING. `tenants.fields.national_id` was additionally a PII
+// FOOTGUN (the share form let a manager expose an Israeli national_id to an
+// external contractor). All four were removed so the schema reflects what the
+// contractor tier actually enforces: overview / documents{download} /
+// signatures. Kept BYTE-EQUIVALENT to the DB-side `_share-permissions.ts`.
 export const SharePermissionsSchema = z
   .object({
     overview: z.object({ on: z.boolean() }).strict(),
-    tenants: z.object({ on: z.boolean(), fields: tenantFields }).strict(),
     documents: z
       .object({
         on: z.boolean(),
-        actions: z.object({ download: z.boolean(), upload: z.boolean() }).strict(),
+        actions: z.object({ download: z.boolean() }).strict(),
       })
       .strict(),
     signatures: z.object({ on: z.boolean() }).strict(),
-    notes: z.object({ on: z.boolean() }).strict(),
-    team: z.object({ on: z.boolean() }).strict(),
   })
   .strict();
 export type SharePermissions = z.infer<typeof SharePermissionsSchema>;

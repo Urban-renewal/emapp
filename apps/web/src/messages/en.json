@@ -28,6 +28,27 @@
       "title": "Recent conversations",
       "empty": "No conversations to show",
       "comingHint": "Chat lands later (Phase 2)"
+    },
+    "agent": {
+      "pageTitle": "My work",
+      "pageSubtitle": "The projects, tasks and notifications assigned to you",
+      "viewAll": "View all",
+      "loading": "Loading…",
+      "loadFailed": "Failed to load",
+      "projects": {
+        "title": "My projects",
+        "empty": "No assigned projects"
+      },
+      "tasks": {
+        "title": "My tasks",
+        "empty": "No assigned tasks",
+        "overdue": "Overdue",
+        "dueAt": "Due: {rel}"
+      },
+      "notifications": {
+        "title": "Recent notifications",
+        "empty": "No notifications"
+      }
     }
   },
   "nav": {
@@ -531,6 +552,13 @@
     "cancelConfirm": "Cancel this request? The link will become invalid immediately.",
     "cancelFailed": "Failed to cancel.",
     "alreadySigned": "Request already signed; cannot be cancelled.",
+    "copyLink": "Copy signing link",
+    "copyLinkWorking": "Generating link…",
+    "copyLinkCopied": "Link copied",
+    "copyLinkHint": "For manual delivery to an owner with no phone (WhatsApp / email / paper). Note: generating the link regenerates it — the previously sent link will stop working.",
+    "copyLinkConfirm": "A new signing link was copied to the clipboard. The previous link is no longer valid.",
+    "copyLinkNotPending": "A link can only be generated for a pending request.",
+    "copyLinkFailed": "Failed to generate the signing link.",
     "downloadSigned": "Download signed document",
     "downloadingSigned": "Downloading…",
     "downloadSignedFailed": "Failed to download the signed document.",

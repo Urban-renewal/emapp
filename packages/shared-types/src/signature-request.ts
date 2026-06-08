@@ -91,6 +91,27 @@ export const SignatureRequestCreateResponseSchema = z.object({
 });
 export type SignatureRequestCreateResponse = z.infer<typeof SignatureRequestCreateResponseSchema>;
 
+/** GET /signature-requests/:id/link response — the manager retrieves the
+ *  signing link for a PENDING request their org owns, to deliver it OUT-OF-BAND
+ *  (WhatsApp / email / paper). This is the phone-less-owner path: an owner with
+ *  no phone can't be SMS'd the link and can't self-serve the SMS-OTP portal, so
+ *  the manager copies this link and delivers it manually.
+ *
+ *  SECURITY: `signUrl` embeds the JWT and is a BEARER credential — short TTL
+ *  (7d), single-use, never logged. Returning it here does NOT widen exposure
+ *  beyond what the manager could already obtain: the same manager can trigger a
+ *  resend (which SMS/emails this very link). Authorization MUST match the send
+ *  path (`signature_requests.send` + manage_signatures capability) so a
+ *  read-only Viewer / unprivileged Agent cannot read it. Calling this re-mints
+ *  a fresh token + 7-day expiry (the prior link dies) so the DB row's `jti` is
+ *  always the single source of truth for the live link. */
+export const SignatureRequestLinkResponseSchema = z.object({
+  request: SignatureRequestSchema,
+  // §RED-1 — bearer credential URL; pin to https.
+  signUrl: HttpsUrlSchema,
+});
+export type SignatureRequestLinkResponse = z.infer<typeof SignatureRequestLinkResponseSchema>;
+
 /** POST /signature-requests/bulk body — send ONE document to MANY owners in a
  * single action (the manager's most-repeated task: a whole building's owners).
  * The server SKIPS owners that already have a pending request for this document

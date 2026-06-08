@@ -331,14 +331,21 @@ describe('P5.S4 — share_revoked notification fan-out', () => {
     expect(all.length).toBeGreaterThan(0); // there ARE rows to scrutinize
 
     for (const n of all) {
-      const haystack = `${n.title}\n${n.body ?? ''}\n${JSON.stringify(n.metadata)}`;
-      // The personal PII must be ABSENT everywhere.
+      const humanText = `${n.title}\n${n.body ?? ''}`;
+      const haystack = `${humanText}\n${JSON.stringify(n.metadata)}`;
+      // The personal PII (exact seeded values) must be ABSENT everywhere — incl. metadata.
       expect(haystack).not.toContain(contractor.email);
       expect(haystack).not.toContain(contractor.phone);
-      // Generic PII-shape guards (defense in depth).
-      expect(haystack).not.toMatch(/\d{9,}/); // no 9+ digit run (national_id / phone)
-      expect(haystack).not.toMatch(/05\d-?\d{7}/); // no IL mobile
-      expect(haystack).not.toMatch(/[\w.+-]+@[\w.-]+\.\w+/); // no email at all
+      // Generic PII-SHAPE guards (defense in depth) apply to the human-facing
+      // title+body — the text where a national_id / phone / email would actually be a
+      // leak. They are deliberately NOT run over JSON.stringify(metadata): the metadata
+      // is asserted below to be EXACTLY { shareId, projectId } (two known UUIDs) — a
+      // STRICTER guarantee than a shape-match, so it cannot carry PII. Running \d{9,}
+      // over a UUID was a flaky false-positive (a random 9-digit run inside the hex of
+      // shareId/projectId is not PII; it failed nondeterministically per UUID generation).
+      expect(humanText).not.toMatch(/\d{9,}/); // no 9+ digit run (national_id / phone)
+      expect(humanText).not.toMatch(/05\d-?\d{7}/); // no IL mobile
+      expect(humanText).not.toMatch(/[\w.+-]+@[\w.-]+\.\w+/); // no email at all
 
       // Only the COMPANY name is allowed in the body, and it IS present.
       expect(n.body).toContain(COMPANY_NAME);

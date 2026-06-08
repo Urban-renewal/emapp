@@ -12,6 +12,7 @@ import {
 } from '@emapp/db';
 import {
   DOCUMENT_MAX_SIZE_BYTES,
+  DOCUMENT_UPLOAD_INCOMPLETE_CODE,
   type CreateDocument,
   type Document,
   type DocumentDownloadResponse,
@@ -45,6 +46,22 @@ import {
 } from './storage';
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
+
+/**
+ * 0050 (ghost-doc UX) — the caller OWNS/can-see this document but its upload
+ * never finalised (tab closed mid-upload, transient error, or the 5-min
+ * presign expired). Distinct, actionable code so the FE can tell the owner
+ * "your upload didn't finish — re-upload" instead of a confusing generic 404.
+ *
+ * 409 Conflict (not 404): the resource genuinely exists and is visible to the
+ * caller; it is in a state (un-finalised) that conflicts with serving it. This
+ * code can ONLY be reached AFTER the per-record visibility check passes
+ * (see loadVisible) — a foreign/unknown id STILL returns the generic 404, so
+ * this never becomes an existence oracle for documents the caller can't see.
+ */
+const UPLOAD_INCOMPLETE = new ConflictException({
+  error: { code: DOCUMENT_UPLOAD_INCOMPLETE_CODE },
+});
 
 export interface DocumentListPage {
   data: Document[];
@@ -186,8 +203,17 @@ export class DocumentsService {
   ): Promise<DocumentRow> {
     const [row] = await tx.select().from(documents).where(eq(documents.id, id)).limit(1);
     if (!row || row.archivedAt) throw NOT_FOUND;
-    if (requireUploaded && !row.uploadedAt) throw NOT_FOUND;
+    // CRITICAL ORDERING (zero-leak): the per-record visibility check MUST run
+    // BEFORE the un-finalised ("ghost") check. A foreign/unknown id throws the
+    // generic NOT_FOUND here and NEVER reaches UPLOAD_INCOMPLETE — so the
+    // distinct, more-informative code is only ever emitted for the caller's
+    // OWN document and can't be used as an existence oracle for foreign rows.
     await this.assertDocVisibleForAgent(tx, user, row);
+    // 0050 — only NOW that the doc is confirmed visible to the caller do we
+    // surface the actionable "your upload didn't finish" code (the download/
+    // preview path passes requireUploaded=true). A ghost's presigned URL would
+    // 404 on R2 (NoSuchKey); the owner needs to know to re-upload.
+    if (requireUploaded && !row.uploadedAt) throw UPLOAD_INCOMPLETE;
     return row;
   }
 

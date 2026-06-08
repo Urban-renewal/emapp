@@ -471,6 +471,7 @@
     "download": "הורד",
     "downloading": "מכין...",
     "downloadFailed": "ההורדה נכשלה.",
+    "uploadIncomplete": "ההעלאה לא הושלמה — העלה מחדש את המסמך.",
     "searchPlaceholder": "חיפוש מסמך, סוג…",
     "noResults": "אין תוצאות לחיפוש",
     "viewCards": "תצוגת כרטיסים",

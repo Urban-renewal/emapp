@@ -1,5 +1,6 @@
 'use client';
 
+import { DOCUMENT_UPLOAD_INCOMPLETE_CODE } from '@emapp/shared-types';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -57,7 +58,15 @@ export default function DocumentDetailPage() {
       // Open in a new tab — the URL is a short-lived presigned GET,
       // honored by R2 as `Content-Disposition: attachment` server-side.
       window.open(url, '_blank', 'noopener,noreferrer');
-    } catch {
+    } catch (e) {
+      // 0050 (ghost-doc UX) — the BE returns the distinct
+      // `document_upload_incomplete` code ONLY for the owner's own
+      // never-finalised doc (a foreign id stays a generic 404). Surface the
+      // actionable "re-upload" message instead of a generic failure.
+      if (e instanceof ApiClientError && e.code === DOCUMENT_UPLOAD_INCOMPLETE_CODE) {
+        setActionError(t('uploadIncomplete'));
+        return;
+      }
       setActionError(t('downloadFailed'));
     }
   }

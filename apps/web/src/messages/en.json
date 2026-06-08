@@ -948,7 +948,22 @@
     },
     "notifications": {
       "section": "Notification preferences",
-      "description": "Choose channels (email / SMS / in-app) and categories (action required / system updates) per event type."
+      "description": "Choose the default channels every notification in the organization fans out to.",
+      "channelsLegend": "Default channels",
+      "channel": {
+        "in_app": "In-app",
+        "email": "Email",
+        "sms": "SMS"
+      },
+      "atLeastOne": "Select at least one channel.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "saveError": "Save failed. Please try again.",
+      "loading": "Loading settings…",
+      "loadError": "Failed to load settings.",
+      "readOnly": "You don't have permission to update organization settings. View only.",
+      "noPermission": "You don't have permission to view organization settings."
     },
     "integrations": {
       "section": "Integrations",

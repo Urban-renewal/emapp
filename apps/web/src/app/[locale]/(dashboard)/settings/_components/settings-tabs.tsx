@@ -7,6 +7,9 @@ import { useState } from 'react';
 
 import { NameDisplay } from '@/components/ui/name-display';
 
+import { BrandingConfig } from './branding-config';
+import { LimitsConfig } from './limits-config';
+import { LocalizationConfig } from './localization-config';
 import { NotificationsConfig } from './notifications-config';
 
 /**
@@ -135,6 +138,10 @@ export function SettingsTabs({ user, organization }: Props) {
           </p>
         </section>
       )}
+
+      {tab === 'general' && <BrandingConfig />}
+      {tab === 'general' && <LocalizationConfig />}
+      {tab === 'general' && <LimitsConfig />}
 
       {tab === 'team' && (
         <section className="card card-pad flex flex-col gap-3" aria-labelledby="set-team-h">

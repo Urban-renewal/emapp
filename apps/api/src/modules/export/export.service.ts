@@ -53,7 +53,17 @@ export interface ProjectExportProject {
 export interface ProjectExportOwner {
   /** Cleartext name — caller decrypted via `decryptOwnerName`. */
   name: string;
-  /** Cleartext national_id — caller decrypted via `decryptOwnerPii`. */
+  /**
+   * Cleartext national_id. This is INTENTIONAL and authorized — not a leak.
+   * The owner full-fidelity export is the one path that legitimately needs the
+   * real national_id, and the value is decrypted UPSTREAM via `decryptOwnerPii`
+   * only after the export permission + tenant RLS check. The cleartext is
+   * transient (in-memory for the duration of the render only), is never logged,
+   * and never lands in the workbook/PDF document metadata (see the metadata
+   * strip in this file + `export-composer.service.ts`). A viewer/agent who lacks
+   * the export-PII capability never reaches this struct. (A4 — clarified, not
+   * inverted: the manager path is meant to carry cleartext here.)
+   */
   nationalId: string;
   /** Cleartext phone, or null. Caller decrypted. */
   phone: string | null;

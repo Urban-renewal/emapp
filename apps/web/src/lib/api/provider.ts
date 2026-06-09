@@ -22,9 +22,11 @@
 import {
   ListTenantsQuerySchema,
   ProviderAuditItemSchema,
+  ProviderSelfAuditItemSchema,
   OnboardOrgBodySchema,
   OnboardOrgResultSchema,
   ProviderAuditQuerySchema,
+  ProviderSelfAuditQuerySchema,
   SuspendTenantBodySchema,
   SystemHealthSchema,
   TenantDetailSchema,
@@ -34,6 +36,8 @@ import {
   type OnboardOrgResult,
   type ProviderAuditItem,
   type ProviderAuditQuery,
+  type ProviderSelfAuditItem,
+  type ProviderSelfAuditQuery,
   type SystemHealth,
   type TenantDetail,
   type TenantListItem,
@@ -228,6 +232,49 @@ export async function searchAudit(
   );
   if (!isList<unknown>(res)) throw new ApiClientError(res.error);
   const items = z.array(ProviderAuditItemSchema).parse(res.data);
+  const page = PageSchema.parse(res.page);
+  return { items, page };
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Self-audit (B-PROVIDER-2) — the CURRENT operator's OWN action log
+// (`provider_audit_log`), distinct from the cross-tenant search above.
+// Answers "what did *I* access, when, and with what reason."
+//
+// The `provider_audit_log` table is bounded by the provider team's own
+// activity (not 30M customer rows), so — unlike `searchAudit` — there is
+// NO SA-4 mandatory date-span. All filters are optional; only the keyset
+// cursor (started_at DESC, id) is required to page. Same `withReason`
+// header injection + defensive `.parse()` on the response as every other
+// call here.
+// ───────────────────────────────────────────────────────────────────
+
+export interface ProviderSelfAuditListPage {
+  items: ProviderSelfAuditItem[];
+  page: Page;
+}
+
+export async function getSelfAudit(
+  reason: string,
+  query: ProviderSelfAuditQuery,
+): Promise<ProviderSelfAuditListPage> {
+  // FE-side defensive parse — catch a malformed query (cursor, span,
+  // bad action prefix) before a single byte leaves the browser.
+  const parsed = ProviderSelfAuditQuerySchema.parse(query);
+  const params = new URLSearchParams();
+  params.set('limit', String(parsed.limit));
+  if (parsed.cursor) params.set('cursor', parsed.cursor);
+  if (parsed.affectedOrgId) params.set('affectedOrgId', parsed.affectedOrgId);
+  if (parsed.actionType) params.set('actionType', parsed.actionType);
+  if (parsed.fromDate) params.set('fromDate', parsed.fromDate.toISOString());
+  if (parsed.toDate) params.set('toDate', parsed.toDate.toISOString());
+  const qs = params.toString();
+  const res = await apiClient.getList<unknown>(
+    `/provider/audit/self${qs ? `?${qs}` : ''}`,
+    withReason(reason),
+  );
+  if (!isList<unknown>(res)) throw new ApiClientError(res.error);
+  const items = z.array(ProviderSelfAuditItemSchema).parse(res.data);
   const page = PageSchema.parse(res.page);
   return { items, page };
 }

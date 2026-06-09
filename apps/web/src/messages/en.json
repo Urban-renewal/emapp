@@ -901,6 +901,68 @@
       }
     }
   },
+  "roles": {
+    "listTitle": "Roles & permissions",
+    "subtitle": "Define your organization's own roles as named permission groups, on top of the built-in system roles. Owner/Admin only.",
+    "createCustom": "New custom role",
+    "customSection": "Custom roles",
+    "systemSection": "System roles",
+    "noCustom": "No custom roles yet. Create one to group permissions for your team.",
+    "systemBadge": "System",
+    "customBadge": "Custom",
+    "permissionCount": "{count} permissions",
+    "assignmentCount": "{count} assigned",
+    "createTitle": "Create a custom role",
+    "editTitle": "Edit custom role",
+    "assignTitle": "Assign \"{role}\"",
+    "field": {
+      "name": "Name",
+      "description": "Description",
+      "permissions": "Permissions",
+      "member": "Member",
+      "pickMember": "Select a member…"
+    },
+    "picker": {
+      "governance": "governance",
+      "governanceLockedHint": "Governance permissions (roles.* / org.*) can only be included by an Owner.",
+      "notHeldHint": "You can't grant a permission you don't hold yourself."
+    },
+    "assign": "Assign",
+    "revoke": "Revoke",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleting": "Deleting…",
+    "create": "Create",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "close": "Close",
+    "assigning": "Assigning…",
+    "revoking": "Revoking…",
+    "assignedOk": "Role assigned. It takes effect on the member's next request.",
+    "revokedOk": "Role revoked.",
+    "retry": "Retry",
+    "loadFailed": "Couldn't load roles.",
+    "notAuthorized": "You don't have permission to manage roles. This area is available to Owners and Admins.",
+    "errors": {
+      "nameTooShort": "Name must be at least 2 characters.",
+      "noPermissions": "Select at least one permission.",
+      "nameTaken": "A role with this name already exists.",
+      "governanceOwnerOnly": "Only an Owner may include governance permissions (roles.* / org.*): {permissions}",
+      "permissionNotHeld": "You can't grant permissions you don't hold: {permissions}",
+      "unknownPermission": "Unknown permissions: {permissions}",
+      "systemImmutable": "System roles can't be edited or deleted.",
+      "roleInUse": "This role is assigned to members and can't be deleted. Revoke it first.",
+      "grantExceedsActor": "You can't grant a role that exceeds your own permissions.",
+      "ownerRequiredForTier": "Only an Owner may grant the Owner or Admin role.",
+      "lastOwner": "You can't revoke the last Owner — the organization must keep at least one.",
+      "assignSelf": "You can't assign a role to yourself.",
+      "memberNotFound": "That member is no longer active in this organization.",
+      "assignmentNotFound": "That member doesn't hold this role.",
+      "pickMember": "Select a member first.",
+      "generic": "Something went wrong. Please try again."
+    }
+  },
   "members": {
     "capabilities": {
       "title": "Permissions",

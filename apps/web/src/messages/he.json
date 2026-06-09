@@ -901,6 +901,68 @@
       }
     }
   },
+  "roles": {
+    "listTitle": "תפקידים והרשאות",
+    "subtitle": "הגדירו תפקידים משלכם כקבוצות הרשאות בעלות שם, מעבר לתפקידי המערכת המובנים. למנהל ארגון ולמנהל בלבד.",
+    "createCustom": "תפקיד מותאם חדש",
+    "customSection": "תפקידים מותאמים",
+    "systemSection": "תפקידי מערכת",
+    "noCustom": "אין עדיין תפקידים מותאמים. צרו אחד כדי לקבץ הרשאות לצוות שלכם.",
+    "systemBadge": "מערכת",
+    "customBadge": "מותאם",
+    "permissionCount": "{count} הרשאות",
+    "assignmentCount": "{count} משויכים",
+    "createTitle": "יצירת תפקיד מותאם",
+    "editTitle": "עריכת תפקיד מותאם",
+    "assignTitle": "שיוך \"{role}\"",
+    "field": {
+      "name": "שם",
+      "description": "תיאור",
+      "permissions": "הרשאות",
+      "member": "חבר/ת צוות",
+      "pickMember": "בחרו חבר/ת צוות…"
+    },
+    "picker": {
+      "governance": "ממשל",
+      "governanceLockedHint": "הרשאות ממשל (roles.* / org.*) ניתנות לשילוב על ידי מנהל ארגון בלבד.",
+      "notHeldHint": "אי אפשר להעניק הרשאה שאינכם מחזיקים בעצמכם."
+    },
+    "assign": "שיוך",
+    "revoke": "ביטול שיוך",
+    "edit": "עריכה",
+    "delete": "מחיקה",
+    "deleting": "מוחק…",
+    "create": "יצירה",
+    "save": "שמירה",
+    "saving": "שומר…",
+    "cancel": "ביטול",
+    "close": "סגירה",
+    "assigning": "משייך…",
+    "revoking": "מבטל שיוך…",
+    "assignedOk": "התפקיד שויך. ייכנס לתוקף בבקשה הבאה של חבר/ת הצוות.",
+    "revokedOk": "השיוך בוטל.",
+    "retry": "נסו שוב",
+    "loadFailed": "טעינת התפקידים נכשלה.",
+    "notAuthorized": "אין לכם הרשאה לנהל תפקידים. אזור זה זמין למנהל ארגון ולמנהל בלבד.",
+    "errors": {
+      "nameTooShort": "השם חייב להכיל לפחות 2 תווים.",
+      "noPermissions": "בחרו לפחות הרשאה אחת.",
+      "nameTaken": "כבר קיים תפקיד בשם זה.",
+      "governanceOwnerOnly": "רק מנהל ארגון רשאי לכלול הרשאות ממשל (roles.* / org.*): {permissions}",
+      "permissionNotHeld": "אי אפשר להעניק הרשאות שאינכם מחזיקים: {permissions}",
+      "unknownPermission": "הרשאות לא מוכרות: {permissions}",
+      "systemImmutable": "אי אפשר לערוך או למחוק תפקידי מערכת.",
+      "roleInUse": "התפקיד משויך לחברי צוות ולא ניתן למחיקה. בטלו את השיוך תחילה.",
+      "grantExceedsActor": "אי אפשר להעניק תפקיד שחורג מההרשאות שלכם.",
+      "ownerRequiredForTier": "רק מנהל ארגון רשאי להעניק את תפקיד מנהל הארגון או המנהל.",
+      "lastOwner": "אי אפשר לבטל את מנהל הארגון האחרון — בארגון חייב להישאר לפחות אחד.",
+      "assignSelf": "אי אפשר לשייך תפקיד לעצמכם.",
+      "memberNotFound": "חבר/ת הצוות אינו פעיל עוד בארגון זה.",
+      "assignmentNotFound": "חבר/ת הצוות אינו מחזיק בתפקיד זה.",
+      "pickMember": "בחרו תחילה חבר/ת צוות.",
+      "generic": "משהו השתבש. נסו שוב."
+    }
+  },
   "members": {
     "capabilities": {
       "title": "הרשאות",

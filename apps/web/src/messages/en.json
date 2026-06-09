@@ -219,6 +219,11 @@
       "tasks": "Tasks",
       "dashboard": "Dashboard"
     },
+    "progress": {
+      "title": "Signature progress",
+      "signedSummary": "{signed} of {total} signed",
+      "targetMarker": "Target {pct}%"
+    },
     "tenantsTab": {
       "title": "Manage buildings and residents",
       "hint": "Resident management is handled via the project's buildings.",
@@ -247,6 +252,24 @@
       "addBuilding": "Add address",
       "removeBuilding": "Remove",
       "buildingNumberLabel": "Address {n}",
+      "consentTarget": "Owner consent target (%)",
+      "consentTargetHint": "Defaulted from the project type (~66% per the 2023 reform). You can override it.",
+      "milestones": {
+        "title": "Intermediate targets",
+        "hint": "Staged targets to track signature-collection progress (e.g. 25% → 50% → target). Each must be at or below the consent target.",
+        "empty": "No intermediate targets defined.",
+        "pct": "Percent",
+        "label": "Label",
+        "add": "Add target",
+        "remove": "Remove target {n}",
+        "suggest": "Suggest (25 / 50 / target)",
+        "errorRange": "Each intermediate target must be a whole number between 1 and 100.",
+        "errorOverTarget": "An intermediate target cannot exceed the consent target.",
+        "errorDuplicate": "Each intermediate target must be unique."
+      },
+      "singleBuildingHint": "Tama 38/1 (strengthening) covers a single building — owners stay in place.",
+      "twoBuildingHint": "Tama 38/2 (demolish-rebuild) supports one or two buildings.",
+      "complexBuildingCount": "Buildings in the complex: {n}",
       "field": {
         "city": "City",
         "address": "Street and number",
@@ -255,16 +278,28 @@
         "floors": "Floors",
         "unitCount": "Units"
       },
+      "minimalCreateHint": "A name and a type are all you need to create a project. Everything else — buildings, sections and units — can be added later, at any time.",
       "section": {
         "kind": "Usage",
         "kindResidential": "Residential",
         "kindOffice": "Office",
         "kindRetail": "Retail",
-        "kindMixed": "Mixed-use"
+        "kindMixed": "Mixed-use",
+        "sectionNumberLabel": "Section {n}",
+        "addSection": "Add section",
+        "removeSection": "Remove section",
+        "entrance": "Entrance / section",
+        "area": "Area (sqm)",
+        "residentialHint": "Residential section — units are measured by rooms and floors.",
+        "officeHint": "Office section — units are measured by area (sqm), not rooms.",
+        "retailHint": "Retail section — units are measured by area (sqm). Usually a single floor.",
+        "mixedHint": "Mixed-use section — combine residential, retail and office. Add a section per use.",
+        "mixedMultiSectionHint": "A real mixed-use building = two or more sections of different kinds (e.g. retail on the ground floor and residential above)."
       },
       "review": {
         "projectHeading": "Project details",
         "buildingsHeading": "Buildings ({n})",
+        "sectionsLabel": "Sections",
         "noBuildings": "No buildings — the project will be created basic. You can add buildings after creation."
       },
       "validation": {
@@ -667,6 +702,7 @@
         "health": "System health",
         "backups": "Backups & restore",
         "audit": "Activity log",
+        "selfAudit": "My activity",
         "staff": "EMAPP staff",
         "settings": "Platform settings"
       }
@@ -776,6 +812,29 @@
         "orgIdPlaceholder": "00000000-0000-0000-0000-000000000000",
         "action": "Action prefix",
         "actionPlaceholder": "import.   /   member.   /   signature.",
+        "fromDate": "From",
+        "toDate": "To"
+      }
+    },
+    "selfAudit": {
+      "title": "My activity",
+      "hint": "Your own action log — what you accessed, when, and with what reason. Every cross-tenant access of yours is recorded here (B-PROVIDER-2). Viewing this is itself audited.",
+      "search": "Search",
+      "reset": "Reset filters",
+      "loadFailed": "Failed to load your activity log.",
+      "empty": "No records for the current filters.",
+      "errorFromAfterTo": "From-date must be on or before the to-date.",
+      "reasonLabel": "Access reason:",
+      "noTargetOrg": "No target org",
+      "result": {
+        "completed": "Completed",
+        "pending": "In progress"
+      },
+      "field": {
+        "affectedOrgId": "Affected org (UUID)",
+        "affectedOrgIdPlaceholder": "00000000-0000-0000-0000-000000000000",
+        "actionType": "Action prefix",
+        "actionTypePlaceholder": "tenant.   /   audit.   /   onboard.",
         "fromDate": "From",
         "toDate": "To"
       }

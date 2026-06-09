@@ -2,6 +2,8 @@
 
 import {
   CreateProjectInput,
+  PROJECT_TYPE_DEFAULT_CONSENT_PCT,
+  type ApartmentUnitType,
   type CreateProject,
   type ProjectType,
   type SectionKind,
@@ -21,10 +23,19 @@ import { ApiClientError } from '@/lib/api/errors';
  *
  * Step 1 (Details): project name + type + description.
  * Step 2 (Structure): zero-or-more buildings, each with address + city
- *   + block/parcel + ONE section (kind + floors + unitCount).
- *   Multi-section per building (entrances) is deferred to a polish
- *   slice; the BE wire (D.39 / B.S2) accepts up to 20 sections/building
- *   but the wizard ships single-section to keep MVP UX small.
+ *   + block/parcel + ONE-OR-MORE sections. Each section carries a `kind`
+ *   (residential | office | retail | mixed) that drives progressive
+ *   disclosure of the section's fields (Phase 1, owner point 2):
+ *     - residential → rooms/floors-oriented;
+ *     - office/retail → AREA-oriented (שטח, not rooms);
+ *     - retail → single-floor-friendly (floors de-emphasised).
+ *   Multi-section per building (D.39 / B.S2 accepts up to 20) is now
+ *   supported so a real mixed-use building (retail ground floor +
+ *   residential above) can be modelled as ≥2 sections of different kinds.
+ *   Each section's `kind` derives an intended apartment `unitType`
+ *   (SECTION_KIND_DEFAULT_UNIT_TYPE) so the BE empty-apartment expansion
+ *   can pre-tag units; the section wire shape itself carries no unitType
+ *   column today — see TODO(gate-6) in toCreateInput.
  * Step 3 (Review): summary panel + Create button. POST to
  *   `/api/v1/projects` with the full nested shape if buildings ≥ 1,
  *   or the back-compat simple shape if no buildings — both validated
@@ -42,6 +53,74 @@ import { ApiClientError } from '@/lib/api/errors';
 const PROJECT_TYPES: ReadonlyArray<ProjectType> = ['tama38_1', 'tama38_2', 'pinui_binui'];
 const SECTION_KINDS: ReadonlyArray<SectionKind> = ['residential', 'office', 'retail', 'mixed'];
 
+/**
+ * Type-aware structure rules (FE-only progressive disclosure; the BE contract
+ * `CreateProjectInput.buildings[]` is unchanged — it accepts up to 20 either
+ * way). The urban-renewal track dictates the building topology:
+ *  - tama38_1 (חיזוק / strengthen existing): exactly ONE building, owners stay.
+ *  - tama38_2 (הריסה ובנייה / demolish-rebuild): one or two buildings.
+ *  - pinui_binui (evacuation-rebuild complex / מתחם): MANY buildings.
+ * The cap below is the FE max the wizard lets the user add for a given type.
+ */
+const MAX_BUILDINGS_BY_TYPE: Record<ProjectType, number> = {
+  tama38_1: 1,
+  tama38_2: 2,
+  pinui_binui: 20,
+};
+
+/** BE contract cap — `CreateProjectBuildingInput.sections` is `.max(20)`. */
+const MAX_SECTIONS_PER_BUILDING = 20;
+
+/**
+ * D.39 — derive the intended apartment `unit_type` from a section's `kind`,
+ * so the BE empty-apartment expansion can pre-tag the units it creates for
+ * the section. residential→apt, office→office, retail→shop, mixed→mixed.
+ * NOTE: the section WIRE shape (`CreateProjectSectionInput`) has no unitType
+ * column today, so this derivation can only ride along once that exists —
+ * see TODO(gate-6) in toCreateInput. It still drives UI labels now.
+ */
+const SECTION_KIND_DEFAULT_UNIT_TYPE: Record<SectionKind, ApartmentUnitType> = {
+  residential: 'apt',
+  office: 'office',
+  retail: 'shop',
+  mixed: 'mixed',
+};
+
+/** Whether a kind is measured by AREA (שטח) rather than rooms. Drives the
+ *  section-level progressive disclosure (office/retail → area-oriented). */
+function isAreaOriented(kind: SectionKind): boolean {
+  return kind === 'office' || kind === 'retail';
+}
+
+interface WizardMilestone {
+  // Local-only id for React keys; not sent to BE.
+  mid: string;
+  // Controlled strings so empty fields are representable; coerced on submit.
+  pct: string;
+  label: string;
+}
+
+function newMilestone(pct = ''): WizardMilestone {
+  return { mid: Math.random().toString(36).slice(2, 10), pct, label: '' };
+}
+
+/** BE contract cap — `SignatureMilestonesSchema` is `.max(10)`. */
+const MAX_MILESTONES = 10;
+
+interface WizardSection {
+  // Local-only id for React keys; not sent to BE.
+  sid: string;
+  kind: SectionKind;
+  entrance: string;
+  floors: string;
+  unitCount: string;
+  // Area (sqm) — relevant for office/retail/mixed (area-oriented kinds).
+  // Captured per-section but, lacking a section-level area column on the
+  // wire, it is surfaced on the first expanded apartment via the BE; for
+  // now it is a UI affordance only (see TODO(gate-6)).
+  areaSqm: string;
+}
+
 interface WizardBuilding {
   // Local-only id for React keys; not sent to BE.
   rid: string;
@@ -49,9 +128,7 @@ interface WizardBuilding {
   city: string;
   block: string;
   parcel: string;
-  sectionKind: SectionKind;
-  sectionFloors: string;
-  sectionUnitCount: string;
+  sections: WizardSection[];
 }
 
 interface WizardState {
@@ -59,7 +136,26 @@ interface WizardState {
   name: string;
   type: ProjectType;
   description: string;
+  // Owner-consent target (%) as a controlled string so the empty field is
+  // representable. Pre-filled from PROJECT_TYPE_DEFAULT_CONSENT_PCT on type
+  // change UNLESS the manager has manually edited it (consentTouched).
+  consentPct: string;
+  consentTouched: boolean;
+  // Owner-approved staged overlay (Gate-6, Option A): ordered intermediate
+  // signature targets under the legal consent gate.
+  milestones: WizardMilestone[];
   buildings: WizardBuilding[];
+}
+
+function newSection(kind: SectionKind = 'residential'): WizardSection {
+  return {
+    sid: Math.random().toString(36).slice(2, 10),
+    kind,
+    entrance: '',
+    floors: '',
+    unitCount: '',
+    areaSqm: '',
+  };
 }
 
 function newBuilding(): WizardBuilding {
@@ -69,19 +165,33 @@ function newBuilding(): WizardBuilding {
     city: '',
     block: '',
     parcel: '',
-    sectionKind: 'residential',
-    sectionFloors: '',
-    sectionUnitCount: '',
+    sections: [newSection()],
   };
 }
 
 /** Map wizard state → CreateProjectInput shape. Strips empty strings to
  *  undefined so the BE `.strict()` validation doesn't see noise. */
 function toCreateInput(s: WizardState): CreateProject {
+  // Empty → undefined so the BE applies the per-type default
+  // (PROJECT_TYPE_DEFAULT_CONSENT_PCT); a typed value is an explicit override.
+  const consent = s.consentPct.trim();
+  const consentNum = consent === '' ? undefined : Number(consent);
+  // Milestones: keep only rows with a real positive integer pct, coerce, and
+  // sort ascending. Empty rows are dropped (a half-filled row is UI noise, not
+  // an intended target). The authoritative ascending/unique/<=target check is
+  // the CreateProjectInput.safeParse boundary on submit.
+  const milestones = s.milestones
+    .map((m) => ({ pct: Number(m.pct), label: m.label.trim() }))
+    .filter((m) => Number.isInteger(m.pct) && m.pct > 0)
+    .sort((a, b) => a.pct - b.pct)
+    .map((m) => (m.label ? { pct: m.pct, label: m.label } : { pct: m.pct }));
   const base: CreateProject = {
     name: s.name.trim(),
     type: s.type,
     description: s.description.trim() || undefined,
+    targetSignaturePct:
+      consentNum !== undefined && Number.isFinite(consentNum) ? consentNum : undefined,
+    ...(milestones.length ? { signatureMilestones: milestones } : {}),
   };
   const buildings = s.buildings
     .filter((b) => b.address.trim() && b.city.trim())
@@ -90,13 +200,18 @@ function toCreateInput(s: WizardState): CreateProject {
       city: b.city.trim(),
       block: b.block.trim() || undefined,
       parcel: b.parcel.trim() || undefined,
-      sections: [
-        {
-          kind: b.sectionKind,
-          floors: b.sectionFloors ? Number(b.sectionFloors) : undefined,
-          unitCount: b.sectionUnitCount ? Number(b.sectionUnitCount) : undefined,
-        },
-      ],
+      sections: b.sections.map((sec) => ({
+        kind: sec.kind,
+        entrance: sec.entrance.trim() || undefined,
+        floors: sec.floors ? Number(sec.floors) : undefined,
+        unitCount: sec.unitCount ? Number(sec.unitCount) : undefined,
+        // TODO(gate-6): SECTION_KIND_DEFAULT_UNIT_TYPE[sec.kind] is the
+        // intended per-section apartment unit_type for the BE empty-apartment
+        // expansion, and `areaSqm` is the area-oriented sections' measure.
+        // Neither has a column on `CreateProjectSectionInput` today — adding
+        // them is a contract/schema change (Gate-6), so we drop them on the
+        // wire and only drive the UI/labels from the kind for now.
+      })),
     }));
   return buildings.length ? { ...base, buildings } : base;
 }
@@ -106,6 +221,9 @@ export default function NewProjectPage() {
   const tw = useTranslations('projects.wizard');
   const tt = useTranslations('projects.types');
   const tk = useTranslations('projects.wizard.section');
+  // Reuse the canonical apartment unit-type labels for the derived
+  // section→unit_type tag (residential→apt, office→office, retail→shop, …).
+  const tu = useTranslations('apartments.unitType');
   const router = useRouter();
   const mutation = useCreateProject();
 
@@ -114,6 +232,9 @@ export default function NewProjectPage() {
     name: '',
     type: 'tama38_2',
     description: '',
+    consentPct: String(PROJECT_TYPE_DEFAULT_CONSENT_PCT.tama38_2),
+    consentTouched: false,
+    milestones: [],
     buildings: [],
   });
   const [stepError, setStepError] = useState<string | null>(null);
@@ -144,6 +265,8 @@ export default function NewProjectPage() {
 
   function canAdvanceFromStep1(): true | string {
     if (!state.name.trim()) return tw('validation.nameRequired');
+    const mErr = milestoneError();
+    if (mErr) return mErr;
     return true;
   }
   function canAdvanceFromStep2(): true | string {
@@ -166,7 +289,18 @@ export default function NewProjectPage() {
       setStepError(check);
       return;
     }
-    setState((s) => ({ ...s, step: (s.step + 1) as 2 | 3 }));
+    setState((s) => {
+      // Entering the structure step for tama38_1 (single-building track):
+      // ensure exactly one building card is present so the manager fills its
+      // address inline rather than having to click "add". An empty card is
+      // stripped on submit (toCreateInput filters blanks), so this stays
+      // back-compat with the simple no-buildings POST.
+      const buildings =
+        s.step === 1 && s.type === 'tama38_1' && s.buildings.length === 0
+          ? [newBuilding()]
+          : s.buildings;
+      return { ...s, step: (s.step + 1) as 2 | 3, buildings };
+    });
   }
 
   function onBack() {
@@ -218,10 +352,132 @@ export default function NewProjectPage() {
     }));
   }
   function addBuilding() {
-    setState((s) => ({ ...s, buildings: [...s.buildings, newBuilding()] }));
+    setState((s) =>
+      s.buildings.length >= MAX_BUILDINGS_BY_TYPE[s.type]
+        ? s
+        : { ...s, buildings: [...s.buildings, newBuilding()] },
+    );
   }
   function removeBuilding(rid: string) {
     setState((s) => ({ ...s, buildings: s.buildings.filter((b) => b.rid !== rid) }));
+  }
+
+  function patchSection(rid: string, sid: string, patch: Partial<WizardSection>) {
+    setState((s) => ({
+      ...s,
+      buildings: s.buildings.map((b) =>
+        b.rid === rid
+          ? {
+              ...b,
+              sections: b.sections.map((sec) => (sec.sid === sid ? { ...sec, ...patch } : sec)),
+            }
+          : b,
+      ),
+    }));
+  }
+  function addSection(rid: string) {
+    setState((s) => ({
+      ...s,
+      buildings: s.buildings.map((b) =>
+        b.rid === rid && b.sections.length < MAX_SECTIONS_PER_BUILDING
+          ? { ...b, sections: [...b.sections, newSection()] }
+          : b,
+      ),
+    }));
+  }
+  function removeSection(rid: string, sid: string) {
+    // Keep at least one section per building — a building with zero sections
+    // is a degenerate structure the wizard shouldn't emit.
+    setState((s) => ({
+      ...s,
+      buildings: s.buildings.map((b) =>
+        b.rid === rid && b.sections.length > 1
+          ? { ...b, sections: b.sections.filter((sec) => sec.sid !== sid) }
+          : b,
+      ),
+    }));
+  }
+
+  // Type drives BOTH the consent-target default and the building topology.
+  // On change we (a) re-seed targetSignaturePct from the per-type default
+  // unless the manager has manually edited it, and (b) clamp the existing
+  // buildings list to the new type's max (tama38_1 → 1, tama38_2 → 2,
+  // pinui_binui → many) so the structure step can't carry over an invalid count.
+  function changeType(type: ProjectType) {
+    setState((s) => ({
+      ...s,
+      type,
+      consentPct: s.consentTouched ? s.consentPct : String(PROJECT_TYPE_DEFAULT_CONSENT_PCT[type]),
+      buildings: s.buildings.slice(0, MAX_BUILDINGS_BY_TYPE[type]),
+    }));
+  }
+
+  // ── Milestone (יעדי ביניים) list-editor handlers ─────────────────────────
+  function patchMilestone(mid: string, patch: Partial<WizardMilestone>) {
+    setState((s) => ({
+      ...s,
+      milestones: s.milestones.map((m) => (m.mid === mid ? { ...m, ...patch } : m)),
+    }));
+  }
+  function addMilestone() {
+    setState((s) =>
+      s.milestones.length >= MAX_MILESTONES
+        ? s
+        : { ...s, milestones: [...s.milestones, newMilestone()] },
+    );
+  }
+  function removeMilestone(mid: string) {
+    setState((s) => ({ ...s, milestones: s.milestones.filter((m) => m.mid !== mid) }));
+  }
+  // Sort the milestone rows ascending by pct (stable; blanks sink to the end).
+  // Called on blur so the user sees the canonical order before submit.
+  function sortMilestones() {
+    setState((s) => ({
+      ...s,
+      milestones: [...s.milestones].sort((a, b) => {
+        const pa = a.pct.trim() === '' ? Number.POSITIVE_INFINITY : Number(a.pct);
+        const pb = b.pct.trim() === '' ? Number.POSITIVE_INFINITY : Number(b.pct);
+        return pa - pb;
+      }),
+    }));
+  }
+  // "Suggest" seeds [25, 50, target] (deduped, < target only) — a sensible
+  // staged default the manager can then edit. Replaces any current rows.
+  function suggestMilestones() {
+    setState((s) => {
+      const target = Number(s.consentPct.trim());
+      const hasTarget = s.consentPct.trim() !== '' && Number.isFinite(target);
+      const seed = [25, 50, hasTarget ? target : 66];
+      const seen = new Set<number>();
+      const rows = seed
+        .filter((p) => (hasTarget ? p <= target : true))
+        .filter((p) => (seen.has(p) ? false : (seen.add(p), true)))
+        .sort((a, b) => a - b)
+        .slice(0, MAX_MILESTONES)
+        .map((p) => newMilestone(String(p)));
+      return { ...s, milestones: rows };
+    });
+  }
+  /** Client-side milestone validity message (progressive disclosure only; the
+   *  CreateProjectInput.safeParse boundary on submit is authoritative). Checks
+   *  0 < pct <= target, ascending, unique across the filled rows. */
+  function milestoneError(): string | null {
+    const target = state.consentPct.trim() === '' ? null : Number(state.consentPct.trim());
+    const filled = state.milestones.filter((m) => m.pct.trim() !== '');
+    const nums: number[] = [];
+    for (const m of filled) {
+      const n = Number(m.pct);
+      if (!Number.isInteger(n) || n <= 0 || n > 100) return tw('milestones.errorRange');
+      if (target !== null && Number.isFinite(target) && n > target) {
+        return tw('milestones.errorOverTarget');
+      }
+      nums.push(n);
+    }
+    const sorted = [...nums].sort((a, b) => a - b);
+    for (let i = 1; i < sorted.length; i += 1) {
+      if (sorted[i] === sorted[i - 1]) return tw('milestones.errorDuplicate');
+    }
+    return null;
   }
 
   function kindLabel(k: SectionKind): string {
@@ -232,6 +488,19 @@ export default function NewProjectPage() {
         : k === 'retail'
           ? tk('kindRetail')
           : tk('kindMixed');
+  }
+
+  // Per-kind progressive-disclosure hint (owner point 2): residential is
+  // rooms/floors-oriented, office/retail are AREA-oriented, mixed prompts
+  // for multiple sections.
+  function kindHint(k: SectionKind): string {
+    return k === 'residential'
+      ? tk('residentialHint')
+      : k === 'office'
+        ? tk('officeHint')
+        : k === 'retail'
+          ? tk('retailHint')
+          : tk('mixedHint');
   }
 
   return (
@@ -322,7 +591,7 @@ export default function NewProjectPage() {
                 id="type"
                 className="input"
                 value={state.type}
-                onChange={(e) => setState((s) => ({ ...s, type: e.target.value as ProjectType }))}
+                onChange={(e) => changeType(e.target.value as ProjectType)}
               >
                 {PROJECT_TYPES.map((pt) => (
                   <option key={pt} value={pt}>
@@ -330,6 +599,111 @@ export default function NewProjectPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Minimal-create affordance: name + type is enough; the rest is
+                optional. Makes "create empty, enrich later" explicit. */}
+            <p
+              className="rounded-md p-2 text-xs"
+              style={{ color: 'var(--text-muted)', background: 'var(--bg-subtle)' }}
+            >
+              {tw('minimalCreateHint')}
+            </p>
+
+            <div>
+              <label htmlFor="consentPct" className="label">
+                {tw('consentTarget')}
+              </label>
+              <input
+                id="consentPct"
+                type="number"
+                min={0}
+                max={100}
+                inputMode="numeric"
+                className="input tabular"
+                dir="ltr"
+                value={state.consentPct}
+                onChange={(e) =>
+                  setState((s) => ({ ...s, consentPct: e.target.value, consentTouched: true }))
+                }
+              />
+              <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                {tw('consentTargetHint')}
+              </p>
+            </div>
+
+            {/* Owner-approved staged overlay (Gate-6, Option A): optional
+                ordered intermediate signature targets (יעדי ביניים) under the
+                legal consent gate. Add/remove rows of pct + optional label;
+                auto-sorted ascending on blur. */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="label" style={{ marginBottom: 0 }}>
+                  {tw('milestones.title')}
+                </span>
+                <button type="button" onClick={suggestMilestones} className="btn btn-ghost btn-sm">
+                  {tw('milestones.suggest')}
+                </button>
+              </div>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {tw('milestones.hint')}
+              </p>
+              {state.milestones.length === 0 && (
+                <p className="text-xs" style={{ color: 'var(--text-soft)' }}>
+                  {tw('milestones.empty')}
+                </p>
+              )}
+              {state.milestones.map((m, idx) => (
+                <div key={m.mid} className="flex items-end gap-2">
+                  <div style={{ width: 96 }}>
+                    <label className="label" htmlFor={`m-${m.mid}-pct`}>
+                      {tw('milestones.pct')}
+                    </label>
+                    <input
+                      id={`m-${m.mid}-pct`}
+                      type="number"
+                      min={1}
+                      max={100}
+                      inputMode="numeric"
+                      className="input tabular"
+                      dir="ltr"
+                      value={m.pct}
+                      onChange={(e) => patchMilestone(m.mid, { pct: e.target.value })}
+                      onBlur={sortMilestones}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="label" htmlFor={`m-${m.mid}-label`}>
+                      {tw('milestones.label')}
+                    </label>
+                    <input
+                      id={`m-${m.mid}-label`}
+                      type="text"
+                      className="input"
+                      value={m.label}
+                      maxLength={80}
+                      onChange={(e) => patchMilestone(m.mid, { label: e.target.value })}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeMilestone(m.mid)}
+                    className="btn btn-ghost btn-sm"
+                    style={{ color: 'var(--danger-700)' }}
+                    aria-label={tw('milestones.remove', { n: idx + 1 })}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+              {state.milestones.length < MAX_MILESTONES && (
+                <div>
+                  <button type="button" onClick={addMilestone} className="btn btn-ghost btn-sm">
+                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>{tw('milestones.add')}</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             <div>
@@ -350,7 +724,25 @@ export default function NewProjectPage() {
 
         {state.step === 2 && (
           <>
-            {state.buildings.length === 0 && (
+            {/* Type-aware structure guidance. tama38_1 = one building;
+                tama38_2 = up to two; pinui_binui = a multi-building complex
+                with a live count. */}
+            {state.type === 'tama38_1' && (
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                {tw('singleBuildingHint')}
+              </p>
+            )}
+            {state.type === 'tama38_2' && (
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                {tw('twoBuildingHint')}
+              </p>
+            )}
+            {state.type === 'pinui_binui' && (
+              <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+                {tw('complexBuildingCount', { n: state.buildings.length })}
+              </p>
+            )}
+            {state.buildings.length === 0 && state.type !== 'tama38_1' && (
               <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                 {tw('noBuildings')}
               </p>
@@ -417,77 +809,193 @@ export default function NewProjectPage() {
                       onChange={(e) => patchBuilding(b.rid, { parcel: e.target.value })}
                     />
                   </div>
-                  <div>
-                    <label className="label" htmlFor={`b-${b.rid}-kind`}>
-                      {tw('section.kind')}
-                    </label>
-                    <select
-                      id={`b-${b.rid}-kind`}
-                      className="input"
-                      value={b.sectionKind}
-                      onChange={(e) =>
-                        patchBuilding(b.rid, { sectionKind: e.target.value as SectionKind })
-                      }
+                </div>
+
+                {/* Sections (אגפים) — one-or-more per building. Each carries a
+                    `kind` that drives progressive disclosure of its fields:
+                    residential → rooms/floors; office/retail → AREA (שטח).
+                    A real mixed-use building = ≥2 sections of different kinds. */}
+                <div className="mt-3 flex flex-col gap-3">
+                  {b.sections.some((sec) => sec.kind === 'mixed') && (
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      {tk('mixedMultiSectionHint')}
+                    </p>
+                  )}
+                  {b.sections.map((sec, sIdx) => {
+                    const areaOriented = isAreaOriented(sec.kind);
+                    return (
+                      <fieldset
+                        key={sec.sid}
+                        className="rounded-md border p-3"
+                        style={{ borderColor: 'var(--border)', background: 'var(--bg-subtle)' }}
+                      >
+                        <legend
+                          className="px-1 text-xs font-medium"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          {tk('sectionNumberLabel', { n: sIdx + 1 })}
+                        </legend>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="label" htmlFor={`s-${sec.sid}-kind`}>
+                              {tw('section.kind')}
+                            </label>
+                            <select
+                              id={`s-${sec.sid}-kind`}
+                              className="input"
+                              value={sec.kind}
+                              onChange={(e) =>
+                                patchSection(b.rid, sec.sid, {
+                                  kind: e.target.value as SectionKind,
+                                })
+                              }
+                            >
+                              {SECTION_KINDS.map((kind) => (
+                                <option key={kind} value={kind}>
+                                  {kindLabel(kind)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="label" htmlFor={`s-${sec.sid}-entrance`}>
+                              {tk('entrance')}
+                            </label>
+                            <input
+                              id={`s-${sec.sid}-entrance`}
+                              type="text"
+                              className="input"
+                              value={sec.entrance}
+                              onChange={(e) =>
+                                patchSection(b.rid, sec.sid, { entrance: e.target.value })
+                              }
+                            />
+                          </div>
+                          {/* Floors: kept for every kind, but de-emphasised for
+                              retail (typically single-floor). */}
+                          <div style={sec.kind === 'retail' ? { opacity: 0.7 } : undefined}>
+                            <label className="label" htmlFor={`s-${sec.sid}-floors`}>
+                              {tw('field.floors')}
+                            </label>
+                            <input
+                              id={`s-${sec.sid}-floors`}
+                              type="number"
+                              min={0}
+                              max={200}
+                              className="input tabular"
+                              dir="ltr"
+                              value={sec.floors}
+                              onChange={(e) =>
+                                patchSection(b.rid, sec.sid, { floors: e.target.value })
+                              }
+                            />
+                          </div>
+                          {/* Unit COUNT for every kind. The label/measure differs:
+                              residential counts apartments; office/retail count
+                              units measured by area. */}
+                          <div>
+                            <label className="label" htmlFor={`s-${sec.sid}-units`}>
+                              {tw('field.unitCount')}
+                            </label>
+                            <input
+                              id={`s-${sec.sid}-units`}
+                              type="number"
+                              min={0}
+                              max={2000}
+                              className="input tabular"
+                              dir="ltr"
+                              value={sec.unitCount}
+                              onChange={(e) =>
+                                patchSection(b.rid, sec.sid, { unitCount: e.target.value })
+                              }
+                            />
+                          </div>
+                          {/* AREA — surfaced only for area-oriented kinds
+                              (office/retail/mixed). Drives the שטח framing.
+                              TODO(gate-6): no section-level area column on the
+                              wire yet, so this is UI-only for now. */}
+                          {(areaOriented || sec.kind === 'mixed') && (
+                            <div>
+                              <label className="label" htmlFor={`s-${sec.sid}-area`}>
+                                {tk('area')}
+                              </label>
+                              <input
+                                id={`s-${sec.sid}-area`}
+                                type="number"
+                                min={0}
+                                max={10000}
+                                className="input tabular"
+                                dir="ltr"
+                                value={sec.areaSqm}
+                                onChange={(e) =>
+                                  patchSection(b.rid, sec.sid, { areaSqm: e.target.value })
+                                }
+                              />
+                            </div>
+                          )}
+                        </div>
+                        <p className="mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+                          {kindHint(sec.kind)}{' '}
+                          <span style={{ fontWeight: 500 }}>
+                            ({tu(SECTION_KIND_DEFAULT_UNIT_TYPE[sec.kind])})
+                          </span>
+                        </p>
+                        {b.sections.length > 1 && (
+                          <div className="mt-2 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => removeSection(b.rid, sec.sid)}
+                              className="btn btn-ghost btn-sm"
+                              style={{ color: 'var(--danger-700)' }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                              <span>{tk('removeSection')}</span>
+                            </button>
+                          </div>
+                        )}
+                      </fieldset>
+                    );
+                  })}
+                  {b.sections.length < MAX_SECTIONS_PER_BUILDING && (
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => addSection(b.rid)}
+                        className="btn btn-ghost btn-sm"
+                      >
+                        <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span>{tk('addSection')}</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {/* tama38_1 is a single-building track — no removal (it would
+                    leave the project with zero buildings). */}
+                {state.type !== 'tama38_1' && (
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => removeBuilding(b.rid)}
+                      className="btn btn-ghost btn-sm"
+                      style={{ color: 'var(--danger-700)' }}
                     >
-                      {SECTION_KINDS.map((kind) => (
-                        <option key={kind} value={kind}>
-                          {kindLabel(kind)}
-                        </option>
-                      ))}
-                    </select>
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span>{tw('removeBuilding')}</span>
+                    </button>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="label" htmlFor={`b-${b.rid}-floors`}>
-                        {tw('field.floors')}
-                      </label>
-                      <input
-                        id={`b-${b.rid}-floors`}
-                        type="number"
-                        min={0}
-                        max={200}
-                        className="input tabular"
-                        dir="ltr"
-                        value={b.sectionFloors}
-                        onChange={(e) => patchBuilding(b.rid, { sectionFloors: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label className="label" htmlFor={`b-${b.rid}-units`}>
-                        {tw('field.unitCount')}
-                      </label>
-                      <input
-                        id={`b-${b.rid}-units`}
-                        type="number"
-                        min={0}
-                        max={2000}
-                        className="input tabular"
-                        dir="ltr"
-                        value={b.sectionUnitCount}
-                        onChange={(e) => patchBuilding(b.rid, { sectionUnitCount: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-3 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => removeBuilding(b.rid)}
-                    className="btn btn-ghost btn-sm"
-                    style={{ color: 'var(--danger-700)' }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    <span>{tw('removeBuilding')}</span>
-                  </button>
-                </div>
+                )}
               </fieldset>
             ))}
-            <div>
-              <button type="button" onClick={addBuilding} className="btn btn-secondary">
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                <span>{tw('addBuilding')}</span>
-              </button>
-            </div>
+            {/* Add is hidden once the type's building cap is reached
+                (tama38_1 → 1, tama38_2 → 2, pinui_binui → 20). */}
+            {state.buildings.length < MAX_BUILDINGS_BY_TYPE[state.type] && (
+              <div>
+                <button type="button" onClick={addBuilding} className="btn btn-secondary">
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  <span>{tw('addBuilding')}</span>
+                </button>
+              </div>
+            )}
           </>
         )}
 
@@ -502,6 +1010,14 @@ export default function NewProjectPage() {
                 <dd>{state.name}</dd>
                 <dt style={{ color: 'var(--text-muted)' }}>{t('field.type')}</dt>
                 <dd>{tt(state.type)}</dd>
+                {state.consentPct.trim() !== '' && (
+                  <>
+                    <dt style={{ color: 'var(--text-muted)' }}>{tw('consentTarget')}</dt>
+                    <dd className="tabular" dir="ltr">
+                      {state.consentPct}%
+                    </dd>
+                  </>
+                )}
                 {state.description && (
                   <>
                     <dt style={{ color: 'var(--text-muted)' }}>{t('field.description')}</dt>
@@ -544,12 +1060,21 @@ export default function NewProjectPage() {
                         {b.block || b.parcel
                           ? ` · ${tw('field.block')} ${b.block || '—'} / ${tw('field.parcel')} ${b.parcel || '—'}`
                           : ''}
-                        {' · '}
-                        {kindLabel(b.sectionKind)}
-                        {b.sectionFloors ? ` · ${tw('field.floors')} ${b.sectionFloors}` : ''}
-                        {b.sectionUnitCount
-                          ? ` · ${tw('field.unitCount')} ${b.sectionUnitCount}`
-                          : ''}
+                      </div>
+                      <div className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                        {tw('review.sectionsLabel')}:{' '}
+                        {b.sections
+                          .map((sec) => {
+                            const parts = [kindLabel(sec.kind)];
+                            if (sec.entrance.trim()) parts.push(sec.entrance.trim());
+                            if (sec.floors) parts.push(`${tw('field.floors')} ${sec.floors}`);
+                            if (sec.unitCount)
+                              parts.push(`${tw('field.unitCount')} ${sec.unitCount}`);
+                            if (sec.areaSqm && (isAreaOriented(sec.kind) || sec.kind === 'mixed'))
+                              parts.push(`${tk('area')} ${sec.areaSqm}`);
+                            return parts.join(' / ');
+                          })
+                          .join(' · ')}
                       </div>
                     </li>
                   ))}

@@ -100,6 +100,92 @@ describe('parseAccessReasonHeader (P6.5-1 hardening)', () => {
     expect(parseAccessReasonHeader(reason).length).toBe(512);
   });
 
+  // ─────────────────────────────────────────────────────────────────
+  // Percent-decode regression (fix/provider-access-reason-decode).
+  //
+  // The FE (`apps/web/src/lib/api/provider.ts` `withReason`) percent-
+  // encodes any non-ASCII reason because `fetch` `Headers` reject code
+  // points > 0xFF (ByteString constraint). The BE MUST decodeURIComponent
+  // the header BEFORE validating/auditing — otherwise a Hebrew reason
+  // arrives as one "%20"-joined token and is wrongly rejected as
+  // `reason_low_quality`, breaking every provider page for a Hebrew-UI
+  // operator. ASCII reasons are sent verbatim (decode is a no-op) except
+  // a literal '%' which throws → fall back to the raw value.
+  // ─────────────────────────────────────────────────────────────────
+
+  it('U15) encoded-Hebrew reason → returns the DECODED Hebrew text (THE BUG REPRO)', () => {
+    // This is the load-bearing, mutation-proof test. If the
+    // `decodeURIComponent` step is removed from parseAccessReasonHeader,
+    // the encoded blob arrives as a single "%XX"-joined token and the
+    // assertions below fail (either a throw on reason_low_quality, or a
+    // returned value that is NOT the decoded Hebrew).
+    const reason = 'בדיקת לקוח — חקירת תקלה מקיפה';
+    const encoded = encodeURIComponent(reason);
+    // Sanity: the wire value really is percent-encoded (non-vacuous) —
+    // every Hebrew char + the em-dash is > 0x7F, so encoding inserts '%'.
+    expect(encoded).toContain('%');
+    expect(encoded).not.toBe(reason);
+
+    const out = parseAccessReasonHeader(encoded);
+    // The decoded, human-readable text is what gets validated + audited.
+    expect(out).toBe(reason);
+    // And it is NOT the %-encoded blob (guards against "decode removed").
+    expect(out).not.toBe(encoded);
+    expect(out).not.toContain('%');
+  });
+
+  it('U16) the audited value is the decoded human-readable text, not the %-blob', () => {
+    // The return value of parseAccessReasonHeader IS what lands on the
+    // provider_audit_log row (via withProvider). A %-encoded blob there
+    // would make the audit forensically useless for a Hebrew operator.
+    const reason = 'חקירת תקלת התחברות של דייר ספציפי';
+    const out = parseAccessReasonHeader(encodeURIComponent(reason));
+    expect(out).toBe(reason);
+  });
+
+  it('U17) plain ASCII reason → returned verbatim, decode is a no-op', () => {
+    const reason = 'investigating ticket #4729 timeout';
+    expect(parseAccessReasonHeader(reason)).toBe(reason);
+  });
+
+  it('U18) raw ASCII reason with a literal "%" (not valid %-encoding) → no throw, validates (fallback)', () => {
+    // "checking 50% cpu spike now": "50%" is NOT valid percent-encoding,
+    // so decodeURIComponent throws URIError. The decorator must catch and
+    // fall back to the raw value, then validate it normally (≥3 tokens,
+    // ≥4 distinct chars, ≥20 chars) — NOT crash with a 500.
+    const reason = 'checking 50% cpu spike now';
+    expect(() => parseAccessReasonHeader(reason)).not.toThrow();
+    expect(parseAccessReasonHeader(reason)).toBe(reason);
+  });
+
+  it('U19) undefined still → 400 reason_required (decode did not turn undefined into "undefined")', () => {
+    // Guard the decode wiring: a naive `decodeURIComponent(String(raw))`
+    // would turn undefined into the literal string "undefined" (valid-ish
+    // and 9 chars) and mask the missing-header error. Must still reject.
+    expect(() => parseAccessReasonHeader(undefined)).toThrow(BadRequestException);
+    try {
+      parseAccessReasonHeader(undefined);
+    } catch (e) {
+      const resp = (e as BadRequestException).getResponse() as { error?: { code?: string } };
+      expect(resp.error?.code).toBe('reason_required');
+    }
+  });
+
+  it('U20) duplicate header (string[]) still → 400 reason_required (decode did not break array guard)', () => {
+    expect(() =>
+      parseAccessReasonHeader([
+        encodeURIComponent('בדיקה ראשונה מפורטת'),
+        encodeURIComponent('בדיקה שנייה מפורטת'),
+      ]),
+    ).toThrow(BadRequestException);
+    try {
+      parseAccessReasonHeader(['first reason value here', 'second reason value here']);
+    } catch (e) {
+      const resp = (e as BadRequestException).getResponse() as { error?: { code?: string } };
+      expect(resp.error?.code).toBe('reason_required');
+    }
+  });
+
   it('U14) error code is STABLE across all rejection paths (FE switches on code, not message)', () => {
     // FE error handling pattern (D.16): switch on error.code, never
     // on error.message. Post-CC-2 the stable code set is:

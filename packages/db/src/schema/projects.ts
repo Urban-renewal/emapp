@@ -6,6 +6,7 @@ import {
   timestamp,
   integer,
   numeric,
+  jsonb,
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
@@ -13,6 +14,18 @@ import {
 import { projectTypeEnum, projectStatusEnum, apartmentStatusEnum } from './_enums';
 import { bytea, citext } from './_types';
 import { organizations, users } from './tenancy';
+
+/**
+ * Local structural mirror of `@emapp/shared-types` `SignatureMilestone`.
+ * `@emapp/db` does NOT depend on `@emapp/shared-types` (and shared-types must
+ * stay import-free to avoid cycles), so the canonical Zod schema there is the
+ * source of truth and this is just the storage-layer type for the jsonb column.
+ * Owner-approved Gate-6 (Option A): ordered intermediate signature targets.
+ */
+export interface SignatureMilestone {
+  pct: number;
+  label?: string;
+}
 
 export const projects = pgTable(
   'projects',
@@ -26,6 +39,10 @@ export const projects = pgTable(
     status: projectStatusEnum('status').notNull().default('planning'),
     description: text('description'),
     targetSignaturePct: numeric('target_signature_pct', { precision: 5, scale: 2 }),
+    // Owner-approved Gate-6 (Option A, migration 0053) — ordered intermediate
+    // signature targets (staged overlay). Nullable jsonb, no default; shape is
+    // validated at the Zod boundary (SignatureMilestonesSchema in shared-types).
+    signatureMilestones: jsonb('signature_milestones').$type<SignatureMilestone[]>(),
     startedAt: timestamp('started_at', { withTimezone: true }),
     createdBy: uuid('created_by')
       .notNull()

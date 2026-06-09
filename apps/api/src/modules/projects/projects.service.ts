@@ -46,6 +46,9 @@ function toProject(r: ProjectRow): Project {
     description: r.description,
     // pg `numeric` is returned as string by the driver — normalise to number.
     targetSignaturePct: r.targetSignaturePct === null ? null : Number(r.targetSignaturePct),
+    // Owner-approved staged overlay (Gate-6, migration 0053). jsonb rides the
+    // select as-is; null for pre-feature rows.
+    signatureMilestones: r.signatureMilestones ?? null,
     startedAt: r.startedAt,
     createdBy: r.createdBy,
     createdAt: r.createdAt,
@@ -349,6 +352,10 @@ export class ProjectsService {
               input.targetSignaturePct === undefined || input.targetSignaturePct === null
                 ? String(PROJECT_TYPE_DEFAULT_CONSENT_PCT[input.type])
                 : String(input.targetSignaturePct),
+            // Owner-approved staged overlay (Gate-6, migration 0053). Already
+            // validated (shape + ascending/unique + <= target) by the
+            // CreateProjectInput Zod schema at the controller boundary.
+            signatureMilestones: input.signatureMilestones ?? null,
             startedAt: input.startedAt ?? null,
             createdBy: user.sub,
           })
@@ -502,6 +509,11 @@ export class ProjectsService {
         if (input.targetSignaturePct !== undefined) {
           patch.targetSignaturePct =
             input.targetSignaturePct === null ? null : String(input.targetSignaturePct);
+        }
+        // Owner-approved staged overlay (Gate-6). Editable post-create: a
+        // supplied list replaces, `null` clears. Validated by UpdateProjectInput.
+        if (input.signatureMilestones !== undefined) {
+          patch.signatureMilestones = input.signatureMilestones ?? null;
         }
         if (input.startedAt !== undefined) patch.startedAt = input.startedAt;
 

@@ -1085,6 +1085,7 @@ _(no body)_
 | `buildings` | array | no | — |
 | `description` | unknown | no | — |
 | `name` | string | yes | minLength=1, maxLength=200 |
+| `signatureMilestones` | unknown | no | — |
 | `startedAt` | unknown | no | — |
 | `status` | string | no | enum=["planning","gathering_signatures","approved","in_construction","completed","cancelled"] |
 | `targetSignaturePct` | unknown | no | — |
@@ -1144,6 +1145,7 @@ _(no body)_
 |---|---|---|---|
 | `description` | unknown | no | — |
 | `name` | string | no | minLength=1, maxLength=200 |
+| `signatureMilestones` | unknown | no | — |
 | `startedAt` | unknown | no | — |
 | `status` | string | no | enum=["planning","gathering_signatures","approved","in_construction","completed","cancelled"] |
 | `targetSignaturePct` | unknown | no | — |

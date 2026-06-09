@@ -58,7 +58,7 @@ import { LogoutButton } from './logout-button';
  * | roles           | תפקידים והרשאות            | —                         | stub   |
  * | integrations    | אינטגרציות                | —                         | stub   |
  * | health          | בריאות מערכת              | /provider/system-health   | wired  |
- * | backups         | גיבויים ושחזור            | —                         | stub   |
+ * | backups         | גיבויים ושחזור            | /provider/backups         | wired  |
  * | audit           | יומן פעילות                | /provider/audit           | wired  |
  * | selfAudit       | הפעילות שלי                | /provider/audit/self      | wired  |
  * | staff           | צוות EMAPP                | —                         | stub   |
@@ -106,7 +106,7 @@ const ITEMS: NavItem[] = [
   { id: 'roles', group: 'ops', href: null, icon: CheckSquare },
   { id: 'integrations', group: 'ops', href: null, icon: Plug },
   { id: 'health', group: 'ops', href: '/provider/system-health', icon: HeartPulse },
-  { id: 'backups', group: 'ops', href: null, icon: Database },
+  { id: 'backups', group: 'ops', href: '/provider/backups', icon: Database },
   { id: 'audit', group: 'ops', href: '/provider/audit', icon: History },
   { id: 'selfAudit', group: 'ops', href: '/provider/audit/self', icon: UserCheck },
   // admin

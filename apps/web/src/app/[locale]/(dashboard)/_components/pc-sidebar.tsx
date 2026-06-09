@@ -13,11 +13,13 @@ import {
   Receipt,
   Settings,
   Tag,
+  UserCheck,
   Users,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
+import { useMemo } from 'react';
 
 import { NameDisplay } from '@/components/ui/name-display';
 import { cn } from '@/lib/utils';
@@ -58,6 +60,7 @@ import { LogoutButton } from './logout-button';
  * | health          | בריאות מערכת              | /provider/system-health   | wired  |
  * | backups         | גיבויים ושחזור            | —                         | stub   |
  * | audit           | יומן פעילות                | /provider/audit           | wired  |
+ * | selfAudit       | הפעילות שלי                | /provider/audit/self      | wired  |
  * | staff           | צוות EMAPP                | —                         | stub   |
  * | settings        | הגדרות פלטפורמה            | —                         | stub   |
  *
@@ -78,6 +81,7 @@ type ItemKey =
   | 'health'
   | 'backups'
   | 'audit'
+  | 'selfAudit'
   | 'staff'
   | 'settings';
 
@@ -104,6 +108,7 @@ const ITEMS: NavItem[] = [
   { id: 'health', group: 'ops', href: '/provider/system-health', icon: HeartPulse },
   { id: 'backups', group: 'ops', href: null, icon: Database },
   { id: 'audit', group: 'ops', href: '/provider/audit', icon: History },
+  { id: 'selfAudit', group: 'ops', href: '/provider/audit/self', icon: UserCheck },
   // admin
   { id: 'staff', group: 'admin', href: null, icon: Users },
   { id: 'settings', group: 'admin', href: null, icon: Settings },
@@ -127,9 +132,27 @@ export function PCSidebar({ userName, userRole }: Props) {
     ? rawPath.slice(localePrefix.length) || '/'
     : rawPath;
 
+  // The single best-matching wired href for the current path. Picking the
+  // LONGEST prefix match prevents a parent item (e.g. /provider/audit) from
+  // also lighting up when a more specific child (/provider/audit/self) is
+  // the real active route.
+  const activeHref = useMemo(() => {
+    let best: string | null = null;
+    for (const item of ITEMS) {
+      if (item.href === null) continue;
+      const matches =
+        item.href === '/provider'
+          ? path === '/provider'
+          : path === item.href || path.startsWith(`${item.href}/`);
+      if (matches && (best === null || item.href.length > best.length)) {
+        best = item.href;
+      }
+    }
+    return best;
+  }, [path]);
+
   function isActive(href: string): boolean {
-    if (href === '/provider') return path === '/provider';
-    return path === href || path.startsWith(`${href}/`);
+    return href === activeHref;
   }
 
   return (

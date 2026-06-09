@@ -667,6 +667,7 @@
         "health": "System health",
         "backups": "Backups & restore",
         "audit": "Activity log",
+        "selfAudit": "My activity",
         "staff": "EMAPP staff",
         "settings": "Platform settings"
       }
@@ -776,6 +777,29 @@
         "orgIdPlaceholder": "00000000-0000-0000-0000-000000000000",
         "action": "Action prefix",
         "actionPlaceholder": "import.   /   member.   /   signature.",
+        "fromDate": "From",
+        "toDate": "To"
+      }
+    },
+    "selfAudit": {
+      "title": "My activity",
+      "hint": "Your own action log — what you accessed, when, and with what reason. Every cross-tenant access of yours is recorded here (B-PROVIDER-2). Viewing this is itself audited.",
+      "search": "Search",
+      "reset": "Reset filters",
+      "loadFailed": "Failed to load your activity log.",
+      "empty": "No records for the current filters.",
+      "errorFromAfterTo": "From-date must be on or before the to-date.",
+      "reasonLabel": "Access reason:",
+      "noTargetOrg": "No target org",
+      "result": {
+        "completed": "Completed",
+        "pending": "In progress"
+      },
+      "field": {
+        "affectedOrgId": "Affected org (UUID)",
+        "affectedOrgIdPlaceholder": "00000000-0000-0000-0000-000000000000",
+        "actionType": "Action prefix",
+        "actionTypePlaceholder": "tenant.   /   audit.   /   onboard.",
         "fromDate": "From",
         "toDate": "To"
       }

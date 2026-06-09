@@ -260,16 +260,28 @@
         "floors": "Floors",
         "unitCount": "Units"
       },
+      "minimalCreateHint": "A name and a type are all you need to create a project. Everything else — buildings, sections and units — can be added later, at any time.",
       "section": {
         "kind": "Usage",
         "kindResidential": "Residential",
         "kindOffice": "Office",
         "kindRetail": "Retail",
-        "kindMixed": "Mixed-use"
+        "kindMixed": "Mixed-use",
+        "sectionNumberLabel": "Section {n}",
+        "addSection": "Add section",
+        "removeSection": "Remove section",
+        "entrance": "Entrance / section",
+        "area": "Area (sqm)",
+        "residentialHint": "Residential section — units are measured by rooms and floors.",
+        "officeHint": "Office section — units are measured by area (sqm), not rooms.",
+        "retailHint": "Retail section — units are measured by area (sqm). Usually a single floor.",
+        "mixedHint": "Mixed-use section — combine residential, retail and office. Add a section per use.",
+        "mixedMultiSectionHint": "A real mixed-use building = two or more sections of different kinds (e.g. retail on the ground floor and residential above)."
       },
       "review": {
         "projectHeading": "Project details",
         "buildingsHeading": "Buildings ({n})",
+        "sectionsLabel": "Sections",
         "noBuildings": "No buildings — the project will be created basic. You can add buildings after creation."
       },
       "validation": {

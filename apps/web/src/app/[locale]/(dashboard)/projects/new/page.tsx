@@ -3,6 +3,7 @@
 import {
   CreateProjectInput,
   PROJECT_TYPE_DEFAULT_CONSENT_PCT,
+  type ApartmentUnitType,
   type CreateProject,
   type ProjectType,
   type SectionKind,
@@ -22,10 +23,19 @@ import { ApiClientError } from '@/lib/api/errors';
  *
  * Step 1 (Details): project name + type + description.
  * Step 2 (Structure): zero-or-more buildings, each with address + city
- *   + block/parcel + ONE section (kind + floors + unitCount).
- *   Multi-section per building (entrances) is deferred to a polish
- *   slice; the BE wire (D.39 / B.S2) accepts up to 20 sections/building
- *   but the wizard ships single-section to keep MVP UX small.
+ *   + block/parcel + ONE-OR-MORE sections. Each section carries a `kind`
+ *   (residential | office | retail | mixed) that drives progressive
+ *   disclosure of the section's fields (Phase 1, owner point 2):
+ *     - residential → rooms/floors-oriented;
+ *     - office/retail → AREA-oriented (שטח, not rooms);
+ *     - retail → single-floor-friendly (floors de-emphasised).
+ *   Multi-section per building (D.39 / B.S2 accepts up to 20) is now
+ *   supported so a real mixed-use building (retail ground floor +
+ *   residential above) can be modelled as ≥2 sections of different kinds.
+ *   Each section's `kind` derives an intended apartment `unitType`
+ *   (SECTION_KIND_DEFAULT_UNIT_TYPE) so the BE empty-apartment expansion
+ *   can pre-tag units; the section wire shape itself carries no unitType
+ *   column today — see TODO(gate-6) in toCreateInput.
  * Step 3 (Review): summary panel + Create button. POST to
  *   `/api/v1/projects` with the full nested shape if buildings ≥ 1,
  *   or the back-compat simple shape if no buildings — both validated
@@ -58,6 +68,44 @@ const MAX_BUILDINGS_BY_TYPE: Record<ProjectType, number> = {
   pinui_binui: 20,
 };
 
+/** BE contract cap — `CreateProjectBuildingInput.sections` is `.max(20)`. */
+const MAX_SECTIONS_PER_BUILDING = 20;
+
+/**
+ * D.39 — derive the intended apartment `unit_type` from a section's `kind`,
+ * so the BE empty-apartment expansion can pre-tag the units it creates for
+ * the section. residential→apt, office→office, retail→shop, mixed→mixed.
+ * NOTE: the section WIRE shape (`CreateProjectSectionInput`) has no unitType
+ * column today, so this derivation can only ride along once that exists —
+ * see TODO(gate-6) in toCreateInput. It still drives UI labels now.
+ */
+const SECTION_KIND_DEFAULT_UNIT_TYPE: Record<SectionKind, ApartmentUnitType> = {
+  residential: 'apt',
+  office: 'office',
+  retail: 'shop',
+  mixed: 'mixed',
+};
+
+/** Whether a kind is measured by AREA (שטח) rather than rooms. Drives the
+ *  section-level progressive disclosure (office/retail → area-oriented). */
+function isAreaOriented(kind: SectionKind): boolean {
+  return kind === 'office' || kind === 'retail';
+}
+
+interface WizardSection {
+  // Local-only id for React keys; not sent to BE.
+  sid: string;
+  kind: SectionKind;
+  entrance: string;
+  floors: string;
+  unitCount: string;
+  // Area (sqm) — relevant for office/retail/mixed (area-oriented kinds).
+  // Captured per-section but, lacking a section-level area column on the
+  // wire, it is surfaced on the first expanded apartment via the BE; for
+  // now it is a UI affordance only (see TODO(gate-6)).
+  areaSqm: string;
+}
+
 interface WizardBuilding {
   // Local-only id for React keys; not sent to BE.
   rid: string;
@@ -65,9 +113,7 @@ interface WizardBuilding {
   city: string;
   block: string;
   parcel: string;
-  sectionKind: SectionKind;
-  sectionFloors: string;
-  sectionUnitCount: string;
+  sections: WizardSection[];
 }
 
 interface WizardState {
@@ -83,6 +129,17 @@ interface WizardState {
   buildings: WizardBuilding[];
 }
 
+function newSection(kind: SectionKind = 'residential'): WizardSection {
+  return {
+    sid: Math.random().toString(36).slice(2, 10),
+    kind,
+    entrance: '',
+    floors: '',
+    unitCount: '',
+    areaSqm: '',
+  };
+}
+
 function newBuilding(): WizardBuilding {
   return {
     rid: Math.random().toString(36).slice(2, 10),
@@ -90,9 +147,7 @@ function newBuilding(): WizardBuilding {
     city: '',
     block: '',
     parcel: '',
-    sectionKind: 'residential',
-    sectionFloors: '',
-    sectionUnitCount: '',
+    sections: [newSection()],
   };
 }
 
@@ -117,13 +172,18 @@ function toCreateInput(s: WizardState): CreateProject {
       city: b.city.trim(),
       block: b.block.trim() || undefined,
       parcel: b.parcel.trim() || undefined,
-      sections: [
-        {
-          kind: b.sectionKind,
-          floors: b.sectionFloors ? Number(b.sectionFloors) : undefined,
-          unitCount: b.sectionUnitCount ? Number(b.sectionUnitCount) : undefined,
-        },
-      ],
+      sections: b.sections.map((sec) => ({
+        kind: sec.kind,
+        entrance: sec.entrance.trim() || undefined,
+        floors: sec.floors ? Number(sec.floors) : undefined,
+        unitCount: sec.unitCount ? Number(sec.unitCount) : undefined,
+        // TODO(gate-6): SECTION_KIND_DEFAULT_UNIT_TYPE[sec.kind] is the
+        // intended per-section apartment unit_type for the BE empty-apartment
+        // expansion, and `areaSqm` is the area-oriented sections' measure.
+        // Neither has a column on `CreateProjectSectionInput` today — adding
+        // them is a contract/schema change (Gate-6), so we drop them on the
+        // wire and only drive the UI/labels from the kind for now.
+      })),
     }));
   return buildings.length ? { ...base, buildings } : base;
 }
@@ -133,6 +193,9 @@ export default function NewProjectPage() {
   const tw = useTranslations('projects.wizard');
   const tt = useTranslations('projects.types');
   const tk = useTranslations('projects.wizard.section');
+  // Reuse the canonical apartment unit-type labels for the derived
+  // section→unit_type tag (residential→apt, office→office, retail→shop, …).
+  const tu = useTranslations('apartments.unitType');
   const router = useRouter();
   const mutation = useCreateProject();
 
@@ -268,6 +331,42 @@ export default function NewProjectPage() {
     setState((s) => ({ ...s, buildings: s.buildings.filter((b) => b.rid !== rid) }));
   }
 
+  function patchSection(rid: string, sid: string, patch: Partial<WizardSection>) {
+    setState((s) => ({
+      ...s,
+      buildings: s.buildings.map((b) =>
+        b.rid === rid
+          ? {
+              ...b,
+              sections: b.sections.map((sec) => (sec.sid === sid ? { ...sec, ...patch } : sec)),
+            }
+          : b,
+      ),
+    }));
+  }
+  function addSection(rid: string) {
+    setState((s) => ({
+      ...s,
+      buildings: s.buildings.map((b) =>
+        b.rid === rid && b.sections.length < MAX_SECTIONS_PER_BUILDING
+          ? { ...b, sections: [...b.sections, newSection()] }
+          : b,
+      ),
+    }));
+  }
+  function removeSection(rid: string, sid: string) {
+    // Keep at least one section per building — a building with zero sections
+    // is a degenerate structure the wizard shouldn't emit.
+    setState((s) => ({
+      ...s,
+      buildings: s.buildings.map((b) =>
+        b.rid === rid && b.sections.length > 1
+          ? { ...b, sections: b.sections.filter((sec) => sec.sid !== sid) }
+          : b,
+      ),
+    }));
+  }
+
   // Type drives BOTH the consent-target default and the building topology.
   // On change we (a) re-seed targetSignaturePct from the per-type default
   // unless the manager has manually edited it, and (b) clamp the existing
@@ -290,6 +389,19 @@ export default function NewProjectPage() {
         : k === 'retail'
           ? tk('kindRetail')
           : tk('kindMixed');
+  }
+
+  // Per-kind progressive-disclosure hint (owner point 2): residential is
+  // rooms/floors-oriented, office/retail are AREA-oriented, mixed prompts
+  // for multiple sections.
+  function kindHint(k: SectionKind): string {
+    return k === 'residential'
+      ? tk('residentialHint')
+      : k === 'office'
+        ? tk('officeHint')
+        : k === 'retail'
+          ? tk('retailHint')
+          : tk('mixedHint');
   }
 
   return (
@@ -389,6 +501,15 @@ export default function NewProjectPage() {
                 ))}
               </select>
             </div>
+
+            {/* Minimal-create affordance: name + type is enough; the rest is
+                optional. Makes "create empty, enrich later" explicit. */}
+            <p
+              className="rounded-md p-2 text-xs"
+              style={{ color: 'var(--text-muted)', background: 'var(--bg-subtle)' }}
+            >
+              {tw('minimalCreateHint')}
+            </p>
 
             <div>
               <label htmlFor="consentPct" className="label">
@@ -515,57 +636,165 @@ export default function NewProjectPage() {
                       onChange={(e) => patchBuilding(b.rid, { parcel: e.target.value })}
                     />
                   </div>
-                  <div>
-                    <label className="label" htmlFor={`b-${b.rid}-kind`}>
-                      {tw('section.kind')}
-                    </label>
-                    <select
-                      id={`b-${b.rid}-kind`}
-                      className="input"
-                      value={b.sectionKind}
-                      onChange={(e) =>
-                        patchBuilding(b.rid, { sectionKind: e.target.value as SectionKind })
-                      }
-                    >
-                      {SECTION_KINDS.map((kind) => (
-                        <option key={kind} value={kind}>
-                          {kindLabel(kind)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
+                </div>
+
+                {/* Sections (אגפים) — one-or-more per building. Each carries a
+                    `kind` that drives progressive disclosure of its fields:
+                    residential → rooms/floors; office/retail → AREA (שטח).
+                    A real mixed-use building = ≥2 sections of different kinds. */}
+                <div className="mt-3 flex flex-col gap-3">
+                  {b.sections.some((sec) => sec.kind === 'mixed') && (
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      {tk('mixedMultiSectionHint')}
+                    </p>
+                  )}
+                  {b.sections.map((sec, sIdx) => {
+                    const areaOriented = isAreaOriented(sec.kind);
+                    return (
+                      <fieldset
+                        key={sec.sid}
+                        className="rounded-md border p-3"
+                        style={{ borderColor: 'var(--border)', background: 'var(--bg-subtle)' }}
+                      >
+                        <legend
+                          className="px-1 text-xs font-medium"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          {tk('sectionNumberLabel', { n: sIdx + 1 })}
+                        </legend>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="label" htmlFor={`s-${sec.sid}-kind`}>
+                              {tw('section.kind')}
+                            </label>
+                            <select
+                              id={`s-${sec.sid}-kind`}
+                              className="input"
+                              value={sec.kind}
+                              onChange={(e) =>
+                                patchSection(b.rid, sec.sid, {
+                                  kind: e.target.value as SectionKind,
+                                })
+                              }
+                            >
+                              {SECTION_KINDS.map((kind) => (
+                                <option key={kind} value={kind}>
+                                  {kindLabel(kind)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="label" htmlFor={`s-${sec.sid}-entrance`}>
+                              {tk('entrance')}
+                            </label>
+                            <input
+                              id={`s-${sec.sid}-entrance`}
+                              type="text"
+                              className="input"
+                              value={sec.entrance}
+                              onChange={(e) =>
+                                patchSection(b.rid, sec.sid, { entrance: e.target.value })
+                              }
+                            />
+                          </div>
+                          {/* Floors: kept for every kind, but de-emphasised for
+                              retail (typically single-floor). */}
+                          <div style={sec.kind === 'retail' ? { opacity: 0.7 } : undefined}>
+                            <label className="label" htmlFor={`s-${sec.sid}-floors`}>
+                              {tw('field.floors')}
+                            </label>
+                            <input
+                              id={`s-${sec.sid}-floors`}
+                              type="number"
+                              min={0}
+                              max={200}
+                              className="input tabular"
+                              dir="ltr"
+                              value={sec.floors}
+                              onChange={(e) =>
+                                patchSection(b.rid, sec.sid, { floors: e.target.value })
+                              }
+                            />
+                          </div>
+                          {/* Unit COUNT for every kind. The label/measure differs:
+                              residential counts apartments; office/retail count
+                              units measured by area. */}
+                          <div>
+                            <label className="label" htmlFor={`s-${sec.sid}-units`}>
+                              {tw('field.unitCount')}
+                            </label>
+                            <input
+                              id={`s-${sec.sid}-units`}
+                              type="number"
+                              min={0}
+                              max={2000}
+                              className="input tabular"
+                              dir="ltr"
+                              value={sec.unitCount}
+                              onChange={(e) =>
+                                patchSection(b.rid, sec.sid, { unitCount: e.target.value })
+                              }
+                            />
+                          </div>
+                          {/* AREA — surfaced only for area-oriented kinds
+                              (office/retail/mixed). Drives the שטח framing.
+                              TODO(gate-6): no section-level area column on the
+                              wire yet, so this is UI-only for now. */}
+                          {(areaOriented || sec.kind === 'mixed') && (
+                            <div>
+                              <label className="label" htmlFor={`s-${sec.sid}-area`}>
+                                {tk('area')}
+                              </label>
+                              <input
+                                id={`s-${sec.sid}-area`}
+                                type="number"
+                                min={0}
+                                max={10000}
+                                className="input tabular"
+                                dir="ltr"
+                                value={sec.areaSqm}
+                                onChange={(e) =>
+                                  patchSection(b.rid, sec.sid, { areaSqm: e.target.value })
+                                }
+                              />
+                            </div>
+                          )}
+                        </div>
+                        <p className="mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+                          {kindHint(sec.kind)}{' '}
+                          <span style={{ fontWeight: 500 }}>
+                            ({tu(SECTION_KIND_DEFAULT_UNIT_TYPE[sec.kind])})
+                          </span>
+                        </p>
+                        {b.sections.length > 1 && (
+                          <div className="mt-2 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => removeSection(b.rid, sec.sid)}
+                              className="btn btn-ghost btn-sm"
+                              style={{ color: 'var(--danger-700)' }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                              <span>{tk('removeSection')}</span>
+                            </button>
+                          </div>
+                        )}
+                      </fieldset>
+                    );
+                  })}
+                  {b.sections.length < MAX_SECTIONS_PER_BUILDING && (
                     <div>
-                      <label className="label" htmlFor={`b-${b.rid}-floors`}>
-                        {tw('field.floors')}
-                      </label>
-                      <input
-                        id={`b-${b.rid}-floors`}
-                        type="number"
-                        min={0}
-                        max={200}
-                        className="input tabular"
-                        dir="ltr"
-                        value={b.sectionFloors}
-                        onChange={(e) => patchBuilding(b.rid, { sectionFloors: e.target.value })}
-                      />
+                      <button
+                        type="button"
+                        onClick={() => addSection(b.rid)}
+                        className="btn btn-ghost btn-sm"
+                      >
+                        <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span>{tk('addSection')}</span>
+                      </button>
                     </div>
-                    <div>
-                      <label className="label" htmlFor={`b-${b.rid}-units`}>
-                        {tw('field.unitCount')}
-                      </label>
-                      <input
-                        id={`b-${b.rid}-units`}
-                        type="number"
-                        min={0}
-                        max={2000}
-                        className="input tabular"
-                        dir="ltr"
-                        value={b.sectionUnitCount}
-                        onChange={(e) => patchBuilding(b.rid, { sectionUnitCount: e.target.value })}
-                      />
-                    </div>
-                  </div>
+                  )}
                 </div>
                 {/* tama38_1 is a single-building track — no removal (it would
                     leave the project with zero buildings). */}
@@ -658,12 +887,21 @@ export default function NewProjectPage() {
                         {b.block || b.parcel
                           ? ` · ${tw('field.block')} ${b.block || '—'} / ${tw('field.parcel')} ${b.parcel || '—'}`
                           : ''}
-                        {' · '}
-                        {kindLabel(b.sectionKind)}
-                        {b.sectionFloors ? ` · ${tw('field.floors')} ${b.sectionFloors}` : ''}
-                        {b.sectionUnitCount
-                          ? ` · ${tw('field.unitCount')} ${b.sectionUnitCount}`
-                          : ''}
+                      </div>
+                      <div className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                        {tw('review.sectionsLabel')}:{' '}
+                        {b.sections
+                          .map((sec) => {
+                            const parts = [kindLabel(sec.kind)];
+                            if (sec.entrance.trim()) parts.push(sec.entrance.trim());
+                            if (sec.floors) parts.push(`${tw('field.floors')} ${sec.floors}`);
+                            if (sec.unitCount)
+                              parts.push(`${tw('field.unitCount')} ${sec.unitCount}`);
+                            if (sec.areaSqm && (isAreaOriented(sec.kind) || sec.kind === 'mixed'))
+                              parts.push(`${tk('area')} ${sec.areaSqm}`);
+                            return parts.join(' / ');
+                          })
+                          .join(' · ')}
                       </div>
                     </li>
                   ))}

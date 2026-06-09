@@ -92,6 +92,21 @@ function isAreaOriented(kind: SectionKind): boolean {
   return kind === 'office' || kind === 'retail';
 }
 
+interface WizardMilestone {
+  // Local-only id for React keys; not sent to BE.
+  mid: string;
+  // Controlled strings so empty fields are representable; coerced on submit.
+  pct: string;
+  label: string;
+}
+
+function newMilestone(pct = ''): WizardMilestone {
+  return { mid: Math.random().toString(36).slice(2, 10), pct, label: '' };
+}
+
+/** BE contract cap — `SignatureMilestonesSchema` is `.max(10)`. */
+const MAX_MILESTONES = 10;
+
 interface WizardSection {
   // Local-only id for React keys; not sent to BE.
   sid: string;
@@ -126,6 +141,9 @@ interface WizardState {
   // change UNLESS the manager has manually edited it (consentTouched).
   consentPct: string;
   consentTouched: boolean;
+  // Owner-approved staged overlay (Gate-6, Option A): ordered intermediate
+  // signature targets under the legal consent gate.
+  milestones: WizardMilestone[];
   buildings: WizardBuilding[];
 }
 
@@ -158,12 +176,22 @@ function toCreateInput(s: WizardState): CreateProject {
   // (PROJECT_TYPE_DEFAULT_CONSENT_PCT); a typed value is an explicit override.
   const consent = s.consentPct.trim();
   const consentNum = consent === '' ? undefined : Number(consent);
+  // Milestones: keep only rows with a real positive integer pct, coerce, and
+  // sort ascending. Empty rows are dropped (a half-filled row is UI noise, not
+  // an intended target). The authoritative ascending/unique/<=target check is
+  // the CreateProjectInput.safeParse boundary on submit.
+  const milestones = s.milestones
+    .map((m) => ({ pct: Number(m.pct), label: m.label.trim() }))
+    .filter((m) => Number.isInteger(m.pct) && m.pct > 0)
+    .sort((a, b) => a.pct - b.pct)
+    .map((m) => (m.label ? { pct: m.pct, label: m.label } : { pct: m.pct }));
   const base: CreateProject = {
     name: s.name.trim(),
     type: s.type,
     description: s.description.trim() || undefined,
     targetSignaturePct:
       consentNum !== undefined && Number.isFinite(consentNum) ? consentNum : undefined,
+    ...(milestones.length ? { signatureMilestones: milestones } : {}),
   };
   const buildings = s.buildings
     .filter((b) => b.address.trim() && b.city.trim())
@@ -206,6 +234,7 @@ export default function NewProjectPage() {
     description: '',
     consentPct: String(PROJECT_TYPE_DEFAULT_CONSENT_PCT.tama38_2),
     consentTouched: false,
+    milestones: [],
     buildings: [],
   });
   const [stepError, setStepError] = useState<string | null>(null);
@@ -236,6 +265,8 @@ export default function NewProjectPage() {
 
   function canAdvanceFromStep1(): true | string {
     if (!state.name.trim()) return tw('validation.nameRequired');
+    const mErr = milestoneError();
+    if (mErr) return mErr;
     return true;
   }
   function canAdvanceFromStep2(): true | string {
@@ -379,6 +410,74 @@ export default function NewProjectPage() {
       consentPct: s.consentTouched ? s.consentPct : String(PROJECT_TYPE_DEFAULT_CONSENT_PCT[type]),
       buildings: s.buildings.slice(0, MAX_BUILDINGS_BY_TYPE[type]),
     }));
+  }
+
+  // ── Milestone (יעדי ביניים) list-editor handlers ─────────────────────────
+  function patchMilestone(mid: string, patch: Partial<WizardMilestone>) {
+    setState((s) => ({
+      ...s,
+      milestones: s.milestones.map((m) => (m.mid === mid ? { ...m, ...patch } : m)),
+    }));
+  }
+  function addMilestone() {
+    setState((s) =>
+      s.milestones.length >= MAX_MILESTONES
+        ? s
+        : { ...s, milestones: [...s.milestones, newMilestone()] },
+    );
+  }
+  function removeMilestone(mid: string) {
+    setState((s) => ({ ...s, milestones: s.milestones.filter((m) => m.mid !== mid) }));
+  }
+  // Sort the milestone rows ascending by pct (stable; blanks sink to the end).
+  // Called on blur so the user sees the canonical order before submit.
+  function sortMilestones() {
+    setState((s) => ({
+      ...s,
+      milestones: [...s.milestones].sort((a, b) => {
+        const pa = a.pct.trim() === '' ? Number.POSITIVE_INFINITY : Number(a.pct);
+        const pb = b.pct.trim() === '' ? Number.POSITIVE_INFINITY : Number(b.pct);
+        return pa - pb;
+      }),
+    }));
+  }
+  // "Suggest" seeds [25, 50, target] (deduped, < target only) — a sensible
+  // staged default the manager can then edit. Replaces any current rows.
+  function suggestMilestones() {
+    setState((s) => {
+      const target = Number(s.consentPct.trim());
+      const hasTarget = s.consentPct.trim() !== '' && Number.isFinite(target);
+      const seed = [25, 50, hasTarget ? target : 66];
+      const seen = new Set<number>();
+      const rows = seed
+        .filter((p) => (hasTarget ? p <= target : true))
+        .filter((p) => (seen.has(p) ? false : (seen.add(p), true)))
+        .sort((a, b) => a - b)
+        .slice(0, MAX_MILESTONES)
+        .map((p) => newMilestone(String(p)));
+      return { ...s, milestones: rows };
+    });
+  }
+  /** Client-side milestone validity message (progressive disclosure only; the
+   *  CreateProjectInput.safeParse boundary on submit is authoritative). Checks
+   *  0 < pct <= target, ascending, unique across the filled rows. */
+  function milestoneError(): string | null {
+    const target = state.consentPct.trim() === '' ? null : Number(state.consentPct.trim());
+    const filled = state.milestones.filter((m) => m.pct.trim() !== '');
+    const nums: number[] = [];
+    for (const m of filled) {
+      const n = Number(m.pct);
+      if (!Number.isInteger(n) || n <= 0 || n > 100) return tw('milestones.errorRange');
+      if (target !== null && Number.isFinite(target) && n > target) {
+        return tw('milestones.errorOverTarget');
+      }
+      nums.push(n);
+    }
+    const sorted = [...nums].sort((a, b) => a - b);
+    for (let i = 1; i < sorted.length; i += 1) {
+      if (sorted[i] === sorted[i - 1]) return tw('milestones.errorDuplicate');
+    }
+    return null;
   }
 
   function kindLabel(k: SectionKind): string {
@@ -531,6 +630,80 @@ export default function NewProjectPage() {
               <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
                 {tw('consentTargetHint')}
               </p>
+            </div>
+
+            {/* Owner-approved staged overlay (Gate-6, Option A): optional
+                ordered intermediate signature targets (יעדי ביניים) under the
+                legal consent gate. Add/remove rows of pct + optional label;
+                auto-sorted ascending on blur. */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="label" style={{ marginBottom: 0 }}>
+                  {tw('milestones.title')}
+                </span>
+                <button type="button" onClick={suggestMilestones} className="btn btn-ghost btn-sm">
+                  {tw('milestones.suggest')}
+                </button>
+              </div>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {tw('milestones.hint')}
+              </p>
+              {state.milestones.length === 0 && (
+                <p className="text-xs" style={{ color: 'var(--text-soft)' }}>
+                  {tw('milestones.empty')}
+                </p>
+              )}
+              {state.milestones.map((m, idx) => (
+                <div key={m.mid} className="flex items-end gap-2">
+                  <div style={{ width: 96 }}>
+                    <label className="label" htmlFor={`m-${m.mid}-pct`}>
+                      {tw('milestones.pct')}
+                    </label>
+                    <input
+                      id={`m-${m.mid}-pct`}
+                      type="number"
+                      min={1}
+                      max={100}
+                      inputMode="numeric"
+                      className="input tabular"
+                      dir="ltr"
+                      value={m.pct}
+                      onChange={(e) => patchMilestone(m.mid, { pct: e.target.value })}
+                      onBlur={sortMilestones}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="label" htmlFor={`m-${m.mid}-label`}>
+                      {tw('milestones.label')}
+                    </label>
+                    <input
+                      id={`m-${m.mid}-label`}
+                      type="text"
+                      className="input"
+                      value={m.label}
+                      maxLength={80}
+                      onChange={(e) => patchMilestone(m.mid, { label: e.target.value })}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeMilestone(m.mid)}
+                    className="btn btn-ghost btn-sm"
+                    style={{ color: 'var(--danger-700)' }}
+                    aria-label={tw('milestones.remove', { n: idx + 1 })}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+              {state.milestones.length < MAX_MILESTONES && (
+                <div>
+                  <button type="button" onClick={addMilestone} className="btn btn-ghost btn-sm">
+                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>{tw('milestones.add')}</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             <div>

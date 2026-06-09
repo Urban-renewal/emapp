@@ -15,6 +15,7 @@ import { useArchiveProject, useProject } from '@/hooks/use-projects';
 import { ApiClientError } from '@/lib/api/errors';
 
 import { ExportXlsxButton } from './_components/export-xlsx-button';
+import { SignatureProgressBar } from './_components/signature-progress-bar';
 
 type TabId = 'tenants' | 'docs' | 'tasks' | 'dashboard';
 
@@ -287,6 +288,22 @@ export default function ProjectDetailPage() {
 
           {tab === 'dashboard' && (
             <div className="flex flex-col gap-4">
+              {/* Owner-approved staged overlay (Gate-6) — signature progress
+               *  bar with milestone tick marks + the legal target marker. Pure
+               *  read over the existing signed/(signed+pending) stats; only
+               *  rendered when those stats are wired (get() returns them). */}
+              {data.signaturesSignedCount !== undefined &&
+                data.signaturesPendingCount !== undefined && (
+                  <section className="rounded-md border bg-card p-4">
+                    <SignatureProgressBar
+                      signedCount={data.signaturesSignedCount}
+                      pendingCount={data.signaturesPendingCount}
+                      targetPct={data.targetConsentPct}
+                      milestones={data.signatureMilestones}
+                    />
+                  </section>
+                )}
+
               {data.description && (
                 <section className="rounded-md border bg-card p-4" aria-labelledby="proj-desc-h">
                   <h2 id="proj-desc-h" className="text-sm font-semibold">

@@ -1,4 +1,4 @@
-import type { ProjectStatus, ProjectType } from '@emapp/shared-types';
+import type { ProjectStatus, ProjectType, SignatureMilestone } from '@emapp/shared-types';
 
 /**
  * Project ViewModel — what list rows / detail cards render. Adapter
@@ -28,6 +28,10 @@ export interface ProjectViewModel {
    *  the type FUNCTIONAL: it sets the legal majority the project must reach.
    *  null only for legacy rows created before the default existed. */
   targetConsentPct: number | null;
+  /** Owner-approved staged overlay (Gate-6, Option A) — ordered intermediate
+   *  signature targets under the legal consent gate, used to render tick marks
+   *  on the signature-progress bar. Empty array when none / null on the wire. */
+  signatureMilestones: SignatureMilestone[];
   /** Locked-schema alignment: project rows have no description/target on the wire
    *  for new rows by default; we surface what's present, null otherwise. */
   description: string | null;

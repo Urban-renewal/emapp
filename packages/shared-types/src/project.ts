@@ -44,6 +44,56 @@ export const PROJECT_TYPE_DEFAULT_CONSENT_PCT: Record<ProjectType, number> = {
   pinui_binui: 66,
 };
 
+/**
+ * Owner-approved (Gate-6, Option A) — a single intermediate signature target.
+ * Beyond the legal consent gate (`targetSignaturePct`), a project may carry an
+ * ORDERED list of these to track signature-collection progress in stages
+ * (e.g. 25% → 50% → 66%). Per-PROJECT, not per-building. `.strict()` is
+ * fail-closed: unknown fields are rejected at the boundary (mass-assignment
+ * defence; mirrors the rest of the project write shapes).
+ */
+export const SignatureMilestoneSchema = z
+  .object({
+    pct: z.number().int().min(1).max(100),
+    label: z.string().max(80).optional(),
+  })
+  .strict();
+export type SignatureMilestone = z.infer<typeof SignatureMilestoneSchema>;
+
+/**
+ * The full ordered milestone list for a project (max 10). Enforces, beyond the
+ * per-row schema:
+ *  - strictly ASCENDING `pct` (also guarantees uniqueness);
+ *  - every `pct <= targetSignaturePct` WHEN a target is supplied alongside the
+ *    list — the staged overlay must never exceed the legal gate.
+ *
+ * The `targetSignaturePct` cross-check can only run when the target is in the
+ * SAME object being parsed (the create/update body), so it is applied by the
+ * project-level refinement below — not here, where the array stands alone.
+ * This bare validator still enforces ascending + unique + max-10 so it can be
+ * unit-tested and reused independently.
+ */
+export const SignatureMilestonesSchema = z
+  .array(SignatureMilestoneSchema)
+  .max(10)
+  .superRefine((milestones, ctx) => {
+    for (let i = 1; i < milestones.length; i += 1) {
+      const prev = milestones[i - 1];
+      const cur = milestones[i];
+      // Defensive narrowing for noUncheckedIndexedAccess — both indices are
+      // in-bounds by the loop condition, so this never actually throws.
+      if (prev === undefined || cur === undefined) continue;
+      if (cur.pct <= prev.pct) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'signature_milestones_must_be_strictly_ascending',
+          path: [i, 'pct'],
+        });
+      }
+    }
+  });
+export type SignatureMilestones = z.infer<typeof SignatureMilestonesSchema>;
+
 /** D.18 (LAW): locked project status set. Matches `project_status` pg enum. */
 export const ProjectStatusEnum = z.enum([
   'planning',
@@ -64,6 +114,11 @@ export const ProjectSchema = z.object({
   status: ProjectStatusEnum,
   description: z.string().max(2000).nullable(),
   targetSignaturePct: z.number().min(0).max(100).nullable(),
+  // Owner-approved staged overlay (Gate-6, Option A). Nullable: the column is
+  // additive jsonb with no default, so pre-feature rows read back as null. Also
+  // tolerant of OMISSION (write-response shape / a BE that drops null keys) —
+  // normalised to null so consumers always get `null | SignatureMilestone[]`.
+  signatureMilestones: SignatureMilestonesSchema.nullish().transform((v) => v ?? null),
   startedAt: z.coerce.date().nullable(),
   createdBy: z.string().uuid(),
   createdAt: z.coerce.date(),
@@ -113,8 +168,40 @@ const projectWriteShape = {
   status: ProjectStatusEnum.optional(),
   description: z.string().max(2000).nullable().optional(),
   targetSignaturePct: z.number().min(0).max(100).nullable().optional(),
+  // Owner-approved staged overlay (Gate-6, Option A) — optional + nullable so a
+  // create/update can set, clear (null), or omit it. The cross-field rule
+  // "every pct <= targetSignaturePct" is enforced by `refineMilestonesVsTarget`
+  // on the assembled body below (it needs both fields in scope).
+  signatureMilestones: SignatureMilestonesSchema.nullable().optional(),
   startedAt: z.coerce.date().nullable().optional(),
 } as const;
+
+/**
+ * Cross-field guard shared by the create + update bodies: when BOTH a milestone
+ * list and a `targetSignaturePct` are present, every milestone `pct` must be
+ * `<= targetSignaturePct` — the staged overlay can never exceed the legal gate.
+ * When `targetSignaturePct` is absent/null the BE later defaults it from the
+ * project type, but at the boundary we only have what the client sent, so we
+ * only cross-check against an explicitly-supplied target.
+ */
+function refineMilestonesVsTarget(
+  body: { signatureMilestones?: SignatureMilestone[] | null; targetSignaturePct?: number | null },
+  ctx: z.RefinementCtx,
+): void {
+  const { signatureMilestones, targetSignaturePct } = body;
+  if (!signatureMilestones || targetSignaturePct === undefined || targetSignaturePct === null) {
+    return;
+  }
+  signatureMilestones.forEach((m, i) => {
+    if (m.pct > targetSignaturePct) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'signature_milestone_exceeds_target',
+        path: ['signatureMilestones', i, 'pct'],
+      });
+    }
+  });
+}
 
 // ──────────────────────────────────────────────────────────────────────
 // V11 B.S2 — nested write shapes used by the AddProjectModal 3-step
@@ -190,14 +277,19 @@ export const CreateProjectInput = z
     ...projectWriteShape,
     buildings: z.array(CreateProjectBuildingInput).max(20).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine(refineMilestonesVsTarget);
 export type CreateProject = z.infer<typeof CreateProjectInput>;
 
 /** PATCH body — every project-level field optional. The wizard-only nested
  *  `buildings` is NOT updatable here (use the dedicated buildings/apartments
  *  endpoints); excluding it keeps PATCH bounded and avoids ambiguous semantics
  *  (replace vs merge of nested arrays). */
-export const UpdateProjectInput = z.object(projectWriteShape).partial().strict();
+export const UpdateProjectInput = z
+  .object(projectWriteShape)
+  .partial()
+  .strict()
+  .superRefine(refineMilestonesVsTarget);
 export type UpdateProject = z.infer<typeof UpdateProjectInput>;
 
 /** GET list query — cursor pagination only (D.16; never offset). */

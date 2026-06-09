@@ -372,6 +372,13 @@
 			"when": 1781190000000,
 			"tag": "0052_shares_perms_drop_dead_keys",
 			"breakpoints": true
+		},
+		{
+			"idx": 53,
+			"version": "7",
+			"when": 1781276400000,
+			"tag": "0053_project_signature_milestones",
+			"breakpoints": true
 		}
 	]
 }

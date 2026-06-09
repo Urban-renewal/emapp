@@ -869,6 +869,36 @@
         "lastErrorAt": "Last error at",
         "noErrors": "No errors"
       }
+    },
+    "backups": {
+      "title": "Backups & DR",
+      "hint": "Read-only posture view of the backup and disaster-recovery story. No fabricated data — documented posture only.",
+      "managed": {
+        "title": "Managed backups — Neon PITR",
+        "body": "Database backups are managed by Neon via continuous point-in-time recovery (PITR) — documented {days}-day retention window. There is no app-owned snapshot job, so no \"last backup\" time is shown here — restore is branch-from-history by timestamp (see runbook)."
+      },
+      "posture": {
+        "retention": "Retention window (PITR)",
+        "retentionValue": "{days} days (documented)",
+        "rpo": "RPO — max data loss",
+        "rpoValue": "≤ {minutes} min",
+        "rto": "RTO — recovery time target",
+        "rtoValue": "≤ {hours} hr (DB)",
+        "disclaimer": "Values are documented (target/configured), not a live system read. Verify the actual retention window in the Neon console per the runbook."
+      },
+      "piiKey": {
+        "title": "Critical dependency — PII encryption keys",
+        "warning": "A database restore alone is not enough.",
+        "body": "PII is encrypted with pgcrypto using PII_ENCRYPTION_KEY / PII_HASH_KEY held in Infisical — NOT in the database. Without recovering the matching keys, a restored database is unreadable ciphertext. The keys must be recoverable (Infisical + an offline escrow)."
+      },
+      "drill": {
+        "title": "Restore drill — proven, not assumed",
+        "body": "An untested restore is as dangerous as no backup. A periodic restore drill (at least quarterly) is run, including an end-to-end PII decryption check. If PII does not decrypt, the drill fails. See the drill checklist in the runbook."
+      },
+      "runbook": {
+        "title": "Operator runbook",
+        "body": "The full step-by-step restore procedure (Neon branch-restore, pg_dump/pg_restore fallback, key recovery, R2 backup) is documented in:"
+      }
     }
   },
   "members": {

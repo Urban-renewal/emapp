@@ -379,6 +379,13 @@
 			"when": 1781276400000,
 			"tag": "0053_project_signature_milestones",
 			"breakpoints": true
+		},
+		{
+			"idx": 54,
+			"version": "7",
+			"when": 1781362800000,
+			"tag": "0054_manager_member_admin",
+			"breakpoints": true
 		}
 	]
 }

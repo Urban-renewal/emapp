@@ -1,4 +1,4 @@
-/**
+﻿/**
  * D2-DEF-3 / D.54 — `GET /me` exposes `view_owner_pii` so the FE can offer
  * the owner "Reveal PII" button only to actors who can actually reveal.
  *
@@ -21,6 +21,7 @@ import { providerPool } from '../../../../../packages/db/src/client';
 import { createTestOrg, type TestOrg } from '../../../../../packages/db/test/factories';
 import { setupTestDatabase } from '../../../../../packages/db/test/setup';
 import { PermissionService } from '../../common/authz/permission.service';
+import { noopBreachForTest, noopMetricsForTest } from '../observability/test-doubles';
 
 import { AuthService } from './auth.service';
 
@@ -66,7 +67,12 @@ async function seedMember(
 
 beforeAll(async () => {
   await setupTestDatabase();
-  svc = new AuthService(new JwtService({ secret: serverEnv.JWT_SECRET }), new PermissionService());
+  svc = new AuthService(
+    new JwtService({ secret: serverEnv.JWT_SECRET }),
+    new PermissionService(),
+    noopMetricsForTest(),
+    noopBreachForTest(),
+  );
   org = await createTestOrg(`def3-${Date.now()}`, `def3-${Date.now()}`);
 }, 90_000);
 

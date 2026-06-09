@@ -130,3 +130,15 @@ export { FakeCacheProvider } from './providers/cache/fake.provider';
 export type { IRealtimeProvider, RealtimeEvent } from './providers/realtime/realtime.interface';
 export { SseRealtimeProvider } from './providers/realtime/sse.provider';
 export { FakeRealtimeProvider } from './providers/realtime/fake.provider';
+// P0.B2 — pluggable observability + breach-detection seam.
+export type { IMetricsProvider, MetricLabels } from './providers/metrics/metrics.interface';
+export { NoopMetricsProvider } from './providers/metrics/noop.provider';
+export { PrometheusMetricsProvider } from './providers/metrics/prometheus.provider';
+export type { IAlertSink, AlertEvent, AlertSeverity } from './providers/alert/alert.interface';
+export { NoopAlertSink } from './providers/alert/noop.provider';
+export { WebhookAlertSink, type WebhookAlertConfig } from './providers/alert/webhook.provider';
+export {
+  BreachDetectionService,
+  DEFAULT_BREACH_THRESHOLDS,
+  type BreachThresholds,
+} from './providers/alert/breach-detection.service';

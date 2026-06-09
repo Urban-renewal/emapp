@@ -1,5 +1,7 @@
-import { db, sql } from '@emapp/db';
-import { Controller, Get, HttpCode, HttpStatus } from '@nestjs/common';
+import { db, type IMetricsProvider, sql } from '@emapp/db';
+import { Controller, Get, HttpCode, HttpStatus, Inject } from '@nestjs/common';
+
+import { METRICS_PROVIDER } from './modules/observability/observability.tokens';
 
 /**
  * Liveness vs readiness — the K8s / Railway / Cloudflare standard split.
@@ -32,6 +34,12 @@ import { Controller, Get, HttpCode, HttpStatus } from '@nestjs/common';
  */
 @Controller()
 export class HealthController {
+  // P0.B2 — readiness publishes a couple of gauges (uptime, DB-up) so a
+  // metrics dashboard / uptime monitor sees the same signal the probe
+  // returns. Injected behind the token (Noop in dev/test) from the @Global
+  // ObservabilityModule. Fail-open: gauge writes never affect the response.
+  constructor(@Inject(METRICS_PROVIDER) private readonly metrics: IMetricsProvider) {}
+
   /**
    * Liveness probe — answers "is the process up?" Nothing more.
    *
@@ -77,6 +85,11 @@ export class HealthController {
     } catch {
       // intentionally swallow — the status field is the signal
     }
+
+    // Publish key gauges (fail-open inside the provider). No PII; aggregate
+    // process health only.
+    this.metrics.gauge('process_uptime_seconds', Math.floor(process.uptime()));
+    this.metrics.gauge('readiness_db_up', dbStatus === 'connected' ? 1 : 0);
 
     return {
       status: dbStatus === 'connected' ? 'ok' : 'degraded',

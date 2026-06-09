@@ -22,6 +22,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { TenantGuard } from '../auth/guards/tenant.guard';
 
+import { OwnerEraseDto, type OwnerEraseBody } from './data-subject.dto';
+import { DataSubjectService } from './data-subject.service';
 import {
   CreateOwnerDto,
   OwnerSearchDto,
@@ -45,7 +47,10 @@ const UuidParam = new ZodValidationPipe(z.string().uuid());
 @Controller('owners')
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class OwnersController {
-  constructor(private readonly owners: OwnersService) {}
+  constructor(
+    private readonly owners: OwnersService,
+    private readonly dataSubject: DataSubjectService,
+  ) {}
 
   @Get()
   @RequirePermission('owners.read')
@@ -101,6 +106,34 @@ export class OwnersController {
   @RequirePermission('owners.read')
   async revealPii(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.owners.revealPii(user, id) };
+  }
+
+  // P0.C1 — data-subject RIGHT TO ACCESS. GET (no body) but the response carries
+  // CLEARTEXT PII; the owner id in the URL is an opaque UUID (no PII leak to
+  // access logs). Coarse gate `owners.reveal_pii` (the dedicated cleartext-access
+  // permission); the service re-asserts MANAGER-tier + audits as a reveal.
+  // Throttled like reveal — a deliberate per-owner compliance action.
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Get(':id/data-export')
+  @RequirePermission('owners.reveal_pii')
+  async dataExport(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
+    return { data: await this.dataSubject.dataExport(user, id) };
+  }
+
+  // P0.C1 — data-subject RIGHT-TO-BE-FORGOTTEN (erasure). POST (state change),
+  // 200 with the erasure result. Manager-gated (service re-asserts), audited,
+  // Gate-6. IRREVERSIBLE crypto-shred (anonymize-in-place; signatures retained).
+  // IDEMPOTENT (re-erase = no-op). Throttled — a deliberate destructive action.
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post(':id/erase')
+  @HttpCode(200)
+  @RequirePermission('owners.reveal_pii')
+  async erase(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', UuidParam) id: string,
+    @Body(new ZodValidationPipe(OwnerEraseDto)) body: OwnerEraseBody,
+  ) {
+    return { data: await this.dataSubject.erase(user, id, body) };
   }
 
   @Patch(':id')

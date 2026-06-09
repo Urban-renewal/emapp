@@ -684,6 +684,7 @@
         "health": "בריאות מערכת",
         "backups": "גיבויים ושחזור",
         "audit": "יומן פעילות",
+        "selfAudit": "הפעילות שלי",
         "staff": "צוות EMAPP",
         "settings": "הגדרות פלטפורמה"
       }
@@ -793,6 +794,29 @@
         "orgIdPlaceholder": "00000000-0000-0000-0000-000000000000",
         "action": "תחילית פעולה",
         "actionPlaceholder": "import.   /   member.   /   signature.",
+        "fromDate": "מתאריך",
+        "toDate": "עד תאריך"
+      }
+    },
+    "selfAudit": {
+      "title": "הפעילות שלי",
+      "hint": "היומן האישי שלך — אילו פעולות ביצעת, מתי ומאיזו סיבה. כל גישה בין-לקוחית שלך מתועדת כאן (B-PROVIDER-2). צפייה זו עצמה מתועדת.",
+      "search": "חפש",
+      "reset": "איפוס סינון",
+      "loadFailed": "טעינת היומן האישי נכשלה.",
+      "empty": "אין רשומות לסינון הנוכחי.",
+      "errorFromAfterTo": "תאריך התחלה חייב להיות לפני תאריך הסיום.",
+      "reasonLabel": "סיבת הגישה:",
+      "noTargetOrg": "ללא ארגון יעד",
+      "result": {
+        "completed": "הושלם",
+        "pending": "בתהליך"
+      },
+      "field": {
+        "affectedOrgId": "ארגון מושפע (UUID)",
+        "affectedOrgIdPlaceholder": "00000000-0000-0000-0000-000000000000",
+        "actionType": "תחילית פעולה",
+        "actionTypePlaceholder": "tenant.   /   audit.   /   onboard.",
         "fromDate": "מתאריך",
         "toDate": "עד תאריך"
       }

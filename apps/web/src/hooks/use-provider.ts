@@ -4,6 +4,7 @@ import type {
   OnboardOrgBody,
   OnboardOrgResult,
   ProviderAuditQuery,
+  ProviderSelfAuditQuery,
   TenantSuspensionState,
 } from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -11,8 +12,10 @@ import { useCallback } from 'react';
 
 import { toProviderAuditItemVMs } from '@/adapters/provider-audit';
 import { toSystemHealthVM } from '@/adapters/provider-health';
+import { toProviderSelfAuditItemVMs } from '@/adapters/provider-self-audit';
 import { toTenantDetailVM, toTenantListItemVMs } from '@/adapters/provider-tenant';
 import {
+  getSelfAudit,
   getSystemHealth,
   getTenant,
   listTenants,
@@ -21,12 +24,14 @@ import {
   searchAudit,
   suspendTenant,
   type ProviderAuditListPage,
+  type ProviderSelfAuditListPage,
   type TenantListPage,
 } from '@/lib/api/provider';
 import { useDisplayLocale } from '@/lib/locale';
 import { readProviderReason } from '@/lib/provider-reason';
 import type { ProviderAuditItemVM } from '@/models/provider-audit.vm';
 import type { ProviderSystemHealthVM } from '@/models/provider-health.vm';
+import type { ProviderSelfAuditItemVM } from '@/models/provider-self-audit.vm';
 import type { ProviderTenantDetailVM, ProviderTenantListItemVM } from '@/models/provider-tenant.vm';
 
 /**
@@ -164,6 +169,35 @@ export function useProviderAudit(query: ProviderAuditQuery) {
   >({
     queryKey: [...PROVIDER_KEY, 'audit', query, locale],
     queryFn: () => searchAudit(reason ?? '', query),
+    enabled: Boolean(reason),
+    staleTime: 30_000,
+    select,
+  });
+}
+
+/**
+ * B-PROVIDER-2 — the CURRENT operator's OWN action log
+ * (`provider_audit_log`). Same shape + posture as `useProviderAudit`
+ * (reason-gated, locale-keyed, adapter in `select`), but reads the
+ * self-accountability surface ("what did *I* access, when, why").
+ */
+export function useProviderSelfAudit(query: ProviderSelfAuditQuery) {
+  const locale = useDisplayLocale();
+  const reason = readProviderReason();
+  const select = useCallback(
+    (data: ProviderSelfAuditListPage) => ({
+      items: toProviderSelfAuditItemVMs(data.items, locale),
+      page: data.page,
+    }),
+    [locale],
+  );
+  return useQuery<
+    ProviderSelfAuditListPage,
+    Error,
+    { items: ProviderSelfAuditItemVM[]; page: ProviderSelfAuditListPage['page'] }
+  >({
+    queryKey: [...PROVIDER_KEY, 'self-audit', query, locale],
+    queryFn: () => getSelfAudit(reason ?? '', query),
     enabled: Boolean(reason),
     staleTime: 30_000,
     select,

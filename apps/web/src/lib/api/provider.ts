@@ -22,9 +22,11 @@
 import {
   ListTenantsQuerySchema,
   ProviderAuditItemSchema,
+  ProviderSelfAuditItemSchema,
   OnboardOrgBodySchema,
   OnboardOrgResultSchema,
   ProviderAuditQuerySchema,
+  ProviderSelfAuditQuerySchema,
   SuspendTenantBodySchema,
   SystemHealthSchema,
   TenantDetailSchema,
@@ -34,6 +36,8 @@ import {
   type OnboardOrgResult,
   type ProviderAuditItem,
   type ProviderAuditQuery,
+  type ProviderSelfAuditItem,
+  type ProviderSelfAuditQuery,
   type SystemHealth,
   type TenantDetail,
   type TenantListItem,
@@ -88,10 +92,15 @@ export class ProviderReasonRequiredError extends Error {
 function withReason(reason: string, init?: ApiFetchOptions): ApiFetchOptions {
   const trimmed = reason.trim();
   if (trimmed.length === 0) throw new ProviderReasonRequiredError();
-  // ASCII-only fast path — most operator reasons are ticket-id refs
-  // ("incident #42"), so don't pay the URI-encode cost.
-  // eslint-disable-next-line no-control-regex -- intentional: detect non-printable / non-ASCII chars
-  const headerValue = /^[\x20-\x7E]+$/.test(trimmed) ? trimmed : encodeURIComponent(trimmed);
+  // ALWAYS percent-encode — symmetric with the BE decode in
+  // access-reason.decorator.ts (parseAccessReasonHeader). Encoding
+  // unconditionally (not just for non-ASCII) keeps the round-trip lossless:
+  // a literal '%' in an ASCII reason becomes '%25' and decodes back to '%'
+  // on the BE, so the AUDITED reason is never silently mutated. A previous
+  // ASCII fast-path sent such reasons verbatim, and the BE's decode then
+  // corrupted them (e.g. "rollback v2%2F3" → "v2/3"). `encodeURIComponent`
+  // on a plain ticket ref ("incident #42") is negligible.
+  const headerValue = encodeURIComponent(trimmed);
   const merged: Record<string, string> = {};
   if (init?.headers) {
     // init.headers may be a Record, a Headers instance, or an array
@@ -228,6 +237,49 @@ export async function searchAudit(
   );
   if (!isList<unknown>(res)) throw new ApiClientError(res.error);
   const items = z.array(ProviderAuditItemSchema).parse(res.data);
+  const page = PageSchema.parse(res.page);
+  return { items, page };
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Self-audit (B-PROVIDER-2) — the CURRENT operator's OWN action log
+// (`provider_audit_log`), distinct from the cross-tenant search above.
+// Answers "what did *I* access, when, and with what reason."
+//
+// The `provider_audit_log` table is bounded by the provider team's own
+// activity (not 30M customer rows), so — unlike `searchAudit` — there is
+// NO SA-4 mandatory date-span. All filters are optional; only the keyset
+// cursor (started_at DESC, id) is required to page. Same `withReason`
+// header injection + defensive `.parse()` on the response as every other
+// call here.
+// ───────────────────────────────────────────────────────────────────
+
+export interface ProviderSelfAuditListPage {
+  items: ProviderSelfAuditItem[];
+  page: Page;
+}
+
+export async function getSelfAudit(
+  reason: string,
+  query: ProviderSelfAuditQuery,
+): Promise<ProviderSelfAuditListPage> {
+  // FE-side defensive parse — catch a malformed query (cursor, span,
+  // bad action prefix) before a single byte leaves the browser.
+  const parsed = ProviderSelfAuditQuerySchema.parse(query);
+  const params = new URLSearchParams();
+  params.set('limit', String(parsed.limit));
+  if (parsed.cursor) params.set('cursor', parsed.cursor);
+  if (parsed.affectedOrgId) params.set('affectedOrgId', parsed.affectedOrgId);
+  if (parsed.actionType) params.set('actionType', parsed.actionType);
+  if (parsed.fromDate) params.set('fromDate', parsed.fromDate.toISOString());
+  if (parsed.toDate) params.set('toDate', parsed.toDate.toISOString());
+  const qs = params.toString();
+  const res = await apiClient.getList<unknown>(
+    `/provider/audit/self${qs ? `?${qs}` : ''}`,
+    withReason(reason),
+  );
+  if (!isList<unknown>(res)) throw new ApiClientError(res.error);
+  const items = z.array(ProviderSelfAuditItemSchema).parse(res.data);
   const page = PageSchema.parse(res.page);
   return { items, page };
 }

@@ -19,6 +19,23 @@
 
 ## 2. Build queue — STRICT ORDER
 
+### P0 — LAUNCH BLOCKERS / core-product verification (NEW 2026-06-09 gap-hunt — ⚠️ AWAITING OWNER PRIORITY DECISION: do these jump ahead of P1-P4?)
+
+> Found by a gap analysis ("what did we forget?"). These are MORE fundamental than
+> the feature backlog — they're whether the product actually works in production +
+> the legal/compliance posture. Grounded in code. Some are OWNER/LEGAL actions, not code.
+
+- [ ] **P0.1 Verify the resident SIGN flow on MOBILE / iOS Safari** — residents sign on phones; the touch-canvas + iOS-PDF-preview fallback have NEVER run on mobile/WebKit in CI (Playwright is desktop-only). Add a real end-to-end test (real token → DB single-use guard → R2 preview → encrypted store → cert) + a mobile/WebKit run. **The product must be proven to work on the device residents use.**
+- [ ] **P0.2 (OWNER/LEGAL) e-signature validity decision** — today it's a "simple electronic signature" (weakest tier, Electronic Signature Law 2001); the sign needs NO identity proof (bearer link). For תמ"א/פינוי-בינוי owner consent (litigated; identity is what's contested) this is weak. Decide: accept simple / upgrade to secure / certified. **Escalate to legal.** No decision record exists.
+- [ ] **P0.3 Live SMS (Inforu) verification** — the real provider is written but carries `VERIFY-BEFORE-GO-LIVE`; no live SMS ever sent; creds dev-only. The primary delivery channel for phone-only owners is unproven. Verify against a live account + provision staging/prod creds.
+- [ ] **P0.4 Production environment** — none exists: no deploy config, no CI deploy step, ALL secrets (incl. PII encryption keys) unprovisioned for staging/prod. App runs only in dev with Fake/Noop. Provision envs + secrets + a deploy path.
+- [ ] **P0.5 File-upload AV/malware scan** — owners upload → residents download; only mime-allowlist + size today, NO content scan. Add ClamAV / R2-event scan before a doc is downloadable.
+- [ ] **P0.6 Backups/DR + monitoring/alerting + breach-detection** — Sentry captures but nobody is paged; no tested restore; no breach detection feeding the 72h/"immediate" notification duty.
+- [ ] **P0.7 (compliance) data-subject erasure + consent capture** — only soft-delete (can't honor a deletion request); no privacy-notice/consent trail for residents' PII.
+- [ ] **P0.8 (OWNER/LEGAL, not code)** — database registration (רישום מאגר), security officer (ממונה אבטחת מידע), periodic external audit (24mo) + pentest, breach-notification runbook + contacts.
+
+> See the gap-analysis findings (2026-06-09) for full detail + file:line. **Owner asked: should P0 jump above P1-P4?** Default (until owner says otherwise): keep building P1+ in order, but surface P0 as the real launch gate.
+
 ### NOW — housekeeping (small, do first, unblocks the rest)
 
 - [ ] **H1. Fix #325 CI** (build + conformance red — likely api-docs/conformance regen for the new `signatureMilestones` field). Blocks the milestones merge.

@@ -52,7 +52,23 @@ export function parseAccessReasonHeader(rawHeader: string | string[] | undefined
       },
     });
   }
-  const result = validateProviderReason(rawHeader);
+  // The FE percent-encodes any non-ASCII reason (Hebrew / em-dash) so it
+  // survives the fetch `Headers` ByteString constraint (apps/web/src/lib/api/
+  // provider.ts `withReason`). Decode it back to the real UTF-8 text BEFORE
+  // validating + auditing — otherwise a Hebrew reason arrives as one
+  // "%20"-joined token and is wrongly rejected as `reason_low_quality`, which
+  // breaks every provider page for an operator who writes the reason in Hebrew.
+  // ASCII reasons are sent verbatim, so decodeURIComponent is a no-op on them —
+  // EXCEPT a literal '%' (e.g. "50% timeout"), where it throws; fall back to raw.
+  let value = rawHeader;
+  if (typeof rawHeader === 'string') {
+    try {
+      value = decodeURIComponent(rawHeader);
+    } catch {
+      value = rawHeader;
+    }
+  }
+  const result = validateProviderReason(value);
   if (!result.ok) {
     throw new BadRequestException({
       error: {

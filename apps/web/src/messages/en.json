@@ -672,7 +672,11 @@
     "submitting": "Submitting...",
     "errorTooShort": "Signature is too short. Try a fuller signature.",
     "errorTooLarge": "Signature is too large. Try a simpler signature.",
-    "errorInvalid": "Signature is invalid."
+    "errorInvalid": "Signature is invalid.",
+    "consentSectionTitle": "Privacy & data-processing notice",
+    "consentCheckboxLabel": "I have read the privacy notice and consent to the processing of my personal data.",
+    "consentImplicitLine": "By signing, you acknowledge that you have read the privacy notice above.",
+    "consentRequired": "You must acknowledge the privacy notice before signing."
   },
   "provider": {
     "nav": {

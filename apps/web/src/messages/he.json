@@ -672,7 +672,11 @@
     "submitting": "שולח...",
     "errorTooShort": "החתימה קצרה מדי. נסה חתימה מלאה יותר.",
     "errorTooLarge": "החתימה גדולה מהמותר. נסה חתימה פשוטה יותר.",
-    "errorInvalid": "החתימה אינה תקינה."
+    "errorInvalid": "החתימה אינה תקינה.",
+    "consentSectionTitle": "הודעת פרטיות ועיבוד מידע",
+    "consentCheckboxLabel": "קראתי את הודעת הפרטיות ואני מאשר/ת את עיבוד פרטיי האישיים.",
+    "consentImplicitLine": "בחתימתך הינך מאשר/ת כי קראת את הודעת הפרטיות לעיל.",
+    "consentRequired": "יש לאשר את הודעת הפרטיות לפני החתימה."
   },
   "provider": {
     "nav": {

@@ -152,6 +152,64 @@ export const signatureRequests = pgTable(
 export type SignatureRequest = typeof signatureRequests.$inferSelect;
 export type NewSignatureRequest = typeof signatureRequests.$inferInsert;
 
+/**
+ * P0.C2 — PII-PROCESSING consent / privacy-notice acknowledgment trail
+ * (Israeli Privacy Protection Law — recorded lawful basis / notice).
+ *
+ * DISTINCT from D.57 "valid-consent" (the SIGNATURE-threshold % of owners):
+ * that is a project-level signature target; THIS is the per-resident record
+ * that an apartment owner was shown — and acknowledged — the org's
+ * PII-processing privacy notice at a point in time.
+ *
+ * The notice TEXT is configurable per-org (OrgSettings `privacy` namespace —
+ * NOT hardcoded legal copy). This table is the immutable EVIDENCE: it pins the
+ * exact `noticeVersion` AND a `noticeHash` (SHA-256 of the precise text the
+ * resident saw) so the record is self-verifying even if the org later edits
+ * its notice text. No new PII beyond the owner ref + request provenance
+ * (IP/UA) — consistent with how `signatures` captures provenance.
+ *
+ * APPEND-ONLY / IMMUTABLE: INSERT + SELECT only (migration 0059 REVOKEs
+ * UPDATE/DELETE from app_user). A consent, once given, is never mutated or
+ * deleted — it is a forensic compliance record. No `archived_at`.
+ *
+ * Org-scoped: FORCE RLS `tenant_isolation` on `org_id` (migration 0059),
+ * exactly mirroring owners/signatures.
+ */
+export const piiProcessingConsents = pgTable(
+  'pii_processing_consents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    /** The subject — the apartment owner (resident) who acknowledged. */
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => owners.id, { onDelete: 'restrict' }),
+    /** The notice version the resident acknowledged (from OrgSettings.privacy
+     *  `noticeVersion`). Immutable string label, e.g. 'v1'. */
+    noticeVersion: text('notice_version').notNull(),
+    /** SHA-256 (hex) of the EXACT notice text shown to the resident. Pins the
+     *  content immutably even if the org edits its configurable notice copy. */
+    noticeHash: text('notice_hash').notNull(),
+    /** The capture surface / method, e.g. 'public_sign_v1'. */
+    method: text('method').notNull(),
+    /** Provenance — same posture as `signatures.signerIp` / `signerUserAgent`. */
+    consentIp: inet('consent_ip'),
+    consentUserAgent: text('consent_user_agent'),
+    /** When the acknowledgment happened (the signing moment). */
+    acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    orgOwnerIdx: index('idx_pii_consents_org_owner').on(table.orgId, table.ownerId),
+    ownerAckIdx: index('idx_pii_consents_owner_ack').on(table.ownerId, table.acknowledgedAt.desc()),
+  }),
+);
+
+export type PiiProcessingConsent = typeof piiProcessingConsents.$inferSelect;
+export type NewPiiProcessingConsent = typeof piiProcessingConsents.$inferInsert;
+
 export const notes = pgTable(
   'notes',
   {

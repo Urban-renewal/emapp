@@ -24,7 +24,7 @@ const FULL_DEFAULT: OrgSettings = {
   locale: 'he',
   timezone: 'Asia/Jerusalem',
   signatures: { linkTtlDays: 7, channels: ['sms', 'email', 'whatsapp'] },
-  consent: { tama38_1: 66, tama38_2: 80, pinui_binui: 80 },
+  consent: { tama38_1: 66, tama38_2: 66, pinui_binui: 66 },
   limits: { bulkCap: 200, defaultPageSize: 25 },
 };
 
@@ -39,8 +39,8 @@ function expectIsFullDefault(s: OrgSettings): void {
   expect(s.notifications.defaultChannels).toEqual(['in_app']);
   expect(s.messaging.templates).toEqual({});
   expect(s.consent.tama38_1).toBe(66);
-  expect(s.consent.tama38_2).toBe(80);
-  expect(s.consent.pinui_binui).toBe(80);
+  expect(s.consent.tama38_2).toBe(66);
+  expect(s.consent.pinui_binui).toBe(66);
   expect(s.limits.bulkCap).toBe(200);
   expect(s.limits.defaultPageSize).toBe(25);
 }
@@ -102,8 +102,8 @@ describe('resolveOrgSettings — partial override deep-merge', () => {
   it('nested partial { consent: { tama38_1: 75 } } → one leaf overridden, sibling consent leaves default', () => {
     const s = resolveOrgSettings({ consent: { tama38_1: 75 } });
     expect(s.consent.tama38_1).toBe(75);
-    expect(s.consent.tama38_2).toBe(80);
-    expect(s.consent.pinui_binui).toBe(80);
+    expect(s.consent.tama38_2).toBe(66);
+    expect(s.consent.pinui_binui).toBe(66);
   });
 
   it('two independent namespaces partially set → both honored, untouched ones default', () => {
@@ -217,7 +217,7 @@ describe('resolveOrgSettings — per-namespace fail-soft (siblings survive a mal
     expect(s.branding.emailFrom).toBeUndefined();
     // valid sibling overrides in OTHER namespaces survive:
     expect(s.consent.tama38_1).toBe(75);
-    expect(s.consent.tama38_2).toBe(80); // unset leaf in that namespace = default
+    expect(s.consent.tama38_2).toBe(66); // unset leaf in that namespace = default
     expect(s.limits.defaultPageSize).toBe(40);
     expect(s.limits.bulkCap).toBe(200);
     // wholly-untouched namespaces are default:
@@ -232,8 +232,8 @@ describe('resolveOrgSettings — per-namespace fail-soft (siblings survive a mal
     });
     // consent reverted ENTIRELY to default (per-namespace, not per-leaf):
     expect(s.consent.tama38_1).toBe(66);
-    expect(s.consent.tama38_2).toBe(80);
-    expect(s.consent.pinui_binui).toBe(80);
+    expect(s.consent.tama38_2).toBe(66);
+    expect(s.consent.pinui_binui).toBe(66);
     // valid siblings survive:
     expect(s.signatures.linkTtlDays).toBe(21);
     expect(s.signatures.channels).toEqual(['sms', 'email', 'whatsapp']);

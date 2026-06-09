@@ -58,6 +58,13 @@ export function toProjectViewModel(
     statusLabel: STATUS_LABELS[p.status],
     statusColor: STATUS_COLORS[p.status],
     targetConsentPct: p.targetSignaturePct ?? null,
+    // Owner-approved staged overlay (Gate-6). Already shape-validated by the
+    // wire Zod parse; null → empty array so components iterate uniformly. The
+    // user-authored label is bidi-stripped like every other free-text field
+    // (§SEC-M4 / RTL-spoofing defence) before it reaches the progress bar.
+    signatureMilestones: (p.signatureMilestones ?? []).map((m) =>
+      m.label ? { ...m, label: stripBidiOverrides(m.label) } : m,
+    ),
     description: p.description ? stripBidiOverrides(p.description) : null,
     isArchived: p.archivedAt !== null,
     createdRelative: formatRelative(p.createdAt, locale),

@@ -79,9 +79,18 @@ const ADMIN: readonly Permission[] = [
   // explicitly NOT: org.billing.manage, org.transfer_ownership, org.delete
 ];
 
-// ── Manager: ALL operational on scope, incl. reveal_pii + export.
-//    NOT members, roles, billing, security_policy (i.e. no governance). ──────
-const MANAGER: readonly Permission[] = [...ALL_OPERATIONAL];
+// ── Manager: ALL operational on scope, incl. reveal_pii + export, PLUS member
+//    administration (invite / update / remove — member CRUD, owner-approved
+//    Gate-2/Gate-6 grant). NOT roles, billing, security_policy, org.* (role-
+//    administration + org-governance stay Owner/Admin-only). ──────────────────
+const MANAGER: readonly Permission[] = [
+  ...ALL_OPERATIONAL,
+  'members.invite',
+  'members.update',
+  'members.remove',
+  // explicitly NOT: members.read is reached via the export.run ⇒ members.read
+  // closure (so the roster shows); roles.*, org.* stay Owner/Admin-only.
+];
 
 // ── Agent: read + scoped writes; reveal_pii iff granted (DEFAULT OFF → not in
 //    the seeded set); NOT projects.create, owners.create, members, export. ──
@@ -140,7 +149,7 @@ export const SYSTEM_ROLES: readonly SystemRoleDef[] = [
     key: 'manager',
     name: 'Manager',
     description:
-      'All operational actions on scope, including reveal PII and export. No member/role administration.',
+      'All operational actions on scope, including reveal PII, export, and member administration (invite/update/remove). No role administration, no org governance.',
     permissions: MANAGER,
   },
   {

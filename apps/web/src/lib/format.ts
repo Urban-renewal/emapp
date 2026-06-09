@@ -28,3 +28,23 @@ export function formatRelative(at: Date | string, locale: 'he' | 'en' = 'he'): s
   const deltaMinutes = Math.round(deltaMs / 60_000);
   return rtf.format(deltaMinutes, 'minute');
 }
+
+/**
+ * Absolute date+time rendered in the Asia/Jerusalem timezone (per the
+ * hard rule "store UTC, display Asia/Jerusalem"). Used where an exact
+ * audited timestamp matters more than a relative "3 days ago" — e.g. the
+ * provider self-audit log, where the operator needs the precise wall-clock
+ * time of each access. Locale picks the digit/format conventions; the
+ * timezone is pinned regardless of the viewer's browser tz.
+ */
+export function formatJerusalem(at: Date | string, locale: 'he' | 'en' = 'he'): string {
+  const d = typeof at === 'string' ? new Date(at) : at;
+  return d.toLocaleString(locale === 'he' ? 'he-IL' : 'en-GB', {
+    timeZone: 'Asia/Jerusalem',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}

@@ -109,13 +109,15 @@ export type SignatureSettings = z.infer<typeof SignatureSettingsSchema>;
  * Per-type owner-CONSENT default threshold (%). The org-level default the
  * project create-form seeds from; a project STILL overrides per-project (the
  * project-level override is unchanged). Keys mirror the project-type enum;
- * defaults mirror `PROJECT_TYPE_DEFAULT_CONSENT_PCT` (66/80/80).
+ * defaults mirror `PROJECT_TYPE_DEFAULT_CONSENT_PCT` (66/66/66 — the post-2023
+ * statute harmonised all three tracks to the two-thirds special majority;
+ * see project.ts for the legal sourcing).
  */
 export const ConsentSettingsSchema = z
   .object({
     tama38_1: z.number().min(0).max(100).default(66),
-    tama38_2: z.number().min(0).max(100).default(80),
-    pinui_binui: z.number().min(0).max(100).default(80),
+    tama38_2: z.number().min(0).max(100).default(66),
+    pinui_binui: z.number().min(0).max(100).default(66),
   })
   .default({});
 export type ConsentSettings = z.infer<typeof ConsentSettingsSchema>;

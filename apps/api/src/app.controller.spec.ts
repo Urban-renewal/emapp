@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { HealthController } from './app.controller';
 
+// P0.B2 — HealthController now takes an IMetricsProvider. A local silent
+// no-op stub keeps these tests focused on the liveness/readiness contract
+// (the `@emapp/db` mock above only exposes `db`/`sql`, so we don't pull a
+// real provider through it).
+const noopMetrics = { counter() {}, gauge() {}, timing() {} };
+
 // Mock the db module so we can detect whether the handlers reach into
 // it. `/health` (liveness) MUST NOT call `db.execute`; `/ready`
 // (readiness) MUST.
@@ -18,7 +24,7 @@ describe('HealthController', () => {
   beforeEach(async () => {
     const { db } = await import('@emapp/db');
     vi.mocked(db.execute).mockClear();
-    controller = new HealthController();
+    controller = new HealthController(noopMetrics);
   });
 
   describe('GET /health (liveness)', () => {

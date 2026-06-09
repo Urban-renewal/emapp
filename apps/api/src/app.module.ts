@@ -20,6 +20,7 @@ import { ImportsModule } from './modules/imports/imports.module';
 import { MembersModule } from './modules/members/members.module';
 import { NotesModule } from './modules/notes/notes.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ObservabilityModule } from './modules/observability/observability.module';
 import { OrgModule } from './modules/org/org.module';
 import { OwnersModule } from './modules/owners/owners.module';
 import { OwnershipsModule } from './modules/ownerships/ownerships.module';
@@ -40,6 +41,11 @@ import { QueueModule } from './queue/queue.module';
         limit: 100,
       },
     ]),
+    // P0.B2 — pluggable observability + breach-detection seam (Global).
+    // Provides IMetricsProvider / IAlertSink / BreachDetectionService behind
+    // tokens (Noop dev/test, real prod) and registers the global metrics
+    // interceptor. Placed early so its global interceptor wraps all routes.
+    ObservabilityModule,
     LoggerModule.forRoot({
       pinoHttp: {
         redact: {

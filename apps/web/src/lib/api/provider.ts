@@ -92,10 +92,15 @@ export class ProviderReasonRequiredError extends Error {
 function withReason(reason: string, init?: ApiFetchOptions): ApiFetchOptions {
   const trimmed = reason.trim();
   if (trimmed.length === 0) throw new ProviderReasonRequiredError();
-  // ASCII-only fast path — most operator reasons are ticket-id refs
-  // ("incident #42"), so don't pay the URI-encode cost.
-  // eslint-disable-next-line no-control-regex -- intentional: detect non-printable / non-ASCII chars
-  const headerValue = /^[\x20-\x7E]+$/.test(trimmed) ? trimmed : encodeURIComponent(trimmed);
+  // ALWAYS percent-encode — symmetric with the BE decode in
+  // access-reason.decorator.ts (parseAccessReasonHeader). Encoding
+  // unconditionally (not just for non-ASCII) keeps the round-trip lossless:
+  // a literal '%' in an ASCII reason becomes '%25' and decodes back to '%'
+  // on the BE, so the AUDITED reason is never silently mutated. A previous
+  // ASCII fast-path sent such reasons verbatim, and the BE's decode then
+  // corrupted them (e.g. "rollback v2%2F3" → "v2/3"). `encodeURIComponent`
+  // on a plain ticket ref ("incident #42") is negligible.
+  const headerValue = encodeURIComponent(trimmed);
   const merged: Record<string, string> = {};
   if (init?.headers) {
     // init.headers may be a Record, a Headers instance, or an array

@@ -5,6 +5,13 @@
 > building should be in order"). Do NOT skip ahead. Update status inline as items
 > ship. Every Gate-2/Gate-6 item needs security-review + owner merge.
 
+> **⭐ STANDING MANDATE (owner, 2026-06-09): every implementation + action must be
+> done in the MOST PROFESSIONAL way — MODULAR, GENERIC, and SOLID at EVERY step —
+> so the eventual production transition is smooth and future hardening of the
+> process does NOT break the system. SOLID is a per-step gate: each builder applies
+> single-responsibility, open/closed (extend without modifying), interface-driven
+> seams, and DI. Every code-review checks it. Non-negotiable.**
+
 ## 1. Decisions (locked)
 
 | #   | Decision                   | Resolution                                                                                                                                                                                                                                                   |
@@ -19,26 +26,36 @@
 
 ## 2. Build queue — STRICT ORDER
 
-### P0 — LAUNCH BLOCKERS / core-product verification (NEW 2026-06-09 gap-hunt — ⚠️ AWAITING OWNER PRIORITY DECISION: do these jump ahead of P1-P4?)
+### P0 — gap-hunt findings, TRIAGED by owner (2026-06-09)
 
-> Found by a gap analysis ("what did we forget?"). These are MORE fundamental than
-> the feature backlog — they're whether the product actually works in production +
-> the legal/compliance posture. Grounded in code. Some are OWNER/LEGAL actions, not code.
+> Owner triage: (A core-signing) → relevant BEFORE prod, defer. (B prod-readiness)
+> → set aside the prod ENVIRONMENT, BUILD the rest (modular/generic/SOLID so future
+> hardening won't break things). (C compliance) → I build the CODE parts, owner
+> handles legal/process. Build the "BUILD NOW" items professionally; SOLID at every step.
 
-- [ ] **P0.1 Verify the resident SIGN flow on MOBILE / iOS Safari** — residents sign on phones; the touch-canvas + iOS-PDF-preview fallback have NEVER run on mobile/WebKit in CI (Playwright is desktop-only). Add a real end-to-end test (real token → DB single-use guard → R2 preview → encrypted store → cert) + a mobile/WebKit run. **The product must be proven to work on the device residents use.**
-- [ ] **P0.2 (OWNER/LEGAL) e-signature validity decision** — today it's a "simple electronic signature" (weakest tier, Electronic Signature Law 2001); the sign needs NO identity proof (bearer link). For תמ"א/פינוי-בינוי owner consent (litigated; identity is what's contested) this is weak. Decide: accept simple / upgrade to secure / certified. **Escalate to legal.** No decision record exists.
-- [ ] **P0.3 Live SMS (Inforu) verification** — the real provider is written but carries `VERIFY-BEFORE-GO-LIVE`; no live SMS ever sent; creds dev-only. The primary delivery channel for phone-only owners is unproven. Verify against a live account + provision staging/prod creds.
-- [ ] **P0.4 Production environment** — none exists: no deploy config, no CI deploy step, ALL secrets (incl. PII encryption keys) unprovisioned for staging/prod. App runs only in dev with Fake/Noop. Provision envs + secrets + a deploy path.
-- [ ] **P0.5 File-upload AV/malware scan** — owners upload → residents download; only mime-allowlist + size today, NO content scan. Add ClamAV / R2-event scan before a doc is downloadable.
-- [ ] **P0.6 Backups/DR + monitoring/alerting + breach-detection** — Sentry captures but nobody is paged; no tested restore; no breach detection feeding the 72h/"immediate" notification duty.
-- [ ] **P0.7 (compliance) data-subject erasure + consent capture** — only soft-delete (can't honor a deletion request); no privacy-notice/consent trail for residents' PII.
-- [ ] **P0.8 (OWNER/LEGAL, not code)** — database registration (רישום מאגר), security officer (ממונה אבטחת מידע), periodic external audit (24mo) + pentest, breach-notification runbook + contacts.
+**🟢 BUILD NOW (owner approved — code, SOLID/modular):**
 
-> See the gap-analysis findings (2026-06-09) for full detail + file:line. **Owner asked: should P0 jump above P1-P4?** Default (until owner says otherwise): keep building P1+ in order, but surface P0 as the real launch gate.
+- [ ] **P0.B1 File-upload AV/malware scan** — owners upload → residents download; only mime-allowlist + size today, NO content scan. Add ClamAV / R2-event-driven scan via a pluggable `IFileScanProvider` (NoopScan in dev, real in prod) before a doc is markable downloadable. SOLID: interface-driven, swappable.
+- [ ] **P0.B2 Monitoring / alerting / breach-detection hooks** — beyond Sentry capture: uptime/heartbeat, alert thresholds, and an audit-log-fed anomaly/breach-detection seam (pluggable) that can feed the notification duty. Metrics seam (the existing `TODO(metrics)`).
+- [ ] **P0.B3 Backups / DR capability + runbook** — document + (where code) wire a tested Neon PITR/restore story; replace the `backups` provider stub with a real read-only status surface.
+- [ ] **P0.C1 Data-subject ERASURE (hard-delete) + subject-access** — add a real, audited per-individual erasure (right-to-be-forgotten) + a data-subject-access export, beyond soft-delete. PII-encryption-aware. Gate-6 (touches owners/PII) → security-review.
+- [ ] **P0.C2 Consent / privacy-notice capture** — record a resident's PII-processing notice/consent trail (lawful basis). Generic/modular so notice text + versions are configurable.
+- [ ] **P0.C3 Audit-log retention enforcement** — an enforced ≥24-month policy (Israeli high-tier reg) instead of unbounded growth; a retention job + documented window.
+
+**🟡 DEFERRED to PRE-PRODUCTION (owner: "relevant before prod"):**
+
+- [ ] P0.D1 Verify the resident SIGN flow on MOBILE / iOS Safari + a real end-to-end test (token → DB single-use → R2 preview → encrypted store → cert).
+- [ ] P0.D2 Live SMS (Inforu) verification against a live account + staging/prod creds.
+- [ ] P0.D3 Production environment (deploy config + CI deploy + all secrets incl. PII keys for staging/prod). **Owner: set aside for now.**
+
+**🔵 OWNER / LEGAL (owner handles — not code):**
+
+- [ ] P0.O1 e-signature validity decision (simple vs secure vs certified; Electronic Signature Law 2001) — **escalate to legal.**
+- [ ] P0.O2 DB registration (רישום מאגר) · security officer (ממונה אבטחת מידע) · periodic external audit (24mo)+pentest · breach-notification runbook + legal contacts.
 
 ### NOW — housekeeping (small, do first, unblocks the rest)
 
-- [ ] **H1. Fix #325 CI** (build + conformance red — likely api-docs/conformance regen for the new `signatureMilestones` field). Blocks the milestones merge.
+- [x] **H1. Fix #325 CI** ✅ DONE 2026-06-09 — root cause was api-doc drift (`docs/09-api-reference.generated.md` missing the new `signatureMilestones` field); regenerated + pushed (9188ae8); `gen-api-docs --check` + full build now pass.
 - [ ] **H2. Decision 1 — org-configurable consent threshold in Settings.** Surface the existing `ConsentSettings` (org-settings) in the Settings UI; if no UI section exists, create it. Default stays 66; per-project override stays. (FE + maybe a thin settings wire — likely NOT Gate-6 since the schema exists.)
 - [ ] **H3. Commit the 3 planning docs** (this roadmap + PLAN-account-recovery + PLAN-provider-console) so they persist + are reviewable.
 

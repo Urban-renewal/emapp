@@ -14,6 +14,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { serverEnv } from '@emapp/config';
+import { FakeEmailProvider } from '@emapp/db';
 import { JwtService } from '@nestjs/jwt';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -23,6 +24,7 @@ import { setupTestDatabase } from '../../../../../packages/db/test/setup';
 import { PermissionService } from '../../common/authz/permission.service';
 
 import { AuthService } from './auth.service';
+import { PasswordResetRepository } from './password-reset.repository';
 
 let svc: AuthService;
 let org: TestOrg;
@@ -66,7 +68,12 @@ async function seedMember(
 
 beforeAll(async () => {
   await setupTestDatabase();
-  svc = new AuthService(new JwtService({ secret: serverEnv.JWT_SECRET }), new PermissionService());
+  svc = new AuthService(
+    new JwtService({ secret: serverEnv.JWT_SECRET }),
+    new PermissionService(),
+    new PasswordResetRepository(),
+    new FakeEmailProvider(),
+  );
   org = await createTestOrg(`def3-${Date.now()}`, `def3-${Date.now()}`);
 }, 90_000);
 

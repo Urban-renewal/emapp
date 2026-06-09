@@ -19,7 +19,7 @@
  *         succeeds; no two valid new tokens are minted from one old token.
  */
 import { serverEnv } from '@emapp/config';
-import { authSessions } from '@emapp/db';
+import { authSessions, FakeEmailProvider } from '@emapp/db';
 import { JwtService } from '@nestjs/jwt';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -30,6 +30,7 @@ import { setupTestDatabase } from '../../../../../packages/db/test/setup';
 import { PermissionService } from '../../common/authz/permission.service';
 
 import { AuthService } from './auth.service';
+import { PasswordResetRepository } from './password-reset.repository';
 import { newRawToken, createSession } from './session.repository';
 
 let svc: AuthService;
@@ -62,7 +63,12 @@ async function activeSessionCount(): Promise<number> {
 
 beforeAll(async () => {
   await setupTestDatabase();
-  svc = new AuthService(new JwtService({ secret: serverEnv.JWT_SECRET }), new PermissionService());
+  svc = new AuthService(
+    new JwtService({ secret: serverEnv.JWT_SECRET }),
+    new PermissionService(),
+    new PasswordResetRepository(),
+    new FakeEmailProvider(),
+  );
   const tag = `a2-refresh-${Date.now()}`;
   org = await createTestOrg(tag, tag);
   userId = org.users[0]!.id;

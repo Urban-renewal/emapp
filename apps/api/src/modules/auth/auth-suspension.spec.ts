@@ -17,7 +17,7 @@
  *   D49-LOGIN-4  reactivated org → login works again.
  */
 import { serverEnv } from '@emapp/config';
-import { db, users } from '@emapp/db';
+import { db, users, FakeEmailProvider } from '@emapp/db';
 import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { eq } from 'drizzle-orm';
@@ -30,6 +30,7 @@ import { PermissionService } from '../../common/authz/permission.service';
 
 import { AuthService } from './auth.service';
 import { hashPassword } from './password';
+import { PasswordResetRepository } from './password-reset.repository';
 
 const PW = 'SuspendTest123456';
 let svc: AuthService;
@@ -61,7 +62,12 @@ function codeOf(e: unknown): string | undefined {
 
 beforeAll(async () => {
   await setupTestDatabase();
-  svc = new AuthService(new JwtService({ secret: serverEnv.JWT_SECRET }), new PermissionService());
+  svc = new AuthService(
+    new JwtService({ secret: serverEnv.JWT_SECRET }),
+    new PermissionService(),
+    new PasswordResetRepository(),
+    new FakeEmailProvider(),
+  );
   const tag = `d49-login-${Date.now()}`;
   org = await createTestOrg(tag, tag);
   email = `manager-${org.id}@test.local`;

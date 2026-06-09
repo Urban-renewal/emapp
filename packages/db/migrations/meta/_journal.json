@@ -386,6 +386,13 @@
 			"when": 1781362800000,
 			"tag": "0054_manager_member_admin",
 			"breakpoints": true
+		},
+		{
+			"idx": 55,
+			"version": "7",
+			"when": 1781449200000,
+			"tag": "0055_password_reset_tokens",
+			"breakpoints": true
 		}
 	]
 }

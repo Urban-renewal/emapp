@@ -53,11 +53,17 @@ import { SYSTEM_ROLES, type SystemRoleKey } from '../../common/authz/system-role
 import { MembersService } from '../members/members.service';
 
 import { AuthService, type AccessTokenPayload } from './auth.service';
+import { PasswordResetRepository } from './password-reset.repository';
 
 // ── shared singletons (real DB, real services — no mocks) ──────────────────
 const jwt = new JwtService({ secret: serverEnv.JWT_SECRET });
 const permissions = new PermissionService();
-const auth = new AuthService(jwt, permissions);
+const auth = new AuthService(
+  jwt,
+  permissions,
+  new PasswordResetRepository(),
+  new FakeEmailProvider(),
+);
 // MembersService(jwt, emailProvider). FakeEmailProvider captures invites in
 // memory — the real factory returns it outside production. We never read the
 // email; we use the `inviteToken` the service returns in test env.

@@ -1047,6 +1047,23 @@
       "readOnly": "You don't have permission to update organization settings. View only.",
       "noPermission": "You don't have permission to view organization settings."
     },
+    "consent": {
+      "section": "Owner consent target",
+      "description": "Owner-consent target per project type — the default the project create form seeds from; you can still change it per project.",
+      "tama38_1": "Tama 38/1 (reinforcement)",
+      "tama38_2": "Tama 38/2 (demolition & rebuild)",
+      "pinui_binui": "Pinui-Binui",
+      "pctHint": "A percentage between {min} and {max}.",
+      "outOfBounds": "Value is out of the allowed range.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "saveError": "Save failed. Please try again.",
+      "loading": "Loading settings…",
+      "loadError": "Failed to load settings.",
+      "readOnly": "You don't have permission to update organization settings. View only.",
+      "noPermission": "You don't have permission to view organization settings."
+    },
     "integrations": {
       "section": "Integrations",
       "description": "Signature providers, document management, and mail delivery integrations. The final list depends on the launch plan."

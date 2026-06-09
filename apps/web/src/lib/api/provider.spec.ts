@@ -136,7 +136,8 @@ describe('§provider — access_reason header (D.37 mandatory)', () => {
     expect(sent).toContain('%252F');
     expect(sent).not.toContain('%2F3'); // the raw, un-escaped form must NOT survive
     // And decoding once on the BE recovers EXACTLY what the operator typed.
-    expect(decodeURIComponent(sent)).toBe(reason);
+    // `sent` is asserted equal to a string two lines up, so the `!` is sound.
+    expect(decodeURIComponent(sent!)).toBe(reason);
   });
 
   it('P1b) non-ASCII reason (em-dash / Hebrew) is URL-encoded before being put in the header — avoids Headers ByteString crash', async () => {

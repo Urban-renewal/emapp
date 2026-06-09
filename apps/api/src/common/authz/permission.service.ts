@@ -1,5 +1,5 @@
 /**
- * Enterprise IAM — the enforcement ENGINE (IAM-DESIGN §5). Slice 2.
+ * Enterprise IAM — the enforcement ENGINE (IAM-DESIGN §5).
  *
  * `PermissionService.can(user, permission, scope)` is the single source of an
  * authz decision (§5): it resolves the user's `role_assignments` whose scope
@@ -8,10 +8,14 @@
  * and tests membership. Default-deny: no covering assignment ⇒ false (§7).
  *
  * ──────────────────────────────────────────────────────────────────────────
- * SLICE 2 — ADDITIVE, NOT YET WIRED. The engine is BUILT but UNUSED. `policy.ts`
- * is still the live enforcer; the guards, `@AuthzResource`, `/me`, and the FE
- * are intentionally untouched (cutover is slice 5). The only consumers this
- * slice are the tests (`permission.service.spec.ts`).
+ * LIVE — the single source of authorization (since slice 5a). `AuthorizationGuard`
+ * calls `can()` for every `@RequirePermission` handler, resolving from
+ * `role_assignments ⋈ role_permissions`. `policy.ts` is NO LONGER the request-path
+ * enforcer; it is retained ONLY as the shadow-equivalence oracle
+ * (`policy-equivalence.spec.ts` proves this engine ≡ the legacy matrix for every
+ * role×permission). Residual `user.role` reads in services are intentional
+ * RECORD-level scoping (agent→assigned-project, authorship, capability fine-gates),
+ * NOT coarse authorization. See docs/DECISION-permissions-consolidation.md.
  * ──────────────────────────────────────────────────────────────────────────
  *
  * Design decisions (also documented in the PR body):

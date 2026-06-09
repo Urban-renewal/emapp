@@ -2,6 +2,7 @@
 
 import {
   CreateProjectInput,
+  PROJECT_TYPE_DEFAULT_CONSENT_PCT,
   type CreateProject,
   type ProjectType,
   type SectionKind,
@@ -42,6 +43,21 @@ import { ApiClientError } from '@/lib/api/errors';
 const PROJECT_TYPES: ReadonlyArray<ProjectType> = ['tama38_1', 'tama38_2', 'pinui_binui'];
 const SECTION_KINDS: ReadonlyArray<SectionKind> = ['residential', 'office', 'retail', 'mixed'];
 
+/**
+ * Type-aware structure rules (FE-only progressive disclosure; the BE contract
+ * `CreateProjectInput.buildings[]` is unchanged — it accepts up to 20 either
+ * way). The urban-renewal track dictates the building topology:
+ *  - tama38_1 (חיזוק / strengthen existing): exactly ONE building, owners stay.
+ *  - tama38_2 (הריסה ובנייה / demolish-rebuild): one or two buildings.
+ *  - pinui_binui (evacuation-rebuild complex / מתחם): MANY buildings.
+ * The cap below is the FE max the wizard lets the user add for a given type.
+ */
+const MAX_BUILDINGS_BY_TYPE: Record<ProjectType, number> = {
+  tama38_1: 1,
+  tama38_2: 2,
+  pinui_binui: 20,
+};
+
 interface WizardBuilding {
   // Local-only id for React keys; not sent to BE.
   rid: string;
@@ -59,6 +75,11 @@ interface WizardState {
   name: string;
   type: ProjectType;
   description: string;
+  // Owner-consent target (%) as a controlled string so the empty field is
+  // representable. Pre-filled from PROJECT_TYPE_DEFAULT_CONSENT_PCT on type
+  // change UNLESS the manager has manually edited it (consentTouched).
+  consentPct: string;
+  consentTouched: boolean;
   buildings: WizardBuilding[];
 }
 
@@ -78,10 +99,16 @@ function newBuilding(): WizardBuilding {
 /** Map wizard state → CreateProjectInput shape. Strips empty strings to
  *  undefined so the BE `.strict()` validation doesn't see noise. */
 function toCreateInput(s: WizardState): CreateProject {
+  // Empty → undefined so the BE applies the per-type default
+  // (PROJECT_TYPE_DEFAULT_CONSENT_PCT); a typed value is an explicit override.
+  const consent = s.consentPct.trim();
+  const consentNum = consent === '' ? undefined : Number(consent);
   const base: CreateProject = {
     name: s.name.trim(),
     type: s.type,
     description: s.description.trim() || undefined,
+    targetSignaturePct:
+      consentNum !== undefined && Number.isFinite(consentNum) ? consentNum : undefined,
   };
   const buildings = s.buildings
     .filter((b) => b.address.trim() && b.city.trim())
@@ -114,6 +141,8 @@ export default function NewProjectPage() {
     name: '',
     type: 'tama38_2',
     description: '',
+    consentPct: String(PROJECT_TYPE_DEFAULT_CONSENT_PCT.tama38_2),
+    consentTouched: false,
     buildings: [],
   });
   const [stepError, setStepError] = useState<string | null>(null);
@@ -166,7 +195,18 @@ export default function NewProjectPage() {
       setStepError(check);
       return;
     }
-    setState((s) => ({ ...s, step: (s.step + 1) as 2 | 3 }));
+    setState((s) => {
+      // Entering the structure step for tama38_1 (single-building track):
+      // ensure exactly one building card is present so the manager fills its
+      // address inline rather than having to click "add". An empty card is
+      // stripped on submit (toCreateInput filters blanks), so this stays
+      // back-compat with the simple no-buildings POST.
+      const buildings =
+        s.step === 1 && s.type === 'tama38_1' && s.buildings.length === 0
+          ? [newBuilding()]
+          : s.buildings;
+      return { ...s, step: (s.step + 1) as 2 | 3, buildings };
+    });
   }
 
   function onBack() {
@@ -218,10 +258,28 @@ export default function NewProjectPage() {
     }));
   }
   function addBuilding() {
-    setState((s) => ({ ...s, buildings: [...s.buildings, newBuilding()] }));
+    setState((s) =>
+      s.buildings.length >= MAX_BUILDINGS_BY_TYPE[s.type]
+        ? s
+        : { ...s, buildings: [...s.buildings, newBuilding()] },
+    );
   }
   function removeBuilding(rid: string) {
     setState((s) => ({ ...s, buildings: s.buildings.filter((b) => b.rid !== rid) }));
+  }
+
+  // Type drives BOTH the consent-target default and the building topology.
+  // On change we (a) re-seed targetSignaturePct from the per-type default
+  // unless the manager has manually edited it, and (b) clamp the existing
+  // buildings list to the new type's max (tama38_1 → 1, tama38_2 → 2,
+  // pinui_binui → many) so the structure step can't carry over an invalid count.
+  function changeType(type: ProjectType) {
+    setState((s) => ({
+      ...s,
+      type,
+      consentPct: s.consentTouched ? s.consentPct : String(PROJECT_TYPE_DEFAULT_CONSENT_PCT[type]),
+      buildings: s.buildings.slice(0, MAX_BUILDINGS_BY_TYPE[type]),
+    }));
   }
 
   function kindLabel(k: SectionKind): string {
@@ -322,7 +380,7 @@ export default function NewProjectPage() {
                 id="type"
                 className="input"
                 value={state.type}
-                onChange={(e) => setState((s) => ({ ...s, type: e.target.value as ProjectType }))}
+                onChange={(e) => changeType(e.target.value as ProjectType)}
               >
                 {PROJECT_TYPES.map((pt) => (
                   <option key={pt} value={pt}>
@@ -330,6 +388,28 @@ export default function NewProjectPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label htmlFor="consentPct" className="label">
+                {tw('consentTarget')}
+              </label>
+              <input
+                id="consentPct"
+                type="number"
+                min={0}
+                max={100}
+                inputMode="numeric"
+                className="input tabular"
+                dir="ltr"
+                value={state.consentPct}
+                onChange={(e) =>
+                  setState((s) => ({ ...s, consentPct: e.target.value, consentTouched: true }))
+                }
+              />
+              <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                {tw('consentTargetHint')}
+              </p>
             </div>
 
             <div>
@@ -350,7 +430,25 @@ export default function NewProjectPage() {
 
         {state.step === 2 && (
           <>
-            {state.buildings.length === 0 && (
+            {/* Type-aware structure guidance. tama38_1 = one building;
+                tama38_2 = up to two; pinui_binui = a multi-building complex
+                with a live count. */}
+            {state.type === 'tama38_1' && (
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                {tw('singleBuildingHint')}
+              </p>
+            )}
+            {state.type === 'tama38_2' && (
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                {tw('twoBuildingHint')}
+              </p>
+            )}
+            {state.type === 'pinui_binui' && (
+              <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+                {tw('complexBuildingCount', { n: state.buildings.length })}
+              </p>
+            )}
+            {state.buildings.length === 0 && state.type !== 'tama38_1' && (
               <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                 {tw('noBuildings')}
               </p>
@@ -469,25 +567,33 @@ export default function NewProjectPage() {
                     </div>
                   </div>
                 </div>
-                <div className="mt-3 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => removeBuilding(b.rid)}
-                    className="btn btn-ghost btn-sm"
-                    style={{ color: 'var(--danger-700)' }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    <span>{tw('removeBuilding')}</span>
-                  </button>
-                </div>
+                {/* tama38_1 is a single-building track — no removal (it would
+                    leave the project with zero buildings). */}
+                {state.type !== 'tama38_1' && (
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => removeBuilding(b.rid)}
+                      className="btn btn-ghost btn-sm"
+                      style={{ color: 'var(--danger-700)' }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span>{tw('removeBuilding')}</span>
+                    </button>
+                  </div>
+                )}
               </fieldset>
             ))}
-            <div>
-              <button type="button" onClick={addBuilding} className="btn btn-secondary">
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                <span>{tw('addBuilding')}</span>
-              </button>
-            </div>
+            {/* Add is hidden once the type's building cap is reached
+                (tama38_1 → 1, tama38_2 → 2, pinui_binui → 20). */}
+            {state.buildings.length < MAX_BUILDINGS_BY_TYPE[state.type] && (
+              <div>
+                <button type="button" onClick={addBuilding} className="btn btn-secondary">
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  <span>{tw('addBuilding')}</span>
+                </button>
+              </div>
+            )}
           </>
         )}
 
@@ -502,6 +608,14 @@ export default function NewProjectPage() {
                 <dd>{state.name}</dd>
                 <dt style={{ color: 'var(--text-muted)' }}>{t('field.type')}</dt>
                 <dd>{tt(state.type)}</dd>
+                {state.consentPct.trim() !== '' && (
+                  <>
+                    <dt style={{ color: 'var(--text-muted)' }}>{tw('consentTarget')}</dt>
+                    <dd className="tabular" dir="ltr">
+                      {state.consentPct}%
+                    </dd>
+                  </>
+                )}
                 {state.description && (
                   <>
                     <dt style={{ color: 'var(--text-muted)' }}>{t('field.description')}</dt>

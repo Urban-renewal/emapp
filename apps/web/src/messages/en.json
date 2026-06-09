@@ -247,6 +247,11 @@
       "addBuilding": "Add address",
       "removeBuilding": "Remove",
       "buildingNumberLabel": "Address {n}",
+      "consentTarget": "Owner consent target (%)",
+      "consentTargetHint": "Defaulted from the project type (~66% per the 2023 reform). You can override it.",
+      "singleBuildingHint": "Tama 38/1 (strengthening) covers a single building — owners stay in place.",
+      "twoBuildingHint": "Tama 38/2 (demolish-rebuild) supports one or two buildings.",
+      "complexBuildingCount": "Buildings in the complex: {n}",
       "field": {
         "city": "City",
         "address": "Street and number",

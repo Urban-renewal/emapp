@@ -247,6 +247,11 @@
       "addBuilding": "הוספת כתובת",
       "removeBuilding": "הסר",
       "buildingNumberLabel": "כתובת {n}",
+      "consentTarget": "יעד הסכמת בעלים (%)",
+      "consentTargetHint": "ברירת המחדל נקבעת לפי סוג הפרויקט (כ-66% לפי תיקון 2023). ניתן לשנות.",
+      "singleBuildingHint": "תמ\"א 38/1 (חיזוק) מתייחסת לבניין יחיד — הדיירים נשארים במקומם.",
+      "twoBuildingHint": "תמ\"א 38/2 (הריסה ובנייה) תומכת בבניין אחד או שניים.",
+      "complexBuildingCount": "מספר בניינים במתחם: {n}",
       "field": {
         "city": "עיר",
         "address": "רחוב ומספר",

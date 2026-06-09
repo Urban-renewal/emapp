@@ -372,6 +372,13 @@
 			"when": 1781190000000,
 			"tag": "0052_shares_perms_drop_dead_keys",
 			"breakpoints": true
+		},
+		{
+			"idx": 54,
+			"version": "7",
+			"when": 1781362800000,
+			"tag": "0054_manager_member_admin",
+			"breakpoints": true
 		}
 	]
 }

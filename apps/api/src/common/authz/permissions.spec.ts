@@ -164,7 +164,9 @@ const EXPECTED_ROLE_PERMS: Record<string, string[]> = {
     'org.settings.update',
     'org.security_policy.manage',
   ],
-  manager: [...operational],
+  // manager: ALL operational PLUS member administration (invite/update/remove)
+  // — the owner-approved Gate-2/Gate-6 grant. NOT roles.*, NOT org.*.
+  manager: [...operational, 'members.invite', 'members.update', 'members.remove'],
   agent: operational.filter(
     (p) =>
       ![
@@ -267,6 +269,32 @@ describe('IAM · system roles (§4)', () => {
     expect(has('viewer', 'project_assignments.manage'), 'viewer NOT manage').toBe(false);
     expect(has('external_read', 'project_assignments.read'), 'external NOT read').toBe(false);
     expect(has('external_read', 'project_assignments.manage'), 'external NOT manage').toBe(false);
+  });
+
+  it('Manager holds member administration (invite/update/remove) but NOT role/org governance (Gate-2/Gate-6 grant)', () => {
+    const manager = new Set(SYSTEM_ROLE_BY_KEY.get('manager')!.permissions);
+    // Member CRUD moved to Manager (owner-approved).
+    for (const p of ['members.invite', 'members.update', 'members.remove']) {
+      expect(manager.has(p as never), `manager should hold ${p}`).toBe(true);
+    }
+    // members.read is NOT seeded directly — Manager reaches it via the
+    // export.run ⇒ members.read implication closure (resolved at request time).
+    expect(manager.has('members.read' as never), 'members.read not in seeded set').toBe(false);
+    // Role administration + org governance stay Owner/Admin-only.
+    for (const p of [
+      'roles.read',
+      'roles.assign',
+      'roles.revoke',
+      'roles.manage',
+      'org.settings.read',
+      'org.settings.update',
+      'org.security_policy.manage',
+      'org.billing.manage',
+      'org.transfer_ownership',
+      'org.delete',
+    ]) {
+      expect(manager.has(p as never), `manager must NOT hold ${p}`).toBe(false);
+    }
   });
 
   it('every role permission is a real catalog permission', () => {

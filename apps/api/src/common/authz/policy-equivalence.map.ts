@@ -244,13 +244,14 @@ export interface KnownDivergence {
  *       holds it, Agent does NOT) — so Manager staffing and Agent reading both
  *       stay EQUAL to legacy, not divergent.
  *
- *   (B) MEMBER GOVERNANCE WRITE moves Manager → Admin/Owner. In the new taxonomy
- *       (§4) member ADMINISTRATION (invite/update/remove) is an Admin/Owner
- *       surface; the MANAGER role holds no member-governance WRITE. Legacy
- *       `policy.ts` gave Manager those write cells. So they go legacy=true →
- *       new=false (direction 'legacy'). Governance READ does NOT diverge for
- *       Manager: it holds `export.run`, which `⇒ members.read` via the §2 closure,
- *       so the read decisions stay equivalent — only the member writes move.
+ *   (B) MEMBER ADMINISTRATION stays with Manager (NO divergence). The
+ *       owner-approved Gate-2/Gate-6 grant (migration 0053 + the system-roles
+ *       MANAGER set) gives Manager members.invite/update/remove — the same cells
+ *       legacy `policy.ts` gave Manager (`members: create/update/delete = MGR`).
+ *       Engine === legacy on every member cell (write via the role permissions,
+ *       read via the `export.run ⇒ members.read` §2 closure), so member admin
+ *       contributes NO entries below. (Earlier this model removed member-write
+ *       from Manager; that removal is reverted by this grant.)
  *
  *   (C) READ surface widens to "all reads". The new Viewer = every `*.read`
  *       (PII masked). Legacy restricted `members.read` + `audit.read` to
@@ -385,40 +386,17 @@ export const KNOWN_DIVERGENCES: readonly KnownDivergence[] = [
       '(A) Legacy: mapping-template writes were manager-only. New: the Agent role holds mapping_templates.manage.',
   },
 
-  // ── (B) Governance WRITE moves Manager → Admin/Owner ───────────────────────
-  // NOTE the asymmetry: Manager still *reads* members + project_assignments
-  // (those are EQUAL, not divergent) — the Manager role holds `export.run`,
-  // which `⇒ members.read` + `⇒ roles.read` via the §2 implication closure
-  // (`permissions.ts` READABLE_RESOURCES). So only the WRITE governance cells
-  // diverge for Manager; the read cells stay equivalent. This is exactly the
-  // kind of subtlety the equivalence proof exists to surface.
-  {
-    role: 'manager',
-    resource: 'members',
-    action: 'create',
-    permission: 'members.invite',
-    direction: 'legacy',
-    reason:
-      '(B) Legacy: Manager could invite members. New: members.invite is Admin/Owner only (§4).',
-  },
-  {
-    role: 'manager',
-    resource: 'members',
-    action: 'update',
-    permission: 'members.update',
-    direction: 'legacy',
-    reason:
-      '(B) Legacy: Manager could update members. New: members.update is Admin/Owner only (§4).',
-  },
-  {
-    role: 'manager',
-    resource: 'members',
-    action: 'delete',
-    permission: 'members.remove',
-    direction: 'legacy',
-    reason:
-      '(B) Legacy: Manager could remove members. New: members.remove is Admin/Owner only (§4).',
-  },
+  // ── (B) Member administration: Manager === legacy (NO divergence) ──────────
+  // As of the owner-approved Gate-2/Gate-6 grant (migration 0053 + system-roles
+  // MANAGER set), the Manager role holds members.invite/update/remove — exactly
+  // as legacy `policy.ts` gave Manager (`members: { create/update/delete: MGR }`).
+  // So these member-write cells now resolve engine === legacy and are NO LONGER
+  // divergent; they are intentionally absent from this list. (ROLE administration
+  // — roles.* — and org governance — org.* — remain Owner/Admin-only, but legacy
+  // had no Manager-level grant there either, so they stay equal as well.)
+  // Member READ also stays equal: Manager reaches members.read via the
+  // `export.run ⇒ members.read` §2 closure.
+
   // NOTE: project_assignments create/update/delete (Manager) and read (Agent) are
   // NO LONGER divergent. They now resolve via the dedicated operational permissions
   // (project_assignments.manage / .read) which Manager and Agent respectively hold,

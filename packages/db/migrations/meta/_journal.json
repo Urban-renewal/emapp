@@ -386,6 +386,13 @@
 			"when": 1781362800000,
 			"tag": "0054_manager_member_admin",
 			"breakpoints": true
+		},
+		{
+			"idx": 60,
+			"version": "7",
+			"when": 1781881200000,
+			"tag": "0060_audit_log_retention_prune_exception",
+			"breakpoints": true
 		}
 	]
 }

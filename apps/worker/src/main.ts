@@ -25,13 +25,19 @@
  * pg-boss, and real IJobHandler instances.
  */
 import { env, pool, reloadEnv } from '@emapp/db';
-import { REAPER_CRON_HOURLY, REAPER_JOB_NAME } from '@emapp/jobs';
+import {
+  AUDIT_RETENTION_CRON_DAILY,
+  AUDIT_RETENTION_JOB_NAME,
+  REAPER_CRON_HOURLY,
+  REAPER_JOB_NAME,
+} from '@emapp/jobs';
 // eslint-disable-next-line import/no-named-as-default
 import PgBoss from 'pg-boss';
 // eslint-disable-next-line import/no-named-as-default
 import pino from 'pino';
 
 import { registerCrashHandlers, registerSignalHandlers, smokeTestDb } from './bootstrap';
+import { AuditRetentionHandler } from './handlers/audit-retention.handler';
 import { ImportJobHandler } from './handlers/import-job.handler';
 import { ReaperHandler } from './handlers/reaper.handler';
 import {
@@ -231,6 +237,41 @@ async function main(): Promise<void> {
     log.info({ name: reaperHandler.name, cron: REAPER_CRON_HOURLY }, 'reaper scheduled');
   } catch (e: unknown) {
     log.error({ err: e instanceof Error ? e.message : 'unknown' }, 'reaper registration failed');
+    process.exit(1);
+  }
+
+  // Roadmap P0.C3 — audit-log retention prune. A SEPARATE daily consumer
+  // from the hourly ephemeral reaper above (distinct concern: a ≥24-month
+  // compliance FLOOR, not short-TTL housekeeping). Same two-step idempotent
+  // wiring: register the consumer (createQueue + work) then schedule the
+  // producer (cron). Concurrency 1 — a single daily sweep needs no
+  // parallelism, and serial keeps two ticks from racing on the same DELETE.
+  const auditRetentionHandler = new AuditRetentionHandler();
+  try {
+    await registerHandler({
+      boss: boss as unknown as BossLike,
+      registration: {
+        handler: auditRetentionHandler,
+        payloadSchema: auditRetentionHandler.payloadSchema,
+      },
+      concurrency: 1,
+      log: {
+        info: (msg, meta) => log.info(meta ?? {}, msg),
+        warn: (msg, meta) => log.warn(meta ?? {}, msg),
+        error: (msg, meta) => log.error(meta ?? {}, msg),
+      },
+      signal: shutdownController.signal,
+    });
+    await boss.schedule(AUDIT_RETENTION_JOB_NAME, AUDIT_RETENTION_CRON_DAILY);
+    log.info(
+      { name: auditRetentionHandler.name, cron: AUDIT_RETENTION_CRON_DAILY },
+      'audit retention scheduled',
+    );
+  } catch (e: unknown) {
+    log.error(
+      { err: e instanceof Error ? e.message : 'unknown' },
+      'audit retention registration failed',
+    );
     process.exit(1);
   }
 

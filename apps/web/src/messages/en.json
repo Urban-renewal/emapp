@@ -219,6 +219,11 @@
       "tasks": "Tasks",
       "dashboard": "Dashboard"
     },
+    "progress": {
+      "title": "Signature progress",
+      "signedSummary": "{signed} of {total} signed",
+      "targetMarker": "Target {pct}%"
+    },
     "tenantsTab": {
       "title": "Manage buildings and residents",
       "hint": "Resident management is handled via the project's buildings.",
@@ -249,6 +254,19 @@
       "buildingNumberLabel": "Address {n}",
       "consentTarget": "Owner consent target (%)",
       "consentTargetHint": "Defaulted from the project type (~66% per the 2023 reform). You can override it.",
+      "milestones": {
+        "title": "Intermediate targets",
+        "hint": "Staged targets to track signature-collection progress (e.g. 25% → 50% → target). Each must be at or below the consent target.",
+        "empty": "No intermediate targets defined.",
+        "pct": "Percent",
+        "label": "Label",
+        "add": "Add target",
+        "remove": "Remove target {n}",
+        "suggest": "Suggest (25 / 50 / target)",
+        "errorRange": "Each intermediate target must be a whole number between 1 and 100.",
+        "errorOverTarget": "An intermediate target cannot exceed the consent target.",
+        "errorDuplicate": "Each intermediate target must be unique."
+      },
       "singleBuildingHint": "Tama 38/1 (strengthening) covers a single building — owners stay in place.",
       "twoBuildingHint": "Tama 38/2 (demolish-rebuild) supports one or two buildings.",
       "complexBuildingCount": "Buildings in the complex: {n}",

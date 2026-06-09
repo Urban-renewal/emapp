@@ -1,4 +1,4 @@
-/**
+﻿/**
  * B-AGENT-1 — `/me` (loadProfile) emits an AGENT's EFFECTIVE permissions.
  *
  * THE BUG (dead/403 buttons): the engine ROLE layer grants the Agent role
@@ -53,6 +53,7 @@ import {
 } from '../../common/authz/agent-effective-permissions';
 import { PermissionService } from '../../common/authz/permission.service';
 import { type SystemRoleKey } from '../../common/authz/system-roles';
+import { noopBreachForTest, noopMetricsForTest } from '../observability/test-doubles';
 
 import { AuthService } from './auth.service';
 
@@ -137,7 +138,12 @@ async function seedMember(
 
 beforeAll(async () => {
   await setupTestDatabase();
-  svc = new AuthService(new JwtService({ secret: serverEnv.JWT_SECRET }), new PermissionService());
+  svc = new AuthService(
+    new JwtService({ secret: serverEnv.JWT_SECRET }),
+    new PermissionService(),
+    noopMetricsForTest(),
+    noopBreachForTest(),
+  );
   const tag = `b-agent1-${Date.now()}`;
   org = await createTestOrg(tag, tag);
   managerId = org.users[0]!.id;

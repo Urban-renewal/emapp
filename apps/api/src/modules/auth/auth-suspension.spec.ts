@@ -1,4 +1,4 @@
-/**
+﻿/**
  * D.49 — org-suspension login enforcement (auth.service integration).
  *
  * Slice 2 of provider-write: a suspended org (organizations.suspended_at != null)
@@ -27,6 +27,7 @@ import { providerPool } from '../../../../../packages/db/src/client';
 import { createTestOrg, type TestOrg } from '../../../../../packages/db/test/factories';
 import { setupTestDatabase } from '../../../../../packages/db/test/setup';
 import { PermissionService } from '../../common/authz/permission.service';
+import { noopBreachForTest, noopMetricsForTest } from '../observability/test-doubles';
 
 import { AuthService } from './auth.service';
 import { hashPassword } from './password';
@@ -61,7 +62,12 @@ function codeOf(e: unknown): string | undefined {
 
 beforeAll(async () => {
   await setupTestDatabase();
-  svc = new AuthService(new JwtService({ secret: serverEnv.JWT_SECRET }), new PermissionService());
+  svc = new AuthService(
+    new JwtService({ secret: serverEnv.JWT_SECRET }),
+    new PermissionService(),
+    noopMetricsForTest(),
+    noopBreachForTest(),
+  );
   const tag = `d49-login-${Date.now()}`;
   org = await createTestOrg(tag, tag);
   email = `manager-${org.id}@test.local`;

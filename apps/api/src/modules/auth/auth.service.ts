@@ -4,7 +4,9 @@ import { serverEnv } from '@emapp/config';
 import {
   auditLog,
   authSessions,
+  BreachDetectionService,
   db,
+  type IMetricsProvider,
   memberships,
   organizations,
   roleAssignments,
@@ -14,7 +16,7 @@ import {
   withTenant,
 } from '@emapp/db';
 import type { AgentCapabilities } from '@emapp/shared-types';
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 
@@ -23,6 +25,7 @@ import {
   PermissionResolutionCache,
   PermissionService,
 } from '../../common/authz/permission.service';
+import { BREACH_DETECTION, METRICS_PROVIDER } from '../observability/observability.tokens';
 
 import type { LoginDto } from './dto/login.dto';
 import type { SignupDto } from './dto/signup.dto';
@@ -130,6 +133,11 @@ export class AuthService {
   constructor(
     private readonly jwt: JwtService,
     private readonly permissions: PermissionService,
+    // P0.B2 — observability seam. Injected behind tokens (Noop in dev/test,
+    // real in prod). Both are fail-open/fail-safe: a metrics or breach-
+    // detection fault must never break the login path.
+    @Inject(METRICS_PROVIDER) private readonly metrics: IMetricsProvider,
+    @Inject(BREACH_DETECTION) private readonly breach: BreachDetectionService,
   ) {}
 
   // ── signup: ONE atomic transaction (D.21). org+user+membership+credential
@@ -712,6 +720,17 @@ export class AuthService {
     ip?: string;
     userAgent?: string;
   }): Promise<void> {
+    // P0.B2 — observe the failed-login signal BEFORE the audit write (so a
+    // DB hiccup on the audit insert never costs us the in-memory detection).
+    // Both calls are individually fail-open/fail-safe inside the providers;
+    // the reason label is a fixed enum (no PII — never the email/national_id).
+    const reason =
+      typeof entry.afterState?.['reason'] === 'string'
+        ? (entry.afterState['reason'] as string)
+        : 'unknown';
+    this.metrics.counter('auth_login_failed_total', 1, { reason });
+    this.breach.observeFailedLogin(entry.orgId);
+
     try {
       await db.insert(auditLog).values({
         orgId: entry.orgId,

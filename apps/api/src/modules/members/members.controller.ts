@@ -34,12 +34,14 @@ import { MembersService } from './members.service';
 
 const UuidParam = new ZodValidationPipe(z.string().uuid());
 
-// Org membership administration. In the new taxonomy (§4) member ADMINISTRATION
-// (invite/update/remove) is an Admin/Owner governance surface — the Manager
-// role holds no members.invite/update/remove (documented (B) divergence vs the
-// legacy manager-only matrix). members.read is the all-reads surface (every org
-// role, incl. Viewer — documented (C) divergence). The capabilities-toggle is a
-// member.update (an agent's JSONB flags are member administration).
+// Org membership administration. As of the owner-approved Gate-2/Gate-6 grant
+// (migration 0053), member ADMINISTRATION (invite/update/remove) is held by
+// Manager AND Admin/Owner — a Manager can now invite/update/remove org users.
+// (ROLE administration — roles.* — and org governance — org.* — remain
+// Owner/Admin-only.) members.read is reached by every org role (Manager+/Admin/
+// Owner via the export.run ⇒ members.read closure; Viewer/Agent do NOT hold it).
+// The capabilities-toggle is a member.update (an agent's JSONB flags are member
+// administration).
 @Controller('members')
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
 export class MembersController {

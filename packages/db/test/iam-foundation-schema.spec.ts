@@ -110,7 +110,9 @@ const EXPECTED: Record<string, string[]> = {
     'org.settings.update',
     'org.security_policy.manage',
   ],
-  manager: [...operational],
+  // manager: ALL operational PLUS member administration (invite/update/remove)
+  // — owner-approved Gate-2/Gate-6 grant (migration 0053). NOT roles.*, NOT org.*.
+  manager: [...operational, 'members.invite', 'members.update', 'members.remove'],
   agent: operational.filter(
     (p) =>
       ![

@@ -41,14 +41,36 @@ export const PROVIDER_UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Control characters that get stripped from `access_reason` before
- * validation. Strips 0x00-0x1f + 0x7f (DEL). Postgres TEXT would
- * accept these but they corrupt log greps and can confuse downstream
- * parsers reading the `app.access_reason` GUC. Defence-in-depth — the
- * HTTP layer also strips at the decorator.
+ * Character ranges stripped from `access_reason` before validation:
+ *   - 0x00-0x1f + 0x7f (DEL) — control chars that corrupt log greps and
+ *     confuse parsers reading the `app.access_reason` GUC.
+ *   - U+202A-202E (bidi embeddings + LRO/RLO overrides) and U+2066-2069
+ *     (bidi isolates) — these can VISUALLY SPOOF a rendered audit reason
+ *     (an investigator reads reversed / disguised text). They arrive
+ *     percent-encoded (e.g. %E2%80%AE) and only become live marks after
+ *     the decorator's decode, so the strip must run AFTER decode.
+ *
+ * Built from code points (not a regex literal) so this source file holds
+ * NO invisible bidi chars and no fragile \u escapes — fitting for a
+ * bidi-spoofing defence. Defence-in-depth — the HTTP layer strips too.
  */
-// eslint-disable-next-line no-control-regex
-export const PROVIDER_CONTROL_CHARS_REGEX = /[\x00-\x1f\x7f]/g;
+const PROVIDER_STRIP_RANGES: ReadonlyArray<readonly [number, number]> = [
+  [0x00, 0x1f],
+  [0x7f, 0x7f],
+  [0x061c, 0x061c], // ALM (Arabic letter mark)
+  [0x200e, 0x200f], // LRM / RLM directional marks
+  [0x202a, 0x202e], // bidi embeddings + LRO/RLO overrides
+  [0x2066, 0x2069], // bidi isolates
+];
+// eslint-disable-next-line security/detect-non-literal-regexp -- built from the hardcoded PROVIDER_STRIP_RANGES constant above (no user input); dynamic only to avoid invisible bidi chars / fragile \u escapes in a regex literal.
+export const PROVIDER_CONTROL_CHARS_REGEX = new RegExp(
+  '[' +
+    PROVIDER_STRIP_RANGES.map(
+      ([lo, hi]) => String.fromCodePoint(lo) + '-' + String.fromCodePoint(hi),
+    ).join('') +
+    ']',
+  'g',
+);
 
 /**
  * Minimum / maximum length AFTER control-char strip.

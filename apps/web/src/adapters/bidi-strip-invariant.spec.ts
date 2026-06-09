@@ -77,6 +77,7 @@ const BASE_PROJECT = {
   status: 'planning' as const,
   description: null as string | null,
   targetSignaturePct: null as number | null,
+  signatureMilestones: null,
   createdBy: '44444444-4444-4444-4444-444444444444',
   startedAt: null,
   archivedAt: null,

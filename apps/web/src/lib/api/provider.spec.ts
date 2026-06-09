@@ -99,14 +99,45 @@ const VALID_TENANT_LIST = {
 };
 
 describe('§provider — access_reason header (D.37 mandatory)', () => {
-  it('P1) listTenants sends access_reason header on every request (ASCII-only fast path)', async () => {
+  it('P1) listTenants sends access_reason header percent-encoded — even for a plain ASCII reason (symmetric with the BE decode)', async () => {
+    // HARDENING (HIGH-1): the FE used to send ASCII reasons VERBATIM via
+    // an "ASCII fast path"; it now ALWAYS `encodeURIComponent(...)` so the
+    // round-trip is lossless against the BE's `decodeURIComponent`. For a
+    // plain ASCII reason with no special chars, encoding is a no-op on the
+    // visible text — but the wire value is the encoded form. We assert
+    // against `encodeURIComponent(reason)` (non-vacuous: it equals the raw
+    // string here only because the reason has no encode-significant chars,
+    // and the assertion would still catch a regression to a different
+    // transform).
+    const reason = 'investigation #12345 verify alpha tenant';
     const { stub, captured } = makeFetchStub(() => ({ status: 200, body: VALID_TENANT_LIST }));
     globalThis.fetch = stub as unknown as typeof fetch;
-    await listTenants('investigation #12345 verify alpha tenant');
+    await listTenants(reason);
     expect(captured).toHaveLength(1);
-    expect(captured[0]!.headers[PROVIDER_HEADERS.ACCESS_REASON]).toBe(
-      'investigation #12345 verify alpha tenant',
-    );
+    expect(captured[0]!.headers[PROVIDER_HEADERS.ACCESS_REASON]).toBe(encodeURIComponent(reason));
+  });
+
+  it('P1c) ASCII reason containing a literal "%" is percent-encoded (%2F → %252F) — lossless round-trip, no BE corruption', async () => {
+    // LOAD-BEARING (HIGH-1 regression guard). Before the fix, an ASCII
+    // reason like "rollback v2%2F3 completed cleanly" took the verbatim
+    // fast path; the BE's `decodeURIComponent` then turned "%2F" into "/"
+    // and the AUDITED reason was silently mutated ("v2%2F3" → "v2/3"). Now
+    // the FE encodes the literal '%' to "%25", so "%2F" goes on the wire as
+    // "%252F" and the BE decodes it back to the original "%2F" — the audit
+    // row matches what the operator typed.
+    const reason = 'rollback v2%2F3 completed cleanly';
+    const { stub, captured } = makeFetchStub(() => ({ status: 200, body: VALID_TENANT_LIST }));
+    globalThis.fetch = stub as unknown as typeof fetch;
+    await listTenants(reason);
+    expect(captured).toHaveLength(1);
+    const sent = captured[0]!.headers[PROVIDER_HEADERS.ACCESS_REASON];
+    // Non-vacuous: the literal '%' was escaped to '%25' (so '%2F' → '%252F').
+    expect(sent).toBe(encodeURIComponent(reason));
+    expect(sent).toContain('%252F');
+    expect(sent).not.toContain('%2F3'); // the raw, un-escaped form must NOT survive
+    // And decoding once on the BE recovers EXACTLY what the operator typed.
+    // `sent` is asserted equal to a string two lines up, so the `!` is sound.
+    expect(decodeURIComponent(sent!)).toBe(reason);
   });
 
   it('P1b) non-ASCII reason (em-dash / Hebrew) is URL-encoded before being put in the header — avoids Headers ByteString crash', async () => {
@@ -139,7 +170,12 @@ describe('§provider — access_reason header (D.37 mandatory)', () => {
     const { stub, captured } = makeFetchStub(() => ({ status: 200, body: VALID_TENANT_LIST }));
     globalThis.fetch = stub as unknown as typeof fetch;
     await listTenants('  incident #42  ');
-    expect(captured[0]!.headers[PROVIDER_HEADERS.ACCESS_REASON]).toBe('incident #42');
+    // Trimmed THEN always percent-encoded (HIGH-1 hardening) — the wire
+    // value is `encodeURIComponent('incident #42')`, with no leading/
+    // trailing whitespace smuggled into the audit row.
+    expect(captured[0]!.headers[PROVIDER_HEADERS.ACCESS_REASON]).toBe(
+      encodeURIComponent('incident #42'),
+    );
   });
 
   it('P5) getTenant + searchAudit + getSystemHealth ALL send the header', async () => {
@@ -314,7 +350,9 @@ describe('§provider — D.49 suspend / reactivate writes', () => {
     expect(captured[0]!.url).toContain(
       '/provider/tenants/11111111-1111-1111-1111-111111111111/suspend',
     );
-    expect(captured[0]!.headers[PROVIDER_HEADERS.ACCESS_REASON]).toBe('incident #99 freeze tenant');
+    expect(captured[0]!.headers[PROVIDER_HEADERS.ACCESS_REASON]).toBe(
+      encodeURIComponent('incident #99 freeze tenant'),
+    );
     expect(state.suspended).toBe(true);
   });
 
@@ -388,7 +426,7 @@ describe('§provider — D.45 onboarding write', () => {
     expect(captured[0]!.method).toBe('POST');
     expect(captured[0]!.url).toContain('/provider/tenants');
     expect(captured[0]!.headers[PROVIDER_HEADERS.ACCESS_REASON]).toBe(
-      'ONB-99 onboard pilot tenant',
+      encodeURIComponent('ONB-99 onboard pilot tenant'),
     );
     // Body normalised by the schema: email lower-cased before the wire.
     expect((sentBody as { managerEmail?: string }).managerEmail).toBe('dana@example.test');

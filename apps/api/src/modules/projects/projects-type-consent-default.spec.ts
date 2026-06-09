@@ -5,7 +5,8 @@
  * from the project's urban-renewal track when the manager doesn't
  * supply one. Per-type defaults live in
  * `PROJECT_TYPE_DEFAULT_CONSENT_PCT` (packages/shared-types/src/project.ts):
- *   tama38_1 → 66, tama38_2 → 80, pinui_binui → 80.
+ *   tama38_1 → 66, tama38_2 → 66, pinui_binui → 66 (post-2023 statute
+ *   harmonised all three tracks to the two-thirds special majority).
  *
  * An explicit `input.targetSignaturePct` (any number, including 0)
  * OVERRIDES the default. The DB column is `numeric`; the service stores
@@ -16,8 +17,8 @@
  * harness as projects.s2.spec.ts (instantiate the service directly,
  * seed via createTestOrg, no Nest harness). It pins:
  *   1. tama38_1, no threshold → 66.
- *   2. tama38_2, no threshold → 80.
- *   3. pinui_binui, no threshold → 80.
+ *   2. tama38_2, no threshold → 66.
+ *   3. pinui_binui, no threshold → 66.
  *   4. tama38_1 WITH explicit 75 → 75 (override wins, not 66).
  *   5. explicit 0 is respected as 0 (0 is valid per the schema and the
  *      service only defaults on undefined/null — boundary check).
@@ -78,24 +79,24 @@ describe('ProjectsService.create · type-driven consent-threshold default', () =
     expect(read.targetSignaturePct).toBe(66);
   });
 
-  it('2) tama38_2, no targetSignaturePct → defaults to 80', async () => {
+  it('2) tama38_2, no targetSignaturePct → defaults to 66', async () => {
     const input: CreateProject = { name: `consent t2 ${Date.now()}`, type: 'tama38_2' };
     const created = await svc.create(manager(orgA), input);
-    expect(created.targetSignaturePct).toBe(80);
-    expect(PROJECT_TYPE_DEFAULT_CONSENT_PCT.tama38_2).toBe(80);
+    expect(created.targetSignaturePct).toBe(66);
+    expect(PROJECT_TYPE_DEFAULT_CONSENT_PCT.tama38_2).toBe(66);
 
     const read = (await readBack(created)) as { targetSignaturePct: unknown };
-    expect(read.targetSignaturePct).toBe(80);
+    expect(read.targetSignaturePct).toBe(66);
   });
 
-  it('3) pinui_binui, no targetSignaturePct → defaults to 80', async () => {
+  it('3) pinui_binui, no targetSignaturePct → defaults to 66', async () => {
     const input: CreateProject = { name: `consent pb ${Date.now()}`, type: 'pinui_binui' };
     const created = await svc.create(manager(orgA), input);
-    expect(created.targetSignaturePct).toBe(80);
-    expect(PROJECT_TYPE_DEFAULT_CONSENT_PCT.pinui_binui).toBe(80);
+    expect(created.targetSignaturePct).toBe(66);
+    expect(PROJECT_TYPE_DEFAULT_CONSENT_PCT.pinui_binui).toBe(66);
 
     const read = (await readBack(created)) as { targetSignaturePct: unknown };
-    expect(read.targetSignaturePct).toBe(80);
+    expect(read.targetSignaturePct).toBe(66);
   });
 
   it('4) tama38_1 WITH explicit targetSignaturePct: 75 → 75 (override wins, not 66)', async () => {

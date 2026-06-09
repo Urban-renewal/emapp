@@ -20,20 +20,28 @@ export type ProjectType = z.infer<typeof ProjectTypeEnum>;
  * label): a project's `targetSignaturePct` defaults to this from its type at
  * create time, and a manager may override it per project.
  *
- * INITIAL values from the legal majorities (refine to current statute — these
- * thresholds have moved with recent amendments, so they are intentionally a
- * single editable map, and per-project override is always available):
- *  - tama38_1 (חיזוק / strengthening): 66% (two-thirds)
- *  - tama38_2 (הריסה ובנייה / demolition-rebuild): 80% — a 2023 amendment lowers
- *    it toward two-thirds for buildings with ≥4 units + >2 owners; kept at the
- *    conservative 80% default until the owner confirms which regime applies.
- *  - pinui_binui (evacuation-rebuild): 80% (a Knesset committee has approved a
- *    reduction toward two-thirds; conservative default kept).
+ * Values reflect the POST-2023 statute. The 2023 Arrangements Law
+ * (חוק ההסדרים תשפ"ג) harmonised the special-majority thresholds for the
+ * demolish-rebuild tracks DOWN from 80% to two-thirds (~66%), aligning them
+ * with the strengthening track:
+ *  - tama38_1 (חיזוק / strengthening): 66% (two-thirds) — unchanged.
+ *  - tama38_2 (הריסה ובנייה / demolition-rebuild): 66% — lowered from 80% by the
+ *    2023 amendment to חוק החיזוק (in force 1 Jul 2023; pre-existing 80%
+ *    agreements grandfather the old regime).
+ *  - pinui_binui (evacuation-rebuild): 66% — lowered from 80% by the 2023
+ *    amendment to חוק פינוי ובינוי (two-thirds of the owners + a majority of
+ *    the attached common property).
+ *
+ * These are the legal GATE (compel-holdouts / proceed) thresholds and the
+ * default signature-collection target; a manager may override per project, and
+ * 100% execution-signing is a separate, later milestone. NOTE FOR LEGAL: sources
+ * vary between 66% and 67% for "two-thirds" post-2023 — confirm the exact value
+ * to store; either is a major correction from the pre-2023 80%.
  */
 export const PROJECT_TYPE_DEFAULT_CONSENT_PCT: Record<ProjectType, number> = {
   tama38_1: 66,
-  tama38_2: 80,
-  pinui_binui: 80,
+  tama38_2: 66,
+  pinui_binui: 66,
 };
 
 /** D.18 (LAW): locked project status set. Matches `project_status` pg enum. */

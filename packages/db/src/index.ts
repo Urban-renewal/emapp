@@ -130,3 +130,17 @@ export { FakeCacheProvider } from './providers/cache/fake.provider';
 export type { IRealtimeProvider, RealtimeEvent } from './providers/realtime/realtime.interface';
 export { SseRealtimeProvider } from './providers/realtime/sse.provider';
 export { FakeRealtimeProvider } from './providers/realtime/fake.provider';
+export type {
+  IFileScanProvider,
+  ScanInput,
+  ScanResult,
+  ScanVerdict,
+} from './providers/scan/scan.interface';
+export { resolveScanBytes } from './providers/scan/scan.interface';
+export { NoopFileScanProvider } from './providers/scan/noop.provider';
+export {
+  ClamAvFileScanProvider,
+  buildInstream,
+  parseReply,
+  type ClamAvScanConfig,
+} from './providers/scan/clamav.provider';

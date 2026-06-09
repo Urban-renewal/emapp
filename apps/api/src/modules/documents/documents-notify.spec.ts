@@ -40,6 +40,7 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  NoopFileScanProvider,
   apartments,
   buildings,
   db,
@@ -168,7 +169,11 @@ async function docExists(id: string): Promise<boolean> {
 
 beforeAll(async () => {
   await setupTestDatabase();
-  svc = new DocumentsService(storage, new NotificationsProducerService());
+  svc = new DocumentsService(
+    storage,
+    new NoopFileScanProvider(),
+    new NotificationsProducerService(),
+  );
   const tag = `notif6-${Date.now()}`;
   org = await createTestOrg(tag, tag);
   managerId = org.users[0]!.id;
@@ -359,7 +364,11 @@ describe('#6 — document_uploaded notification fan-out', () => {
       emit: async () => false,
       emitMany: async () => 0, // every recipient "failed", but no throw (real behavior)
     } as unknown as NotificationsProducerService;
-    const svcSwallow = new DocumentsService(storage, swallowingProducer);
+    const svcSwallow = new DocumentsService(
+      storage,
+      new NoopFileScanProvider(),
+      swallowingProducer,
+    );
 
     const name = `iso-ok-${randomUUID().slice(0, 8)}.pdf`;
     const res = await svcSwallow.create(payload(managerId, 'manager'), {
@@ -382,7 +391,7 @@ describe('#6 — document_uploaded notification fan-out', () => {
         throw new Error('boom: simulated notification outage');
       },
     } as unknown as NotificationsProducerService;
-    const svcBad = new DocumentsService(storage, throwingProducer);
+    const svcBad = new DocumentsService(storage, new NoopFileScanProvider(), throwingProducer);
 
     const name = `iso-throw-${randomUUID().slice(0, 8)}.pdf`;
     // create RESOLVES despite the throwing producer — the notify is swallowed.

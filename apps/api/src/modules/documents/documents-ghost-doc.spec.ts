@@ -30,7 +30,14 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import { db, memberships, projectAssignments, users, type IStorageProvider } from '@emapp/db';
+import {
+  NoopFileScanProvider,
+  db,
+  memberships,
+  projectAssignments,
+  users,
+  type IStorageProvider,
+} from '@emapp/db';
 import { DOCUMENT_UPLOAD_INCOMPLETE_CODE } from '@emapp/shared-types';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -101,9 +108,13 @@ async function seedDoc(opts: {
   const c = await providerPool.connect();
   try {
     const r = await c.query<{ id: string }>(
+      // P0.B1: scan_status='clean' so the finalised (G4) row passes the new
+      // download malware gate — these tests pin the uploaded_at ordering, not
+      // scanning. The ghost rows (G1–G3) hit the uploaded_at/visibility checks
+      // first (ordered before the scan check), so their value is immaterial.
       `INSERT INTO documents
-         (org_id, project_id, name, type, mime_type, size_bytes, r2_key, content_hash, uploaded_by, uploaded_at)
-       VALUES ($1, $2, 'ghost.pdf', 'other', 'application/pdf', 100, $3, 'h', $4, $5)
+         (org_id, project_id, name, type, mime_type, size_bytes, r2_key, content_hash, uploaded_by, uploaded_at, scan_status)
+       VALUES ($1, $2, 'ghost.pdf', 'other', 'application/pdf', 100, $3, 'h', $4, $5, 'clean')
        RETURNING id`,
       [
         opts.orgId,
@@ -148,7 +159,11 @@ function errCode(e: unknown): string | undefined {
 
 beforeAll(async () => {
   await setupTestDatabase();
-  svc = new DocumentsService(storage, new NotificationsProducerService());
+  svc = new DocumentsService(
+    storage,
+    new NoopFileScanProvider(),
+    new NotificationsProducerService(),
+  );
   const tag = `ghost-${Date.now()}`;
   orgA = await createTestOrg(`${tag}-a`, `${tag}-a`);
   orgB = await createTestOrg(`${tag}-b`, `${tag}-b`);

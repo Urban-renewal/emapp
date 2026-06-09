@@ -137,13 +137,18 @@ export class PublicSignService {
             r2Key: documents.r2Key,
             archivedAt: documents.archivedAt,
             uploadedAt: documents.uploadedAt,
+            scanStatus: documents.scanStatus,
           })
           .from(documents)
           .where(eq(documents.id, req.documentId))
           .limit(1);
         // 0049 — defence-in-depth: never show a resident a preview of a doc
         // whose bytes were never stored (generic INVALID_TOKEN, no oracle).
-        if (!doc || doc.archivedAt || !doc.uploadedAt) throw INVALID_TOKEN;
+        // P0.B1 — FAIL-CLOSED malware gate: a resident is served the document
+        // ONLY when its anti-malware scan returned `clean`; any other status
+        // → generic INVALID_TOKEN (no-oracle), never a minted presigned URL.
+        if (!doc || doc.archivedAt || !doc.uploadedAt || doc.scanStatus !== 'clean')
+          throw INVALID_TOKEN;
 
         // v8 §v8-S3 — name now pgcrypto-encrypted; decrypt inside
         // the same tx (app.encryption_key GUC is set by withTenant).

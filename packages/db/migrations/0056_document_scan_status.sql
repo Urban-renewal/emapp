@@ -1,4 +1,4 @@
--- ════════════════════ 0055 · documents anti-malware scan status (P0.B1) ═══════
+-- ════════════════════ 0056 · documents anti-malware scan status (P0.B1) ═══════
 -- Owner-approved Gate-6 (migration) change. Additive + reversible (D.39 posture).
 --
 -- WHY: uploaded documents are served to residents via short-lived presigned

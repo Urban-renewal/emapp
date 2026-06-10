@@ -184,6 +184,9 @@ export class ContractorReadService {
             isNull(documents.archivedAt),
             // 0049 — never list/serve a ghost doc to an external contractor.
             isNotNull(documents.uploadedAt),
+            // P0.B1 — FAIL-CLOSED malware gate: never list a doc to an external
+            // contractor unless it scanned `clean` (download is gated too).
+            eq(documents.scanStatus, 'clean'),
           ),
         )
         .orderBy(asc(documents.name)),
@@ -217,6 +220,10 @@ export class ContractorReadService {
             isNull(documents.archivedAt),
             // 0049 — never list/serve a ghost doc to an external contractor.
             isNotNull(documents.uploadedAt),
+            // P0.B1 — FAIL-CLOSED malware gate: an external contractor may
+            // download ONLY a scan-`clean` doc; any other status → 404
+            // (no-oracle), never a minted presigned URL.
+            eq(documents.scanStatus, 'clean'),
           ),
         )
         .limit(1);

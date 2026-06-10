@@ -26,6 +26,11 @@ export const OwnershipSchema = z.object({
   apartmentId: z.string().uuid(),
   ownerId: z.string().uuid(),
   ownershipPct: z.number().min(0).max(100),
+  // S3b — the EXACT Tabu share as a rational fraction. `ownershipPct` above is
+  // the derived 2-decimal compat value; these two carry the lossless share
+  // (e.g. 1/3). Denominator is always > 0 (DB CHECK ownerships_share_den_positive).
+  shareNumerator: z.number().int().min(0),
+  shareDenominator: z.number().int().positive(),
   relationship: RelationshipSchema,
   role: z.string().max(50).nullable(),
   startedAt: z.coerce.date(),
@@ -45,11 +50,45 @@ const shareEntry = z
     ownershipPct: z.number().min(0).max(100),
     relationship: RelationshipSchema,
     role: z.string().max(50).nullable().optional(),
+    // S3b — preferred EXACT share input. When supplied the server persists the
+    // fraction verbatim and DERIVES ownershipPct = round(num/den*100, 2). When
+    // omitted, the server derives num/den from ownershipPct (num=round(pct*100),
+    // den=10000) — pct-only callers keep working (back-compat).
+    shareNumerator: z.number().int().min(0).optional(),
+    shareDenominator: z.number().int().positive().optional(),
   })
   .strict()
   .refine((e) => (e.relationship === 'renter' ? e.ownershipPct === 0 : e.ownershipPct > 0), {
     message: 'owners must have ownershipPct > 0; renters must have ownershipPct === 0',
-  });
+  })
+  .refine(
+    // Either BOTH fraction parts are present, or NEITHER (pct-only). A lone
+    // numerator/denominator is ambiguous.
+    (e) => (e.shareNumerator === undefined) === (e.shareDenominator === undefined),
+    { message: 'shareNumerator and shareDenominator must be provided together' },
+  );
+
+/**
+ * Derive the canonical (numerator, denominator) for an ownership entry on
+ * WRITE. Prefers an explicit fraction; falls back to deriving from the percent
+ * (num = round(pct*100), den = 10000). Mirror of the DB backfill in migration
+ * 0065 so the FE/BE and the stored rows agree byte-for-byte.
+ */
+export function deriveShareFraction(e: {
+  ownershipPct: number;
+  shareNumerator?: number;
+  shareDenominator?: number;
+}): { numerator: number; denominator: number } {
+  if (e.shareNumerator !== undefined && e.shareDenominator !== undefined) {
+    return { numerator: e.shareNumerator, denominator: e.shareDenominator };
+  }
+  return { numerator: Math.round(e.ownershipPct * 100), denominator: 10000 };
+}
+
+/** Derive the 2-decimal compat percent from a fraction (round(num/den*100,2)). */
+export function fractionToPct(numerator: number, denominator: number): number {
+  return Math.round((numerator / denominator) * 100 * 100) / 100;
+}
 
 const SUM_EPSILON = 0.001;
 

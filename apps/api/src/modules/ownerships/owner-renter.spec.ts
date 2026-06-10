@@ -147,10 +147,17 @@ async function insertOwnershipSet(
   try {
     await c.query('BEGIN');
     for (const r of rows) {
+      // S3b — the sum trigger now validates the EXACT FRACTION sum = 1, with
+      // ownership_pct demoted to a derived display value. Derive num/den from
+      // pct exactly as every real write path does (num = round(pct*100),
+      // den = 10000) so this raw backstop genuinely exercises the fraction
+      // trigger (a pct-only insert would default to 0/10000 and sum to 0,
+      // sidestepping the check entirely).
+      const num = Math.round(r.pct * 100);
       await c.query(
-        `INSERT INTO ownerships (apartment_id, owner_id, ownership_pct, relationship)
-         VALUES ($1, $2, $3, $4)`,
-        [apartmentId, r.ownerId, String(r.pct), r.relationship],
+        `INSERT INTO ownerships (apartment_id, owner_id, ownership_pct, relationship, share_numerator, share_denominator)
+         VALUES ($1, $2, $3, $4, $5, 10000)`,
+        [apartmentId, r.ownerId, String(r.pct), r.relationship, num],
       );
     }
     await c.query('COMMIT');
@@ -222,12 +229,13 @@ describe('A — trigger invariants', () => {
   }, 30_000);
 
   it('A3) owners summing to 90 → the write RAISES (trigger), service maps to 400 ownership_sum_invalid', async () => {
-    // 3a — the raw DB trigger fires at COMMIT.
+    // 3a — the raw DB trigger fires at COMMIT. S3b: a single owner at pct 90
+    // derives the fraction 9000/10000 = 0.9 ≠ 1 → the fraction sum check raises.
     const apt = await seedApartment(org.id);
     const o1 = await seedOwner(org.id);
     await expect(
       insertOwnershipSet(apt, [{ ownerId: o1, pct: 90, relationship: 'owner' }]),
-    ).rejects.toThrow(/Sum of ownership percentages must equal 100/);
+    ).rejects.toThrow(/Sum of ownership shares must equal the whole/);
 
     // 3b — through the service: a 90-sum set (Zod owners-sum refine rejects it,
     // but even if it slipped through, replaceSet re-guards + maps the trigger
@@ -301,7 +309,7 @@ describe('A — trigger invariants', () => {
         { ownerId: o1, pct: 90, relationship: 'owner' },
         { ownerId: renter, pct: 10, relationship: 'renter' },
       ]),
-    ).rejects.toThrow(/Sum of ownership percentages must equal 100/);
+    ).rejects.toThrow(/Sum of ownership shares must equal the whole/);
   }, 30_000);
 });
 

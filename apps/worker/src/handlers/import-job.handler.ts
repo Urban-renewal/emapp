@@ -1648,6 +1648,13 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
           apartmentId: string;
           ownerId: string;
           ownershipPct: string;
+          // S3b — derive the EXACT share fraction from the imported pct
+          // (num = round(pct*100), den = 10000), mirroring migration 0065's
+          // backfill. The DB sum trigger validates the fraction sum = 1; a
+          // pct-summing-to-100 import therefore satisfies it too (e.g. 50+50 →
+          // 5000/10000 ×2 = 1; 33.33+33.33+33.34 → 10000/10000 = 1).
+          shareNumerator: number;
+          shareDenominator: number;
         }> = [];
         const affectedApartmentIds: string[] = [];
         for (const [, rows] of apartmentGroups) {
@@ -1667,6 +1674,8 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
               apartmentId,
               ownerId,
               ownershipPct: String(pct),
+              shareNumerator: Math.round(pct * 100),
+              shareDenominator: 10000,
             });
           }
         }
@@ -1694,12 +1703,12 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
 
         // v5 audit fix (P0 cross-confirmed): chunk the bulk INSERT
         // at 5000 rows per statement. Each ownership row contributes
-        // 3 parameters (apartmentId, ownerId, ownershipPct);
-        // drizzle's pg-protocol param cap is int2 = 65535 → ceiling
-        // of ~21,845 rows per insert. A 50MB Excel can easily hold
-        // 30k+ rows; without chunking we'd hit "bind message has X
-        // parameters" at scale. 5000 × 3 = 15k params per chunk,
-        // ~7x margin from the cap.
+        // 5 parameters (apartmentId, ownerId, ownershipPct,
+        // shareNumerator, shareDenominator); drizzle's pg-protocol
+        // param cap is int2 = 65535 → ceiling of ~13,107 rows per
+        // insert. A 50MB Excel can easily hold 30k+ rows; without
+        // chunking we'd hit "bind message has X parameters" at scale.
+        // 5000 × 5 = 25k params per chunk, ~2.6x margin from the cap.
         //
         // Inside a single tx, the deferred constraint trigger memo
         // (migration 0030) spans across chunks — N apartments still

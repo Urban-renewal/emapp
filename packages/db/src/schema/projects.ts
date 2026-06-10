@@ -5,6 +5,7 @@ import {
   text,
   timestamp,
   integer,
+  bigint,
   numeric,
   jsonb,
   index,
@@ -276,6 +277,17 @@ export const ownerships = pgTable(
       .notNull()
       .references(() => owners.id, { onDelete: 'restrict' }),
     ownershipPct: numeric('ownership_pct', { precision: 5, scale: 2 }).notNull(),
+    // S3b — ownership share AS FRACTION (exact Tabu fractions, sum = 1).
+    // The canonical EXACT share is the rational `share_numerator /
+    // share_denominator` (e.g. 1/3, 17/240); `ownershipPct` above is now a
+    // derived 2-decimal compat value (round(num/den*100, 2)) kept in sync on
+    // every write. The sum trigger (migration 0065) validates the EXACT
+    // fraction sum = 1 per apartment over relationship='owner' rows via
+    // integer cross-multiplication — no float drift (33.33×3 ≠ 99.99 issue).
+    // DB DEFAULTs (0 / 10000) let a pct-only INSERT omit them; positive
+    // denominator enforced by the ownerships_share_den_positive CHECK.
+    shareNumerator: bigint('share_numerator', { mode: 'number' }).notNull().default(0),
+    shareDenominator: bigint('share_denominator', { mode: 'number' }).notNull().default(10000),
     role: text('role'),
     // Feature A (P2 / D.25 sum-trigger change) — owner vs renter. A renter
     // does NOT sign and is EXCLUDED from the 100% ownership sum (the D.25

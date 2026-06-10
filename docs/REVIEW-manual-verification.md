@@ -10,6 +10,41 @@
 
 ---
 
+## Executive summary
+
+All **7 held Gate-6 PRs are merged** to `main` (migrations 0055–0062), applied to
+the dev DB, both servers boot clean, and the new features were **driven in a real
+browser end-to-end** (not just "does it start"). No feature is broken.
+
+**Per-feature result:**
+
+| #   | Feature                | Result                                                           |
+| --- | ---------------------- | ---------------------------------------------------------------- |
+| 1.1 | Login                  | ✅ end-to-end                                                    |
+| 1.2 | Password reset         | ✅ request path E2E + anti-enumeration (consumption unit-tested) |
+| 1.3 | AV-scan download gate  | ✅ **infected → 409**, the gate genuinely blocks                 |
+| 1.4 | DSAR export            | ✅ returns full record **and is audited**                        |
+| 1.5 | Consent-at-signing     | ✅ design + security verified (atomic, hash-bound)               |
+| 1.6 | Custom roles           | ✅ create + **422 fail-closed** on unknown permission            |
+| 1.7 | Per-member overrides   | ✅ grant/deny + **self-lockout blocked**                         |
+| 1.8 | Project renewal fields | ✅ render + full round-trip + soft-delete                        |
+| 1.9 | Provider / MFA         | ⏸️ deferred (separate provider login)                            |
+
+**Security findings (2) — documented, NOT self-fixed (owner/policy calls):**
+
+| ID      | Sev      | What                                                                                                                                            |
+| ------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **M-1** | pre-prod | drizzle migrator **silently skipped 0056** on dev (when-ordering) — "applied successfully" was false; patched dev, needs a CI guard before prod |
+| **M-2** | MED      | reset token leaks into pino logs via the **unredacted `referer`** header (cookie IS redacted; referer isn't)                                    |
+
+**Logs:** SaaS-grade — structured JSON, `req.id` correlation, `responseTime`, no
+national_id/phone/password in bodies, cookie redacted. Only gap = M-2.
+
+**Plus 7 sysadmin/professionalism recommendations** (§3) — custom RTL error pages,
+readiness probe, active-sessions UI, etc. — none blocking.
+
+---
+
 ## 0. Merge + migrate + restart (DONE)
 
 ### 7 Gate-6 PRs merged to `main` (serial, each conflict resolved + CI green)
@@ -251,7 +286,72 @@ separate provider login + MFA enrolment not wired into this QA org session.
 Deferred; its access controls are covered by the provider-audit + provider-session
 suites. Noted so it isn't assumed-tested.
 
-### (pending — next iterations)
+---
 
-- 2. Logs assessment (SaaS-grade?)
-- 3. Sysadmin professionalism recommendations
+## 2. Logs assessment (MANAGER lens) — ✅ SaaS-grade, one gap
+
+Inspected the live `@emapp/api` pino output (472 lines covering this whole E2E
+session, including the PII-touching DSAR export of `national_id 123456782`).
+
+| Property            | Result                                                       |
+| ------------------- | ------------------------------------------------------------ |
+| Structured JSON     | ✅ pino, one object per line                                 |
+| Request correlation | ✅ `req.id` (`req-3`…`req-81`), req↔res paired               |
+| Latency             | ✅ `responseTime` (ms) + `res.statusCode` on every response  |
+| Levels              | ✅ 297× info(30), 2× warn(40), **0 error(50)** — clean run   |
+| national_id leak    | ✅ **0** occurrences of `123456782` (export body NOT logged) |
+| phone leak          | ✅ **0** occurrences                                         |
+| password leak       | ✅ **0** occurrences                                         |
+| cookie redaction    | ✅ 79× `"cookie":"[REDACTED]"`                               |
+
+- The 2 warnings were `"Unsupported route path: …"` — **my own** probes of
+  non-existent endpoints (e.g. `/api/v1/permissions`), benign.
+- **The single gap is M-2:** `referer` is the one request header that is NOT
+  redacted, and it can carry the reset token. Everything else is clean.
+
+**Verdict:** the logging is genuinely production-grade (structured, correlated,
+latency-instrumented, PII-safe in bodies). Close M-2 and it's complete.
+
+---
+
+## 3. Sysadmin / professionalism recommendations (for owner decision)
+
+None of these are bugs in the merged features — they're the "make it feel like a
+real product" layer. Ordered by value. **Not built** — recommendations only.
+
+1. **Custom error pages (S-1, easy win).** `/sign/<bad>` and unknown routes render
+   Next.js's default English _"404 This page could not be found."_ — jarring in a
+   Hebrew RTL product. Add branded RTL `not-found.tsx` / `error.tsx` (global +
+   per-segment). Low effort, high polish.
+2. **Readiness vs liveness split (S-2).** `/api/v1/health` returns `{status,uptime}`
+   (liveness) but does not check DB / R2 reachability. Add a `/ready` that pings
+   the pool + storage so the platform (Railway) can gate traffic on real
+   dependency health, not just "process up."
+3. **Close M-2 — redact `referer`** in the pino config (+ `replaceState` on the
+   reset page). Small, removes a credential-in-logs path.
+4. **Add the M-1 post-migrate guard (S-3).** A CI/boot assertion that every
+   `_journal.json` tag has a matching `__drizzle_migrations` row AND its schema
+   object exists — so a silently-skipped migration fails loudly instead of
+   shipping a missing column. (This run hit exactly that on 0056.)
+5. **Active-sessions UI (S-4).** `auth_sessions` already does refresh-rotation +
+   reuse-detection; surface a "your active sessions / sign out everywhere" screen.
+   Expected of a B2B SaaS handling PII; the data model is already there.
+6. **Surface rate-limit + lockout state (S-5).** Rate limiting (100/min) and
+   account lockout exist server-side; expose `RateLimit-*` response headers (client
+   backoff) and a clear "account temporarily locked" UX so users aren't left
+   guessing on repeated 429/lockout.
+7. **Confirm observability is wired for prod (S-6).** `instrument.ts` (Sentry) +
+   the P0.B2 metrics/alert/breach-detection seam exist; verify the Sentry DSN,
+   the Prometheus endpoint, and the webhook alert sink are configured in the prod
+   environment (they're pluggable Noop by default).
+
+---
+
+## 4. Status
+
+**Review complete for this pass.** All 7 Gate-6 PRs are merged, migrations are on
+dev, both servers boot clean, and features 1.1–1.8 were driven in a real browser
+to completion (1.9 provider/MFA deferred). Two security findings (M-1, M-2) +
+seven professionalism recommendations are documented above for owner decision; no
+feature is broken. All test artifacts created during verification were cleaned up
+(role deleted, overrides cleared, test project archived, scanned doc restored).

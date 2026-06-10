@@ -175,23 +175,35 @@ BEGIN
     FROM ownerships
     WHERE apartment_id = v_apartment_id AND ended_at IS NULL AND relationship = 'owner';
 
-    -- v_frac_sum = 0 → no held share (e.g. legacy pct-only rows whose
-    -- fractions defaulted to 0/10000, or an all-renter apartment); accepted
-    -- as a cleared/unallocated state. Otherwise it MUST equal L (value = 1).
-    IF v_frac_sum <> 0 AND v_frac_sum <> v_lcm THEN
+    -- FIX 2 (data-integrity): the apartment HAS active owner rows here
+    -- (v_owner_rows > 0 — the empty/cleared case already RETURNed above), so
+    -- the owner shares MUST sum to exactly the whole. A non-empty owner set
+    -- summing to 0 (every owner at 0-share) — or anything other than 1 — is a
+    -- broken legal record and MUST RAISE. (The old `v_frac_sum = 0` acceptance
+    -- wrongly let a zero-ownership apartment commit.)
+    IF v_frac_sum <> v_lcm THEN
       RAISE EXCEPTION
         'Sum of ownership shares must equal the whole (1) for apartment %, got %/%',
         v_apartment_id, v_frac_sum, v_lcm;
     END IF;
   ELSE
-    -- Overflow fallback: numeric equality at high scale. Rare — only if a
-    -- denominator set is pathologically large. Still no IEEE float: numeric.
+    -- Overflow fallback: numeric equality. EFFECTIVELY UNREACHABLE from the
+    -- product path — the API edge (SetOwnershipsInput) bounds share_denominator
+    -- at 1e6, so L = LCM of the owner denominators always stays inside the
+    -- c_lcm_cap and the EXACT integer path above is taken. This branch only
+    -- fires for a raw/legacy insert with a pathologically large denominator set.
+    --
+    -- FIX 3: REQUIRE EXACTLY 1 — no epsilon. Reduced rational fractions summing
+    -- to 1 are EXACT in `numeric` (arbitrary precision), so `round(...,12)` only
+    -- ever served to MASK a near-1 sum that is not actually the whole. Drop the
+    -- rounding and the `<> 0` escape: a non-empty owner set (v_owner_rows > 0)
+    -- that does not sum to exactly 1 MUST RAISE (mirrors the integer path).
     SELECT COALESCE(SUM(share_numerator::numeric / share_denominator::numeric), 0)
     INTO v_num_sum
     FROM ownerships
     WHERE apartment_id = v_apartment_id AND ended_at IS NULL AND relationship = 'owner';
 
-    IF v_num_sum <> 0 AND round(v_num_sum, 12) <> 1 THEN
+    IF v_num_sum <> 1::numeric THEN
       RAISE EXCEPTION
         'Sum of ownership shares must equal the whole (1) for apartment %, got %',
         v_apartment_id, v_num_sum;

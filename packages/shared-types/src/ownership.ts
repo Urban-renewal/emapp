@@ -40,10 +40,18 @@ export const OwnershipSchema = z.object({
 });
 export type Ownership = z.infer<typeof OwnershipSchema>;
 
-// Per-entry shape for the atomic set-replace. The pct↔relationship rule
-// (owner ⇒ pct > 0, renter ⇒ pct === 0) is enforced by the refine below so
-// the in-app 400 agrees with the DB CHECK + trigger backstop. `ownershipPct`
-// itself is relaxed to `min(0)` (was `gt(0)`) to admit the renter's 0.
+// S3b — the canonical share is the EXACT FRACTION (share_numerator /
+// share_denominator). `ownershipPct` is a DERIVED display value only — the
+// server NEVER trusts a caller-supplied pct: when a fraction is given, pct is
+// recomputed from it (deriveShareFraction prefers the fraction); when only a
+// pct is given, the fraction is derived from pct (num=round(pct*100), den=10000).
+//
+// Upper bound on the denominator (DEN_MAX) keeps the DB trigger's EXACT integer
+// cross-multiplication path always reachable (L = LCM of bounded denominators
+// stays far inside bigint), so the trigger's numeric-overflow fallback is never
+// hit from the API. Owners MUST hold a real share (numerator >= 1 — a 0-share
+// owner is invalid, mirroring "owners must have pct > 0"); renters may be 0.
+const DEN_MAX = 1_000_000;
 const shareEntry = z
   .object({
     ownerId: z.string().uuid(),
@@ -55,7 +63,7 @@ const shareEntry = z
     // omitted, the server derives num/den from ownershipPct (num=round(pct*100),
     // den=10000) — pct-only callers keep working (back-compat).
     shareNumerator: z.number().int().min(0).optional(),
-    shareDenominator: z.number().int().positive().optional(),
+    shareDenominator: z.number().int().positive().max(DEN_MAX).optional(),
   })
   .strict()
   .refine((e) => (e.relationship === 'renter' ? e.ownershipPct === 0 : e.ownershipPct > 0), {
@@ -66,6 +74,17 @@ const shareEntry = z
     // numerator/denominator is ambiguous.
     (e) => (e.shareNumerator === undefined) === (e.shareDenominator === undefined),
     { message: 'shareNumerator and shareDenominator must be provided together' },
+  )
+  .refine(
+    // An OWNER must hold a real share — its EFFECTIVE numerator (explicit, or
+    // derived from pct) must be >= 1. A 0-share owner is invalid (mirrors the
+    // pct>0 rule above). Renters may carry a 0 numerator.
+    (e) => {
+      if (e.relationship !== 'owner') return true;
+      const { numerator } = deriveShareFraction(e);
+      return numerator >= 1;
+    },
+    { message: 'owners must hold a share (shareNumerator >= 1)' },
   );
 
 /**
@@ -90,32 +109,52 @@ export function fractionToPct(numerator: number, denominator: number): number {
   return Math.round((numerator / denominator) * 100 * 100) / 100;
 }
 
-const SUM_EPSILON = 0.001;
+/** gcd by Euclid (non-negative inputs). */
+function gcd(a: number, b: number): number {
+  while (b !== 0) {
+    [a, b] = [b, a % b];
+  }
+  return a;
+}
 
 /**
  * Atomic full-set replace for an apartment's active ownerships
- * (PUT /apartments/:id/ownerships). `owners` must be EMPTY (clear all) or
- * sum to exactly 100 (the locked trigger's only legal end states);
- * ownerId must be unique within the set. The server ends all current
- * active ownerships and inserts this set in one transaction.
+ * (PUT /apartments/:id/ownerships). The OWNER rows' EXACT fractions must be
+ * EMPTY (clear all / renters only) or sum to exactly 1 — the legal end states
+ * the DB trigger enforces. ownerId must be unique within the set. The server
+ * ends all current active ownerships and inserts this set in one transaction.
  */
 export const SetOwnershipsInput = z
   .object({ owners: z.array(shareEntry).max(50) })
   .strict()
   .refine(
     (v) => {
-      // Feature A: only OWNERS count toward the 100% invariant (renters are
-      // excluded — they carry pct 0). An owner-less set (empty, or renters
-      // only) sums to 0, which is the "clear" / no-owner legal end state the
-      // DB trigger also allows (v_total > 0 guard). This MUST agree with the
-      // trigger predicate `... AND relationship = 'owner'`.
-      const ownerSum = v.owners
+      // Feature A: only OWNER rows count toward the share invariant (renters
+      // are excluded — they carry a 0 share). An owner-less set (empty, or
+      // renters only) is the "clear" / no-owner legal end state the DB trigger
+      // also allows. This MUST agree with the trigger predicate
+      // `... AND relationship = 'owner'`.
+      //
+      // EXACT FRACTION sum = 1 via INTEGER cross-multiplication — a MIRROR of
+      // the DB trigger (NOT a pct epsilon, which would reject a faithful thirds
+      // split whose derived pct is 99.99). L = LCM of the owner denominators;
+      // require Σ num*(L/den) === L. Denominators are bounded (DEN_MAX) so L
+      // stays an exact JS integer (< 2^53), matching the trigger's integer path.
+      const ownerFracs = v.owners
         .filter((o) => o.relationship === 'owner')
-        .reduce((a, o) => a + o.ownershipPct, 0);
-      if (ownerSum === 0) return true;
-      return Math.abs(ownerSum - 100) <= SUM_EPSILON;
+        .map((o) => deriveShareFraction(o));
+      if (ownerFracs.length === 0) return true; // no owners → cleared state.
+
+      let lcm = 1;
+      for (const { denominator } of ownerFracs) {
+        lcm = (lcm / gcd(lcm, denominator)) * denominator;
+      }
+      const sum = ownerFracs.reduce((a, { numerator, denominator }) => {
+        return a + numerator * (lcm / denominator);
+      }, 0);
+      return sum === lcm;
     },
-    { message: 'owner shares must sum to exactly 100 (renters excluded; or be empty to clear)' },
+    { message: 'owner shares must sum to exactly 1 (renters excluded; or be empty to clear)' },
   )
   .refine((v) => new Set(v.owners.map((o) => o.ownerId)).size === v.owners.length, {
     message: 'duplicate ownerId in the set',

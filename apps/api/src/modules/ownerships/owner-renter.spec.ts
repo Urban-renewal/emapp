@@ -501,19 +501,42 @@ describe('C — renter signature-gate', () => {
 // SECTION E — migration safety
 // ===========================================================================
 describe('E — migration safety', () => {
-  it('E1) EVERY apartment satisfies owner-only SUM ∈ {0,100} (post-migration data invariant)', async () => {
+  it('E1) EVERY apartment satisfies the owner-only FRACTION sum ∈ {0,1} (S3b data invariant)', async () => {
+    // S3b: ownership_pct is now a DERIVED display value and a faithful thirds
+    // split (1/3 each) has owner pct-sum 99.99 ≠ 100 — LEGAL by design. The
+    // legacy `SUM(ownership_pct) ∈ {0,100}` assertion is therefore obsolete (it
+    // wrongly flags every exact thirds split). The live invariant is the EXACT
+    // FRACTION sum over owner rows ∈ {0,1}, computed by integer cross-
+    // multiplication per apartment (mirrors the trigger; no float / no 99.99).
     const c = await providerPool.connect();
     try {
-      const r = await c.query<{ apartment_id: string; s: string }>(
-        `SELECT apartment_id, SUM(ownership_pct)::text AS s
+      const r = await c.query<{ apartment_id: string; num: string; den: string }>(
+        `SELECT apartment_id, share_numerator::text AS num, share_denominator::text AS den
          FROM ownerships
-         WHERE ended_at IS NULL AND relationship = 'owner'
-         GROUP BY apartment_id
-         HAVING SUM(ownership_pct) <> 0 AND SUM(ownership_pct) <> 100`,
+         WHERE ended_at IS NULL AND relationship = 'owner'`,
       );
+      const gcd = (a: bigint, b: bigint): bigint => (b === 0n ? a : gcd(b, a % b));
+      const byApt = new Map<string, Array<{ num: bigint; den: bigint }>>();
+      for (const row of r.rows) {
+        const list = byApt.get(row.apartment_id) ?? [];
+        list.push({ num: BigInt(row.num), den: BigInt(row.den) });
+        byApt.set(row.apartment_id, list);
+      }
+      const violating: Array<{ apartment_id: string; sum: string }> = [];
+      for (const [apartmentId, fracs] of byApt) {
+        let lcm = 1n;
+        for (const f of fracs) lcm = (lcm / gcd(lcm, f.den)) * f.den;
+        let sum = 0n;
+        for (const f of fracs) sum += f.num * (lcm / f.den);
+        // Legal end states: 0 (cleared / all-zero is itself rejected by the
+        // trigger, but read-side we just flag ≠{0,1}) or exactly the whole.
+        if (sum !== 0n && sum !== lcm) {
+          violating.push({ apartment_id: apartmentId, sum: `${sum}/${lcm}` });
+        }
+      }
       expect(
-        r.rows,
-        `apartments violating owner-only SUM ∈ {0,100}: ${JSON.stringify(r.rows)}`,
+        violating,
+        `apartments violating owner-only fraction sum ∈ {0,1}: ${JSON.stringify(violating)}`,
       ).toEqual([]);
     } finally {
       c.release();

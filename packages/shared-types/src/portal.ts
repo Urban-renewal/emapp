@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { ApartmentStatusEnum } from './apartment';
 import { ProjectStatusEnum, ProjectTypeEnum } from './project';
+import { SignatureRequestStatusEnum } from './signature-request';
 
 // ──────────────────────────────────────────────────────────────────────
 // V11 B.S4 — Tenant Portal own-data view (D.40).
@@ -146,7 +147,7 @@ export const TenantPortalSignatureSchema = z.object({
   id: z.string().uuid(),
   documentId: z.string().uuid(),
   documentName: z.string(),
-  status: z.enum(['pending', 'signed', 'cancelled']),
+  status: SignatureRequestStatusEnum,
   expiresAt: z.coerce.date(),
   createdAt: z.coerce.date(),
   signedAt: z.coerce.date().nullable(),

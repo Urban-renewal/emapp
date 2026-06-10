@@ -4,7 +4,9 @@ import { serverEnv } from '@emapp/config';
 import {
   AuditService,
   DEFAULT_EMAIL_FROM,
+  apartments,
   buildEmailFrom,
+  buildings,
   documents,
   owners,
   ownerships,
@@ -34,7 +36,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, desc, eq, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
@@ -85,13 +87,21 @@ export class SignatureRequestsService {
   private async loadVisibleDocument(
     tx: TenantTx,
     documentId: string,
-  ): Promise<{ id: string; name: string; archivedAt: Date | null }> {
+  ): Promise<{
+    id: string;
+    name: string;
+    archivedAt: Date | null;
+    apartmentId: string | null;
+    projectId: string | null;
+  }> {
     const [row] = await tx
       .select({
         id: documents.id,
         name: documents.name,
         archivedAt: documents.archivedAt,
         uploadedAt: documents.uploadedAt,
+        apartmentId: documents.apartmentId,
+        projectId: documents.projectId,
       })
       .from(documents)
       .where(eq(documents.id, documentId))
@@ -101,7 +111,13 @@ export class SignatureRequestsService {
     // preview 404s, yet the signature would record against absent bytes — the
     // audit's worst ghost finding). uploaded_at IS NULL → 404.
     if (!row || row.archivedAt || !row.uploadedAt) throw NOT_FOUND;
-    return { id: row.id, name: row.name, archivedAt: row.archivedAt };
+    return {
+      id: row.id,
+      name: row.name,
+      archivedAt: row.archivedAt,
+      apartmentId: row.apartmentId,
+      projectId: row.projectId,
+    };
   }
 
   /** Validate the owner exists in the manager's org. Returns the row or
@@ -159,6 +175,64 @@ export class SignatureRequestsService {
     return new Set(rows.filter((r) => r.isRenter && !r.isOwner).map((r) => r.ownerId));
   }
 
+  /** Slice-1 #2 — RECIPIENT-ASSOCIATION GATE.
+   *
+   *  A signing link may only be minted for an owner who is actually tied to the
+   *  DOCUMENT's scope — otherwise a manager could send "sign this apartment's
+   *  document" to a person who has no ownership in it at all (a correctness +
+   *  consent defect: the resulting signature would attribute consent to someone
+   *  unconnected to the property). The bond is the active `ownerships` row
+   *  (`ended_at IS NULL`):
+   *    - apartment-scoped document (`apartment_id` set) → the owner must have an
+   *      active ownership of THAT apartment.
+   *    - else project-scoped document (`project_id` set) → the owner must have an
+   *      active ownership in SOME apartment belonging to that project
+   *      (ownership → apartment → building → project).
+   *    - neither scope → a signature request is meaningless; reject.
+   *  RLS-scoped to the org via the caller's withTenant tx. Returns the subset of
+   *  `ownerIds` that ARE associated (the complement is rejected/failed).
+   */
+  private async resolveAssociatedOwners(
+    tx: TenantTx,
+    doc: { apartmentId: string | null; projectId: string | null },
+    ownerIds: string[],
+  ): Promise<Set<string>> {
+    if (ownerIds.length === 0) return new Set();
+    // A document with NEITHER scope can never have an associated owner.
+    if (!doc.apartmentId && !doc.projectId) return new Set();
+
+    if (doc.apartmentId) {
+      // Apartment-scoped: active ownership of THIS apartment.
+      const rows = await tx
+        .select({ ownerId: ownerships.ownerId })
+        .from(ownerships)
+        .where(
+          and(
+            inArray(ownerships.ownerId, ownerIds),
+            eq(ownerships.apartmentId, doc.apartmentId),
+            sql`${ownerships.endedAt} IS NULL`,
+          ),
+        );
+      return new Set(rows.map((r) => r.ownerId));
+    }
+
+    // Project-scoped: active ownership in any apartment under this project
+    // (ownership → apartment → building → project).
+    const rows = await tx
+      .select({ ownerId: ownerships.ownerId })
+      .from(ownerships)
+      .innerJoin(apartments, eq(apartments.id, ownerships.apartmentId))
+      .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
+      .where(
+        and(
+          inArray(ownerships.ownerId, ownerIds),
+          eq(buildings.projectId, doc.projectId as string),
+          sql`${ownerships.endedAt} IS NULL`,
+        ),
+      );
+    return new Set(rows.map((r) => r.ownerId));
+  }
+
   /** Create a signature request and mint its JWT token.
    *
    *  Flow:
@@ -213,11 +287,25 @@ export class SignatureRequestsService {
         if ((await this.resolveRenterOnly(tx, [input.ownerId])).has(input.ownerId)) {
           throw NOT_FOUND;
         }
+
+        // Slice-1 #2 — RECIPIENT-ASSOCIATION GATE. The owner MUST be tied to the
+        // document's scope (active ownership of the document's apartment, or —
+        // for a project-scoped document — of some apartment under that project).
+        // A document with no scope cannot have an associated owner → reject.
+        // Runs BEFORE PII decrypt (defense-in-depth: an unassociated owner must
+        // not trigger national_id/phone decryption).
+        if (!(await this.resolveAssociatedOwners(tx, doc, [input.ownerId])).has(input.ownerId)) {
+          throw new ConflictException({ error: { code: 'recipient_not_associated' } });
+        }
+
         const own = await this.loadOwnerWithPii(tx, input.ownerId);
 
         // Block a duplicate pending request for the same (doc, owner).
-        // Cancelled/signed requests don't block (the manager may need
-        // to re-issue after cancellation).
+        // Cancelled/signed/expired requests don't block: cancelled/signed are
+        // terminal-by-action, and an EXPIRED pending link is dead — the manager
+        // must be able to re-issue. So the guard requires status='pending' AND a
+        // still-live deadline (expires_at > now()); a lapsed-but-still-'pending'
+        // row (pre-sweep) no longer blocks (Slice-1 #3).
         const [existingPending] = await tx
           .select({ id: signatureRequests.id })
           .from(signatureRequests)
@@ -226,6 +314,7 @@ export class SignatureRequestsService {
               eq(signatureRequests.documentId, input.documentId),
               eq(signatureRequests.ownerId, input.ownerId),
               eq(signatureRequests.status, 'pending'),
+              gt(signatureRequests.expiresAt, sql`now()`),
             ),
           )
           .limit(1);
@@ -342,7 +431,10 @@ export class SignatureRequestsService {
         if (user.role === 'agent') await this.assertDocVisibleForAgent(tx, user, input.documentId);
         await requireAgentCapability(tx, user, 'manage_signatures');
 
-        // Owners that already have a PENDING request for this doc → skip (1 query).
+        // Owners that already have a LIVE pending request for this doc → skip
+        // (1 query). Slice-1 #3: an EXPIRED-but-still-'pending' row (pre-sweep)
+        // must NOT count as blocking, so the predicate also requires a live
+        // deadline (expires_at > now()) — mirroring the single-create guard.
         const existing = await tx
           .select({ ownerId: signatureRequests.ownerId })
           .from(signatureRequests)
@@ -351,6 +443,7 @@ export class SignatureRequestsService {
               eq(signatureRequests.documentId, input.documentId),
               inArray(signatureRequests.ownerId, ownerIds),
               eq(signatureRequests.status, 'pending'),
+              gt(signatureRequests.expiresAt, sql`now()`),
             ),
           );
         const pendingSet = new Set(existing.map((r) => r.ownerId));
@@ -373,6 +466,15 @@ export class SignatureRequestsService {
         // an owner_not_found. This is the load-bearing exclusion (the ownerIds
         // are client-supplied; this is the server's resolution chokepoint).
         const renterOnlySet = await this.resolveRenterOnly(tx, ownerIds);
+
+        // Slice-1 #2 — RECIPIENT-ASSOCIATION GATE (bulk). One batched query
+        // resolves which target owners are tied to the document's scope (active
+        // ownership of the document's apartment, or — for a project-scoped
+        // document — of some apartment under that project). An UNASSOCIATED owner
+        // is a per-owner `failed` (reason 'recipient_not_associated'), never
+        // aborting the batch — same posture as owner_not_found / owner_is_renter.
+        // A scope-less document yields an empty set → every target fails here.
+        const associatedSet = await this.resolveAssociatedOwners(tx, doc, ownerIds);
 
         const audit = new AuditService(tx, { ip: user.ip, userAgent: user.userAgent });
         const bundles: Array<{
@@ -397,6 +499,12 @@ export class SignatureRequestsService {
             // Feature A (D.25): a renter cannot sign. Skip minting/inserting for
             // this owner; the rest of the batch is unaffected.
             bundles.push({ ...m, outcome: 'failed', reason: 'owner_is_renter' });
+            continue;
+          }
+          if (!associatedSet.has(m.ownerId)) {
+            // Slice-1 #2: the owner isn't tied to this document's scope. Per-owner
+            // failure; the batch continues for the associated owners.
+            bundles.push({ ...m, outcome: 'failed', reason: 'recipient_not_associated' });
             continue;
           }
           const [inserted] = await tx

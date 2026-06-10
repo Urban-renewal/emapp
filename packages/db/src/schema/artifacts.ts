@@ -5,6 +5,7 @@ import {
   text,
   timestamp,
   bigint,
+  integer,
   jsonb,
   index,
   uniqueIndex,
@@ -40,6 +41,15 @@ export const documents = pgTable(
      *  serving read paths require this NOT NULL so a never-finalised "ghost"
      *  document is never listed/downloaded (was the NoSuchKey bug). */
     uploadedAt: timestamp('uploaded_at', { withTimezone: true }),
+    /** 0056 (P0.B1) — anti-malware scan verdict. Gates downloadability:
+     *  'pending' (default) | 'clean' | 'infected' | 'error'. The download
+     *  path serves ONLY 'clean' (fail-closed) — unscanned/infected/error
+     *  documents are never downloadable. Stamped by finalize after the
+     *  IFileScanProvider scans the uploaded object. */
+    scanStatus: text('scan_status').notNull().default('pending'),
+    /** 0056 (P0.B1) — AV signature/threat label for an 'infected' verdict, or
+     *  a short content-free reason for 'error'. NEVER file content or PII. */
+    scanSignature: text('scan_signature'),
   },
   (table) => ({
     r2KeyUnique: uniqueIndex('documents_r2_key_unique').on(table.r2Key),
@@ -152,6 +162,64 @@ export const signatureRequests = pgTable(
 export type SignatureRequest = typeof signatureRequests.$inferSelect;
 export type NewSignatureRequest = typeof signatureRequests.$inferInsert;
 
+/**
+ * P0.C2 — PII-PROCESSING consent / privacy-notice acknowledgment trail
+ * (Israeli Privacy Protection Law — recorded lawful basis / notice).
+ *
+ * DISTINCT from D.57 "valid-consent" (the SIGNATURE-threshold % of owners):
+ * that is a project-level signature target; THIS is the per-resident record
+ * that an apartment owner was shown — and acknowledged — the org's
+ * PII-processing privacy notice at a point in time.
+ *
+ * The notice TEXT is configurable per-org (OrgSettings `privacy` namespace —
+ * NOT hardcoded legal copy). This table is the immutable EVIDENCE: it pins the
+ * exact `noticeVersion` AND a `noticeHash` (SHA-256 of the precise text the
+ * resident saw) so the record is self-verifying even if the org later edits
+ * its notice text. No new PII beyond the owner ref + request provenance
+ * (IP/UA) — consistent with how `signatures` captures provenance.
+ *
+ * APPEND-ONLY / IMMUTABLE: INSERT + SELECT only (migration 0059 REVOKEs
+ * UPDATE/DELETE from app_user). A consent, once given, is never mutated or
+ * deleted — it is a forensic compliance record. No `archived_at`.
+ *
+ * Org-scoped: FORCE RLS `tenant_isolation` on `org_id` (migration 0059),
+ * exactly mirroring owners/signatures.
+ */
+export const piiProcessingConsents = pgTable(
+  'pii_processing_consents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    /** The subject — the apartment owner (resident) who acknowledged. */
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => owners.id, { onDelete: 'restrict' }),
+    /** The notice version the resident acknowledged (from OrgSettings.privacy
+     *  `noticeVersion`). Immutable string label, e.g. 'v1'. */
+    noticeVersion: text('notice_version').notNull(),
+    /** SHA-256 (hex) of the EXACT notice text shown to the resident. Pins the
+     *  content immutably even if the org edits its configurable notice copy. */
+    noticeHash: text('notice_hash').notNull(),
+    /** The capture surface / method, e.g. 'public_sign_v1'. */
+    method: text('method').notNull(),
+    /** Provenance — same posture as `signatures.signerIp` / `signerUserAgent`. */
+    consentIp: inet('consent_ip'),
+    consentUserAgent: text('consent_user_agent'),
+    /** When the acknowledgment happened (the signing moment). */
+    acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    orgOwnerIdx: index('idx_pii_consents_org_owner').on(table.orgId, table.ownerId),
+    ownerAckIdx: index('idx_pii_consents_owner_ack').on(table.ownerId, table.acknowledgedAt.desc()),
+  }),
+);
+
+export type PiiProcessingConsent = typeof piiProcessingConsents.$inferSelect;
+export type NewPiiProcessingConsent = typeof piiProcessingConsents.$inferInsert;
+
 export const notes = pgTable(
   'notes',
   {
@@ -217,6 +285,49 @@ export const auditLog = pgTable(
 
 export type AuditLog = typeof auditLog.$inferSelect;
 export type NewAuditLog = typeof auditLog.$inferInsert;
+
+/**
+ * P0.C1 — data-subject ERASURE compliance ledger (right-to-be-forgotten).
+ *
+ * Append-only, ORG-scoped (RLS tenant_isolation, FORCE — migration 0057). One
+ * row per executed owner erasure: WHO erased WHICH owner, WHEN, and WHICH PII
+ * field-categories were cleared. It NEVER stores the cleared PII VALUES — only
+ * the field NAMES (`clearedFields`) — because the entire point of erasure is
+ * that the values are irreversibly gone. `signaturesRetained` /
+ * `ownershipsRetained` record the counts KEPT (anonymized-in-place) so the
+ * ledger proves the legal-retention middle path (see
+ * docs/DECISION-erasure-vs-legal-retention.md). app_user holds INSERT + SELECT
+ * only (no UPDATE/DELETE) — a ledger row is immutable evidence (0057 grants).
+ */
+export const erasureLog = pgTable(
+  'erasure_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => owners.id, { onDelete: 'restrict' }),
+    // Actor: SET NULL on user delete so the ledger row outlives the acting user
+    // (the actor_email + actor_id snapshot is the durable forensic copy).
+    actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    actorEmail: text('actor_email'),
+    // jsonb array of cleared FIELD-CATEGORY names. NEVER the cleartext values.
+    clearedFields: jsonb('cleared_fields').$type<string[]>().notNull().default([]),
+    signaturesRetained: integer('signatures_retained').notNull().default(0),
+    ownershipsRetained: integer('ownerships_retained').notNull().default(0),
+    reason: text('reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    orgTimeIdx: index('idx_erasure_log_org_time').on(table.orgId, table.createdAt.desc()),
+    ownerIdx: index('idx_erasure_log_owner').on(table.ownerId),
+  }),
+);
+
+export type ErasureLog = typeof erasureLog.$inferSelect;
+export type NewErasureLog = typeof erasureLog.$inferInsert;
 
 export const cacheKv = pgTable(
   'cache_kv',

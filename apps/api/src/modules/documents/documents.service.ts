@@ -7,11 +7,13 @@ import {
   projects,
   withTenant,
   type Document as DocumentRow,
+  type IFileScanProvider,
   type IStorageProvider,
   type TenantTx,
 } from '@emapp/db';
 import {
   DOCUMENT_MAX_SIZE_BYTES,
+  DOCUMENT_SCAN_REJECTED_CODE,
   DOCUMENT_UPLOAD_INCOMPLETE_CODE,
   type CreateDocument,
   type Document,
@@ -37,6 +39,7 @@ import type { AccessTokenPayload } from '../auth/auth.service';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
+import { FILE_SCAN_PROVIDER } from './scan-provider.factory';
 import {
   DOWNLOAD_URL_TTL_SECONDS,
   STORAGE_PROVIDER,
@@ -46,6 +49,45 @@ import {
 } from './storage';
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
+
+/**
+ * P0.B1 — the anti-malware scan did not return `clean` (infected, or the scan
+ * could not complete). FAIL-CLOSED: the document is archived + purged and is
+ * never servable. 409 (the object genuinely exists but is in a state that
+ * conflicts with serving it). Like UPLOAD_INCOMPLETE, only reachable AFTER the
+ * per-record visibility check, so it is never an existence oracle.
+ */
+const SCAN_REJECTED = new ConflictException({
+  error: { code: DOCUMENT_SCAN_REJECTED_CODE },
+});
+
+/** P0.B1 — read an object's bytes (bounded) for scanning. The scanner takes a
+ *  lazy loader so a provider that fetches out-of-band never triggers this. */
+async function readObjectBytes(
+  storage: IStorageProvider,
+  key: string,
+  maxBytes: number,
+): Promise<Buffer> {
+  const stream = await storage.getObjectStream(key);
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    for await (const chunk of stream) {
+      const buf = chunk as Buffer;
+      total += buf.length;
+      // Defense-in-depth: never buffer past the declared ceiling even if the
+      // object is unexpectedly larger (the presign already bounded the PUT).
+      if (total > maxBytes) {
+        throw new Error('object_exceeds_scan_ceiling');
+      }
+      chunks.push(buf);
+    }
+  } finally {
+    // Half-open R2 streams leak a connection — ensure it is closed.
+    stream.destroy();
+  }
+  return Buffer.concat(chunks);
+}
 
 /**
  * 0050 (ghost-doc UX) — the caller OWNS/can-see this document but its upload
@@ -106,6 +148,7 @@ export class DocumentsService {
 
   constructor(
     @Inject(STORAGE_PROVIDER) private readonly storage: IStorageProvider,
+    @Inject(FILE_SCAN_PROVIDER) private readonly scanner: IFileScanProvider,
     private readonly notifications: NotificationsProducerService,
   ) {}
 
@@ -214,6 +257,11 @@ export class DocumentsService {
     // preview path passes requireUploaded=true). A ghost's presigned URL would
     // 404 on R2 (NoSuchKey); the owner needs to know to re-upload.
     if (requireUploaded && !row.uploadedAt) throw UPLOAD_INCOMPLETE;
+    // P0.B1 — FAIL-CLOSED malware gate. The serving (download) path requires a
+    // `clean` AV verdict; anything else ('pending' / 'infected' / 'error') is
+    // never servable. Ordered AFTER the visibility + uploaded checks so it is
+    // only ever surfaced for the caller's OWN finalised document (no oracle).
+    if (requireUploaded && row.scanStatus !== 'clean') throw SCAN_REJECTED;
     return row;
   }
 
@@ -435,7 +483,11 @@ export class DocumentsService {
         }
         const [updated] = await tx
           .update(documents)
-          // 0049 — mark the upload confirmed: from here the doc is servable.
+          // 0049 — mark the upload confirmed. P0.B1 — scan_status stays
+          // 'pending' here: the upload is confirmed but NOT yet servable. The
+          // anti-malware scan runs AFTER commit (it reads the object bytes);
+          // the download gate requires uploaded_at AND scan_status='clean', so
+          // the doc is FAIL-CLOSED (un-servable) in this 'pending' window.
           .set({ updatedAt: new Date(), uploadedAt: new Date() })
           .where(eq(documents.id, row.id))
           .returning();
@@ -463,7 +515,108 @@ export class DocumentsService {
       });
       throw new ConflictException({ error: { code: 'document_integrity_mismatch' } });
     }
-    return toDocument(result.row);
+
+    // P0.B1 — anti-malware scan gate. The integrity-confirmed object is scanned
+    // BEFORE it can ever be downloaded (the download path serves only
+    // scan_status='clean'). FAIL-CLOSED: a 'clean' verdict flips the row to
+    // servable; ANYTHING else (infected / scan error / unexpected) archives +
+    // purges the object and rejects, so a malicious or unscannable file is
+    // never retrievable. Mirrors the integrity-reject compensation above.
+    return this.scanGate(user, result.row);
+  }
+
+  /**
+   * P0.B1 — run the injected IFileScanProvider against the finalised object and
+   * persist the verdict. Returns the now-`clean` document, or throws
+   * SCAN_REJECTED (after archive + purge) for any non-clean outcome.
+   *
+   * SECURITY: fail-closed at every branch — a thrown scanner, an exceeded
+   * byte ceiling, or an 'error' verdict all archive + reject. The file bytes
+   * are NEVER logged; only the doc id + verdict + (content-free) signature
+   * label are recorded.
+   */
+  private async scanGate(user: AccessTokenPayload, row: DocumentRow): Promise<Document> {
+    let verdict: 'clean' | 'infected' | 'error' = 'error';
+    let signature: string | undefined;
+    try {
+      const result = await this.scanner.scan({
+        key: row.r2Key,
+        // Lazy: a provider that fetches out-of-band (R2-event scanner) never
+        // triggers this read; the ClamAV provider pulls the bytes here.
+        bytes: () => readObjectBytes(this.storage, row.r2Key, DOCUMENT_MAX_SIZE_BYTES),
+      });
+      verdict = result.verdict;
+      signature = result.signature;
+    } catch (e) {
+      // Any unexpected throw ⇒ treat as scan error (fail-closed). The interface
+      // contract is "never throw", but defend against a misbehaving provider.
+      this.logger.error(
+        `file scan threw (doc=${row.id}): ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+      verdict = 'error';
+      signature = 'scan_threw';
+    }
+
+    if (verdict === 'clean') {
+      const updated = await withTenant(
+        user.orgId,
+        async (tx) => {
+          const [r] = await tx
+            .update(documents)
+            .set({ scanStatus: 'clean', scanSignature: null, updatedAt: new Date() })
+            .where(eq(documents.id, row.id))
+            .returning();
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+            orgId: user.orgId,
+            actorId: user.sub,
+            actorType: 'user',
+            action: 'document.scan_clean',
+            targetTable: 'documents',
+            targetId: row.id,
+            sessionId: user.sid,
+          });
+          return r ?? row;
+        },
+        { userId: user.sub },
+      );
+      return toDocument(updated);
+    }
+
+    // NON-CLEAN (infected | error) — archive the row, record the verdict, purge
+    // the object, and reject. The file is now unreachable (fail-closed).
+    const purgeKey = await withTenant(
+      user.orgId,
+      async (tx) => {
+        await tx
+          .update(documents)
+          .set({
+            scanStatus: verdict,
+            scanSignature: signature ?? null,
+            archivedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(documents.id, row.id));
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'document.scan_reject',
+          targetTable: 'documents',
+          targetId: row.id,
+          // verdict + signature label only — never file content/PII.
+          metadata: { verdict, signature: signature ?? null },
+          sessionId: user.sid,
+        });
+        return row.r2Key;
+      },
+      { userId: user.sub },
+    );
+    await this.storage.delete(purgeKey).catch((e: unknown) => {
+      this.logger.error(
+        `purge after scan reject failed (doc=${row.id}): ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+    });
+    throw SCAN_REJECTED;
   }
 
   async get(user: AccessTokenPayload, id: string): Promise<Document> {

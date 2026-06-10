@@ -224,6 +224,7 @@ async function seed(): Promise<void> {
           contentHash: 'sha256:' + 'e'.repeat(64),
           uploadedBy: orgA.users[0]!.id,
           uploadedAt: new Date(),
+          scanStatus: 'clean', // P0.B1 — scan-clean so it passes the malware gate
         })
         .returning({ id: documents.id });
       return d!.id;

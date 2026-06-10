@@ -123,6 +123,44 @@ export const ConsentSettingsSchema = z
 export type ConsentSettings = z.infer<typeof ConsentSettingsSchema>;
 
 /**
+ * P0.C2 — DEFAULT PII-processing privacy-notice copy. A GENERIC, neutral
+ * Hebrew default (NOT bespoke legal copy) so the feature ships with a lawful-
+ * basis notice out of the box; every org SHOULD review + override `noticeText`
+ * with its own counsel-approved wording. Kept here (not hardcoded at the emit
+ * site) so it is the single source of truth and overridable per-org.
+ */
+export const DEFAULT_PRIVACY_NOTICE_TEXT =
+  'בעת החתימה, פרטיך האישיים (שם, מספר זהות, פרטי קשר וחתימתך) ' +
+  'נאספים ומעובדים לצורך ניהול הליך ההתחדשות העירונית ואיסוף החתימות, ' +
+  'בהתאם לחוק הגנת הפרטיות, התשמ"א-1981. בחתימתך הינך מאשר/ת כי קראת ' +
+  'הודעה זו והבנת את מטרת עיבוד המידע.';
+
+/**
+ * Privacy / PII-processing consent-notice namespace (P0.C2). The notice the
+ * resident (apartment owner) sees + acknowledges at the signing moment.
+ *
+ * GENERIC + configurable — no hardcoded legal copy at the emit site:
+ *  - `noticeText`   the org's notice wording (default = DEFAULT_PRIVACY_NOTICE_TEXT).
+ *  - `noticeVersion` an immutable label the consent RECORD pins (default 'v1').
+ *    Bump this whenever `noticeText` materially changes so new acknowledgments
+ *    reference the new version (old records keep their old version + hash).
+ *  - `requireExplicitConsent` if true the sign UI REQUIRES an explicit checkbox
+ *    before signing; if false (default) consent is implicit-by-signing and the
+ *    UI shows a clear "by signing you acknowledge…" statement. Either way the
+ *    consent RECORD is written atomically with the signature.
+ *
+ * DISTINCT from the `consent` namespace above (D.57 signature THRESHOLD %).
+ */
+export const PrivacySettingsSchema = z
+  .object({
+    noticeText: z.string().min(1).max(5000).default(DEFAULT_PRIVACY_NOTICE_TEXT),
+    noticeVersion: z.string().min(1).max(40).default('v1'),
+    requireExplicitConsent: z.boolean().default(false),
+  })
+  .default({});
+export type PrivacySettings = z.infer<typeof PrivacySettingsSchema>;
+
+/**
  * Operational limits namespace. `bulkCap` = max rows in a bulk action (today
  * 200). `defaultPageSize` = list page-size default (today 25). These are
  * ergonomics knobs, not security controls.
@@ -147,6 +185,7 @@ const OrgSettingsObject = z.object({
   timezone: z.string().min(1).default('Asia/Jerusalem'),
   signatures: SignatureSettingsSchema,
   consent: ConsentSettingsSchema,
+  privacy: PrivacySettingsSchema,
   limits: LimitsSettingsSchema,
 });
 
@@ -185,6 +224,7 @@ export const OrgSettingsSchema = z
       .catch(() => DEFAULT_ORG_SETTINGS.timezone),
     signatures: SignatureSettingsSchema.catch(() => DEFAULT_ORG_SETTINGS.signatures),
     consent: ConsentSettingsSchema.catch(() => DEFAULT_ORG_SETTINGS.consent),
+    privacy: PrivacySettingsSchema.catch(() => DEFAULT_ORG_SETTINGS.privacy),
     limits: LimitsSettingsSchema.catch(() => DEFAULT_ORG_SETTINGS.limits),
   })
   .catch(() => DEFAULT_ORG_SETTINGS);

@@ -13,7 +13,12 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { resolveOrgSettings, DEFAULT_ORG_SETTINGS, type OrgSettings } from './org-settings';
+import {
+  resolveOrgSettings,
+  DEFAULT_ORG_SETTINGS,
+  DEFAULT_PRIVACY_NOTICE_TEXT,
+  type OrgSettings,
+} from './org-settings';
 
 // A frozen snapshot of the expected default tree, asserted leaf-by-leaf so a
 // drift in any single default is caught here (not just "deep-equal to itself").
@@ -25,6 +30,11 @@ const FULL_DEFAULT: OrgSettings = {
   timezone: 'Asia/Jerusalem',
   signatures: { linkTtlDays: 7, channels: ['sms', 'email', 'whatsapp'] },
   consent: { tama38_1: 66, tama38_2: 66, pinui_binui: 66 },
+  privacy: {
+    noticeText: DEFAULT_PRIVACY_NOTICE_TEXT,
+    noticeVersion: 'v1',
+    requireExplicitConsent: false,
+  },
   limits: { bulkCap: 200, defaultPageSize: 25 },
 };
 
@@ -41,6 +51,9 @@ function expectIsFullDefault(s: OrgSettings): void {
   expect(s.consent.tama38_1).toBe(66);
   expect(s.consent.tama38_2).toBe(66);
   expect(s.consent.pinui_binui).toBe(66);
+  expect(s.privacy.noticeText).toBe(DEFAULT_PRIVACY_NOTICE_TEXT);
+  expect(s.privacy.noticeVersion).toBe('v1');
+  expect(s.privacy.requireExplicitConsent).toBe(false);
   expect(s.limits.bulkCap).toBe(200);
   expect(s.limits.defaultPageSize).toBe(25);
 }

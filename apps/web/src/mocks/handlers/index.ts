@@ -418,6 +418,12 @@ export const handlers = [
         },
         owner: { name: 'ישראל ישראלי' },
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        // P0.C2 — configurable PII-processing privacy notice (offline default).
+        consentNotice: {
+          text: 'בעת החתימה, פרטיך האישיים נאספים ומעובדים לצורך ניהול הליך ההתחדשות העירונית, בהתאם לחוק הגנת הפרטיות.',
+          version: 'v1',
+          requireExplicitConsent: false,
+        },
       }),
     );
   }),

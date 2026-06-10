@@ -124,6 +124,7 @@
     "formHeading": "Welcome",
     "formSubheading": "Choose your user type and sign in",
     "loginCta": "Sign in",
+    "forgotPassword": "Forgot password?",
     "rolePicker": {
       "manager": { "label": "Manager", "sub": "Email and password" },
       "agent": { "label": "Agent", "sub": "Email or phone" },
@@ -672,7 +673,11 @@
     "submitting": "Submitting...",
     "errorTooShort": "Signature is too short. Try a fuller signature.",
     "errorTooLarge": "Signature is too large. Try a simpler signature.",
-    "errorInvalid": "Signature is invalid."
+    "errorInvalid": "Signature is invalid.",
+    "consentSectionTitle": "Privacy & data-processing notice",
+    "consentCheckboxLabel": "I have read the privacy notice and consent to the processing of my personal data.",
+    "consentImplicitLine": "By signing, you acknowledge that you have read the privacy notice above.",
+    "consentRequired": "You must acknowledge the privacy notice before signing."
   },
   "provider": {
     "nav": {
@@ -738,7 +743,8 @@
       "suspended": "Suspended",
       "searchPlaceholder": "Search tenants by name…",
       "search": "Search",
-      "searchClear": "Clear"
+      "searchClear": "Clear",
+      "usersModeHint": "User management — pick a tenant to view its org members (name and email are masked)."
     },
     "onboard": {
       "title": "Create a new tenant",
@@ -778,6 +784,7 @@
       "sampleOwnersHint": "Up to 5 most-recent owners. Name and phone are masked server-side (•••••••XX / •••••XXXX); national_id never crosses the wire.",
       "noSampleOwners": "No owners to show.",
       "phoneLabel": "Tel:",
+      "viewUsersForTenant": "Org users",
       "viewAuditForTenant": "View this tenant's audit log",
       "suspension": {
         "title": "Tenant access control",
@@ -796,6 +803,26 @@
         "reactivating": "Reactivating…",
         "actionFailed": "Action failed. Try again.",
         "reasonRequired": "An access reason is required for this action."
+      }
+    },
+    "tenantUsers": {
+      "title": "Org users",
+      "hint": "The organization's members, their roles, and membership status. Name and email are masked server-side; national_id and phone never cross the wire. Read-only and audited.",
+      "backToTenant": "Back to tenant",
+      "loadFailed": "Failed to load org users.",
+      "empty": "No users in this organization.",
+      "primaryBadge": "Primary",
+      "joinedLabel": "Joined",
+      "lastLoginLabel": "Last login",
+      "status": {
+        "active": "Active",
+        "invited": "Invited",
+        "revoked": "Revoked"
+      },
+      "role": {
+        "manager": "Manager",
+        "agent": "Agent",
+        "viewer": "Viewer"
       }
     },
     "audit": {
@@ -899,6 +926,69 @@
         "title": "Operator runbook",
         "body": "The full step-by-step restore procedure (Neon branch-restore, pg_dump/pg_restore fallback, key recovery, R2 backup) is documented in:"
       }
+    }
+  },
+  "roles": {
+    "listTitle": "Roles & permissions",
+    "subtitle": "Define your organization's own roles as named permission groups, on top of the built-in system roles. Owner/Admin only.",
+    "createCustom": "New custom role",
+    "customSection": "Custom roles",
+    "systemSection": "System roles",
+    "noCustom": "No custom roles yet. Create one to group permissions for your team.",
+    "systemBadge": "System",
+    "customBadge": "Custom",
+    "permissionCount": "{count} permissions",
+    "assignmentCount": "{count} assigned",
+    "createTitle": "Create a custom role",
+    "editTitle": "Edit custom role",
+    "assignTitle": "Assign \"{role}\"",
+    "field": {
+      "name": "Name",
+      "description": "Description",
+      "permissions": "Permissions",
+      "member": "Member",
+      "pickMember": "Select a member…"
+    },
+    "picker": {
+      "governance": "governance",
+      "governanceLockedHint": "Governance permissions (roles.* / org.*) can only be included by an Owner.",
+      "notHeldHint": "You can't grant a permission you don't hold yourself."
+    },
+    "assign": "Assign",
+    "revoke": "Revoke",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleting": "Deleting…",
+    "create": "Create",
+    "creating": "Creating…",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "close": "Close",
+    "assigning": "Assigning…",
+    "revoking": "Revoking…",
+    "assignedOk": "Role assigned. It takes effect on the member's next request.",
+    "revokedOk": "Role revoked.",
+    "retry": "Retry",
+    "loadFailed": "Couldn't load roles.",
+    "notAuthorized": "You don't have permission to manage roles. This area is available to Owners and Admins.",
+    "errors": {
+      "nameTooShort": "Name must be at least 2 characters.",
+      "noPermissions": "Select at least one permission.",
+      "nameTaken": "A role with this name already exists.",
+      "governanceOwnerOnly": "Only an Owner may include governance permissions (roles.* / org.*): {permissions}",
+      "permissionNotHeld": "You can't grant permissions you don't hold: {permissions}",
+      "unknownPermission": "Unknown permissions: {permissions}",
+      "systemImmutable": "System roles can't be edited or deleted.",
+      "roleInUse": "This role is assigned to members and can't be deleted. Revoke it first.",
+      "grantExceedsActor": "You can't grant a role that exceeds your own permissions.",
+      "ownerRequiredForTier": "Only an Owner may grant the Owner or Admin role.",
+      "lastOwner": "You can't revoke the last Owner — the organization must keep at least one.",
+      "assignSelf": "You can't assign a role to yourself.",
+      "memberNotFound": "That member is no longer active in this organization.",
+      "assignmentNotFound": "That member doesn't hold this role.",
+      "pickMember": "Select a member first.",
+      "generic": "Something went wrong. Please try again."
     }
   },
   "members": {
@@ -1393,6 +1483,32 @@
       "userPlaceholder": "Pick a member...",
       "roleInProject": "Role on this project"
     }
+  },
+  "forgotPassword": {
+    "title": "Reset your password",
+    "subtitle": "Enter your email address and we'll send you a password-reset link.",
+    "email": "Email",
+    "emailInvalid": "Invalid email address",
+    "submit": "Send reset link",
+    "submitting": "Sending...",
+    "backToLogin": "Back to sign in",
+    "genericNotice": "If an account exists for this address, we've sent it a password-reset link. Check your inbox.",
+    "error": "Something went wrong. Please try again."
+  },
+  "resetPassword": {
+    "title": "Set a new password",
+    "subtitle": "Choose a new password for your account.",
+    "password": "New password",
+    "confirmPassword": "Confirm password",
+    "passwordRequirements": "Password must be at least 12 characters",
+    "passwordsMismatch": "Passwords do not match",
+    "submit": "Update password",
+    "submitting": "Updating...",
+    "doneTitle": "Password updated ✓",
+    "doneBody": "Redirecting you to sign in...",
+    "missingToken": "This link is invalid. Please request a new password-reset link.",
+    "invalidToken": "This link is invalid or has expired. Please request a new password-reset link.",
+    "requestNewLink": "Request a new link"
   },
   "acceptInvite": {
     "title": "Complete your invitation",

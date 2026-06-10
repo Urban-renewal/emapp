@@ -160,11 +160,48 @@ real download endpoint against a document whose `scan_status` I flipped in dev:
   covered by #333 unit tests. Endpoint presence confirmed; destructive path left
   to the unit suite intentionally.
 
+### 1.6 — Custom roles (#337) (✅ create works, fail-closed on unknown permission)
+
+Driven against `POST /api/v1/roles` (the DTO is `{name, description?, permissions[]}`,
+`.strict()` — no client-supplied `key`):
+
+| Input                                                   | Result                                                                                       |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `{name, permissions:['owners.read','apartments.read']}` | **201** — `isSystem:false` (org-custom), permissions persisted                               |
+| `{name, permissions:['this.is.not.a.real.permission']}` | **422 `unknown_permission`** (fail-closed — a typo'd / future permission is never persisted) |
+
+- ✅ Org-custom role created as non-system, then `DELETE /roles/:id` → **204**,
+  list back to the 6 seeded system roles (admin/agent/external_read/manager/owner/
+  viewer). Test artifact cleaned up.
+- **Anti-escalation** (a grantor cannot grant a permission they don't hold;
+  Owner-tier permissions are Owner-only) is enforced in the service (verified in
+  source: `member-overrides.service.ts` throws `ESCALATION` / `OWNER_ONLY`) and
+  covered by #337 unit tests. Couldn't trigger the subset-rejection live because
+  the QA "manager" account holds a near-Owner set (66 permissions incl.
+  `roles.manage`, `org.transfer_ownership`) — see the note under §3.
+
+### 1.7 — Per-member overrides (#338) (✅ grant/deny works; self-lockout blocked)
+
+Route is `PUT /api/v1/members/:userId/overrides` (NOT POST — a POST returns 404;
+worth knowing for the FE contract). Driven against an **agent** member:
+
+| Action                                                | Result                                                         |
+| ----------------------------------------------------- | -------------------------------------------------------------- |
+| `PUT {permission:'contractors.read', effect:'grant'}` | **200** effect=grant                                           |
+| `PUT {permission:'owners.reveal_pii', effect:'deny'}` | **200** effect=deny                                            |
+| `GET …/overrides`                                     | lists both: `contractors.read:grant`, `owners.reveal_pii:deny` |
+| `PUT` an override on **my own** userId                | **400 `cannot_modify_self`** ✅                                |
+
+- ✅ **Self-lockout guard (security):** you cannot override your own permissions —
+  prevents an admin from accidentally (or an attacker from deliberately) denying
+  their own governance and bricking the account.
+- ✅ The engine resolves `(role ∪ grant) − deny` with DENY winning (source:
+  `permission.service.ts` §4; #338 unit tests). Both test overrides cleared via
+  `DELETE` (204 ×2, 0 remaining) — agent restored.
+
 ### (pending — next iterations)
 
 - 1.5 Consent-at-signing
-- 1.6 Custom roles UI (#337)
-- 1.7 Per-member overrides (#338)
 - 1.8 Project renewal fields (#340)
 - 1.9 Provider org-users (MFA)
 - 2. Logs assessment (SaaS-grade?)

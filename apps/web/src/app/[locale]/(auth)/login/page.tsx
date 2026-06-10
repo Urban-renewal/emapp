@@ -171,6 +171,18 @@ export default function LoginPage() {
           </button>
         </form>
 
+        {/* P1 R0.1 — self-service password reset entry point. A locked-out
+         *  Manager/Owner reaches the public /forgot-password flow from here. */}
+        <p className="mt-4 text-center text-sm">
+          <Link
+            href="/forgot-password"
+            className="font-medium underline"
+            style={{ color: 'var(--navy-700)' }}
+          >
+            {t('forgotPassword')}
+          </Link>
+        </p>
+
         {/* Public self-service signup is INACTIVE by default (owner-approved,
          *  refines D.21 — the active onboarding path is provider-led). The
          *  signup entry point is gated behind NEXT_PUBLIC_SIGNUP_ENABLED (off

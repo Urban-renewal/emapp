@@ -19,6 +19,9 @@ export * from './note';
 export * from './audit';
 export * from './project-assignment';
 export * from './member';
+// P2 Phase 1 — custom roles (org-defined permission groups). Management CRUD +
+// assign/revoke wire shapes over the existing IAM data model (roles.org_id).
+export * from './role';
 // P1-1 — per-org configurable policy seam (the spine). Typed `OrgSettings`
 // schema + defaults; `getOrgSettings(tx, orgId)` in @emapp/api parses
 // `organizations.settings` jsonb over these. The single source every future

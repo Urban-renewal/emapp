@@ -34,7 +34,14 @@ const PUBLIC_ROUTE_REGEX = new RegExp(
   // API layer (ContractorAuthGuard), NOT this middleware. The landing keeps
   // the JWT-shape pinning so a stray `/he/contractor/share/whatever` can't
   // masquerade as public; the clean path is an exact token-less segment.
-  `^\\/[a-z]{2}\\/(login|signup|provider\\/login|tenant\\/login|accept-invite\\/${JWT_SHAPE}|contractor\\/share(\\/${JWT_SHAPE})?)$`,
+  // P1 R0.1 — self-service password reset is a PUBLIC pre-auth surface
+  // (`/<locale>/forgot-password` + `/<locale>/reset-password`). The reset token
+  // travels as a `?token=` QUERY param (not a path segment), so the pathname is
+  // a plain `reset-password` here — the BE single-use guard is the authority on
+  // the token. Both stay in PUBLIC_ROUTE_REGEX (not AUTH_ROUTE_REGEX) so an
+  // already-authenticated user is NOT bounced away (they may be helping reset
+  // another account / following their own link with a stale session).
+  `^\\/[a-z]{2}\\/(login|signup|forgot-password|reset-password|provider\\/login|tenant\\/login|accept-invite\\/${JWT_SHAPE}|contractor\\/share(\\/${JWT_SHAPE})?)$`,
 );
 /**
  * Org-tier auth routes — bounce ANY user with `access_token` away.

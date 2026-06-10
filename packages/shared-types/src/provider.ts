@@ -98,6 +98,55 @@ export const TenantDetailSchema = z.object({
 export type TenantDetail = z.infer<typeof TenantDetailSchema>;
 
 // ───────────────────────────────────────────────────────────────────
+// P4 (PLAN-provider-console §3 Tier-1 #1) — Org users management.
+// GET /provider/tenants/:id/users — the target org's MEMBERS, READ-ONLY
+// and PII-MASKED (same posture as the tenant-detail sample owners).
+//
+// PII rule (D.19 + D.37 — applies to MEMBERS too):
+//   - member name  → masked (•••••••XX — last 2 chars; null-safe)
+//   - member email → masked (a•••@domain.tld — first char + domain)
+//   - national_id / phone → NEVER on the wire (members don't even carry
+//     them here; the SELECT omits any such column).
+//
+// No reveal flow — masked only (the provider tier never sees full
+// customer PII at this surface). Cursor-paginated like every list.
+// ───────────────────────────────────────────────────────────────────
+export const ListTenantUsersQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  cursor: z.string().min(1).optional(),
+});
+export type ListTenantUsersQuery = z.infer<typeof ListTenantUsersQuerySchema>;
+
+/** Membership lifecycle state surfaced to the operator (derived from the
+ *  membership row): `invited` (not yet accepted), `active` (accepted +
+ *  not revoked), `revoked` (revoked_at set). */
+export const TenantUserStatusSchema = z.enum(['invited', 'active', 'revoked']);
+export type TenantUserStatus = z.infer<typeof TenantUserStatusSchema>;
+
+export const TenantUserItemSchema = z.object({
+  /** Membership id (stable list key; the member's identity on this org). */
+  id: z.string().uuid(),
+  /** Underlying user id — opaque UUID, NOT PII. */
+  userId: z.string().uuid(),
+  /** Masked: pattern `•••••••XX` — last 2 chars only. */
+  nameMasked: z.string(),
+  /** Masked: pattern `a•••@domain.tld` — first char of local-part + domain. */
+  emailMasked: z.string(),
+  /** The membership's primary org role (D.17 — manager | agent | viewer). */
+  role: z.string(),
+  /** Custom role keys from role_assignments (org-scope), if any. Empty when
+   *  the member holds only the system membership role. */
+  roleKeys: z.array(z.string()),
+  status: TenantUserStatusSchema,
+  /** Whether this membership is the org's primary (the bootstrap owner). */
+  isPrimary: z.boolean(),
+  /** Cheap last-activity signal — the user's last_login_at (NOT per-org). */
+  lastLoginAt: z.coerce.date().nullable(),
+  createdAt: z.coerce.date(),
+});
+export type TenantUserItem = z.infer<typeof TenantUserItemSchema>;
+
+// ───────────────────────────────────────────────────────────────────
 // D.49 — Provider WRITE actions (supersedes the D.37 read-only lock).
 //
 // POST /provider/tenants/:id/suspend     — freeze an org operationally.

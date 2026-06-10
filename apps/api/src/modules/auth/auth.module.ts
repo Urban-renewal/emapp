@@ -3,12 +3,14 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 
 import { PermissionService } from '../../common/authz/permission.service';
+import { EMAIL_PROVIDER, emailProviderFactory } from '../members/invite-email';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './guards/auth.guard';
 import { TenantGuard } from './guards/tenant.guard';
 import { MeController } from './me.controller';
+import { PasswordResetRepository } from './password-reset.repository';
 import { ProviderAuthController } from './provider/provider-auth.controller';
 import { ProviderAuthGuard } from './provider/provider-auth.guard';
 import { ProviderAuthService } from './provider/provider-auth.service';
@@ -38,6 +40,13 @@ import { TenantAuthGuard } from './tenant/tenant-auth.guard';
     // can resolve the actor's effective permission-set. ADDITIVE: still not
     // wired into any guard (the cutover is slice 5).
     PermissionService,
+    // P1 R0.1 — single-responsibility password-reset token store (mint/verify/
+    // consume) + the governed email seam (D.27 — Fake in dev/test, Resend a
+    // pure Infisical swap; SAME factory as the member-invite channel, no new
+    // email mechanism). Imported from members/invite-email so there is ONE
+    // EMAIL_PROVIDER factory across the app (DRY).
+    PasswordResetRepository,
+    { provide: EMAIL_PROVIDER, useFactory: emailProviderFactory },
     AuthGuard,
     TenantGuard,
     ProviderAuthService,

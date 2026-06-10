@@ -47,7 +47,26 @@ Scope (from docs/DESIGN-project-model-and-autosetup.md §5):
   STANDALONE live-HTTP fresh-create/negative repro was blocked by QA-fixture friction
   (owner-create DTO + seed-encryption typing + wrong cancel route) — NOT a gate problem. A
   cleaner live UX repro lands with Phase-3 entity-model UI fixtures.
-- CI ⏳ running (merged main: #343 M-2 + #344 S-1 came in; conflict on REVIEW doc resolved).
-- Merge-on-green ⏳ · Critic ⏳ · Memory ⏳
+- CI ✅ CLEAN (the 6 phase5 E2E passed under the CI bypass; local http_429 was env-only).
+- **Merge-on-green ✅ — PR #345 squash-merged to main as d4769fc (incl. migration 0063).**
+- Critic ✅ — open notes: (a) no background sweeper flips newly-lapsing `pending`→`expired`
+  going forward (acceptable: the dedup predicate + FE `isExpired` both derive from
+  `expires_at`, so correctness holds regardless of a sweep; a cron sweep is a later nicety);
+  (b) the standalone LIVE-HTTP negative repro (recipient_not_associated) was blocked by
+  QA-fixture friction — re-do cleanly in Phase-3 once UI-level owner/ownership fixtures exist.
+- Memory ✅ (project_v12_epic_and_charter).
+
+**SLICE 1 ✅ CLOSED — merged d4769fc.**
+
+Process note: after a squash-merge, sync local main with `git fetch && git reset --hard
+origin/main` (NOT `git pull --ff-only`, which fails when local main has superseded commits).
+
+---
+
+## Slice 2 — invites + documents (#4 #9 #7 #1) · branch feat/s2-invites-docs (next)
+
+Scope: #4/#9 expose the invite + sign link in-app for dev (FakeEmail sends nowhere) + handle
+re-invite to an existing email; #7 member resend + copy-link + pending clarity; #1 document
+inline VIEW (vs forced download — `Content-Disposition: attachment`). Same pipeline + green gate.
 
 Rule: any real-red → slice stays OPEN with the blocker named here; never force-merge.

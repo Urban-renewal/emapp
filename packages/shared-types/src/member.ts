@@ -134,3 +134,78 @@ export const ListMembersQuery = z.object({
   cursor: z.string().min(1).optional(),
 });
 export type ListMembersQueryDto = z.infer<typeof ListMembersQuery>;
+
+// ───────────────────────────────────────────────────────────────────
+// P2 Phase 2 — per-user PERMISSION OVERRIDES. An Owner/Admin can layer a
+// `grant` (ADD a permission) or `deny` (REMOVE one) on top of a member's
+// role-derived set. The engine resolves: final = (role ∪ GRANT) − DENY,
+// DENY winning (see apps/api/.../permission.service.ts). `permission` is a
+// catalog string (the catalog is CODE — apps/api/.../permissions.ts); it is
+// validated against the catalog SERVER-SIDE (fail-closed on an unknown
+// string), so the wire schema only constrains it to a bounded non-empty
+// string. Scope mirrors role assignments: `org` (whole org) or `project`
+// (one project). The override CRUD lives under /members/:userId/overrides.
+// ───────────────────────────────────────────────────────────────────
+
+/** grant = add a permission; deny = remove one (deny wins). */
+export const OverrideEffectEnum = z.enum(['grant', 'deny']);
+export type OverrideEffect = z.infer<typeof OverrideEffectEnum>;
+
+/** org = whole org; project = one project (mirrors role assignment scoping). */
+export const OverrideScopeTypeEnum = z.enum(['org', 'project']);
+export type OverrideScopeType = z.infer<typeof OverrideScopeTypeEnum>;
+
+/** A bounded catalog-permission string (real validation is server-side). */
+const PermissionString = z.string().min(1).max(120);
+
+/** A single resolved override row on a member. */
+export const MemberPermissionOverrideSchema = z.object({
+  id: z.string().uuid(),
+  userId: z.string().uuid(),
+  permission: PermissionString,
+  effect: OverrideEffectEnum,
+  scopeType: OverrideScopeTypeEnum,
+  scopeId: z.string().uuid(),
+  createdBy: z.string().uuid().nullable(),
+  createdAt: z.coerce.date(),
+});
+export type MemberPermissionOverride = z.infer<typeof MemberPermissionOverrideSchema>;
+
+/**
+ * PUT /members/:userId/overrides — set (upsert) ONE override. The
+ * (permission, scope) pair is the key: re-setting it with a different effect
+ * flips grant↔deny; there is at most one row per (user, permission, scope).
+ * Scope defaults to `org`; a `project` scope requires `scopeId`.
+ */
+export const SetMemberOverrideInput = z
+  .object({
+    permission: PermissionString,
+    effect: OverrideEffectEnum,
+    scopeType: OverrideScopeTypeEnum.default('org'),
+    // For project scope, the target project id. For org scope it is the org
+    // (the server fills it from the request context — omit it).
+    scopeId: z.string().uuid().optional(),
+  })
+  .strict()
+  .refine((o) => o.scopeType !== 'project' || !!o.scopeId, {
+    message: 'scopeId is required for project scope',
+    path: ['scopeId'],
+  });
+export type SetMemberOverride = z.infer<typeof SetMemberOverrideInput>;
+
+/**
+ * DELETE /members/:userId/overrides — clear ONE override by its (permission,
+ * scope) key. Body carries the key (scope defaults to `org`).
+ */
+export const ClearMemberOverrideInput = z
+  .object({
+    permission: PermissionString,
+    scopeType: OverrideScopeTypeEnum.default('org'),
+    scopeId: z.string().uuid().optional(),
+  })
+  .strict()
+  .refine((o) => o.scopeType !== 'project' || !!o.scopeId, {
+    message: 'scopeId is required for project scope',
+    path: ['scopeId'],
+  });
+export type ClearMemberOverride = z.infer<typeof ClearMemberOverrideInput>;

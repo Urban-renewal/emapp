@@ -386,6 +386,13 @@
 			"when": 1781362800000,
 			"tag": "0054_manager_member_admin",
 			"breakpoints": true
+		},
+		{
+			"idx": 61,
+			"version": "7",
+			"when": 1781967600000,
+			"tag": "0061_member_permission_overrides",
+			"breakpoints": true
 		}
 	]
 }

@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -46,7 +46,20 @@ function ResetPasswordInner() {
   const t = useTranslations('resetPassword');
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = searchParams.get('token') ?? '';
+  // Capture the token ONCE into state, then scrub it from the visible URL
+  // (SEC M-2). The reset token is a single-use credential; leaving it in
+  // `?token=` lets it leak into browser history and the `referer` header of
+  // any subsequent request. We keep it in component state and replace the URL
+  // with a token-less one — the form still submits the captured value.
+  const [token] = useState(() => searchParams.get('token') ?? '');
+  useEffect(() => {
+    if (!token || typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('token')) {
+      url.searchParams.delete('token');
+      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    }
+  }, [token]);
   const [serverError, setServerError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 

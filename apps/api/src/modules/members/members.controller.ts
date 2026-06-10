@@ -20,6 +20,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
@@ -71,6 +72,11 @@ export class MembersController {
   // 400 member_not_pending if already accepted; 404 if revoked/unknown.
   @Post(':userId/resend')
   @HttpCode(200)
+  // SEC (Slice-2 security review HIGH) — resend sends a real email via the org's
+  // verified sender; a tight per-route throttle prevents email-bombing a target
+  // (the global 100/min is too loose for an outbound-email amplifier). Mirrors
+  // the document `download` route's per-route throttle posture.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @RequirePermission('members.invite')
   async resend(
     @CurrentUser() user: AccessTokenPayload,

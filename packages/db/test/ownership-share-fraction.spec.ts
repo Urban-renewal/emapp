@@ -351,6 +351,37 @@ describe('ownership share as fraction (S3b — exact Tabu fractions, sum = 1)', 
     expect(exact!.sumNum).toBe(exact!.commonDen); // value === 1, exactly.
   });
 
+  // ── TEST #6 — a lone 0-share owner RAISES (frac_sum = 0 regression lock) ──
+  // The trigger's FIX 2: an apartment that HAS an active owner row must sum to
+  // exactly the whole (1). A single owner at 0/10000 (a 0-share owner) is a
+  // broken legal record — the owner set is non-empty (v_owner_rows > 0) but sums
+  // to 0, NOT 1. The old `v_frac_sum = 0` acceptance wrongly let this commit;
+  // the trigger MUST now RAISE. (The empty/cleared apartment — zero owner rows —
+  // stays valid; this is specifically the non-empty-but-zero case.)
+  it('6) RAISES on a single 0/10000 owner row (non-empty owner set summing to 0 ≠ 1)', async () => {
+    const aptId = await makeApartment(seed.buildingId, 'frac-6');
+    const o1 = await makeOwner(seed.orgId);
+
+    const result = await providerDb
+      .transaction(async (tx) => {
+        await tx.execute(sql`
+          INSERT INTO ownerships (apartment_id, owner_id, ownership_pct, relationship, share_numerator, share_denominator)
+          VALUES (${aptId}, ${o1}, 0, 'owner', 0, 10000)
+        `);
+      })
+      .then(
+        () => ({ ok: true as const }),
+        (e: unknown) => ({ ok: false as const, ...describeDbError(e) }),
+      );
+
+    // MUST be rejected by the trigger (P0001 RAISE), NOT committed.
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      // It is the sum-check raise (not a columns-missing 42703 or other error).
+      expect(result.message).toMatch(/sum of ownership shares/i);
+    }
+  });
+
   // ── TEST #5 — the legacy gap is now CLOSED ───────────────────────────────
   // Originally this documented the legacy gap (a thirds split as 33.33 percent
   // summed to 99.99 ≠ 100 and was REJECTED by the old =100 trigger). The fix

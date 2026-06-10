@@ -210,6 +210,76 @@ describe('S3b product path — SetOwnershipsInput → replaceSet (fraction sum =
     expect(await ownerFractionSum(apt)).toBe('0');
   }, 30_000);
 
+  // ── P4 / P5 — LARGE-DENOMINATOR BOUNDARY: the BigInt refine MIRRORS the
+  // trigger past 2^53 (the CRITICAL the re-review BLOCKED on). The set
+  //   1/2 + 1/3 + 1/6, each fraction SCALED by a distinct large coprime prime
+  // so the STORED denominators are distinct and near DEN_MAX (999958, 999993,
+  // 999942) yet the VALUE is unchanged. Their LCM ≈ 1.666e17 is ABOVE
+  // Number.MAX_SAFE_INTEGER (2^53 ≈ 9.007e15) — the regime where the OLD JS
+  // `number` cross-multiply was no longer provably exact. The BigInt refine is
+  // exact here, and it AGREES with the trigger's exact integer path.
+  //
+  // 1/2 = 499979/999958, 1/3 = 333331/999993, 1/6 = 166657/999942.
+  const LARGE = {
+    half: { ownerId: '', ownershipPct: 50, shareNumerator: 499979, shareDenominator: 999958 },
+    third: { ownerId: '', ownershipPct: 33.33, shareNumerator: 333331, shareDenominator: 999993 },
+    sixth: { ownerId: '', ownershipPct: 16.67, shareNumerator: 166657, shareDenominator: 999942 },
+  } as const;
+
+  it('P4) ACCEPTS a large-denominator exact-1 set (1/2+1/3+1/6 over DISTINCT ~1e6 denominators, LCM > 2^53) → COMMIT, fraction sum exactly 1', async () => {
+    const apt = await seedApartment(org.id);
+    const o1 = await seedOwner(org.id);
+    const o2 = await seedOwner(org.id);
+    const o3 = await seedOwner(org.id);
+
+    const created = await ownSvc.replaceSet(manager(), apt, {
+      owners: [
+        { ...LARGE.half, ownerId: o1, relationship: 'owner' },
+        { ...LARGE.third, ownerId: o2, relationship: 'owner' },
+        { ...LARGE.sixth, ownerId: o3, relationship: 'owner' },
+      ],
+    });
+    expect(created).toHaveLength(3);
+    // The persisted owner fractions sum to EXACTLY 1 — the trigger ACCEPTED the
+    // COMMIT (it would have RAISED otherwise), and ownerFractionSum (BigInt,
+    // independent of the refine) confirms it. The two enforcement layers AGREE
+    // above 2^53.
+    expect(await ownerFractionSum(apt)).toBe('1');
+  }, 30_000);
+
+  it('P5) REJECTS a large-denominator off-by-one set (n3 bumped +1, still derived-pct 16.67) at the REFINE with ownership_sum_invalid → nothing committed (NOT a COMMIT-time trigger raise)', async () => {
+    // Same distinct ~1e6 denominators (LCM > 2^53), but the sixth owner's
+    // numerator is bumped 166657 → 166658, so the exact fraction sum is
+    // lcm + (lcm/999942) ≠ 1. CRUCIALLY the derived display pct still rounds to
+    // 16.67 (Σ pct = 100), so a pct-epsilon check would FALSELY ACCEPT this
+    // non-summing set — exactly the hole the float path risked. The BigInt
+    // fraction refine catches it: a 400 ownership_sum_invalid raised at the
+    // refine in replaceSet, BEFORE any INSERT — proving the refine (not the
+    // trigger backstop) holds the line, in agreement with the trigger.
+    const apt = await seedApartment(org.id);
+    const o1 = await seedOwner(org.id);
+    const o2 = await seedOwner(org.id);
+    const o3 = await seedOwner(org.id);
+
+    await expect(
+      ownSvc.replaceSet(manager(), apt, {
+        owners: [
+          { ...LARGE.half, ownerId: o1, relationship: 'owner' },
+          { ...LARGE.third, ownerId: o2, relationship: 'owner' },
+          {
+            ownerId: o3,
+            ownershipPct: 16.67,
+            relationship: 'owner',
+            shareNumerator: 166658, // +1 → exact sum ≠ 1, but derived pct still 16.67
+            shareDenominator: 999942,
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ response: { error: { code: 'ownership_sum_invalid' } } });
+    // Atomic + caught at the refine: nothing was committed for the apartment.
+    expect(await ownerFractionSum(apt)).toBe('0');
+  }, 30_000);
+
   it('P3) REJECTS a 0-numerator OWNER (0/1 share) at the API → BadRequest, nothing committed', async () => {
     // A 0-share owner is an invalid legal record (mirrors the pct>0 rule). The
     // shareEntry refine rejects it before the set-sum is even considered.

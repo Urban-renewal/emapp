@@ -109,9 +109,9 @@ export function fractionToPct(numerator: number, denominator: number): number {
   return Math.round((numerator / denominator) * 100 * 100) / 100;
 }
 
-/** gcd by Euclid (non-negative inputs). */
-function gcd(a: number, b: number): number {
-  while (b !== 0) {
+/** gcd by Euclid (non-negative BigInt inputs). */
+function gcdBig(a: bigint, b: bigint): bigint {
+  while (b !== 0n) {
     [a, b] = [b, a % b];
   }
   return a;
@@ -136,22 +136,31 @@ export const SetOwnershipsInput = z
       // `... AND relationship = 'owner'`.
       //
       // EXACT FRACTION sum = 1 via INTEGER cross-multiplication — a MIRROR of
-      // the DB trigger (NOT a pct epsilon, which would reject a faithful thirds
-      // split whose derived pct is 99.99). L = LCM of the owner denominators;
-      // require Σ num*(L/den) === L. Denominators are bounded (DEN_MAX) so L
-      // stays an exact JS integer (< 2^53), matching the trigger's integer path.
+      // the DB trigger's exact integer path (NOT a pct epsilon, which would
+      // reject a faithful thirds split whose derived pct is 99.99). L = LCM of
+      // the owner denominators; require Σ num*(L/den) === L.
+      //
+      // Computed in BigInt (exact, unbounded): with denominators bounded at
+      // DEN_MAX and up to 50 owners, L = LCM of distinct coprime denominators
+      // can reach ~1e18 (3 primes near 1e6 → ~1e18), and Σ num*(L/den) can
+      // exceed Number.MAX_SAFE_INTEGER (2^53 ≈ 9e15). JS `number` arithmetic
+      // would lose precision above 2^53 and could FALSELY ACCEPT a set that does
+      // NOT sum to 1, diverging from the trigger (which raises). BigInt is exact
+      // across the entire DEN_MAX × 50-owner domain — no overflow, no float —
+      // and MIRRORS the trigger's primary integer path exactly.
       const ownerFracs = v.owners
         .filter((o) => o.relationship === 'owner')
         .map((o) => deriveShareFraction(o));
       if (ownerFracs.length === 0) return true; // no owners → cleared state.
 
-      let lcm = 1;
+      let lcm = 1n;
       for (const { denominator } of ownerFracs) {
-        lcm = (lcm / gcd(lcm, denominator)) * denominator;
+        const den = BigInt(denominator);
+        lcm = (lcm / gcdBig(lcm, den)) * den;
       }
       const sum = ownerFracs.reduce((a, { numerator, denominator }) => {
-        return a + numerator * (lcm / denominator);
-      }, 0);
+        return a + BigInt(numerator) * (lcm / BigInt(denominator));
+      }, 0n);
       return sum === lcm;
     },
     { message: 'owner shares must sum to exactly 1 (renters excluded; or be empty to clear)' },

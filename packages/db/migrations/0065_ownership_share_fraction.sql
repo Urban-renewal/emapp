@@ -217,3 +217,57 @@ $$ LANGUAGE plpgsql;
 -- Trigger BINDING (trg_ownerships_sum_check, FOR EACH ROW DEFERRABLE INITIALLY
 -- DEFERRED) is UNCHANGED — CREATE OR REPLACE FUNCTION rebinds the existing
 -- trigger; we do NOT drop/recreate it.
+
+-- 3. pct → fraction BACK-COMPAT derivation (BEFORE INSERT OR UPDATE, row-level).
+--
+--    A legacy/raw writer that sets only `ownership_pct` (the pre-S3b way) and
+--    NOT the new fraction columns lands on the column DEFAULTs (0 / 10000).
+--    That fraction is 0/10000 = 0, so a non-empty owner set would sum to 0 and
+--    the DEFERRED sum trigger above would (correctly, for a real zero-share
+--    owner) RAISE at COMMIT. But a row that carried pct = 100 the legacy way is
+--    NOT a zero-share owner — it is the canonical "whole" written in the old
+--    representation. This BEFORE trigger populates the canonical fraction from
+--    pct ONLY when the fraction columns are still at their exact DEFAULT
+--    sentinel (0 / 10000), i.e. the writer did not set them. It is the DB-layer
+--    mirror of the service's derive-on-write (pct → round(pct*100)/10000).
+--
+--    WHY THIS IS SAFE / does not weaken anything:
+--      * The PRODUCT path (Zod → OwnershipsService) ALWAYS sets the fraction
+--        explicitly (shareNumerator/shareDenominator non-default), so this
+--        BEFORE trigger is a NO-OP there — the guard (num=0 AND den=10000) is
+--        false, the row keeps its explicit fraction.
+--      * The DEFERRED constraint trigger trg_ownerships_sum_check STILL runs at
+--        COMMIT and STILL enforces fraction sum = 1 over owner rows. This
+--        trigger only POPULATES; it never validates and never bypasses the sum
+--        check. A pct-only split that does NOT sum to the whole (e.g. two
+--        50.00 rows → 5000/10000 each = sum 1, OK; but 50.00 + 40.00 →
+--        5000+4000 = 9000/10000 ≠ 1) is still REJECTED by the sum trigger.
+--      * An explicit real 0-share owner written as pct 0 stays 0/10000 and, if
+--        it is the sole/active owner set, is still rejected by the sum trigger
+--        (non-empty owner set summing to 0 RAISES). A renter (relationship
+--        'renter', pct 0) stays 0/10000 and is EXCLUDED by the relationship
+--        filter in the sum trigger — unchanged.
+--      * Ordering: this is a row-level BEFORE trigger, so it fires and rewrites
+--        NEW *before* the row is written; the DEFERRABLE INITIALLY DEFERRED
+--        constraint trigger fires AFTER, at COMMIT, on the already-populated
+--        fraction. Population precedes validation — correct.
+CREATE OR REPLACE FUNCTION trigger_derive_ownership_fraction()
+RETURNS TRIGGER
+SET search_path = pg_temp, public
+AS $$
+BEGIN
+  -- Only derive when the fraction columns are at their exact DEFAULT sentinel
+  -- (a pct-only writer didn't set them) AND a pct is present to derive from.
+  IF NEW.share_numerator = 0
+     AND NEW.share_denominator = 10000
+     AND NEW.ownership_pct IS NOT NULL THEN
+    NEW.share_numerator := round(NEW.ownership_pct * 100)::bigint;
+    NEW.share_denominator := 10000;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_ownerships_derive_fraction
+  BEFORE INSERT OR UPDATE ON ownerships
+  FOR EACH ROW EXECUTE FUNCTION trigger_derive_ownership_fraction();

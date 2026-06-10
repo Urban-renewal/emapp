@@ -54,11 +54,19 @@ import { MembersService } from '../members/members.service';
 import { noopBreachForTest, noopMetricsForTest } from '../observability/test-doubles';
 
 import { AuthService, type AccessTokenPayload } from './auth.service';
+import { PasswordResetRepository } from './password-reset.repository';
 
 // ── shared singletons (real DB, real services — no mocks) ──────────────────
 const jwt = new JwtService({ secret: serverEnv.JWT_SECRET });
 const permissions = new PermissionService();
-const auth = new AuthService(jwt, permissions, noopMetricsForTest(), noopBreachForTest());
+const auth = new AuthService(
+  jwt,
+  permissions,
+  noopMetricsForTest(),
+  noopBreachForTest(),
+  new FakeEmailProvider(),
+  new PasswordResetRepository(),
+);
 // MembersService(jwt, emailProvider). FakeEmailProvider captures invites in
 // memory — the real factory returns it outside production. We never read the
 // email; we use the `inviteToken` the service returns in test env.

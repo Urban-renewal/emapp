@@ -124,6 +124,7 @@
     "formHeading": "Welcome",
     "formSubheading": "Choose your user type and sign in",
     "loginCta": "Sign in",
+    "forgotPassword": "Forgot password?",
     "rolePicker": {
       "manager": { "label": "Manager", "sub": "Email and password" },
       "agent": { "label": "Agent", "sub": "Email or phone" },
@@ -1478,6 +1479,32 @@
       "userPlaceholder": "Pick a member...",
       "roleInProject": "Role on this project"
     }
+  },
+  "forgotPassword": {
+    "title": "Reset your password",
+    "subtitle": "Enter your email address and we'll send you a password-reset link.",
+    "email": "Email",
+    "emailInvalid": "Invalid email address",
+    "submit": "Send reset link",
+    "submitting": "Sending...",
+    "backToLogin": "Back to sign in",
+    "genericNotice": "If an account exists for this address, we've sent it a password-reset link. Check your inbox.",
+    "error": "Something went wrong. Please try again."
+  },
+  "resetPassword": {
+    "title": "Set a new password",
+    "subtitle": "Choose a new password for your account.",
+    "password": "New password",
+    "confirmPassword": "Confirm password",
+    "passwordRequirements": "Password must be at least 12 characters",
+    "passwordsMismatch": "Passwords do not match",
+    "submit": "Update password",
+    "submitting": "Updating...",
+    "doneTitle": "Password updated ✓",
+    "doneBody": "Redirecting you to sign in...",
+    "missingToken": "This link is invalid. Please request a new password-reset link.",
+    "invalidToken": "This link is invalid or has expired. Please request a new password-reset link.",
+    "requestNewLink": "Request a new link"
   },
   "acceptInvite": {
     "title": "Complete your invitation",

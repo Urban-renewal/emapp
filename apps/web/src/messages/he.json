@@ -124,6 +124,7 @@
     "formHeading": "ברוכים הבאים",
     "formSubheading": "בחרו את סוג המשתמש והיכנסו למערכת",
     "loginCta": "כניסה למערכת",
+    "forgotPassword": "שכחתי סיסמה",
     "rolePicker": {
       "manager": { "label": "מנהל", "sub": "אימייל וסיסמה" },
       "agent": { "label": "סוכן", "sub": "אימייל או טלפון" },
@@ -1478,6 +1479,32 @@
       "userPlaceholder": "בחר משתמש...",
       "roleInProject": "תפקיד בפרויקט"
     }
+  },
+  "forgotPassword": {
+    "title": "איפוס סיסמה",
+    "subtitle": "הזינו את כתובת האימייל שלכם ונשלח אליכם קישור לאיפוס הסיסמה.",
+    "email": "אימייל",
+    "emailInvalid": "אימייל לא תקין",
+    "submit": "שליחת קישור איפוס",
+    "submitting": "שולח...",
+    "backToLogin": "חזרה לכניסה",
+    "genericNotice": "אם קיים חשבון עבור כתובת זו, נשלח אליו קישור לאיפוס הסיסמה. בדקו את תיבת הדואר.",
+    "error": "אירעה שגיאה. נסו שנית."
+  },
+  "resetPassword": {
+    "title": "קביעת סיסמה חדשה",
+    "subtitle": "בחרו סיסמה חדשה לחשבונכם.",
+    "password": "סיסמה חדשה",
+    "confirmPassword": "אימות סיסמה",
+    "passwordRequirements": "הסיסמה חייבת להכיל לפחות 12 תווים",
+    "passwordsMismatch": "הסיסמאות אינן זהות",
+    "submit": "עדכון סיסמה",
+    "submitting": "מעדכן...",
+    "doneTitle": "הסיסמה עודכנה ✓",
+    "doneBody": "מעבירים אתכם לעמוד הכניסה...",
+    "missingToken": "הקישור אינו תקין. בקשו קישור חדש לאיפוס סיסמה.",
+    "invalidToken": "הקישור אינו תקף או שפג תוקפו. בקשו קישור חדש לאיפוס סיסמה.",
+    "requestNewLink": "בקשת קישור חדש"
   },
   "acceptInvite": {
     "title": "השלמת הצטרפות",

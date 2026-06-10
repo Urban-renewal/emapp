@@ -21,10 +21,11 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { afterEach, beforeAll, afterAll, describe, expect, it } from 'vitest';
 
 import {
+  buildErasureTombstone,
   decryptOwnerName,
   encryptOwnerName,
   encryptOwnerPii,
@@ -205,5 +206,138 @@ describe('owner shells (S3a — skeleton owners, no name / no national_id)', () 
     const namedRow = rows.find((r) => r.id !== shellId);
     expect(namedRow?.nameEncrypted).toBeTruthy();
     expect(await decryptOwnerName(providerDb, namedRow!.nameEncrypted!)).toBe('יש שם');
+  });
+
+  // ---- TEST #5: DSAR subject-access EXPORT on a SHELL is null-safe ---------
+  it('5) DSAR export decrypt projection on a SHELL returns name=null + nationalId=null WITHOUT throwing', async () => {
+    // Regression guard for the HIGH a DSAR-on-shell test would have caught:
+    // before the fix, data-subject.service.ts decrypted national_id/name with a
+    // BARE pgp_sym_decrypt(<col>, key) and the export schema was non-nullable.
+    // On a SHELL owner (NULL name + NULL national_id ciphertext) pgp_sym_decrypt
+    // on NULL yields NULL — fine — but the contract said non-null. The fix wraps
+    // each decrypt in `case when <col> is null then null else pgp_sym_decrypt(...)
+    // end` AND makes the export schema nullable. This test exercises the EXACT
+    // null-guarded SQL the export now runs (NID_CLEAR / NAME_CLEAR) and asserts
+    // it returns NULL for both — proving the DSAR-on-shell path is null-safe and
+    // the nullable contract holds.
+    //
+    // Fidelity note: the service runs this inside withTenant, which binds the
+    // decrypt key to the `app.encryption_key` GUC via SET LOCAL. We reproduce
+    // that EXACTLY: a transaction that `set_config('app.encryption_key', <key>,
+    // true)` then runs the same `current_setting('app.encryption_key')`-bound
+    // CASE expression against the shell row — byte-for-byte what dataExport emits.
+    const shellId = (
+      await providerDb.insert(owners).values({ orgId: testOrgId }).returning({ id: owners.id })
+    )[0]!.id;
+
+    const encKey = dbEnv.PII_ENCRYPTION_KEY as string;
+    const projected = await providerDb.transaction(async (tx) => {
+      // SET LOCAL the encryption key onto the GUC the export's SQL reads from —
+      // identical to withTenant's posture (third arg `true` = tx-local).
+      await tx.execute(sql`SELECT set_config('app.encryption_key', ${encKey}, true)`);
+      // The EXACT null-guarded decrypt projection from data-subject.service.ts
+      // (NID_CLEAR / NAME_CLEAR): NULL ciphertext → NULL, else GUC-bound decrypt.
+      const res = await tx.execute<{ name: string | null; national_id: string | null }>(sql`
+        SELECT
+          case when ${owners.nameEncrypted} is null then null
+               else pgp_sym_decrypt(${owners.nameEncrypted}, current_setting('app.encryption_key'))::text end AS name,
+          case when ${owners.nationalIdEncrypted} is null then null
+               else pgp_sym_decrypt(${owners.nationalIdEncrypted}, current_setting('app.encryption_key'))::text end AS national_id
+        FROM ${owners}
+        WHERE ${owners.id} = ${shellId}
+        LIMIT 1
+      `);
+      return res.rows[0];
+    });
+
+    // The reveal projection did NOT throw, and both PII fields decrypted to NULL
+    // (not a pgcrypto error, not the empty string) — the nullable export contract.
+    expect(projected).toBeTruthy();
+    expect(projected?.name).toBeNull();
+    expect(projected?.national_id).toBeNull();
+  });
+
+  // ---- TEST #6: ERASURE on a SHELL succeeds (no throw on already-NULL PII) -
+  it('6) erasure tombstone overwrite on a SHELL succeeds and leaves the row erased', async () => {
+    // A shell owner already has NULL name/national_id ciphertext + NULL hashes.
+    // The erase path overwrites the encrypted PII columns with the irreversible
+    // buildErasureTombstone ciphertexts and stamps erased_at — it must NOT choke
+    // on the already-NULL PII (no "decrypt of null" / not-null-violation surprise).
+    const shellId = (
+      await providerDb.insert(owners).values({ orgId: testOrgId }).returning({ id: owners.id })
+    )[0]!.id;
+
+    // Build the tombstone ciphertexts exactly as DataSubjectService.erase does.
+    const tombstone = await buildErasureTombstone(providerDb);
+    const now = new Date();
+
+    // The tombstone overwrite + erasure stamp. On a shell this writes ciphertext
+    // INTO previously-NULL columns and NULLs the (already-NULL) hashes — must not
+    // throw. Mirrors the service's `update(owners).set({...})`.
+    await providerDb
+      .update(owners)
+      .set({
+        nameEncrypted: tombstone.nameEncrypted,
+        nationalIdEncrypted: tombstone.nationalIdEncrypted,
+        phoneEncrypted: tombstone.phoneEncrypted,
+        nameHash: null,
+        nationalIdHash: null,
+        phoneHash: null,
+        email: null,
+        notes: null,
+        erasedAt: now,
+        archivedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(owners.id, shellId));
+
+    // The row ends erased: erased_at is set + the PII columns hold the tombstone
+    // ciphertext (NOT NULL anymore, NOT the original — there never was any).
+    const [erased] = await providerDb
+      .select({
+        id: owners.id,
+        erasedAt: owners.erasedAt,
+        archivedAt: owners.archivedAt,
+        nameEncrypted: owners.nameEncrypted,
+        nationalIdEncrypted: owners.nationalIdEncrypted,
+      })
+      .from(owners)
+      .where(eq(owners.id, shellId))
+      .limit(1);
+    expect(erased).toBeTruthy();
+    expect(erased?.erasedAt).not.toBeNull();
+    expect(erased?.archivedAt).not.toBeNull();
+    expect(erased?.nameEncrypted).not.toBeNull();
+    expect(erased?.nationalIdEncrypted).not.toBeNull();
+    // And the tombstone is irreversible-to-the-marker: it decrypts to "[erased]",
+    // never to any subject PII (a shell never had any).
+    expect(await decryptOwnerName(providerDb, erased!.nameEncrypted!)).toBe('[erased]');
+  });
+
+  // ---- TEST #7: reveal on a SHELL returns null national_id gracefully ------
+  it('7) reveal (cleartext national_id) on a SHELL returns null without throwing', async () => {
+    // The masked/reveal read path on a shell: the national_id ciphertext is NULL,
+    // so the null-guarded decrypt must yield NULL rather than erroring. Same
+    // CASE-guard contract as the DSAR export, asserted on the reveal projection.
+    const shellId = (
+      await providerDb.insert(owners).values({ orgId: testOrgId }).returning({ id: owners.id })
+    )[0]!.id;
+
+    const encKey = dbEnv.PII_ENCRYPTION_KEY as string;
+    const revealed = await providerDb.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.encryption_key', ${encKey}, true)`);
+      const res = await tx.execute<{ national_id: string | null }>(sql`
+        SELECT
+          case when ${owners.nationalIdEncrypted} is null then null
+               else pgp_sym_decrypt(${owners.nationalIdEncrypted}, current_setting('app.encryption_key'))::text end AS national_id
+        FROM ${owners}
+        WHERE ${owners.id} = ${shellId}
+        LIMIT 1
+      `);
+      return res.rows[0];
+    });
+
+    expect(revealed).toBeTruthy();
+    expect(revealed?.national_id).toBeNull();
   });
 });

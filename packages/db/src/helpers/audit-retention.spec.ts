@@ -242,32 +242,45 @@ describe('trg_audit_log_immutable — the carved-out boundary is TIGHT (0060)', 
       );
       const oldId = (old.rows[0] as { id: string }).id;
 
+      // Each probe runs inside its OWN savepoint. A trigger RAISE aborts the
+      // CURRENT (sub)transaction in Postgres — without a savepoint, the very
+      // first expected error (the UPDATE block) would poison the whole outer
+      // transaction, and every later statement would fail with 25P02
+      // ("current transaction is aborted") instead of being independently
+      // exercised. Rolling back to the savepoint after each expected raise
+      // restores a clean transaction so the next probe is a real test.
+
       // (a) UPDATE is unconditionally blocked — even on the >24mo row.
       let updateRejected = false;
       let updateErr: unknown;
+      await client.query('SAVEPOINT probe_update');
       try {
         await client.query(`UPDATE audit_log SET action = 'tampered' WHERE id = $1`, [oldId]);
       } catch (e) {
         updateRejected = true;
         updateErr = e;
       }
+      await client.query('ROLLBACK TO SAVEPOINT probe_update');
       expect(updateRejected).toBe(true);
       expect(isAuditLogImmutableError(updateErr)).toBe(true);
 
       // (b) DELETE of the recent (inside-floor) row is blocked.
       let recentDeleteRejected = false;
       let recentDeleteErr: unknown;
+      await client.query('SAVEPOINT probe_recent_delete');
       try {
         await client.query(`DELETE FROM audit_log WHERE id = $1`, [recentId]);
       } catch (e) {
         recentDeleteRejected = true;
         recentDeleteErr = e;
       }
+      await client.query('ROLLBACK TO SAVEPOINT probe_recent_delete');
       expect(recentDeleteRejected).toBe(true);
       expect(isAuditLogImmutableError(recentDeleteErr)).toBe(true);
 
       // (c) DELETE of the >24mo row is PERMITTED — the one mutation the prune
-      //     relies on.
+      //     relies on. No savepoint needed: this statement must NOT raise; if
+      //     it ever did, that's a real regression and the test should fail.
       const del = await client.query(`DELETE FROM audit_log WHERE id = $1`, [oldId]);
       expect(del.rowCount).toBe(1);
       expect(await client.query(`SELECT 1 FROM audit_log WHERE id = $1`, [oldId])).toMatchObject({

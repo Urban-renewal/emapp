@@ -107,6 +107,7 @@ describe('chain-risk Class 5 — wire schemas tolerate BE-owned free-text values
       'signatureFormat', // signatures.signature_format → fixed 'svg'
       'authMethod', // signatures.auth_method → BE-controlled
       'method', // pii_processing_consents.method → BE-controlled provenance label ('public_sign_v1'); never client free-text (migration 0059)
+      'relocationType', // projects.relocation_type → DB CHECK projects_relocation_type_check IN ('none','rent_comp','alt_housing') (migration 0062) + RelocationTypeEnum strict wire (read+write)
       'actorType', // audit_log.actor_type → enum-matches BE (user/system/provider)
       'action', // audit_log.action → tolerant wire (z.string)
       'targetTable', // audit_log.target_table → free text, never wire-enum'd

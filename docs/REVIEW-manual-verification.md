@@ -323,18 +323,10 @@ real product" layer. Ordered by value. **Not built** — recommendations only.
    Next.js's default English _"404 This page could not be found."_ — jarring in a
    Hebrew RTL product. Add branded RTL `not-found.tsx` / `error.tsx` (global +
    per-segment). Low effort, high polish.
-2. ~~**Readiness vs liveness split (S-2).**~~ **CORRECTION — already implemented.**
-   On a closer read of `app.controller.ts`, the liveness/readiness split already
-   exists: `/api/v1/ready` pings the DB (`SELECT 1`) and returns
-   `{status:'ok'|'degraded', db:'connected'|'disconnected', uptime}` (200/—),
-   publishes metrics gauges, and `/health` deliberately does NOT touch the DB
-   (the split was built for "F-PERF-2", ~360ms→213ms). Verified live:
-   `/ready → 200 {status:ok,db:connected}` (no secret/connstring leak),
-   `/health → 200` in ~216ms. My original finding was wrong — there is no S-2 to
-   build. The ONLY residual is that `/ready` checks the DB but not R2; that is a
-   defensible choice (R2 isn't on every request path, and a per-request-critical
-   readiness probe shouldn't flap on a storage hiccup). Left to owner if a
-   storage check is wanted.
+2. **Readiness vs liveness split (S-2).** `/api/v1/health` returns `{status,uptime}`
+   (liveness) but does not check DB / R2 reachability. Add a `/ready` that pings
+   the pool + storage so the platform (Railway) can gate traffic on real
+   dependency health, not just "process up."
 3. **Close M-2 — redact `referer`** in the pino config (+ `replaceState` on the
    reset page). Small, removes a credential-in-logs path.
 4. **Add the M-1 post-migrate guard (S-3).** A CI/boot assertion that every
@@ -363,25 +355,3 @@ to completion (1.9 provider/MFA deferred). Two security findings (M-1, M-2) +
 seven professionalism recommendations are documented above for owner decision; no
 feature is broken. All test artifacts created during verification were cleaned up
 (role deleted, overrides cleared, test project archived, scanned doc restored).
-
----
-
-## 5. Hardening PRs (Phase 3 — owner to merge)
-
-The low-risk, additive improvements from §3 were implemented as separate tested
-PRs (each: minimal change + test + typecheck/lint green; **not self-merged**):
-
-| Item    | PR                                                      | What                                                                                                                            | Status                     |
-| ------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| **M-2** | [#343](https://github.com/Urban-renewal/emapp/pull/343) | redact `referer`/`referrer` in pino (extracted + 15 tests) + reset page scrubs `?token=` via `replaceState`                     | security-reviewer **PASS** |
-| **S-1** | [#344](https://github.com/Urban-renewal/emapp/pull/344) | branded RTL root `not-found.tsx` (3 tests, browser-verified) replacing Next's English default 404                               | green                      |
-| **S-2** | —                                                       | readiness probe — **already existed** (`/ready` pings DB, `/health` doesn't); my finding was wrong, verified live, no PR needed | corrected                  |
-
-**Remaining for owner (not auto-built — bigger / policy calls):**
-
-- **M-1** — the post-migrate CI guard (journal-tag ↔ applied-row ↔ schema-object).
-  A process/CI change; the 0056 silent-skip showed it's real.
-- **req.url censor** — defense-in-depth follow-up the M-2 reviewer noted (pino's
-  `req.url` isn't passed through the censor; pre-existing, separate from M-2).
-- The other §3 items (active-sessions UI, rate-limit/lockout surfacing, prod
-  observability wiring confirmation) are product decisions, not quick fixes.

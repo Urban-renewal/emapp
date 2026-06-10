@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
@@ -22,6 +23,11 @@ import { useProviderTenants } from '@/hooks/use-provider';
 export default function ProviderTenantsPage() {
   const t = useTranslations('provider.tenants');
   const tp = useTranslations('projects'); // borrows: archived / next / resetToFirstPage labels
+  // P4 — when reached via the sidebar `users` nav (?view=users), surface a
+  // hint + a per-row "users" affordance so the operator drills straight into
+  // an org's masked members. The list endpoint itself is unchanged.
+  const searchParams = useSearchParams();
+  const usersMode = searchParams?.get('view') === 'users';
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [searchInput, setSearchInput] = useState('');
   const [q, setQ] = useState<string | undefined>(undefined);
@@ -43,6 +49,12 @@ export default function ProviderTenantsPage() {
           <Link href="/provider/onboard">{t('createTenant')}</Link>
         </Button>
       </div>
+
+      {usersMode && (
+        <p className="rounded-md border border-dashed bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+          {t('usersModeHint')}
+        </p>
+      )}
 
       {/* Name search — deliberately NOT an HTML form element (avoids any GET-
           fallback surface); Enter or the button applies it, and a new search
@@ -98,7 +110,14 @@ export default function ProviderTenantsPage() {
         <ul className="space-y-2">
           {items.map((tenant) => (
             <li key={tenant.id} className="rounded-md border bg-card p-4">
-              <Link href={`/provider/tenants/${tenant.id}`} className="block">
+              <Link
+                href={
+                  (usersMode
+                    ? `/provider/tenants/${tenant.id}/users`
+                    : `/provider/tenants/${tenant.id}`) as '/provider'
+                }
+                className="block"
+              >
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-3">

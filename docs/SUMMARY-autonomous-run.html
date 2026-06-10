@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EMAPP — סיכום ריצה אוטונומית (2026-06-10)</title>
+<style>
+  :root{
+    --bg:#0f1320; --card:#171c2e; --card2:#1e2540; --ink:#e8ecf6; --muted:#9aa6c4;
+    --line:#2b3354; --accent:#5b8cff; --green:#34d399; --amber:#fbbf24; --red:#f87171;
+    --blue:#60a5fa; --pill:#243056;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Segoe UI","Heebo","Assistant","Arial Hebrew",Arial,sans-serif;
+    line-height:1.7;font-size:16px}
+  .wrap{max-width:1040px;margin:0 auto;padding:32px 22px 80px}
+  h1{font-size:30px;margin:0 0 6px;font-weight:800;letter-spacing:-.3px}
+  h2{font-size:22px;margin:38px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--line)}
+  h3{font-size:18px;margin:22px 0 8px;color:#cdd6f0}
+  .sub{color:var(--muted);margin:0 0 22px}
+  p{margin:8px 0}
+  code{background:#0b0f1d;border:1px solid var(--line);border-radius:5px;padding:1px 6px;
+    font-family:"Consolas","SF Mono",monospace;font-size:13.5px;color:#cfe0ff;direction:ltr;display:inline-block}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:14px 0}
+  .grid{display:grid;gap:14px}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14.5px}
+  th,td{border:1px solid var(--line);padding:9px 11px;text-align:right;vertical-align:top}
+  th{background:var(--card2);font-weight:700}
+  tr:nth-child(even) td{background:#141a2c}
+  .pill{display:inline-block;border-radius:999px;padding:2px 11px;font-size:12.5px;font-weight:700;white-space:nowrap}
+  .pg{background:rgba(52,211,153,.15);color:var(--green);border:1px solid rgba(52,211,153,.4)}
+  .pa{background:rgba(251,191,36,.13);color:var(--amber);border:1px solid rgba(251,191,36,.4)}
+  .pb{background:rgba(96,165,250,.13);color:var(--blue);border:1px solid rgba(96,165,250,.4)}
+  .pr{background:rgba(248,113,113,.13);color:var(--red);border:1px solid rgba(248,113,113,.4)}
+  .feat{border-right:4px solid var(--accent);padding-right:16px;margin:18px 0}
+  .feat h3{margin-top:0}
+  .lbl{color:var(--muted);font-weight:700;font-size:13.5px;display:inline-block;min-width:96px}
+  .row{margin:5px 0}
+  ul{margin:6px 0;padding-right:22px}
+  li{margin:3px 0}
+  .kpi{display:flex;flex-wrap:wrap;gap:12px;margin:18px 0}
+  .kpi .box{flex:1;min-width:150px;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;text-align:center}
+  .kpi .n{font-size:26px;font-weight:800}
+  .kpi .t{color:var(--muted);font-size:13px}
+  .note{background:#1a1530;border:1px solid #3a2e5e;border-radius:12px;padding:14px 18px;margin:14px 0}
+  .warn{background:#2a1a16;border:1px solid #5e3a2e}
+  .ok{background:#13241d;border:1px solid #2e5e44}
+  .mono-ltr{direction:ltr;text-align:left}
+  .small{font-size:13px;color:var(--muted)}
+  a{color:var(--accent)}
+  .toc a{color:#bcd0ff;text-decoration:none}
+  .toc li{margin:2px 0}
+  hr{border:none;border-top:1px solid var(--line);margin:26px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>EMAPP — סיכום הריצה האוטונומית</h1>
+  <p class="sub">מנהל-פיתוח אוטונומי · 2026-06-09 → 2026-06-10 · כל פיצ'ר: builder ≠ test-author ≠ security-reviewer ≠ manager-verify</p>
+
+  <div class="kpi">
+    <div class="box"><div class="n">15+</div><div class="t">PRs מוזגו</div></div>
+    <div class="box"><div class="n">7</div><div class="t">PRs מוחזקים לך (Gate-6)</div></div>
+    <div class="box"><div class="n">10</div><div class="t">פיצ'רים חדשים</div></div>
+    <div class="box"><div class="n">8</div><div class="t">migrations (0055–0062)</div></div>
+    <div class="box"><div class="n">0</div><div class="t">CRITICAL פתוחים</div></div>
+  </div>
+
+  <div class="card toc">
+    <strong>תוכן עניינים</strong>
+    <ul>
+      <li><a href="#exec">1. תקציר מנהלים</a></li>
+      <li><a href="#prs">2. סטטוס כל ה-PRs</a></li>
+      <li><a href="#close">3. מה חסר כדי לסגור כל PR מוחזק</a></li>
+      <li><a href="#feats">4. הפיצ'רים — מה / התלבטות / אפשרויות / החלטה</a></li>
+      <li><a href="#decisions">5. ההחלטות שלך (מתועדות + ממתינות)</a></li>
+      <li><a href="#deferred">6. מה נדחה במכוון</a></li>
+      <li><a href="#verify">7. אימות-ידני בדפדפן — הפער הפתוח</a></li>
+    </ul>
+  </div>
+
+  <!-- ============ 1 ============ -->
+  <h2 id="exec">1. תקציר מנהלים</h2>
+  <div class="card">
+    <p>פעלתי כמנהל-פיתוח אוטונומי שמדispatch סוכנים נפרדים (builder / test / security / manager-verify), מאמת הכל לפני PR,
+      <strong>ומחזיק כל PR שכולל migration (Gate-6) למיזוג שלך</strong>. כל ה-roadmap שאישרת ב-2026-06-09 נבנה, עבר security-review, ותועד.</p>
+    <p><strong>שני כללי-יסוד שנאכפו:</strong></p>
+    <ul>
+      <li><span class="pill pg">self-merge</span> PR ללא migration — אני ממזג בעצמי (update→CI→merge).</li>
+      <li><span class="pill pa">מוחזק לך</span> PR עם migration (Gate-6) — אני בונה+בודק+פותח-PR, ו<strong>לעולם לא ממזג migration</strong> (גם הקלסיפייר חוסם זאת).</li>
+    </ul>
+    <p>הסתירה בין "done = merged" (שביקשת) לבין "Gate-6 מוחזק לבעלים" (חוק נעול) — נפתרה לטובת הכלל-הנעול: <em>מיגרציות זה אתה ממזג</em>.</p>
+  </div>
+
+  <!-- ============ 2 ============ -->
+  <h2 id="prs">2. סטטוס כל ה-PRs</h2>
+
+  <h3>🟡 מוחזקים לך — Gate-6 (מזג בסדר הזה לשמירת מונוטוניות ה-journal)</h3>
+  <table>
+    <tr><th>#</th><th>פיצ'ר</th><th>Migration</th><th>Security</th><th>CI</th></tr>
+    <tr><td><b>#329</b></td><td>איפוס-סיסמה עצמי (org password reset)</td><td><code>0055</code></td><td class="pill pg">PASS</td><td class="pill pg">ירוק</td></tr>
+    <tr><td><b>#330</b></td><td>סריקת-וירוסים לקבצים (AV scan gate)</td><td><code>0056</code></td><td class="pill pg">PASS</td><td class="pill pg">ירוק</td></tr>
+    <tr><td><b>#333</b></td><td>מחיקת-נתונים + ייצוא-נושא-המידע</td><td><code>0057+0058</code></td><td class="pill pg">PASS</td><td class="pill pg">ירוק</td></tr>
+    <tr><td><b>#334</b></td><td>לכידת-הסכמה לעיבוד-PII</td><td><code>0059</code></td><td class="pill pg">PASS</td><td class="pill pg">ירוק</td></tr>
+    <tr><td><b>#335</b></td><td>שמירת-לוגים ≥24 חודשים</td><td><code>0060</code></td><td class="pill pg">PASS</td><td class="pill pg">ירוק</td></tr>
+    <tr><td><b>#338</b></td><td>הרשאות per-user (overrides)</td><td><code>0061</code></td><td class="pill pg">PASS</td><td class="pill pg">ירוק</td></tr>
+    <tr><td><b>#340</b></td><td>שדות-התחדשות בטופס-פרויקט</td><td><code>0062</code></td><td class="pill pg">PASS</td><td class="pill pg">ירוק</td></tr>
+  </table>
+
+  <h3>🟢 מוזגו במהלך הריצה (ללא migration / אושרו על ידך)</h3>
+  <table>
+    <tr><th>#</th><th>מה</th></tr>
+    <tr><td>#317</td><td>PDF חתימה בעברית (Chromium render — תיקון עברית-הפוכה)</td></tr>
+    <tr><td>#322</td><td>תיקון provider — access_reason בעברית ששבר כל עמוד</td></tr>
+    <tr><td>#323 / #325 / #326</td><td>טופס-פרויקט type-aware · יעדי-ביניים · הרשאות-Manager (מוזגו ע"י המערכת מוקדם)</td></tr>
+    <tr><td>#324</td><td>עמוד self-audit לספק</td></tr>
+    <tr><td>#327 / #339</td><td>roadmap מאושר + מסמכי-החלטה</td></tr>
+    <tr><td>#328</td><td>סף-הסכמה בהגדרות-ארגון (org-configurable)</td></tr>
+    <tr><td>#331</td><td>P0.B2 — seam ניטור/metrics + זיהוי-פריצה</td></tr>
+    <tr><td>#332</td><td>P0.B3 — עמוד-גיבויים + runbook DR</td></tr>
+    <tr><td>#336</td><td>P2 Phase 0 — תיעוד איחוד-ההרשאות</td></tr>
+    <tr><td>#337</td><td>P2 Phase 1 — תפקידים מותאמי-ארגון (custom roles)</td></tr>
+    <tr><td>#341</td><td>P4 — ניהול org-users לספק (PII-masked)</td></tr>
+    <tr><td>#342</td><td>Epic F — מסמך-עיצוב form-builder (ממתין לאישורך)</td></tr>
+  </table>
+
+  <!-- ============ 3 ============ -->
+  <h2 id="close">3. מה חסר כדי לסגור כל PR מוחזק</h2>
+  <div class="card ok">
+    <p>כל 7 ה-PRs המוחזקים <strong>גמורים מבחינת קוד</strong>: CI ירוק, security-review PASS (0 קריטי), migration כתוב-ביד עם <code>_journal</code> מונוטוני, <strong>ולא הוחל על מסד-ה-dev</strong>. מה שחסר לסגירה הוא <strong>פעולה שלך</strong>:</p>
+  </div>
+  <table>
+    <tr><th>צעד</th><th>פירוט</th></tr>
+    <tr><td><b>1. סקירה + מיזוג</b></td><td>לסקור כל PR ולמזג <code>--squash</code> <strong>בסדר</strong> #329→#330→#333→#334→#335→#338→#340. הסדר חשוב: ה-migrations חייבים <code>when</code> עולה כדי שה-migrator לא ידלג עליהם.</td></tr>
+    <tr><td><b>2. החלת ה-migration</b></td><td>בעת המיזוג ה-migration מוחל אוטומטית דרך ה-CI/הפריסה. <strong>לא הוחל על dev כי זה כלל-נעול (לא אני נוגע בסכמת-משותף).</strong> משמעות: לא ניתן לבדוק-בדפדפן end-to-end עד שהוא מוחל — ראו §7.</td></tr>
+    <tr><td><b>3. Gate-6-Approved</b></td><td>כל PR מוחזק נושא trailer <code>Gate-6-Approved</code> בגוף-ה-PR (כנדרש). המיזוג שלך = האישור הסופי.</td></tr>
+    <tr><td><b>4. החלטות-תוכן (2)</b></td><td>#333 (מחיקה) תלוי בהחלטת <b>anonymize-not-delete</b> מול עו"ד (מתועד). #340 (enum) מוסיף <code>project_type='other'</code> — לוודא שזה מקובל.</td></tr>
+  </table>
+  <p class="small">הערה: אם תרצה שאבדוק אותם בדפדפן <em>לפני</em> המיזוג — צריך להחיל את ה-migrations על מסד-dab ייעודי. לא עשיתי זאת חד-צדדית כי ביקשת לא לסטות מהספֵק ולא לגעת בסכמת-dev. זו החלטה שלך (ראו §7).</p>
+
+  <!-- ============ 4 ============ -->
+  <h2 id="feats">4. הפיצ'רים — מה / התלבטות / אפשרויות / החלטה</h2>
+
+  <div class="feat card">
+    <h3>P1 · איפוס-סיסמה עצמי <span class="pill pa">#329 · 0055</span></h3>
+    <div class="row"><span class="lbl">מה</span> הפער-התפעולי-#1: מנהל-ארגון שנעול-בחוץ לא יכל להתאושש. <code>POST /auth/forgot-password</code> + <code>/reset-password</code>, token חד-פעמי (sha256), argon2id, ביטול-כל-הסשנים.</div>
+    <div class="row"><span class="lbl">התלבטות</span> ה-security-review מצא <b>HIGH: timing-enumeration</b> — ה-exists-path חיכה ל-<code>email.send()</code> רשתי → אורקל-תזמון שחושף אם אימייל קיים.</div>
+    <div class="row"><span class="lbl">אפשרויות</span> (א) sleep מזויף בנתיב-לא-קיים [plaster — נדחה]; (ב) fire-and-forget לשליחת-המייל [נבחר].</div>
+    <div class="row"><span class="lbl">החלטה</span> ✅ fire-and-forget — ה-mint נשאר awaited (token דטרמיניסטי), השליחה יוצאת ממסלול-הבקשה. anti-enumeration נשמר (always-200).</div>
+  </div>
+
+  <div class="feat card">
+    <h3>P0.B1 · סריקת-וירוסים <span class="pill pa">#330 · 0056</span></h3>
+    <div class="row"><span class="lbl">מה</span> בעלים מעלים קבצים → דיירים מורידים. לא הייתה סריקת-תוכן. נוסף <code>IFileScanProvider</code> נשלף (Noop-dev / ClamAV-prod) + gate <b>fail-closed</b>: מסמך לא ניתן-להורדה עד verdict='clean', בכל המשטחים (owner/contractor/resident).</div>
+    <div class="row"><span class="lbl">התלבטות</span> התנגשות-מספור: ה-builder יצר <code>0055</code>, אבל #329 כבר תפס 0055.</div>
+    <div class="row"><span class="lbl">החלטה</span> ✅ שונה ל-<code>0056</code> + ציון סדר-מיזוג (#329 לפני #330). gate fail-closed; אם צריך עמודת-סטטוס → Gate-6.</div>
+  </div>
+
+  <div class="feat card">
+    <h3>P0.C1 · מחיקת-נתונים + ייצוא-נושא-המידע <span class="pill pa">#333 · 0057+0058</span></h3>
+    <div class="row"><span class="lbl">מה</span> רק soft-delete היה קיים. נוסף <code>GET /owners/:id/data-export</code> (גישה) + <code>POST /owners/:id/erase</code> (מחיקה).</div>
+    <div class="row"><span class="lbl">התלבטות-מפתח</span> מחיקת-בעל-שחתם מתנגשת בחובת-שמירה-משפטית (החתימה היא הוכחה לפרויקט).</div>
+    <div class="row"><span class="lbl">אפשרויות</span> (א) מחיקה-מלאה cascade [שובר תקינות-משפטית]; (ב) <b>anonymize-not-delete</b>: crypto-shred ל-PII, שמירת רשומת-החתימה+hash [נבחר].</div>
+    <div class="row"><span class="lbl">סיבוך</span> ה-blob של החתימה (ביומטרי) נשמר cleartext → security-review HIGH. תוקן ע"י <b>tombstone לחתימה</b> — אבל trigger-אי-שינוי של החתימות (0003) חסם UPDATE → נדרש <b>carve-out הדוק</b> (migration 0058) שמתיר רק את 3 עמודות-הרדקציה ליעד-מדויק, חוסם כל שאר השדות-המשפטיים. re-review: PASS.</div>
+    <div class="row"><span class="lbl">החלטה</span> ✅ anonymize-not-delete + redaction-trigger-carve-out. <b>מתועד ב-<code>DECISION-erasure-vs-legal-retention.md</code> — דורש אישור עו"ד.</b></div>
+  </div>
+
+  <div class="feat card">
+    <h3>P0.C2 · לכידת-הסכמה <span class="pill pa">#334 · 0059</span></h3>
+    <div class="row"><span class="lbl">מה</span> לא היה trail של הסכמה-לעיבוד-PII (חוק-הפרטיות). נלכד ברגע-החתימה: notice + consent נכתבים <b>באותה טרנזקציה</b> כמו החתימה (אטומי), עם hash-טקסט שרת-אוטוריטטיבי.</div>
+    <div class="row"><span class="lbl">התלבטות</span> checkbox-מפורש מול implicit-by-signing.</div>
+    <div class="row"><span class="lbl">החלטה</span> ✅ ברירת-מחדל <b>implicit-by-signing</b> (פחות חיכוך), אבל ארגון יכול לחייב tick מפורש (org-setting). הטקסט configurable, לא hardcoded.</div>
+  </div>
+
+  <div class="feat card">
+    <h3>P0.C3 · שמירת-לוגים ≥24 חודשים <span class="pill pa">#335 · 0060</span></h3>
+    <div class="row"><span class="lbl">מה</span> רגולציה ישראלית דורשת ≥24ח'; <code>audit_log</code> מעולם לא נגזם (גדל ללא-גבול). נוסף clamp (default 36, רצפה-קשיחה 24) + prune-יומי מנוזל.</div>
+    <div class="row"><span class="lbl">חסם</span> trigger-אי-שינוי חוסם כל DELETE (גם BYPASSRLS).</div>
+    <div class="row"><span class="lbl">אפשרויות</span> (א) <b>carve-out ל-trigger</b> [מומלץ]; (ב) partitioning + DROP PARTITION [כבד, עדיף בקנה-מידה-גדול].</div>
+    <div class="row"><span class="lbl">החלטה</span> ✅ <b>Option A — carve-out</b>: כל UPDATE חסום, מחיקת-שורה-עדכנית (<24ח') חסומה, רק מחיקת-שורה-ישנה מותרת. <b>+ TRUNCATE-guard</b> (re-review מצא ש-owner יכל TRUNCATE לעקוף). defense-in-depth: רצפת-24ח' גם ב-DB וגם באפליקציה.</div>
+  </div>
+
+  <div class="feat card">
+    <h3>P0.B2 · ניטור/זיהוי-פריצה <span class="pill pg">#331 · מוזג</span></h3>
+    <div class="row"><span class="lbl">מה</span> Sentry תפס שגיאות אבל אף-אחד לא קיבל pager. נוסף seam נשלף: <code>IMetricsProvider</code> (Noop/Prometheus) + <code>IAlertSink</code> (Noop/Webhook) + <code>BreachDetectionService</code> (חלון-קבוע: גל-כשלי-התחברות, ספייק-גישת-PII-ספק).</div>
+    <div class="row"><span class="lbl">החלטה</span> ✅ ללא migration → self-merge. security-review: <b>אין PII בטלמטריה</b> (מוכח בטסט), <code>/metrics</code> אגרגטיבי-בלבד.</div>
+  </div>
+
+  <div class="feat card">
+    <h3>P0.B3 · גיבוי/DR <span class="pill pg">#332 · מוזג</span></h3>
+    <div class="row"><span class="lbl">מה</span> <code>RUNBOOK-backups-dr.md</code> (Neon PITR + צעדי-שחזור + תרגיל-שחזור + <b>תלות-קריטית: מפתח-ה-PII חייב להתאושש מ-Infisical אחרת המסד הוא ciphertext חסר-תועלת</b>) + עמוד-סטטוס read-only (ה-stub <code>backups</code> חובר). ללא נתונים-מזויפים.</div>
+    <div class="row"><span class="lbl">החלטה</span> ✅ ללא migration → self-merge.</div>
+  </div>
+
+  <div class="feat card">
+    <h3>P2 · מודל-ההרשאות (4 שלבים)</h3>
+    <div class="row"><span class="lbl">Phase 0</span> <span class="pill pg">#336</span> <b>גילוי:</b> האיחוד למקור-אמת-יחיד <em>כבר נעשה</em> (Slice 5a). המנוע (<code>PermissionService</code>) חי; <code>policy.ts</code> כבר מת (רק oracle-בדיקה); ה-<code>user.role</code> הנותרים הם <b>record-scoping מכוון</b>. <span class="lbl">החלטה</span> ✅ תיקון-docblock-מיושן + <b>שמירת</b> proof-השקילות (guardrail) — לא מחיקה.</div>
+    <div class="row"><span class="lbl">Phase 1</span> <span class="pill pg">#337</span> תפקידים מותאמי-ארגון. <b>anti-escalation:</b> R2 subset-של-המעניק · R3 <code>org.*/roles.*</code> רק ל-Owner. ללא migration. security PASS.</div>
+    <div class="row"><span class="lbl">Phase 2</span> <span class="pill pa">#338 · 0061</span> overrides per-user. המנוע: <code>(role ∪ grant) − deny</code>, deny-wins. <b>הסיכון-הגבוה ביותר</b> (משנה את מנוע-ה-authz). security: <b>שקילות-no-override מוכחת byte-identical</b> — אפס רגרסיה ל-99% המשתמשים בלי-override.</div>
+    <div class="row"><span class="lbl">Phase 3</span> <span class="pill pb">החלטה</span> <b>קופל ל-P4</b>: parity-לספק חופף ל-provider-sub-roles; בניית-מנוע-מקביל ל-קומץ-עובדי-ספק = over-engineering. נסגר.</div>
+  </div>
+
+  <div class="feat card">
+    <h3>P3 · שדות-התחדשות בטופס-פרויקט <span class="pill pa">#340 · 0062</span></h3>
+    <div class="row"><span class="lbl">מה</span> שדות שהטופס השמיט: יזם · יחס-תמורה (יח'-קיימות/מתוכננות) · פינוי (relocation) · גוש/חלקה · תווית-מסלול-עתידי. כולם <b>additive + nullable → אפס-שבירה</b>.</div>
+    <div class="row"><span class="lbl">התלבטות-enum</span> איך לתמוך במסלולים-עתידיים (חלופת-שקד post-2026) בלי לשבור enum נעול.</div>
+    <div class="row"><span class="lbl">החלטה</span> ✅ <code>project_status</code> (D.18) <b>נעול — לא נגעתי</b>. <code>project_type</code> הורחב additively ב-<code>'other'</code> + תווית-חופשית. מפות-ה-type הן compile-time-total (TS מבטיח שכל מקום מטפל ב-other).</div>
+  </div>
+
+  <div class="feat card">
+    <h3>P4 · ניהול org-users לספק <span class="pill pg">#341 · מוזג</span></h3>
+    <div class="row"><span class="lbl">מה</span> <code>GET /provider/tenants/:id/users</code> — Provider-Admin + MFA + AccessReasonGate + audited. חברי-הארגון עם שם+אימייל <b>ממוסכים ב-SQL</b> (cleartext לא יוצא מ-Postgres), תפקידים, סטטוס. national_id/phone לא נשלפים.</div>
+    <div class="row"><span class="lbl">ממצא</span> security-review גילה שה-endpoint <b>מחמיר יותר</b> מ-endpoint-הפרטים-הקיים (שמחזיר אימייל לא-ממוסך). ללא migration → self-merge.</div>
+  </div>
+
+  <div class="feat card">
+    <h3>Epic F · form-builder <span class="pill pb">#342 · עיצוב בלבד</span></h3>
+    <div class="row"><span class="lbl">מה</span> החזון שלך: טופס-ברירת-מחדל + אזור שבו ארגון מגדיר שדות משלו. <code>DESIGN-form-builder.md</code>.</div>
+    <div class="row"><span class="lbl">אפשרויות</span> <b>Option A</b> — custom-fields על ישויות-קבועות (jsonb + field-defs + renderer דינמי) [מומלץ]; <b>Option B</b> — מערכת-טפסים-עצמאית [כבד, סיכון EAV-mess].</div>
+    <div class="row"><span class="lbl">החלטה</span> ⏸️ <b>עיצוב-קודם, עוצר לאישורך.</b> 4 החלטות נדרשות (§7): A/B · PII-בשדות-מותאמים · היקף-מנה-ראשונה · הרשאת <code>forms.manage</code>. <b>לא נבנה דבר עד אישור.</b></div>
+  </div>
+
+  <!-- ============ 5 ============ -->
+  <h2 id="decisions">5. ההחלטות שלך</h2>
+  <h3>הוכרעו ותועדו</h3>
+  <table>
+    <tr><th>נושא</th><th>החלטה</th></tr>
+    <tr><td>סף-הסכמה 66/67</td><td><b>66</b> + org-configurable (יושם #328). <span class="small">אישור-משפטי-סופי 66-מול-67 עדיין מומלץ.</span></td></tr>
+    <tr><td>triage P0</td><td>א (ליבת-חתימה) → דחייה · ב (מוכנות) → בנה-השאר-בלי-סביבת-prod · ג (רגולציה) → בנה-קוד</td></tr>
+    <tr><td>P2 Phase 3</td><td>קופל ל-P4 (provider sub-roles)</td></tr>
+    <tr><td>מחיקה מול שמירה-משפטית</td><td>anonymize-not-delete (<code>DECISION-erasure-vs-legal-retention.md</code>) — דורש אישור-עו"ד</td></tr>
+    <tr><td>שמירת-לוגים</td><td>Option A (carve-out) על-פני partitioning</td></tr>
+  </table>
+  <h3>ממתינות לך (לא נבנה לפניהן)</h3>
+  <table>
+    <tr><td><b>תוקף-חתימה-אלקטרונית</b></td><td><code>DECISION-esignature-validity.md</code> — היום זו "חתימה פשוטה" (הדרגה החלשה, חוק 2001). המלצה: <b>חיזוק-זהות ב-OTP-בחתימה לכולם</b> + חתימה-מאושרת/נוטריון לסף-המחייב. <b>לעו"ד.</b></td></tr>
+    <tr><td><b>Epic F §7</b></td><td>4 החלטות לפני בנייה.</td></tr>
+  </table>
+
+  <!-- ============ 6 ============ -->
+  <h2 id="deferred">6. מה נדחה במכוון</h2>
+  <div class="grid card">
+    <div><span class="pill pb">טרום-פרודקשן</span> אימות זרימת-החתימה במובייל/iOS · אימות-SMS-חי (Inforu מעולם לא שלח SMS אמיתי) · סביבת-פרודקשן + סודות (כולם dev-בלבד).</div>
+    <div><span class="pill pr">שלך / משפטי</span> רישום-מאגר-מידע · מינוי-ממונה-אבטחה · ביקורת-חיצונית-תקופתית · runbook-הודעת-פריצה + אנשי-קשר.</div>
+    <div class="small">אלה עלו ב-gap-hunt ("מה פספסנו"). הם <b>לא בנייה</b> אלא פעולות-תהליך/סביבה שתלויות בך/בעו"ד או רלוונטיות רק לפני-העלאה.</div>
+  </div>
+
+  <!-- ============ 7 ============ -->
+  <h2 id="verify">7. אימות-ידני בדפדפן — הפער הפתוח (שהעלית בצדק)</h2>
+  <div class="card warn">
+    <p><strong>התשובה הכנה: עברתי typecheck/lint/טסטים-אוטומטיים/security-review על הכל — אבל לא ביצעתי אימות-ידני-בדפדפן של ה-UI החדש.</strong> זה לא שווה-ערך ל"עובד + מהיר + יש UX".</p>
+    <p><b>הסיבה המבנית:</b> 7 מתוך 10 הפיצ'רים הם Gate-6 שה-migration שלהם (0055–0062) <b>לא הוחל על מסד-ה-dev</b> (כלל-נעול: לא לגעת בסכמת-משותף חד-צדדית). לכן ה-FE שלהם לא ירוץ end-to-end עד שה-migration ינחת. <b>זו הסיבה האמיתית שהם "ממתינים לך".</b></p>
+    <p><b>מה כן ניתן-לבדיקה עכשיו</b> (ממוזג + בלי migration): תפקידים-מותאמים (#337) · provider org-users (#341) · עמוד-גיבויים (#332) · סף-הסכמה (#328) · ניטור.</p>
+    <p><b>שתי דרכים לסגור את הפער:</b></p>
+    <ol>
+      <li><b>אתה ממזג</b> את ה-Gate-6 → ה-migration מוחל בפריסה → ואז בודקים בדפדפן בסביבה אמיתית.</li>
+      <li><b>אתה מאשר</b> לי להחיל את ה-migrations על מסד-dev-ייעודי → אבדוק את כל ה-10 בדפדפן <em>לפני</em> שתמזג, ואדווח: עובד? מהיר? יש UX? (זה מה שעצר אותי — לא רציתי לסטות מהכלל-הנעול בלי-רשותך.)</li>
+    </ol>
+    <p class="small">בכל מקרה — "idle" היה מסגור שגוי מצדי. הנכון: אני ממתין ל<b>החלטה שלך</b> איך לאמת (דרך 1 או 2), לא סתם ממתין.</p>
+  </div>
+
+  <hr/>
+  <p class="small">נוצר אוטומטית · EMAPP · 2026-06-10 · כל המסמכים: <code>docs/ROADMAP-approved.md</code>, <code>docs/DECISION-*.md</code>, <code>docs/DESIGN-form-builder.md</code>, <code>docs/RUNBOOK-backups-dr.md</code>, <code>docs/COMPLIANCE-audit-log-retention.md</code></p>
+
+</div>
+</body>
+</html>

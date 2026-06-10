@@ -151,8 +151,13 @@ export default function ProviderTenantDetailPage() {
         )}
       </section>
 
-      {/* Audit drill-down per tenant — pre-fills the orgId filter. */}
-      <section>
+      {/* Drill-downs: org users management (P4) + per-tenant audit. */}
+      <section className="flex flex-wrap gap-2">
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/provider/tenants/${data.id}/users` as '/provider'}>
+            {t('viewUsersForTenant')}
+          </Link>
+        </Button>
         <Button asChild variant="outline" size="sm">
           <Link href={{ pathname: '/provider/audit', query: { orgId: data.id } } as const}>
             {t('viewAuditForTenant')}

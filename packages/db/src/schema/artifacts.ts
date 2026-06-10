@@ -41,6 +41,15 @@ export const documents = pgTable(
      *  serving read paths require this NOT NULL so a never-finalised "ghost"
      *  document is never listed/downloaded (was the NoSuchKey bug). */
     uploadedAt: timestamp('uploaded_at', { withTimezone: true }),
+    /** 0056 (P0.B1) — anti-malware scan verdict. Gates downloadability:
+     *  'pending' (default) | 'clean' | 'infected' | 'error'. The download
+     *  path serves ONLY 'clean' (fail-closed) — unscanned/infected/error
+     *  documents are never downloadable. Stamped by finalize after the
+     *  IFileScanProvider scans the uploaded object. */
+    scanStatus: text('scan_status').notNull().default('pending'),
+    /** 0056 (P0.B1) — AV signature/threat label for an 'infected' verdict, or
+     *  a short content-free reason for 'error'. NEVER file content or PII. */
+    scanSignature: text('scan_signature'),
   },
   (table) => ({
     r2KeyUnique: uniqueIndex('documents_r2_key_unique').on(table.r2Key),

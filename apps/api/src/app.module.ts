@@ -28,6 +28,7 @@ import { PortalModule } from './modules/portal/portal.module';
 import { ProjectAssignmentsModule } from './modules/project-assignments/project-assignments.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { ProviderModule } from './modules/provider/provider.module';
+import { RolesModule } from './modules/roles/roles.module';
 import { SharesModule } from './modules/shares/shares.module';
 import { SignaturesModule } from './modules/signatures/signatures.module';
 import { TasksModule } from './modules/tasks/tasks.module';
@@ -96,6 +97,10 @@ import { QueueModule } from './queue/queue.module';
     AuditModule,
     ProjectAssignmentsModule,
     MembersModule,
+    // P2 Phase 1 — custom permission groups (org-defined roles). Management CRUD
+    // + assign/revoke over the existing IAM data model; the engine enforces a
+    // custom role live the moment a role_assignment references it.
+    RolesModule,
     OrgModule,
     SignaturesModule,
     QueueModule,

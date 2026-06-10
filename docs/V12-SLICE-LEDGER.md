@@ -102,6 +102,43 @@ DROP NOT NULL; ALTER COLUMN national_id_encrypted DROP NOT NULL;` Update the dri
 Pipeline THIS slice: **test-author BEFORE builder** (clean RED). Reviews (security MUST — PII +
 the create path). Real browser-QA: create a shell owner in the UI (name+tz blank) → succeeds.
 
+| Gate                                                                                                                                                                                                                                                    | Status |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ✅ · Reproduce-RED ✅ · Build ✅ · IndepTests ✅ (7) · CodeReview ✅ · Security ✅ (HIGH DSAR-nullable fixed + MED coverage) · BrowserQA ✅ (live shell-create 201 + "ללא שם" placeholder) · CI ✅ · Merge ✅ #347→471ca52 · Critic ✅ · Memory ✅ |
+
+**SLICE 3a ✅ CLOSED — merged 471ca52.** Critic note (low-pri follow-up): `data-subject.service`
+audit `revealed` array lists name/national_id even for a shell where both are null (audit
+fidelity — claims a reveal of null fields).
+
+---
+
+## Slice 3b — ownership share AS FRACTION · branch feat/s3b-share-fraction (Gate-6)
+
+Design §2/§9: Tabu expresses ownership as exact FRACTIONS (e.g. 17/240, 1/3), not just a 2-decimal
+percent. Today `ownerships.ownership_pct numeric(5,2)` + the D.25 sum trigger requires
+`SUM(ownership_pct WHERE relationship='owner') = 100` per apartment — which a 1/3 split BREAKS
+(33.33×3 = 99.99 ≠ 100 → rejected). Renters store pct=0, excluded from the sum (keep that).
+
+**DECISION (my recommendation — proceeding per "go with rec + document"; owner reviews at end):**
+
+- Add `share_numerator bigint NOT NULL` + `share_denominator bigint NOT NULL CHECK (>0)` to
+  `ownerships` — the faithful Tabu fraction (the new source of truth for a share).
+- Keep `ownership_pct` for compat/display, derived on write = round(num/den\*100, 2). (Don't drop
+  it — exports/UI read it; it's the human-friendly view.)
+- **Change the sum trigger** (new migration, hand-authored) to validate the EXACT fraction sum = 1
+  per apartment over `relationship='owner'` rows, via integer cross-multiplication to a common
+  denominator (so 1/3+1/3+1/3 = exactly 1; NO float). Renters (num/den irrelevant; store 0/1)
+  stay excluded. The threshold is apartment-level (owner-decided), so this sum is a data-integrity
+  sanity, not a weighted-threshold basis — but it must be EXACT so a faithful Tabu split isn't
+  rejected.
+- DTO + create/import path: accept numerator/denominator (derive pct); keep pct-only writes
+  working (pct → num/den as pct/100 reduced) for back-compat.
+
+Pipeline: **test-author BEFORE builder** — clean RED = "a 1/3 + 1/3 + 1/3 ownership split is
+ACCEPTED" (today the pct=100 trigger rejects it) + "sum ≠ 1 is rejected". Reviews (security: the
+sum constraint is data-integrity-critical — a bypass lets shares not sum to the whole). browser-QA.
+merge-on-green. Migration `when` > 1782226800000 (after 0064). Regen api-docs (DTO change).
+
 | Gate                                                                                                                                          | Status |
 | --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
 | Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |

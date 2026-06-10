@@ -17,18 +17,21 @@ const STATUS_LABELS_HE: Record<SignatureRequestStatus, string> = {
   pending: 'ממתין לחתימה',
   signed: 'חתום',
   cancelled: 'בוטל',
+  expired: 'פג תוקף',
 };
 
 const STATUS_LABELS_EN: Record<SignatureRequestStatus, string> = {
   pending: 'Pending',
   signed: 'Signed',
   cancelled: 'Cancelled',
+  expired: 'Expired',
 };
 
 const STATUS_COLORS: Record<SignatureRequestStatus, SignatureRequestViewModel['statusColor']> = {
   pending: 'amber',
   signed: 'emerald',
   cancelled: 'gray',
+  expired: 'red',
 };
 
 const TERMINAL_STATES = new Set<SignatureRequestStatus>(['signed', 'cancelled']);

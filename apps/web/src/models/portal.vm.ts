@@ -78,9 +78,9 @@ export interface PortalSignatureViewModel {
   id: string;
   documentId: string;
   documentName: string;
-  status: 'pending' | 'signed' | 'cancelled';
+  status: 'pending' | 'signed' | 'cancelled' | 'expired';
   statusLabel: string;
-  statusColor: 'amber' | 'emerald' | 'gray';
+  statusColor: 'amber' | 'emerald' | 'gray' | 'red';
   expiresRelative: string;
   /** True when status==='pending' AND expiresAt < now. UI shows a
    *  warning chip in that case. */

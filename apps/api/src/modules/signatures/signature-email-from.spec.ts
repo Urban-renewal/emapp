@@ -110,9 +110,37 @@ function natId(): string {
   return String(Math.floor(100000000 + Math.random() * 899999999));
 }
 
-/** Seed a real owner WITH an email so the EMAIL channel fires on create(). */
+/** Slice-1 #2 recipient-association: tie an owner to `projectId` via a real
+ *  chain (building → apartment → active 100%-owner ownership) so the owner is
+ *  associated with the project-scoped doc this suite sends. Each owner gets its
+ *  OWN apartment (single owner at 100.00) to satisfy the per-apartment sum=100
+ *  trigger. Runs via providerPool (BYPASSRLS). */
+async function associateOwnerWithProject(ownerId: string, project: string): Promise<void> {
+  const c = await providerPool.connect();
+  try {
+    const b = await c.query<{ id: string }>(
+      `INSERT INTO buildings (project_id, address, city) VALUES ($1, $2, 'TLV') RETURNING id`,
+      [project, `St-${randomUUID()}`],
+    );
+    const a = await c.query<{ id: string }>(
+      `INSERT INTO apartments (building_id, number) VALUES ($1, $2) RETURNING id`,
+      [b.rows[0]!.id, randomUUID().slice(0, 8)],
+    );
+    await c.query(
+      `INSERT INTO ownerships (apartment_id, owner_id, ownership_pct, relationship)
+       VALUES ($1, $2, 100.00, 'owner')`,
+      [a.rows[0]!.id, ownerId],
+    );
+  } finally {
+    c.release();
+  }
+}
+
+/** Seed a real owner WITH an email so the EMAIL channel fires on create(), AND
+ *  associate it with `projectId` so the recipient-association gate passes (every
+ *  doc this suite seeds is scoped to `projectId`). */
 async function seedOwnerWithEmail(orgId: string): Promise<string> {
-  return withTenant(orgId, async (tx) => {
+  const id = await withTenant(orgId, async (tx) => {
     const pii = await encryptOwnerPii(tx as never, {
       nationalId: natId(),
       name: 'בעלים',
@@ -133,6 +161,8 @@ async function seedOwnerWithEmail(orgId: string): Promise<string> {
       .returning({ id: owners.id });
     return row!.id;
   });
+  await associateOwnerWithProject(id, projectId);
+  return id;
 }
 
 async function seedDoc(orgId: string, project: string, mgrId: string): Promise<string> {

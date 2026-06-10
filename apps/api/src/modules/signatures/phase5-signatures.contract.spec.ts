@@ -112,7 +112,7 @@ async function signup(tag: string): Promise<Manager> {
   return { at, orgId };
 }
 
-async function createDocument(at: string): Promise<string> {
+async function createDocument(at: string, scope?: { apartmentId?: string }): Promise<string> {
   const sizeBytes = 1024;
   const contentHash = 'sha256:phase5-audit-' + Math.random().toString(36).slice(2);
   const r = await call('/documents', {
@@ -124,6 +124,7 @@ async function createDocument(at: string): Promise<string> {
       mimeType: 'application/pdf',
       sizeBytes,
       contentHash,
+      ...(scope?.apartmentId ? { apartmentId: scope.apartmentId } : {}),
     }),
   });
   if (r.status !== 201 && r.status !== 200) {
@@ -178,6 +179,65 @@ async function createOwner(at: string): Promise<string> {
   const id = body.data?.id;
   if (!id) throw new Error(`no owner.id: ${r.raw}`);
   return id;
+}
+
+/** Slice-1 #2 recipient-association: provision an owner GENUINELY associated
+ *  with the document's scope. Creates project → building → apartment, an owner,
+ *  sets the owner as the apartment's sole 100% owner, finalises an APARTMENT-
+ *  SCOPED document, and returns both ids. The recipient-association gate
+ *  (recipient_not_associated) requires this active ownership of the document's
+ *  apartment, so an org-level (scope-less) doc + bare owner is now rejected. */
+async function createAssociatedDocAndOwner(
+  at: string,
+): Promise<{ documentId: string; ownerId: string }> {
+  const cookie = `access_token=${at}`;
+
+  const proj = await call('/projects', {
+    method: 'POST',
+    cookie,
+    body: JSON.stringify({ name: `פרויקט ${Date.now()}-${Math.random()}`, type: 'tama38_1' }),
+  });
+  if (proj.status !== 201 && proj.status !== 200) {
+    throw new Error(`create project failed ${proj.status}: ${proj.raw}`);
+  }
+  const projectId = (proj.body as { data?: { id?: string } }).data!.id!;
+
+  const bld = await call(`/projects/${projectId}/buildings`, {
+    method: 'POST',
+    cookie,
+    body: JSON.stringify({
+      address: `רחוב ${Math.random().toString(36).slice(2)}`,
+      city: 'תל אביב',
+    }),
+  });
+  if (bld.status !== 201 && bld.status !== 200) {
+    throw new Error(`create building failed ${bld.status}: ${bld.raw}`);
+  }
+  const buildingId = (bld.body as { data?: { id?: string } }).data!.id!;
+
+  const apt = await call(`/buildings/${buildingId}/apartments`, {
+    method: 'POST',
+    cookie,
+    body: JSON.stringify({ number: Math.random().toString(36).slice(2, 8) }),
+  });
+  if (apt.status !== 201 && apt.status !== 200) {
+    throw new Error(`create apartment failed ${apt.status}: ${apt.raw}`);
+  }
+  const apartmentId = (apt.body as { data?: { id?: string } }).data!.id!;
+
+  const ownerId = await createOwner(at);
+
+  const own = await call(`/apartments/${apartmentId}/ownerships`, {
+    method: 'PUT',
+    cookie,
+    body: JSON.stringify({ owners: [{ ownerId, ownershipPct: 100, relationship: 'owner' }] }),
+  });
+  if (own.status !== 200 && own.status !== 201) {
+    throw new Error(`set ownerships failed ${own.status}: ${own.raw}`);
+  }
+
+  const documentId = await createDocument(at, { apartmentId });
+  return { documentId, ownerId };
 }
 
 async function createSignatureRequest(
@@ -245,16 +305,22 @@ beforeAll(async () => {
   // eslint-disable-next-line no-console
   console.warn(`[phase5-signatures] ran against ${API}`);
 
-  // Provision fixtures.
+  // Provision fixtures. Each (doc, owner) pair is a GENUINELY associated chain
+  // (owner owns the apartment the apartment-scoped doc hangs off) so create()
+  // passes the recipient-association gate. Sequential to keep the per-org chain
+  // (project → building → apartment → ownership → doc) ordering unambiguous.
   const orgA = await signup('orgA');
   const orgB = await signup('orgB');
-  const [docAId, ownerAId, docBId, ownerBId] = await Promise.all([
-    createDocument(orgA.at),
-    createOwner(orgA.at),
-    createDocument(orgB.at),
-    createOwner(orgB.at),
-  ]);
-  fx = { orgA, orgB, docAId, docBId, ownerAId, ownerBId };
+  const a = await createAssociatedDocAndOwner(orgA.at);
+  const b = await createAssociatedDocAndOwner(orgB.at);
+  fx = {
+    orgA,
+    orgB,
+    docAId: a.documentId,
+    docBId: b.documentId,
+    ownerAId: a.ownerId,
+    ownerBId: b.ownerId,
+  };
 });
 
 afterAll(() => {
@@ -302,8 +368,7 @@ describe('Phase 5 · Signatures · public-link signing — E2E security audit', 
     // ACTUALLY — we already used (docA, ownerA) in E1 with status=pending.
     // We need a different (doc, owner) for this test to avoid the 409
     // signature_request_pending_exists guard. Make a 2nd doc + owner.
-    const doc2 = await createDocument(fx!.orgA.at);
-    const owner2 = await createOwner(fx!.orgA.at);
+    const { documentId: doc2, ownerId: owner2 } = await createAssociatedDocAndOwner(fx!.orgA.at);
     const { token } = await createSignatureRequest(fx!.orgA.at, doc2, owner2);
 
     // E2: preview (no cookie — public).
@@ -342,8 +407,7 @@ describe('Phase 5 · Signatures · public-link signing — E2E security audit', 
 
   // ─── E5: tamper ──────────────────────────────────────────────────
   ct('E5 tampered token (byte flip in payload segment) → 401', async () => {
-    const doc = await createDocument(fx!.orgA.at);
-    const owner = await createOwner(fx!.orgA.at);
+    const { documentId: doc, ownerId: owner } = await createAssociatedDocAndOwner(fx!.orgA.at);
     const { token } = await createSignatureRequest(fx!.orgA.at, doc, owner);
     const parts = token.split('.');
     const flipped = parts[1]!.slice(0, -1) + (parts[1]!.slice(-1) === 'A' ? 'B' : 'A');
@@ -444,8 +508,7 @@ describe('Phase 5 · Signatures · public-link signing — E2E security audit', 
 
   // ─── E9: invalid SVG payload ─────────────────────────────────────
   ct('E9 invalid SVG (not <svg>...) → 400 validation_error', async () => {
-    const doc = await createDocument(fx!.orgA.at);
-    const owner = await createOwner(fx!.orgA.at);
+    const { documentId: doc, ownerId: owner } = await createAssociatedDocAndOwner(fx!.orgA.at);
     const { token } = await createSignatureRequest(fx!.orgA.at, doc, owner);
 
     const r = await call(`/sign/${token}`, {
@@ -487,8 +550,7 @@ describe('Phase 5 · Signatures · public-link signing — E2E security audit', 
 
   // ─── E11: no-oracle (same surface for ALL failure modes) ─────────
   ct('E11 NO-ORACLE — every failure mode returns IDENTICAL surface', async () => {
-    const doc = await createDocument(fx!.orgA.at);
-    const owner = await createOwner(fx!.orgA.at);
+    const { documentId: doc, ownerId: owner } = await createAssociatedDocAndOwner(fx!.orgA.at);
     const { token } = await createSignatureRequest(fx!.orgA.at, doc, owner);
 
     // Snapshot the response for a tampered token.
@@ -540,8 +602,7 @@ describe('Phase 5 · Signatures · public-link signing — E2E security audit', 
 
   // ─── E12: token NEVER in any failure response body ───────────────
   ct('E12 token never leaks into response bodies (layer 5 lower bound)', async () => {
-    const doc = await createDocument(fx!.orgA.at);
-    const owner = await createOwner(fx!.orgA.at);
+    const { documentId: doc, ownerId: owner } = await createAssociatedDocAndOwner(fx!.orgA.at);
     const { token } = await createSignatureRequest(fx!.orgA.at, doc, owner);
 
     // Use the token once successfully — then second call → 401 — verify
@@ -562,8 +623,7 @@ describe('Phase 5 · Signatures · public-link signing — E2E security audit', 
 
   // ─── E13: no auth required (the JWT IS the credential) ──────────
   ct('E13 GET + POST /sign/:token work WITHOUT any access cookie', async () => {
-    const doc = await createDocument(fx!.orgA.at);
-    const owner = await createOwner(fx!.orgA.at);
+    const { documentId: doc, ownerId: owner } = await createAssociatedDocAndOwner(fx!.orgA.at);
     const { token } = await createSignatureRequest(fx!.orgA.at, doc, owner);
 
     // Deliberately NO cookie. This is the public-link flow's defining

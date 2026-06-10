@@ -18,8 +18,11 @@ import { HttpsUrlSchema, WhatsAppDeepLinkSchema } from './safe-url';
 //  - `signature_requests.signed_signature_id` is internal — exposed as
 //    `signedSignatureId` only on signed/cancelled views.
 
-/** State machine. `pending` = link out, awaiting resident. */
-export const SignatureRequestStatusEnum = z.enum(['pending', 'signed', 'cancelled']);
+/** State machine. `pending` = link out, awaiting resident; `expired` = a
+ *  pending link whose 7-day deadline lapsed before it was signed (terminal —
+ *  the manager re-issues a fresh request). Mirrors the DB CHECK widened in
+ *  migration 0063 (CHECK == wire-enum invariant). */
+export const SignatureRequestStatusEnum = z.enum(['pending', 'signed', 'cancelled', 'expired']);
 export type SignatureRequestStatus = z.infer<typeof SignatureRequestStatusEnum>;
 
 /** Wire shape — manager-side view. Never exposes `jti` (token-id) or

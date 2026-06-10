@@ -128,7 +128,8 @@ export const signatureRequests = pgTable(
       .references(() => owners.id, { onDelete: 'restrict' }),
     /** JWT `jti` claim. UNIQUE — this is the atomic single-use guard's key. */
     jti: text('jti').notNull(),
-    /** 'pending' | 'signed' | 'cancelled' — enforced by CHECK in migration 0021. */
+    /** 'pending' | 'signed' | 'cancelled' | 'expired' — enforced by CHECK
+     *  (widened to include 'expired' in migration 0063). */
     status: text('status').notNull().default('pending'),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     createdBy: uuid('created_by')
@@ -154,7 +155,7 @@ export const signatureRequests = pgTable(
     ownerStatusIdx: index('idx_signature_requests_owner_status').on(table.ownerId, table.status),
     statusCheck: check(
       'signature_requests_status_valid',
-      sql`${table.status} IN ('pending','signed','cancelled')`,
+      sql`${table.status} IN ('pending','signed','cancelled','expired')`,
     ),
   }),
 );

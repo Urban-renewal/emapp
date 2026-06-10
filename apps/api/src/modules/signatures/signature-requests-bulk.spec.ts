@@ -172,6 +172,45 @@ async function seedOwner(orgId: string, opts?: { email?: string | null }): Promi
   });
 }
 
+/** Slice-1 #2 recipient-association: tie an owner to a project via a real
+ *  chain (building → apartment → active 100%-owner ownership), so the owner is
+ *  genuinely associated with any project-scoped document under `projectId`.
+ *  Each owner gets its OWN apartment so the per-apartment sum=100 trigger holds
+ *  (a single owner at 100.00). Runs via providerPool (BYPASSRLS). */
+async function associateOwnerWithProject(ownerId: string, projectId: string): Promise<void> {
+  const c = await providerPool.connect();
+  try {
+    const b = await c.query<{ id: string }>(
+      `INSERT INTO buildings (project_id, address, city) VALUES ($1, $2, 'TLV') RETURNING id`,
+      [projectId, `St-${randomUUID()}`],
+    );
+    const a = await c.query<{ id: string }>(
+      `INSERT INTO apartments (building_id, number) VALUES ($1, $2) RETURNING id`,
+      [b.rows[0]!.id, randomUUID().slice(0, 8)],
+    );
+    await c.query(
+      `INSERT INTO ownerships (apartment_id, owner_id, ownership_pct, relationship)
+       VALUES ($1, $2, 100.00, 'owner')`,
+      [a.rows[0]!.id, ownerId],
+    );
+  } finally {
+    c.release();
+  }
+}
+
+/** Seed an owner AND associate it with `projectId` (the common case for this
+ *  suite — every recipient targets a project-scoped doc and must be tied to it
+ *  for the recipient-association gate to pass). */
+async function seedAssociatedOwner(
+  orgId: string,
+  projectId: string,
+  opts?: { email?: string | null },
+): Promise<string> {
+  const id = await seedOwner(orgId, opts);
+  await associateOwnerWithProject(id, projectId);
+  return id;
+}
+
 /** Pre-create a PENDING signature_request directly (bypasses the service) so
  *  we can assert skipped_existing without depending on createBulk itself. */
 async function seedPending(documentId: string, ownerId: string): Promise<string> {
@@ -241,9 +280,9 @@ afterAll(() => {
 
 describe('createBulk — happy path', () => {
   it('BULK-1) 3 valid owners → summary {3,0,0}, each created w/ requestId, 3 rows, NO token in JSON', async () => {
-    const a = await seedOwner(org.id);
-    const b = await seedOwner(org.id);
-    const cOwner = await seedOwner(org.id);
+    const a = await seedAssociatedOwner(org.id, assignedProjectId);
+    const b = await seedAssociatedOwner(org.id, assignedProjectId);
+    const cOwner = await seedAssociatedOwner(org.id, assignedProjectId);
 
     const res = await svc.createBulk(manager(), {
       documentId: docAssigned,
@@ -307,7 +346,9 @@ describe('createBulk — happy path', () => {
   }, 30_000);
 
   it('BULK-2) delivery report present on created results (email + sms = sent)', async () => {
-    const a = await seedOwner(org.id, { email: `del-${randomUUID()}@test.local` });
+    const a = await seedAssociatedOwner(org.id, assignedProjectId, {
+      email: `del-${randomUUID()}@test.local`,
+    });
     const res = await svc.createBulk(manager(), { documentId: docAssigned, ownerIds: [a] });
     const r = res.results[0]!;
     expect(r.outcome).toBe('created');
@@ -329,8 +370,8 @@ describe('createBulk — happy path', () => {
 
 describe('createBulk — skipped_existing', () => {
   it('BULK-3) A already pending, bulk [A,B] → A skipped (no 2nd row), B created, summary {1,1,0}', async () => {
-    const a = await seedOwner(org.id);
-    const b = await seedOwner(org.id);
+    const a = await seedAssociatedOwner(org.id, assignedProjectId);
+    const b = await seedAssociatedOwner(org.id, assignedProjectId);
     await seedPending(docAssigned, a);
 
     const res = await svc.createBulk(manager(), { documentId: docAssigned, ownerIds: [a, b] });
@@ -350,7 +391,7 @@ describe('createBulk — skipped_existing', () => {
 
 describe('createBulk — failed owner does NOT abort the batch', () => {
   it('BULK-4) [validOwner, randomUUID] → random=failed(owner_not_found), valid=created, summary {1,0,1}', async () => {
-    const valid = await seedOwner(org.id);
+    const valid = await seedAssociatedOwner(org.id, assignedProjectId);
     const bogus = randomUUID();
 
     const res = await svc.createBulk(manager(), {
@@ -372,7 +413,7 @@ describe('createBulk — failed owner does NOT abort the batch', () => {
   }, 30_000);
 
   it('BULK-5) failed owner LAST in batch still lets earlier owners through (ordering)', async () => {
-    const a = await seedOwner(org.id);
+    const a = await seedAssociatedOwner(org.id, assignedProjectId);
     const bogus = randomUUID();
     const res = await svc.createBulk(manager(), {
       documentId: docAssigned,
@@ -383,7 +424,7 @@ describe('createBulk — failed owner does NOT abort the batch', () => {
   }, 30_000);
 
   it('BULK-6) a foreign-org owner id behaves as owner_not_found (cross-org IDOR), batch continues', async () => {
-    const local = await seedOwner(org.id);
+    const local = await seedAssociatedOwner(org.id, assignedProjectId);
     const foreignOwner = await seedOwner(foreignOrg.id);
     const res = await svc.createBulk(manager(), {
       documentId: docAssigned,
@@ -397,7 +438,7 @@ describe('createBulk — failed owner does NOT abort the batch', () => {
 
 describe('createBulk — dedup', () => {
   it('BULK-7) ownerIds [A,A,A] → exactly one created result + one row', async () => {
-    const a = await seedOwner(org.id);
+    const a = await seedAssociatedOwner(org.id, assignedProjectId);
     const res = await svc.createBulk(manager(), {
       documentId: docAssigned,
       ownerIds: [a, a, a],
@@ -427,7 +468,7 @@ describe('createBulk — AUTHZ (gate fires ONCE, BEFORE any insert)', () => {
 
   it('BULK-9) agent WITH manage_signatures on assigned doc → works', async () => {
     await setCap(true);
-    const a = await seedOwner(org.id);
+    const a = await seedAssociatedOwner(org.id, assignedProjectId);
     const res = await svc.createBulk(agent(), { documentId: docAssigned, ownerIds: [a] });
     expect(res.summary).toEqual({ created: 1, skipped: 0, failed: 0 });
     expect(res.results[0]!.outcome).toBe('created');
@@ -462,8 +503,8 @@ describe('createBulk — foreign-org document', () => {
 
 describe('createBulk — mixed batch (all three outcomes at once)', () => {
   it('BULK-12) [created, skipped_existing, failed] in one call → summary {1,1,1}, only created row added', async () => {
-    const created = await seedOwner(org.id);
-    const skipped = await seedOwner(org.id);
+    const created = await seedAssociatedOwner(org.id, assignedProjectId);
+    const skipped = await seedAssociatedOwner(org.id, assignedProjectId);
     const bogus = randomUUID();
     await seedPending(docAssigned, skipped);
 
@@ -487,7 +528,7 @@ describe('createBulk — mixed batch (all three outcomes at once)', () => {
 describe('createBulk — concurrency / chunking (>8 owners crosses a chunk boundary)', () => {
   it('BULK-13) 9 owners → all created, 9 rows, summary {9,0,0} (delivery chunk of 8 boundary)', async () => {
     const ids: string[] = [];
-    for (let i = 0; i < 9; i += 1) ids.push(await seedOwner(org.id));
+    for (let i = 0; i < 9; i += 1) ids.push(await seedAssociatedOwner(org.id, assignedProjectId));
     const res = await svc.createBulk(manager(), { documentId: docAssigned, ownerIds: ids });
     expect(res.summary).toEqual({ created: 9, skipped: 0, failed: 0 });
     expect(res.results).toHaveLength(9);
@@ -497,8 +538,8 @@ describe('createBulk — concurrency / chunking (>8 owners crosses a chunk bound
 
 describe('createBulk — decrypt isolation (sec-review HIGH: a corrupt owner must not poison the batch)', () => {
   it('BULK-14) a corrupt-ciphertext owner does not abort the batch; request still created, only its delivery fails', async () => {
-    const good = await seedOwner(org.id);
-    const bad = await seedOwner(org.id);
+    const good = await seedAssociatedOwner(org.id, assignedProjectId);
+    const bad = await seedAssociatedOwner(org.id, assignedProjectId);
     // Corrupt the bad owner's encrypted name so pgp_sym_decrypt RAISES. In the
     // old shared-tx design this aborted the whole batch (25P02). Now PII decrypt
     // is per-owner in an ISOLATED tx, so only this owner's DELIVERY fails — its
@@ -524,5 +565,5 @@ describe('createBulk — decrypt isolation (sec-review HIGH: a corrupt owner mus
     // Corrupt owner's PII could not decrypt → NO delivery report; the valid one HAS one.
     expect(badRes?.delivery).toBeUndefined();
     expect(goodRes?.delivery).toBeDefined();
-  });
+  }, 30_000);
 });

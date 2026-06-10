@@ -124,25 +124,28 @@ const UNIT_TYPE_EN: Record<string, string> = {
   other: 'Other',
 };
 
-const SIG_STATUS_HE: Record<'pending' | 'signed' | 'cancelled', string> = {
+const SIG_STATUS_HE: Record<PortalSignatureViewModel['status'], string> = {
   pending: 'ממתין לחתימה',
   signed: 'נחתם',
   cancelled: 'בוטל',
+  expired: 'פג תוקף',
 };
 
-const SIG_STATUS_EN: Record<'pending' | 'signed' | 'cancelled', string> = {
+const SIG_STATUS_EN: Record<PortalSignatureViewModel['status'], string> = {
   pending: 'Pending signature',
   signed: 'Signed',
   cancelled: 'Cancelled',
+  expired: 'Expired',
 };
 
 const SIG_STATUS_COLORS: Record<
-  'pending' | 'signed' | 'cancelled',
+  PortalSignatureViewModel['status'],
   PortalSignatureViewModel['statusColor']
 > = {
   pending: 'amber',
   signed: 'emerald',
   cancelled: 'gray',
+  expired: 'red',
 };
 
 // Same document-type label set as adapters/document.ts but standalone —
@@ -276,7 +279,8 @@ export function toPortalSignatureViewModel(
   const labels = locale === 'he' ? SIG_STATUS_HE : SIG_STATUS_EN;
   const now = new Date();
   const expiresAt = s.expiresAt instanceof Date ? s.expiresAt : new Date(s.expiresAt);
-  const isExpired = s.status === 'pending' && expiresAt.getTime() < now.getTime();
+  const isExpired =
+    s.status === 'expired' || (s.status === 'pending' && expiresAt.getTime() < now.getTime());
   return {
     id: s.id,
     documentId: s.documentId,

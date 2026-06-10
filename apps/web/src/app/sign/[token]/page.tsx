@@ -107,7 +107,7 @@ export default function SignPage() {
 
   // P0.C2 — when the org requires explicit consent, the resident must tick the
   // box before signing. Derived from the preview's `consentNotice`.
-  const requireExplicit = preview?.consentNotice.requireExplicitConsent ?? false;
+  const requireExplicit = preview?.consentNotice?.requireExplicitConsent ?? false;
   const consentSatisfied = !requireExplicit || consentChecked;
 
   async function onSubmit() {
@@ -344,7 +344,7 @@ export default function SignPage() {
       <section className="space-y-2 rounded-md border bg-muted/20 p-4">
         <h2 className="text-sm font-semibold">{t('consentSectionTitle')}</h2>
         <p className="whitespace-pre-line text-xs text-muted-foreground">
-          {preview.consentNotice.text}
+          {preview.consentNotice?.text}
         </p>
         {requireExplicit ? (
           <label className="flex items-start gap-2 text-sm">

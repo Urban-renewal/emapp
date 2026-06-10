@@ -139,8 +139,41 @@ ACCEPTED" (today the pct=100 trigger rejects it) + "sum ≠ 1 is rejected". Revi
 sum constraint is data-integrity-critical — a bypass lets shares not sum to the whole). browser-QA.
 merge-on-green. Migration `when` > 1782226800000 (after 0064). Regen api-docs (DTO change).
 
+| Gate                                                                                                                                                                                                          | Status |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ✅ · Reproduce-RED ✅ (thirds 42703) · Build ✅ · IndepTests ✅ · CodeReview ✅ · Security ✅ · BrowserQA ✅ (live: thirds PUT→200, 1/3+1/3→400) · CI ✅ · Merge ✅ #348→cf3a1bc · Critic ✅ · Memory ✅ |
+
+**SLICE 3b ✅ CLOSED — merged cf3a1bc.** The pipeline's strongest proof to date — it took **3 review
+rounds + a CI-ripple fix** to ship a CORRECT legal-record-integrity feature:
+
+1. Manager scrutiny caught the builder keeping a harmful pct=100 trigger check (would reject real thirds).
+2. Both reviewers BLOCKED with 4 data-integrity CRITICALs: Zod still enforced pct≈100 (thirds rejected
+   at API); the trigger ACCEPTED frac_sum=0 (a zero-ownership apartment recorded as valid); numeric-fallback
+   epsilon + unbounded denominator; tests bypassed the Zod layer (plaster). All closed at root.
+3. A re-review caught the Zod refine using JS `number` (overflows 2^53 for large coprime denominators →
+   diverges from the trigger). Fixed with BigInt — provably exact across the full domain.
+4. CI caught a real ripple: dozens of existing specs seed ownerships via raw pct-only SQL → fraction
+   default 0/10000 → the sum trigger rejected them. Fixed systemically with a BEFORE INSERT/UPDATE trigger
+   that derives the fraction from pct when unset (pct-only back-compat; product path + constraint unaffected).
+   Critic notes (low-pri): (a) the BEFORE-trigger means a pct-only writer gets a 2-decimal fraction
+   (num=pct\*100/den=10000), not an exact reduced fraction — fine for back-compat, exact fractions need the
+   explicit num/den path; (b) consider a shared test factory for ownership seeding to avoid the raw-SQL
+   fragility recurring in future schema-constraint changes.
+
+---
+
+## Slice 3c — renter → discovery-source · branch feat/s3c-discovery (off main)
+
+Design §2/§6: a "renter" is NOT an owner/signer — it's a discovery SOURCE attached to an apartment
+(who lives there → leads to the owner). Today `ownerships.relationship='renter'` overloads the
+ownership table. Rework: a renter becomes a discovery-record/occupant on the apartment (status enum
+
+- free-text note now; audio-transcription slot deferred). Rework `resolveRenterOnly` in signatures
+  (a renter must never be a signature recipient). SPEC carefully; test-author BEFORE builder; FULL-suite
+  ripple check (lesson from 3b); reviews; browser-QA; merge-on-green.
+
 | Gate                                                                                                                                          | Status |
 | --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |
+| Spec ⏳ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |
 
 Rule: any real-red → slice stays OPEN with the blocker named here; never force-merge.

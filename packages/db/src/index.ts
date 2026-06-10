@@ -114,6 +114,7 @@ export type {
   IStorageProvider,
   UploadUrlOptions,
   DownloadUrlOptions,
+  StorageObjectMeta,
 } from './providers/storage/storage.interface';
 export { R2StorageProvider } from './providers/storage/r2.provider';
 export {

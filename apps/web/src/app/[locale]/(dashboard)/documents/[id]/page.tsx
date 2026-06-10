@@ -25,6 +25,11 @@ export default function DocumentDetailPage() {
   const canDownload = useHasPermission('documents.download');
   const canArchive = useHasPermission('documents.archive');
   const [actionError, setActionError] = useState<string | null>(null);
+  // Which disposition is currently in flight, so only the clicked button
+  // shows its pending label (both share the one download mutation).
+  const [pendingDisposition, setPendingDisposition] = useState<'inline' | 'attachment' | null>(
+    null,
+  );
 
   if (isLoading) return <ListSkeleton withRows={false} />;
   if (isError) {
@@ -40,11 +45,16 @@ export default function DocumentDetailPage() {
   }
   if (!data) return null;
 
-  async function onDownload() {
+  // Slice 2 — `attachment` keeps the save-dialog behaviour (Download);
+  // `inline` mints a presigned URL R2 serves as `Content-Disposition:
+  // inline`, so the PDF renders in the new tab (View). Same mutation,
+  // same error handling, same https re-check.
+  async function openWithDisposition(disposition: 'inline' | 'attachment') {
     if (!id) return;
     setActionError(null);
+    setPendingDisposition(disposition);
     try {
-      const { url } = await download.mutateAsync(id);
+      const { url } = await download.mutateAsync({ id, disposition });
       // §RED-1 defense-in-depth — schema-level scheme allowlist is the
       // primary defense (DocumentDownloadResponseSchema.url is
       // HttpsUrlSchema), but we re-verify the protocol here before
@@ -56,7 +66,7 @@ export default function DocumentDetailPage() {
         return;
       }
       // Open in a new tab — the URL is a short-lived presigned GET,
-      // honored by R2 as `Content-Disposition: attachment` server-side.
+      // honored by R2 with the requested Content-Disposition server-side.
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (e) {
       // 0050 (ghost-doc UX) — the BE returns the distinct
@@ -68,6 +78,8 @@ export default function DocumentDetailPage() {
         return;
       }
       setActionError(t('downloadFailed'));
+    } finally {
+      setPendingDisposition(null);
     }
   }
 
@@ -107,8 +119,22 @@ export default function DocumentDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           {canDownload && !data.isArchived && (
-            <Button size="sm" onClick={onDownload} disabled={download.isPending}>
-              {download.isPending ? t('downloading') : t('download')}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => openWithDisposition('inline')}
+              disabled={download.isPending}
+            >
+              {pendingDisposition === 'inline' ? t('opening') : t('view')}
+            </Button>
+          )}
+          {canDownload && !data.isArchived && (
+            <Button
+              size="sm"
+              onClick={() => openWithDisposition('attachment')}
+              disabled={download.isPending}
+            >
+              {pendingDisposition === 'attachment' ? t('downloading') : t('download')}
             </Button>
           )}
           {canArchive && !data.isArchived && (

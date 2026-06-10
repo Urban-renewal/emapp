@@ -65,6 +65,20 @@ export class MembersController {
     return { data: await this.members.create(user, body) };
   }
 
+  // S2 #7 — re-issue the invite for a still-PENDING membership: re-mint the
+  // token + re-send the email best-effort, and (in dev) return the invite
+  // token/link so the FE can copy it. Same members.invite gate as create.
+  // 400 member_not_pending if already accepted; 404 if revoked/unknown.
+  @Post(':userId/resend')
+  @HttpCode(200)
+  @RequirePermission('members.invite')
+  async resend(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('userId', UuidParam) userId: string,
+  ) {
+    return { data: await this.members.resend(user, userId) };
+  }
+
   @Patch(':userId')
   @RequirePermission('members.update')
   async updateRole(

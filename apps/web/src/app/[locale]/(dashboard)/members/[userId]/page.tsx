@@ -8,8 +8,8 @@ import {
 } from '@emapp/shared-types';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
-import { use, useEffect } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
+import { use, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { MemberCapabilitiesPanel } from '@/components/members/member-capabilities-panel';
@@ -18,8 +18,14 @@ import { Button } from '@/components/ui/button';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
-import { useMember, useRevokeMember, useUpdateMemberRole } from '@/hooks/use-members';
+import {
+  useMember,
+  useResendInvite,
+  useRevokeMember,
+  useUpdateMemberRole,
+} from '@/hooks/use-members';
 import { useHasPermission } from '@/hooks/use-permissions';
+import { ApiClientError } from '@/lib/api/errors';
 
 interface PageProps {
   params: Promise<{ userId: string }>;
@@ -52,10 +58,22 @@ export default function MemberDetailPage({ params }: PageProps) {
   // Reuse nav.role (single source of truth for the OrgRole label set;
   // also used by the topbar — `_components/topbar.tsx`).
   const trl = useTranslations('nav.role');
+  const locale = useLocale();
   const router = useRouter();
   const { data: member, isLoading, isError } = useMember(userId, { limit: 100 });
   const updateMutation = useUpdateMemberRole();
   const revokeMutation = useRevokeMember();
+  const resendMutation = useResendInvite();
+  // members.invite gates both invite AND resend (same BE permission).
+  const canInvite = useHasPermission('members.invite');
+
+  // Invite-recovery state (pending members only). The resend response
+  // may carry a one-shot inviteToken in non-prod (D.27); we hold it in
+  // component state to rebuild the accept-invite link — never persisted
+  // to TanStack cache.
+  const [resendMsg, setResendMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
   // P2 Phase 2 — the per-user override panel is Owner/Admin only (roles.manage).
   const canManageRoles = useHasPermission('roles.manage');
 
@@ -114,6 +132,46 @@ export default function MemberDetailPage({ params }: PageProps) {
     }
   }
 
+  /** Re-issue the invite (re-sends the email). In non-prod the response
+   *  carries the one-shot token, which we keep so the Manager can copy
+   *  the accept-invite link when email didn't arrive (FakeEmail in dev). */
+  async function onResend() {
+    if (!userId) return;
+    setResendMsg(null);
+    setLinkCopied(false);
+    try {
+      const result = await resendMutation.mutateAsync(userId);
+      setInviteToken(result.inviteToken ?? null);
+      setResendMsg({ kind: 'ok', text: t('resendOk') });
+    } catch (e) {
+      const code = e instanceof ApiClientError ? e.code : null;
+      const text =
+        code === 'member_not_pending'
+          ? t('resendNotPending')
+          : code === 'not_found'
+            ? t('notFound')
+            : t('resendFailed');
+      setResendMsg({ kind: 'err', text });
+    }
+  }
+
+  /** Build `/<locale>/accept-invite/<token>` (path-style, mirrors the
+   *  BE inviteUrl + the /members/new success screen) and copy it. */
+  async function copyInviteLink() {
+    if (!inviteToken) return;
+    const url = `${window.location.origin}/${locale}/accept-invite/${encodeURIComponent(
+      inviteToken,
+    )}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      // Clipboard API can fail in non-secure contexts / under permission
+      // denial — swallow; the Manager can still copy from the visible field.
+    }
+  }
+
   if (isLoading) {
     return <p className="text-sm text-muted-foreground">{t('loading')}</p>;
   }
@@ -154,6 +212,42 @@ export default function MemberDetailPage({ params }: PageProps) {
           {t('backToList')}
         </Button>
       </div>
+
+      {/* Slice 2 — invite recovery for a PENDING member: re-send the
+          email and (in dev, when the token comes back) copy the
+          accept-invite link. members.invite gates both actions. */}
+      {member.isPending && canInvite && (
+        <div className="rounded-md border bg-amber-50 p-4">
+          <h2 className="mb-1 text-base font-semibold text-amber-900">{t('inviteRecovery')}</h2>
+          <p className="mb-3 text-xs text-amber-800">{t('inviteRecoveryHint')}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onResend}
+              disabled={resendMutation.isPending}
+            >
+              {resendMutation.isPending ? t('resending') : t('resend')}
+            </Button>
+            {inviteToken && (
+              <Button type="button" variant="outline" size="sm" onClick={copyInviteLink}>
+                {linkCopied ? t('copied') : t('copyLink')}
+              </Button>
+            )}
+          </div>
+          {resendMsg && (
+            <p
+              className={`mt-2 text-sm ${
+                resendMsg.kind === 'ok' ? 'text-emerald-700' : 'text-destructive'
+              }`}
+            >
+              {resendMsg.text}
+            </p>
+          )}
+          {inviteToken && <p className="mt-2 text-xs text-amber-700">{t('inviteTokenWarning')}</p>}
+        </div>
+      )}
 
       <div className="rounded-md border bg-card p-4">
         <h2 className="mb-3 text-base font-semibold">{t('roleSection')}</h2>

@@ -176,6 +176,27 @@ export const DocumentUploadResponseSchema = z.object({
 });
 export type DocumentUploadResponse = z.infer<typeof DocumentUploadResponseSchema>;
 
+/**
+ * Content-Disposition for the download presigned URL.
+ *  - `attachment` (default): forces a save dialog — the existing,
+ *    unchanged behaviour. Safe for any allow-listed type.
+ *  - `inline`: lets the browser RENDER the object in a tab (PDF preview,
+ *    image view). Only ever applied to a `clean`-scanned, allow-listed
+ *    object — SVG/HTML are excluded from the upload allow-list, so inline
+ *    can never serve active content.
+ */
+export const DocumentDispositionEnum = z.enum(['attachment', 'inline']);
+export type DocumentDisposition = z.infer<typeof DocumentDispositionEnum>;
+
+/** GET /documents/:id/download query — optional `disposition`. Defaults to
+ * `attachment` so existing callers are byte-for-byte unchanged. */
+export const DownloadDocumentQuery = z
+  .object({
+    disposition: DocumentDispositionEnum.default('attachment'),
+  })
+  .strict();
+export type DownloadDocumentQueryDto = z.infer<typeof DownloadDocumentQuery>;
+
 /** GET /documents/:id/download response — a short-lived presigned GET.
  * Minted ONLY after the row is authorized for the caller.
  *

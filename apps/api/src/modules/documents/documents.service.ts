@@ -626,7 +626,11 @@ export class DocumentsService {
     return toDocument(row);
   }
 
-  async getDownloadUrl(user: AccessTokenPayload, id: string): Promise<DocumentDownloadResponse> {
+  async getDownloadUrl(
+    user: AccessTokenPayload,
+    id: string,
+    disposition: 'attachment' | 'inline' = 'attachment',
+  ): Promise<DocumentDownloadResponse> {
     const { r2Key, name } = await withTenant(
       user.orgId,
       async (tx) => {
@@ -664,6 +668,11 @@ export class DocumentsService {
         // the safe ASCII slug.
         responseFilename: safeDownloadFilename(name),
         responseFilenameUtf8: name,
+        // S2 #1 — inline view (PDF preview in a tab) vs the default
+        // attachment (save dialog). The AV-scan gate above (loadVisible +
+        // scan_status='clean') is UNCHANGED and applies to both: only a
+        // clean, allow-listed object ever reaches this presign.
+        disposition,
       });
     } catch (e) {
       this.logger.error(

@@ -101,12 +101,20 @@ export class R2StorageProvider implements IStorageProvider {
       // picking an attacker-chosen filename out of an embedded
       // semicolon). Hebrew filenames flow through the UTF-8 slot
       // instead of being silently stripped.
+      // `inline` lets the browser RENDER the object (PDF preview); the
+      // default `attachment` forces a save dialog. The filename slots are
+      // appended to whichever disposition type is in effect.
+      const dispositionType = opts.disposition === 'inline' ? 'inline' : 'attachment';
       let disp: string | undefined;
       if (opts.responseFilename) {
-        disp = `attachment; filename="${opts.responseFilename}"`;
+        disp = `${dispositionType}; filename="${opts.responseFilename}"`;
         if (opts.responseFilenameUtf8) {
           disp += `; filename*=UTF-8''${encodeURIComponent(opts.responseFilenameUtf8)}`;
         }
+      } else if (opts.disposition === 'inline') {
+        // No filename supplied but inline requested — still set the bare
+        // `inline` type so the browser previews instead of downloading.
+        disp = 'inline';
       }
       const cmd = new this.deps.GetObjectCommand({
         Bucket: this.bucket,

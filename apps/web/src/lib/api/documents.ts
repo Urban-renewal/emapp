@@ -78,11 +78,16 @@ export async function finalizeDocument(id: string, body: FinalizeDocument): Prom
 }
 
 /** GET /documents/:id/download — receive a short-lived presigned GET URL.
- *  The FE then opens it as an attachment. Never log this URL. */
+ *  `disposition` selects the R2 Content-Disposition the presigned URL is
+ *  signed for: `attachment` (default) → save dialog; `inline` → the PDF
+ *  renders in-tab. Both pass the AV-scan gate (only clean docs).
+ *  Never log this URL. */
 export async function getDownloadUrl(
   id: string,
+  disposition: 'inline' | 'attachment' = 'attachment',
 ): Promise<{ url: string; expiresInSeconds: number }> {
-  const res = await apiClient.get<unknown>(`/documents/${id}/download`);
+  const qs = disposition === 'inline' ? '?disposition=inline' : '';
+  const res = await apiClient.get<unknown>(`/documents/${id}/download${qs}`);
   if (!isOk(res)) throw new ApiClientError(res.error);
   return DownloadResponseDataSchema.parse({ data: res.data }).data;
 }

@@ -46,6 +46,10 @@ const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
 const SELF = new BadRequestException({ error: { code: 'cannot_modify_self' } });
 const LAST_MGR = new BadRequestException({ error: { code: 'cannot_remove_last_manager' } });
 const INVALID_INVITE = new BadRequestException({ error: { code: 'invalid_invite' } });
+// S2 #7 — resend only re-issues for a still-PENDING membership (accepted/
+// revoked invites are terminal: nothing to resend, and re-minting a token for
+// an accepted member would be a password-reset oracle).
+const NOT_PENDING = new BadRequestException({ error: { code: 'member_not_pending' } });
 
 const INVITE_TTL = '7d';
 const JWT_ISS = 'emapp';
@@ -148,6 +152,67 @@ export class MembersService {
     return { targetRoleId, manageableRoleIds, allSystemRoleIds };
   }
 
+  // Mint the one-time signed invite token (HS256, iss/aud pinned, 7d). No
+  // email/role in the token — minimal surface; binding is by the
+  // (membershipId,userId,orgId) tuple. Shared by create + resend so the JWT
+  // logic lives in exactly one place.
+  private mintInviteToken(userId: string, orgId: string, membershipId: string): string {
+    return this.jwt.sign(
+      { sub: userId, orgId, mid: membershipId, typ: 'invite' },
+      { expiresIn: INVITE_TTL, issuer: JWT_ISS, audience: INVITE_AUD, algorithm: 'HS256' },
+    );
+  }
+
+  // D.27: deliver the invite token via the email channel, best-effort. The
+  // membership is already committed; a transient mail failure must NOT 500 the
+  // request (the manager can re-invite/resend). The token is a credential:
+  // never logged, never in an error message. Shared by create + resend.
+  private async sendInviteEmail(
+    orgId: string,
+    to: string,
+    name: string,
+    token: string,
+    membershipId: string,
+  ): Promise<void> {
+    try {
+      // P6 — set the From DISPLAY name from the org's branding.senderName
+      // (the address stays the verified system From). Best-effort: a
+      // settings-read failure must NOT block the invite — fall back to the
+      // default From.
+      let from = DEFAULT_EMAIL_FROM;
+      try {
+        const settings = await withTenant(orgId, (tx) => getOrgSettings(tx, orgId));
+        from = buildEmailFrom(settings.branding.senderName, DEFAULT_EMAIL_FROM);
+      } catch (settingsErr) {
+        this.logger.warn(
+          `org-settings read failed for invite From (membership=${membershipId}); using default From: ${
+            settingsErr instanceof Error ? settingsErr.message : 'unknown'
+          }`,
+        );
+      }
+      const r = await this.email.send({
+        ...buildInviteEmail({ to, name, token }),
+        from,
+      });
+      if (r.status === 'rejected') {
+        // Non-PII operability signal (ISO A.12.4): membership id + provider
+        // error only. NEVER the token, the link, or the email body.
+        this.logger.error(
+          `invite email rejected (membership=${membershipId}): ${r.error ?? 'unknown'}`,
+        );
+      }
+    } catch (mailErr) {
+      // Best-effort: membership is committed; a transient send failure must
+      // not 500 (the manager can re-invite). Record the FACT + cause (no
+      // token/body) so undelivered invites are detectable in the field.
+      this.logger.error(
+        `invite email send failed (membership=${membershipId}): ${
+          mailErr instanceof Error ? mailErr.message : 'unknown'
+        }`,
+      );
+    }
+  }
+
   async create(
     user: AccessTokenPayload,
     input: CreateMember,
@@ -162,53 +227,8 @@ export class MembersService {
         ip: user.ip,
         userAgent: user.userAgent,
       });
-      // No email/role in the token — minimal surface; binding is by the
-      // (membershipId,userId,orgId) tuple the manager already fixed.
-      const inviteToken = this.jwt.sign(
-        { sub: userId, orgId: user.orgId, mid: membershipId, typ: 'invite' },
-        { expiresIn: INVITE_TTL, issuer: JWT_ISS, audience: INVITE_AUD, algorithm: 'HS256' },
-      );
-      // D.27: deliver the token via the email channel. Best-effort — the
-      // membership is already committed; a transient mail failure must not
-      // 500 the request (the manager can re-invite). The token is a
-      // credential: never logged, never in an error message.
-      try {
-        // P6 — set the From DISPLAY name from the org's branding.senderName
-        // (the address stays the verified system From). Best-effort: a
-        // settings-read failure must NOT block the invite — fall back to the
-        // default From.
-        let from = DEFAULT_EMAIL_FROM;
-        try {
-          const settings = await withTenant(user.orgId, (tx) => getOrgSettings(tx, user.orgId));
-          from = buildEmailFrom(settings.branding.senderName, DEFAULT_EMAIL_FROM);
-        } catch (settingsErr) {
-          this.logger.warn(
-            `org-settings read failed for invite From (membership=${membershipId}); using default From: ${
-              settingsErr instanceof Error ? settingsErr.message : 'unknown'
-            }`,
-          );
-        }
-        const r = await this.email.send({
-          ...buildInviteEmail({ to: input.email, name: input.name, token: inviteToken }),
-          from,
-        });
-        if (r.status === 'rejected') {
-          // Non-PII operability signal (ISO A.12.4): membership id + provider
-          // error only. NEVER the token, the link, or the email body.
-          this.logger.error(
-            `invite email rejected (membership=${membershipId}): ${r.error ?? 'unknown'}`,
-          );
-        }
-      } catch (mailErr) {
-        // Best-effort: membership is committed; a transient send failure must
-        // not 500 (the manager can re-invite). Record the FACT + cause (no
-        // token/body) so undelivered invites are detectable in the field.
-        this.logger.error(
-          `invite email send failed (membership=${membershipId}): ${
-            mailErr instanceof Error ? mailErr.message : 'unknown'
-          }`,
-        );
-      }
+      const inviteToken = this.mintInviteToken(userId, user.orgId, membershipId);
+      await this.sendInviteEmail(user.orgId, input.email, input.name, inviteToken, membershipId);
       const member: Member = {
         userId,
         email: input.email,
@@ -231,6 +251,65 @@ export class MembersService {
       }
       throw e;
     }
+  }
+
+  /**
+   * S2 #7 — re-issue the invite for a PENDING membership (acceptedAt null,
+   * revokedAt null). Re-mints a fresh invite token (same (userId,orgId,mid)
+   * binding — the membership already exists, no new row) and re-sends the
+   * invite email best-effort. Same `members.invite` gate as create.
+   *
+   * Rejects with `member_not_pending` (400) if the membership is already
+   * accepted (the invitee set their password — re-minting would be a
+   * password-reset oracle) or revoked (terminal). A foreign/unknown userId is
+   * a generic `not_found` (no existence oracle). The token/link is returned
+   * ONLY outside production (EXPOSE_INVITE_TOKEN) so the FE can copy it.
+   */
+  async resend(user: AccessTokenPayload, targetUserId: string): Promise<{ inviteToken?: string }> {
+    const { membershipId, email, name } = await withTenant(
+      user.orgId,
+      async (tx) => {
+        const [row] = await tx
+          .select({
+            mid: memberships.id,
+            acceptedAt: memberships.acceptedAt,
+            email: users.email,
+            name: users.name,
+          })
+          .from(memberships)
+          .innerJoin(users, eq(users.id, memberships.userId))
+          .where(
+            and(
+              eq(memberships.userId, targetUserId),
+              eq(memberships.orgId, user.orgId),
+              // A revoked membership is filtered out here → generic NOT_FOUND,
+              // never an existence oracle on revoked members.
+              isNull(memberships.revokedAt),
+            ),
+          )
+          .limit(1);
+        if (!row) throw NOT_FOUND;
+        // Already accepted → nothing to resend (terminal). Distinct code so the
+        // FE can show "this member already joined" rather than a generic error.
+        if (row.acceptedAt) throw NOT_PENDING;
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'member.invite_resend',
+          targetTable: 'memberships',
+          targetId: row.mid,
+          sessionId: user.sid,
+        });
+        return { membershipId: row.mid, email: row.email, name: row.name };
+      },
+      { userId: user.sub },
+    );
+    const inviteToken = this.mintInviteToken(targetUserId, user.orgId, membershipId);
+    await this.sendInviteEmail(user.orgId, email, name, inviteToken, membershipId);
+    // Token/link returned ONLY outside production (dev/test convenience). In
+    // prod the re-sent email is the sole delivery path (D.27).
+    return EXPOSE_INVITE_TOKEN ? { inviteToken } : {};
   }
 
   async list(

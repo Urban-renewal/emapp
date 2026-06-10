@@ -363,3 +363,69 @@ describe('#3 expired-dedup — pending-request guard must respect expiry', () =>
     expect(await countRequests(doc, owner)).toBe(1);
   }, 30_000);
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// #2 (reviewer-flagged additions)
+//   (1) BULK: one associated + one non-associated → the associated one is
+//       `created`, the non-associated one `failed` (recipient_not_associated);
+//       the batch is NOT aborted.
+//   (2) SCOPE-LESS document (neither apartmentId nor projectId) → create is
+//       rejected `recipient_not_associated` (a doc with no scope can have no
+//       associated owner).
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('#2 recipient-association gate — bulk partial association (batch not aborted)', () => {
+  it('BULK one associated + one non-associated → associated created, non-associated failed recipient_not_associated', async () => {
+    const building = await seedBuilding(projectA);
+    const apartment = await seedApartment(building);
+    const associated = await seedOwner(org.id);
+    await seedOwnership(apartment, associated); // owns THIS apartment
+
+    const doc = await seedDoc(org.id, { apartmentId: apartment });
+
+    // A second owner tied to NOTHING under this apartment/project.
+    const stranger = await seedOwner(org.id);
+
+    const res = await svc.createBulk(manager(), {
+      documentId: doc,
+      ownerIds: [associated, stranger],
+    });
+
+    expect(res.summary).toEqual({ created: 1, skipped: 0, failed: 1 });
+
+    const okRes = res.results.find((r) => r.ownerId === associated)!;
+    const failRes = res.results.find((r) => r.ownerId === stranger)!;
+    expect(okRes.outcome).toBe('created');
+    expect(okRes.requestId).toBeTruthy();
+    expect(failRes.outcome).toBe('failed');
+    expect(failRes.reason).toBe('recipient_not_associated');
+    expect(failRes.requestId).toBeUndefined();
+
+    // The associated owner WAS written; the non-associated one got NO row
+    // (the batch survived the single bad recipient).
+    expect(await countRequests(doc, associated)).toBe(1);
+    expect(await countRequests(doc, stranger)).toBe(0);
+  }, 30_000);
+});
+
+describe('#2 recipient-association gate — scope-less document', () => {
+  it('REJECTS a single create against a doc with NEITHER apartmentId NOR projectId → recipient_not_associated, NO row', async () => {
+    // A finalised, in-org document with no parent scope at all. Even an owner
+    // who legitimately owns an apartment cannot be "associated" with a doc that
+    // has no apartment/project to bind to → the create must be rejected.
+    const building = await seedBuilding(projectA);
+    const apartment = await seedApartment(building);
+    const owner = await seedOwner(org.id);
+    await seedOwnership(apartment, owner);
+
+    const scopelessDoc = await seedDoc(org.id, {}); // org-level — no apartment/project
+
+    await expect(
+      svc.create(manager(), { documentId: scopelessDoc, ownerId: owner }),
+    ).rejects.toMatchObject({
+      response: { error: { code: 'recipient_not_associated' } },
+    });
+
+    expect(await countRequests(scopelessDoc, owner)).toBe(0);
+  }, 30_000);
+});

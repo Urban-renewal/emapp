@@ -97,7 +97,7 @@ async function signup(tag: string): Promise<string> {
   return at;
 }
 
-async function createDocument(at: string): Promise<string> {
+async function createDocument(at: string, scope?: { apartmentId?: string }): Promise<string> {
   const sizeBytes = 1024;
   const contentHash = 'sha256:func-' + Math.random().toString(36).slice(2);
   const r = await call('/documents', {
@@ -109,6 +109,7 @@ async function createDocument(at: string): Promise<string> {
       mimeType: 'application/pdf',
       sizeBytes,
       contentHash,
+      ...(scope?.apartmentId ? { apartmentId: scope.apartmentId } : {}),
     }),
   });
   if (r.status !== 201 && r.status !== 200) {
@@ -158,6 +159,68 @@ async function createOwner(at: string): Promise<string> {
     throw new Error(`create owner failed ${r.status}: ${r.raw}`);
   }
   return (r.body as { data?: { id?: string } }).data!.id!;
+}
+
+/** Slice-1 #2 recipient-association: provision a real owner who is GENUINELY
+ *  associated with the document's scope. Creates project → building → apartment,
+ *  an owner, sets the owner as the apartment's sole 100% owner (PUT ownerships),
+ *  finalises an APARTMENT-SCOPED document, and returns both ids. The recipient-
+ *  association gate (recipient_not_associated) requires this active ownership of
+ *  the document's apartment, so an org-level (scope-less) doc + bare owner would
+ *  now be (correctly) rejected. */
+async function createAssociatedDocAndOwner(
+  at: string,
+): Promise<{ documentId: string; ownerId: string }> {
+  const cookie = `access_token=${at}`;
+
+  const proj = await call('/projects', {
+    method: 'POST',
+    cookie,
+    body: JSON.stringify({ name: `פרויקט ${Date.now()}-${Math.random()}`, type: 'tama38_1' }),
+  });
+  if (proj.status !== 201 && proj.status !== 200) {
+    throw new Error(`create project failed ${proj.status}: ${proj.raw}`);
+  }
+  const projectId = (proj.body as { data?: { id?: string } }).data!.id!;
+
+  const bld = await call(`/projects/${projectId}/buildings`, {
+    method: 'POST',
+    cookie,
+    body: JSON.stringify({
+      address: `רחוב ${Math.random().toString(36).slice(2)}`,
+      city: 'תל אביב',
+    }),
+  });
+  if (bld.status !== 201 && bld.status !== 200) {
+    throw new Error(`create building failed ${bld.status}: ${bld.raw}`);
+  }
+  const buildingId = (bld.body as { data?: { id?: string } }).data!.id!;
+
+  const apt = await call(`/buildings/${buildingId}/apartments`, {
+    method: 'POST',
+    cookie,
+    body: JSON.stringify({ number: Math.random().toString(36).slice(2, 8) }),
+  });
+  if (apt.status !== 201 && apt.status !== 200) {
+    throw new Error(`create apartment failed ${apt.status}: ${apt.raw}`);
+  }
+  const apartmentId = (apt.body as { data?: { id?: string } }).data!.id!;
+
+  const ownerId = await createOwner(at);
+
+  // Make the owner the apartment's sole 100% owner (active ownership → the
+  // association the gate checks). Per-apartment owner shares must sum to 100.
+  const own = await call(`/apartments/${apartmentId}/ownerships`, {
+    method: 'PUT',
+    cookie,
+    body: JSON.stringify({ owners: [{ ownerId, ownershipPct: 100, relationship: 'owner' }] }),
+  });
+  if (own.status !== 200 && own.status !== 201) {
+    throw new Error(`set ownerships failed ${own.status}: ${own.raw}`);
+  }
+
+  const documentId = await createDocument(at, { apartmentId });
+  return { documentId, ownerId };
 }
 
 async function createSignatureRequest(
@@ -230,8 +293,7 @@ describe('Phase 5 · Signatures · FUNCTIONAL — QA-manager sign-off', () => {
     'F1 audit trail: create + preview + signed events landed; IP/UA NOT leaked in Manager view',
     async () => {
       const at = await signup('f1');
-      const doc = await createDocument(at);
-      const owner = await createOwner(at);
+      const { documentId: doc, ownerId: owner } = await createAssociatedDocAndOwner(at);
       const { token, requestId } = await createSignatureRequest(at, doc, owner);
 
       // Walk through the resident-side flow.
@@ -296,8 +358,7 @@ describe('Phase 5 · Signatures · FUNCTIONAL — QA-manager sign-off', () => {
     // Mint six independent fresh tokens so each POST is otherwise valid.
     const tokens: string[] = [];
     for (let i = 0; i < 6; i++) {
-      const doc = await createDocument(at);
-      const owner = await createOwner(at);
+      const { documentId: doc, ownerId: owner } = await createAssociatedDocAndOwner(at);
       const { token } = await createSignatureRequest(at, doc, owner);
       tokens.push(token);
     }
@@ -336,8 +397,7 @@ describe('Phase 5 · Signatures · FUNCTIONAL — QA-manager sign-off', () => {
     //
     // Stronger pin: assert no audit row leakage of email bodies.
     const at = await signup('f3');
-    const doc = await createDocument(at);
-    const owner = await createOwner(at);
+    const { documentId: doc, ownerId: owner } = await createAssociatedDocAndOwner(at);
     const { token } = await createSignatureRequest(at, doc, owner);
 
     const sign = await call(`/sign/${token}`, {
@@ -364,8 +424,7 @@ describe('Phase 5 · Signatures · FUNCTIONAL — QA-manager sign-off', () => {
     'F4 idempotency: same Idempotency-Key replays the same response (no double-sign)',
     async () => {
       const at = await signup('f4');
-      const doc = await createDocument(at);
-      const owner = await createOwner(at);
+      const { documentId: doc, ownerId: owner } = await createAssociatedDocAndOwner(at);
       const { token } = await createSignatureRequest(at, doc, owner);
 
       const key = uuid();
@@ -410,8 +469,7 @@ describe('Phase 5 · Signatures · FUNCTIONAL — QA-manager sign-off', () => {
       expect(before.status).toBe(200);
       expect((before.body as { data?: { count?: number } }).data?.count).toBe(0);
 
-      const doc = await createDocument(at);
-      const owner = await createOwner(at);
+      const { documentId: doc, ownerId: owner } = await createAssociatedDocAndOwner(at);
       const { token } = await createSignatureRequest(at, doc, owner);
 
       const sign = await call(`/sign/${token}`, {
@@ -448,8 +506,7 @@ describe('Phase 5 · Signatures · FUNCTIONAL — QA-manager sign-off', () => {
     'F7 signed-document: a signed request yields a downloadable PDF; unsigned/absent → 404',
     async () => {
       const at = await signup('f7');
-      const doc = await createDocument(at);
-      const owner = await createOwner(at);
+      const { documentId: doc, ownerId: owner } = await createAssociatedDocAndOwner(at);
       const { token, requestId } = await createSignatureRequest(at, doc, owner);
 
       // Before signing: no artifact yet → 404.

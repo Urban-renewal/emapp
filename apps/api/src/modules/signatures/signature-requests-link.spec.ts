@@ -194,6 +194,44 @@ async function seedOwner(orgId: string, withPhone: boolean): Promise<string> {
   });
 }
 
+/** Slice-1 #2 recipient-association: tie an owner to a project via a real chain
+ *  (building → apartment → active 100%-owner ownership) so the owner is
+ *  genuinely associated with any project-scoped document under `projectId`.
+ *  Each owner gets its OWN apartment (single owner at 100.00) to satisfy the
+ *  per-apartment sum=100 trigger. Runs via providerPool (BYPASSRLS). */
+async function associateOwnerWithProject(ownerId: string, projectId: string): Promise<void> {
+  const c = await providerPool.connect();
+  try {
+    const b = await c.query<{ id: string }>(
+      `INSERT INTO buildings (project_id, address, city) VALUES ($1, $2, 'TLV') RETURNING id`,
+      [projectId, `St-${randomUUID()}`],
+    );
+    const a = await c.query<{ id: string }>(
+      `INSERT INTO apartments (building_id, number) VALUES ($1, $2) RETURNING id`,
+      [b.rows[0]!.id, randomUUID().slice(0, 8)],
+    );
+    await c.query(
+      `INSERT INTO ownerships (apartment_id, owner_id, ownership_pct, relationship)
+       VALUES ($1, $2, 100.00, 'owner')`,
+      [a.rows[0]!.id, ownerId],
+    );
+  } finally {
+    c.release();
+  }
+}
+
+/** Seed an owner AND associate it with `projectId` (for the create()/createBulk
+ *  recipient-association gate). */
+async function seedAssociatedOwner(
+  orgId: string,
+  projectId: string,
+  withPhone: boolean,
+): Promise<string> {
+  const id = await seedOwner(orgId, withPhone);
+  await associateOwnerWithProject(id, projectId);
+  return id;
+}
+
 /** Pre-create a signature_request directly (bypasses the service) at a chosen
  *  status, for a chosen owner, so getLink is driven against pending / signed /
  *  cancelled rows independently of create(). Returns the row id. */
@@ -301,8 +339,8 @@ afterEach(() => {
 
 describe('(a) phone-less owner — send is graceful, never throws', () => {
   it('LINK-1) bulk MIX [phoneOwner, noPhoneOwner] → BOTH created, batch NOT aborted; phone-less SMS unavailable (no_phone_on_file), phoned delivers', async () => {
-    const phoned = await seedOwner(org.id, true);
-    const noPhone = await seedOwner(org.id, false);
+    const phoned = await seedAssociatedOwner(org.id, assignedProjectId, true);
+    const noPhone = await seedAssociatedOwner(org.id, assignedProjectId, false);
 
     const res = await svc.createBulk(manager(), {
       documentId: docAssigned,
@@ -337,7 +375,7 @@ describe('(a) phone-less owner — send is graceful, never throws', () => {
   }, 30_000);
 
   it('LINK-2) individual create to a phone-less owner → request + token created, SMS skipped, NO throw', async () => {
-    const noPhone = await seedOwner(org.id, false);
+    const noPhone = await seedAssociatedOwner(org.id, assignedProjectId, false);
 
     const res = await svc.create(manager(), { documentId: docAssigned, ownerId: noPhone });
 

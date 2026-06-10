@@ -1,6 +1,17 @@
 import { pgEnum } from 'drizzle-orm/pg-core';
 
-export const projectTypeEnum = pgEnum('project_type', ['tama38_1', 'tama38_2', 'pinui_binui']);
+// 'other' is an ADDITIVE forward-compat value (migration 0062) so FUTURE
+// renewal tracks (e.g. the post-2026 תמ"א-sunset successor / חלופת שקד) can be
+// represented without editing the three legacy values. Pair it with the
+// nullable `projects.type_label` free-text column for the human track name.
+// NOTE: this is the project TYPE enum; the LOCKED D.18 `project_status` enum
+// below is intentionally NOT extended.
+export const projectTypeEnum = pgEnum('project_type', [
+  'tama38_1',
+  'tama38_2',
+  'pinui_binui',
+  'other',
+]);
 
 // D.18 (LAW): locked status set.
 export const projectStatusEnum = pgEnum('project_status', [

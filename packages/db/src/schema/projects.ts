@@ -43,6 +43,31 @@ export const projects = pgTable(
     // signature targets (staged overlay). Nullable jsonb, no default; shape is
     // validated at the Zod boundary (SignatureMilestonesSchema in shared-types).
     signatureMilestones: jsonb('signature_milestones').$type<SignatureMilestone[]>(),
+    // ── P3 project create-form enrichment (migration 0062) ──────────────────
+    // All additive + NULLABLE → zero breakage to existing rows/create flow.
+    // 1. developer / יזם — the entity executing the project (often distinct
+    //    from the managing org). Free-text name + optional company-id (ח.פ.).
+    developerName: text('developer_name'),
+    developerCompanyId: text('developer_company_id'),
+    // 2. unit / תמורה ratio — owner-compensation basics, modelled generically
+    //    (not over-fit): existing vs planned units (the expansion) + extra area.
+    existingUnits: integer('existing_units'),
+    plannedUnits: integer('planned_units'),
+    extraAreaSqm: numeric('extra_area_sqm', { precision: 10, scale: 2 }),
+    // 3. relocation / פינוי — demolish-rebuild residents vacate. Closed set
+    //    (none|rent_comp|alt_housing) enforced by a DB CHECK (0062) + the Zod
+    //    enum at the API edge; NULL = unspecified. Free-text notes alongside.
+    relocationType: text('relocation_type'),
+    relocationNotes: text('relocation_notes'),
+    // 4. future-track label — paired with the additive `project_type` 'other'
+    //    enum value (0062). Human name of a renewal track not yet enumerated.
+    typeLabel: text('type_label'),
+    // 5. parcel provenance / גוש-חלקה — the project site's lead land-registration
+    //    identity. Distinct from the per-building block/parcel columns (a
+    //    project can span many buildings/parcels; these are the headline ones).
+    block: text('block'),
+    parcel: text('parcel'),
+    subparcel: text('subparcel'),
     startedAt: timestamp('started_at', { withTimezone: true }),
     createdBy: uuid('created_by')
       .notNull()

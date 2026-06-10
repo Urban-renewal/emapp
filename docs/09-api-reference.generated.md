@@ -1119,14 +1119,25 @@ _(no body)_
 
 | field | type | required | constraints |
 |---|---|---|---|
+| `block` | unknown | no | — |
 | `buildings` | array | no | — |
 | `description` | unknown | no | — |
+| `developerCompanyId` | unknown | no | — |
+| `developerName` | unknown | no | — |
+| `existingUnits` | unknown | no | — |
+| `extraAreaSqm` | unknown | no | — |
 | `name` | string | yes | minLength=1, maxLength=200 |
+| `parcel` | unknown | no | — |
+| `plannedUnits` | unknown | no | — |
+| `relocationNotes` | unknown | no | — |
+| `relocationType` | unknown | no | — |
 | `signatureMilestones` | unknown | no | — |
 | `startedAt` | unknown | no | — |
 | `status` | string | no | enum=["planning","gathering_signatures","approved","in_construction","completed","cancelled"] |
+| `subparcel` | unknown | no | — |
 | `targetSignaturePct` | unknown | no | — |
-| `type` | string | yes | enum=["tama38_1","tama38_2","pinui_binui"] |
+| `type` | string | yes | enum=["tama38_1","tama38_2","pinui_binui","other"] |
+| `typeLabel` | unknown | no | — |
 
 
 **Response**
@@ -1180,13 +1191,24 @@ _(no body)_
 
 | field | type | required | constraints |
 |---|---|---|---|
+| `block` | unknown | no | — |
 | `description` | unknown | no | — |
+| `developerCompanyId` | unknown | no | — |
+| `developerName` | unknown | no | — |
+| `existingUnits` | unknown | no | — |
+| `extraAreaSqm` | unknown | no | — |
 | `name` | string | no | minLength=1, maxLength=200 |
+| `parcel` | unknown | no | — |
+| `plannedUnits` | unknown | no | — |
+| `relocationNotes` | unknown | no | — |
+| `relocationType` | unknown | no | — |
 | `signatureMilestones` | unknown | no | — |
 | `startedAt` | unknown | no | — |
 | `status` | string | no | enum=["planning","gathering_signatures","approved","in_construction","completed","cancelled"] |
+| `subparcel` | unknown | no | — |
 | `targetSignaturePct` | unknown | no | — |
-| `type` | string | no | enum=["tama38_1","tama38_2","pinui_binui"] |
+| `type` | string | no | enum=["tama38_1","tama38_2","pinui_binui","other"] |
+| `typeLabel` | unknown | no | — |
 
 
 **Response**

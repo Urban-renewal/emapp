@@ -78,6 +78,18 @@ const BASE_PROJECT = {
   description: null as string | null,
   targetSignaturePct: null as number | null,
   signatureMilestones: null,
+  // P3 create-form enrichment (migration 0062) — all nullable.
+  developerName: null as string | null,
+  developerCompanyId: null as string | null,
+  existingUnits: null as number | null,
+  plannedUnits: null as number | null,
+  extraAreaSqm: null as number | null,
+  relocationType: null as 'none' | 'rent_comp' | 'alt_housing' | null,
+  relocationNotes: null as string | null,
+  typeLabel: null as string | null,
+  block: null as string | null,
+  parcel: null as string | null,
+  subparcel: null as string | null,
   createdBy: '44444444-4444-4444-4444-444444444444',
   startedAt: null,
   archivedAt: null,
@@ -120,6 +132,51 @@ const MATRIX: Array<{
     run: (p) =>
       toProjectViewModel({ ...BASE_PROJECT, description: 'desc' + p + 'end' }, 'he').description ??
       '',
+  },
+  // P3 create-form enrichment (migration 0062) — every new free-text field.
+  {
+    entity: 'project',
+    field: 'developerName',
+    run: (p) =>
+      toProjectViewModel({ ...BASE_PROJECT, developerName: 'dev' + p + 'co' }, 'he')
+        .developerName ?? '',
+  },
+  {
+    entity: 'project',
+    field: 'developerCompanyId',
+    run: (p) =>
+      toProjectViewModel({ ...BASE_PROJECT, developerCompanyId: '51' + p + '40' }, 'he')
+        .developerCompanyId ?? '',
+  },
+  {
+    entity: 'project',
+    field: 'relocationNotes',
+    run: (p) =>
+      toProjectViewModel({ ...BASE_PROJECT, relocationNotes: 'reloc' + p + 'end' }, 'he')
+        .relocationNotes ?? '',
+  },
+  {
+    entity: 'project',
+    field: 'futureTrackLabel',
+    run: (p) =>
+      toProjectViewModel({ ...BASE_PROJECT, typeLabel: 'track' + p + 'x' }, 'he')
+        .futureTrackLabel ?? '',
+  },
+  {
+    entity: 'project',
+    field: 'block',
+    run: (p) => toProjectViewModel({ ...BASE_PROJECT, block: '66' + p + '01' }, 'he').block ?? '',
+  },
+  {
+    entity: 'project',
+    field: 'parcel',
+    run: (p) => toProjectViewModel({ ...BASE_PROJECT, parcel: '12' + p + '3' }, 'he').parcel ?? '',
+  },
+  {
+    entity: 'project',
+    field: 'subparcel',
+    run: (p) =>
+      toProjectViewModel({ ...BASE_PROJECT, subparcel: '4' + p + '5' }, 'he').subparcel ?? '',
   },
 ];
 

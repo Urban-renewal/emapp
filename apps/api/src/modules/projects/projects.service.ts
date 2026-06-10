@@ -49,6 +49,19 @@ function toProject(r: ProjectRow): Project {
     // Owner-approved staged overlay (Gate-6, migration 0053). jsonb rides the
     // select as-is; null for pre-feature rows.
     signatureMilestones: r.signatureMilestones ?? null,
+    // P3 create-form enrichment (migration 0062). Nullable text/int ride the
+    // select as-is; pg `numeric` (extraAreaSqm) arrives as a string → Number().
+    developerName: r.developerName,
+    developerCompanyId: r.developerCompanyId,
+    existingUnits: r.existingUnits,
+    plannedUnits: r.plannedUnits,
+    extraAreaSqm: r.extraAreaSqm === null ? null : Number(r.extraAreaSqm),
+    relocationType: r.relocationType as Project['relocationType'],
+    relocationNotes: r.relocationNotes,
+    typeLabel: r.typeLabel,
+    block: r.block,
+    parcel: r.parcel,
+    subparcel: r.subparcel,
     startedAt: r.startedAt,
     createdBy: r.createdBy,
     createdAt: r.createdAt,
@@ -356,6 +369,23 @@ export class ProjectsService {
             // validated (shape + ascending/unique + <= target) by the
             // CreateProjectInput Zod schema at the controller boundary.
             signatureMilestones: input.signatureMilestones ?? null,
+            // P3 create-form enrichment (migration 0062). All optional/nullable
+            // — already validated by CreateProjectInput at the controller edge.
+            // numeric columns travel as strings on the wire (pg-node semantics).
+            developerName: input.developerName ?? null,
+            developerCompanyId: input.developerCompanyId ?? null,
+            existingUnits: input.existingUnits ?? null,
+            plannedUnits: input.plannedUnits ?? null,
+            extraAreaSqm:
+              input.extraAreaSqm === undefined || input.extraAreaSqm === null
+                ? null
+                : String(input.extraAreaSqm),
+            relocationType: input.relocationType ?? null,
+            relocationNotes: input.relocationNotes ?? null,
+            typeLabel: input.typeLabel ?? null,
+            block: input.block ?? null,
+            parcel: input.parcel ?? null,
+            subparcel: input.subparcel ?? null,
             startedAt: input.startedAt ?? null,
             createdBy: user.sub,
           })
@@ -515,6 +545,23 @@ export class ProjectsService {
         if (input.signatureMilestones !== undefined) {
           patch.signatureMilestones = input.signatureMilestones ?? null;
         }
+        // P3 create-form enrichment (migration 0062). Each field is set on the
+        // patch ONLY when present in the body (undefined = leave unchanged;
+        // explicit null = clear). numeric columns serialise to string.
+        if (input.developerName !== undefined) patch.developerName = input.developerName;
+        if (input.developerCompanyId !== undefined)
+          patch.developerCompanyId = input.developerCompanyId;
+        if (input.existingUnits !== undefined) patch.existingUnits = input.existingUnits;
+        if (input.plannedUnits !== undefined) patch.plannedUnits = input.plannedUnits;
+        if (input.extraAreaSqm !== undefined) {
+          patch.extraAreaSqm = input.extraAreaSqm === null ? null : String(input.extraAreaSqm);
+        }
+        if (input.relocationType !== undefined) patch.relocationType = input.relocationType;
+        if (input.relocationNotes !== undefined) patch.relocationNotes = input.relocationNotes;
+        if (input.typeLabel !== undefined) patch.typeLabel = input.typeLabel;
+        if (input.block !== undefined) patch.block = input.block;
+        if (input.parcel !== undefined) patch.parcel = input.parcel;
+        if (input.subparcel !== undefined) patch.subparcel = input.subparcel;
         if (input.startedAt !== undefined) patch.startedAt = input.startedAt;
 
         const [row] = await tx.update(projects).set(patch).where(eq(projects.id, id)).returning();

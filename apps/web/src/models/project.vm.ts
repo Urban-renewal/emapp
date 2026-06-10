@@ -1,4 +1,9 @@
-import type { ProjectStatus, ProjectType, SignatureMilestone } from '@emapp/shared-types';
+import type {
+  ProjectStatus,
+  ProjectType,
+  RelocationType,
+  SignatureMilestone,
+} from '@emapp/shared-types';
 
 /**
  * Project ViewModel — what list rows / detail cards render. Adapter
@@ -35,6 +40,30 @@ export interface ProjectViewModel {
   /** Locked-schema alignment: project rows have no description/target on the wire
    *  for new rows by default; we surface what's present, null otherwise. */
   description: string | null;
+  /** P3 create-form enrichment (migration 0062) — all nullable. The developer
+   *  (יזם) executing the project, often distinct from the managing org. */
+  developerName: string | null;
+  developerCompanyId: string | null;
+  /** Owner-compensation basics (תמורה) — existing vs planned unit counts (the
+   *  expansion) + an optional extra-area figure. All nullable. */
+  existingUnits: number | null;
+  plannedUnits: number | null;
+  extraAreaSqm: number | null;
+  /** Relocation arrangement (פינוי) for demolish-rebuild tracks. Raw enum +
+   *  free-text notes; both nullable. The Hebrew label is resolved in the
+   *  component via i18n (not the adapter — it's a small open set, not a locked
+   *  D.18 mapping). */
+  relocationType: RelocationType | null;
+  relocationNotes: string | null;
+  /** Human name of a future renewal track when `type === 'other'` (raw wire
+   *  `typeLabel`). Distinct from the display `typeLabel` above, which is the
+   *  resolved Hebrew/label string. Null unless the project is 'other'. */
+  futureTrackLabel: string | null;
+  /** Parcel provenance (גוש-חלקה) — the project site's lead land-registration
+   *  identity. Distinct from the per-building block/parcel. All nullable. */
+  block: string | null;
+  parcel: string | null;
+  subparcel: string | null;
   /** D.07 — UI verb is "ארכוב" (archive), not "מחיקה". */
   isArchived: boolean;
   /** Relative timestamp (Hebrew: "לפני 3 ימים"). Falls back to ISO date past 30 days. */

@@ -121,10 +121,47 @@ which is never sent to the server/referer. Single-use + TTL bound the blast
 radius, hence MED not HIGH. Documented, not self-fixed (pino config + a small FE
 change — wanted owner visibility on the redaction-policy choice first).
 
+### 1.3 — AV-scan download gate (✅ the security gate genuinely blocks)
+
+The owner asked specifically about "the security dangers along the way." This is
+the one that matters most for documents, and **it holds**. Verified by driving the
+real download endpoint against a document whose `scan_status` I flipped in dev:
+
+| `documents.scan_status` | `GET /api/v1/documents/:id/download` | Body                                                                                   |
+| ----------------------- | ------------------------------------ | -------------------------------------------------------------------------------------- |
+| `clean`                 | **200**                              | `{ data: { url: "https://emapp-dev…r2.cloudflarestorage.com/…" } }` (presigned R2 URL) |
+| `infected`              | **409**                              | `{ error: { code: "document_scan_rejected" } }`                                        |
+
+- ✅ A non-clean document is **download-gated** — the presigned URL is never
+  issued; the gate returns 409 with the D.16 error envelope and a descriptive,
+  PII-free code. Restored the row to `clean` after the test (download → 200 again).
+- Note: `scan_status` is (correctly) NOT exposed on the documents LIST wire
+  payload — it's an internal gate concern, surfaced only through the download
+  decision. The dev scanner is Noop (stamps `clean`), so the _verdict-production_
+  path can't yield `infected` in dev; the _enforcement_ path is what I proved here
+  by setting the column directly, which is the security-critical half.
+
+### 1.4 — Data-subject export + erasure (✅ export works AND is audited)
+
+- `GET /api/v1/owners/:id/data-export` → **200** (~ payload: `exportedAt`,
+  `owner`, `ownerships`, `signatures` — the full data-subject record).
+- The export returns the national ID **in cleartext** (`"nationalId":"123456782"`).
+  This is **correct for a DSAR** (a subject-access request must return the real
+  personal data, not a masked copy) — and crucially it is **audited**: a
+  `owner.data_exported` row is written to `audit_log` for every export (verified
+  the rows' timestamps match my two export calls exactly). The masked form
+  (`•••••••82`) is what the normal list/detail views show; the DSAR export is the
+  one deliberate, audited cleartext path. ✅ Good posture.
+- **Audit coverage looks SaaS-grade so far:** `owner.data_exported` AND
+  `document.download` both write audit rows (actor_type=`user`, target_table set).
+- **Erasure NOT executed** by design — it is an irreversible tombstone and the
+  only QA owner on dev would be destroyed, breaking other test data. The erasure
+  tombstone behavior (name/national_id replaced, signature blob tombstoned) is
+  covered by #333 unit tests. Endpoint presence confirmed; destructive path left
+  to the unit suite intentionally.
+
 ### (pending — next iterations)
 
-- 1.3 AV-scan upload → scan verdict → download gate
-- 1.4 Data-subject export + erasure
 - 1.5 Consent-at-signing
 - 1.6 Custom roles UI (#337)
 - 1.7 Per-member overrides (#338)

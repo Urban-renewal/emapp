@@ -88,6 +88,35 @@ export async function createMember(body: CreateMember): Promise<CreateMemberResu
   return CreateMemberWireSchema.parse({ data: res.data }).data;
 }
 
+/** Resend response: an optional one-shot `inviteToken` (D.27 — present
+ *  only outside production, same exposure rule as create). */
+const ResendMemberResultSchema = z.object({
+  inviteToken: z.string().min(10).max(4096).optional(),
+});
+const ResendMemberWireSchema = z.object({ data: ResendMemberResultSchema });
+
+export interface ResendInviteResult {
+  /** Present ONLY in non-prod (D.27 — EXPOSE_INVITE_TOKEN). Lets the
+   *  Manager rebuild the accept-invite link when email didn't arrive
+   *  (FakeEmail in dev). Ephemeral — never written to TanStack cache. */
+  inviteToken?: string;
+}
+
+/**
+ * POST /members/:userId/resend — re-issue the invite for a PENDING
+ * member (re-sends the email; in non-prod the token is also returned so
+ * the Manager can copy the accept-invite link directly). Same
+ * `members.invite` permission as invite.
+ *
+ * Errors: 400 `member_not_pending` (already accepted/revoked),
+ * 404 `not_found`. Idempotent POST so a double-click re-sends once.
+ */
+export async function resendInvite(userId: string): Promise<ResendInviteResult> {
+  const res = await apiClient.postIdempotent<unknown>(`/members/${userId}/resend`, {});
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return ResendMemberWireSchema.parse({ data: res.data }).data;
+}
+
 export async function updateMemberRole(userId: string, body: UpdateMember): Promise<Member> {
   const res = await apiClient.patch<unknown>(`/members/${userId}`, body);
   if (!isOk(res)) throw new ApiClientError(res.error);

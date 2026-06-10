@@ -23,6 +23,15 @@ export interface DownloadUrlOptions {
    *  RFC 5987 (legacy clients use the ASCII slot, modern clients
    *  use the UTF-8 slot). */
   responseFilenameUtf8?: string;
+  /** Content-Disposition TYPE for the presigned GET.
+   *  - `'attachment'` (default): force a save dialog — the existing,
+   *    confidentiality-safe behaviour. Used for every download.
+   *  - `'inline'`: let the browser render the object in a tab (PDF/image
+   *    preview). The caller MUST only request this for a `clean`-scanned,
+   *    allow-listed object — SVG/HTML are off the upload allow-list, so
+   *    inline can never serve active content. The filename slots still
+   *    apply (the browser uses them if the user saves the rendered file). */
+  disposition?: 'attachment' | 'inline';
 }
 
 /** Object metadata returned by IStorageProvider.head().

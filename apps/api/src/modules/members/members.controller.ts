@@ -20,6 +20,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
@@ -63,6 +64,25 @@ export class MembersController {
     @Body(new ZodValidationPipe(CreateMemberInput)) body: CreateMember,
   ) {
     return { data: await this.members.create(user, body) };
+  }
+
+  // S2 #7 — re-issue the invite for a still-PENDING membership: re-mint the
+  // token + re-send the email best-effort, and (in dev) return the invite
+  // token/link so the FE can copy it. Same members.invite gate as create.
+  // 400 member_not_pending if already accepted; 404 if revoked/unknown.
+  @Post(':userId/resend')
+  @HttpCode(200)
+  // SEC (Slice-2 security review HIGH) — resend sends a real email via the org's
+  // verified sender; a tight per-route throttle prevents email-bombing a target
+  // (the global 100/min is too loose for an outbound-email amplifier). Mirrors
+  // the document `download` route's per-route throttle posture.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @RequirePermission('members.invite')
+  async resend(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('userId', UuidParam) userId: string,
+  ) {
+    return { data: await this.members.resend(user, userId) };
   }
 
   @Patch(':userId')

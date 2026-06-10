@@ -1,9 +1,11 @@
 import {
   CreateDocumentInput,
+  DownloadDocumentQuery,
   FinalizeDocumentInput,
   ListDocumentsQuery,
   UpdateDocumentInput,
   type CreateDocument,
+  type DownloadDocumentQueryDto,
   type FinalizeDocument,
   type ListDocumentsQueryDto,
   type UpdateDocument,
@@ -77,8 +79,12 @@ export class DocumentsController {
   @Get(':id/download')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @RequirePermission('documents.read')
-  async download(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
-    return { data: await this.documents.getDownloadUrl(user, id) };
+  async download(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', UuidParam) id: string,
+    @Query(new ZodValidationPipe(DownloadDocumentQuery)) query: DownloadDocumentQueryDto,
+  ) {
+    return { data: await this.documents.getDownloadUrl(user, id, query.disposition) };
   }
 
   @Post(':id/finalize')

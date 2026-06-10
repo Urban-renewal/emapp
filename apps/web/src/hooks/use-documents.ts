@@ -112,8 +112,12 @@ export function useArchiveDocument() {
   });
 }
 
+/** Mint a presigned GET URL. The disposition selects how R2 serves the
+ *  object: `attachment` (default, save dialog) or `inline` (renders the
+ *  PDF in-tab). 0 retries (mutation default) so a click never replays. */
 export function useDownloadDocument() {
   return useMutation({
-    mutationFn: (id: string) => getDownloadUrl(id),
+    mutationFn: (args: { id: string; disposition?: 'inline' | 'attachment' }) =>
+      getDownloadUrl(args.id, args.disposition ?? 'attachment'),
   });
 }

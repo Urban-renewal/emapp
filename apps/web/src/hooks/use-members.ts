@@ -16,12 +16,14 @@ import {
   createMember,
   listMemberOverrides,
   listMembers,
+  resendInvite,
   revokeMember,
   setMemberOverride,
   updateMemberCapabilities,
   updateMemberRole,
   type CreateMemberResult,
   type MemberListPage,
+  type ResendInviteResult,
 } from '@/lib/api/members';
 import { useDisplayLocale } from '@/lib/locale';
 import type { MemberViewModel } from '@/models/member.vm';
@@ -86,6 +88,24 @@ export function useCreateMember() {
   const qc = useQueryClient();
   return useMutation<CreateMemberResult, Error, CreateMember>({
     mutationFn: (body: CreateMember) => createMember(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: MEMBERS_KEY });
+    },
+  });
+}
+
+/**
+ * POST /members/:userId/resend — re-issue a pending member's invite.
+ * `mutateAsync` returns the raw `{ inviteToken? }` shape; like
+ * `useCreateMember` we do NOT write the token into TanStack cache (it's
+ * ephemeral, rendered once by the caller). 0 retries (mutation default)
+ * so a click never replays the send. We invalidate the list so any
+ * server-side state refreshes.
+ */
+export function useResendInvite() {
+  const qc = useQueryClient();
+  return useMutation<ResendInviteResult, Error, string>({
+    mutationFn: (userId: string) => resendInvite(userId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: MEMBERS_KEY });
     },

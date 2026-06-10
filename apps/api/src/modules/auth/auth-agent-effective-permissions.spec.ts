@@ -39,7 +39,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { serverEnv } from '@emapp/config';
-import { db, memberships, projectAssignments, users } from '@emapp/db';
+import { db, memberships, projectAssignments, users, FakeEmailProvider } from '@emapp/db';
 import type { AgentCapabilities } from '@emapp/shared-types';
 import { JwtService } from '@nestjs/jwt';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -56,6 +56,7 @@ import { type SystemRoleKey } from '../../common/authz/system-roles';
 import { noopBreachForTest, noopMetricsForTest } from '../observability/test-doubles';
 
 import { AuthService } from './auth.service';
+import { PasswordResetRepository } from './password-reset.repository';
 
 let svc: AuthService;
 let org: TestOrg;
@@ -143,6 +144,8 @@ beforeAll(async () => {
     new PermissionService(),
     noopMetricsForTest(),
     noopBreachForTest(),
+    new FakeEmailProvider(),
+    new PasswordResetRepository(),
   );
   const tag = `b-agent1-${Date.now()}`;
   org = await createTestOrg(tag, tag);

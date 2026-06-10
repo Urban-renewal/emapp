@@ -79,8 +79,9 @@ const CLEAR = 'נקה'; // sign.clear
 
 // ── useState driver. The page calls useState in this fixed order each render:
 //    [0] stage, [1] preview, [2] doneAt, [3] submitError, [4] canvasEmpty,
-//    [5] previewFailed. We override ONLY [0], [1] and [5]; the rest fall back
-//    to their real initial value. The setter is a no-op (single SSR render). ──
+//    [5] consentChecked, [6] previewFailed. We override ONLY [0], [1] and [6];
+//    the rest fall back to their real initial value. The setter is a no-op
+//    (single SSR render). ──
 let stateQueue: unknown[] = [];
 let stateCursor = 0;
 
@@ -176,6 +177,11 @@ function buildPreview(downloadUrl: string): PublicSignPreview {
     },
     owner: { name: 'דנה כהן' },
     expiresAt: new Date('2030-01-01T00:00:00Z'),
+    consentNotice: {
+      text: 'הודעת פרטיות לדוגמה',
+      version: 'v1',
+      requireExplicitConsent: false,
+    },
   };
 }
 
@@ -196,7 +202,8 @@ function renderPreview(opts: {
     undefined, // [2] doneAt — fall through to real initial (null)
     undefined, // [3] submitError
     undefined, // [4] canvasEmpty
-    opts.previewFailed ?? false, // [5] previewFailed
+    undefined, // [5] consentChecked — fall through to real initial (false)
+    opts.previewFailed ?? false, // [6] previewFailed
   ];
   stateCursor = 0;
   return renderToStaticMarkup(createElement(SignPage));

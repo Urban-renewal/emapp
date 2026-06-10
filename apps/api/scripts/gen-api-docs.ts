@@ -42,6 +42,7 @@ import {
   OtpRequestSchema,
   OtpVerifySchema,
   OwnerSearchInput,
+  OwnerEraseInput,
   SetOwnershipsInput,
   UpdateApartmentInput,
   UpdateBuildingInput,
@@ -414,6 +415,32 @@ const ENDPOINTS: Endpoint[] = [
     summary: 'Get one owner by id (org-scoped via RLS). PII masked.',
     response: '{ "data": { ...Owner (masked) } }',
     errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/owners/:id/data-export',
+    auth: 'AuthGuard + TenantGuard (Manager · owners.reveal_pii)',
+    summary:
+      'P0.C1 — data-subject ACCESS (right to access). Assembles EVERYTHING held about the owner (decrypted PII + ownerships + signature events). Manager-tier; audited as a PII reveal.',
+    response: '{ "data": { ...OwnerDataExport (CLEARTEXT) } }',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/owners/:id/erase',
+    auth: 'AuthGuard + TenantGuard (Manager · owners.reveal_pii)',
+    summary:
+      'P0.C1 — data-subject ERASURE (right-to-be-forgotten). Crypto-shreds PII in place (anonymize-not-delete); RETAINS signature/ownership rows for legal validity. Idempotent. Manager-tier; audited; Gate-6.',
+    request: OwnerEraseInput,
+    response: '{ "data": { ...OwnerErasureResult } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'PATCH',

@@ -1,10 +1,16 @@
-import type { TenantDetail, TenantListItem, TenantSampleOwner } from '@emapp/shared-types';
+import type {
+  TenantDetail,
+  TenantListItem,
+  TenantSampleOwner,
+  TenantUserItem,
+} from '@emapp/shared-types';
 
 import { formatRelative } from '@/lib/format';
 import type {
   ProviderTenantDetailVM,
   ProviderTenantListItemVM,
   ProviderTenantSampleOwnerVM,
+  ProviderTenantUserVM,
 } from '@/models/provider-tenant.vm';
 
 /**
@@ -53,6 +59,35 @@ export function toSampleOwnerVM(o: TenantSampleOwner): ProviderTenantSampleOwner
     phoneMasked: o.phoneMasked,
     isArchived: o.archivedAt !== null,
   };
+}
+
+/**
+ * P4 — wire member row → VM. Masked name/email pass through verbatim
+ * (already masked at the BE); only the timestamps are formatted.
+ */
+export function toTenantUserVM(
+  row: TenantUserItem,
+  locale: 'he' | 'en' = 'he',
+): ProviderTenantUserVM {
+  return {
+    id: row.id,
+    userId: row.userId,
+    nameMasked: row.nameMasked,
+    emailMasked: row.emailMasked,
+    role: row.role,
+    roleKeys: row.roleKeys,
+    status: row.status,
+    isPrimary: row.isPrimary,
+    lastLoginRelative: row.lastLoginAt ? formatRelative(row.lastLoginAt, locale) : null,
+    createdRelative: formatRelative(row.createdAt, locale),
+  };
+}
+
+export function toTenantUserVMs(
+  rows: TenantUserItem[],
+  locale: 'he' | 'en' = 'he',
+): ProviderTenantUserVM[] {
+  return rows.map((r) => toTenantUserVM(r, locale));
 }
 
 export function toTenantDetailVM(

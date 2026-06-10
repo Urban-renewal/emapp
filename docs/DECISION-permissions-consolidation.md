@@ -68,7 +68,17 @@ so they are not "duplicate sources of truth" — they are a distinct, intentiona
 
 Phase 0 being already-done means the value is in the later phases the owner asked for:
 
-- **Phase 1 — custom permission groups:** let an org define its own roles / permission
-  groups beyond the 6 system roles (generic + modular). Likely Gate-6 (seed/schema).
-- **Phase 2 — per-user overrides** (Gate-6).
-- **Phase 3 — provider parity.**
+- **Phase 1 — custom permission groups** — ✅ DONE (PR #337): org-defined roles on the
+  existing engine, anti-escalation (subset + Owner-only governance), no migration.
+- **Phase 2 — per-user overrides** — ✅ DONE (PR #338, Gate-6 held): grant/deny a
+  permission to a member; engine resolves `(role ∪ grant) − deny`, deny-wins.
+- **Phase 3 — provider parity** — **DECISION (2026-06-10): FOLD INTO P4, do not build a
+  separate provider IAM.** Rationale: the provider tier (Tier-3) is small, isolated
+  (`emapp-provider` audience, MFA, AccessReasonGate) and its access-control need is
+  **provider sub-roles** (e.g. `provider_viewer` read-only vs full Provider Admin) — which
+  is exactly the `roles`/`staff` work already scoped in `docs/PLAN-provider-console.md`
+  (P4 Tier-2 #4). Building a parallel custom-role/override engine for ~a handful of
+  vendor staff would be over-engineering. The org-tier engine (Phases 0–2) already gives
+  the rich model where it matters (customer orgs). Provider sub-roles will reuse the same
+  `roles`/`role_assignments` primitives when P4 builds them. **Net: Phase 3 closed; its
+  intent is delivered as the P4 provider-sub-roles slice.**

@@ -391,4 +391,63 @@ export async function decryptOwnerNamesBatch(
   });
 }
 
+/**
+ * P0.C1 — data-subject ERASURE (crypto-shred) tombstone.
+ *
+ * Produces the irreversible replacement ciphertext for an owner's encrypted PII
+ * columns (name_encrypted, national_id_encrypted, phone_encrypted). We overwrite
+ * the columns with a freshly-encrypted constant tombstone string ("[erased]")
+ * rather than NULL because those columns are NOT NULL (name/national_id) and an
+ * encrypted-of-a-constant value (a) keeps the at-rest invariant that the column
+ * always holds valid pgcrypto ciphertext, and (b) is irreversible w.r.t. the
+ * original PII — the original plaintext is GONE; decrypting the tombstone yields
+ * only the literal "[erased]", never the subject's data.
+ *
+ * The HMAC lookup hashes (name_hash, national_id_hash, phone_hash) are set to
+ * NULL by the caller (migration 0057 made them nullable) so the owner can no
+ * longer be FOUND by HMAC of the original value.
+ *
+ * Returns the three tombstone ciphertexts in ONE round-trip per the same
+ * pgcrypto discipline as the rest of this module (the three encrypts run in a
+ * single statement). All three share the same constant plaintext, so an
+ * attacker cannot even distinguish which column held which kind of PII.
+ */
+export const ERASURE_TOMBSTONE_PLAINTEXT = '[erased]';
+
+/**
+ * P0.C1 (erasure-completeness HIGH #1) — fixed tombstone for the handwritten-
+ * signature SVG blob (`signatures.signature_blob`, bytea NOT NULL).
+ *
+ * The SVG is the subject's BIOMETRIC mark (their physical signature shape) — PII
+ * that survives a crypto-shred of the owner row unless we also redact it here.
+ * On erasure we OVERWRITE the blob with this small fixed buffer. The column is
+ * NOT NULL, so a constant non-empty buffer satisfies the constraint while
+ * destroying the biometric content. We deliberately do NOT delete the signature
+ * row: legal validity rests on the retained `document_hash` + `signed_at` + the
+ * owner link (proof a signing event occurred), NOT on the visual SVG.
+ *
+ * Plain (un-encrypted) bytes — the blob column is not pgcrypto-encrypted at
+ * rest, so a plaintext tombstone is the correct shape. It carries NO PII.
+ */
+export const SIGNATURE_BLOB_TOMBSTONE: Buffer = Buffer.from('[erased]');
+
+export async function buildErasureTombstone(
+  db: Database,
+): Promise<{ nameEncrypted: Buffer; nationalIdEncrypted: Buffer; phoneEncrypted: Buffer }> {
+  const { encKey } = requirePiiKeys();
+  // One round-trip: three independent pgp_sym_encrypt of the same constant.
+  // pgp_sym_encrypt is non-deterministic (random IV) so the three ciphertexts
+  // differ at rest even though the plaintext is identical — fine; the point is
+  // that none of them is the original PII.
+  const result = await db.execute<{ n: Buffer; i: Buffer; p: Buffer }>(
+    sql`SELECT
+          pgp_sym_encrypt(${ERASURE_TOMBSTONE_PLAINTEXT}, ${encKey}) AS n,
+          pgp_sym_encrypt(${ERASURE_TOMBSTONE_PLAINTEXT}, ${encKey}) AS i,
+          pgp_sym_encrypt(${ERASURE_TOMBSTONE_PLAINTEXT}, ${encKey}) AS p`,
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error('buildErasureTombstone: pgp_sym_encrypt returned no result');
+  return { nameEncrypted: row.n, nationalIdEncrypted: row.i, phoneEncrypted: row.p };
+}
+
 void randomBytes; // imported for future signing use

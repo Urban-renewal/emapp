@@ -31,6 +31,7 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  NoopFileScanProvider,
   db,
   memberships,
   organizations,
@@ -497,7 +498,11 @@ function payload(sub: string, orgId: string, role: 'manager' | 'agent'): AccessT
 
 describe('B — document_uploaded retrofit (managers + assigned agents − uploader)', () => {
   it('B1) manager uploads doc to project P → OTHER manager + assigned agentP notified; uploader, revoked mgr, stale agent, wrong-project agent, viewer NOT', async () => {
-    const svc = new DocumentsService(storage, new NotificationsProducerService());
+    const svc = new DocumentsService(
+      storage,
+      new NoopFileScanProvider(),
+      new NotificationsProducerService(),
+    );
     const name = `b1-${randomUUID().slice(0, 8)}.pdf`;
 
     const res = await svc.create(payload(s.manager1, s.orgId, 'manager'), {
@@ -545,7 +550,7 @@ describe('B — document_uploaded retrofit (managers + assigned agents − uploa
         throw new Error('boom: simulated notification outage');
       },
     } as unknown as NotificationsProducerService;
-    const svcBad = new DocumentsService(storage, throwing);
+    const svcBad = new DocumentsService(storage, new NoopFileScanProvider(), throwing);
 
     const name = `b2-${randomUUID().slice(0, 8)}.pdf`;
     const res = await svcBad.create(payload(s.manager1, s.orgId, 'manager'), {

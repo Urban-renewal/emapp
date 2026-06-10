@@ -21,6 +21,7 @@
  */
 import {
   ListTenantsQuerySchema,
+  ListTenantUsersQuerySchema,
   ProviderAuditItemSchema,
   ProviderSelfAuditItemSchema,
   OnboardOrgBodySchema,
@@ -32,6 +33,7 @@ import {
   TenantDetailSchema,
   TenantListItemSchema,
   TenantSuspensionStateSchema,
+  TenantUserItemSchema,
   type OnboardOrgBody,
   type OnboardOrgResult,
   type ProviderAuditItem,
@@ -42,6 +44,7 @@ import {
   type TenantDetail,
   type TenantListItem,
   type TenantSuspensionState,
+  type TenantUserItem,
 } from '@emapp/shared-types';
 import { z } from 'zod';
 
@@ -152,6 +155,40 @@ export async function getTenant(reason: string, id: string): Promise<TenantDetai
   const res = await apiClient.get<unknown>(`/provider/tenants/${id}`, withReason(reason));
   if (!isOk(res)) throw new ApiClientError(res.error);
   return TenantDetailDataSchema.parse({ data: res.data }).data;
+}
+
+// ───────────────────────────────────────────────────────────────────
+// P4 (PLAN-provider-console §3 Tier-1 #1) — org users management.
+// GET /provider/tenants/:id/users — the org's MEMBERS, masked PII only
+// (nameMasked / emailMasked; national_id / phone never on the wire).
+// Cursor-paginated; same reason-header + defensive `.parse()` posture as
+// every other provider call here.
+// ───────────────────────────────────────────────────────────────────
+
+export interface TenantUsersPage {
+  items: TenantUserItem[];
+  page: Page;
+}
+
+export async function listTenantUsers(
+  reason: string,
+  id: string,
+  query: { limit?: number; cursor?: string } = {},
+): Promise<TenantUsersPage> {
+  // FE-side defensive parse — never send a malformed cursor / limit.
+  const parsed = ListTenantUsersQuerySchema.parse(query);
+  const params = new URLSearchParams();
+  params.set('limit', String(parsed.limit));
+  if (parsed.cursor) params.set('cursor', parsed.cursor);
+  const qs = params.toString();
+  const res = await apiClient.getList<unknown>(
+    `/provider/tenants/${id}/users${qs ? `?${qs}` : ''}`,
+    withReason(reason),
+  );
+  if (!isList<unknown>(res)) throw new ApiClientError(res.error);
+  const items = z.array(TenantUserItemSchema).parse(res.data);
+  const page = PageSchema.parse(res.page);
+  return { items, page };
 }
 
 // ───────────────────────────────────────────────────────────────────

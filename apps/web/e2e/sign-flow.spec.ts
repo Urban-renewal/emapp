@@ -71,6 +71,12 @@ const PREVIEW_BODY = {
     },
     owner: { name: 'דנה כהן' },
     expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    // P0.C2 — the preview always carries the org's PII-processing notice.
+    consentNotice: {
+      text: 'בחתימתך הינך מאשר/ת עיבוד פרטיך לצורך הפרויקט.',
+      version: 'v1',
+      requireExplicitConsent: false,
+    },
   },
 };
 

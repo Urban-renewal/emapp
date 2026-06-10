@@ -52,6 +52,10 @@ export default function SignPage() {
   const [doneAt, setDoneAt] = useState<PublicSignSubmitResponse | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [canvasEmpty, setCanvasEmpty] = useState(true);
+  // P0.C2 — explicit PII-processing consent. Only GATES the Submit button when
+  // the org sets `requireExplicitConsent`; otherwise consent is recorded
+  // implicitly-by-signing and this checkbox is not shown.
+  const [consentChecked, setConsentChecked] = useState(false);
   // Inline-preview load failure (PDF blocked by browser sandbox / R2
   // outage / unsupported viewer) → fall back to the "open in new tab"
   // affordance so the resident can still READ before they sign.
@@ -101,14 +105,28 @@ export default function SignPage() {
     };
   }, [token]);
 
+  // P0.C2 — when the org requires explicit consent, the resident must tick the
+  // box before signing. Derived from the preview's `consentNotice`.
+  const requireExplicit = preview?.consentNotice?.requireExplicitConsent ?? false;
+  const consentSatisfied = !requireExplicit || consentChecked;
+
   async function onSubmit() {
     if (!canvasHandleRef.current || canvasHandleRef.current.isEmpty()) return;
+    if (requireExplicit && !consentChecked) {
+      setSubmitError(t('consentRequired'));
+      return;
+    }
     setSubmitError(null);
     const svg = canvasHandleRef.current.toSvg();
     // FE-side defensive parse against the same schema the BE pipe
     // enforces. A canvas that produced too-small / too-large SVG
     // would fail server-side too — fail-fast locally.
-    const parsed = PublicSignSubmitInput.safeParse({ signatureSvg: svg });
+    const parsed = PublicSignSubmitInput.safeParse({
+      signatureSvg: svg,
+      // Implicit-by-signing orgs send `true` too — the resident IS
+      // acknowledging by signing; the BE records it either way.
+      acknowledgeConsent: requireExplicit ? consentChecked : true,
+    });
     if (!parsed.success) {
       const code = parsed.error.issues[0]?.message ?? 'invalid';
       setSubmitError(
@@ -132,8 +150,21 @@ export default function SignPage() {
         body: JSON.stringify(parsed.data),
       });
       if (!res.ok) {
-        // Anti-enumeration: any failure → generic "link no longer
-        // valid" stage. We don't surface 409/410/401 differently.
+        // P0.C2 — a 400 `consent_required` is recoverable in-place (tick the
+        // box + retry); it is NOT an enumeration oracle (only reachable after
+        // the token validated server-side). Surface it inline and stay on the
+        // preview stage. Every OTHER failure collapses to the generic "link no
+        // longer valid" stage (anti-enumeration: expired/cancelled/forged/
+        // already-signed are indistinguishable).
+        if (res.status === 400) {
+          const body = await res.json().catch(() => null);
+          const code = (body as { error?: { code?: string } } | null)?.error?.code;
+          if (code === 'consent_required') {
+            setStage('preview');
+            setSubmitError(t('consentRequired'));
+            return;
+          }
+        }
         setStage('invalid');
         return;
       }
@@ -302,6 +333,37 @@ export default function SignPage() {
         </p>
       </section>
 
+      {/* P0.C2 — PII-processing privacy notice. The org's CONFIGURABLE notice
+          text (resolved server-side from OrgSettings.privacy) is shown to the
+          resident before they sign. When the org requires explicit consent a
+          checkbox gates the Submit button; otherwise a clear
+          "by signing you acknowledge…" line records implicit-by-signing
+          consent. The notice text comes from our own API (Zod-parsed) — it is
+          org-authored copy, not arbitrary user input — and is rendered as plain
+          text (no dangerouslySetInnerHTML). */}
+      <section className="space-y-2 rounded-md border bg-muted/20 p-4">
+        <h2 className="text-sm font-semibold">{t('consentSectionTitle')}</h2>
+        <p className="whitespace-pre-line text-xs text-muted-foreground">
+          {preview.consentNotice?.text}
+        </p>
+        {requireExplicit ? (
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={consentChecked}
+              onChange={(e) => {
+                setConsentChecked(e.target.checked);
+                if (e.target.checked) setSubmitError(null);
+              }}
+              className="mt-0.5 h-4 w-4 shrink-0"
+            />
+            <span>{t('consentCheckboxLabel')}</span>
+          </label>
+        ) : (
+          <p className="text-xs font-medium">{t('consentImplicitLine')}</p>
+        )}
+      </section>
+
       <section className="space-y-2">
         <h2 className="text-sm font-semibold">{t('signatureSectionTitle')}</h2>
         <p className="text-xs text-muted-foreground">
@@ -324,7 +386,7 @@ export default function SignPage() {
           <button
             type="button"
             onClick={onSubmit}
-            disabled={canvasEmpty || stage === 'submitting'}
+            disabled={canvasEmpty || !consentSatisfied || stage === 'submitting'}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
           >
             {stage === 'submitting' ? t('submitting') : t('submit')}

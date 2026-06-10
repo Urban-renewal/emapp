@@ -414,6 +414,13 @@
 			"when": 1781708400000,
 			"tag": "0058_signatures_erasure_redaction_exception",
 			"breakpoints": true
+		},
+		{
+			"idx": 59,
+			"version": "7",
+			"when": 1781794800000,
+			"tag": "0059_pii_processing_consents",
+			"breakpoints": true
 		}
 	]
 }

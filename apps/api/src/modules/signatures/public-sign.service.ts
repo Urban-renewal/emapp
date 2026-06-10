@@ -9,6 +9,7 @@ import {
   documents,
   encryptField,
   owners,
+  piiProcessingConsents,
   signatureRequests,
   signatures,
   users,
@@ -18,6 +19,7 @@ import {
 } from '@emapp/db';
 import type { PublicSignPreview, PublicSignSubmit } from '@emapp/shared-types';
 import {
+  BadRequestException,
   Inject,
   Injectable,
   Logger,
@@ -164,6 +166,13 @@ export class PublicSignService {
         if (!own || own.archivedAt) throw INVALID_TOKEN;
         const ownerName = await decryptOwnerName(tx, own.nameEncrypted);
 
+        // P0.C2 — resolve the org's CONFIGURABLE PII-processing privacy notice
+        // so the resident SEES it before signing. Fail-soft: getOrgSettings
+        // degrades to defaults (a generic notice), so a missing/malformed
+        // settings row never blocks the preview. Resolved INSIDE this
+        // withTenant tx so organizations.settings is RLS-scoped.
+        const settings = await getOrgSettings(tx, claims.orgId);
+
         // Short-lived presigned GET for the document. Same pattern as
         // documents.getDownloadUrl — forced attachment + sanitized
         // filename. The download URL is itself a bearer credential and
@@ -200,6 +209,11 @@ export class PublicSignService {
           document: { name: doc.name, downloadUrl },
           owner: { name: ownerName },
           expiresAt: req.expiresAt,
+          consentNotice: {
+            text: settings.privacy.noticeText,
+            version: settings.privacy.noticeVersion,
+            requireExplicitConsent: settings.privacy.requireExplicitConsent,
+          },
         };
       });
     } catch (e: unknown) {
@@ -282,6 +296,24 @@ export class PublicSignService {
           throw INVALID_TOKEN;
         }
         const req = updated[0]!;
+
+        // P0.C2 — resolve the org's configurable PII-processing privacy notice.
+        // Fail-soft (getOrgSettings degrades to defaults). Resolved INSIDE this
+        // withTenant tx so organizations.settings is RLS-scoped; reused below
+        // for the post-sign email From display-name (single read).
+        const settings = await getOrgSettings(tx, claims.orgId);
+        const privacy = settings.privacy;
+
+        // If the org REQUIRES explicit consent, the resident must have ticked
+        // the acknowledgment box. This is reachable ONLY after the token
+        // validated and the row flipped to 'signed' — it is NOT an enumeration
+        // oracle (a forged/expired/consumed token never gets here; it hits the
+        // generic invalid_token above). Throwing here rolls back the whole tx
+        // (the status-flip + any inserts), so a consent-less sign leaves NO
+        // state. `consent_required` is a legitimate client-correctable 400.
+        if (privacy.requireExplicitConsent && body.acknowledgeConsent !== true) {
+          throw new BadRequestException({ error: { code: 'consent_required' } });
+        }
 
         // Layer 6 reinforced — fetch the document_hash for forensic
         // immutability (the signature attests to THIS hash; if the doc
@@ -368,6 +400,27 @@ export class PublicSignService {
           .set({ signedSignatureId: signatureRow.id })
           .where(eq(signatureRequests.id, req.id));
 
+        // P0.C2 — record the PII-processing consent ATOMICALLY with the
+        // signature (same tx; rolls back together on any later throw). The
+        // record pins the notice VERSION the resident saw AND a SHA-256 of the
+        // exact notice TEXT, so it self-verifies even if the org later edits
+        // its configurable copy. Carries NO new PII — only the owner ref +
+        // request provenance (IP/UA), mirroring `signatures`. Append-only table
+        // (migration 0059 REVOKEs UPDATE/DELETE). `method` records the surface;
+        // implicit-by-signing (no checkbox required) is still a recorded
+        // acknowledgment per the privacy-notice shown on the sign page.
+        const noticeHash = createHash('sha256').update(privacy.noticeText, 'utf8').digest('hex');
+        await tx.insert(piiProcessingConsents).values({
+          orgId: claims.orgId,
+          ownerId: req.ownerId,
+          noticeVersion: privacy.noticeVersion,
+          noticeHash,
+          method: 'public_sign_v1',
+          consentIp: audit.ip,
+          consentUserAgent: audit.userAgent,
+          acknowledgedAt: req.signedAt!,
+        });
+
         // Layer 10 — full forensic audit. actor_type='system' per the
         // audit_log_actor_type_valid CHECK (migration 0014 — same
         // pattern as the OTP tenant login audit per G1a).
@@ -385,16 +438,31 @@ export class PublicSignService {
           },
         });
 
+        // P0.C2 — forensic audit of the consent capture (privacy-law trail).
+        // No PII in metadata — only refs + the notice version/method. Same tx,
+        // actor_type='system' (public-link flow has no user actor).
+        await new AuditService(tx, audit).log({
+          orgId: claims.orgId,
+          actorType: 'system',
+          action: 'pii_consent.recorded',
+          targetTable: 'pii_processing_consents',
+          targetId: signatureRow.id,
+          metadata: {
+            owner_id: req.ownerId,
+            notice_version: privacy.noticeVersion,
+            method: 'public_sign_v1',
+            explicit: privacy.requireExplicitConsent,
+          },
+        });
+
         // P6 — resolve the org's branding.senderName into the From DISPLAY
         // name (the address stays the verified system From). Built ONLY via
-        // buildEmailFrom (single source — header safety). Best-effort: a
-        // settings-read failure must NOT break the sign / the notifications —
-        // fall back to DEFAULT_EMAIL_FROM. (getOrgSettings is itself fail-soft;
-        // the try/catch is belt-and-suspenders, matching #306.) Resolved INSIDE
-        // this withTenant tx so organizations.settings is RLS-scoped.
+        // buildEmailFrom (single source — header safety). Reuses the `settings`
+        // already resolved above for the consent notice (single RLS-scoped
+        // read). buildEmailFrom is itself defensive; the try/catch is
+        // belt-and-suspenders, matching #306.
         let emailFrom = DEFAULT_EMAIL_FROM;
         try {
-          const settings = await getOrgSettings(tx, claims.orgId);
           emailFrom = buildEmailFrom(settings.branding.senderName, DEFAULT_EMAIL_FROM);
         } catch (e: unknown) {
           this.logger.warn(
@@ -467,6 +535,12 @@ export class PublicSignService {
     } catch (e: unknown) {
       if (e instanceof UnauthorizedException) throw e;
       if (e instanceof ServiceUnavailableException) throw e;
+      // P0.C2 — `consent_required` is a legitimate client-correctable 400, NOT
+      // an enumeration oracle: it is reachable only AFTER the token validated
+      // (a forged/expired/consumed token already hit the generic 401 above).
+      // Surface it so the resident can tick the box and retry; the failed
+      // attempt rolled back the whole tx (no partial sign / no consent row).
+      if (e instanceof BadRequestException) throw e;
       this.logger.error(
         `sign failed (sub=${claims.sub}): ${e instanceof Error ? e.message : 'unknown'}`,
       );

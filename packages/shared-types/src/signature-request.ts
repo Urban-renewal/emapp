@@ -179,6 +179,17 @@ export const PublicSignPreviewSchema = z.object({
     name: z.string(),
   }),
   expiresAt: z.coerce.date(),
+  /** P0.C2 — the org's configurable PII-processing privacy notice the resident
+   *  must see before signing. `text` is the exact wording shown (resolved from
+   *  OrgSettings.privacy.noticeText); `version` is pinned into the consent
+   *  record. `requireExplicitConsent` tells the FE whether to gate the Submit
+   *  button on an explicit checkbox (true) or show an implicit-by-signing
+   *  acknowledgment line (false). */
+  consentNotice: z.object({
+    text: z.string(),
+    version: z.string(),
+    requireExplicitConsent: z.boolean(),
+  }),
 });
 export type PublicSignPreview = z.infer<typeof PublicSignPreviewSchema>;
 
@@ -192,6 +203,12 @@ export const PublicSignSubmitInput = z
       .min(50, 'signature_too_short')
       .max(PUBLIC_SIGN_SVG_MAX_BYTES, 'signature_too_large')
       .regex(/^<svg[\s\S]*<\/svg>$/i, 'not_svg'),
+    /** P0.C2 — the resident's explicit acknowledgment of the PII-processing
+     *  notice. Optional on the wire: when the org sets
+     *  `privacy.requireExplicitConsent`, the BE enforces this must be `true`
+     *  (else `consent_required`). When false/absent the consent is recorded
+     *  implicitly-by-signing. The consent RECORD is written either way. */
+    acknowledgeConsent: z.boolean().optional(),
   })
   .strict();
 export type PublicSignSubmit = z.infer<typeof PublicSignSubmitInput>;

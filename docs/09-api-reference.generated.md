@@ -959,8 +959,8 @@ _(no body)_
 | field | type | required | constraints |
 |---|---|---|---|
 | `email` | unknown | no | — |
-| `name` | string | yes | minLength=1, maxLength=100 |
-| `national_id` | string | yes | pattern="^\\d{9}$" |
+| `name` | string | no | minLength=1, maxLength=100 |
+| `national_id` | string | no | pattern="^\\d{9}$" |
 | `notes` | unknown | no | — |
 | `phone` | unknown | no | — |
 

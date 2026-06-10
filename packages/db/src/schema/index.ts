@@ -10,6 +10,7 @@ export * from './iam';
 export * from './imports';
 export * from './mapping-templates';
 export * from './auth-sessions';
+export * from './password-reset-tokens';
 export * from './provider-sessions';
 export * from './tenant-sessions';
 export * from './otp';

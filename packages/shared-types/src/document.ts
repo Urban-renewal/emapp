@@ -75,6 +75,19 @@ export const DOCUMENT_MAX_SIZE_BYTES = 52_428_800;
  */
 export const DOCUMENT_UPLOAD_INCOMPLETE_CODE = 'document_upload_incomplete' as const;
 
+/**
+ * Error-envelope `code` (D.16) for a document whose anti-malware scan did NOT
+ * return `clean` — the uploaded object was flagged `infected`, or the scan
+ * could not complete (`error`). The download path is FAIL-CLOSED: anything
+ * that is not a `clean` verdict is never servable (P0.B1). The finalize path
+ * returns this DISTINCT code (HTTP 409) so the FE can tell the owner the file
+ * was rejected by malware scanning rather than showing a generic conflict.
+ *
+ * Only ever emitted for a document already authorised as visible to the caller
+ * (same no-oracle posture as `DOCUMENT_UPLOAD_INCOMPLETE_CODE`).
+ */
+export const DOCUMENT_SCAN_REJECTED_CODE = 'document_scan_rejected' as const;
+
 /** Wire representation — NEVER includes r2Key. */
 export const DocumentSchema = z.object({
   id: z.string().uuid(),

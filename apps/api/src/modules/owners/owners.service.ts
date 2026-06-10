@@ -229,7 +229,7 @@ export class OwnersService {
         return tx
           .select(ownerCols)
           .from(owners)
-          .where(and(isNull(owners.archivedAt), scope, keyset))
+          .where(and(isNull(owners.archivedAt), isNull(owners.erasedAt), scope, keyset))
           .orderBy(desc(owners.createdAt), desc(owners.id))
           .limit(limit + 1);
       },
@@ -252,7 +252,14 @@ export class OwnersService {
         // not in an assigned project — no oracle). Masked for everyone.
         await this.assertAgentCanViewOwners(tx, user);
         await this.assertOwnerInAssignedProject(tx, user, id);
-        return tx.select(ownerCols).from(owners).where(eq(owners.id, id)).limit(1);
+        // P0.C1 — an erased owner (right-to-be-forgotten) is excluded from
+        // detail too: their PII is crypto-shredded, so detail would only show a
+        // tombstone. Treat as not-found (no oracle).
+        return tx
+          .select(ownerCols)
+          .from(owners)
+          .where(and(eq(owners.id, id), isNull(owners.erasedAt)))
+          .limit(1);
       },
       { userId: user.sub },
     );
@@ -287,7 +294,10 @@ export class OwnersService {
         const [exists] = await tx
           .select({ id: owners.id })
           .from(owners)
-          .where(eq(owners.id, id))
+          // P0.C1 — an erased owner is UN-REVEALABLE: their cleartext PII is
+          // crypto-shredded, so reveal collapses to 404 (no oracle — same as a
+          // non-existent owner). The erasure tombstone is never surfaced.
+          .where(and(eq(owners.id, id), isNull(owners.erasedAt)))
           .limit(1);
         if (!exists) throw NOT_FOUND;
         // Agent: owner must be in an actively-assigned project (404 if not —
@@ -347,7 +357,7 @@ export class OwnersService {
         return tx
           .select(ownerCols)
           .from(owners)
-          .where(and(isNull(owners.archivedAt), or(...conds), scope))
+          .where(and(isNull(owners.archivedAt), isNull(owners.erasedAt), or(...conds), scope))
           .orderBy(desc(owners.createdAt), desc(owners.id))
           .limit(50)
           .then((rs) => rs.map(toOwner));

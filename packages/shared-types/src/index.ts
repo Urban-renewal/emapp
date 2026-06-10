@@ -7,6 +7,8 @@ export * from './building';
 export * from './apartment';
 export * from './owner';
 export * from './ownership';
+// P0.C1 — data-subject rights (access export + erasure / right-to-be-forgotten).
+export * from './data-subject';
 export * from './contractor';
 export * from './share';
 // D2-DEF-1 / D.46 — Contractor read-tier (share-token scoped, owners-PII
@@ -19,6 +21,9 @@ export * from './note';
 export * from './audit';
 export * from './project-assignment';
 export * from './member';
+// P2 Phase 1 — custom roles (org-defined permission groups). Management CRUD +
+// assign/revoke wire shapes over the existing IAM data model (roles.org_id).
+export * from './role';
 // P1-1 — per-org configurable policy seam (the spine). Typed `OrgSettings`
 // schema + defaults; `getOrgSettings(tx, orgId)` in @emapp/api parses
 // `organizations.settings` jsonb over these. The single source every future

@@ -443,7 +443,11 @@ async function resolveOwnersBatch(
         sql`${owners.archivedAt} IS NULL`,
       ),
     );
-  for (const r of existing) result.set(r.hash, r.id);
+  // national_id_hash is nullable since migration 0057 (erasure NULLs it). An
+  // erased owner can never match the inArray(hashes) filter above, so r.hash is
+  // non-null here in practice — guard for the type and to never re-link an
+  // erased identity into an import.
+  for (const r of existing) if (r.hash !== null) result.set(r.hash, r.id);
 
   // Step 2: gather rows whose owners need to be created.
   const toCreate: Array<{ hash: string; row: ValidatedRow }> = [];
@@ -491,7 +495,7 @@ async function resolveOwnersBatch(
       where: sql`archived_at IS NULL`,
     })
     .returning({ id: owners.id, hash: owners.nationalIdHash });
-  for (const r of inserted) result.set(r.hash, r.id);
+  for (const r of inserted) if (r.hash !== null) result.set(r.hash, r.id);
 
   // Step 5 (race-recovery): if any to-create rows didn't land in
   // `inserted` (ON CONFLICT skipped because a concurrent tx beat us
@@ -510,7 +514,7 @@ async function resolveOwnersBatch(
           sql`${owners.archivedAt} IS NULL`,
         ),
       );
-    for (const r of recovered) result.set(r.hash, r.id);
+    for (const r of recovered) if (r.hash !== null) result.set(r.hash, r.id);
   }
 
   return result;

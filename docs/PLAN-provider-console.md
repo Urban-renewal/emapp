@@ -13,20 +13,22 @@ testing run that fix). After the fix the org list + dashboard load correctly.
 
 ### Built & working (7 pages + write actions)
 
-| Page                         | Route                     | Backed by                                |
-| ---------------------------- | ------------------------- | ---------------------------------------- |
-| Platform dashboard           | `/provider`               | system-health summary                    |
-| **Organizations (tenants)**  | `/provider/tenants`       | cross-tenant list + search               |
-| Org detail                   | `/provider/tenants/[id]`  | counts + ≤5 **PII-masked** sample owners |
-| **Suspend / reactivate**     | (in org detail)           | D.49 write, audited                      |
-| Onboard new org              | `/provider/onboard`       | create org + invite first manager        |
-| System health                | `/provider/system-health` | queue / pools / R2                       |
-| Cross-tenant audit           | `/provider/audit`         | audit search                             |
-| **My activity (self-audit)** | `/provider/audit/self`    | PR #324 (just built)                     |
+| Page                         | Route                          | Backed by                                |
+| ---------------------------- | ------------------------------ | ---------------------------------------- |
+| Platform dashboard           | `/provider`                    | system-health summary                    |
+| **Organizations (tenants)**  | `/provider/tenants`            | cross-tenant list + search               |
+| Org detail                   | `/provider/tenants/[id]`       | counts + ≤5 **PII-masked** sample owners |
+| **Suspend / reactivate**     | (in org detail)                | D.49 write, audited                      |
+| Onboard new org              | `/provider/onboard`            | create org + invite first manager        |
+| System health                | `/provider/system-health`      | queue / pools / R2                       |
+| Cross-tenant audit           | `/provider/audit`              | audit search                             |
+| **My activity (self-audit)** | `/provider/audit/self`         | PR #324 (just built)                     |
+| **Org users (members)**      | `/provider/tenants/[id]/users` | masked members + roles + status (P4)     |
 
-### Not built — the 9 greyed stubs (intentional post-MVP, NO backend)
+### Not built — the greyed stubs (intentional post-MVP, NO backend)
 
-`users · plans · billing · support · roles · integrations · backups · staff · settings`.
+`plans · billing · support · roles · integrations · staff · settings`.
+(`users` is now WIRED — P4, masked org-members read; `backups` is wired too.)
 These are **placeholders with a padlock** — they were never built and have no
 endpoint. They are the "90% inactive" you see. They are NOT broken; they're
 unbuilt. This doc is the plan for them.
@@ -62,7 +64,7 @@ transparency items are the growth path.
 
 ### Tier 1 — High value, backend already exists or is small
 
-1. **Org users management** (`users` stub). Support's #1 task. Needs `GET /provider/tenants/:id/users` (PII-masked, like the owner-sample) + an FE page. Reuses the masking + audit pattern. **Recommended first.**
+1. **Org users management** (`users` stub). Support's #1 task. Needs `GET /provider/tenants/:id/users` (PII-masked, like the owner-sample) + an FE page. Reuses the masking + audit pattern. **Recommended first.** ✅ **DONE (P4)** — `GET /provider/tenants/:id/users` (masked name+email, roles, status; audited + reason-gated + `withProvider`) + `/provider/tenants/[id]/users` FE page; `users` sidebar stub flipped to wired.
 2. **Customer-visible Access Transparency** (from PLAN-provider-console governance). You already log who/when/reason in `provider_audit_log`; expose a read-only "EMAPP staff accessed your org" screen to the **org Manager**. Mirrors the `self-audit` page (#324) but customer-facing. High trust ROI.
 3. **Re-provision / transfer-ownership** (`users`/recovery overlap) — wire `org.transfer_ownership` + "invite a manager into an existing org" (PLAN-account-recovery R1.5). Fixes the sole-Owner-lockout without DB surgery.
 

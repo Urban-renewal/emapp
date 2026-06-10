@@ -1,13 +1,11 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve as resolvePath } from 'node:path';
+import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
+import { type Browser } from 'playwright-core';
 
 import {
-  Injectable,
-  Logger,
-  ServiceUnavailableException,
-  type OnModuleDestroy,
-} from '@nestjs/common';
-import { chromium, type Browser } from 'playwright-core';
+  ChromiumBrowserPool,
+  escapeHtml,
+  loadHeeboFontCss,
+} from '../../common/pdf/chromium-html-pdf';
 
 import type {
   ProjectExportApartment,
@@ -97,16 +95,13 @@ import type {
 export class PdfExportService implements OnModuleDestroy {
   private readonly logger = new Logger(PdfExportService.name);
 
-  // Lazily read on first render; once loaded, the base64 strings stay
-  // in process memory (~80 KB). woff2 is already the smallest font
-  // wire format, no further compression possible.
-  private cachedFontCss: string | null = null;
-
-  // Wave 5 F1: singleton browser, lazy-initialised. The launchPromise
-  // is the deduplication primitive — concurrent first-call requests
-  // share ONE launch instead of racing N forks.
-  private browser: Browser | null = null;
-  private launchPromise: Promise<Browser> | null = null;
+  // Wave 5 F1 + PR #317: singleton browser, lazy-initialised, now provided by
+  // the shared ChromiumBrowserPool (same launch dedup, self-heal, and
+  // non-leaky 503-on-launch-failure as before — factored out so the signed-
+  // certificate renderer reuses ONE Chromium integration).
+  private readonly pool = new ChromiumBrowserPool({ headless: true }, (msg) =>
+    this.logger.error(`Chromium launch failed: ${msg}`),
+  );
 
   /**
    * Render a project to a PDF Buffer. Caller composes the input from
@@ -125,128 +120,31 @@ export class PdfExportService implements OnModuleDestroy {
   async renderProjectPdf(input: ProjectExportInput, signal?: AbortSignal): Promise<Buffer> {
     const t0 = Date.now();
     const html = this.buildHtml(input);
-    // Wave 5 F1: get-or-launch the singleton; per-request work happens
-    // inside a fresh BrowserContext (Playwright's isolation boundary).
-    // We close the CONTEXT, not the browser, so the next call skips
-    // the 1+ second launch step.
-    const browser = await this.getBrowser();
-    const ctx = await browser.newContext();
-    // Wave 6 E-H1 (errors audit 2026-05-28): if the controller wired an
-    // AbortSignal (from `reply.raw.on('close')`), bind it to the
-    // context so a client disconnect mid-render closes Chromium's
-    // page+context immediately. Without this, an abandoned export
-    // holds Chromium until `page.pdf()` resolves (up to ~45 s) —
-    // trivial DoS against the singleton-browser path (next caller
-    // queues behind the abandoned render). `ctx.close()` is
-    // idempotent; the renderer's own try/finally then runs and
-    // finds it already closed, which surfaces as a TargetClosedError
-    // that the caller's catch logs as an aborted render.
-    const onAbort = (): void => {
-      ctx.close().catch(() => {
-        /* already-closed paths are fine */
-      });
-    };
-    if (signal?.aborted) {
-      onAbort();
-    } else {
-      signal?.addEventListener('abort', onAbort, { once: true });
-    }
-    try {
-      const page = await ctx.newPage();
-      // `setContent` returns when the DOM is ready, but `document.fonts.ready`
-      // is the only signal that @font-face has actually parsed + rasterised
-      // the base64 woff2. Without this wait, Chromium emits the PDF with the
-      // fallback (Arial) glyphs instead of Heebo — visible in the visual
-      // smoke and detectable in tests as the absence of a /FontFile*
-      // reference in the PDF stream.
-      await page.setContent(html, { waitUntil: 'load' });
-      // page.evaluate runs in the browser context — `document` exists
-      // there, not in our Node tsconfig.lib. Cast to `unknown` then
-      // call to bypass the missing-DOM-types check.
-      await page.evaluate(
-        () =>
-          (globalThis as unknown as { document: { fonts: { ready: Promise<void> } } }).document
-            .fonts.ready,
-      );
-      const pdf = await page.pdf({
-        format: 'A4',
-        landscape: true,
-        printBackground: true,
-        margin: { top: '12mm', right: '12mm', bottom: '12mm', left: '12mm' },
-      });
-      const dataRows = this.dataRowCount(input);
-      this.logger.log(
-        `rendered project ${input.project.id} → pdf (${dataRows} data rows, ${pdf.byteLength} bytes, ${Date.now() - t0}ms)`,
-      );
-      // playwright returns a Node Buffer on Node runtime; the type
-      // is `Buffer` already but TS sees Uint8Array — cast for clarity.
-      return Buffer.from(pdf);
-    } finally {
-      await ctx.close();
-    }
+    // Render through the shared pool: get-or-launch the singleton, render in a
+    // fresh BrowserContext (Playwright isolation), wait for fonts.ready, close
+    // the context (not the browser) so the next call skips the launch. The
+    // AbortSignal (from `reply.raw.on('close')`) closes the context early on
+    // client disconnect — prevents an abandoned export holding Chromium for up
+    // to ~45 s (Wave 6 E-H1).
+    const pdf = await this.pool.renderPdf(html, { landscape: true, signal });
+    const dataRows = this.dataRowCount(input);
+    this.logger.log(
+      `rendered project ${input.project.id} → pdf (${dataRows} data rows, ${pdf.byteLength} bytes, ${Date.now() - t0}ms)`,
+    );
+    return pdf;
   }
 
   /**
-   * Wave 5 F1: get-or-launch the singleton browser. Concurrent first
-   * callers share one launch via `launchPromise`. If the previous
-   * browser died (Chromium crash), `isConnected()` returns false and
-   * we relaunch transparently — closes the operational hole where one
-   * bad render would kill exports forever.
+   * Wave 5 F1: get-or-launch the singleton browser (delegated to the shared
+   * pool). Concurrent first callers share one launch; a crashed Chromium is
+   * detected via `isConnected()` and relaunched; a launch failure surfaces as
+   * a non-leaky 503 `pdf_unavailable`.
    *
-   * Exposed for tests (not as a real public API): the spec asserts
-   * subsequent calls return the SAME `Browser` instance.
+   * Exposed for tests (not a real public API): the spec asserts subsequent
+   * calls return the SAME `Browser` instance.
    */
   async getBrowser(): Promise<Browser> {
-    if (this.browser && this.browser.isConnected()) return this.browser;
-    // The dead-browser branch: clear the cached reference so the
-    // launch path below re-runs cleanly.
-    this.browser = null;
-    if (this.launchPromise) return this.launchPromise;
-    // Honours the standard playwright env (PLAYWRIGHT_BROWSERS_PATH,
-    // PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH). On dev machines + CI that
-    // ran `pnpm --filter @emapp/web test:e2e:install`, the binary is
-    // already discoverable; no extra config needed.
-    this.launchPromise = chromium
-      .launch({ headless: true })
-      .then((b) => {
-        this.browser = b;
-        // Defence in depth: if Chromium dies, drop our cached reference
-        // so the next call relaunches via the isConnected() gate above.
-        b.on('disconnected', () => {
-          if (this.browser === b) this.browser = null;
-        });
-        this.logger.log(`Chromium singleton launched (pid=${b.contexts().length} contexts)`);
-        return b;
-      })
-      .catch((e: unknown) => {
-        // Wave 6 E-H4 (errors audit 2026-05-28): chromium.launch can fail
-        // for operational reasons (missing binary in container, /tmp full,
-        // seccomp denial). Without this catch the user got a generic 500
-        // and the FE had no signal to fall back to xlsx. With it, we
-        // surface a 503 carrying `code: 'pdf_unavailable'` so the FE can
-        // detect-and-fallback (FE: if error.code === 'pdf_unavailable',
-        // retry the same export with format=xlsx).
-        //
-        // Server-side: log the real error message + stack so ops can
-        // diagnose (e.g. "Failed to launch chromium: ENOENT /usr/bin/…").
-        // Client-side: ONLY the generic code + message — never the
-        // underlying playwright/Chromium internals (no path / pid / cwd).
-        const msg = e instanceof Error ? e.message : 'unknown';
-        this.logger.error(`Chromium launch failed: ${msg}`);
-        throw new ServiceUnavailableException({
-          error: {
-            code: 'pdf_unavailable',
-            message: 'PDF rendering temporarily unavailable',
-          },
-        });
-      })
-      .finally(() => {
-        // Whether the launch succeeded or failed, drop the in-flight
-        // promise so the next caller either gets the cached browser
-        // or starts a fresh launch (instead of awaiting a stale failure).
-        this.launchPromise = null;
-      });
-    return this.launchPromise;
+    return this.pool.getBrowser();
   }
 
   /**
@@ -256,17 +154,8 @@ export class PdfExportService implements OnModuleDestroy {
    * stay alive after the API process exits.
    */
   async onModuleDestroy(): Promise<void> {
-    const b = this.browser;
-    if (!b) return;
-    this.browser = null;
-    try {
-      await b.close();
-    } catch (e) {
-      // Don't block shutdown on a Chromium close failure — log and move on.
-      this.logger.warn(
-        `Chromium close on shutdown failed: ${e instanceof Error ? e.message : 'unknown'}`,
-      );
-    }
+    const err = await this.pool.close();
+    if (err) this.logger.warn(`Chromium close on shutdown failed: ${err}`);
   }
 
   private dataRowCount(input: ProjectExportInput): number {
@@ -280,82 +169,10 @@ export class PdfExportService implements OnModuleDestroy {
   }
 
   private fontCss(): string {
-    if (this.cachedFontCss !== null) return this.cachedFontCss;
-    // Original implementation used `createRequire(__filename).resolve(...)`
-    // — works under tsx/Vitest but breaks in the webpack-bundled
-    // production output: webpack inlines `node:module` such that the
-    // returned `req` function has no `.resolve` property at runtime.
-    // Caught by the B.S10 PDF smoke (the visual-smoke discipline from
-    // `feedback_visual_smoke_gap.md` paying off immediately).
-    //
-    // Replacement: walk a fixed list of candidate roots relative to
-    // `process.cwd()`. The API process starts in `apps/api/`, so pnpm
-    // gives us EITHER a local `apps/api/node_modules/@fontsource/heebo`
-    // (when hoisting puts it there) OR the workspace-root
-    // `../../node_modules/@fontsource/heebo`. We try both, take the
-    // first one that exists. Robust to webpack, CJS, ESM, tsx, and
-    // future bundlers because it doesn't depend on `require` or
-    // `import.meta.url`.
-    const files = [
-      'heebo-hebrew-400-normal.woff2',
-      'heebo-hebrew-700-normal.woff2',
-      'heebo-latin-400-normal.woff2',
-      'heebo-latin-700-normal.woff2',
-    ];
-    const cwd = process.cwd();
-    const candidates = [
-      // pnpm symlinks per-package node_modules; @fontsource/heebo is
-      // a direct dep of apps/api, so it lives at apps/api/node_modules.
-      resolvePath(cwd, 'apps/api/node_modules/@fontsource/heebo/files'),
-      // When running from inside apps/api (the dev process), cwd
-      // already IS apps/api, so the symlink is right here.
-      resolvePath(cwd, 'node_modules/@fontsource/heebo/files'),
-      // Defensive fallbacks for the workspace root (in case future
-      // pnpm settings hoist) and a nested case.
-      resolvePath(cwd, '../../node_modules/@fontsource/heebo/files'),
-      resolvePath(cwd, '../node_modules/@fontsource/heebo/files'),
-    ];
-    let base: string | null = null;
-    for (const cand of candidates) {
-      if (existsSync(`${cand}/${files[0]}`)) {
-        base = cand;
-        break;
-      }
-    }
-    if (!base) {
-      // Wave 6 E-H3 (redteam audit 2026-05-28): the original throw
-      // embedded `process.cwd()` and the full candidate list in the
-      // Error message. With the GlobalExceptionFilter walking `.cause`
-      // and AUTH_DEBUG_ERRORS=1 on staging, that disclosed the
-      // node_modules layout + working directory to the response body.
-      // Now: detailed diagnostic goes to the server log; the throw
-      // carries only a stable code + non-leaky message.
-      this.logger.error(
-        `pdf-export font lookup failed. CWD=${cwd}. Tried: ${candidates.join(' | ')}`,
-      );
-      throw new ServiceUnavailableException({
-        error: {
-          code: 'pdf_unavailable',
-          message: 'PDF rendering temporarily unavailable',
-        },
-      });
-    }
-    const css = files
-      .map((name) => {
-        const buf = readFileSync(`${base}/${name}`);
-        const b64 = buf.toString('base64');
-        const weight = name.includes('700') ? 700 : 400;
-        return `@font-face {
-  font-family: 'Heebo';
-  font-style: normal;
-  font-weight: ${weight};
-  font-display: block;
-  src: url(data:font/woff2;base64,${b64}) format('woff2');
-}`;
-      })
-      .join('\n');
-    this.cachedFontCss = css;
-    return css;
+    // Heebo @font-face (Hebrew + Latin, 400 + 700), base64-embedded. Delegated
+    // to the shared loader (PR #317); the candidate-path diagnostic on failure
+    // goes to the server log only — never to the response (redteam E-H3).
+    return loadHeeboFontCss((msg) => this.logger.error(`pdf-export ${msg}`));
   }
 
   private buildHtml(input: ProjectExportInput): string {
@@ -498,13 +315,4 @@ function statusHebrew(status: string): string {
     default:
       return status;
   }
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }

@@ -40,13 +40,14 @@
  * structural; serving a request that we can't audit is a bigger
  * compliance risk than a transient 500.
  */
-import { withProvider } from '@emapp/db';
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import { type BreachDetectionService, withProvider } from '@emapp/db';
+import { CallHandler, ExecutionContext, Inject, Injectable, NestInterceptor } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import { Observable, from } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 
 import type { ProviderTokenPayload } from '../auth/provider/provider-auth.service';
+import { BREACH_DETECTION } from '../observability/observability.tokens';
 
 const REQUEST_AUDIT_ACTION = 'provider.request.received';
 // A neutral, always-acceptable reason value used as the auto-reason
@@ -83,6 +84,13 @@ export function scrubUrlForAudit(url: string): string {
 
 @Injectable()
 export class ProviderRequestAuditInterceptor implements NestInterceptor {
+  // P0.B2 — the breach detector observes the Provider-PII-access signal here
+  // (the privileged cross-tenant tier). DI-injected behind a token from the
+  // @Global ObservabilityModule (Noop in dev/test). READ-ONLY w.r.t. audit:
+  // this does NOT change what or how we audit — it only fans the same
+  // already-authenticated request out to the in-memory detector.
+  constructor(@Inject(BREACH_DETECTION) private readonly breach: BreachDetectionService) {}
+
   intercept(ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
     const req = ctx
       .switchToHttp()
@@ -96,6 +104,12 @@ export class ProviderRequestAuditInterceptor implements NestInterceptor {
     if (!payload?.sub) {
       return next.handle();
     }
+
+    // Provider-PII-access spike signal: every authenticated provider request
+    // is a privileged cross-tenant access. A burst by one provider user (an
+    // enumeration / scrape) trips a CRITICAL alert. `sub` is an opaque UUID —
+    // no PII. Fail-safe inside the detector; never blocks the request.
+    this.breach.observeProviderPiiAccess(payload.sub);
 
     // Try to use the caller's access_reason header IF it's present
     // and quality-passing. Otherwise fall back to the system reason

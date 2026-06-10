@@ -28,6 +28,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { setupTestDatabase } from '../../../../../packages/db/test/setup';
 import { PermissionService } from '../../common/authz/permission.service';
+import { noopBreachForTest, noopMetricsForTest } from '../observability/test-doubles';
 
 import { AuthService } from './auth.service';
 import { hashPassword, verifyPassword } from './password';
@@ -73,8 +74,10 @@ beforeAll(async () => {
   svc = new AuthService(
     new JwtService({ secret: serverEnv.JWT_SECRET }),
     new PermissionService(),
-    repo,
+    noopMetricsForTest(),
+    noopBreachForTest(),
     new FakeEmailProvider(),
+    repo,
   );
   email = `pwreset-${Date.now()}-${Math.floor(Math.random() * 1e6)}@test.local`;
   const passwordHash = await hashPassword(OLD_PASSWORD);

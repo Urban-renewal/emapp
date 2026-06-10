@@ -1,4 +1,4 @@
-/**
+﻿/**
  * IAM slice 4 — `GET /me` exposes the actor's EFFECTIVE permission-set.
  *
  * ADDITIVE / non-gating: `/me` now returns `permissions: string[]` resolved
@@ -35,6 +35,7 @@ import { setupTestDatabase } from '../../../../../packages/db/test/setup';
 import { PermissionService } from '../../common/authz/permission.service';
 import { PERMISSION_IMPLICATIONS, type Permission } from '../../common/authz/permissions';
 import { SYSTEM_ROLES, type SystemRoleKey } from '../../common/authz/system-roles';
+import { noopBreachForTest, noopMetricsForTest } from '../observability/test-doubles';
 
 import { AuthService } from './auth.service';
 import { PasswordResetRepository } from './password-reset.repository';
@@ -123,8 +124,10 @@ beforeAll(async () => {
   svc = new AuthService(
     new JwtService({ secret: serverEnv.JWT_SECRET }),
     new PermissionService(),
-    new PasswordResetRepository(),
+    noopMetricsForTest(),
+    noopBreachForTest(),
     new FakeEmailProvider(),
+    new PasswordResetRepository(),
   );
   org = await createTestOrg(`iam-s4-${Date.now()}`, `iam-s4-${Date.now()}`);
 }, 90_000);

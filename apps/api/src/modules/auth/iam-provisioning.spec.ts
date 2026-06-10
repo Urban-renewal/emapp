@@ -51,6 +51,7 @@ import {
 import { PERMISSION_IMPLICATIONS, type Permission } from '../../common/authz/permissions';
 import { SYSTEM_ROLES, type SystemRoleKey } from '../../common/authz/system-roles';
 import { MembersService } from '../members/members.service';
+import { noopBreachForTest, noopMetricsForTest } from '../observability/test-doubles';
 
 import { AuthService, type AccessTokenPayload } from './auth.service';
 import { PasswordResetRepository } from './password-reset.repository';
@@ -61,8 +62,10 @@ const permissions = new PermissionService();
 const auth = new AuthService(
   jwt,
   permissions,
-  new PasswordResetRepository(),
+  noopMetricsForTest(),
+  noopBreachForTest(),
   new FakeEmailProvider(),
+  new PasswordResetRepository(),
 );
 // MembersService(jwt, emailProvider). FakeEmailProvider captures invites in
 // memory — the real factory returns it outside production. We never read the

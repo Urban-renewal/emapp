@@ -154,8 +154,11 @@ describe('V11 B.S9 · PdfExportService — Project → PDF (Phase 7 / D.38)', ()
     // they paste cleartext Hebrew.
     const utf16Le = buf.toString('utf16le');
     // Big-endian read by byte-swapping first (Buffer.swap16 mutates,
-    // so copy into a fresh Buffer before swapping).
-    const utf16Be = Buffer.from(buf).swap16().toString('utf16le');
+    // so copy into a fresh Buffer before swapping). swap16 requires an even
+    // byte length; pad a copy to even when the PDF size is odd.
+    const evenBuf =
+      buf.length % 2 === 0 ? Buffer.from(buf) : Buffer.concat([buf, Buffer.from([0])]);
+    const utf16Be = evenBuf.swap16().toString('utf16le');
     const hits = [utf16Le, utf16Be].some(
       (s) => s.includes('סטטוס דירה') || s.includes('אחוז בעלות') || s.includes('דירה'),
     );

@@ -51,14 +51,14 @@ import { LogoutButton } from './logout-button';
  * |-----------------|---------------------------|---------------------------|--------|
  * | overview        | דשבורד פלטפורמה            | /provider                 | wired  |
  * | orgs            | ארגונים                    | /provider/tenants         | wired  |
- * | users           | משתמשים                    | —                         | stub   |
+ * | users           | משתמשים                    | /provider/tenants?view=users | wired |
  * | plans           | תוכניות ומחירון            | —                         | stub   |
  * | billing         | חיובים ומנויים             | —                         | stub   |
  * | support         | תמיכה ופניות               | —                         | stub   |
  * | roles           | תפקידים והרשאות            | —                         | stub   |
  * | integrations    | אינטגרציות                | —                         | stub   |
  * | health          | בריאות מערכת              | /provider/system-health   | wired  |
- * | backups         | גיבויים ושחזור            | —                         | stub   |
+ * | backups         | גיבויים ושחזור            | /provider/backups         | wired  |
  * | audit           | יומן פעילות                | /provider/audit           | wired  |
  * | selfAudit       | הפעילות שלי                | /provider/audit/self      | wired  |
  * | staff           | צוות EMAPP                | —                         | stub   |
@@ -90,6 +90,9 @@ interface NavItem {
   group: GroupKey;
   /** Set to a route ('/provider/...') for wired items. `null` = stub. */
   href: string | null;
+  /** Optional query string (no leading '?') appended to the Link href only —
+   *  NOT used for active-state matching (which is path-based). */
+  query?: string;
   icon: typeof BarChart3;
 }
 
@@ -97,7 +100,10 @@ const ITEMS: NavItem[] = [
   // overview
   { id: 'overview', group: 'overview', href: '/provider', icon: BarChart3 },
   { id: 'orgs', group: 'overview', href: '/provider/tenants', icon: Building },
-  { id: 'users', group: 'overview', href: null, icon: Users },
+  // P4 — org users management is per-org: the nav lands on the org list
+  // (?view=users) where the operator picks a tenant, then drills into its
+  // masked members via /provider/tenants/:id/users.
+  { id: 'users', group: 'overview', href: '/provider/tenants', query: 'view=users', icon: Users },
   // biz
   { id: 'plans', group: 'biz', href: null, icon: Tag },
   { id: 'billing', group: 'biz', href: null, icon: Receipt },
@@ -106,7 +112,7 @@ const ITEMS: NavItem[] = [
   { id: 'roles', group: 'ops', href: null, icon: CheckSquare },
   { id: 'integrations', group: 'ops', href: null, icon: Plug },
   { id: 'health', group: 'ops', href: '/provider/system-health', icon: HeartPulse },
-  { id: 'backups', group: 'ops', href: null, icon: Database },
+  { id: 'backups', group: 'ops', href: '/provider/backups', icon: Database },
   { id: 'audit', group: 'ops', href: '/provider/audit', icon: History },
   { id: 'selfAudit', group: 'ops', href: '/provider/audit/self', icon: UserCheck },
   // admin
@@ -271,7 +277,7 @@ export function PCSidebar({ userName, userRole }: Props) {
               return (
                 <Link
                   key={item.id}
-                  href={item.href as '/provider'}
+                  href={(item.query ? `${item.href}?${item.query}` : item.href) as '/provider'}
                   className={rowClass}
                   style={rowStyle}
                   aria-current={active ? 'page' : undefined}

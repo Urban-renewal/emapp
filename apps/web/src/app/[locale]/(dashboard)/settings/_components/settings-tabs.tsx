@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { NameDisplay } from '@/components/ui/name-display';
+import { useHasPermission } from '@/hooks/use-permissions';
 
 import { BrandingConfig } from './branding-config';
 import { ConsentConfig } from './consent-config';
@@ -48,6 +49,10 @@ type TabId = 'general' | 'team' | 'notifications' | 'integrations' | 'security';
 
 export function SettingsTabs({ user, organization }: Props) {
   const t = useTranslations('settings');
+  const tRoles = useTranslations('roles');
+  // Owner/Admin only — the roles-management link is hidden for everyone else
+  // (the page itself also gates; the BE is the authoritative gate).
+  const canManageRoles = useHasPermission('roles.manage');
   const [tab, setTab] = useState<TabId>('general');
 
   const tabs: { id: TabId; label: string; icon: typeof SettingsIcon }[] = [
@@ -157,11 +162,17 @@ export function SettingsTabs({ user, organization }: Props) {
           <p className="text-sm" style={{ color: 'var(--text)' }}>
             {t('team.description')}
           </p>
-          <div>
+          <div className="flex flex-wrap gap-2">
             <Link href="/members" className="btn btn-secondary btn-sm">
               <Users className="h-3.5 w-3.5" aria-hidden="true" />
               <span>{t('team.openMembers')}</span>
             </Link>
+            {canManageRoles && (
+              <Link href="/settings/roles" className="btn btn-secondary btn-sm">
+                <Lock className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>{tRoles('listTitle')}</span>
+              </Link>
+            )}
           </div>
         </section>
       )}

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * B-AGENT-1 — `/me` (loadProfile) emits an AGENT's EFFECTIVE permissions.
  *
  * THE BUG (dead/403 buttons): the engine ROLE layer grants the Agent role
@@ -53,6 +53,7 @@ import {
 } from '../../common/authz/agent-effective-permissions';
 import { PermissionService } from '../../common/authz/permission.service';
 import { type SystemRoleKey } from '../../common/authz/system-roles';
+import { noopBreachForTest, noopMetricsForTest } from '../observability/test-doubles';
 
 import { AuthService } from './auth.service';
 import { PasswordResetRepository } from './password-reset.repository';
@@ -141,8 +142,10 @@ beforeAll(async () => {
   svc = new AuthService(
     new JwtService({ secret: serverEnv.JWT_SECRET }),
     new PermissionService(),
-    new PasswordResetRepository(),
+    noopMetricsForTest(),
+    noopBreachForTest(),
     new FakeEmailProvider(),
+    new PasswordResetRepository(),
   );
   const tag = `b-agent1-${Date.now()}`;
   org = await createTestOrg(tag, tag);

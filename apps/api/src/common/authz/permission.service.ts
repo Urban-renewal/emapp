@@ -42,8 +42,31 @@
  *     parents (e.g. `owners.reveal_pii ⇒ owners.read`). The closure is computed
  *     once per resolved scope-set; you can never hold a child without its
  *     parent.
+ *
+ *  4. PER-USER OVERRIDE LAYER (P2 Phase 2). On top of the role-derived set we
+ *     apply `member_permission_overrides`: a `grant` ADDS a permission, a `deny`
+ *     REMOVES one. Precedence is `final = (role-derived ∪ GRANT) − DENY`, with
+ *     DENY winning over both grants and roles. Resolution order matters:
+ *       a. union the covering GRANT overrides into the role-derived set,
+ *       b. expand the implication closure over that union (a granted child
+ *          still pulls in its parents — overrides are first-class permissions),
+ *       c. THEN subtract the covering DENY overrides.
+ *     DENY removes EXACTLY the named permission — it does NOT cascade to implied
+ *     children (e.g. denying `owners.read` does not strip `owners.update`; to
+ *     remove write you deny the write). This is the least-surprising, most
+ *     explicit choice: an admin denies the precise capability they intend, and a
+ *     DENY can never silently disable a swath of unrelated permissions through
+ *     the implication graph. Subtracting AFTER expansion is what makes DENY beat
+ *     a GRANT/role of the same permission. Overrides resolve in ONE extra query
+ *     (cached per-request alongside the assignment rows — round-trip discipline
+ *     preserved, G5).
  */
-import { roleAssignments, rolePermissions, type TenantTx } from '@emapp/db';
+import {
+  memberPermissionOverrides,
+  roleAssignments,
+  rolePermissions,
+  type TenantTx,
+} from '@emapp/db';
 import { Injectable } from '@nestjs/common';
 import { and, eq, gt, isNull, or, sql } from 'drizzle-orm';
 
@@ -78,6 +101,19 @@ interface ResolvedRow {
 }
 
 /**
+ * A single resolved per-user override row (P2 Phase 2): a covering scope, a
+ * catalog permission, and the `effect` (grant adds, deny removes). Resolved +
+ * cached alongside the assignment rows so the override layer costs ONE extra
+ * query per request, memoized.
+ */
+interface OverrideRow {
+  scopeType: 'org' | 'project';
+  scopeId: string;
+  permission: string;
+  effect: 'grant' | 'deny';
+}
+
+/**
  * Per-request resolution cache (§5 / G5). One instance per request (created by
  * the future guard); threaded into every `can()` call so resolution runs ONCE.
  * Keyed by `userId`. Never shared across requests, never persisted.
@@ -88,6 +124,7 @@ interface ResolvedRow {
  */
 export class PermissionResolutionCache {
   private readonly byUser = new Map<string, Promise<ResolvedRow[]>>();
+  private readonly overridesByUser = new Map<string, Promise<OverrideRow[]>>();
 
   get(userId: string): Promise<ResolvedRow[]> | undefined {
     return this.byUser.get(userId);
@@ -95,6 +132,14 @@ export class PermissionResolutionCache {
 
   set(userId: string, rows: Promise<ResolvedRow[]>): void {
     this.byUser.set(userId, rows);
+  }
+
+  getOverrides(userId: string): Promise<OverrideRow[]> | undefined {
+    return this.overridesByUser.get(userId);
+  }
+
+  setOverrides(userId: string, rows: Promise<OverrideRow[]>): void {
+    this.overridesByUser.set(userId, rows);
   }
 }
 
@@ -123,11 +168,16 @@ export class PermissionService {
   }
 
   /**
-   * The user's EXACT effective permission-set on `scope` (used later by `/me`,
-   * §8): union of all covering assignments' permissions, with the implication
-   * closure expanded. Default-deny ⇒ empty set when nothing covers the scope.
+   * The user's EXACT effective permission-set on `scope` (used by `/me`, §8 +
+   * the request-path guard): the role-derived set unioned with per-user GRANT
+   * overrides, implication-expanded, with per-user DENY overrides subtracted.
+   * Default-deny ⇒ empty set when nothing covers the scope.
    *
-   * Resolution (§7): an assignment COVERS the target iff
+   * `final = (role-derived ∪ GRANT) − DENY` (P2 Phase 2). DENY beats GRANT and
+   * beats the role layer; DENY removes EXACTLY the named permission (no implied-
+   * child cascade — see the class docblock §4).
+   *
+   * Resolution (§7): a row (assignment OR override) COVERS the target iff
    *   - it is `org`-scoped (covers every project + the org itself), OR
    *   - it is `project`-scoped on EXACTLY the target project.
    */
@@ -137,8 +187,12 @@ export class PermissionService {
     tx: TenantTx,
     cache: PermissionResolutionCache,
   ): Promise<ReadonlySet<Permission>> {
-    const rows = await this.getRows(user, tx, cache);
+    const [rows, overrideRows] = await Promise.all([
+      this.getRows(user, tx, cache),
+      this.getOverrideRows(user, tx, cache),
+    ]);
 
+    // 1. Role-derived grants on the covering scopes.
     const granted = new Set<Permission>();
     for (const row of rows) {
       if (!this.scopeCovers(row, scope)) continue;
@@ -148,7 +202,28 @@ export class PermissionService {
       }
     }
 
-    return this.expandImplications(granted);
+    // 2. Partition the covering overrides into GRANTs and DENYs (catalog-valid
+    //    only). A stale grant+deny pair on the same permission resolves
+    //    deny-wins because DENY is subtracted last (step 4), independent of the
+    //    DB unique constraint.
+    const denies = new Set<Permission>();
+    for (const o of overrideRows) {
+      if (!this.scopeCovers(o, scope)) continue;
+      if (!PERMISSION_SET.has(o.permission as Permission)) continue;
+      if (o.effect === 'grant') granted.add(o.permission as Permission);
+      else denies.add(o.permission as Permission);
+    }
+
+    // 3. Expand the implication closure over (role ∪ GRANT) — a granted child
+    //    still pulls in its parents.
+    const expanded = new Set<Permission>(this.expandImplications(granted));
+
+    // 4. Subtract the DENY set AFTER expansion (so DENY beats a same-permission
+    //    grant/role). DENY removes EXACTLY the named permission — no cascade to
+    //    implied children (class docblock §4).
+    for (const denied of denies) expanded.delete(denied);
+
+    return expanded;
   }
 
   /**
@@ -244,6 +319,54 @@ export class PermissionService {
       scopeType: r.scopeType === 'project' ? 'project' : 'org',
       scopeId: r.scopeId,
       permission: r.permission,
+    }));
+  }
+
+  /**
+   * Cache-aware accessor for the per-user override rows (P2 Phase 2). Same
+   * memoize-the-promise discipline as `getRows`: N concurrent checks on the
+   * same user collapse to a SINGLE `resolveOverrides` query (G5 — one extra
+   * round-trip beyond the assignment resolve, cached for the rest of the
+   * request).
+   */
+  private getOverrideRows(
+    user: AuthzUser,
+    tx: TenantTx,
+    cache: PermissionResolutionCache,
+  ): Promise<OverrideRow[]> {
+    const cached = cache.getOverrides(user.id);
+    if (cached) return cached;
+    const fetched = this.resolveOverrides(user, tx);
+    cache.setOverrides(user.id, fetched);
+    return fetched;
+  }
+
+  /**
+   * The override fetch: the user's `member_permission_overrides` rows. ONE query
+   * (user-filtered). RLS scopes the rows to the current org (migration 0061), so
+   * the engine adds no org predicate — exactly like `resolveAssignments`. Scope
+   * coverage is applied in memory per check.
+   *
+   * `protected` (no cache arg) so the perf test can spy on it to assert it is
+   * called exactly once per request per user.
+   */
+  protected async resolveOverrides(user: AuthzUser, tx: TenantTx): Promise<OverrideRow[]> {
+    const raw = await tx
+      .select({
+        scopeType: memberPermissionOverrides.scopeType,
+        scopeId: memberPermissionOverrides.scopeId,
+        permission: memberPermissionOverrides.permission,
+        effect: memberPermissionOverrides.effect,
+      })
+      .from(memberPermissionOverrides)
+      .where(eq(memberPermissionOverrides.userId, user.id));
+
+    return raw.map((r) => ({
+      // scope_type / effect are CHECK-constrained text columns.
+      scopeType: r.scopeType === 'project' ? 'project' : 'org',
+      scopeId: r.scopeId,
+      permission: r.permission,
+      effect: r.effect === 'deny' ? 'deny' : 'grant',
     }));
   }
 

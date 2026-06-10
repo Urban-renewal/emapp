@@ -13,11 +13,13 @@ import { use, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { MemberCapabilitiesPanel } from '@/components/members/member-capabilities-panel';
+import { MemberOverridesPanel } from '@/components/members/member-overrides-panel';
 import { Button } from '@/components/ui/button';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
 import { useMember, useRevokeMember, useUpdateMemberRole } from '@/hooks/use-members';
+import { useHasPermission } from '@/hooks/use-permissions';
 
 interface PageProps {
   params: Promise<{ userId: string }>;
@@ -54,6 +56,8 @@ export default function MemberDetailPage({ params }: PageProps) {
   const { data: member, isLoading, isError } = useMember(userId, { limit: 100 });
   const updateMutation = useUpdateMemberRole();
   const revokeMutation = useRevokeMember();
+  // P2 Phase 2 — the per-user override panel is Owner/Admin only (roles.manage).
+  const canManageRoles = useHasPermission('roles.manage');
 
   const {
     register,
@@ -186,6 +190,9 @@ export default function MemberDetailPage({ params }: PageProps) {
 
       {/* D.46/D.54 — agent capability matrix (role-presets + toggles). */}
       <MemberCapabilitiesPanel member={member} />
+
+      {/* P2 Phase 2 — per-user permission overrides (Owner/Admin only). */}
+      <MemberOverridesPanel member={member} visible={canManageRoles} />
 
       <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4">
         <h2 className="mb-2 text-base font-semibold text-destructive">{t('revokeSection')}</h2>

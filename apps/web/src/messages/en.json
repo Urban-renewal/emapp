@@ -1017,6 +1017,33 @@
       "savedOk": "Permissions saved.",
       "saveFailed": "Failed to save permissions. Try again."
     },
+    "overrides": {
+      "title": "Custom permissions",
+      "hint": "Grant or deny a specific permission for this member, on top of their role. Deny wins over grant and over the role.",
+      "loading": "Loading…",
+      "none": "No custom permissions. This member gets only their role's permissions.",
+      "add": "Add",
+      "saving": "Saving…",
+      "clear": "Remove",
+      "effect": {
+        "grant": "Grant",
+        "deny": "Deny"
+      },
+      "field": {
+        "permission": "Permission",
+        "permissionPlaceholder": "Select a permission…",
+        "effect": "Effect"
+      },
+      "err": {
+        "escalation": "You cannot grant a permission you do not hold yourself.",
+        "ownerTierOnly": "Org/role administration permissions can only be granted by an Owner.",
+        "lastOwner": "You cannot strip an administration permission from the sole Owner.",
+        "unknownPermission": "Unknown permission.",
+        "self": "You cannot change your own permissions.",
+        "forbidden": "You do not have permission to do this.",
+        "saveFailed": "Failed to save the override. Try again."
+      }
+    },
     "listTitle": "Organization members",
     "invite": "Invite member",
     "inviting": "Inviting...",

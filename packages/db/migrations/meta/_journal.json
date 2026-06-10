@@ -428,6 +428,13 @@
 			"when": 1781881200000,
 			"tag": "0060_audit_log_retention_prune_exception",
 			"breakpoints": true
+		},
+		{
+			"idx": 61,
+			"version": "7",
+			"when": 1781967600000,
+			"tag": "0061_member_permission_overrides",
+			"breakpoints": true
 		}
 	]
 }

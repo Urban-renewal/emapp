@@ -46,6 +46,8 @@ import { ProviderTenantDetailController } from './provider-tenant-detail.control
 import { ProviderTenantDetailService } from './provider-tenant-detail.service';
 import { ProviderTenantSuspensionController } from './provider-tenant-suspension.controller';
 import { ProviderTenantSuspensionService } from './provider-tenant-suspension.service';
+import { ProviderTenantUsersController } from './provider-tenant-users.controller';
+import { ProviderTenantUsersService } from './provider-tenant-users.service';
 import { ProviderTenantsController } from './provider-tenants.controller';
 import { ProviderTenantsService } from './provider-tenants.service';
 import { DefaultSystemStatsProvider, SYSTEM_STATS_PROVIDER } from './system-stats';
@@ -56,6 +58,8 @@ import { DefaultSystemStatsProvider, SYSTEM_STATS_PROVIDER } from './system-stat
   controllers: [
     ProviderTenantsController,
     ProviderTenantDetailController,
+    // P4 (PLAN-provider-console §3 Tier-1 #1) — masked org-users read.
+    ProviderTenantUsersController,
     ProviderAuditController,
     ProviderSystemHealthController,
     ProviderTenantSuspensionController,
@@ -65,6 +69,7 @@ import { DefaultSystemStatsProvider, SYSTEM_STATS_PROVIDER } from './system-stat
   providers: [
     ProviderTenantsService,
     ProviderTenantDetailService,
+    ProviderTenantUsersService,
     ProviderTenantSuspensionService,
     ProviderAuditService,
     ProviderSystemHealthService,

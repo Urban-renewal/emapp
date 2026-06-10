@@ -13,12 +13,13 @@ import { useCallback } from 'react';
 import { toProviderAuditItemVMs } from '@/adapters/provider-audit';
 import { toSystemHealthVM } from '@/adapters/provider-health';
 import { toProviderSelfAuditItemVMs } from '@/adapters/provider-self-audit';
-import { toTenantDetailVM, toTenantListItemVMs } from '@/adapters/provider-tenant';
+import { toTenantDetailVM, toTenantListItemVMs, toTenantUserVMs } from '@/adapters/provider-tenant';
 import {
   getSelfAudit,
   getSystemHealth,
   getTenant,
   listTenants,
+  listTenantUsers,
   onboardOrg,
   reactivateTenant,
   searchAudit,
@@ -26,13 +27,18 @@ import {
   type ProviderAuditListPage,
   type ProviderSelfAuditListPage,
   type TenantListPage,
+  type TenantUsersPage,
 } from '@/lib/api/provider';
 import { useDisplayLocale } from '@/lib/locale';
 import { readProviderReason } from '@/lib/provider-reason';
 import type { ProviderAuditItemVM } from '@/models/provider-audit.vm';
 import type { ProviderSystemHealthVM } from '@/models/provider-health.vm';
 import type { ProviderSelfAuditItemVM } from '@/models/provider-self-audit.vm';
-import type { ProviderTenantDetailVM, ProviderTenantListItemVM } from '@/models/provider-tenant.vm';
+import type {
+  ProviderTenantDetailVM,
+  ProviderTenantListItemVM,
+  ProviderTenantUserVM,
+} from '@/models/provider-tenant.vm';
 
 /**
  * TanStack Query wrappers for the D.37 Provider Admin endpoints.
@@ -87,6 +93,41 @@ export function useProviderTenant(id: string | undefined) {
       if (!id) throw new Error('useProviderTenant requires an id');
       const wire = await getTenant(reason ?? '', id);
       return toTenantDetailVM(wire, locale);
+    },
+    enabled: Boolean(id) && Boolean(reason),
+    staleTime: 30_000,
+    select,
+  });
+}
+
+/**
+ * P4 (PLAN-provider-console §3 Tier-1 #1) — the target org's MEMBERS,
+ * masked PII only. Same posture as `useProviderTenant`: reason-gated,
+ * locale-keyed adapter in `select`, cursor-paginated. The page is wrapped
+ * in the AccessReasonGate so `reason` is non-null before the hook fires.
+ */
+export function useProviderTenantUsers(
+  id: string | undefined,
+  query: { limit?: number; cursor?: string } = {},
+) {
+  const locale = useDisplayLocale();
+  const reason = readProviderReason();
+  const select = useCallback(
+    (data: TenantUsersPage) => ({
+      items: toTenantUserVMs(data.items, locale),
+      page: data.page,
+    }),
+    [locale],
+  );
+  return useQuery<
+    TenantUsersPage,
+    Error,
+    { items: ProviderTenantUserVM[]; page: TenantUsersPage['page'] }
+  >({
+    queryKey: [...PROVIDER_KEY, 'tenant-users', id, query, locale],
+    queryFn: () => {
+      if (!id) throw new Error('useProviderTenantUsers requires an id');
+      return listTenantUsers(reason ?? '', id, query);
     },
     enabled: Boolean(id) && Boolean(reason),
     staleTime: 30_000,

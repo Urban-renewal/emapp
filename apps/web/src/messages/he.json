@@ -738,7 +738,8 @@
       "suspended": "מושעה",
       "searchPlaceholder": "חיפוש לקוח לפי שם…",
       "search": "חפש",
-      "searchClear": "נקה"
+      "searchClear": "נקה",
+      "usersModeHint": "ניהול משתמשים — בחר לקוח כדי לצפות בחברי הארגון שלו (שם ואימייל ממוסכים)."
     },
     "onboard": {
       "title": "יצירת לקוח חדש",
@@ -778,6 +779,7 @@
       "sampleOwnersHint": "עד 5 בעלי דירות אחרונים. השם והטלפון ממוסכים בצד השרת (•••••••XX / •••••XXXX); ת.ז. אינה חוצה את ה-wire.",
       "noSampleOwners": "אין בעלי דירות לתצוגה.",
       "phoneLabel": "טל'",
+      "viewUsersForTenant": "משתמשי הארגון",
       "viewAuditForTenant": "צפה ביומן הביקורת של הלקוח הזה",
       "suspension": {
         "title": "ניהול גישת לקוח",
@@ -796,6 +798,26 @@
         "reactivating": "מחזיר…",
         "actionFailed": "הפעולה נכשלה. נסה שוב.",
         "reasonRequired": "נדרשת סיבת גישה לפעולה זו."
+      }
+    },
+    "tenantUsers": {
+      "title": "משתמשי הארגון",
+      "hint": "חברי הארגון, תפקידיהם וסטטוס החברות. שם ואימייל ממוסכים בצד השרת; ת.ז. וטלפון אינם חוצים את ה-wire. צפייה לקריאה בלבד ומתועדת.",
+      "backToTenant": "חזרה לפרטי הלקוח",
+      "loadFailed": "טעינת משתמשי הארגון נכשלה.",
+      "empty": "אין משתמשים בארגון זה.",
+      "primaryBadge": "מנהל ראשי",
+      "joinedLabel": "הצטרף",
+      "lastLoginLabel": "כניסה אחרונה",
+      "status": {
+        "active": "פעיל",
+        "invited": "הוזמן",
+        "revoked": "בוטל"
+      },
+      "role": {
+        "manager": "מנהל",
+        "agent": "סוכן",
+        "viewer": "צופה"
       }
     },
     "audit": {

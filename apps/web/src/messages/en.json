@@ -738,7 +738,8 @@
       "suspended": "Suspended",
       "searchPlaceholder": "Search tenants by name…",
       "search": "Search",
-      "searchClear": "Clear"
+      "searchClear": "Clear",
+      "usersModeHint": "User management — pick a tenant to view its org members (name and email are masked)."
     },
     "onboard": {
       "title": "Create a new tenant",
@@ -778,6 +779,7 @@
       "sampleOwnersHint": "Up to 5 most-recent owners. Name and phone are masked server-side (•••••••XX / •••••XXXX); national_id never crosses the wire.",
       "noSampleOwners": "No owners to show.",
       "phoneLabel": "Tel:",
+      "viewUsersForTenant": "Org users",
       "viewAuditForTenant": "View this tenant's audit log",
       "suspension": {
         "title": "Tenant access control",
@@ -796,6 +798,26 @@
         "reactivating": "Reactivating…",
         "actionFailed": "Action failed. Try again.",
         "reasonRequired": "An access reason is required for this action."
+      }
+    },
+    "tenantUsers": {
+      "title": "Org users",
+      "hint": "The organization's members, their roles, and membership status. Name and email are masked server-side; national_id and phone never cross the wire. Read-only and audited.",
+      "backToTenant": "Back to tenant",
+      "loadFailed": "Failed to load org users.",
+      "empty": "No users in this organization.",
+      "primaryBadge": "Primary",
+      "joinedLabel": "Joined",
+      "lastLoginLabel": "Last login",
+      "status": {
+        "active": "Active",
+        "invited": "Invited",
+        "revoked": "Revoked"
+      },
+      "role": {
+        "manager": "Manager",
+        "agent": "Agent",
+        "viewer": "Viewer"
       }
     },
     "audit": {

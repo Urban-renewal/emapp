@@ -208,7 +208,11 @@ export const owners = pgTable(
     // migration 0033. Every read goes through decryptOwnerName() /
     // every write through encryptOwnerName() (helpers in
     // packages/db/src/helpers/owners.ts).
-    nameEncrypted: bytea('name_encrypted').notNull(),
+    // S3a (migration 0064) — nullable so an owner SHELL (Tabu/parcel
+    // skeleton: no name, no national_id; a field worker enriches later)
+    // can be created. A live, enriched owner has this set via
+    // encryptOwnerPii/encryptOwnerName on the create/import path.
+    nameEncrypted: bytea('name_encrypted'),
     // P0.C1 — nullable so the erasure (crypto-shred) path can NULL the HMAC
     // lookup hash: an erased owner has no name/national_id to hash anymore, so
     // they can no longer be found by HMAC. A LIVE owner always has these set
@@ -216,7 +220,11 @@ export const owners = pgTable(
     // dropped the NOT NULL.
     nameHash: bytea('name_hash'),
     email: citext('email'),
-    nationalIdEncrypted: bytea('national_id_encrypted').notNull(),
+    // S3a (migration 0064) — nullable for owner SHELLS (see name_encrypted
+    // above). When a national_id IS present the per-org unique index
+    // (owners_org_natid_unique_active) still enforces uniqueness; NULLs are
+    // distinct so multiple shells coexist.
+    nationalIdEncrypted: bytea('national_id_encrypted'),
     nationalIdHash: text('national_id_hash'),
     phoneEncrypted: bytea('phone_encrypted'),
     phoneHash: text('phone_hash'),

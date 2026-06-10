@@ -346,7 +346,7 @@ describe('B — replaceSet persists relationship, round-trips, PII parity', () =
       expect(row.phoneMasked).toMatch(/^•+\d{4}$/); // masked, last-4 only
     }
     // Identical mask SHAPE for owner and renter (parity, not value equality).
-    expect(renterRow.nationalIdMasked.startsWith('•')).toBe(true);
+    expect(renterRow.nationalIdMasked!.startsWith('•')).toBe(true);
     expect(renterRow.phoneMasked!.startsWith('•')).toBe(true);
   }, 30_000);
 

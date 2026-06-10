@@ -312,7 +312,10 @@ export class ExportComposerService {
         // mask national_id/phone in Node here. The transient cleartext is never
         // logged/persisted (audit logs only project/org/rowCount). D.50 ("export
         // fidelity == on-screen fidelity") holds trivially: on-screen is masked too.
-        const maskNid = (v: string): string => '•••••••' + v.slice(-2);
+        // S3a — a SHELL owner has no national_id; keep it null in the export
+        // (the renderer shows a blank cell) rather than masking an empty value.
+        const maskNid = (v: string | null): string | null =>
+          v == null ? null : '•••••••' + v.slice(-2);
         const maskPhone = (v: string | null): string | null =>
           v == null ? null : '•••••' + v.slice(-4);
         const decryptedOwners: Array<ProjectExportOwner & { __apartmentId: string }> = ownRows.map(

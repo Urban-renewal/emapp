@@ -237,7 +237,7 @@ describe('v8.5 ADVERSARIAL owners.create — PII string shapes', () => {
       decryptOwnerName(tx as never, row!.nameEncrypted as Buffer),
     );
     expect(decrypted).toBe(name);
-    expect(decrypted.length).toBe(300);
+    expect(decrypted!.length).toBe(300);
   });
 
   it('7) name containing a percent-sign + format specifier — no printf-style interpretation', async () => {

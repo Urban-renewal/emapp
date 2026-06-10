@@ -48,7 +48,12 @@ const FORBIDDEN = new ForbiddenException({ error: { code: 'forbidden' } });
 // transaction-scoped app.encryption_key GUC, so: (a) ONE round-trip, no
 // N+1 decrypt (D.24), and (b) the clear PII never leaves Postgres — only
 // the masked suffix is selected. Keys are never interpolated into JS.
-const NID_MASK = sql<string>`'•••••••' || right(pgp_sym_decrypt(${owners.nationalIdEncrypted}, current_setting('app.encryption_key'))::text, 2)`;
+// S3a — a SHELL owner has NULL national_id_encrypted; the mask is then NULL
+// (not an empty/garbled string). pgp_sym_decrypt(NULL) is NULL, so the
+// concat already yields NULL — the explicit CASE makes that intent obvious.
+const NID_MASK = sql<
+  string | null
+>`case when ${owners.nationalIdEncrypted} is null then null else '•••••••' || right(pgp_sym_decrypt(${owners.nationalIdEncrypted}, current_setting('app.encryption_key'))::text, 2) end`;
 const PHONE_MASK = sql<
   string | null
 >`case when ${owners.phoneEncrypted} is null then null else '•••••' || right(pgp_sym_decrypt(${owners.phoneEncrypted}, current_setting('app.encryption_key'))::text, 4) end`;
@@ -56,14 +61,21 @@ const PHONE_MASK = sql<
 // v8 §v8-S3 — name decrypted INSIDE SQL (same approach as the masks
 // above) so we never pull the ciphertext over the wire to userland.
 // app.encryption_key is set by withTenant via set_config.
-const NAME_DECRYPTED = sql<string>`pgp_sym_decrypt(${owners.nameEncrypted}, current_setting('app.encryption_key'))::text`;
+// S3a — NULL for a SHELL owner (no name yet). pgp_sym_decrypt(NULL) is NULL,
+// so the projection carries a null name the FE renders as a placeholder.
+const NAME_DECRYPTED = sql<
+  string | null
+>`pgp_sym_decrypt(${owners.nameEncrypted}, current_setting('app.encryption_key'))::text`;
 
 // D.54 (reveal-on-demand) — CLEARTEXT national_id / phone (full value),
 // decrypted IN-SQL so the ciphertext never leaves Postgres. Used ONLY by the
 // dedicated, audited `revealPii` endpoint (POST /owners/:id/reveal-pii) — NEVER
 // in list/detail/search/export, which stay masked-for-everyone (the §v9-M-4
 // tripwire holds for every list/detail surface).
-const NID_CLEAR = sql<string>`pgp_sym_decrypt(${owners.nationalIdEncrypted}, current_setting('app.encryption_key'))::text`;
+// S3a — NULL for a SHELL owner (no national_id yet).
+const NID_CLEAR = sql<
+  string | null
+>`pgp_sym_decrypt(${owners.nationalIdEncrypted}, current_setting('app.encryption_key'))::text`;
 const PHONE_CLEAR = sql<
   string | null
 >`case when ${owners.phoneEncrypted} is null then null else pgp_sym_decrypt(${owners.phoneEncrypted}, current_setting('app.encryption_key'))::text end`;
@@ -87,9 +99,11 @@ const ownerCols = {
 interface MaskedRow {
   id: string;
   organizationId: string;
-  name: string;
+  // S3a — null for a SHELL owner (no name yet).
+  name: string | null;
   email: string | null;
-  nationalIdMasked: string;
+  // S3a — null for a SHELL owner (no national_id yet).
+  nationalIdMasked: string | null;
   phoneMasked: string | null;
   notes: string | null;
   createdAt: Date;
@@ -420,8 +434,10 @@ export class OwnersService {
             //   not WHAT THE VALUE WAS.
             afterState: {
               changed: [
-                'name',
-                'national_id',
+                // S3a — name/national_id are optional for owner SHELLS; only
+                // record the fields that were actually supplied.
+                ...(input.name ? (['name'] as const) : []),
+                ...(input.national_id ? (['national_id'] as const) : []),
                 ...(phone ? (['phone'] as const) : []),
                 ...(input.email ? (['email'] as const) : []),
                 ...(input.notes ? (['notes'] as const) : []),

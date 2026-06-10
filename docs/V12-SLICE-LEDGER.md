@@ -63,10 +63,47 @@ origin/main` (NOT `git pull --ff-only`, which fails when local main has supersed
 
 ---
 
-## Slice 2 — invites + documents (#4 #9 #7 #1) · branch feat/s2-invites-docs (next)
+## Slice 2 ✅ CLOSED — merged cea8156 (#346)
 
-Scope: #4/#9 expose the invite + sign link in-app for dev (FakeEmail sends nowhere) + handle
-re-invite to an existing email; #7 member resend + copy-link + pending clarity; #1 document
-inline VIEW (vs forced download — `Content-Disposition: attachment`). Same pipeline + green gate.
+#1 inline view + #7 resend + #4/#9 link-exposure. Browser-QA caught + fixed 2 real issues:
+(a) phantom resend-404 = stale nest-watch after a branch switch (restart fixed it — LESSON:
+restart api after branch switch); (b) #4/#9 was inert because the dev server didn't set
+NODE_ENV → fixed with `cross-env NODE_ENV=development` (keeps the fail-closed prod allowlist).
+code-review PASS, security PASS (HIGH @Throttle 5/60s on resend added). CI green.
+
+---
+
+## Slice 3a — owner SHELLS · branch feat/s3a-owner-shells (Gate-6)
+
+First sub-slice of the entity-model refactor (design §2/§3). Goal: an owner can be created as
+a SKELETON (from Tabu / a parcel) with **no name and no national_id** — field workers enrich
+later. Unblocks auto-setup + import.
+
+Grounded (packages/db/src/schema/projects.ts:199 `owners`):
+
+- `nameEncrypted` **notNull** → must become NULLABLE.
+- `nationalIdEncrypted` **notNull** → must become NULLABLE.
+- `nameHash`/`nationalIdHash`/`phone*` already nullable (erasure path). The
+  `owners_org_natid_unique_active` unique index ignores NULLs (Postgres) → multiple shell
+  owners without national_id do NOT collide. ✅
+
+Scope:
+
+- **Migration 0064** (`when` > 1782140400000): `ALTER TABLE owners ALTER COLUMN name_encrypted
+DROP NOT NULL; ALTER COLUMN national_id_encrypted DROP NOT NULL;` Update the drizzle schema
+  (drop `.notNull()` on both). NO data change (dev-reset allowed if needed).
+- **Create DTO** (shared-types CreateOwnerInput): make `name` + `nationalId` OPTIONAL.
+- **Create/import path**: `encryptOwnerPii` / `encryptOwnerName` must handle absent name/
+  national_id (write NULL ciphertext + NULL hash, not throw). Dedup: when national_id is
+  present, keep the existing unique-by-natid; when ABSENT, do NOT block (soft — allow the
+  shell; a later merge reconciles). Preserve the erasure/DSAR null-handling.
+- **Reveal/list/export**: a shell owner shows "(ללא שם)" / "(ללא ת.ז.)" gracefully, never crashes.
+
+Pipeline THIS slice: **test-author BEFORE builder** (clean RED). Reviews (security MUST — PII +
+the create path). Real browser-QA: create a shell owner in the UI (name+tz blank) → succeeds.
+
+| Gate                                                                                                                                          | Status |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |
 
 Rule: any real-red → slice stays OPEN with the blocker named here; never force-merge.

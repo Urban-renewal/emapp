@@ -41,21 +41,26 @@ export async function decryptField(
 }
 
 export interface PiiFields {
-  nationalId: string;
-  phone?: string;
-  /** v8 §v8-S3: name is now pgcrypto-encrypted alongside the
-   *  national_id + phone. Required (every owner has a name). */
-  name: string;
+  /** S3a — optional for owner SHELLS (skeleton owners with no national_id
+   *  yet). When absent, the encrypted/hashed national_id columns are left
+   *  NULL. When present, behaviour is unchanged (encrypt + HMAC). */
+  nationalId?: string | null;
+  phone?: string | null;
+  /** v8 §v8-S3: name is pgcrypto-encrypted alongside the national_id +
+   *  phone. S3a — optional for owner SHELLS (no name yet); absent → NULL. */
+  name?: string | null;
 }
 
 export interface EncryptedPiiFields {
-  nationalIdEncrypted: Buffer;
-  nationalIdHash: string;
+  /** S3a — NULL for a shell with no national_id. */
+  nationalIdEncrypted: Buffer | null;
+  nationalIdHash: string | null;
   phoneEncrypted: Buffer | null;
   phoneHash: string | null;
-  /** v8 §v8-S3 — encrypted name bytea + HMAC hash for exact-match. */
-  nameEncrypted: Buffer;
-  nameHash: Buffer;
+  /** v8 §v8-S3 — encrypted name bytea + HMAC hash for exact-match.
+   *  S3a — NULL for a shell with no name. */
+  nameEncrypted: Buffer | null;
+  nameHash: Buffer | null;
 }
 
 /** v8 §v8-S3 — single-name encrypt for the API write path. The bulk
@@ -76,7 +81,13 @@ export async function encryptOwnerName(
 /** v8 §v8-S3 — decrypt a single owner's name. Used by the API
  *  read sites; the helper takes the encrypted bytea and the
  *  current `Database` (drizzle/tenant tx). */
-export async function decryptOwnerName(db: Database, encrypted: Buffer): Promise<string> {
+export async function decryptOwnerName(
+  db: Database,
+  encrypted: Buffer | null,
+): Promise<string | null> {
+  // S3a — a shell owner has a NULL name_encrypted. Tolerate it (return null)
+  // rather than round-tripping pgcrypto on NULL.
+  if (!encrypted) return null;
   const { encKey } = requirePiiKeys();
   return decryptField(db, encrypted, encKey);
 }
@@ -92,8 +103,15 @@ export function hashOwnerName(name: string): Buffer {
 export async function encryptOwnerPii(db: Database, pii: PiiFields): Promise<EncryptedPiiFields> {
   const { encKey, hashKey } = requirePiiKeys();
 
-  const nationalIdEncrypted = await encryptField(db, pii.nationalId, encKey);
-  const nationalIdHash = hashField(pii.nationalId, hashKey);
+  // S3a — national_id is optional for owner SHELLS. Absent → NULL ciphertext
+  // + NULL hash (rather than encrypting an empty string), so the per-org
+  // unique index treats shells as distinct and the column stays NULL.
+  let nationalIdEncrypted: Buffer | null = null;
+  let nationalIdHash: string | null = null;
+  if (pii.nationalId) {
+    nationalIdEncrypted = await encryptField(db, pii.nationalId, encKey);
+    nationalIdHash = hashField(pii.nationalId, hashKey);
+  }
 
   let phoneEncrypted: Buffer | null = null;
   let phoneHash: string | null = null;
@@ -102,9 +120,13 @@ export async function encryptOwnerPii(db: Database, pii: PiiFields): Promise<Enc
     phoneHash = hashField(pii.phone, hashKey);
   }
 
-  // v8 §v8-S3 — name encryption (mandatory).
-  const nameEncrypted = await encryptField(db, pii.name, encKey);
-  const nameHash = Buffer.from(createHmac('sha256', hashKey).update(pii.name).digest());
+  // v8 §v8-S3 — name encryption. S3a — optional for shells; absent → NULL.
+  let nameEncrypted: Buffer | null = null;
+  let nameHash: Buffer | null = null;
+  if (pii.name) {
+    nameEncrypted = await encryptField(db, pii.name, encKey);
+    nameHash = Buffer.from(createHmac('sha256', hashKey).update(pii.name).digest());
+  }
 
   return {
     nationalIdEncrypted,
@@ -147,14 +169,17 @@ export async function encryptOwnerPiiBatch(
   if (inputs.length === 0) return [];
   const { encKey, hashKey } = requirePiiKeys();
 
-  const nationalIds = inputs.map((p) => p.nationalId);
+  // S3a — national_id + name are now optional (owner SHELLS). Absent
+  // entries are sent as JSON null; the CASE expression returns NULL aligned
+  // with the input index (same pattern as the phone column below).
+  const nationalIds = inputs.map((p) => p.nationalId ?? null);
   const phones = inputs.map((p) => p.phone ?? null);
   // v8 §v8-S3: also batch-encrypt names. SAME round-trip discipline
   // (one SELECT per column, jsonb_array_elements_text WITH ORDINALITY
   // preserves order). With the per-statement memoization plus this,
   // the worker now does THREE pgcrypto round-trips per 5000-row chunk
   // instead of the pre-batching N×3.
-  const names = inputs.map((p) => p.name);
+  const names = inputs.map((p) => p.name ?? null);
 
   // Drizzle's sql template inlines a JS array as a parameter that
   // pg-node serialises as text[] automatically; explicit ::text[]
@@ -162,9 +187,11 @@ export async function encryptOwnerPiiBatch(
   // via jsonb_array_elements_text — the JSON is unambiguous, the
   // text-array extraction is server-side, and the result order is
   // preserved via WITH ORDINALITY. ONE round-trip per column.
-  const idRes = await db.execute<{ enc: Buffer; idx: number }>(
+  const idRes = await db.execute<{ enc: Buffer | null; idx: number }>(
     sql`
-      SELECT pgp_sym_encrypt(t.val, ${encKey}) AS enc, t.idx::int AS idx
+      SELECT
+        CASE WHEN t.val IS NULL THEN NULL ELSE pgp_sym_encrypt(t.val, ${encKey}) END AS enc,
+        t.idx::int AS idx
       FROM jsonb_array_elements_text(${JSON.stringify(nationalIds)}::jsonb) WITH ORDINALITY AS t(val, idx)
       ORDER BY t.idx
     `,
@@ -183,11 +210,13 @@ export async function encryptOwnerPiiBatch(
     `,
   );
 
-  // v8 §v8-S3 — same pattern for names; name is REQUIRED so no
-  // NULL handling.
-  const nameRes = await db.execute<{ enc: Buffer; idx: number }>(
+  // v8 §v8-S3 — same pattern for names. S3a — name is now optional (shells)
+  // so the CASE handles NULL aligned to the input index.
+  const nameRes = await db.execute<{ enc: Buffer | null; idx: number }>(
     sql`
-      SELECT pgp_sym_encrypt(t.val, ${encKey}) AS enc, t.idx::int AS idx
+      SELECT
+        CASE WHEN t.val IS NULL THEN NULL ELSE pgp_sym_encrypt(t.val, ${encKey}) END AS enc,
+        t.idx::int AS idx
       FROM jsonb_array_elements_text(${JSON.stringify(names)}::jsonb) WITH ORDINALITY AS t(val, idx)
       ORDER BY t.idx
     `,
@@ -195,22 +224,24 @@ export async function encryptOwnerPiiBatch(
 
   const out: EncryptedPiiFields[] = [];
   for (let i = 0; i < inputs.length; i += 1) {
-    const idEnc = idRes.rows[i]?.enc;
-    if (!idEnc) throw new Error('encryptOwnerPiiBatch: missing national_id ciphertext');
-    const nameEnc = nameRes.rows[i]?.enc;
-    if (!nameEnc) throw new Error('encryptOwnerPiiBatch: missing name ciphertext');
+    // S3a — national_id + name are optional (shells); a NULL ciphertext is a
+    // valid result for an absent value, so don't throw on missing rows here.
+    const idEnc = idRes.rows[i]?.enc ?? null;
+    const nameEnc = nameRes.rows[i]?.enc ?? null;
     const phoneEnc = phoneRes.rows[i]?.enc ?? null;
     const input = inputs[i]!;
     out.push({
       nationalIdEncrypted: idEnc,
-      nationalIdHash: hashField(input.nationalId, hashKey),
+      nationalIdHash: input.nationalId ? hashField(input.nationalId, hashKey) : null,
       phoneEncrypted: phoneEnc,
       phoneHash: input.phone ? hashField(input.phone, hashKey) : null,
       nameEncrypted: nameEnc,
       // v8 §v8-S3: hashOwnerName output (Buffer, raw SHA256 bytes)
       // matches the bytea column type. Computed locally — no DB
-      // round-trip.
-      nameHash: Buffer.from(createHmac('sha256', hashKey).update(input.name).digest()),
+      // round-trip. S3a — NULL for a shell with no name.
+      nameHash: input.name
+        ? Buffer.from(createHmac('sha256', hashKey).update(input.name).digest())
+        : null,
     });
   }
   return out;
@@ -218,11 +249,14 @@ export async function encryptOwnerPiiBatch(
 
 export async function decryptOwnerPii(
   db: Database,
-  encrypted: { nationalIdEncrypted: Buffer; phoneEncrypted: Buffer | null },
-): Promise<{ nationalId: string; phone: string | null }> {
+  encrypted: { nationalIdEncrypted: Buffer | null; phoneEncrypted: Buffer | null },
+): Promise<{ nationalId: string | null; phone: string | null }> {
   const { encKey } = requirePiiKeys();
 
-  const nationalId = await decryptField(db, encrypted.nationalIdEncrypted, encKey);
+  // S3a — a shell owner has a NULL national_id_encrypted. Tolerate it.
+  const nationalId = encrypted.nationalIdEncrypted
+    ? await decryptField(db, encrypted.nationalIdEncrypted, encKey)
+    : null;
   const phone = encrypted.phoneEncrypted
     ? await decryptField(db, encrypted.phoneEncrypted, encKey)
     : null;
@@ -251,15 +285,19 @@ export async function decryptOwnerPii(
 export interface EncryptedOwnerRow {
   /** Position-preserving id (any unique value the caller wants back). */
   ownerId: string;
-  nameEncrypted: Buffer;
-  nationalIdEncrypted: Buffer;
+  /** S3a — NULL for an owner SHELL (no name yet). */
+  nameEncrypted: Buffer | null;
+  /** S3a — NULL for an owner SHELL (no national_id yet). */
+  nationalIdEncrypted: Buffer | null;
   phoneEncrypted: Buffer | null;
 }
 
 export interface DecryptedOwnerRow {
   ownerId: string;
-  name: string;
-  nationalId: string;
+  /** S3a — null for a SHELL owner. */
+  name: string | null;
+  /** S3a — null for a SHELL owner. */
+  nationalId: string | null;
   phone: string | null;
 }
 
@@ -279,23 +317,34 @@ export async function decryptOwnerPiiBatch(
   // hex-encode each buffer to a text-friendly form, pass through the
   // same jsonb_array_elements_text → decode(val, 'hex') pipeline,
   // and recover the original byte sequence inside pg.
-  const nameHex = JSON.stringify(rows.map((r) => r.nameEncrypted.toString('hex')));
-  const idHex = JSON.stringify(rows.map((r) => r.nationalIdEncrypted.toString('hex')));
+  // S3a — name + national_id are now optional (owner SHELLS). A null entry is
+  // sent as JSON null and the CASE returns NULL aligned to the index (same
+  // discipline as the phone column).
+  const nameHex = JSON.stringify(
+    rows.map((r) => (r.nameEncrypted ? r.nameEncrypted.toString('hex') : null)),
+  );
+  const idHex = JSON.stringify(
+    rows.map((r) => (r.nationalIdEncrypted ? r.nationalIdEncrypted.toString('hex') : null)),
+  );
   const phoneHex = JSON.stringify(
     rows.map((r) => (r.phoneEncrypted ? r.phoneEncrypted.toString('hex') : null)),
   );
 
   const [nameRes, idRes, phoneRes] = await Promise.all([
-    db.execute<{ dec: string; idx: number }>(
+    db.execute<{ dec: string | null; idx: number }>(
       sql`
-        SELECT pgp_sym_decrypt(decode(t.val, 'hex'), ${encKey}) AS dec, t.idx::int AS idx
+        SELECT
+          CASE WHEN t.val IS NULL THEN NULL ELSE pgp_sym_decrypt(decode(t.val, 'hex'), ${encKey}) END AS dec,
+          t.idx::int AS idx
         FROM jsonb_array_elements_text(${nameHex}::jsonb) WITH ORDINALITY AS t(val, idx)
         ORDER BY t.idx
       `,
     ),
-    db.execute<{ dec: string; idx: number }>(
+    db.execute<{ dec: string | null; idx: number }>(
       sql`
-        SELECT pgp_sym_decrypt(decode(t.val, 'hex'), ${encKey}) AS dec, t.idx::int AS idx
+        SELECT
+          CASE WHEN t.val IS NULL THEN NULL ELSE pgp_sym_decrypt(decode(t.val, 'hex'), ${encKey}) END AS dec,
+          t.idx::int AS idx
         FROM jsonb_array_elements_text(${idHex}::jsonb) WITH ORDINALITY AS t(val, idx)
         ORDER BY t.idx
       `,
@@ -323,18 +372,22 @@ export async function decryptOwnerPiiBatch(
 
   const out: DecryptedOwnerRow[] = [];
   for (let i = 0; i < rows.length; i += 1) {
-    const name = nameRes.rows[i]?.dec;
-    const nationalId = idRes.rows[i]?.dec;
-    if (typeof name !== 'string') {
+    // S3a — name + national_id may be NULL for a SHELL owner. A null result
+    // is legitimate ONLY when the input ciphertext was also null; if a
+    // non-null ciphertext decrypted to null, that's a real failure (bad key /
+    // corruption) and must still throw.
+    const nameRow = nameRes.rows[i]?.dec ?? null;
+    const idRow = idRes.rows[i]?.dec ?? null;
+    if (rows[i]!.nameEncrypted && typeof nameRow !== 'string') {
       throw new Error('decryptOwnerPiiBatch: missing name plaintext at idx ' + i);
     }
-    if (typeof nationalId !== 'string') {
+    if (rows[i]!.nationalIdEncrypted && typeof idRow !== 'string') {
       throw new Error('decryptOwnerPiiBatch: missing national_id plaintext at idx ' + i);
     }
     out.push({
       ownerId: rows[i]!.ownerId,
-      name,
-      nationalId,
+      name: nameRow,
+      nationalId: idRow,
       phone: phoneRes.rows[i]?.dec ?? null,
     });
   }
@@ -359,20 +412,27 @@ export async function decryptOwnerPiiBatch(
  */
 export interface EncryptedOwnerNameRow {
   key: string;
-  nameEncrypted: Buffer;
+  /** S3a — NULL for an owner SHELL (no name yet). */
+  nameEncrypted: Buffer | null;
 }
 
 export async function decryptOwnerNamesBatch(
   db: Database,
   rows: readonly EncryptedOwnerNameRow[],
-): Promise<Array<{ key: string; name: string }>> {
+): Promise<Array<{ key: string; name: string | null }>> {
   if (rows.length === 0) return [];
   const { encKey } = requirePiiKeys();
 
-  const nameHex = JSON.stringify(rows.map((r) => r.nameEncrypted.toString('hex')));
-  const nameRes = await db.execute<{ dec: string; idx: number }>(
+  // S3a — a null name ciphertext (shell) is sent as JSON null; the CASE
+  // returns NULL aligned to the index rather than decrypting.
+  const nameHex = JSON.stringify(
+    rows.map((r) => (r.nameEncrypted ? r.nameEncrypted.toString('hex') : null)),
+  );
+  const nameRes = await db.execute<{ dec: string | null; idx: number }>(
     sql`
-      SELECT pgp_sym_decrypt(decode(t.val, 'hex'), ${encKey}) AS dec, t.idx::int AS idx
+      SELECT
+        CASE WHEN t.val IS NULL THEN NULL ELSE pgp_sym_decrypt(decode(t.val, 'hex'), ${encKey}) END AS dec,
+        t.idx::int AS idx
       FROM jsonb_array_elements_text(${nameHex}::jsonb) WITH ORDINALITY AS t(val, idx)
       ORDER BY t.idx
     `,
@@ -383,8 +443,9 @@ export async function decryptOwnerNamesBatch(
     );
   }
   return rows.map((r, i) => {
-    const name = nameRes.rows[i]?.dec;
-    if (typeof name !== 'string') {
+    const name = nameRes.rows[i]?.dec ?? null;
+    // A non-null ciphertext that fails to decrypt is still a real error.
+    if (r.nameEncrypted && typeof name !== 'string') {
       throw new Error('decryptOwnerNamesBatch: missing name plaintext at idx ' + i);
     }
     return { key: r.key, name };

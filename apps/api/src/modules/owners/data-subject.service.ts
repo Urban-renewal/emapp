@@ -24,11 +24,17 @@ const FORBIDDEN = new ForbiddenException({ error: { code: 'forbidden' } });
 
 // CLEARTEXT decrypt, IN-SQL (ciphertext never crosses the wire). app.encryption_key
 // is set by withTenant. Used ONLY by the audited data-export (a deliberate reveal).
-const NID_CLEAR = sql<string>`pgp_sym_decrypt(${owners.nationalIdEncrypted}, current_setting('app.encryption_key'))::text`;
+// S3a — nationalId/name are nullable (SHELL owners): guard the decrypt so a NULL
+// ciphertext yields NULL (not an error), and the type reflects it.
+const NID_CLEAR = sql<
+  string | null
+>`case when ${owners.nationalIdEncrypted} is null then null else pgp_sym_decrypt(${owners.nationalIdEncrypted}, current_setting('app.encryption_key'))::text end`;
 const PHONE_CLEAR = sql<
   string | null
 >`case when ${owners.phoneEncrypted} is null then null else pgp_sym_decrypt(${owners.phoneEncrypted}, current_setting('app.encryption_key'))::text end`;
-const NAME_CLEAR = sql<string>`pgp_sym_decrypt(${owners.nameEncrypted}, current_setting('app.encryption_key'))::text`;
+const NAME_CLEAR = sql<
+  string | null
+>`case when ${owners.nameEncrypted} is null then null else pgp_sym_decrypt(${owners.nameEncrypted}, current_setting('app.encryption_key'))::text end`;
 
 /**
  * P0.C1 — Data-subject rights service (Israeli Privacy Protection Law).

@@ -21,8 +21,9 @@ export function toOwnershipViewModel(o: ApartmentOwner): OwnershipViewModel {
   return {
     ownershipId: o.ownershipId,
     ownerId: o.id,
-    displayName: o.name,
-    nationalIdMasked: o.nationalIdMasked,
+    // Shell owner — no name/national_id yet; show a neutral placeholder.
+    displayName: o.name ?? 'ללא שם',
+    nationalIdMasked: o.nationalIdMasked ?? '—',
     phoneMasked: o.phoneMasked,
     ownershipPct: o.ownershipPct,
     relationship: o.relationship,

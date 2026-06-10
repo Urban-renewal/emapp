@@ -164,7 +164,10 @@ export class PublicSignService {
           .where(eq(owners.id, req.ownerId))
           .limit(1);
         if (!own || own.archivedAt) throw INVALID_TOKEN;
-        const ownerName = await decryptOwnerName(tx, own.nameEncrypted);
+        // S3a — decryptOwnerName returns null for an owner SHELL (no name).
+        // A signing flow targets a real (named) owner, but coalesce to '' so a
+        // missing name renders blank rather than violating the preview shape.
+        const ownerName = (await decryptOwnerName(tx, own.nameEncrypted)) ?? '';
 
         // P0.C2 — resolve the org's CONFIGURABLE PII-processing privacy notice
         // so the resident SEES it before signing. Fail-soft: getOrgSettings

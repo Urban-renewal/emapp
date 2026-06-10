@@ -19,7 +19,9 @@ const checkId = (v: string | undefined): boolean => v === undefined || isValidIs
 const checkPhone = (v: string | null | undefined): boolean =>
   v === undefined || v === null || isValidIsraeliPhone(v);
 
-export const CreateOwnerDto = CreateOwnerInput.refine((d) => isValidIsraeliId(d.national_id), {
+// S3a — national_id is OPTIONAL on create (owner SHELLS). `checkId` already
+// passes `undefined` through; the checksum only runs when a value is present.
+export const CreateOwnerDto = CreateOwnerInput.refine((d) => checkId(d.national_id), {
   path: ['national_id'],
   message: 'national_id failed the Israeli ID checksum',
 }).refine((d) => checkPhone(d.phone), {

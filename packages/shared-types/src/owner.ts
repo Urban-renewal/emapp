@@ -39,10 +39,13 @@ const MaskedPii = z
 export const OwnerSchema = z.object({
   id: z.string().uuid(),
   organizationId: z.string().uuid(),
-  name: z.string().min(1).max(100),
+  /** S3a — null for an owner SHELL (skeleton with no name yet); the FE
+   *  renders a placeholder. Otherwise a 1–100 char name. */
+  name: z.string().min(1).max(100).nullable(),
   email: z.string().email().nullable(),
-  /** e.g. "•••••••82" — 7 bullets + last 2 digits. */
-  nationalIdMasked: MaskedPii,
+  /** e.g. "•••••••82" — 7 bullets + last 2 digits. S3a — null for a SHELL
+   *  with no national_id yet. */
+  nationalIdMasked: MaskedPii.nullable(),
   /** e.g. "•••••1234" suffix, or null when no phone on file. */
   phoneMasked: MaskedPii.nullable(),
   notes: z.string().max(2000).nullable(),
@@ -62,8 +65,12 @@ export type Owner = z.infer<typeof OwnerSchema>;
  */
 export const OwnerPiiRevealSchema = z.object({
   id: z.string().uuid(),
-  /** CLEARTEXT national_id — exactly 9 digits (D.19). */
-  nationalId: z.string().regex(/^\d{9}$/),
+  /** CLEARTEXT national_id — exactly 9 digits (D.19). S3a — null for an
+   *  owner SHELL with no national_id yet. */
+  nationalId: z
+    .string()
+    .regex(/^\d{9}$/)
+    .nullable(),
   /** CLEARTEXT phone, or null when none on file. */
   phone: z.string().min(1).max(20).nullable(),
 });
@@ -81,8 +88,20 @@ const ownerWriteShape = {
   notes: z.string().max(2000).nullable().optional(),
 } as const;
 
-/** POST body — name + national_id required. */
-export const CreateOwnerInput = z.object(ownerWriteShape).strict();
+/**
+ * POST body. S3a — owner SHELLS: `name` and `national_id` are OPTIONAL so a
+ * skeleton owner (Tabu/parcel import; a field worker enriches later) can be
+ * created with neither. When PRESENT they keep the same structural validation
+ * (name length, national_id 9-digit + BE-DTO checksum). All other fields keep
+ * their prior optionality. `.strict()` fail-closed (FE-security DoD).
+ */
+export const CreateOwnerInput = z
+  .object({
+    ...ownerWriteShape,
+    name: ownerWriteShape.name.optional(),
+    national_id: ownerWriteShape.national_id.optional(),
+  })
+  .strict();
 export type CreateOwner = z.infer<typeof CreateOwnerInput>;
 
 /** PATCH body — every field optional (national_id re-validated if present). */

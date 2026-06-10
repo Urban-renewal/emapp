@@ -51,8 +51,9 @@ export interface ProjectExportProject {
 }
 
 export interface ProjectExportOwner {
-  /** Cleartext name — caller decrypted via `decryptOwnerName`. */
-  name: string;
+  /** Cleartext name — caller decrypted via `decryptOwnerName`. S3a — null for
+   *  an owner SHELL (skeleton with no name yet); the renderer shows a blank. */
+  name: string | null;
   /**
    * Cleartext national_id. This is INTENTIONAL and authorized — not a leak.
    * The owner full-fidelity export is the one path that legitimately needs the
@@ -64,7 +65,7 @@ export interface ProjectExportOwner {
    * the export-PII capability never reaches this struct. (A4 — clarified, not
    * inverted: the manager path is meant to carry cleartext here.)
    */
-  nationalId: string;
+  nationalId: string | null;
   /** Cleartext phone, or null. Caller decrypted. */
   phone: string | null;
   email: string | null;

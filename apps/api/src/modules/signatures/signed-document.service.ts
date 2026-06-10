@@ -111,7 +111,10 @@ export class SignedDocumentService {
         // FAIL HARD on decrypt failure (D.51 — no plaster): a certificate that
         // cannot render the actual signature/signer is NOT a valid attestation.
         const signatureSvg = await decryptField(tx, sig.blob, encKey);
-        const ownerName = await decryptOwnerName(tx, own.nameEncrypted);
+        // S3a — decryptOwnerName is now `string | null` (owner SHELLS). A
+        // signed certificate always belongs to a named owner; coalesce to ''
+        // for the cert shape (parity with the erasure path below).
+        const ownerName = (await decryptOwnerName(tx, own.nameEncrypted)) ?? '';
 
         return {
           documentName: doc?.name ?? '—',

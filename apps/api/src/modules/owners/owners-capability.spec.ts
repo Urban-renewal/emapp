@@ -213,7 +213,7 @@ describe('D.46 — owner edit project-scoping (agents)', () => {
     expect(res.id).toBe(ownerAssigned);
     // PII never leaks: the cleartext national_id is not in the response.
     expect(JSON.stringify(res)).not.toContain(NID_ASSIGNED);
-    expect(res.nationalIdMasked.startsWith('•')).toBe(true);
+    expect(res.nationalIdMasked!.startsWith('•')).toBe(true);
   });
 
   it('D46-OWN-2) agent edits an owner ONLY in an UNASSIGNED project → 404', async () => {

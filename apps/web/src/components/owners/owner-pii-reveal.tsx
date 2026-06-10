@@ -58,7 +58,8 @@ export function OwnerPiiReveal({
     setError(null);
     try {
       const r = await reveal.mutateAsync(ownerId);
-      setClear({ nationalId: r.nationalId, phone: r.phone });
+      // A shell owner has no national_id to reveal — show a neutral placeholder.
+      setClear({ nationalId: r.nationalId ?? '—', phone: r.phone });
     } catch (e) {
       // Anti-enumeration: 403 (no permission) and any other failure surface
       // the SAME generic message — never reveal which gate blocked.

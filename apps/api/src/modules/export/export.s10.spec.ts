@@ -380,7 +380,7 @@ describe('V11 B.S10 · ExportComposerService — project export (Phase 7)', () =
     const allOwners = input.buildings.flatMap((b) => b.apartments.flatMap((a) => a.owners));
     expect(allOwners.length).toBeGreaterThan(0);
     for (const o of allOwners) {
-      expect(o.nationalId.startsWith('•')).toBe(true);
+      expect(o.nationalId!.startsWith('•')).toBe(true);
       expect(o.nationalId).not.toBe('300000010'); // David — no cleartext leak
       if (o.phone != null) expect(o.phone.startsWith('•')).toBe(true);
     }
@@ -433,7 +433,7 @@ describe('V11 B.S10 · ExportComposerService — project export (Phase 7)', () =
     expect(allOwners.length).toBeGreaterThan(0);
     // D.54 reveal-on-demand: even view_owner_pii does NOT unmask the bulk export;
     // cleartext is only via POST /owners/:id/reveal-pii. No cleartext NID leaks.
-    expect(allOwners.every((o) => o.nationalId.startsWith('•'))).toBe(true);
+    expect(allOwners.every((o) => o.nationalId!.startsWith('•'))).toBe(true);
     expect(allOwners.some((o) => o.nationalId === '300000010')).toBe(false);
   });
 

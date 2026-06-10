@@ -191,10 +191,13 @@ export const handlers = [
     const o = OwnerSchema.parse({
       ...SAMPLE_OWNERS[0],
       id: 'zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzo1',
-      name: parsed.data.name,
+      name: parsed.data.name ?? null,
       // Mask the national_id with bullets + last 2 chars (mimic the
-      // server's masking exactly so the wire shape is faithful).
-      nationalIdMasked: `${'•'.repeat(7)}${parsed.data.national_id.slice(-2)}`,
+      // server's masking exactly so the wire shape is faithful). A shell
+      // owner has no national_id → null mask.
+      nationalIdMasked: parsed.data.national_id
+        ? `${'•'.repeat(7)}${parsed.data.national_id.slice(-2)}`
+        : null,
       phoneMasked: parsed.data.phone ? `${'•'.repeat(5)}${parsed.data.phone.slice(-4)}` : null,
       email: parsed.data.email ?? null,
       createdAt: new Date(),

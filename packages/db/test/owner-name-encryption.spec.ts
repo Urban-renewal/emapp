@@ -105,8 +105,10 @@ describe('owner-name encryption (v8 §v8-S3)', () => {
       expect(await decryptOwnerName(providerDb, out[0]!.nameEncrypted)).toBe('יעקב כהן');
       expect(await decryptOwnerName(providerDb, out[1]!.nameEncrypted)).toBe('Alice Brown');
       // Hashes deterministic and match the standalone helper.
-      expect(out[0]!.nameHash.equals(hashOwnerName('יעקב כהן'))).toBe(true);
-      expect(out[1]!.nameHash.equals(hashOwnerName('Alice Brown'))).toBe(true);
+      // S3a — nameHash is now `Buffer | null` (shells have no name); these
+      // inputs always carry a name, so assert non-null before `.equals`.
+      expect(out[0]!.nameHash!.equals(hashOwnerName('יעקב כהן'))).toBe(true);
+      expect(out[1]!.nameHash!.equals(hashOwnerName('Alice Brown'))).toBe(true);
     });
 
     it('7) preserves input order (jsonb_array_elements_text WITH ORDINALITY)', async () => {
@@ -120,16 +122,18 @@ describe('owner-name encryption (v8 §v8-S3)', () => {
       }
     });
 
-    it('8) name is REQUIRED (typecheck — runtime: name=undefined → pgcrypto on undefined → throws)', async () => {
-      // The TS type forbids omitting name; runtime would NPE inside
-      // jsonb_array_elements_text on a `undefined` array entry → JSON.stringify
-      // serialises undefined as `null` → pg returns NULL → "missing name ciphertext".
-      await expect(
-        encryptOwnerPiiBatch(providerDb, [
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          { nationalId: 'x', name: undefined as any },
-        ]),
-      ).rejects.toThrow(/missing name ciphertext/);
+    it('8) name is OPTIONAL — absent name → NULL ciphertext + NULL hash (shell owner, S3a)', async () => {
+      // S3a (owner SHELLS): name is no longer required — a Tabu/parcel skeleton
+      // owner can be created with national_id but no name. An absent name must
+      // produce NULL ciphertext + NULL hash, NOT throw. (The old "name is
+      // REQUIRED → throws" invariant is intentionally removed by the approved
+      // shell feature; the positive behavior is also proven in owner-shells.spec.ts.)
+      const [row] = await encryptOwnerPiiBatch(providerDb, [
+        { nationalId: '123456782', name: undefined },
+      ]);
+      expect(row!.nameEncrypted).toBeNull();
+      expect(row!.nameHash).toBeNull();
+      expect(row!.nationalIdEncrypted).not.toBeNull();
     });
   });
 

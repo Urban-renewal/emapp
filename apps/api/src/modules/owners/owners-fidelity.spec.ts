@@ -176,7 +176,7 @@ describe('D.54 — view_owners gate + masked list/detail (no cleartext anywhere)
     expect(ids).toContain(ownerAssigned);
     expect(ids).not.toContain(ownerUnassigned); // out of agent scope
     const own = page.data.find((o) => o.id === ownerAssigned)!;
-    expect(own.nationalIdMasked.startsWith('•')).toBe(true);
+    expect(own.nationalIdMasked!.startsWith('•')).toBe(true);
     expect(JSON.stringify(page.data)).not.toContain(NID_ASSIGNED); // no cleartext anywhere
   }, 30_000);
 
@@ -198,7 +198,7 @@ describe('D.54 — view_owners gate + masked list/detail (no cleartext anywhere)
     await setCaps(true, false);
     const res = await svc.search(tok('agent'), { national_id: NID_ASSIGNED });
     expect(res.map((o) => o.id)).toContain(ownerAssigned);
-    expect(res.every((o) => o.nationalIdMasked.startsWith('•'))).toBe(true);
+    expect(res.every((o) => o.nationalIdMasked!.startsWith('•'))).toBe(true);
     const res2 = await svc.search(tok('agent'), { national_id: '222222226' });
     expect(res2.map((o) => o.id)).not.toContain(ownerUnassigned);
   }, 30_000);

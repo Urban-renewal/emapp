@@ -24,9 +24,13 @@ import type { OwnerViewModel } from '@/models/owner.vm';
 export function toOwnerViewModel(o: Owner, locale: 'he' | 'en' = 'he'): OwnerViewModel {
   return {
     id: o.id,
-    name: stripBidiOverrides(o.name),
+    // Shell owner (Tabu/parcel skeleton) — no name / no national_id yet; the
+    // field-work funnel enriches it later. Render a neutral placeholder so the
+    // list/detail never shows an empty cell. (A richer "incomplete" affordance
+    // is a later FE slice.)
+    name: o.name ? stripBidiOverrides(o.name) : locale === 'he' ? 'ללא שם' : 'Unnamed',
     email: o.email ?? null,
-    nationalIdMasked: o.nationalIdMasked,
+    nationalIdMasked: o.nationalIdMasked ?? '—',
     phoneMasked: o.phoneMasked ?? null,
     notes: o.notes ? stripBidiOverrides(o.notes) : null,
     isArchived: o.archivedAt !== null,

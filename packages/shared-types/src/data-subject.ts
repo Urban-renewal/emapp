@@ -59,8 +59,11 @@ export const OwnerDataExportSchema = z.object({
     id: z.string().uuid(),
     organizationId: z.string().uuid(),
     // CLEARTEXT — this is the subject-access response (see file header).
-    name: z.string(),
-    nationalId: z.string(),
+    // Nullable for SHELL owners (S3a) — a Tabu/parcel skeleton has no name /
+    // national_id yet; the DSAR export faithfully reports null rather than an
+    // empty string.
+    name: z.string().nullable(),
+    nationalId: z.string().nullable(),
     phone: z.string().nullable(),
     email: z.string().email().nullable(),
     notes: z.string().nullable(),

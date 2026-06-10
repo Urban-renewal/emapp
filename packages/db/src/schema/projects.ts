@@ -209,16 +209,31 @@ export const owners = pgTable(
     // every write through encryptOwnerName() (helpers in
     // packages/db/src/helpers/owners.ts).
     nameEncrypted: bytea('name_encrypted').notNull(),
-    nameHash: bytea('name_hash').notNull(),
+    // P0.C1 — nullable so the erasure (crypto-shred) path can NULL the HMAC
+    // lookup hash: an erased owner has no name/national_id to hash anymore, so
+    // they can no longer be found by HMAC. A LIVE owner always has these set
+    // (enforced by encryptOwnerPii on every create/import). Migration 0057
+    // dropped the NOT NULL.
+    nameHash: bytea('name_hash'),
     email: citext('email'),
     nationalIdEncrypted: bytea('national_id_encrypted').notNull(),
-    nationalIdHash: text('national_id_hash').notNull(),
+    nationalIdHash: text('national_id_hash'),
     phoneEncrypted: bytea('phone_encrypted'),
     phoneHash: text('phone_hash'),
     notes: text('notes'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
+    // P0.C1 — data-subject ERASURE (right-to-be-forgotten) tombstone. A
+    // non-null `erasedAt` means this owner's PII has been crypto-shredded
+    // (name/national_id/phone ciphertext overwritten with an irreversible
+    // tombstone, HMAC hashes NULLed). DISTINCT from `archivedAt` (a reversible
+    // soft-delete that keeps PII recoverable). An erased owner is excluded from
+    // every operational list/scope and is un-revealable. `erasedBy` is the
+    // acting user (SET NULL on user delete; the durable forensic copy lives in
+    // erasure_log). See migration 0057 + docs/DECISION-erasure-vs-legal-retention.md.
+    erasedAt: timestamp('erased_at', { withTimezone: true }),
+    erasedBy: uuid('erased_by').references(() => users.id, { onDelete: 'set null' }),
   },
   (table) => ({
     orgNationalIdHashIdx: index('idx_owners_org_natid_hash').on(table.orgId, table.nationalIdHash),
@@ -228,6 +243,10 @@ export const owners = pgTable(
     uniqueNationalIdPerOrg: uniqueIndex('owners_org_natid_unique_active')
       .on(table.orgId, table.nationalIdHash)
       .where(sql`archived_at IS NULL`),
+    // P0.C1 — supports the common operational query that excludes erased owners.
+    orgNotErasedIdx: index('idx_owners_org_not_erased')
+      .on(table.orgId)
+      .where(sql`erased_at IS NULL`),
     // v8 §v8-S3 — supports future exact-match owner lookup by name.
     orgNameHashIdx: index('idx_owners_org_name_hash')
       .on(table.orgId, table.nameHash)

@@ -19,8 +19,12 @@ import { AuthService } from './auth.service';
 import type { AccessTokenPayload } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
+import { ForgotPasswordSchema } from './dto/forgot-password.dto';
+import type { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginSchema, OrgSwitchSchema } from './dto/login.dto';
 import type { LoginDto, OrgSwitchDto } from './dto/login.dto';
+import { ResetPasswordSchema } from './dto/reset-password.dto';
+import type { ResetPasswordDto } from './dto/reset-password.dto';
 import { SignupSchema } from './dto/signup.dto';
 import type { SignupDto } from './dto/signup.dto';
 import { AuthGuard } from './guards/auth.guard';
@@ -113,6 +117,43 @@ export class AuthController {
     }
     const result = await this.authService.refresh(refreshToken);
     this.setAuthCookies(res, result.accessToken, result.refreshToken);
+    return { data: { ok: true } };
+  }
+
+  @Public()
+  // P1 R0.1 — Forgot-password. ALWAYS returns a generic 200 (anti-enumeration).
+  // Tight per-IP brake on an unauthenticated endpoint that triggers an email
+  // send + a privileged pool read: 5 / 15 min / IP. The generic 200 fires
+  // regardless of account existence, so a 429 here is NOT an enumeration
+  // oracle. Per-email abuse is additionally capped in the repository.
+  @Throttle({ default: { limit: 5, ttl: 900000 } })
+  @Post('forgot-password')
+  @HttpCode(200)
+  @UsePipes(new ZodValidationPipe(ForgotPasswordSchema))
+  async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: FastifyRequest) {
+    // Fire the work but ALWAYS answer with the same neutral message — never
+    // reveal whether the email exists (mirror signup's posture). Any internal
+    // failure is swallowed inside the service (logged, never surfaced).
+    await this.authService.forgotPassword(dto, req.ip);
+    return {
+      data: {
+        ok: true,
+        message: 'אם קיים חשבון עבור כתובת זו, נשלח אליו קישור לאיפוס הסיסמה.',
+      },
+    };
+  }
+
+  @Public()
+  // Per-IP brake: reset consume runs a ~50ms argon2 hash + a privileged write.
+  // 10 / 15 min / IP — generous for a legitimate retry, blocks token brute-
+  // force at the route level (the token is 256-bit so guessing is infeasible
+  // anyway; this is defence-in-depth).
+  @Throttle({ default: { limit: 10, ttl: 900000 } })
+  @Post('reset-password')
+  @HttpCode(200)
+  @UsePipes(new ZodValidationPipe(ResetPasswordSchema))
+  async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: FastifyRequest) {
+    await this.authService.resetPassword(dto, req.ip, this.ua(req));
     return { data: { ok: true } };
   }
 

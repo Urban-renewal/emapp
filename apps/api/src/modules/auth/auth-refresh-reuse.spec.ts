@@ -19,7 +19,7 @@
  *         succeeds; no two valid new tokens are minted from one old token.
  */
 import { serverEnv } from '@emapp/config';
-import { authSessions } from '@emapp/db';
+import { authSessions, FakeEmailProvider } from '@emapp/db';
 import { JwtService } from '@nestjs/jwt';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -31,6 +31,7 @@ import { PermissionService } from '../../common/authz/permission.service';
 import { noopBreachForTest, noopMetricsForTest } from '../observability/test-doubles';
 
 import { AuthService } from './auth.service';
+import { PasswordResetRepository } from './password-reset.repository';
 import { newRawToken, createSession } from './session.repository';
 
 let svc: AuthService;
@@ -68,6 +69,8 @@ beforeAll(async () => {
     new PermissionService(),
     noopMetricsForTest(),
     noopBreachForTest(),
+    new FakeEmailProvider(),
+    new PasswordResetRepository(),
   );
   const tag = `a2-refresh-${Date.now()}`;
   org = await createTestOrg(tag, tag);

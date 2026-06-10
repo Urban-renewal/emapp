@@ -74,6 +74,33 @@ export interface ProviderTenantDetailVM {
   sampleOwners: ProviderTenantSampleOwnerVM[];
 }
 
+/**
+ * P4 — Org-users (members) row on the provider tenant-users page.
+ * Masked-only (name + email); the VM deliberately has NO `name` / `email`
+ * field — only the masked forms exist, mirroring the sample-owner VM. No
+ * national_id / phone anywhere (not on the wire, not in the VM).
+ */
+export interface ProviderTenantUserVM {
+  /** Membership id — list key. */
+  id: string;
+  /** Underlying user id (opaque UUID, NOT PII). */
+  userId: string;
+  /** Already-masked from BE; VM passes through. */
+  nameMasked: string;
+  /** Already-masked from BE; VM passes through. */
+  emailMasked: string;
+  /** Org membership role (manager | agent | viewer). */
+  role: string;
+  /** Custom org-scope role keys (empty when none). */
+  roleKeys: string[];
+  status: 'invited' | 'active' | 'revoked';
+  isPrimary: boolean;
+  /** "לפני 3 ימים" relative last login; null if never. */
+  lastLoginRelative: string | null;
+  /** "לפני 3 ימים" relative join time. */
+  createdRelative: string;
+}
+
 // ── Re-exports for completeness so consumers can `import type` the
 // underlying wire types alongside the VMs without a second import.
 export type { TenantDetail, TenantListItem, TenantSampleOwner };

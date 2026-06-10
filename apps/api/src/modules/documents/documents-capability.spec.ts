@@ -9,7 +9,14 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import { db, memberships, projectAssignments, users, type IStorageProvider } from '@emapp/db';
+import {
+  NoopFileScanProvider,
+  db,
+  memberships,
+  projectAssignments,
+  users,
+  type IStorageProvider,
+} from '@emapp/db';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -104,7 +111,11 @@ async function seedDoc(projectId: string | null): Promise<string> {
 
 beforeAll(async () => {
   await setupTestDatabase();
-  svc = new DocumentsService(storage, new NotificationsProducerService());
+  svc = new DocumentsService(
+    storage,
+    new NoopFileScanProvider(),
+    new NotificationsProducerService(),
+  );
   const tag = `d46-doc-${Date.now()}`;
   org = await createTestOrg(tag, tag);
   managerId = org.users[0]!.id;

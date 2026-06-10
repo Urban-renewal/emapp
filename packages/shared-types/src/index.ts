@@ -7,6 +7,8 @@ export * from './building';
 export * from './apartment';
 export * from './owner';
 export * from './ownership';
+// P0.C1 — data-subject rights (access export + erasure / right-to-be-forgotten).
+export * from './data-subject';
 export * from './contractor';
 export * from './share';
 // D2-DEF-1 / D.46 — Contractor read-tier (share-token scoped, owners-PII

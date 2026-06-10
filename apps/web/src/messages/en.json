@@ -124,6 +124,7 @@
     "formHeading": "Welcome",
     "formSubheading": "Choose your user type and sign in",
     "loginCta": "Sign in",
+    "forgotPassword": "Forgot password?",
     "rolePicker": {
       "manager": { "label": "Manager", "sub": "Email and password" },
       "agent": { "label": "Agent", "sub": "Email or phone" },
@@ -711,7 +712,11 @@
     "submitting": "Submitting...",
     "errorTooShort": "Signature is too short. Try a fuller signature.",
     "errorTooLarge": "Signature is too large. Try a simpler signature.",
-    "errorInvalid": "Signature is invalid."
+    "errorInvalid": "Signature is invalid.",
+    "consentSectionTitle": "Privacy & data-processing notice",
+    "consentCheckboxLabel": "I have read the privacy notice and consent to the processing of my personal data.",
+    "consentImplicitLine": "By signing, you acknowledge that you have read the privacy notice above.",
+    "consentRequired": "You must acknowledge the privacy notice before signing."
   },
   "provider": {
     "nav": {
@@ -777,7 +782,8 @@
       "suspended": "Suspended",
       "searchPlaceholder": "Search tenants by name…",
       "search": "Search",
-      "searchClear": "Clear"
+      "searchClear": "Clear",
+      "usersModeHint": "User management — pick a tenant to view its org members (name and email are masked)."
     },
     "onboard": {
       "title": "Create a new tenant",
@@ -817,6 +823,7 @@
       "sampleOwnersHint": "Up to 5 most-recent owners. Name and phone are masked server-side (•••••••XX / •••••XXXX); national_id never crosses the wire.",
       "noSampleOwners": "No owners to show.",
       "phoneLabel": "Tel:",
+      "viewUsersForTenant": "Org users",
       "viewAuditForTenant": "View this tenant's audit log",
       "suspension": {
         "title": "Tenant access control",
@@ -835,6 +842,26 @@
         "reactivating": "Reactivating…",
         "actionFailed": "Action failed. Try again.",
         "reasonRequired": "An access reason is required for this action."
+      }
+    },
+    "tenantUsers": {
+      "title": "Org users",
+      "hint": "The organization's members, their roles, and membership status. Name and email are masked server-side; national_id and phone never cross the wire. Read-only and audited.",
+      "backToTenant": "Back to tenant",
+      "loadFailed": "Failed to load org users.",
+      "empty": "No users in this organization.",
+      "primaryBadge": "Primary",
+      "joinedLabel": "Joined",
+      "lastLoginLabel": "Last login",
+      "status": {
+        "active": "Active",
+        "invited": "Invited",
+        "revoked": "Revoked"
+      },
+      "role": {
+        "manager": "Manager",
+        "agent": "Agent",
+        "viewer": "Viewer"
       }
     },
     "audit": {
@@ -1028,6 +1055,33 @@
       "saving": "Saving…",
       "savedOk": "Permissions saved.",
       "saveFailed": "Failed to save permissions. Try again."
+    },
+    "overrides": {
+      "title": "Custom permissions",
+      "hint": "Grant or deny a specific permission for this member, on top of their role. Deny wins over grant and over the role.",
+      "loading": "Loading…",
+      "none": "No custom permissions. This member gets only their role's permissions.",
+      "add": "Add",
+      "saving": "Saving…",
+      "clear": "Remove",
+      "effect": {
+        "grant": "Grant",
+        "deny": "Deny"
+      },
+      "field": {
+        "permission": "Permission",
+        "permissionPlaceholder": "Select a permission…",
+        "effect": "Effect"
+      },
+      "err": {
+        "escalation": "You cannot grant a permission you do not hold yourself.",
+        "ownerTierOnly": "Org/role administration permissions can only be granted by an Owner.",
+        "lastOwner": "You cannot strip an administration permission from the sole Owner.",
+        "unknownPermission": "Unknown permission.",
+        "self": "You cannot change your own permissions.",
+        "forbidden": "You do not have permission to do this.",
+        "saveFailed": "Failed to save the override. Try again."
+      }
     },
     "listTitle": "Organization members",
     "invite": "Invite member",
@@ -1495,6 +1549,32 @@
       "userPlaceholder": "Pick a member...",
       "roleInProject": "Role on this project"
     }
+  },
+  "forgotPassword": {
+    "title": "Reset your password",
+    "subtitle": "Enter your email address and we'll send you a password-reset link.",
+    "email": "Email",
+    "emailInvalid": "Invalid email address",
+    "submit": "Send reset link",
+    "submitting": "Sending...",
+    "backToLogin": "Back to sign in",
+    "genericNotice": "If an account exists for this address, we've sent it a password-reset link. Check your inbox.",
+    "error": "Something went wrong. Please try again."
+  },
+  "resetPassword": {
+    "title": "Set a new password",
+    "subtitle": "Choose a new password for your account.",
+    "password": "New password",
+    "confirmPassword": "Confirm password",
+    "passwordRequirements": "Password must be at least 12 characters",
+    "passwordsMismatch": "Passwords do not match",
+    "submit": "Update password",
+    "submitting": "Updating...",
+    "doneTitle": "Password updated ✓",
+    "doneBody": "Redirecting you to sign in...",
+    "missingToken": "This link is invalid. Please request a new password-reset link.",
+    "invalidToken": "This link is invalid or has expired. Please request a new password-reset link.",
+    "requestNewLink": "Request a new link"
   },
   "acceptInvite": {
     "title": "Complete your invitation",

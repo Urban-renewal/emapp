@@ -64,6 +64,7 @@ export * from './helpers/apply-share-permissions';
 export * from './helpers/resolve-share';
 export * from './helpers/signature-progress';
 export * from './helpers/reap-expired-rows';
+export * from './helpers/audit-retention';
 export * from './helpers/org-suspension';
 export * from './helpers/notifications';
 export * from './helpers/idempotency';
@@ -78,6 +79,9 @@ export {
   encryptOwnerName,
   decryptOwnerName,
   hashOwnerName,
+  buildErasureTombstone,
+  ERASURE_TOMBSTONE_PLAINTEXT,
+  SIGNATURE_BLOB_TOMBSTONE,
   hashField,
   encryptField,
   decryptField,
@@ -130,6 +134,21 @@ export { FakeCacheProvider } from './providers/cache/fake.provider';
 export type { IRealtimeProvider, RealtimeEvent } from './providers/realtime/realtime.interface';
 export { SseRealtimeProvider } from './providers/realtime/sse.provider';
 export { FakeRealtimeProvider } from './providers/realtime/fake.provider';
+// P0.B1 — pluggable file anti-malware scan provider.
+export type {
+  IFileScanProvider,
+  ScanInput,
+  ScanResult,
+  ScanVerdict,
+} from './providers/scan/scan.interface';
+export { resolveScanBytes } from './providers/scan/scan.interface';
+export { NoopFileScanProvider } from './providers/scan/noop.provider';
+export {
+  ClamAvFileScanProvider,
+  buildInstream,
+  parseReply,
+  type ClamAvScanConfig,
+} from './providers/scan/clamav.provider';
 // P0.B2 — pluggable observability + breach-detection seam.
 export type { IMetricsProvider, MetricLabels } from './providers/metrics/metrics.interface';
 export { NoopMetricsProvider } from './providers/metrics/noop.provider';

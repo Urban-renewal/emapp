@@ -14,8 +14,9 @@ import {
   users,
   withBootstrap,
   withTenant,
+  type IEmailProvider,
 } from '@emapp/db';
-import type { AgentCapabilities } from '@emapp/shared-types';
+import type { AgentCapabilities, ForgotPasswordDto, ResetPasswordDto } from '@emapp/shared-types';
 import { Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { and, asc, desc, eq, isNull } from 'drizzle-orm';
@@ -25,11 +26,14 @@ import {
   PermissionResolutionCache,
   PermissionService,
 } from '../../common/authz/permission.service';
+import { EMAIL_PROVIDER } from '../members/invite-email';
 import { BREACH_DETECTION, METRICS_PROVIDER } from '../observability/observability.tokens';
 
 import type { LoginDto } from './dto/login.dto';
 import type { SignupDto } from './dto/signup.dto';
 import { dummyVerify, hashPassword, verifyPassword } from './password';
+import { PasswordResetRepository } from './password-reset.repository';
+import { buildResetEmail } from './reset-password-email';
 import { flushSessionCache } from './session-validity';
 import { createSession, findByRawToken, hashToken, newRawToken } from './session.repository';
 
@@ -138,6 +142,10 @@ export class AuthService {
     // detection fault must never break the login path.
     @Inject(METRICS_PROVIDER) private readonly metrics: IMetricsProvider,
     @Inject(BREACH_DETECTION) private readonly breach: BreachDetectionService,
+    // #329 — self-service password reset. EMAIL_PROVIDER (governed IEmailProvider,
+    // D.27) + the reset-token repository.
+    @Inject(EMAIL_PROVIDER) private readonly email: IEmailProvider,
+    private readonly passwordReset: PasswordResetRepository,
   ) {}
 
   // ── signup: ONE atomic transaction (D.21). org+user+membership+credential
@@ -531,6 +539,150 @@ export class AuthService {
       });
     });
     flushSessionCache(); // access token stops working immediately on logout
+  }
+
+  // ── P1 R0.1: self-service password reset (OWASP Forgot-Password) ──────────
+
+  /**
+   * Request a password-reset link. ALWAYS resolves with NO observable
+   * difference whether the email exists (anti-enumeration, D.14 — same posture
+   * as signup): the controller returns a fixed generic 200 regardless. Work is
+   * fire-and-forget from the caller's perspective.
+   *
+   * If the email maps to a usable (non-archived) account we mint a token (only
+   * its SHA-256 hash is stored, 30-min expiry), invalidate any prior un-used
+   * tokens, and email the raw link via the governed IEmailProvider (D.27). The
+   * raw token is NEVER logged. Per-email abuse is capped in the repository;
+   * per-IP is capped by the route throttler.
+   *
+   * Reads/writes via the raw BYPASSRLS `db` pool by necessity — the request is
+   * pre-auth (no session, no org context), exactly like login (D.21).
+   */
+  async forgotPassword(dto: ForgotPasswordDto, ip?: string): Promise<void> {
+    // Look up by email. We deliberately do NOT branch the RESPONSE on this —
+    // only whether there is work to do. An archived user gets no token.
+    const [u] = await db
+      .select({ id: users.id, email: users.email, archivedAt: users.archivedAt })
+      .from(users)
+      .where(eq(users.email, dto.email))
+      .limit(1);
+    if (!u || u.archivedAt) return; // unknown / archived → silent no-op (no oracle)
+
+    let raw: string | null;
+    try {
+      raw = await this.passwordReset.mint(db, u.id, ip);
+    } catch (e) {
+      // A DB hiccup here must not 500 a PUBLIC endpoint (which would itself be
+      // a weak oracle). Log the FACT (user id only, no email/token) and bail.
+      this.logger.error(
+        `forgot-password mint failed (user=${u.id}): ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+      return;
+    }
+    if (!raw) return; // per-user active-token cap hit → silently skip (still 200)
+
+    // FIRE-AND-FORGET the email send (security-review HIGH — timing enumeration).
+    // The mint (DB) is awaited above so the token exists deterministically, but
+    // the NETWORK mail call is NOT awaited on the request path — otherwise the
+    // exists-branch would take measurably longer than the unknown-email branch
+    // (which returns after one SELECT), leaking account existence via response
+    // latency. Best-effort: a transient mail failure must not surface (the user
+    // can re-request). The token is a credential: never logged / never surfaced.
+    void this.email
+      .send(buildResetEmail({ to: u.email, token: raw }))
+      .then((r) => {
+        if (r.status === 'rejected') {
+          this.logger.error(
+            `password-reset email rejected (user=${u.id}): ${r.error ?? 'unknown'}`,
+          );
+        }
+      })
+      .catch((mailErr: unknown) => {
+        this.logger.error(
+          `password-reset email send failed (user=${u.id}): ${
+            mailErr instanceof Error ? mailErr.message : 'unknown'
+          }`,
+        );
+      });
+  }
+
+  /**
+   * Consume a reset token + set a new password. Generic failure (no oracle on
+   * token validity) for not-found / expired / already-used. On success, in ONE
+   * transaction: argon2id-hash + store the new password, atomically consume the
+   * token (single-use, conditional flip — replay-safe), invalidate the user's
+   * OTHER outstanding tokens, revoke ALL active auth_sessions (a reset must
+   * invalidate existing sessions, mirror of logout), and write an audit row.
+   * Then flush the session cache so any in-flight access token dies immediately.
+   */
+  async resetPassword(dto: ResetPasswordDto, ip?: string, userAgent?: string): Promise<void> {
+    const invalid = new UnauthorizedException({
+      error: { code: 'invalid_reset_token', message: 'הקישור אינו תקף או שפג תוקפו' },
+    });
+
+    const row = await this.passwordReset.findByRawToken(db, dto.token);
+    // Generic reject: not found / already used / expired all collapse to one
+    // error so a probing caller cannot distinguish causes.
+    if (!row || row.usedAt || row.expiresAt.getTime() < Date.now()) {
+      throw invalid;
+    }
+
+    // Resolve the org for the audit row (the user may belong to one; best-
+    // effort — a reset is per-user and must succeed even with no active org).
+    const [m] = await db
+      .select({ orgId: memberships.orgId })
+      .from(memberships)
+      .where(and(eq(memberships.userId, row.userId), isNull(memberships.revokedAt)))
+      .orderBy(desc(memberships.isPrimary), asc(memberships.createdAt))
+      .limit(1);
+
+    const passwordHash = await hashPassword(dto.newPassword);
+
+    await db.transaction(async (tx) => {
+      // Single-use: only the request that flips used_at NULL→now proceeds. A
+      // concurrent double-spend of the same token loses the race here → abort.
+      const won = await this.passwordReset.consume(tx, row.id);
+      if (!won) throw invalid;
+
+      await tx
+        .update(users)
+        .set({
+          passwordHash,
+          // A successful reset is a recovery path: clear any lockout so the
+          // user can log in immediately with the new password.
+          failedLoginCount: 0,
+          lockedUntil: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, row.userId));
+
+      // Supersede any OTHER outstanding reset links for this user.
+      await this.passwordReset.invalidateAllForUser(tx, row.userId, row.id);
+
+      // Session purge — a password reset MUST invalidate existing sessions
+      // (mirror logout's revocation). An attacker holding a live session is
+      // kicked; the legitimate user re-authenticates with the new password.
+      await tx
+        .update(authSessions)
+        .set({ revokedAt: new Date() })
+        .where(and(eq(authSessions.userId, row.userId), isNull(authSessions.revokedAt)));
+
+      if (m?.orgId) {
+        await tx.insert(auditLog).values({
+          orgId: m.orgId,
+          actorId: row.userId,
+          actorType: 'user',
+          action: 'password_reset',
+          targetTable: 'users',
+          targetId: row.userId,
+          afterState: { sessionsRevoked: true }, // no PII, no token
+          ip: ip ?? null,
+          userAgent: userAgent ?? null,
+        });
+      }
+    });
+
+    flushSessionCache(); // any in-flight access token stops working immediately
   }
 
   async switchOrg(

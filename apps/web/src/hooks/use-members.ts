@@ -1,14 +1,23 @@
 'use client';
 
-import type { CreateMember, UpdateAgentCapabilities, UpdateMember } from '@emapp/shared-types';
+import type {
+  ClearMemberOverride,
+  CreateMember,
+  SetMemberOverride,
+  UpdateAgentCapabilities,
+  UpdateMember,
+} from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
 import { toMemberViewModel, toMemberViewModels } from '@/adapters/member';
 import {
+  clearMemberOverride,
   createMember,
+  listMemberOverrides,
   listMembers,
   revokeMember,
+  setMemberOverride,
   updateMemberCapabilities,
   updateMemberRole,
   type CreateMemberResult,
@@ -116,6 +125,44 @@ export function useRevokeMember() {
     mutationFn: (userId: string) => revokeMember(userId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: MEMBERS_KEY });
+    },
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────
+// P2 Phase 2 — per-user permission OVERRIDES (Owner/Admin only; the
+// PUT/DELETE endpoints are roles.manage-gated server-side, and the UI is
+// gated on useHasPermission('roles.manage')). A set/clear changes the
+// member's effective set → the BE kills their sessions; we invalidate the
+// override list so the panel reflects the new layer.
+// ───────────────────────────────────────────────────────────────────
+const OVERRIDES_KEY = (userId: string) => [...MEMBERS_KEY, 'overrides', userId] as const;
+
+export function useMemberOverrides(userId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: OVERRIDES_KEY(userId ?? ''),
+    queryFn: () => listMemberOverrides(userId as string),
+    enabled: enabled && !!userId,
+    staleTime: 30_000,
+  });
+}
+
+export function useSetMemberOverride(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SetMemberOverride) => setMemberOverride(userId, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: OVERRIDES_KEY(userId) });
+    },
+  });
+}
+
+export function useClearMemberOverride(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ClearMemberOverride) => clearMemberOverride(userId, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: OVERRIDES_KEY(userId) });
     },
   });
 }

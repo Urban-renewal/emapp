@@ -14,6 +14,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { serverEnv } from '@emapp/config';
+import { FakeEmailProvider } from '@emapp/db';
 import { JwtService } from '@nestjs/jwt';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -24,6 +25,7 @@ import { PermissionService } from '../../common/authz/permission.service';
 import { noopBreachForTest, noopMetricsForTest } from '../observability/test-doubles';
 
 import { AuthService } from './auth.service';
+import { PasswordResetRepository } from './password-reset.repository';
 
 let svc: AuthService;
 let org: TestOrg;
@@ -72,6 +74,8 @@ beforeAll(async () => {
     new PermissionService(),
     noopMetricsForTest(),
     noopBreachForTest(),
+    new FakeEmailProvider(),
+    new PasswordResetRepository(),
   );
   org = await createTestOrg(`def3-${Date.now()}`, `def3-${Date.now()}`);
 }, 90_000);

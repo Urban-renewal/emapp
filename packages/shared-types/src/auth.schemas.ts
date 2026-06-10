@@ -29,6 +29,33 @@ export const OrgSwitchSchema = z.object({
 });
 export type OrgSwitchDto = z.infer<typeof OrgSwitchSchema>;
 
+/**
+ * P1 R0.1 — Self-service password reset (OWASP Forgot-Password).
+ *
+ * Request a reset link. ALWAYS answered with a generic 200 (anti-enumeration,
+ * D.14 posture — never reveals whether the email exists). Email-shape only;
+ * no password here.
+ */
+export const ForgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+export type ForgotPasswordDto = z.infer<typeof ForgotPasswordSchema>;
+
+/**
+ * Consume a reset token + set a new password. The token is the raw value from
+ * the emailed link; the server looks it up by its SHA-256 hash. `newPassword`
+ * enforces the SAME policy as signup (length-only, Doc07 §6.3 / NIST: min 12,
+ * max 256). On success the BE purges ALL the user's active sessions.
+ */
+export const ResetPasswordSchema = z.object({
+  token: z.string().min(1).max(512),
+  newPassword: z
+    .string()
+    .min(12, 'Password must be at least 12 characters')
+    .max(256, 'Password must be at most 256 characters'),
+});
+export type ResetPasswordDto = z.infer<typeof ResetPasswordSchema>;
+
 /** Provider Admin login — MFA mandatory (TOTP 6 digits or recovery code). */
 export const ProviderLoginSchema = z.object({
   email: z.string().email(),

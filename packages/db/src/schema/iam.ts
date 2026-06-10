@@ -136,3 +136,65 @@ export const roleAssignments = pgTable(
 
 export type RoleAssignment = typeof roleAssignments.$inferSelect;
 export type NewRoleAssignment = typeof roleAssignments.$inferInsert;
+
+/**
+ * Member permission overrides (P2 Phase 2) — the per-user override layer that
+ * sits ON TOP of a member's role-derived permission set.
+ *
+ * A row is a single (user × permission × scope) override with an `effect`:
+ *   - `grant` ADDS a permission the member's roles don't give them.
+ *   - `deny`  REMOVES a permission their roles otherwise would.
+ * DENY beats GRANT (and beats the role layer) — the engine applies overrides
+ * as: `final = (role-derived ∪ GRANT) − DENY`. See `permission.service.ts`.
+ *
+ * Keyed by `user_id` (NOT membership_id) so it composes directly with the
+ * engine, which resolves the actor by `user.id`; `scope_type`/`scope_id` mirror
+ * `role_assignments` exactly (org-scope = the org; project-scope = one project)
+ * so an override can be scoped as narrowly as a role grant. `permission` is a
+ * catalog string (free text, validated in code — `permissions.ts`), exactly
+ * like `role_permissions`.
+ *
+ * UNIQUE on (user, permission, scope_type, scope_id) — there is at most ONE
+ * override per permission per scope, so a grant and a deny for the same target
+ * can never co-exist (the CRUD layer upserts/replaces; deny-wins is the
+ * engine's tiebreak should a stale pair ever appear). Tenant-isolated by scope
+ * via FORCE RLS (migration 0061), mirroring `role_assignments`.
+ */
+export const memberPermissionOverrides = pgTable(
+  'member_permission_overrides',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    permission: text('permission').notNull(),
+    effect: text('effect').notNull(),
+    scopeType: text('scope_type').notNull(),
+    scopeId: uuid('scope_id').notNull(),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    effectCheck: check(
+      'member_permission_overrides_effect_valid',
+      sql`${table.effect} IN ('grant','deny')`,
+    ),
+    scopeTypeCheck: check(
+      'member_permission_overrides_scope_type_valid',
+      sql`${table.scopeType} IN ('org','project')`,
+    ),
+    // At most ONE override per (user, permission, scope) — a grant + a deny for
+    // the same target can never both exist.
+    uniqueOverride: uniqueIndex('member_permission_overrides_unique').on(
+      table.userId,
+      table.permission,
+      table.scopeType,
+      table.scopeId,
+    ),
+    userIdx: index('idx_member_permission_overrides_user').on(table.userId),
+    scopeIdx: index('idx_member_permission_overrides_scope').on(table.scopeType, table.scopeId),
+  }),
+);
+
+export type MemberPermissionOverride = typeof memberPermissionOverrides.$inferSelect;
+export type NewMemberPermissionOverride = typeof memberPermissionOverrides.$inferInsert;

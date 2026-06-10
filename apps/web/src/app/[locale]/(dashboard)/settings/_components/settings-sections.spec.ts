@@ -90,6 +90,7 @@ const SEEDED: OrgSettings = {
   timezone: 'UTC',
   signatures: { linkTtlDays: 7, channels: ['sms', 'email', 'whatsapp'] },
   consent: { tama38_1: 66, tama38_2: 80, pinui_binui: 80 },
+  privacy: { noticeText: 'הודעת פרטיות', noticeVersion: 'v1', requireExplicitConsent: false },
   limits: { bulkCap: 321, defaultPageSize: 77 },
 };
 

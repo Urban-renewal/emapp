@@ -141,13 +141,15 @@ function renderStage(states: {
   doneAt?: unknown;
 }): string {
   // Slot order MUST mirror page.tsx's useState call order:
-  //   [0]stage [1]preview [2]doneAt [3]submitError [4]canvasEmpty [5]previewFailed
+  //   [0]stage [1]preview [2]doneAt [3]submitError [4]canvasEmpty
+  //   [5]consentChecked [6]previewFailed
   stateQueue = [
     states.stage,
     states.preview ?? null,
     states.doneAt ?? null,
     null, // submitError
     true, // canvasEmpty
+    false, // consentChecked
     false, // previewFailed
   ];
   stateCursor = 0;
@@ -158,6 +160,7 @@ const VALID_PREVIEW = {
   document: { name: 'הסכם תמ"א 38', downloadUrl: 'https://r2.example.com/doc.pdf' },
   owner: { name: 'דנה כהן' },
   expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+  consentNotice: { text: 'הודעת פרטיות לדוגמה', version: 'v1', requireExplicitConsent: false },
 };
 
 const DONE_AT = { signedAt: new Date().toISOString() };

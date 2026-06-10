@@ -21,11 +21,17 @@
  */
 import {
   AcceptInviteInput,
+  ClearMemberOverrideInput,
+  MemberPermissionOverrideSchema,
   MemberSchema,
+  SetMemberOverrideInput,
   UpdateAgentCapabilitiesInput,
   type AcceptInvite,
+  type ClearMemberOverride,
   type CreateMember,
   type Member,
+  type MemberPermissionOverride,
+  type SetMemberOverride,
   type UpdateAgentCapabilities,
   type UpdateMember,
 } from '@emapp/shared-types';
@@ -127,5 +133,49 @@ export async function acceptInvite(body: AcceptInvite): Promise<{ ok: true }> {
     noRefresh: true,
   });
   if (isOk(res)) return { ok: true };
+  throw new ApiClientError(res.error);
+}
+
+// ───────────────────────────────────────────────────────────────────
+// P2 Phase 2 — per-user permission OVERRIDES.
+//
+// BE contract (roles.read for GET, roles.manage for PUT/DELETE):
+//   GET    /api/v1/members/:userId/overrides → { data: MemberPermissionOverride[] }
+//   PUT    /api/v1/members/:userId/overrides → { data: MemberPermissionOverride }
+//   DELETE /api/v1/members/:userId/overrides → 204 (no body); body carries the key
+//
+// Defensive Zod parse on every read; body parse before every write.
+// ───────────────────────────────────────────────────────────────────
+const OverrideDataSchema = z.object({ data: MemberPermissionOverrideSchema });
+
+export async function listMemberOverrides(userId: string): Promise<MemberPermissionOverride[]> {
+  const res = await apiClient.get<unknown>(`/members/${userId}/overrides`);
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return z.array(MemberPermissionOverrideSchema).parse(res.data);
+}
+
+export async function setMemberOverride(
+  userId: string,
+  body: SetMemberOverride,
+): Promise<MemberPermissionOverride> {
+  const validated = SetMemberOverrideInput.parse(body);
+  const res = await apiClient.put<unknown>(`/members/${userId}/overrides`, validated);
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return OverrideDataSchema.parse({ data: res.data }).data;
+}
+
+export async function clearMemberOverride(
+  userId: string,
+  body: ClearMemberOverride,
+): Promise<void> {
+  const validated = ClearMemberOverrideInput.parse(body);
+  // DELETE with a body (the override key). 204 → empty body folds as
+  // `invalid_response`; treat as success (same pattern as revokeMember).
+  const res = await apiClient.delete<unknown>(`/members/${userId}/overrides`, {
+    body: JSON.stringify(validated),
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (isOk(res)) return;
+  if (isEmptyResponseSuccess(res.error)) return;
   throw new ApiClientError(res.error);
 }

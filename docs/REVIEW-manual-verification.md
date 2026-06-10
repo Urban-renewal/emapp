@@ -199,10 +199,59 @@ worth knowing for the FE contract). Driven against an **agent** member:
   `permission.service.ts` §4; #338 unit tests). Both test overrides cleared via
   `DELETE` (204 ×2, 0 remaining) — agent restored.
 
+### 1.8 — Project renewal fields (#340) (✅ render + full round-trip + soft-delete)
+
+- `/he/projects/new` renders all 0062 fields in a dedicated, well-labelled
+  fieldset **"פרטי התחדשות (אופציונלי)"** with contextual help text:
+  יזם/קבלן (`developerName`), ח.פ. היזם (`developerCompanyId`), יח״ד קיימות/
+  מתוכננות (`existingUnits`/`plannedUnits`), תוספת שטח (`extraAreaSqm`), הסדר
+  פינוי (`relocationType` select, default "לא צוין"), הערות פינוי
+  (`relocationNotes`), גוש/חלקה/תת-חלקה (`block`/`parcel`/`subparcel`). Polished,
+  professional, all optional. ✅
+- **Full round-trip:** `POST /api/v1/projects` with all renewal fields → **201**;
+  `GET /api/v1/projects/:id` → every field persisted exactly (incl. a Hebrew
+  developer name with an embedded quote, `relocationType:'rent_comp'`, block/parcel/
+  subparcel). ✅
+- ✅ **Incidental positive:** `DELETE /api/v1/projects/:id` → **204** but the row
+  is **soft-deleted** (`archivedAt` set, record still readable) — confirms the
+  CLAUDE.md hard rule "soft delete = `archivedAt`, NOT `deletedAt`" / "ארכוב". The
+  test project was archived (not destroyed) as cleanup.
+
+### 1.5 — Consent-at-signing (✅ design + security verified; sign not executed)
+
+The public signing token is a **JWT** (HS256, a dedicated `SIGNATURE_TOKEN_SECRET`,
+separate from `JWT_SECRET`) — stateless, delivered to the resident by SMS, never
+stored in the DB and never exposed in the management API (verified: the
+`signature-requests` list does NOT surface the token). So a valid sign page can't
+be loaded without minting a token, and **signing is irreversible** — I did not
+execute a sign. Verified instead:
+
+- ✅ **Anti-enumeration routing:** a malformed token → `/sign/bogus…` returns
+  **307 → /he/login** (the middleware has an explicit `/sign/:path*` matcher and
+  redirects malformed tokens to login rather than attempting a page render).
+  Correct, intentional posture.
+- ✅ **Consent notice is surfaced:** the preview returns
+  `consentNotice: { text, version, requireExplicitConsent }`
+  (`public-sign.service.ts`).
+- ✅ **Atomic explicit-consent gate:** when `requireExplicitConsent` is on, the
+  sign path throws **400 `consent_required`** unless `acknowledgeConsent === true`,
+  and the status-flip + inserts are one transaction — "a consent-less sign leaves
+  NO state" (rolls back). You cannot sign without recording consent.
+- ✅ **Immutable, hash-bound recording:** on sign it inserts a
+  `pii_processing_consents` row with `noticeHash = sha256(noticeText)` + the notice
+  `version` + org/owner — so the EXACT notice the resident saw is provable forever.
+  The table is append-only + tenant-isolated (#334 unit tests C1–C4).
+- The visual render of the consent checkbox is gated behind a valid JWT (by
+  design); the mechanism is conclusively verified by source + unit tests.
+
+### 1.9 — Provider org-users / MFA — NOT exercised this pass
+
+The provider tier (`emapp-provider` audience, MFA, AccessReasonGate) needs a
+separate provider login + MFA enrolment not wired into this QA org session.
+Deferred; its access controls are covered by the provider-audit + provider-session
+suites. Noted so it isn't assumed-tested.
+
 ### (pending — next iterations)
 
-- 1.5 Consent-at-signing
-- 1.8 Project renewal fields (#340)
-- 1.9 Provider org-users (MFA)
 - 2. Logs assessment (SaaS-grade?)
 - 3. Sysadmin professionalism recommendations

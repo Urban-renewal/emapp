@@ -1031,6 +1031,43 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `owner_exists`, `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/owners/:id/data-export
+
+- **Auth:** AuthGuard + TenantGuard (Manager · owners.reveal_pii)
+- **Summary:** P0.C1 — data-subject ACCESS (right to access). Assembles EVERYTHING held about the owner (decrypted PII + ownerships + signature events). Manager-tier; audited as a PII reveal.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...OwnerDataExport (CLEARTEXT) } }
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/owners/:id/erase
+
+- **Auth:** AuthGuard + TenantGuard (Manager · owners.reveal_pii)
+- **Summary:** P0.C1 — data-subject ERASURE (right-to-be-forgotten). Crypto-shreds PII in place (anonymize-not-delete); RETAINS signature/ownership rows for legal validity. Idempotent. Manager-tier; audited; Gate-6.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `reason` | string | no | maxLength=500 |
+
+
+**Response**
+
+```json
+{ "data": { ...OwnerErasureResult } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
 ### POST /api/v1/owners/search
 
 - **Auth:** AuthGuard + TenantGuard

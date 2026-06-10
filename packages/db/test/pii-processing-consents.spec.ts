@@ -27,6 +27,25 @@ import {
 import { createTestOrg, type TestOrg } from './factories';
 import { setupTestDatabase } from './setup';
 
+/**
+ * drizzle wraps the pg error: `err.message` is the SQL text ("Failed query: …"),
+ * while the real Postgres error ("permission denied for table …") sits on
+ * `err.cause`. Walk the cause chain so the append-only assertion is robust to
+ * that wrapping (the wrapping shape can shift across drizzle versions).
+ */
+async function expectRejectsPermissionDenied(p: Promise<unknown>): Promise<void> {
+  const err = await p.then(
+    () => null,
+    (e: unknown) => e,
+  );
+  expect(err, 'expected the query to be REJECTED (append-only)').not.toBeNull();
+  const chain: string[] = [];
+  for (let e: unknown = err; e && chain.length < 8; e = (e as { cause?: unknown }).cause) {
+    chain.push(String((e as { message?: unknown }).message ?? e));
+  }
+  expect(chain.join(' || ')).toMatch(/permission denied/i);
+}
+
 /** A minimal owner per org. Names are pgcrypto-encrypted; we mint ciphertext
  *  via the shipped `encryptOwnerName` helper and insert through the BYPASSRLS
  *  providerDb (this is test fixture setup, not the path under test). */
@@ -104,14 +123,14 @@ describe('P0.C2 — pii_processing_consents', () => {
         })
         .returning(),
     );
-    await expect(
+    await expectRejectsPermissionDenied(
       withTenant(orgA.id, async (tx) =>
         tx
           .update(piiProcessingConsents)
           .set({ noticeVersion: 'tampered' })
           .where(eq(piiProcessingConsents.id, row!.id)),
       ),
-    ).rejects.toThrow(/permission denied/i);
+    );
   });
 
   it('C2 — APPEND-ONLY: app_user cannot DELETE a consent', async () => {
@@ -127,11 +146,11 @@ describe('P0.C2 — pii_processing_consents', () => {
         })
         .returning(),
     );
-    await expect(
+    await expectRejectsPermissionDenied(
       withTenant(orgA.id, async (tx) =>
         tx.delete(piiProcessingConsents).where(eq(piiProcessingConsents.id, row!.id)),
       ),
-    ).rejects.toThrow(/permission denied/i);
+    );
   });
 
   it('C3 — TENANT-ISOLATED: org A cannot read org B consents', async () => {

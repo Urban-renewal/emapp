@@ -57,6 +57,16 @@ const serverSchema = {
   R2_BUCKET: z.string().min(1).optional(),
   R2_ENDPOINT: z.string().url().optional(),
 
+  // Audit-log retention window in months (Roadmap P0.C3 / compliance).
+  // Optional + a STRING here: the value is resolved + floor-clamped at the
+  // call site by `resolveRetentionMonths` (helpers/audit-retention.ts),
+  // which is the single chokepoint that enforces the regulatory ≥24-month
+  // hard floor — a value below 24 (or unset / non-numeric) NEVER takes
+  // effect (unset → default 36; <24 → clamped to 24 + a warning). We keep
+  // it loosely typed here so a misconfig can never crash boot; the clamp
+  // guarantees compliance regardless of what's set.
+  AUDIT_RETENTION_MONTHS: z.string().optional(),
+
   // The system-verified outbound From (P6). Optional at the schema level —
   // `DEFAULT_EMAIL_FROM` (providers/email/email-from.ts) applies a baked
   // fallback when unset so dev/test always has a value. This is the verified

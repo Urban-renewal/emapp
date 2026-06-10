@@ -421,6 +421,13 @@
 			"when": 1781794800000,
 			"tag": "0059_pii_processing_consents",
 			"breakpoints": true
+		},
+		{
+			"idx": 60,
+			"version": "7",
+			"when": 1781881200000,
+			"tag": "0060_audit_log_retention_prune_exception",
+			"breakpoints": true
 		}
 	]
 }

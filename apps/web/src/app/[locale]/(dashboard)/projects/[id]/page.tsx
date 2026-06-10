@@ -13,6 +13,7 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { useHasPermission } from '@/hooks/use-permissions';
 import { useArchiveProject, useProject } from '@/hooks/use-projects';
 import { ApiClientError } from '@/lib/api/errors';
+import type { ProjectViewModel } from '@/models/project.vm';
 
 import { ExportXlsxButton } from './_components/export-xlsx-button';
 import { SignatureProgressBar } from './_components/signature-progress-bar';
@@ -318,6 +319,12 @@ export default function ProjectDetailPage() {
                 </section>
               )}
 
+              {/* P3 create-form enrichment (migration 0062) — renewal details:
+               *  developer (יזם), תמורה ratio, relocation (פינוי), parcel
+               *  provenance (גוש-חלקה). Rendered only when at least one field
+               *  is present so pre-feature / minimal projects stay clean. */}
+              <RenewalDetailsSection data={data} />
+
               <section className="rounded-md border bg-card p-4" aria-labelledby="proj-buildings-h">
                 <h2 id="proj-buildings-h" className="text-sm font-semibold">
                   {t('buildingsSection')}
@@ -422,5 +429,94 @@ function TabEmptyCta({
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * P3 create-form enrichment (migration 0062) — read-only renewal details
+ * panel on the project dashboard tab. Renders only the fields that are
+ * present; if none are, renders nothing (pre-feature / minimal projects stay
+ * clean). User-authored free text rides through `<NameDisplay>` (bidi
+ * spoofing defence). Relocation enum + units-ratio formatting via i18n.
+ */
+function RenewalDetailsSection({ data }: { data: ProjectViewModel }) {
+  // Dotted namespaces (skipped by the i18n-key-coverage scanner, like the
+  // wizard's tw/tk aliases). The alias name MUST NOT be `t` — a `t` binding
+  // would collide with the page-level `useTranslations('projects')` alias and
+  // mis-resolve these keys to `projects.<key>` in the static scanner.
+  const trd = useTranslations('projects.renewalDetail');
+  const trel = useTranslations('projects.relocation');
+
+  const hasDeveloper = data.developerName !== null || data.developerCompanyId !== null;
+  const hasTmura =
+    data.existingUnits !== null || data.plannedUnits !== null || data.extraAreaSqm !== null;
+  const hasRelocation = data.relocationType !== null || data.relocationNotes !== null;
+  const hasParcel = data.block !== null || data.parcel !== null || data.subparcel !== null;
+
+  if (!hasDeveloper && !hasTmura && !hasRelocation && !hasParcel) return null;
+
+  return (
+    <section className="rounded-md border bg-card p-4" aria-labelledby="proj-renewal-h">
+      <h2 id="proj-renewal-h" className="text-sm font-semibold">
+        {trd('sectionTitle')}
+      </h2>
+      <dl className="mt-2 grid grid-cols-[140px_1fr] gap-y-1.5 text-sm">
+        {hasDeveloper && (
+          <>
+            <dt style={{ color: 'var(--text-muted)' }}>{trd('developer')}</dt>
+            <dd>
+              {data.developerName ? <NameDisplay name={data.developerName} /> : '—'}
+              {data.developerCompanyId && (
+                <span className="tabular ms-2" dir="ltr" style={{ color: 'var(--text-muted)' }}>
+                  ({trd('developerCompanyId')} <NameDisplay name={data.developerCompanyId} />)
+                </span>
+              )}
+            </dd>
+          </>
+        )}
+        {hasTmura && (
+          <>
+            <dt style={{ color: 'var(--text-muted)' }}>{trd('tmura')}</dt>
+            <dd>
+              {(data.existingUnits !== null || data.plannedUnits !== null) && (
+                <span className="tabular" dir="ltr">
+                  {trd('unitsRatio', {
+                    existing: data.existingUnits ?? '—',
+                    planned: data.plannedUnits ?? '—',
+                  })}
+                </span>
+              )}
+              {data.extraAreaSqm !== null && (
+                <span className="ms-2" style={{ color: 'var(--text-muted)' }}>
+                  {trd('extraArea', { area: data.extraAreaSqm })}
+                </span>
+              )}
+            </dd>
+          </>
+        )}
+        {hasRelocation && (
+          <>
+            <dt style={{ color: 'var(--text-muted)' }}>{trd('relocation')}</dt>
+            <dd>
+              {data.relocationType ? trel(data.relocationType) : trel('unspecified')}
+              {data.relocationNotes && (
+                <span className="ms-2" style={{ color: 'var(--text-muted)' }}>
+                  <NameDisplay name={data.relocationNotes} />
+                </span>
+              )}
+            </dd>
+          </>
+        )}
+        {hasParcel && (
+          <>
+            <dt style={{ color: 'var(--text-muted)' }}>{trd('parcel')}</dt>
+            <dd className="tabular" dir="ltr">
+              {trd('parcelValue', { block: data.block ?? '—', parcel: data.parcel ?? '—' })}
+              {data.subparcel && trd('subparcelSuffix', { subparcel: data.subparcel })}
+            </dd>
+          </>
+        )}
+      </dl>
+    </section>
   );
 }

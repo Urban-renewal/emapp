@@ -279,6 +279,24 @@
         "unitCount": "יחידות"
       },
       "minimalCreateHint": "כדי ליצור פרויקט מספיק שם וסוג. כל יתר הפרטים — בניינים, אגפים ויחידות — אפשר להוסיף בכל שלב מאוחר יותר.",
+      "renewal": {
+        "sectionTitle": "פרטי התחדשות (אופציונלי)",
+        "sectionHint": "פרטי היזם, התמורה, הפינוי והרישום (גוש-חלקה). כל השדות אופציונליים וניתן להשלים אותם מאוחר יותר.",
+        "typeLabel": "שם מסלול (למסלול אחר)",
+        "typeLabelHint": "כאשר הסוג הוא \"מסלול אחר\" — שם המסלול החופשי (למשל חלופת שקד).",
+        "developerName": "יזם / קבלן מבצע",
+        "developerCompanyId": "ח.פ. היזם",
+        "existingUnits": "יח״ד קיימות",
+        "plannedUnits": "יח״ד מתוכננות",
+        "extraAreaSqm": "תוספת שטח (מ\"ר)",
+        "tmuraHint": "בסיס התמורה לבעלים — מספר היחידות הקיים מול המתוכנן (ההרחבה) ותוספת השטח.",
+        "relocationType": "הסדר פינוי",
+        "relocationNotes": "הערות פינוי",
+        "block": "גוש",
+        "parcel": "חלקה",
+        "subparcel": "תת-חלקה",
+        "parcelHint": "זיהוי הרישום הראשי של מתחם הפרויקט (גוש-חלקה)."
+      },
       "section": {
         "kind": "סוג שימוש",
         "kindResidential": "מגורים",
@@ -328,7 +346,28 @@
     "types": {
       "tama38_1": "תמ\"א 38/1",
       "tama38_2": "תמ\"א 38/2",
-      "pinui_binui": "פינוי-בינוי"
+      "pinui_binui": "פינוי-בינוי",
+      "other": "מסלול אחר"
+    },
+    "relocation": {
+      "label": "הסדר פינוי",
+      "none": "ללא פינוי",
+      "rent_comp": "דמי שכירות",
+      "alt_housing": "דיור חלופי",
+      "unspecified": "לא צוין"
+    },
+    "renewalDetail": {
+      "sectionTitle": "פרטי התחדשות",
+      "developer": "יזם",
+      "developerCompanyId": "ח.פ.",
+      "tmura": "תמורה",
+      "unitsRatio": "{existing} ← {planned} יח״ד",
+      "extraArea": "תוספת שטח: {area} מ\"ר",
+      "relocation": "פינוי",
+      "parcel": "גוש-חלקה",
+      "parcelValue": "גוש {block} / חלקה {parcel}",
+      "subparcelSuffix": " / תת-חלקה {subparcel}",
+      "empty": "טרם הוזנו פרטי התחדשות."
     }
   },
   "imports": {

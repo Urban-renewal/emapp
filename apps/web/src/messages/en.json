@@ -279,6 +279,24 @@
         "unitCount": "Units"
       },
       "minimalCreateHint": "A name and a type are all you need to create a project. Everything else — buildings, sections and units — can be added later, at any time.",
+      "renewal": {
+        "sectionTitle": "Renewal details (optional)",
+        "sectionHint": "Developer, compensation, relocation and land registration (block-parcel). All fields are optional and can be completed later.",
+        "typeLabel": "Track name (for 'Other')",
+        "typeLabelHint": "When the type is 'Other' — the free-text track name (e.g. the Shaked alternative).",
+        "developerName": "Developer / executing contractor",
+        "developerCompanyId": "Developer company ID",
+        "existingUnits": "Existing units",
+        "plannedUnits": "Planned units",
+        "extraAreaSqm": "Extra area (sqm)",
+        "tmuraHint": "Owner-compensation basics — existing vs planned unit counts (the expansion) and the extra area.",
+        "relocationType": "Relocation arrangement",
+        "relocationNotes": "Relocation notes",
+        "block": "Block",
+        "parcel": "Parcel",
+        "subparcel": "Sub-parcel",
+        "parcelHint": "The project site's lead land registration (block-parcel)."
+      },
       "section": {
         "kind": "Usage",
         "kindResidential": "Residential",
@@ -328,7 +346,28 @@
     "types": {
       "tama38_1": "Tama 38/1",
       "tama38_2": "Tama 38/2",
-      "pinui_binui": "Pinuy-Binuy"
+      "pinui_binui": "Pinuy-Binuy",
+      "other": "Other track"
+    },
+    "relocation": {
+      "label": "Relocation arrangement",
+      "none": "No relocation",
+      "rent_comp": "Rent compensation",
+      "alt_housing": "Alternative housing",
+      "unspecified": "Unspecified"
+    },
+    "renewalDetail": {
+      "sectionTitle": "Renewal details",
+      "developer": "Developer",
+      "developerCompanyId": "Company ID",
+      "tmura": "Compensation",
+      "unitsRatio": "{existing} → {planned} units",
+      "extraArea": "Extra area: {area} sqm",
+      "relocation": "Relocation",
+      "parcel": "Block-Parcel",
+      "parcelValue": "Block {block} / Parcel {parcel}",
+      "subparcelSuffix": " / Sub-parcel {subparcel}",
+      "empty": "No renewal details entered yet."
     }
   },
   "imports": {

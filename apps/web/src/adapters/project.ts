@@ -20,6 +20,9 @@ const TYPE_LABELS: Record<ProjectType, string> = {
   tama38_1: 'תמ"א 38/1',
   tama38_2: 'תמ"א 38/2',
   pinui_binui: 'פינוי-בינוי',
+  // 'other' (migration 0062) — a future renewal track; the human name lives in
+  // `typeLabel`. This generic fallback is shown only if typeLabel is null.
+  other: 'מסלול אחר',
 };
 
 // D.18: planning | gathering_signatures | approved | in_construction | completed | cancelled
@@ -53,7 +56,10 @@ export function toProjectViewModel(
     // <option dir="auto"> on the imports/new page (project picker).
     name: stripBidiOverrides(p.name),
     type: p.type,
-    typeLabel: TYPE_LABELS[p.type],
+    // For a future-track ('other') project, prefer the manager-authored
+    // free-text label (bidi-stripped) over the generic fallback.
+    typeLabel:
+      p.type === 'other' && p.typeLabel ? stripBidiOverrides(p.typeLabel) : TYPE_LABELS[p.type],
     status: p.status,
     statusLabel: STATUS_LABELS[p.status],
     statusColor: STATUS_COLORS[p.status],
@@ -66,6 +72,20 @@ export function toProjectViewModel(
       m.label ? { ...m, label: stripBidiOverrides(m.label) } : m,
     ),
     description: p.description ? stripBidiOverrides(p.description) : null,
+    // P3 create-form enrichment (migration 0062). Free-text fields are
+    // bidi-stripped (§SEC-M4 / RTL-spoofing defence) like every other
+    // user-authored string; numeric/enum fields pass through verbatim.
+    developerName: p.developerName ? stripBidiOverrides(p.developerName) : null,
+    developerCompanyId: p.developerCompanyId ? stripBidiOverrides(p.developerCompanyId) : null,
+    existingUnits: p.existingUnits ?? null,
+    plannedUnits: p.plannedUnits ?? null,
+    extraAreaSqm: p.extraAreaSqm ?? null,
+    relocationType: p.relocationType ?? null,
+    relocationNotes: p.relocationNotes ? stripBidiOverrides(p.relocationNotes) : null,
+    futureTrackLabel: p.typeLabel ? stripBidiOverrides(p.typeLabel) : null,
+    block: p.block ? stripBidiOverrides(p.block) : null,
+    parcel: p.parcel ? stripBidiOverrides(p.parcel) : null,
+    subparcel: p.subparcel ? stripBidiOverrides(p.subparcel) : null,
     isArchived: p.archivedAt !== null,
     createdRelative: formatRelative(p.createdAt, locale),
     createdAtIso: p.createdAt instanceof Date ? p.createdAt.toISOString() : String(p.createdAt),

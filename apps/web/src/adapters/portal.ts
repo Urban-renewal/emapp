@@ -65,12 +65,15 @@ const PROJECT_TYPE_HE: Record<ProjectType, string> = {
   tama38_1: 'תמ"א 38/1',
   tama38_2: 'תמ"א 38/2',
   pinui_binui: 'פינוי-בינוי',
+  // 'other' (migration 0062) — future renewal track; generic fallback label.
+  other: 'מסלול אחר',
 };
 
 const PROJECT_TYPE_EN: Record<ProjectType, string> = {
   tama38_1: 'TAMA 38/1',
   tama38_2: 'TAMA 38/2',
   pinui_binui: 'Pinui-Binui',
+  other: 'Other track',
 };
 
 const PROJECT_STATUS_HE: Record<ProjectStatus, string> = {

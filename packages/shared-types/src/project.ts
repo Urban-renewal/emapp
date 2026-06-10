@@ -10,9 +10,30 @@ import { z } from 'zod';
 // enrichment (stats depend on Phase 5 signatures). This schema reflects
 // the REAL locked columns; no schema deviation (PROGRESS / doc-debt).
 
-/** Project type (urban-renewal track). Matches `project_type` pg enum. */
-export const ProjectTypeEnum = z.enum(['tama38_1', 'tama38_2', 'pinui_binui']);
+/**
+ * Project type (urban-renewal track). Matches `project_type` pg enum.
+ *
+ * `'other'` is an ADDITIVE forward-compat value (migration 0062) so FUTURE
+ * renewal tracks (e.g. the post-2026 תמ"א-sunset successor / חלופת שקד) can be
+ * represented without editing the three legacy values. When a project is
+ * `'other'`, the human track name lives in the nullable `typeLabel` field.
+ * NOTE: this is the project TYPE enum — the LOCKED D.18 `ProjectStatusEnum`
+ * below is intentionally NOT extended.
+ */
+export const ProjectTypeEnum = z.enum(['tama38_1', 'tama38_2', 'pinui_binui', 'other']);
 export type ProjectType = z.infer<typeof ProjectTypeEnum>;
+
+/**
+ * Relocation arrangement (פינוי) for demolish-rebuild tracks — residents
+ * vacate during construction. Closed set, enforced by a DB CHECK (migration
+ * 0062) AND here at the API edge:
+ *  - none        — no relocation (e.g. strengthening / חיזוק, owners stay);
+ *  - rent_comp   — developer pays rent compensation (דמי שכירות) for alt housing;
+ *  - alt_housing — developer provides alternative housing (דיור חלופי).
+ * The field is OPTIONAL/nullable everywhere — unspecified is valid.
+ */
+export const RelocationTypeEnum = z.enum(['none', 'rent_comp', 'alt_housing']);
+export type RelocationType = z.infer<typeof RelocationTypeEnum>;
 
 /**
  * Default owner-CONSENT threshold (%) per urban-renewal track — the legal
@@ -42,6 +63,11 @@ export const PROJECT_TYPE_DEFAULT_CONSENT_PCT: Record<ProjectType, number> = {
   tama38_1: 66,
   tama38_2: 66,
   pinui_binui: 66,
+  // 'other' (migration 0062) — a future renewal track whose statutory majority
+  // is not yet known. Default to the harmonised two-thirds (66%); a manager
+  // overrides per project. Keeping a concrete default (not null) preserves the
+  // "type is functional" invariant the rest of this file documents.
+  other: 66,
 };
 
 /**
@@ -119,6 +145,61 @@ export const ProjectSchema = z.object({
   // tolerant of OMISSION (write-response shape / a BE that drops null keys) —
   // normalised to null so consumers always get `null | SignatureMilestone[]`.
   signatureMilestones: SignatureMilestonesSchema.nullish().transform((v) => v ?? null),
+  // ── P3 create-form enrichment (migration 0062) — all nullable on read; ──
+  // pre-feature rows read back as null. `.nullish().transform` tolerates a
+  // BE that drops null keys on the write-response shape.
+  developerName: z
+    .string()
+    .max(200)
+    .nullish()
+    .transform((v) => v ?? null),
+  developerCompanyId: z
+    .string()
+    .max(40)
+    .nullish()
+    .transform((v) => v ?? null),
+  existingUnits: z
+    .number()
+    .int()
+    .nonnegative()
+    .nullish()
+    .transform((v) => v ?? null),
+  plannedUnits: z
+    .number()
+    .int()
+    .nonnegative()
+    .nullish()
+    .transform((v) => v ?? null),
+  extraAreaSqm: z
+    .number()
+    .nullish()
+    .transform((v) => v ?? null),
+  relocationType: RelocationTypeEnum.nullish().transform((v) => v ?? null),
+  relocationNotes: z
+    .string()
+    .max(2000)
+    .nullish()
+    .transform((v) => v ?? null),
+  typeLabel: z
+    .string()
+    .max(120)
+    .nullish()
+    .transform((v) => v ?? null),
+  block: z
+    .string()
+    .max(40)
+    .nullish()
+    .transform((v) => v ?? null),
+  parcel: z
+    .string()
+    .max(40)
+    .nullish()
+    .transform((v) => v ?? null),
+  subparcel: z
+    .string()
+    .max(40)
+    .nullish()
+    .transform((v) => v ?? null),
   startedAt: z.coerce.date().nullable(),
   createdBy: z.string().uuid(),
   createdAt: z.coerce.date(),
@@ -173,6 +254,20 @@ const projectWriteShape = {
   // "every pct <= targetSignaturePct" is enforced by `refineMilestonesVsTarget`
   // on the assembled body below (it needs both fields in scope).
   signatureMilestones: SignatureMilestonesSchema.nullable().optional(),
+  // ── P3 create-form enrichment (migration 0062) — every field OPTIONAL + ──
+  // nullable so a create/update can set, clear (null), or omit it. Zero
+  // breakage to existing create flows that send none of them.
+  developerName: z.string().max(200).nullable().optional(),
+  developerCompanyId: z.string().max(40).nullable().optional(),
+  existingUnits: z.number().int().nonnegative().max(100000).nullable().optional(),
+  plannedUnits: z.number().int().nonnegative().max(100000).nullable().optional(),
+  extraAreaSqm: z.number().nonnegative().max(10000000).nullable().optional(),
+  relocationType: RelocationTypeEnum.nullable().optional(),
+  relocationNotes: z.string().max(2000).nullable().optional(),
+  typeLabel: z.string().max(120).nullable().optional(),
+  block: z.string().max(40).nullable().optional(),
+  parcel: z.string().max(40).nullable().optional(),
+  subparcel: z.string().max(40).nullable().optional(),
   startedAt: z.coerce.date().nullable().optional(),
 } as const;
 

@@ -386,6 +386,13 @@
 			"when": 1781362800000,
 			"tag": "0054_manager_member_admin",
 			"breakpoints": true
+		},
+		{
+			"idx": 62,
+			"version": "7",
+			"when": 1781967600000,
+			"tag": "0062_project_renewal_fields",
+			"breakpoints": true
 		}
 	]
 }

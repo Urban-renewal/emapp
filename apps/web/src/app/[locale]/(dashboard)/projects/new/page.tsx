@@ -6,6 +6,7 @@ import {
   type ApartmentUnitType,
   type CreateProject,
   type ProjectType,
+  type RelocationType,
   type SectionKind,
 } from '@emapp/shared-types';
 import { ArrowLeft, ArrowRight, Building2, Plus, Trash2 } from 'lucide-react';
@@ -50,8 +51,19 @@ import { ApiClientError } from '@/lib/api/errors';
  * disclosure only.
  */
 
-const PROJECT_TYPES: ReadonlyArray<ProjectType> = ['tama38_1', 'tama38_2', 'pinui_binui'];
+const PROJECT_TYPES: ReadonlyArray<ProjectType> = ['tama38_1', 'tama38_2', 'pinui_binui', 'other'];
 const SECTION_KINDS: ReadonlyArray<SectionKind> = ['residential', 'office', 'retail', 'mixed'];
+const RELOCATION_TYPES: ReadonlyArray<RelocationType> = ['none', 'rent_comp', 'alt_housing'];
+
+/**
+ * Demolish-rebuild tracks where residents vacate during construction, so the
+ * relocation (פינוי) arrangement is relevant. Strengthening (tama38_1) keeps
+ * residents in place → relocation field is hidden. 'other' is unknown → shown
+ * (forward-compat: a future demolish-rebuild successor track may need it).
+ */
+function isRelocationRelevant(type: ProjectType): boolean {
+  return type === 'tama38_2' || type === 'pinui_binui' || type === 'other';
+}
 
 /**
  * Type-aware structure rules (FE-only progressive disclosure; the BE contract
@@ -66,6 +78,8 @@ const MAX_BUILDINGS_BY_TYPE: Record<ProjectType, number> = {
   tama38_1: 1,
   tama38_2: 2,
   pinui_binui: 20,
+  // 'other' is a forward-compat track of unknown topology — allow the full cap.
+  other: 20,
 };
 
 /** BE contract cap — `CreateProjectBuildingInput.sections` is `.max(20)`. */
@@ -144,6 +158,19 @@ interface WizardState {
   // Owner-approved staged overlay (Gate-6, Option A): ordered intermediate
   // signature targets under the legal consent gate.
   milestones: WizardMilestone[];
+  // P3 create-form enrichment (migration 0062). All optional; controlled
+  // strings so empty fields are representable and coerced/stripped on submit.
+  typeLabel: string;
+  developerName: string;
+  developerCompanyId: string;
+  existingUnits: string;
+  plannedUnits: string;
+  extraAreaSqm: string;
+  relocationType: '' | RelocationType;
+  relocationNotes: string;
+  block: string;
+  parcel: string;
+  subparcel: string;
   buildings: WizardBuilding[];
 }
 
@@ -185,6 +212,22 @@ function toCreateInput(s: WizardState): CreateProject {
     .filter((m) => Number.isInteger(m.pct) && m.pct > 0)
     .sort((a, b) => a.pct - b.pct)
     .map((m) => (m.label ? { pct: m.pct, label: m.label } : { pct: m.pct }));
+  // P3 enrichment (migration 0062). Empty strings → undefined so the BE
+  // `.strict()` validation sees no noise; numbers coerced only when finite.
+  // relocationType rides along ONLY for demolish-rebuild tracks (residents
+  // vacate); strengthening keeps residents in place so the field is dropped.
+  const intOrUndef = (v: string): number | undefined => {
+    const t2 = v.trim();
+    if (t2 === '') return undefined;
+    const n = Number(t2);
+    return Number.isInteger(n) && n >= 0 ? n : undefined;
+  };
+  const numOrUndef = (v: string): number | undefined => {
+    const t2 = v.trim();
+    if (t2 === '') return undefined;
+    const n = Number(t2);
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  };
   const base: CreateProject = {
     name: s.name.trim(),
     type: s.type,
@@ -192,6 +235,28 @@ function toCreateInput(s: WizardState): CreateProject {
     targetSignaturePct:
       consentNum !== undefined && Number.isFinite(consentNum) ? consentNum : undefined,
     ...(milestones.length ? { signatureMilestones: milestones } : {}),
+    // type_label only meaningful for the 'other' future track.
+    ...(s.type === 'other' && s.typeLabel.trim() ? { typeLabel: s.typeLabel.trim() } : {}),
+    ...(s.developerName.trim() ? { developerName: s.developerName.trim() } : {}),
+    ...(s.developerCompanyId.trim() ? { developerCompanyId: s.developerCompanyId.trim() } : {}),
+    ...(intOrUndef(s.existingUnits) !== undefined
+      ? { existingUnits: intOrUndef(s.existingUnits) }
+      : {}),
+    ...(intOrUndef(s.plannedUnits) !== undefined
+      ? { plannedUnits: intOrUndef(s.plannedUnits) }
+      : {}),
+    ...(numOrUndef(s.extraAreaSqm) !== undefined
+      ? { extraAreaSqm: numOrUndef(s.extraAreaSqm) }
+      : {}),
+    ...(isRelocationRelevant(s.type) && s.relocationType !== ''
+      ? { relocationType: s.relocationType }
+      : {}),
+    ...(isRelocationRelevant(s.type) && s.relocationNotes.trim()
+      ? { relocationNotes: s.relocationNotes.trim() }
+      : {}),
+    ...(s.block.trim() ? { block: s.block.trim() } : {}),
+    ...(s.parcel.trim() ? { parcel: s.parcel.trim() } : {}),
+    ...(s.subparcel.trim() ? { subparcel: s.subparcel.trim() } : {}),
   };
   const buildings = s.buildings
     .filter((b) => b.address.trim() && b.city.trim())
@@ -221,6 +286,9 @@ export default function NewProjectPage() {
   const tw = useTranslations('projects.wizard');
   const tt = useTranslations('projects.types');
   const tk = useTranslations('projects.wizard.section');
+  // P3 enrichment field labels (migration 0062) + relocation enum labels.
+  const tr = useTranslations('projects.wizard.renewal');
+  const trel = useTranslations('projects.relocation');
   // Reuse the canonical apartment unit-type labels for the derived
   // section→unit_type tag (residential→apt, office→office, retail→shop, …).
   const tu = useTranslations('apartments.unitType');
@@ -235,6 +303,17 @@ export default function NewProjectPage() {
     consentPct: String(PROJECT_TYPE_DEFAULT_CONSENT_PCT.tama38_2),
     consentTouched: false,
     milestones: [],
+    typeLabel: '',
+    developerName: '',
+    developerCompanyId: '',
+    existingUnits: '',
+    plannedUnits: '',
+    extraAreaSqm: '',
+    relocationType: '',
+    relocationNotes: '',
+    block: '',
+    parcel: '',
+    subparcel: '',
     buildings: [],
   });
   const [stepError, setStepError] = useState<string | null>(null);
@@ -719,6 +798,221 @@ export default function NewProjectPage() {
                 onChange={(e) => setState((s) => ({ ...s, description: e.target.value }))}
               />
             </div>
+
+            {/* P3 create-form enrichment (migration 0062) — optional renewal
+                details: developer (יזם), תמורה ratio, relocation (פינוי,
+                demolish-rebuild only) and parcel provenance (גוש-חלקה). All
+                additive + optional; collapsed into one labelled section so the
+                minimal name+type create stays unchanged. */}
+            <fieldset
+              className="flex flex-col gap-3 rounded-md border p-3"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              <legend className="px-1 text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                {tr('sectionTitle')}
+              </legend>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {tr('sectionHint')}
+              </p>
+
+              {/* Future-track free-text label — only for the 'other' type. */}
+              {state.type === 'other' && (
+                <div>
+                  <label htmlFor="typeLabel" className="label">
+                    {tr('typeLabel')}
+                  </label>
+                  <input
+                    id="typeLabel"
+                    type="text"
+                    className="input"
+                    maxLength={120}
+                    value={state.typeLabel}
+                    onChange={(e) => setState((s) => ({ ...s, typeLabel: e.target.value }))}
+                  />
+                  <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                    {tr('typeLabelHint')}
+                  </p>
+                </div>
+              )}
+
+              {/* Developer (יזם) */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="developerName" className="label">
+                    {tr('developerName')}
+                  </label>
+                  <input
+                    id="developerName"
+                    type="text"
+                    className="input"
+                    maxLength={200}
+                    value={state.developerName}
+                    onChange={(e) => setState((s) => ({ ...s, developerName: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="developerCompanyId" className="label">
+                    {tr('developerCompanyId')}
+                  </label>
+                  <input
+                    id="developerCompanyId"
+                    type="text"
+                    className="input tabular"
+                    dir="ltr"
+                    maxLength={40}
+                    value={state.developerCompanyId}
+                    onChange={(e) =>
+                      setState((s) => ({ ...s, developerCompanyId: e.target.value }))
+                    }
+                  />
+                </div>
+              </div>
+
+              {/* תמורה ratio */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div>
+                  <label htmlFor="existingUnits" className="label">
+                    {tr('existingUnits')}
+                  </label>
+                  <input
+                    id="existingUnits"
+                    type="number"
+                    min={0}
+                    max={100000}
+                    inputMode="numeric"
+                    className="input tabular"
+                    dir="ltr"
+                    value={state.existingUnits}
+                    onChange={(e) => setState((s) => ({ ...s, existingUnits: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="plannedUnits" className="label">
+                    {tr('plannedUnits')}
+                  </label>
+                  <input
+                    id="plannedUnits"
+                    type="number"
+                    min={0}
+                    max={100000}
+                    inputMode="numeric"
+                    className="input tabular"
+                    dir="ltr"
+                    value={state.plannedUnits}
+                    onChange={(e) => setState((s) => ({ ...s, plannedUnits: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="extraAreaSqm" className="label">
+                    {tr('extraAreaSqm')}
+                  </label>
+                  <input
+                    id="extraAreaSqm"
+                    type="number"
+                    min={0}
+                    inputMode="decimal"
+                    className="input tabular"
+                    dir="ltr"
+                    value={state.extraAreaSqm}
+                    onChange={(e) => setState((s) => ({ ...s, extraAreaSqm: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {tr('tmuraHint')}
+              </p>
+
+              {/* Relocation (פינוי) — demolish-rebuild tracks only. */}
+              {isRelocationRelevant(state.type) && (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="relocationType" className="label">
+                      {tr('relocationType')}
+                    </label>
+                    <select
+                      id="relocationType"
+                      className="input"
+                      value={state.relocationType}
+                      onChange={(e) =>
+                        setState((s) => ({
+                          ...s,
+                          relocationType: e.target.value as '' | RelocationType,
+                        }))
+                      }
+                    >
+                      <option value="">{trel('unspecified')}</option>
+                      {RELOCATION_TYPES.map((rt) => (
+                        <option key={rt} value={rt}>
+                          {trel(rt)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="relocationNotes" className="label">
+                      {tr('relocationNotes')}
+                    </label>
+                    <input
+                      id="relocationNotes"
+                      type="text"
+                      className="input"
+                      maxLength={2000}
+                      value={state.relocationNotes}
+                      onChange={(e) => setState((s) => ({ ...s, relocationNotes: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Parcel provenance (גוש-חלקה) */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div>
+                  <label htmlFor="block" className="label">
+                    {tr('block')}
+                  </label>
+                  <input
+                    id="block"
+                    type="text"
+                    className="input tabular"
+                    dir="ltr"
+                    maxLength={40}
+                    value={state.block}
+                    onChange={(e) => setState((s) => ({ ...s, block: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="parcel" className="label">
+                    {tr('parcel')}
+                  </label>
+                  <input
+                    id="parcel"
+                    type="text"
+                    className="input tabular"
+                    dir="ltr"
+                    maxLength={40}
+                    value={state.parcel}
+                    onChange={(e) => setState((s) => ({ ...s, parcel: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="subparcel" className="label">
+                    {tr('subparcel')}
+                  </label>
+                  <input
+                    id="subparcel"
+                    type="text"
+                    className="input tabular"
+                    dir="ltr"
+                    maxLength={40}
+                    value={state.subparcel}
+                    onChange={(e) => setState((s) => ({ ...s, subparcel: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {tr('parcelHint')}
+              </p>
+            </fieldset>
           </>
         )}
 
@@ -1015,6 +1309,48 @@ export default function NewProjectPage() {
                     <dt style={{ color: 'var(--text-muted)' }}>{tw('consentTarget')}</dt>
                     <dd className="tabular" dir="ltr">
                       {state.consentPct}%
+                    </dd>
+                  </>
+                )}
+                {state.type === 'other' && state.typeLabel.trim() && (
+                  <>
+                    <dt style={{ color: 'var(--text-muted)' }}>{tr('typeLabel')}</dt>
+                    <dd>{state.typeLabel.trim()}</dd>
+                  </>
+                )}
+                {state.developerName.trim() && (
+                  <>
+                    <dt style={{ color: 'var(--text-muted)' }}>{tr('developerName')}</dt>
+                    <dd>
+                      {state.developerName.trim()}
+                      {state.developerCompanyId.trim() && (
+                        <span className="tabular ms-2" dir="ltr">
+                          ({state.developerCompanyId.trim()})
+                        </span>
+                      )}
+                    </dd>
+                  </>
+                )}
+                {(state.existingUnits.trim() || state.plannedUnits.trim()) && (
+                  <>
+                    <dt style={{ color: 'var(--text-muted)' }}>{tr('existingUnits')}</dt>
+                    <dd className="tabular" dir="ltr">
+                      {state.existingUnits.trim() || '—'} → {state.plannedUnits.trim() || '—'}
+                    </dd>
+                  </>
+                )}
+                {isRelocationRelevant(state.type) && state.relocationType !== '' && (
+                  <>
+                    <dt style={{ color: 'var(--text-muted)' }}>{tr('relocationType')}</dt>
+                    <dd>{trel(state.relocationType)}</dd>
+                  </>
+                )}
+                {(state.block.trim() || state.parcel.trim() || state.subparcel.trim()) && (
+                  <>
+                    <dt style={{ color: 'var(--text-muted)' }}>{tw('field.block')}</dt>
+                    <dd className="tabular" dir="ltr">
+                      {state.block.trim() || '—'} / {state.parcel.trim() || '—'}
+                      {state.subparcel.trim() && ` / ${state.subparcel.trim()}`}
                     </dd>
                   </>
                 )}

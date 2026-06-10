@@ -12,6 +12,8 @@ import {
 import {
   RelationshipSchema,
   SetOwnershipsInput,
+  deriveShareFraction,
+  fractionToPct,
   type ApartmentOwner,
   type Ownership,
   type SetOwnerships,
@@ -47,6 +49,9 @@ function toOwnership(r: typeof ownerships.$inferSelect): Ownership {
     apartmentId: r.apartmentId,
     ownerId: r.ownerId,
     ownershipPct: Number(r.ownershipPct),
+    // S3b — surface the EXACT share fraction alongside the compat percent.
+    shareNumerator: Number(r.shareNumerator),
+    shareDenominator: Number(r.shareDenominator),
     // Feature A (D.25): owner vs renter. The DB column is `text` (CHECK
     // ('owner','renter')) so we narrow it through the shared-types enum —
     // the single source of truth for the closed set — rather than a bare
@@ -295,17 +300,27 @@ export class OwnershipsService {
             created = await tx
               .insert(ownerships)
               .values(
-                input.owners.map((o) => ({
-                  apartmentId,
-                  ownerId: o.ownerId,
-                  ownershipPct: String(o.ownershipPct),
-                  // Feature A (D.25) — persist owner/renter per row. The atomic
-                  // end-all + insert-new invariant is UNCHANGED; the row simply
-                  // carries `relationship` now. The DB trigger sums only
-                  // 'owner' rows; renters (pct 0) ride along, excluded.
-                  relationship: o.relationship,
-                  role: o.role ?? null,
-                })),
+                input.owners.map((o) => {
+                  // S3b — derive-on-write: prefer an explicit fraction, else
+                  // derive num/den from pct. ALWAYS recompute ownership_pct from
+                  // the canonical fraction so the compat percent stays consistent
+                  // (round(num/den*100, 2)). The DB sum trigger validates the
+                  // EXACT fraction sum = 1 over owner rows.
+                  const { numerator, denominator } = deriveShareFraction(o);
+                  return {
+                    apartmentId,
+                    ownerId: o.ownerId,
+                    ownershipPct: String(fractionToPct(numerator, denominator)),
+                    shareNumerator: numerator,
+                    shareDenominator: denominator,
+                    // Feature A (D.25) — persist owner/renter per row. The atomic
+                    // end-all + insert-new invariant is UNCHANGED; the row simply
+                    // carries `relationship` now. The DB trigger sums only
+                    // 'owner' rows; renters (pct 0) ride along, excluded.
+                    relationship: o.relationship,
+                    role: o.role ?? null,
+                  };
+                }),
               )
               .returning();
           }
@@ -342,7 +357,15 @@ function isOwnershipSumRaise(e: unknown): boolean {
   let depth = 0;
   while (cur && depth < 6) {
     const m = (cur as { message?: string }).message;
-    if (typeof m === 'string' && m.includes('Sum of ownership percentages must equal 100')) {
+    // S3b — the sum trigger now raises on the FRACTION invariant
+    // ("Sum of ownership shares must equal the whole (1) …"). The legacy
+    // percent message ("…percentages must equal 100") is gone, but we keep
+    // matching it too for back-compat with any not-yet-migrated environment.
+    if (
+      typeof m === 'string' &&
+      (m.includes('Sum of ownership shares must equal the whole') ||
+        m.includes('Sum of ownership percentages must equal 100'))
+    ) {
       return true;
     }
     cur = (cur as { cause?: unknown }).cause;

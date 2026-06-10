@@ -172,8 +172,34 @@ ownership table. Rework: a renter becomes a discovery-record/occupant on the apa
   (a renter must never be a signature recipient). SPEC carefully; test-author BEFORE builder; FULL-suite
   ripple check (lesson from 3b); reviews; browser-QA; merge-on-green.
 
+Grounded: `ownerships.relationship` ∈ ('owner','renter') (0051); renters = pct-0/0-10000 rows excluded
+from sum + signatures. `resolveRenterOnly` (signature-requests.service.ts:164) excludes renter-only
+owners as recipients — design §2 calls this overload "the confusion to be dismantled". Design §6:
+apartment ← discovery-record [status enum · free-text notes · DEFERRED audio]. Status enum:
+`not_visited`/`no_answer`/`spoke_to_occupant`/`owner_identified`/`refused`. DEFERRED slots (NOT built):
+`recording_ref`+`transcript`.
+
+**SPEC (my recommendation; owner reviews at end):**
+
+- New table **`discovery_records`** (apartment-attached): id, org_id, apartment_id FK(cascade), status
+  text CHECK 5-enum (default `not_visited`), notes text NULL (free-text; MAY hold third-party names →
+  security decides encrypt-vs-plain; keep out of logs), recording_ref/transcript text NULL (DEFERRED,
+  never populated), created_by, created/updated/archived_at. RLS via apartment→building→project→org.
+- **Migration** (`when` > 1782313200000): create table + RLS + indexes; MIGRATE existing
+  `relationship='renter'` ownership rows → a discovery_records row (status `spoke_to_occupant`) on the
+  same apartment, then DELETE those renter ownership rows. After: every ownerships row is an owner.
+- **`resolveRenterOnly` rework**: occupants now live in discovery_records, NOT owners → structurally can
+  never be a signature recipient. Simplify/retire resolveRenterOnly (returns ∅) as a defensive no-op;
+  do NOT weaken the Slice-1 #2 recipient association gate.
+- **Endpoints+DTO**: CRUD discovery records under an apartment (POST/GET/PATCH status+notes).
+- **FE**: minimal discovery surface (status select + notes) on the apartment, or fast-follow.
+
+Pipeline: test-author BEFORE builder (RED: discovery-record create + occupant-never-recipient + renter
+rows migrate). FULL-suite ripple check (touches signatures + ownerships + owner-renter.spec). Reviews
+(security: PII-in-notes + recipient guard). browser-QA. merge-on-green. Regen api-docs.
+
 | Gate                                                                                                                                          | Status |
 | --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Spec ⏳ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |
+| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |
 
 Rule: any real-red → slice stays OPEN with the blocker named here; never force-merge.

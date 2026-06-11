@@ -7,6 +7,9 @@ export * from './building';
 export * from './apartment';
 export * from './owner';
 export * from './ownership';
+// S3c — discovery_records ("renter → discovery-source"). Apartment-attached
+// discovery source (occupant), replacing the retired ownerships 'renter'.
+export * from './discovery-record';
 // P0.C1 — data-subject rights (access export + erasure / right-to-be-forgotten).
 export * from './data-subject';
 export * from './contractor';

@@ -142,37 +142,26 @@ export class SignatureRequestsService {
     return row;
   }
 
-  /** Feature A (D.25) — the RENTER SIGNATURE GATE (the load-bearing guarantee).
+  /** S3c ("renter → discovery-source") — the renter SIGNATURE GATE is now a
+   *  DEFENSIVE NO-OP (always returns ∅).
    *
-   *  A renter never signs. This is the ONLY server-side chokepoint where an
-   *  apartment's people are resolved into the owner-ids a signing link is minted
-   *  for: the bulk/single owner-ids are CLIENT-supplied (the FE expands
-   *  "building/project owners" → id list — see BulkCreateSignatureRequestInput),
-   *  and `SignatureRequestsService` is otherwise relationship-agnostic (it takes
-   *  `ownerId` directly). So the exclusion CANNOT live in the ownerships service
-   *  (which never sees a signature request) — it must live HERE, the assembly
-   *  point, or a forged/stale client-supplied renter id would still get a link.
+   *  The renter concept moved OUT of `ownerships` into `discovery_records`
+   *  (migration 0066): an occupant is a DISCOVERY SOURCE attached to an
+   *  apartment, NOT an owner/signer. `ownerships.relationship` is now pinned by a
+   *  DB CHECK to ('owner') — no renter ownership row can exist, so there is
+   *  nothing for this gate to exclude. A discovery record carries no owner_id and
+   *  creates no ownership row, so it can never be selected by the recipient path
+   *  (which resolves owner_id → owners/ownerships) in the first place.
    *
-   *  Rule: an owner is INELIGIBLE to sign iff they are a RENTER somewhere active
-   *  (≥1 active `relationship='renter'` ownership row) AND own NOTHING active
-   *  (NO active `relationship='owner'` row). A person who owns any apartment is
-   *  a legitimate signer; a person with no ownership rows at all (e.g. a freshly
-   *  seeded owner) is unaffected — so this is a precise exclusion of pure
-   *  renters, not a blanket "must own something" rule. Runs inside the caller's
-   *  withTenant tx (RLS-scoped to the org). Returns the renter-only id subset.
+   *  Kept as a no-op chokepoint (rather than deleted) so the call sites below
+   *  stay structurally identical and a future re-introduction of a non-owner
+   *  ownership relationship has an obvious place to live. It does NOT weaken the
+   *  recipient gate: who may be a recipient is governed ENTIRELY by
+   *  `resolveAssociatedOwners` (Slice-1 #2), which is unchanged.
    */
-  private async resolveRenterOnly(tx: TenantTx, ownerIds: string[]): Promise<Set<string>> {
-    if (ownerIds.length === 0) return new Set();
-    const rows = await tx
-      .select({
-        ownerId: ownerships.ownerId,
-        isOwner: sql<boolean>`bool_or(${ownerships.relationship} = 'owner')`,
-        isRenter: sql<boolean>`bool_or(${ownerships.relationship} = 'renter')`,
-      })
-      .from(ownerships)
-      .where(and(inArray(ownerships.ownerId, ownerIds), sql`${ownerships.endedAt} IS NULL`))
-      .groupBy(ownerships.ownerId);
-    return new Set(rows.filter((r) => r.isRenter && !r.isOwner).map((r) => r.ownerId));
+  private async resolveRenterOnly(_tx: TenantTx, _ownerIds: string[]): Promise<Set<string>> {
+    // No active renter ownership rows exist post-0066 → empty exclusion set.
+    return new Set();
   }
 
   /** Slice-1 #2 — RECIPIENT-ASSOCIATION GATE.

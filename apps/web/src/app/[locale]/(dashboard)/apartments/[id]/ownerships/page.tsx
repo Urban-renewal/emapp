@@ -1,6 +1,6 @@
 'use client';
 
-import { CreateOwnerInput, SetOwnershipsInput, type Relationship } from '@emapp/shared-types';
+import { CreateOwnerInput, SetOwnershipsInput } from '@emapp/shared-types';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -16,7 +16,8 @@ import { cn } from '@/lib/utils';
 interface Row {
   ownerId: string;
   ownershipPct: number;
-  relationship: Relationship;
+  // S3c — ownerships are owner-only (occupants moved to discovery_records).
+  relationship: 'owner';
 }
 
 const SUM_EPSILON = 0.001;
@@ -61,10 +62,9 @@ export default function ApartmentOwnershipsPage() {
     [seedRows],
   );
 
-  // Feature A — only OWNERS count toward the 100% invariant (renters
-  // carry pct 0 and are excluded). This mirrors `SetOwnershipsInput`'s
-  // refine; the UI hint just reflects the same rule (single source of
-  // truth is the shared schema, re-checked at `onSave`).
+  // Owners count toward the 100% invariant. This mirrors `SetOwnershipsInput`'s
+  // refine; the UI hint reflects the same rule (single source of truth is the
+  // shared schema, re-checked at `onSave`). (S3c — ownerships are owner-only.)
   const ownerSum = useMemo(
     () =>
       rows.filter((r) => r.relationship === 'owner').reduce((a, r) => a + (r.ownershipPct || 0), 0),
@@ -98,19 +98,6 @@ export default function ApartmentOwnershipsPage() {
 
   function updateRow(idx: number, next: Partial<Row>) {
     setRows((rs) => rs.map((r, i) => (i === idx ? { ...r, ...next } : r)));
-  }
-
-  // Switching a row to 'renter' forces pct → 0 (a renter holds no
-  // ownership stake); switching back to 'owner' leaves the editable
-  // field for the user to set.
-  function updateRelationship(idx: number, relationship: Relationship) {
-    setRows((rs) =>
-      rs.map((r, i) =>
-        i === idx
-          ? { ...r, relationship, ownershipPct: relationship === 'renter' ? 0 : r.ownershipPct }
-          : r,
-      ),
-    );
   }
 
   // Inline create — when a freshly created owner lands, append it as a
@@ -161,7 +148,6 @@ export default function ApartmentOwnershipsPage() {
       </p>
       <h1 className="text-2xl font-bold">{t('title')}</h1>
       <p className="text-xs text-muted-foreground">{t('hint')}</p>
-      <p className="text-xs text-muted-foreground">{t('renterHint')}</p>
 
       <div className="space-y-2">
         {rows.length === 0 ? (
@@ -170,7 +156,6 @@ export default function ApartmentOwnershipsPage() {
           rows.map((r, idx) => {
             const owner = availableOwners.find((o) => o.id === r.ownerId);
             const isDupe = dupeIds.has(r.ownerId);
-            const isRenter = r.relationship === 'renter';
             return (
               <div
                 key={`${r.ownerId}-${idx}`}
@@ -193,27 +178,14 @@ export default function ApartmentOwnershipsPage() {
                   ))}
                   {owner === undefined && <option value={r.ownerId}>{r.ownerId}</option>}
                 </select>
-                <select
-                  value={r.relationship}
-                  onChange={(e) => updateRelationship(idx, e.target.value as Relationship)}
-                  className="rounded-md border bg-background px-3 py-2 text-sm"
-                  aria-label={t('relationshipLabel')}
-                >
-                  <option value="owner">{t('relationship.owner')}</option>
-                  <option value="renter">{t('relationship.renter')}</option>
-                </select>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
                   max="100"
                   value={r.ownershipPct}
-                  disabled={isRenter}
                   onChange={(e) => updateRow(idx, { ownershipPct: Number(e.target.value || 0) })}
-                  className={cn(
-                    'w-24 rounded-md border px-3 py-2 text-end text-sm',
-                    isRenter && 'cursor-not-allowed bg-muted text-muted-foreground',
-                  )}
+                  className="w-24 rounded-md border px-3 py-2 text-end text-sm"
                   aria-label={t('shareLabel')}
                 />
                 <span className="text-xs text-muted-foreground">%</span>

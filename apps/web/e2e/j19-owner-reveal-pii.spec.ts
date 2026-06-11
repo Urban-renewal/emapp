@@ -111,6 +111,19 @@ test.describe('§E-J19 — owner reveal PII (D.54)', () => {
         }),
       });
     });
+    // S3d — the owner-detail "Projects" section fetches GET /owners/:id/projects
+    // on mount (useOwnerProjects). The `**/api/v1/owners/*` GET stub below does
+    // NOT cover it (single `*` doesn't cross the `/projects` slash), so without
+    // this stub the call falls through to the network → 404 → a "Failed to load
+    // resource" console error that trips the §P0-3 guardrail. 200 {data:[]} keeps
+    // the section empty and the console clean.
+    await page.route('**/api/v1/owners/*/projects', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [] }),
+      });
+    });
     await page.route('**/api/v1/owners/*', async (route) => {
       if (route.request().method() !== 'GET') {
         await route.fallback();
@@ -162,6 +175,13 @@ test.describe('§E-J19 — owner reveal PII (D.54)', () => {
         body: JSON.stringify({ data: profile('viewer') }),
       });
     });
+    await page.route('**/api/v1/owners/*/projects', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [] }),
+      });
+    });
     await page.route('**/api/v1/owners/*', async (route) => {
       if (route.request().method() !== 'GET') {
         await route.fallback();
@@ -203,6 +223,13 @@ test.describe('§E-J19 — owner reveal PII (D.54)', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: me }),
+      });
+    });
+    await page.route('**/api/v1/owners/*/projects', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [] }),
       });
     });
     await page.route('**/api/v1/owners/*', async (route) => {

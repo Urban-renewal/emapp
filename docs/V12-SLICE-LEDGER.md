@@ -248,3 +248,42 @@ cross-org scoping). browser-QA. NO migration → no Gate-6.
 **SLICE 3d ✅ CLOSED — merged 3635573. The design §2 ENTITY-MODEL REFACTOR is COMPLETE** (3a shells + 3b fraction + 3c discovery + 3d surfacing all merged). Deferred to a future slice: owner↔project association WITHOUT an apartment (needs a join table → Gate-6).
 
 Rule: any real-red → slice stays OPEN with the blocker named here; never force-merge.
+
+---
+
+## Slice 4a — import "real change-summary" (#6) · branch feat/s4a-import-summary
+
+Phase-4 first sub-slice. THE BUG (owner-reported + design §6 line 109/143): the import PREVIEW shows
+"0 שינויים" instead of a real per-ENTITY summary. Rule: "ספירות+פירוט; לעולם לא דריסה-שקטה".
+
+Grounded:
+
+- `import_jobs` (packages/db/src/schema/imports.ts) has ROW counters — `totalRows/processedRows/
+okRows/failedRows` + `errorsSummary` jsonb — but **NO per-entity change-summary** (owners/apartments/
+  ownerships created-vs-linked). The preview surfaces okRows, not "X new owners".
+- The worker handler (apps/worker/src/handlers/import-job.handler.ts) upsert helpers already compute
+  `toCreate` (buildings ~300, apartments ~366, owners) — the create-vs-exists knowledge EXISTS, it's
+  just not tallied/persisted/surfaced. There's a "materialisation boundary" counts comment (~1759).
+- The 0048 preview→confirm flow: validate → `awaiting_confirm` (NO domain rows written) → confirm →
+  materialize. The PREVIEW must show what WOULD be created (a counting dry-run), per design §6.
+
+**SPEC (my recommendation):**
+
+- Add a `change_summary jsonb` column to `import_jobs` (migration, `when` > 1782399600000):
+  `{ ownersCreated, ownersMatched, apartmentsCreated, buildingsCreated, ownershipsCreated }`.
+- In the PREVIEW/validate stage, compute the per-entity counts a confirm WOULD produce (match each
+  parsed row's owner national_id / apartment key against existing rows → created vs matched), WITHOUT
+  writing domain rows (it's a dry-run); persist on `change_summary`. Leverage shell-owners (3a:
+  owners may have no national_id → count as "new" unless soft-matched) + fraction shares (3b).
+- Surface `change_summary` in the import result/status DTO (shared-types) + the FE preview page renders
+  "X בעלים חדשים · Y דירות · Z מקושרים" instead of "0 שינויים". NEVER silent fill-blanks overwrite —
+  a matched owner with new data is reported as an update, not silently merged.
+
+Pipeline: independent test-author BEFORE builder (RED: a preview of a sheet with N new owners reports
+ownersCreated=N, not 0). FULL-suite ripple (imports.s8 known flake → rerun). Reviews (import = bulk
+PII + RLS + no-silent-overwrite). browser-QA (upload a small sheet → preview shows real counts).
+merge-on-green. Regen api-docs.
+
+| Gate                                                                                                                                          | Status |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |

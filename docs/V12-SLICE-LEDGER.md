@@ -438,3 +438,38 @@ has none of — the SAME upload-UX friction that blocked the 4a live import QA. 
 on the document/import UPLOAD UX → that is the clear next slice.** CI caught a real D.54 fail-open guard
 gap (the new write endpoint didn''t explicitly gate manage_signatures — only createBulk did, which the
 static guard can''t see) → fixed with an explicit requireAgentCapability (memory project_agent_write_endpoint_gate).
+
+---
+
+## Slice 5c — project-detail document UPLOAD affordance · branch feat/s5c-doc-upload
+
+The owner flagged upload friction; honest grounding (live API): the document upload flow WORKS
+(create+presign→201, PUT-to-R2→200, finalize verifies size+hash+AV-scan; FE `useUploadDocument` +
+`sha256OfBlob` are correct). NOT a broken flow. The REAL gaps:
+
+1. **Placement (primary):** the project detail page has NO in-context "upload a signature document"
+   affordance — a manager must leave to /documents/new + manually set the project scope. The signing
+   loop (upload → 5b campaign → 5a board) can't be driven from the project page.
+2. **Opaque finalize error (secondary):** when finalize's cross-check fails it returns
+   `validation_error` with EMPTY details (live-observed) — the user gets no actionable reason.
+
+**SPEC (mostly FE; reuse the working storage flow — do NOT rebuild it):**
+
+- **(primary)** On apps/web .../projects/[id]/page.tsx (near the 5a board + 5b campaign action), an
+  "העלה מסמך לחתימה" / "Upload signature document" affordance: a file input → reuse `useUploadDocument`
+  PRE-SCOPED to this project (projectId=:id, apartmentId=null, a sensible default type) → progress +
+  success/error feedback → on success invalidate the project documents list + the 5a board. he+en.
+- **(secondary, if confirmed)** make documents.service `finalize` return an ACTIONABLE error code when
+  the size/hash cross-check or the scan fails (e.g. `size_mismatch`/`hash_mismatch`/`scan_rejected`)
+  instead of an empty `validation_error`, and the FE surfaces it.
+
+Pipeline: independent test-author BEFORE builder — a web component/hook test (the project upload
+affordance posts projectId, pre-scoped) AND/OR an api finalize-error-clarity test (a size/hash mismatch
+→ a specific actionable code, not empty validation_error). FULL-suite ripple. Reviews. **REAL
+browser-QA — upload a REAL small PDF via the new project affordance → finalises (scan clean) → run a 5b
+campaign on it → 5a board signaturesPending rises. This LIVE chain retroactively closes the 4a + 5b
+browser-QA gaps.** New FE fetch → stub e2e. merge-on-green.
+
+| Gate                                                                                                                                          | Status |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |

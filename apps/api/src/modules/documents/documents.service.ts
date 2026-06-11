@@ -440,22 +440,31 @@ export class DocumentsService {
         // order to confirm + stamp uploaded_at below.
         const row = await this.loadVisible(tx, user, id, false);
         await requireAgentCapability(tx, user, 'manage_documents');
-        // Layer 1: client-consistency.
-        let mismatch = input.sizeBytes !== row.sizeBytes || input.contentHash !== row.contentHash;
+        // Layer 1: client-consistency. Size is checked FIRST so the thrown
+        // error can name the offending field (Slice 5c — actionable
+        // mismatch). A truncated re-upload surfaces 'size'; a tampered one
+        // surfaces 'hash', so the FE can tell the owner exactly what to fix.
+        let mismatchField: 'size' | 'hash' | null =
+          input.sizeBytes !== row.sizeBytes
+            ? 'size'
+            : input.contentHash !== row.contentHash
+              ? 'hash'
+              : null;
         // Layer 2: storage-attestation (only when layer-1 already passed —
         // an inconsistent client is already a reject, no need to probe R2).
         // head() is best-effort: an infra failure here MUST NOT silently
         // weaken the gate, but it also MUST NOT block a legitimate
         // finalize on a transient R2 hiccup. We log + treat as "no
         // attestation" (layer-1 stands). Fake → null → no-op.
-        if (!mismatch) {
+        if (mismatchField === null) {
           try {
             const head = await this.storage.head(row.r2Key);
             if (head !== null) {
               const sizeOk = head.contentLength === row.sizeBytes;
               const hashOk =
                 head.checksumSha256 === undefined || head.checksumSha256 === row.contentHash;
-              if (!sizeOk || !hashOk) mismatch = true;
+              if (!sizeOk) mismatchField = 'size';
+              else if (!hashOk) mismatchField = 'hash';
             }
           } catch (e: unknown) {
             this.logger.error(
@@ -465,7 +474,7 @@ export class DocumentsService {
             );
           }
         }
-        if (mismatch) {
+        if (mismatchField !== null) {
           await tx
             .update(documents)
             .set({ archivedAt: new Date(), updatedAt: new Date() })
@@ -479,7 +488,7 @@ export class DocumentsService {
             targetId: row.id,
             sessionId: user.sid,
           });
-          return { row, mismatch: true as const };
+          return { row, mismatch: true as const, mismatchField };
         }
         const [updated] = await tx
           .update(documents)
@@ -500,7 +509,7 @@ export class DocumentsService {
           targetId: row.id,
           sessionId: user.sid,
         });
-        return { row: updated ?? row, mismatch: false as const };
+        return { row: updated ?? row, mismatch: false as const, mismatchField: null };
       },
       { userId: user.sub },
     );
@@ -513,7 +522,15 @@ export class DocumentsService {
           }`,
         );
       });
-      throw new ConflictException({ error: { code: 'document_integrity_mismatch' } });
+      // Slice 5c — keep the top-level code (DOC8 + DD1 contracts assert it)
+      // but ADD details naming the offending field so the FE can render an
+      // actionable message ("size" → גודל / "hash" → תוכן).
+      throw new ConflictException({
+        error: {
+          code: 'document_integrity_mismatch',
+          details: { field: result.mismatchField ?? 'hash' },
+        },
+      });
     }
 
     // P0.B1 — anti-malware scan gate. The integrity-confirmed object is scanned

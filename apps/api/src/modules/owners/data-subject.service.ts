@@ -155,7 +155,15 @@ export class DataSubjectService {
           targetTable: 'owners',
           targetId: id,
           afterState: {
-            revealed: ['name', 'national_id', ...(ownerRow.phone != null ? ['phone'] : [])],
+            // Audit fidelity (S6a, 3a critic): list ONLY the PII fields actually
+            // present/revealed — a SHELL owner (3a: no name / no national_id) must
+            // not have the audit claim those fields were revealed. Field NAMES
+            // only, never the cleartext values (CLAUDE.md / Doc07).
+            revealed: [
+              ...(ownerRow.name != null ? ['name'] : []),
+              ...(ownerRow.nationalId != null ? ['national_id'] : []),
+              ...(ownerRow.phone != null ? ['phone'] : []),
+            ],
             ownershipCount: ownershipRows.length,
             signatureCount: signatureRows.length,
           },

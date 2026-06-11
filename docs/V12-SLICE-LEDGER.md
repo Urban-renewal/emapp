@@ -241,8 +241,10 @@ Pipeline: test-author BEFORE builder (RED: GET /owners/:id/projects 404 + distin
 ApartmentOwner lacks fraction). FULL-suite ripple. Reviews (security: owner PII masking on projects list;
 cross-org scoping). browser-QA. NO migration → no Gate-6.
 
-| Gate                                                                                                                                          | Status |
-| --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |
+| Gate                                                                                                                                                                                                                                                                                                           | Status |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ✅ · Reproduce-RED ✅ (7) · Build ✅ · IndepTests ✅ (11, incl. agent-scope) · CodeReview ✅ · Security ✅ (MED agent-scope coverage closed) · BrowserQA ✅ (live: owner projects 200, co-owners 3×1/3) · CI ✅ (caught+fixed a real e2e-stub regression) · Merge ✅ #350→3635573 · Critic ✅ · Memory ✅ |
+
+**SLICE 3d ✅ CLOSED — merged 3635573. The design §2 ENTITY-MODEL REFACTOR is COMPLETE** (3a shells + 3b fraction + 3c discovery + 3d surfacing all merged). Deferred to a future slice: owner↔project association WITHOUT an apartment (needs a join table → Gate-6).
 
 Rule: any real-red → slice stays OPEN with the blocker named here; never force-merge.

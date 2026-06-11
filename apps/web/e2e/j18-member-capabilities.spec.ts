@@ -97,6 +97,18 @@ test.describe('§E-J18 — agent capability matrix (D.46/D.54)', () => {
       });
     });
 
+    // S4b (#8): the capabilities panel now fetches the preset catalog. Stub it
+    // (registered AFTER the members?** route so it wins for this exact path —
+    // Playwright matches last-registered first) so the GET returns a valid
+    // (empty) catalog and the defensive Zod parse doesn't log a console error.
+    await page.route('**/api/v1/members/capability-presets', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [] }),
+      });
+    });
+
     // Capabilities PATCH — capture the request shape, echo the updated set.
     await page.route('**/api/v1/members/*/capabilities', async (route) => {
       const req = route.request();

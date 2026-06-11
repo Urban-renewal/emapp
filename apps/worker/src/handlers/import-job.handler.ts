@@ -540,10 +540,10 @@ interface ChangeSummary {
  *  Counting rules (must match persistStage's materialisation semantics):
  *    - owners: dedupe the ok rows by national_id_hash; SELECT which hashes
  *      already exist (active) in the org → ownersMatched; the remaining
- *      distinct hashes → ownersCreated. A SHELL owner (national_id absent →
- *      empty/whitespace) cannot be matched by hash, so it always counts as
- *      a NEW owner (ownersCreated), never matched. We never "silent
- *      fill-blanks" a matched owner — matching is purely by hash, no write.
+ *      distinct hashes → ownersCreated. (national_id is REQUIRED in the
+ *      import path, so every ok row has a hash — imports have no shells.)
+ *      We never "silent fill-blanks" a matched owner — matching is purely
+ *      by hash, no write.
  *    - buildings: distinct (project, address) in the sheet that are NOT
  *      already an active building → buildingsCreated.
  *    - apartments: distinct (building, number) in the sheet that are NOT
@@ -563,16 +563,12 @@ async function computeChangeSummary(
   projectId: string | null,
   okRows: readonly ValidatedRow[],
 ): Promise<ChangeSummary> {
-  // ── Owners: dedupe by national_id_hash; a shell row (no national_id)
-  //    has no hash → always a NEW owner, never matchable.
+  // ── Owners: dedupe by national_id_hash. national_id is REQUIRED in the
+  //    import path (row-validator rejects an empty one as `empty_required`,
+  //    and extractValidatedRow pads to 9 digits), so every ok row has a hash
+  //    — unlike the owner entity model (slice 3a), imports have no shells.
   const distinctHashes = new Set<string>();
-  let shellOwners = 0;
   for (const r of okRows) {
-    if (r.nationalId.trim() === '') {
-      // Shell owner (national_id absent) — cannot match by hash.
-      shellOwners += 1;
-      continue;
-    }
     distinctHashes.add(hashField(r.nationalId, env.PII_HASH_KEY));
   }
 
@@ -593,8 +589,7 @@ async function computeChangeSummary(
     for (const e of existing) if (e.hash !== null) existingHashes.add(e.hash);
     ownersMatched = existingHashes.size;
   }
-  // Distinct non-shell new + every shell row is its own new owner.
-  const ownersCreated = distinctHashes.size - ownersMatched + shellOwners;
+  const ownersCreated = distinctHashes.size - ownersMatched;
 
   // ── Buildings: distinct addresses in the sheet not already active under
   //    the project. Without a project there is nothing to materialise.

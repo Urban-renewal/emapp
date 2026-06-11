@@ -1,4 +1,5 @@
 import type {
+  ApartmentSignatureProgress,
   Project,
   ProjectListItem,
   ProjectStatus,
@@ -8,6 +9,7 @@ import type {
 
 import { stripBidiOverrides } from '@/lib/bidi';
 import { formatRelative } from '@/lib/format';
+import type { ApartmentSignatureProgressViewModel } from '@/models/apartment-signature-progress.vm';
 import type { ProjectViewModel } from '@/models/project.vm';
 import type { SignatureProgressViewModel } from '@/models/signature-progress.vm';
 
@@ -135,6 +137,47 @@ export function toSignatureProgressViewModel(p: SignatureProgress): SignaturePro
     hasTarget: p.targetSignaturePct !== null,
     barColor: p.metThreshold ? 'green' : 'amber',
   };
+}
+
+/**
+ * Phase-6 "תמונת מצב" — per-apartment drill-down adapter (S5d, read-only). Pure
+ * function. Counts pass through verbatim; the human designation ("דירה {number} ·
+ * קומה {floor}" when a floor is present, else "דירה {number}") and the status
+ * chip color (green=consented / amber=partial / gray=none) are derived ONCE here
+ * so the list component stays presentational. The wire carries NO PII — only the
+ * apartment designation + counts + status. `number` is system-controlled (not
+ * user free text) but bidi-stripped defensively, mirroring the rest of this file.
+ */
+const APARTMENT_STATUS_COLORS: Record<
+  ApartmentSignatureProgress['status'],
+  ApartmentSignatureProgressViewModel['statusColor']
+> = {
+  consented: 'green',
+  partial: 'amber',
+  none: 'gray',
+};
+
+export function toApartmentSignatureProgressViewModel(
+  a: ApartmentSignatureProgress,
+): ApartmentSignatureProgressViewModel {
+  const number = stripBidiOverrides(a.number);
+  const designation = a.floor !== null ? `דירה ${number} · קומה ${a.floor}` : `דירה ${number}`;
+  return {
+    apartmentId: a.apartmentId,
+    number,
+    floor: a.floor,
+    totalOwners: a.totalOwners,
+    signedOwners: a.signedOwners,
+    status: a.status,
+    designation,
+    statusColor: APARTMENT_STATUS_COLORS[a.status],
+  };
+}
+
+export function toApartmentSignatureProgressViewModels(
+  rows: ApartmentSignatureProgress[],
+): ApartmentSignatureProgressViewModel[] {
+  return rows.map(toApartmentSignatureProgressViewModel);
 }
 
 /** Exported for adapter tests + future Storybook stories. */

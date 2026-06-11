@@ -9,9 +9,11 @@
  * switch without parsing strings.
  */
 import {
+  ApartmentSignatureProgressSchema,
   ProjectListItemSchema,
   ProjectSchema,
   SignatureProgressSchema,
+  type ApartmentSignatureProgress,
   type CreateProject,
   type Project,
   type ProjectListItem,
@@ -75,6 +77,20 @@ export async function getSignatureProgress(id: string): Promise<SignatureProgres
   const res = await apiClient.get<unknown>(`/projects/${id}/signature-progress`);
   const data = unwrap(res);
   return SignatureProgressDataSchema.parse({ data }).data;
+}
+
+// S5d — per-apartment drill-down under the 5a board (read-only). NO PII on the
+// wire: only apartment designation (number/floor) + owner counts + status.
+const ApartmentSignatureProgressListSchema = z.object({
+  data: z.array(ApartmentSignatureProgressSchema),
+});
+
+export async function getSignatureProgressApartments(
+  id: string,
+): Promise<ApartmentSignatureProgress[]> {
+  const res = await apiClient.get<unknown>(`/projects/${id}/signature-progress/apartments`);
+  const data = unwrap(res);
+  return ApartmentSignatureProgressListSchema.parse({ data }).data;
 }
 
 export async function createProject(body: CreateProject): Promise<Project> {

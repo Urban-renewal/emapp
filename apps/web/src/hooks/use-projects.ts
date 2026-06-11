@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
 import {
+  toApartmentSignatureProgressViewModels,
   toProjectViewModel,
   toProjectViewModels,
   toSignatureProgressViewModel,
@@ -14,10 +15,12 @@ import {
   createProject,
   getProject,
   getSignatureProgress,
+  getSignatureProgressApartments,
   listProjects,
   type ProjectListPage,
 } from '@/lib/api/projects';
 import { useDisplayLocale } from '@/lib/locale';
+import type { ApartmentSignatureProgressViewModel } from '@/models/apartment-signature-progress.vm';
 import type { ProjectViewModel } from '@/models/project.vm';
 import type { SignatureProgressViewModel } from '@/models/signature-progress.vm';
 
@@ -95,6 +98,32 @@ export function useSignatureProgress(id: string | undefined) {
       return getSignatureProgress(id);
     },
     enabled: Boolean(id),
+    staleTime: 30_000,
+    select,
+  });
+}
+
+/**
+ * Phase-6 "תמונת מצב" — per-apartment drill-down (S5d, read-only). Lives under
+ * the S5a board; its own query key so it can be lazily enabled (the expandable
+ * section only fetches once opened). Returns the adapted VM list (designation +
+ * chip color derived in the adapter). The wire carries only counts + apartment
+ * designation — no PII.
+ */
+export function useSignatureProgressApartments(id: string | undefined, enabled = true) {
+  const select = useCallback(
+    (
+      data: import('@emapp/shared-types').ApartmentSignatureProgress[],
+    ): ApartmentSignatureProgressViewModel[] => toApartmentSignatureProgressViewModels(data),
+    [],
+  );
+  return useQuery({
+    queryKey: [...PROJECTS_KEY, 'signature-progress-apartments', id],
+    queryFn: () => {
+      if (!id) throw new Error('useSignatureProgressApartments requires an id');
+      return getSignatureProgressApartments(id);
+    },
+    enabled: Boolean(id) && enabled,
     staleTime: 30_000,
     select,
   });

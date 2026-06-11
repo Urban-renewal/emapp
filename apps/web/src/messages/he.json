@@ -233,6 +233,16 @@
       "noTarget": "לא הוגדר יעד",
       "signedCount": "{signed} חתימות התקבלו · {pending} ממתינות"
     },
+    "boardApartments": {
+      "toggleShow": "פירוט לפי דירה",
+      "toggleHide": "הסתר פירוט לפי דירה",
+      "empty": "אין דירות להצגה.",
+      "loadFailed": "טעינת הפירוט נכשלה.",
+      "row": "{designation} · {signed}/{total} חתמו",
+      "statusConsented": "הוסכם",
+      "statusPartial": "חלקי",
+      "statusNone": "אין"
+    },
     "campaign": {
       "cta": "שלח בקשת חתימה לכל הבעלים",
       "pickDocument": "בחר מסמך פרויקט",

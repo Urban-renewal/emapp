@@ -284,6 +284,19 @@ ownersCreated=N, not 0). FULL-suite ripple (imports.s8 known flake → rerun). R
 PII + RLS + no-silent-overwrite). browser-QA (upload a small sheet → preview shows real counts).
 merge-on-green. Regen api-docs.
 
-| Gate                                                                                                                                          | Status |
-| --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |
+| Gate                                                                                                                                                                                                                                                                                                                             | Status |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ✅ · Reproduce-RED ✅ (5, change_summary missing) · Build ✅ · IndepTests ✅ · CodeReview ✅ (HIGH dead shell-branch removed) · Security ✅ (count-only dry-run, no domain writes; HMAC-only PII; RLS) · BrowserQA ⚠️ HONEST · CI ✅ (caught+fixed a view-allowlist ripple) · Merge ✅ #351→c0c191c · Critic ✅ · Memory ✅ |
+
+**SLICE 4a ✅ CLOSED — merged c0c191c. The #6 "0 שינויים" bug is fixed** — the import preview now
+computes a real per-entity change-summary as a count-only dry-run (no domain writes). BrowserQA ⚠️
+HONEST: the wire carries changeSummary live (DTO wired, confirmed via GET /imports) + the computation
+is proven by 5 integration tests (real worker + real Neon + the awaiting_confirm flow + test#4 = no
+domain writes + matched-vs-created split); a clean live xlsx-upload → non-zero-counts repro has genuine
+fixture friction (the import UPLOAD UX is itself a flagged issue + the worker must be running) — the
+end-to-end live repro lands with the import-upload UX slice. Reviews caught + fixed a real HIGH (an
+unreachable shell-owner branch — imports require national_id, unlike 3a; see memory
+project_import_no_shell_concept). Critic notes: (a) ownersMatched/buildingsCreated are on the wire but
+the FE shows only owners/apartments/linked — extend if the manager wants the matched count;
+(b) the dry-run re-runs the resolve\* SELECT predicates (parallel, not shared) — latent drift risk
+bounded by the 5 tests pinning count==persist.

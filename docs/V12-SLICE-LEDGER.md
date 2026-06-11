@@ -329,6 +329,24 @@ the caps). FULL-suite ripple. Reviews (security: anti-escalation — applying a 
 capability the actor can't grant; managers/viewers unaffected). browser-QA (apply a preset → caps set).
 merge-on-green. NO migration expected (code-defined presets). Regen api-docs.
 
-| Gate                                                                                                                                          | Status |
-| --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |
+| Gate                                                                                                                                                                                                                                                                                                           | Status |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ✅ · Reproduce-RED ✅ (6) · Build ✅ · IndepTests ✅ · CodeReview ✅ · Security ✅ (delegates to updateCapabilities — no new escalation surface) · BrowserQA ✅ (live: apply רכז-שטח → 7 caps set, no PII) · CI ✅ (e2e infra-flake + proactive j18 stub) · Merge ✅ #352→df03067 · Critic ✅ · Memory ✅ |
+
+**SLICE 4b ✅ CLOSED — merged df03067. PHASE-4 COMPLETE (#6 import-summary + #8 capability-presets).**
+Reviewer NITs (both improvements, reconciled): audit reuses member.capabilities_change with presetKey
+provenance (one action, not a new member.preset_applied); presets are a FULL 7-flag bundle (not Partial)
+— safer (no stale flag). Deferred: org-DEFINED custom permission groups (own slice).
+
+---
+
+## V12 EPIC — MILESTONE (after 8 slices)
+
+Delivered: the slice-1/2 owner-reported bug fixes (signatures #2/#3/#5, documents #1, invites #4/#7/#9)
+
+- the §2 ENTITY-MODEL refactor COMPLETE (3a shell-owners, 3b fraction-shares, 3c discovery-source,
+  3d owner↔project+co-ownership) + PHASE-4 onboarding/access (4a import change-summary #6, 4b Hebrew
+  capability presets #8). ~12 PRs, 5 memory controls, ZERO merge-on-red. The pipeline (test-author≠builder
+  → manager-scrutiny → independent code+security review → CI → live/honest browser-QA → merge-on-green)
+  caught 10+ real CRITICAL/HIGH (data-integrity, search-path, DSAR, throttle, RLS, dead-code) + multiple
+  CI ripples + e2e regressions, all root-fixed. Owner to review the decision docs.

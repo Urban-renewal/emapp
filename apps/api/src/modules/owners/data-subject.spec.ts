@@ -16,6 +16,7 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  auditLog,
   db,
   documents,
   encryptOwnerPii,
@@ -25,7 +26,7 @@ import {
   withTenant,
 } from '@emapp/db';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { providerPool } from '../../../../../packages/db/src/client';
@@ -106,6 +107,54 @@ async function seedOwner(): Promise<string> {
     return row!.id;
   });
 }
+// S6a audit-fidelity — seed an owner with an ARBITRARY subset of PII present.
+// Mirrors `seedOwner` but lets a test omit name / national_id (V12 3a SHELL
+// owner: NULL name_encrypted + NULL national_id_encrypted) while keeping a
+// present phone. `encryptOwnerPii` already maps an absent field → NULL
+// ciphertext + NULL hash, so the persisted row is a genuine shell.
+async function seedOwnerWithPii(pii: {
+  name?: string;
+  nationalId?: string;
+  phone?: string;
+}): Promise<string> {
+  return withTenant(org.id, async (tx) => {
+    const enc = await encryptOwnerPii(tx as never, {
+      nationalId: pii.nationalId,
+      name: pii.name,
+      phone: pii.phone,
+    });
+    const [row] = await tx
+      .insert(owners)
+      .values({
+        orgId: org.id,
+        email: null,
+        notes: null,
+        nameEncrypted: enc.nameEncrypted,
+        nameHash: enc.nameHash,
+        nationalIdEncrypted: enc.nationalIdEncrypted,
+        nationalIdHash: enc.nationalIdHash,
+        phoneEncrypted: enc.phoneEncrypted,
+        phoneHash: enc.phoneHash,
+      })
+      .returning({ id: owners.id });
+    return row!.id;
+  });
+}
+
+// Read the persisted `owner.data_exported` audit row's `afterState.revealed`
+// for a given owner — the SAME pattern owners-fidelity.spec uses for
+// `owner.pii_revealed` (select from auditLog via the app pool, newest row).
+async function exportedRevealed(targetId: string): Promise<string[]> {
+  const [row] = await db
+    .select({ afterState: auditLog.afterState })
+    .from(auditLog)
+    .where(and(eq(auditLog.targetId, targetId), eq(auditLog.action, 'owner.data_exported')))
+    .orderBy(desc(auditLog.createdAt))
+    .limit(1);
+  expect(row, 'no owner.data_exported audit row').toBeTruthy();
+  return (row!.afterState as { revealed: string[] }).revealed;
+}
+
 async function seedOwnership(apartmentId: string, ownerId: string): Promise<void> {
   const c = await providerPool.connect();
   try {
@@ -202,6 +251,38 @@ describe('ACCESS — right to access (dataExport)', () => {
     expect(out.signatures[0]!.signatureId).toBe(sigId);
     expect(out.signatures[0]!.documentHash).toBe('sighash-abc');
     expect(out.signatures[0]!.documentName).toBe('consent.pdf');
+  }, 30_000);
+
+  it('AX-1b) a FULL owner (name+national_id+phone) audits ALL THREE PII fields revealed', async () => {
+    // `ownerId` (beforeEach) has all three PII fields present.
+    await dsvc.dataExport(tok('manager'), ownerId);
+    const revealed = await exportedRevealed(ownerId);
+    // Field NAMES only — never the cleartext values (CLAUDE.md / Doc07).
+    expect(revealed).toEqual(expect.arrayContaining(['name', 'national_id', 'phone']));
+    expect(revealed).toHaveLength(3);
+    const blob = JSON.stringify(revealed);
+    expect(blob).not.toContain(NID);
+    expect(blob).not.toContain(NAME);
+    expect(blob).not.toContain(PHONE);
+  }, 30_000);
+
+  it('AX-1c) a SHELL owner (NULL name + NULL national_id, present phone) audits ONLY the present field', async () => {
+    // V12 3a SHELL — the fidelity contract: the audit must NOT claim name /
+    // national_id were revealed when they are absent (NULL ciphertext).
+    const shellId = await seedOwnerWithPii({ phone: PHONE });
+    await dsvc.dataExport(tok('manager'), shellId);
+    const revealed = await exportedRevealed(shellId);
+    expect(revealed).toContain('phone');
+    expect(revealed).not.toContain('name');
+    expect(revealed).not.toContain('national_id');
+    expect(revealed).toEqual(['phone']);
+  }, 30_000);
+
+  it('AX-1d) a bare SHELL owner (no name / no national_id / no phone) audits an EMPTY revealed set', async () => {
+    const bareId = await seedOwnerWithPii({});
+    await dsvc.dataExport(tok('manager'), bareId);
+    const revealed = await exportedRevealed(bareId);
+    expect(revealed).toEqual([]);
   }, 30_000);
 
   it('AX-2) agent + viewer are DENIED (manager-tier only)', async () => {

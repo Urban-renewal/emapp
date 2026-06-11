@@ -665,8 +665,9 @@ export class SignatureRequestsService {
         // project_id; an apartment-scoped doc's apartment must sit under this
         // project (apartment → building → project). Anything else → 400.
         const doc = await this.loadVisibleDocument(tx, input.documentId);
-        const belongsToProject = await this.documentBelongsToProject(tx, doc, projectId);
-        if (!belongsToProject) {
+        // A campaign requires a PROJECT-scoped document (it fans out to every
+        // owner in the project). An apartment-scoped or foreign doc → 400.
+        if (!this.documentBelongsToProject(doc, projectId)) {
           throw new BadRequestException({ error: { code: 'document_not_in_project' } });
         }
 
@@ -711,26 +712,20 @@ export class SignatureRequestsService {
     return { created, skipped, total };
   }
 
-  /** Does `doc` belong to `projectId`? A project-scoped doc must carry this
-   *  project_id directly; an apartment-scoped doc's apartment must sit under this
-   *  project (apartment → building → project). A scope-less doc never belongs.
-   *  RLS-scoped via the caller's tx. */
-  private async documentBelongsToProject(
-    tx: TenantTx,
+  /** Is `doc` a PROJECT-scoped document of `projectId`? A campaign fans out to
+   *  EVERY owner in the project, so it requires a project-scoped doc (project_id
+   *  directly = this project). An APARTMENT-scoped doc is rejected even when its
+   *  apartment is in the project: the #2 association gate would associate only
+   *  that apartment's owners, so the rest would land in `failed` and be dropped
+   *  silently (a code-review honesty gap). A per-apartment send is the bulk path,
+   *  not a campaign. A scope-less doc never qualifies. RLS-scoped via the tx.
+   *  (tx unused now that only the project_id is checked — kept for signature
+   *  symmetry with the other doc helpers.) */
+  private documentBelongsToProject(
     doc: { apartmentId: string | null; projectId: string | null },
     projectId: string,
-  ): Promise<boolean> {
-    if (doc.projectId) return doc.projectId === projectId;
-    if (doc.apartmentId) {
-      const [row] = await tx
-        .select({ projectId: buildings.projectId })
-        .from(apartments)
-        .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
-        .where(eq(apartments.id, doc.apartmentId))
-        .limit(1);
-      return row?.projectId === projectId;
-    }
-    return false;
+  ): boolean {
+    return doc.projectId !== null && doc.projectId === projectId;
   }
 
   /** Resend / remind — refresh an existing PENDING request's link and re-deliver.

@@ -233,6 +233,17 @@
       "noTarget": "No target set",
       "signedCount": "{signed} signatures received · {pending} pending"
     },
+    "campaign": {
+      "cta": "Send signature request to all owners",
+      "pickDocument": "Pick a project document",
+      "selectPlaceholder": "Select a document…",
+      "noDocuments": "No project documents available to send.",
+      "confirm": "Send to all owners",
+      "sending": "Sending…",
+      "cancel": "Cancel",
+      "result": "{created} sent · {skipped} skipped",
+      "failed": "Send failed. Try again."
+    },
     "tenantsTab": {
       "title": "Manage buildings and residents",
       "hint": "Resident management is handled via the project's buildings.",

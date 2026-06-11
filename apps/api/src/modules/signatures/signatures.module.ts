@@ -10,6 +10,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { PdfSignedDocumentRenderer } from './pdf-signed-document.renderer';
 import { PublicSignController } from './public-sign.controller';
 import { PublicSignService } from './public-sign.service';
+import { SignatureCampaignController } from './signature-campaign.controller';
 import { SignatureRequestsController } from './signature-requests.controller';
 import { SignatureRequestsService } from './signature-requests.service';
 import { SIGNATURE_TOKEN_SECRET, SignatureTokenService } from './signature-token.service';
@@ -41,7 +42,7 @@ import { SIGNED_DOCUMENT_RENDERER } from './signed-document.types';
       global: false,
     }),
   ],
-  controllers: [SignatureRequestsController, PublicSignController],
+  controllers: [SignatureRequestsController, SignatureCampaignController, PublicSignController],
   providers: [
     SignatureTokenService,
     SignatureRequestsService,

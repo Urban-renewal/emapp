@@ -21,11 +21,15 @@
  */
 import {
   CreateSignatureRequestInput,
+  SignatureCampaignInput,
+  SignatureCampaignResponseSchema,
   SignatureRequestCreateResponseSchema,
   SignatureRequestLinkResponseSchema,
   SignatureRequestSchema,
   type CreateSignatureRequest,
   type ListSignatureRequestsQueryDto,
+  type SignatureCampaignInput as SignatureCampaign,
+  type SignatureCampaignResponse,
   type SignatureRequest,
   type SignatureRequestCreateResponse,
   type SignatureRequestLinkResponse,
@@ -40,6 +44,7 @@ import { PageSchema } from './paging';
 const SignatureRequestDataSchema = z.object({ data: SignatureRequestSchema });
 const CreateResponseDataSchema = z.object({ data: SignatureRequestCreateResponseSchema });
 const LinkResponseDataSchema = z.object({ data: SignatureRequestLinkResponseSchema });
+const CampaignResponseDataSchema = z.object({ data: SignatureCampaignResponseSchema });
 
 export interface SignatureRequestListPage {
   items: SignatureRequest[];
@@ -109,6 +114,26 @@ export async function retrieveSignatureLink(id: string): Promise<SignatureReques
   const res = await apiClient.post<unknown>(`/signature-requests/${id}/link`, {});
   if (!isOk(res)) throw new ApiClientError(res.error);
   return LinkResponseDataSchema.parse({ data: res.data }).data;
+}
+
+/**
+ * POST /projects/:id/signature-campaign — fan out ONE project document to ALL
+ * active owners of the project (S5b). The server DERIVES the recipient list, so
+ * the body only carries the document (+ optional expiry). Returns the rolled-up
+ * tally `{ created, skipped, total }`. Idempotency-Key auto-minted so a double-
+ * clicked "send to all owners" doesn't fire two fan-outs.
+ */
+export async function createSignatureCampaign(
+  projectId: string,
+  body: SignatureCampaign,
+): Promise<SignatureCampaignResponse> {
+  SignatureCampaignInput.parse(body);
+  const res = await apiClient.postIdempotent<unknown>(
+    `/projects/${projectId}/signature-campaign`,
+    body,
+  );
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return CampaignResponseDataSchema.parse({ data: res.data }).data;
 }
 
 /** POST /signature-requests/:id/cancel — idempotent on cancelled,

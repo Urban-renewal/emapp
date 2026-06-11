@@ -390,3 +390,42 @@ New FE fetch → STUB it in any project-detail page.route e2e (the lesson).
 | Spec ✅ · Reproduce-RED ✅ (7) · Build ✅ · IndepTests ✅ · CodeReview ✅ · Security ✅ (scoping inherited, no PII) · BrowserQA ✅ (live: board 200, real counts vs 66%) · CI ✅ · Merge ✅ #353→71e3878 · Critic ✅ · Memory ✅ |
 
 **SLICE 5a ✅ CLOSED — merged 71e3878.** Phase-6 first slice: the project signature-progress board (apartmentsConsented vs threshold) — the owner-requested "תמונת מצב". Manager caught+fixed a multi-owner SEED bug in the test (the S3b deferred-trigger lesson). Both reviews PASS. Critic note: the consent definition is binary apartment-level v1 (every active owner signed); a richer per-document-scope / share-aware definition is a documented follow-up.
+
+---
+
+## Slice 5b — signature CAMPAIGN fan-out (Phase-6) · branch feat/s5b-signature-campaign
+
+The owner's pain: "החתימה עצמה איך לעזאזל היא קורית, לא ראיתי שום אפשרות בכלל" — no one-action way to
+send a signature request to everyone. The board (5a) shows progress; the campaign DRIVES it.
+
+Grounded:
+
+- `createBulk` (signature-requests.service.ts:397) already fans out to a LIST of `ownerIds` for a
+  document, applying the Slice-1 #2 association gate (`resolveAssociatedOwners`) + the #3 expired-dedup
+  (skips owners with a live pending request), returning created vs skipped/failed.
+- So a CAMPAIGN = derive ALL eligible owners across a project's apartments for a chosen PROJECT-scoped
+  document, then reuse `createBulk`. The new part is the derivation + a thin endpoint + the FE action.
+
+**SPEC (smallest coherent — reuse createBulk; likely NO migration):**
+
+- `POST /api/v1/projects/:id/signature-campaign { documentId, expiresInDays? }` → derive the DISTINCT
+  active owners of the project (owner→ownerships ended_at IS NULL, relationship='owner'→apartments→
+  buildings→project=:id), then call the existing bulk-create path for `documentId` with that owner list.
+  Returns `{ created, skipped, total }` (skipped = already-pending/not-associated — reuse createBulk's
+  result shape). The document must belong to the project (validate). Reuse ALL existing guards:
+  signatures.create permission, withTenant, the #2 gate, the #3 dedup, the per-route throttle.
+- Owner-tier/agent scope: same as createBulk + project-visibility.
+- FE: on the project detail (near the 5a board), a "שלח בקשת חתימה לכל הבעלים" action — pick a project
+  document → confirm → fan-out → toast "{created} נשלחו · {skipped} דולגו". he+en. Refetch the board.
+- DEFERRED: a per-campaign entity/view (tracking a named campaign over time) — own slice. v1 is a
+  stateless fan-out that the board reflects.
+
+Pipeline: independent test-author BEFORE builder (RED: POST signature-campaign 404 + fans out to all
+project owners, skips already-pending, rejects a non-project document). FULL-suite ripple (signatures).
+Reviews (security: the #2/#3 gates must still fully apply via createBulk — no bypass; cross-org; the
+fan-out can't email-bomb — throttle). browser-QA (campaign → board reflects new pending). merge-on-green.
+New FE fetch → stub in any project-detail e2e (the lesson). Regen api-docs.
+
+| Gate                                                                                                                                          | Status |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |

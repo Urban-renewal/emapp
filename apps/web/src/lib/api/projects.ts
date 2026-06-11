@@ -11,9 +11,11 @@
 import {
   ProjectListItemSchema,
   ProjectSchema,
+  SignatureProgressSchema,
   type CreateProject,
   type Project,
   type ProjectListItem,
+  type SignatureProgress,
 } from '@emapp/shared-types';
 import { z } from 'zod';
 
@@ -63,6 +65,16 @@ export async function getProject(id: string): Promise<ProjectListItem> {
   const res = await apiClient.get<unknown>(`/projects/${id}`);
   const data = unwrap(res);
   return ProjectListItemDataSchema.parse({ data }).data;
+}
+
+// Phase-6 "תמונת מצב" — read-only signature-progress board (S5a). NO PII on the
+// wire: only counts + the project's own target/derived percentages.
+const SignatureProgressDataSchema = z.object({ data: SignatureProgressSchema });
+
+export async function getSignatureProgress(id: string): Promise<SignatureProgress> {
+  const res = await apiClient.get<unknown>(`/projects/${id}/signature-progress`);
+  const data = unwrap(res);
+  return SignatureProgressDataSchema.parse({ data }).data;
 }
 
 export async function createProject(body: CreateProject): Promise<Project> {

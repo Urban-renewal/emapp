@@ -17,6 +17,7 @@ import type { ProjectViewModel } from '@/models/project.vm';
 
 import { ExportXlsxButton } from './_components/export-xlsx-button';
 import { SignatureProgressBar } from './_components/signature-progress-bar';
+import { SignatureProgressBoard } from './_components/signature-progress-board';
 
 type TabId = 'tenants' | 'docs' | 'tasks' | 'dashboard';
 
@@ -289,6 +290,16 @@ export default function ProjectDetailPage() {
 
           {tab === 'dashboard' && (
             <div className="flex flex-col gap-4">
+              {/* Phase-6 "תמונת מצב" (S5a) — read-only signature-progress board:
+               *  "X מתוך Y דירות הסכימו · Z% · יעד W%" + a threshold-colored bar.
+               *  Self-fetches via useSignatureProgress (own query key); silent on
+               *  error so it never blocks the rest of the detail page. */}
+              {id && (
+                <section className="rounded-md border bg-card p-4">
+                  <SignatureProgressBoard projectId={id} />
+                </section>
+              )}
+
               {/* Owner-approved staged overlay (Gate-6) — signature progress
                *  bar with milestone tick marks + the legal target marker. Pure
                *  read over the existing signed/(signed+pending) stats; only

@@ -350,3 +350,41 @@ Delivered: the slice-1/2 owner-reported bug fixes (signatures #2/#3/#5, document
   → manager-scrutiny → independent code+security review → CI → live/honest browser-QA → merge-on-green)
   caught 10+ real CRITICAL/HIGH (data-integrity, search-path, DSAR, throttle, RLS, dead-code) + multiple
   CI ripples + e2e regressions, all root-fixed. Owner to review the decision docs.
+
+---
+
+## Slice 5a — project signature-progress BOARD (Phase-6 "תמונת מצב") · branch feat/s5a-signature-board
+
+Phase-6 first sub-slice. The owner's emphatic pain: no clear picture of signing progress vs the
+threshold ("שיקוף של תמונת המצב"). The threshold is APARTMENT-level (owner-decided %, NOT
+share-weighted — owner: "זה לא משוקלל").
+
+Grounded:
+
+- `projects.targetSignaturePct` (numeric, defaults from project type) = the consent threshold.
+- ProjectStatsSchema already carries `signaturesPendingCount`/`signaturesSignedCount` (SIGNATURE
+  counts) on the project LIST item — but NOT the APARTMENT dimension (how many apartments consented).
+- The FE project detail page exists (apps/web .../projects/[id]/page.tsx) — no progress board yet.
+
+**SPEC (read-only — likely NO migration):**
+
+- A `GET /api/v1/projects/:id/signature-progress` (or extend the project detail read) returning:
+  `totalApartments`, `apartmentsConsented`, `signaturesSigned`, `signaturesPending`,
+  `targetSignaturePct`, `consentedPct` (apartmentsConsented/totalApartments\*100, 0 when no apts),
+  `metThreshold` (consentedPct >= targetSignaturePct, when a target is set).
+- **"apartmentsConsented" v1 definition (documented):** an apartment is consented when EVERY active
+  owner (ownerships ended_at IS NULL, relationship='owner') of that apartment has a SIGNED
+  signature-request. Binary per apartment (not share-weighted, per the owner). A shell apartment with
+  no owners is NOT consented. (A richer per-document-scope definition is a documented follow-up.)
+- withTenant org-scoped; agents see only assigned projects (mirror existing project-visibility).
+- FE: a progress board on the project detail — "X מתוך Y דירות הסכימו · Z% · יעד W%" + a progress bar
+  (green when metThreshold). he+en.
+
+Pipeline: independent test-author BEFORE builder (RED: GET signature-progress 404 + the consented
+count is correct for a seeded project). FULL-suite ripple. Reviews (cross-org scoping; the consent
+query correctness). browser-QA (a project's board shows real counts). merge-on-green. Regen api-docs.
+New FE fetch → STUB it in any project-detail page.route e2e (the lesson).
+
+| Gate                                                                                                                                          | Status |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |

@@ -225,6 +225,14 @@
       "signedSummary": "{signed} of {total} signed",
       "targetMarker": "Target {pct}%"
     },
+    "board": {
+      "title": "Situation — consent",
+      "summary": "{consented} of {total} apartments consented",
+      "pct": "{pct}%",
+      "target": "Target {pct}%",
+      "noTarget": "No target set",
+      "signedCount": "{signed} signatures received · {pending} pending"
+    },
     "tenantsTab": {
       "title": "Manage buildings and residents",
       "hint": "Resident management is handled via the project's buildings.",

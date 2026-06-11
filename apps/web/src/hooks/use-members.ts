@@ -1,6 +1,7 @@
 'use client';
 
 import type {
+  ApplyCapabilityPreset,
   ClearMemberOverride,
   CreateMember,
   SetMemberOverride,
@@ -12,8 +13,10 @@ import { useCallback } from 'react';
 
 import { toMemberViewModel, toMemberViewModels } from '@/adapters/member';
 import {
+  applyCapabilityPreset,
   clearMemberOverride,
   createMember,
+  listCapabilityPresets,
   listMemberOverrides,
   listMembers,
   resendInvite,
@@ -133,6 +136,35 @@ export function useUpdateMemberCapabilities() {
   return useMutation({
     mutationFn: (input: { userId: string; body: UpdateAgentCapabilities }) =>
       updateMemberCapabilities(input.userId, input.body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: MEMBERS_KEY });
+    },
+  });
+}
+
+/**
+ * S4b #8 — the code-defined capability-preset catalog. Static for the
+ * session (it's CODE, not per-org data) — a long staleTime is fine.
+ * members.read-gated server-side.
+ */
+export function useCapabilityPresets() {
+  return useQuery({
+    queryKey: [...MEMBERS_KEY, 'capability-presets'],
+    queryFn: () => listCapabilityPresets(),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * S4b #8 — apply a named capability preset to an agent. Same invalidation as
+ * useUpdateMemberCapabilities (the members list reflects the new flags); the
+ * BE delegates to the capabilities path so all its rules apply.
+ */
+export function useApplyCapabilityPreset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { userId: string; body: ApplyCapabilityPreset }) =>
+      applyCapabilityPreset(input.userId, input.body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: MEMBERS_KEY });
     },

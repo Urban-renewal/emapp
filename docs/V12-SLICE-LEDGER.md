@@ -300,3 +300,35 @@ project_import_no_shell_concept). Critic notes: (a) ownersMatched/buildingsCreat
 the FE shows only owners/apartments/linked — extend if the manager wants the matched count;
 (b) the dry-run re-runs the resolve\* SELECT predicates (parallel, not shared) — latent drift risk
 bounded by the 5 tests pinning count==persist.
+
+---
+
+## Slice 4b — capability PRESETS (#8, Hebrew non-technical) · branch feat/s4b-capability-presets
+
+Phase-4 second sub-slice (design §7 line 144: "הרשאות: קבוצות לפי-תפקיד, שמות+הסברים בעברית,
+לא-טכני"). The PRIMITIVES exist: agent **capabilities** (7 keys: edit_project_data/view_owners/…,
+member.ts:38) + per-member **permission_overrides** (iam.ts:163, tasks #6-#10). A non-technical org
+manager shouldn't toggle 7 raw flags — they should pick a NAMED preset by role.
+
+**SPEC (smallest coherent — code-defined presets, NO new table):**
+
+- A CODE-DEFINED preset catalog (shared-types) — 3-4 role presets, each `{ key, nameHe, nameEn,
+descriptionHe, descriptionEn, capabilities: Partial<AgentCapabilities> }`. E.g.
+  `field_coordinator` (רכז-שטח: edit_project_data + view_owners + the field caps),
+  `project_manager` (מנהל-פרויקט: all caps), `viewer_only` (צופה: view_owners only). Pure constant.
+- `GET /api/v1/capability-presets` — list the catalog (Hebrew names+descriptions).
+- `POST /api/v1/members/:userId/apply-capability-preset { presetKey }` — set the AGENT's capability
+  flags to the preset's bundle (reuse the existing UpdateAgentCapabilities path; members.update gate;
+  agents only — managers/viewers have fixed caps; audit `member.preset_applied`).
+- FE: on the member detail (the agent-capabilities surface from task #9), a "קבוצת-הרשאות" preset
+  picker that applies the bundle in one click (the raw toggles remain for fine-tuning).
+- DEFERRED (own slice): org-DEFINED custom permission groups (a real table + CRUD) — bigger.
+
+Pipeline: independent test-author BEFORE builder (RED: GET /capability-presets 404 + apply-preset sets
+the caps). FULL-suite ripple. Reviews (security: anti-escalation — applying a preset must not grant a
+capability the actor can't grant; managers/viewers unaffected). browser-QA (apply a preset → caps set).
+merge-on-green. NO migration expected (code-defined presets). Regen api-docs.
+
+| Gate                                                                                                                                          | Status |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |

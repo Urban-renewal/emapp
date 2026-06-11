@@ -385,6 +385,8 @@ count is correct for a seeded project). FULL-suite ripple. Reviews (cross-org sc
 query correctness). browser-QA (a project's board shows real counts). merge-on-green. Regen api-docs.
 New FE fetch → STUB it in any project-detail page.route e2e (the lesson).
 
-| Gate                                                                                                                                          | Status |
-| --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |
+| Gate                                                                                                                                                                                                                             | Status |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ✅ · Reproduce-RED ✅ (7) · Build ✅ · IndepTests ✅ · CodeReview ✅ · Security ✅ (scoping inherited, no PII) · BrowserQA ✅ (live: board 200, real counts vs 66%) · CI ✅ · Merge ✅ #353→71e3878 · Critic ✅ · Memory ✅ |
+
+**SLICE 5a ✅ CLOSED — merged 71e3878.** Phase-6 first slice: the project signature-progress board (apartmentsConsented vs threshold) — the owner-requested "תמונת מצב". Manager caught+fixed a multi-owner SEED bug in the test (the S3b deferred-trigger lesson). Both reviews PASS. Critic note: the consent definition is binary apartment-level v1 (every active owner signed); a richer per-document-scope / share-aware definition is a documented follow-up.

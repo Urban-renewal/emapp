@@ -470,6 +470,16 @@ browser-QA — upload a REAL small PDF via the new project affordance → finali
 campaign on it → 5a board signaturesPending rises. This LIVE chain retroactively closes the 4a + 5b
 browser-QA gaps.** New FE fetch → stub e2e. merge-on-green.
 
-| Gate                                                                                                                                          | Status |
-| --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |
+| Gate                                                                                                                                                                                           | Status |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ✅ · Reproduce-RED ✅ (M1-M4 + FE seam) · Build ✅ · IndepTests ✅ · CodeReview ✅ · Security ✅ · BrowserQA ✅✅ LIVE FULL-CHAIN · CI ✅ · Merge ✅ #355→39e9e8d · Critic ✅ · Memory ✅ |
+
+**SLICE 5c ✅ CLOSED — merged 39e9e8d.** 🎯 BROWSER-QA: the ENTIRE Phase-6 signing loop verified LIVE
+end-to-end — uploaded a real PDF via the flow → finalize 200 (scan clean) → POST signature-campaign →
+created:3/total:3 → GET signature-progress → signaturesPending **0→3** (vs the 66% target). This ONE live
+chain retroactively CLOSES the 5a (board), 5b (campaign), and 5c (upload) browser-QA gaps. **Honest
+correction:** the earlier 4a/5b/5c "fixture friction / no project-scoped doc" notes were a TEST-FIELD-NAME
+BUG in my probes (read data.id → undefined → POST /documents/undefined/finalize → opaque 400), NOT a real
+blocker — the upload+finalize flow always worked (memory project_documents_create_response_shape). The
+owner's most emphatic pain ("החתימה איך לעזאזל היא קורית") is now answered end-to-end: upload a signature
+doc on the project → send to all owners → see the progress board.

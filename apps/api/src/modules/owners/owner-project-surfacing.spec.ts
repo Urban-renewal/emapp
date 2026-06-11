@@ -30,8 +30,19 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import { apartments, buildings, encryptOwnerPii, owners, withTenant } from '@emapp/db';
+import {
+  apartments,
+  buildings,
+  db,
+  encryptOwnerPii,
+  memberships,
+  owners,
+  projectAssignments,
+  users,
+  withTenant,
+} from '@emapp/db';
 import { ApartmentOwnerSchema } from '@emapp/shared-types';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { providerPool } from '../../../../../packages/db/src/client';
@@ -47,8 +58,10 @@ let ownershipsSvc: OwnershipsService;
 let org: TestOrg;
 let other: TestOrg;
 let managerId: string;
+let agentId: string;
 
 const MGR_SID = '00000000-0000-4000-8000-00000000d001';
+const AGENT_SID = '00000000-0000-4000-8000-00000000d0a1';
 
 function manager(orgId = org.id): AccessTokenPayload {
   return {
@@ -58,6 +71,67 @@ function manager(orgId = org.id): AccessTokenPayload {
     sid: MGR_SID,
     type: 'access',
   } as unknown as AccessTokenPayload;
+}
+
+function agent(orgId = org.id): AccessTokenPayload {
+  return {
+    sub: agentId,
+    orgId,
+    role: 'agent',
+    sid: AGENT_SID,
+    type: 'access',
+  } as unknown as AccessTokenPayload;
+}
+
+// ---- agent / capability seeding (mirror owners-capability.spec.ts) ----------
+
+/** Seed an AGENT user + an active org membership. The default membership
+ *  capabilities already carry `view_owners: true` (tenancy.ts default), so the
+ *  fresh agent can read owners unless we explicitly toggle it off below. */
+async function seedAgent(orgId: string): Promise<string> {
+  const [u] = await db
+    .insert(users)
+    .values({ email: `agent-${randomUUID()}@test.local`, name: 'Agent', passwordHash: '$2b$12$x' })
+    .returning({ id: users.id });
+  await db
+    .insert(memberships)
+    .values({ userId: u!.id, orgId, role: 'agent', acceptedAt: new Date() });
+  return u!.id;
+}
+
+/** Flip the agent's `view_owners` capability (jsonb_set, same as
+ *  owners-capability.spec.ts's setCapability). Used to prove the 403 gate. */
+async function setViewOwners(on: boolean): Promise<void> {
+  const c = await providerPool.connect();
+  try {
+    await c.query(
+      `UPDATE memberships SET capabilities = jsonb_set(capabilities, '{view_owners}', $1::jsonb)
+       WHERE user_id = $2 AND org_id = $3 AND revoked_at IS NULL`,
+      [on ? 'true' : 'false', agentId, org.id],
+    );
+  } finally {
+    c.release();
+  }
+}
+
+/** Assign the agent to a project (active = unassigned_at NULL). */
+async function assignAgentToProject(projectId: string): Promise<void> {
+  await db.insert(projectAssignments).values({ projectId, userId: agentId, assignedBy: managerId });
+}
+
+/** Soft-unassign the agent from a project (sets unassigned_at — the tie is now
+ *  HISTORICAL, so the EXISTS over unassigned_at IS NULL no longer matches). */
+async function unassignAgentFromProject(projectId: string): Promise<void> {
+  const c = await providerPool.connect();
+  try {
+    await c.query(
+      `UPDATE project_assignments SET unassigned_at = now()
+       WHERE project_id = $1 AND user_id = $2 AND unassigned_at IS NULL`,
+      [projectId, agentId],
+    );
+  } finally {
+    c.release();
+  }
 }
 
 // ---- seeding helpers (mirror owner-renter.spec.ts) -------------------------
@@ -192,6 +266,7 @@ beforeAll(async () => {
   org = await createTestOrg(tag, tag);
   other = await createTestOrg(`${tag}-x`, `${tag}-x`);
   managerId = org.users[0]!.id;
+  agentId = await seedAgent(org.id);
 }, 120_000);
 
 afterAll(() => {
@@ -261,6 +336,87 @@ describe('(a) owner → projects surfacing', () => {
     const bareOwner = await seedOwner(org.id);
     const res = await listOwnerProjects(manager(), bareOwner);
     expect(res.data).toEqual([]);
+  }, 30_000);
+});
+
+// ===========================================================================
+// (a2) AGENT project-scope — the load-bearing EXISTS over project_assignments.
+// These are regression guards: a refactor that drops the agentScope EXISTS (or
+// the assertAgentCanViewOwners / assertOwnerInAssignedProject gates) silently
+// re-opens a cross-project leak. Each test pins one limb of that surface.
+// Capability + project_assignment seeding mirrors owners-capability.spec.ts.
+// ===========================================================================
+describe('(a2) agent project-scope on listProjects', () => {
+  it('6) agent sees ONLY assigned projects of a multi-project owner (EXISTS clause is load-bearing)', async () => {
+    // Owner sits in BOTH project A and project B; the agent is assigned to A only.
+    const projectA = org.projects[0]!.id;
+    const projectB = org.projects[1]!.id;
+    const owner = await seedOwner(org.id);
+    const aptA = await seedApartment(org.id, projectA);
+    const aptB = await seedApartment(org.id, projectB);
+    await insertOwnerSet(aptA, [{ ownerId: owner, pct: 100 }]);
+    await insertOwnerSet(aptB, [{ ownerId: owner, pct: 100 }]);
+
+    await assignAgentToProject(projectA); // assigned to A, NOT B
+    try {
+      const res = await ownersSvc.listProjects(agent(), owner);
+      const ids = res.data.map((p) => p.id);
+      // The agentScope EXISTS surfaces A and HIDES B. Dropping it would make B
+      // appear → this assertion goes RED, which is the whole point of the guard.
+      expect(ids).toContain(projectA);
+      expect(ids).not.toContain(projectB);
+    } finally {
+      await unassignAgentFromProject(projectA);
+    }
+  }, 30_000);
+
+  it('7) agent WITHOUT view_owners capability → 403 (assertAgentCanViewOwners)', async () => {
+    // Owner in an assigned project, but the agent lacks view_owners → the
+    // outermost gate denies before any project ever surfaces.
+    const projectA = org.projects[0]!.id;
+    const owner = await seedOwner(org.id);
+    const apt = await seedApartment(org.id, projectA);
+    await insertOwnerSet(apt, [{ ownerId: owner, pct: 100 }]);
+    await assignAgentToProject(projectA);
+    await setViewOwners(false);
+    try {
+      await expect(ownersSvc.listProjects(agent(), owner)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    } finally {
+      await setViewOwners(true);
+      await unassignAgentFromProject(projectA);
+    }
+  }, 30_000);
+
+  it('8) agent whose ONLY tie to the owner is an UNASSIGNED project → 404 (assertOwnerInAssignedProject, no oracle)', async () => {
+    // Owner lives only in project A; the agent was assigned to A then UNASSIGNED
+    // (unassigned_at set). The historical tie must NOT grant access — the owner
+    // collapses to a clean 404, indistinguishable from absent (no oracle).
+    const projectA = org.projects[0]!.id;
+    const owner = await seedOwner(org.id);
+    const apt = await seedApartment(org.id, projectA);
+    await insertOwnerSet(apt, [{ ownerId: owner, pct: 100 }]);
+    await assignAgentToProject(projectA);
+    await unassignAgentFromProject(projectA); // tie is now historical
+    await expect(ownersSvc.listProjects(agent(), owner)).rejects.toBeInstanceOf(NotFoundException);
+  }, 30_000);
+
+  it('9) manager baseline — sees BOTH projects of the multi-project owner (no agent scoping)', async () => {
+    // Contrast for #6: with no agentScope applied, a manager sees A AND B. This
+    // proves #6's exclusion of B is the AGENT scope, not a seeding artifact.
+    const projectA = org.projects[0]!.id;
+    const projectB = org.projects[1]!.id;
+    const owner = await seedOwner(org.id);
+    const aptA = await seedApartment(org.id, projectA);
+    const aptB = await seedApartment(org.id, projectB);
+    await insertOwnerSet(aptA, [{ ownerId: owner, pct: 100 }]);
+    await insertOwnerSet(aptB, [{ ownerId: owner, pct: 100 }]);
+
+    const res = await ownersSvc.listProjects(manager(), owner);
+    const ids = res.data.map((p) => p.id);
+    expect(ids).toContain(projectA);
+    expect(ids).toContain(projectB);
   }, 30_000);
 });
 

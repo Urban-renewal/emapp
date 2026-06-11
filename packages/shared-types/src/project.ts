@@ -253,6 +253,29 @@ export const SignatureProgressSchema = z.object({
 export type SignatureProgress = z.infer<typeof SignatureProgressSchema>;
 
 /**
+ * Phase-6 "תמונת מצב" — per-apartment DRILL-DOWN row (S5d, read-only). Returned
+ * (as a list under `data`) by `GET /api/v1/projects/:id/signature-progress/apartments`.
+ * NO PII: only the apartment designation (number/floor) + the two owner counts +
+ * a derived ternary status. The owner id/name/national_id/phone NEVER appear.
+ *
+ * `status` mirrors the 5a board's per-apartment consent, but TERNARY:
+ *   consented = totalOwners > 0 && signedOwners === totalOwners
+ *   partial   = signedOwners > 0 (but not all)
+ *   none      = signedOwners === 0 (incl. 0-owner apartments)
+ * An owner "signed" iff they hold a SIGNED signature_request on a project
+ * document (the identical consent join the 5a aggregate uses).
+ */
+export const ApartmentSignatureProgressSchema = z.object({
+  apartmentId: z.string().uuid(),
+  number: z.string(),
+  floor: z.number().int().nullable(),
+  totalOwners: z.number().int().nonnegative(),
+  signedOwners: z.number().int().nonnegative(),
+  status: z.enum(['consented', 'partial', 'none']),
+});
+export type ApartmentSignatureProgress = z.infer<typeof ApartmentSignatureProgressSchema>;
+
+/**
  * Org-wide aggregates for the home dashboard KPI cards. Returned by
  * `GET /api/v1/org/stats`. Distinct from project-level stats above.
  */

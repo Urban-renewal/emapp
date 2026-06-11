@@ -69,6 +69,19 @@ export class ProjectsController {
     return { data: await this.projects.signatureProgress(user, id) };
   }
 
+  // Phase-6 "תמונת מצב" — per-apartment DRILL-DOWN (S5d, read-only). Same guards
+  // + permission as the 5a board; the service owns visibility (no-oracle 404) and
+  // the per-apartment compute. Returns a LIST under `data`; NO owner PII (only
+  // apartment designation + counts + derived status).
+  @Get(':id/signature-progress/apartments')
+  @RequirePermission('projects.read')
+  async signatureProgressApartments(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', UuidParam) id: string,
+  ) {
+    return { data: await this.projects.signatureProgressApartments(user, id) };
+  }
+
   @Post()
   @RequirePermission('projects.create')
   async create(

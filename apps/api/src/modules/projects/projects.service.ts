@@ -11,6 +11,7 @@ import {
 } from '@emapp/db';
 import { PROJECT_TYPE_DEFAULT_CONSENT_PCT } from '@emapp/shared-types';
 import type {
+  ApartmentSignatureProgress,
   CreateProject,
   OrgStats,
   Project,
@@ -387,6 +388,92 @@ export class ProjectsService {
           consentedPct,
           metThreshold,
         };
+      },
+      { userId: user.sub },
+    );
+  }
+
+  /**
+   * Phase-6 "תמונת מצב" — per-apartment DRILL-DOWN (S5d, read-only).
+   *
+   * Same visibility gate as the 5a aggregate: reuse `get()` so a cross-org id or
+   * an unassigned-agent id throws the no-oracle NOT_FOUND BEFORE any compute, and
+   * the whole query runs under the SAME withTenant org context (RLS scopes every
+   * table touched).
+   *
+   * This breaks the 5a board's single aggregate CTE out PER apartment: for each
+   * non-archived apartment in the project we compute `totalOwners` (active
+   * `relationship='owner'` ownerships) and `signedOwners` (of those, the ones with
+   * a SIGNED signature_request on a project document — the IDENTICAL consent join
+   * the 5a board uses), then derive a TERNARY status (consented / partial / none).
+   *
+   * NO PII: the projection selects ONLY apartment fields (id/number/floor) +
+   * the two counts + the derived status. No owner id, name, national_id, or phone
+   * is ever selected — the consent join lives entirely inside correlated EXISTS
+   * subqueries whose results are pure counts.
+   */
+  async signatureProgressApartments(
+    user: AccessTokenPayload,
+    projectId: string,
+  ): Promise<ApartmentSignatureProgress[]> {
+    // No-oracle visibility gate (org-isolation + agent assigned-project scope).
+    await this.get(user, projectId);
+
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        const result = await tx.execute(sql`
+          SELECT
+            a.id AS apartment_id,
+            a.number AS number,
+            a.floor AS floor,
+            -- active owner ownerships on this apartment
+            (SELECT COUNT(*)::int
+               FROM ownerships o
+               WHERE o.apartment_id = a.id
+                 AND o.ended_at IS NULL
+                 AND o.relationship = 'owner') AS total_owners,
+            -- of those, the ones with a signed request on a project document
+            (SELECT COUNT(*)::int
+               FROM ownerships o
+               WHERE o.apartment_id = a.id
+                 AND o.ended_at IS NULL
+                 AND o.relationship = 'owner'
+                 AND EXISTS (
+                   SELECT 1
+                   FROM signature_requests sr
+                   INNER JOIN documents d ON d.id = sr.document_id
+                   WHERE sr.owner_id = o.owner_id
+                     AND sr.status = 'signed'
+                     AND d.project_id = ${projectId}
+                 )) AS signed_owners
+          FROM apartments a
+          INNER JOIN buildings b ON b.id = a.building_id
+          WHERE b.project_id = ${projectId}
+            AND a.archived_at IS NULL
+          ORDER BY a.number ASC
+        `);
+        const rows = (result as unknown as { rows: Array<Record<string, unknown>> }).rows;
+
+        return rows.map((r) => {
+          const totalOwners = Number(r['total_owners'] ?? 0);
+          const signedOwners = Number(r['signed_owners'] ?? 0);
+          const status: ApartmentSignatureProgress['status'] =
+            totalOwners > 0 && signedOwners === totalOwners
+              ? 'consented'
+              : signedOwners > 0
+                ? 'partial'
+                : 'none';
+          const floorRaw = r['floor'];
+          return {
+            apartmentId: String(r['apartment_id']),
+            number: String(r['number']),
+            floor: floorRaw === null || floorRaw === undefined ? null : Number(floorRaw),
+            totalOwners,
+            signedOwners,
+            status,
+          };
+        });
       },
       { userId: user.sub },
     );

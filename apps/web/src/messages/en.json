@@ -233,6 +233,16 @@
       "noTarget": "No target set",
       "signedCount": "{signed} signatures received · {pending} pending"
     },
+    "boardApartments": {
+      "toggleShow": "Per-apartment breakdown",
+      "toggleHide": "Hide per-apartment breakdown",
+      "empty": "No apartments to show.",
+      "loadFailed": "Failed to load the breakdown.",
+      "row": "{designation} · {signed}/{total} signed",
+      "statusConsented": "Consented",
+      "statusPartial": "Partial",
+      "statusNone": "None"
+    },
     "campaign": {
       "cta": "Send signature request to all owners",
       "pickDocument": "Pick a project document",

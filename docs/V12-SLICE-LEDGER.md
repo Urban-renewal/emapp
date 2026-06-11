@@ -483,3 +483,36 @@ BUG in my probes (read data.id → undefined → POST /documents/undefined/final
 blocker — the upload+finalize flow always worked (memory project_documents_create_response_shape). The
 owner's most emphatic pain ("החתימה איך לעזאזל היא קורית") is now answered end-to-end: upload a signature
 doc on the project → send to all owners → see the progress board.
+
+---
+
+## Slice 5d — signature board DRILL-DOWN (per-apartment) · branch feat/s5d-board-drilldown
+
+The natural 5a follow-up: after the board shows "X of Y apartments consented · Z pending", the manager
+needs to see WHICH apartments are outstanding to chase them. Read-only, no migration.
+
+Grounded: ProjectsService.signatureProgress (5a) computes the AGGREGATE consent (apartmentsConsented =
+apartments where every active owner signed). This slice returns the PER-APARTMENT breakdown. Apartment
+has `number` (text) + `floor` (int) → designation "דירה {number} · קומה {floor}".
+
+**SPEC (read-only; minimal PII):**
+
+- `GET /api/v1/projects/:id/signature-progress/apartments` → a list of per-apartment rows:
+  `{ apartmentId, number, floor, totalOwners, signedOwners, status: 'consented'|'partial'|'none' }`
+  where status = (totalOwners>0 && signedOwners==totalOwners) ? consented : signedOwners>0 ? partial :
+  none. Same consent definition as 5a (active owner ownerships with a SIGNED request on a project doc).
+  **NO owner PII** (no names/national_id) — just counts + the apartment designation; the manager drills
+  to the apartment/owner detail for names. withTenant org-scoped; agent sees only assigned (reuse the
+  5a/project visibility → no-oracle 404). Keyset pagination if needed (or a bounded list for v1).
+- FE: an expandable per-apartment list under the 5a board on the project detail — "דירה 7 · קומה 2 ·
+  0/3 חתמו" + a status chip (green consented / amber partial / gray none). he+en.
+
+Pipeline: independent test-author BEFORE builder (RED: the apartments endpoint 404 + correct
+per-apartment signed/total for a seeded project — ATOMIC multi-owner seed, the S3b lesson). FULL-suite
+ripple. Reviews (cross-org/agent scope; NO owner PII leak). REAL browser-QA — reuse the 5c live chain:
+upload→campaign→drill-down shows the project's apartments with the 3 owners pending (partial/none).
+New FE fetch → stub e2e. merge-on-green.
+
+| Gate                                                                                                                                          | Status |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |

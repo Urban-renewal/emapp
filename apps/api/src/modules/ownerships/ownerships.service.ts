@@ -52,10 +52,11 @@ function toOwnership(r: typeof ownerships.$inferSelect): Ownership {
     // S3b — surface the EXACT share fraction alongside the compat percent.
     shareNumerator: Number(r.shareNumerator),
     shareDenominator: Number(r.shareDenominator),
-    // Feature A (D.25): owner vs renter. The DB column is `text` (CHECK
-    // ('owner','renter')) so we narrow it through the shared-types enum —
-    // the single source of truth for the closed set — rather than a bare
-    // cast. A row outside the set is a data-integrity bug, not a 200.
+    // Feature A (D.25): the relationship discriminator. Post-0066 the DB column
+    // is `text` pinned by a CHECK ('owner') so we narrow it through the
+    // shared-types enum — the single source of truth for the closed set —
+    // rather than a bare cast. A row outside the set is a data-integrity bug,
+    // not a 200.
     relationship: RelationshipSchema.parse(r.relationship),
     role: r.role,
     startedAt: r.startedAt,

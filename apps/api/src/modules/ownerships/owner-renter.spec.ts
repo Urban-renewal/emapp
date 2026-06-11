@@ -183,7 +183,8 @@ async function insertOwnerSet(
 }
 
 /** Record an OCCUPANT as a discovery source on an apartment (the S3c model that
- *  replaced relationship='renter'). Creates NO ownership row. BYPASSRLS. */
+ *  replaced relationship='renter'). Creates NO ownership row. Writes via
+ *  withTenant (RLS-scoped to the org). */
 async function recordOccupant(orgId: string, apartmentId: string): Promise<string> {
   const [row] = await withTenant(orgId, (tx) =>
     tx
@@ -471,6 +472,69 @@ describe('D — renter retirement', () => {
          WHERE ended_at IS NULL AND relationship = 'renter'`,
       );
       expect(Number(r.rows[0]!.n)).toBe(0);
+    } finally {
+      c.release();
+    }
+  }, 30_000);
+});
+
+// ===========================================================================
+// SECTION E — search-path-injection hardening (§v8-M5)
+//
+// Restores the coverage the renter-retirement rework dropped (old E3): every
+// SET-guarded trigger function must still carry `SET search_path = pg_temp,
+// public` in its `proconfig`. This is a LIVE, independent security invariant
+// (unrelated to renter retirement) — a SECURITY DEFINER-style function without
+// a pinned search_path is exploitable via a malicious schema on the caller's
+// path. We assert proconfig directly (the function-scoped SET list) so a
+// future migration that re-creates a trigger fn without the SET guard fails CI.
+//   - trigger_check_ownership_sum()       — 0065:91 (re-create preserves SET)
+//   - trigger_derive_ownership_fraction() — 0065:256 (same SET guard)
+// 0066 (discovery) added NO new trigger function, so the SET-guarded set is
+// exactly these two. Add the new fn here if a future migration introduces one.
+// ===========================================================================
+describe('E — search-path hardening (§v8-M5)', () => {
+  /** The SET-guarded trigger functions that MUST pin search_path. */
+  const HARDENED_FNS = ['trigger_check_ownership_sum', 'trigger_derive_ownership_fraction'];
+
+  it.each(HARDENED_FNS)(
+    'E1) %s() carries SET search_path = pg_temp, public',
+    async (proname) => {
+      const c = await providerPool.connect();
+      try {
+        // pg_proc.proconfig holds the function-scoped SET list as `key=value`
+        // strings, so the hardened value reads `search_path=pg_temp, public`.
+        const r = await c.query<{ proconfig: string[] | null }>(
+          `SELECT p.proconfig
+         FROM pg_proc p
+         WHERE p.proname = $1`,
+          [proname],
+        );
+        expect(r.rows.length).toBeGreaterThanOrEqual(1);
+        const proconfig = r.rows[0]!.proconfig ?? [];
+        // The function-scoped SET search_path entry is present (the §v8-M5
+        // hardening) and pins BOTH pg_temp and public.
+        const searchPath = proconfig.find((e) => e.startsWith('search_path='));
+        expect(searchPath, `proconfig=${JSON.stringify(proconfig)}`).toBeDefined();
+        expect(searchPath).toContain('pg_temp');
+        expect(searchPath).toContain('public');
+      } finally {
+        c.release();
+      }
+    },
+    30_000,
+  );
+
+  it('E2) trigger_check_ownership_sum() keeps the owner-only predicate live', async () => {
+    const c = await providerPool.connect();
+    try {
+      const r = await c.query<{ def: string }>(
+        `SELECT pg_get_functiondef(p.oid) AS def
+         FROM pg_proc p
+         WHERE p.proname = 'trigger_check_ownership_sum'`,
+      );
+      expect(r.rows.length).toBeGreaterThanOrEqual(1);
+      expect(r.rows[0]!.def.replace(/\s+/g, ' ')).toContain("relationship = 'owner'");
     } finally {
       c.release();
     }

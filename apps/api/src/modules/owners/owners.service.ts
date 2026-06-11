@@ -11,10 +11,17 @@ import {
   owners,
   ownerships,
   projectAssignments,
+  projects,
   withTenant,
   type TenantTx,
 } from '@emapp/db';
-import type { Owner, OwnerPiiReveal } from '@emapp/shared-types';
+import {
+  ProjectStatusEnum,
+  ProjectTypeEnum,
+  type Owner,
+  type OwnerPiiReveal,
+  type OwnerProjectSummary,
+} from '@emapp/shared-types';
 import { normalizeIsraeliPhone } from '@emapp/validators';
 import {
   BadRequestException,
@@ -279,6 +286,89 @@ export class OwnersService {
     );
     if (!row) throw NOT_FOUND;
     return toOwner(row);
+  }
+
+  /**
+   * S3d — the DISTINCT projects an owner is tied to via ACTIVE ownerships:
+   * owner → ownerships (ended_at IS NULL) → apartments → buildings → projects.
+   *
+   * Returns a lean PROJECT summary list ({ id, name, type, status }) — NOT owner
+   * PII. The endpoint answers "which projects", so national_id/phone/name never
+   * appear here.
+   *
+   * Scoping (no project the caller can't see ever surfaces):
+   *  - withTenant org-scope (RLS) — an owner in org A never surfaces org B's
+   *    projects; `projects.org_id` is RLS-bound inside the tx.
+   *  - view_owners gate FIRST (agent without it → 403; same outermost gate as
+   *    list/get).
+   *  - Existence + agent project-scope via assertOwnerInAssignedProject: a
+   *    cross-org / out-of-scope owner collapses to 404 (no oracle), exactly like
+   *    `get`. We pre-check raw existence (RLS-scoped) so a manager/viewer also
+   *    gets a clean 404 for an absent owner.
+   *  - AGENT additionally sees ONLY the owner's projects in their
+   *    project_assignments (the WHERE EXISTS mirrors agentOwnerScope) — so even a
+   *    multi-project owner never leaks a project the agent isn't assigned to.
+   *
+   * DISTINCT collapses an owner with two apartments in the same project to one
+   * row.
+   */
+  async listProjects(
+    user: AccessTokenPayload,
+    ownerId: string,
+  ): Promise<{ data: OwnerProjectSummary[] }> {
+    const rows = await withTenant(
+      user.orgId,
+      async (tx) => {
+        // view_owners gate FIRST (agent off → 403), then existence + agent
+        // project-scope (404, no oracle) — same posture as get/revealPii.
+        await this.assertAgentCanViewOwners(tx, user);
+        const [exists] = await tx
+          .select({ id: owners.id })
+          .from(owners)
+          .where(and(eq(owners.id, ownerId), isNull(owners.erasedAt)))
+          .limit(1);
+        if (!exists) throw NOT_FOUND;
+        await this.assertOwnerInAssignedProject(tx, user, ownerId);
+
+        // Agent: restrict the surfaced projects to the agent's actively-assigned
+        // ones (an owner may sit in projects the agent can't see — those must
+        // NOT appear). Non-agents (manager/viewer): all of the owner's in-org
+        // projects. The owner→…→project path uses ACTIVE ownerships only.
+        const agentScope: SQL | undefined =
+          user.role === 'agent'
+            ? sql`EXISTS (
+                SELECT 1 FROM project_assignments pa
+                WHERE pa.project_id = ${projects.id}
+                  AND pa.user_id = ${user.sub}
+                  AND pa.unassigned_at IS NULL
+              )`
+            : undefined;
+
+        return tx
+          .selectDistinct({
+            id: projects.id,
+            name: projects.name,
+            type: projects.type,
+            status: projects.status,
+          })
+          .from(ownerships)
+          .innerJoin(apartments, eq(apartments.id, ownerships.apartmentId))
+          .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
+          .innerJoin(projects, eq(projects.id, buildings.projectId))
+          .where(and(eq(ownerships.ownerId, ownerId), isNull(ownerships.endedAt), agentScope));
+      },
+      { userId: user.sub },
+    );
+    return {
+      data: rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        // Narrow the DB enums through the shared-types SoT (a value outside the
+        // locked set is a data-integrity bug, not a 200 with a bad enum).
+        type: ProjectTypeEnum.parse(r.type),
+        status: ProjectStatusEnum.parse(r.status),
+      })),
+    };
   }
 
   /**

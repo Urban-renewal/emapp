@@ -223,8 +223,26 @@ to be in a project WITHOUT an apartment yet (a project-level shell association);
 on an apartment (the fraction shares). SPEC carefully; test-author BEFORE builder; FULL-suite ripple;
 reviews; browser-QA; merge-on-green.
 
+Grounded: **(b) co-owners ALREADY exist** at the API (`GET /apartments/:id/owners` → listApartmentOwners,
+ApartmentOwnerSchema ownership.ts:176) but surface only `ownershipPct`, NOT the exact fraction
+(shareNumerator/denominator — the 3b follow-up). **(a) owner's projects DON'T exist** (OwnerSchema has
+no projects; no GET /owners/:id/projects) — the new derive work.
+
+**SPEC (read-only surfacing — NO migration; smallest coherent slice):**
+
+- **(a)** `GET /owners/:id/projects` — DISTINCT projects via active ownerships
+  (owner→ownerships ended_at-null→apartments→buildings→projects); withTenant org-scoped; agent sees only
+  assigned projects (mirror existing owner-visibility scope). + FE owner-detail "Projects" section.
+- **(b)** add `shareNumerator`/`shareDenominator` to ApartmentOwnerSchema (surface "1/3" beside 33.33%)
+  - FE apartment co-owners list with share. (listApartmentOwners already returns rows; extend projection+VM+FE.)
+- (c) owner↔project WITHOUT an apartment — DEFERRED (needs a join table → own Gate-6 slice).
+
+Pipeline: test-author BEFORE builder (RED: GET /owners/:id/projects 404 + distinct + cross-org scope;
+ApartmentOwner lacks fraction). FULL-suite ripple. Reviews (security: owner PII masking on projects list;
+cross-org scoping). browser-QA. NO migration → no Gate-6.
+
 | Gate                                                                                                                                          | Status |
 | --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Spec ⏳ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |
+| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |
 
 Rule: any real-red → slice stays OPEN with the blocker named here; never force-merge.

@@ -16,6 +16,7 @@ import {
   useArchiveApartment,
   useUpdateApartmentStatus,
 } from '@/hooks/use-apartments';
+import { useApartmentCoOwnerShares } from '@/hooks/use-ownerships';
 import { useHasPermission } from '@/hooks/use-permissions';
 import { ApiClientError } from '@/lib/api/errors';
 import { useDisplayLocale } from '@/lib/locale';
@@ -27,6 +28,8 @@ export default function ApartmentDetailPage() {
   const router = useRouter();
   const id = params?.id;
   const { data, isLoading, isError, error } = useApartment(id);
+  // S3d — co-owners with their EXACT Tabu share as a fraction (e.g. "1/3").
+  const { data: coOwners } = useApartmentCoOwnerShares(id);
   const archive = useArchiveApartment();
   const updateStatus = useUpdateApartmentStatus();
   const canUpdate = useHasPermission('apartments.update');
@@ -161,6 +164,22 @@ export default function ApartmentDetailPage() {
       <div className="rounded-md border bg-card p-4">
         <h2 className="text-sm font-semibold">{t('ownershipsSection')}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{t('ownershipsHint')}</p>
+        {/* S3d — co-owners with their EXACT Tabu share rendered as a fraction
+         *  (e.g. "1/3") rather than only the lossy compat percent. */}
+        {coOwners && coOwners.length > 0 && (
+          <ul className="mt-3 flex flex-col gap-1.5">
+            {coOwners.map((c) => (
+              <li key={c.ownerId} className="flex items-center justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate">
+                  <NameDisplay name={c.displayName} />
+                </span>
+                <span className="tabular font-medium" dir="ltr">
+                  {c.shareLabel}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="mt-3">
           <Button asChild variant="outline" size="sm">
             <Link href={`/apartments/${data.id}/ownerships`}>{t('ownershipsManage')}</Link>

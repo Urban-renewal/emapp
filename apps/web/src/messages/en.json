@@ -510,6 +510,7 @@
     "piiNote": "Personal data is encrypted at rest; this screen never displays clear values.",
     "dossier": "Owner dossier",
     "contactSection": "Contact details",
+    "projectsSection": "Projects",
     "actionsSection": "Quick actions",
     "actionWhatsapp": "WhatsApp",
     "actionSendDoc": "Send for signature",

@@ -195,6 +195,10 @@ export class OwnershipsService {
           .select({
             ownershipId: ownerships.id,
             ownershipPct: ownerships.ownershipPct,
+            // S3d — surface the EXACT Tabu share fraction per co-owner so the FE
+            // can render "1/3" beside the lossy compat percent.
+            shareNumerator: ownerships.shareNumerator,
+            shareDenominator: ownerships.shareDenominator,
             relationship: ownerships.relationship,
             role: ownerships.role,
             id: owners.id,
@@ -234,6 +238,10 @@ export class OwnershipsService {
       archivedAt: r.archivedAt,
       ownershipId: r.ownershipId,
       ownershipPct: Number(r.ownershipPct),
+      // S3d — EXACT share fraction (bigint columns → number; both NOT NULL with
+      // DB defaults, so always present). Lets the FE show "1/3" not just 33.33%.
+      shareNumerator: Number(r.shareNumerator),
+      shareDenominator: Number(r.shareDenominator),
       // Feature A (D.25) — surface owner/renter on the masked projection.
       // PII handling is IDENTICAL for both (name/national_id/phone masked the
       // same above); relationship only governs display + the signature gate.

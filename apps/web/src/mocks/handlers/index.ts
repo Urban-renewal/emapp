@@ -206,6 +206,15 @@ export const handlers = [
     return HttpResponse.json(dataEnvelope(o), { status: 201 });
   }),
   http.post(`${API}/owners/search`, () => HttpResponse.json(dataEnvelope(SAMPLE_OWNERS[0]))),
+  // S3d — owner → projects surfacing. Lean PROJECT summaries (id/name/type/
+  // status), no owner PII. Registered BEFORE `/owners/:id` (more-specific path).
+  http.get(`${API}/owners/:id/projects`, () =>
+    HttpResponse.json(
+      dataEnvelope(
+        SAMPLE_PROJECTS.map((p) => ({ id: p.id, name: p.name, type: p.type, status: p.status })),
+      ),
+    ),
+  ),
   http.get(`${API}/owners/:id`, ({ params }) => {
     const o = SAMPLE_OWNERS.find((x) => x.id === params['id']);
     return o ? HttpResponse.json(dataEnvelope(o)) : errorEnvelope('not_found', 404);

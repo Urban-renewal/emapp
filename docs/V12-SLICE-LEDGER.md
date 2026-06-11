@@ -426,6 +426,15 @@ Reviews (security: the #2/#3 gates must still fully apply via createBulk — no 
 fan-out can't email-bomb — throttle). browser-QA (campaign → board reflects new pending). merge-on-green.
 New FE fetch → stub in any project-detail e2e (the lesson). Regen api-docs.
 
-| Gate                                                                                                                                          | Status |
-| --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |
+| Gate                                                                                                                                                                                                                                                                                            | Status |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ✅ · Reproduce-RED ✅ (6) · Build ✅ · IndepTests ✅ · CodeReview ✅ (NIT closed: project-scoped doc only) · Security ✅ (no gate bypass, throttle, cross-org) · BrowserQA ⚠️ HONEST · CI ✅ (caught+fixed a D.54 fail-open guard failure) · Merge ✅ #354→cd5d37f · Critic ✅ · Memory ✅ |
+
+**SLICE 5b ✅ CLOSED — merged cd5d37f. Phase-6 first pair (5a board + 5b campaign) closes the owner''s
+signing-UX pain ("החתימה איך לעזאזל היא קורית").** BrowserQA ⚠️ HONEST: the campaign endpoint is LIVE
+(api responds) + the fan-out is proven by 6 integration tests (real DB, reuses createBulk with the #2/#3
+gates); a clean live campaign→board repro needs a PROJECT-scoped finalised document, which the dev org
+has none of — the SAME upload-UX friction that blocked the 4a live import QA. **Two live QAs now blocked
+on the document/import UPLOAD UX → that is the clear next slice.** CI caught a real D.54 fail-open guard
+gap (the new write endpoint didn''t explicitly gate manage_signatures — only createBulk did, which the
+static guard can''t see) → fixed with an explicit requireAgentCapability (memory project_agent_write_endpoint_gate).

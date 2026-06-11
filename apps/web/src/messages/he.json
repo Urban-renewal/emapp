@@ -225,6 +225,14 @@
       "signedSummary": "{signed} מתוך {total} נחתמו",
       "targetMarker": "יעד {pct}%"
     },
+    "board": {
+      "title": "תמונת מצב — הסכמות",
+      "summary": "{consented} מתוך {total} דירות הסכימו",
+      "pct": "{pct}%",
+      "target": "יעד {pct}%",
+      "noTarget": "לא הוגדר יעד",
+      "signedCount": "{signed} חתימות התקבלו · {pending} ממתינות"
+    },
     "tenantsTab": {
       "title": "ניהול הבניינים והדיירים",
       "hint": "ניהול דיירים נעשה דרך הבניינים של הפרויקט.",

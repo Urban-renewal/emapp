@@ -1,8 +1,15 @@
-import type { Project, ProjectListItem, ProjectStatus, ProjectType } from '@emapp/shared-types';
+import type {
+  Project,
+  ProjectListItem,
+  ProjectStatus,
+  ProjectType,
+  SignatureProgress,
+} from '@emapp/shared-types';
 
 import { stripBidiOverrides } from '@/lib/bidi';
 import { formatRelative } from '@/lib/format';
 import type { ProjectViewModel } from '@/models/project.vm';
+import type { SignatureProgressViewModel } from '@/models/signature-progress.vm';
 
 /**
  * Wire → ViewModel adapter (per docs/05 §9.8). Pure function. No I/O,
@@ -108,6 +115,26 @@ export function toProjectViewModels(
   locale: 'he' | 'en' = 'he',
 ): ProjectViewModel[] {
   return items.map((p) => toProjectViewModel(p, locale));
+}
+
+/**
+ * Phase-6 "תמונת מצב" — signature-progress board adapter (S5a, read-only). Pure
+ * function. Counts pass through verbatim; the bar color is derived once here
+ * (green when the legal threshold is met, amber otherwise) so the board
+ * component stays presentational. No PII is present on the wire shape.
+ */
+export function toSignatureProgressViewModel(p: SignatureProgress): SignatureProgressViewModel {
+  return {
+    totalApartments: p.totalApartments,
+    apartmentsConsented: p.apartmentsConsented,
+    signaturesSigned: p.signaturesSigned,
+    signaturesPending: p.signaturesPending,
+    targetSignaturePct: p.targetSignaturePct,
+    consentedPct: p.consentedPct,
+    metThreshold: p.metThreshold,
+    hasTarget: p.targetSignaturePct !== null,
+    barColor: p.metThreshold ? 'green' : 'amber',
+  };
 }
 
 /** Exported for adapter tests + future Storybook stories. */

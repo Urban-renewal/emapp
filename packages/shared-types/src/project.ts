@@ -229,6 +229,30 @@ export const ProjectListItemSchema = ProjectSchema.merge(ProjectStatsSchema);
 export type ProjectListItem = z.infer<typeof ProjectListItemSchema>;
 
 /**
+ * Phase-6 "תמונת מצב" — project signature-progress BOARD (S5a, read-only).
+ * Returned by `GET /api/v1/projects/:id/signature-progress`. NO PII: only
+ * aggregate counts + the project's own target/derived percentages.
+ *
+ * `apartmentsConsented` is a BINARY per-apartment measure (NOT share-weighted):
+ * an apartment is consented iff it has >=1 active owner ownership AND EVERY
+ * active owner (ownerships.ended_at IS NULL, relationship='owner') has a SIGNED
+ * signature_request on one of the project's documents. A 0-owner apartment is
+ * never consented. `consentedPct = round(apartmentsConsented/total*100)` (0 when
+ * total is 0). `metThreshold = targetSignaturePct != null && consentedPct >=
+ * targetSignaturePct`.
+ */
+export const SignatureProgressSchema = z.object({
+  totalApartments: z.number().int().nonnegative(),
+  apartmentsConsented: z.number().int().nonnegative(),
+  signaturesSigned: z.number().int().nonnegative(),
+  signaturesPending: z.number().int().nonnegative(),
+  targetSignaturePct: z.number().min(0).max(100).nullable(),
+  consentedPct: z.number().int().min(0).max(100),
+  metThreshold: z.boolean(),
+});
+export type SignatureProgress = z.infer<typeof SignatureProgressSchema>;
+
+/**
  * Org-wide aggregates for the home dashboard KPI cards. Returned by
  * `GET /api/v1/org/stats`. Distinct from project-level stats above.
  */

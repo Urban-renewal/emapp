@@ -4,16 +4,22 @@ import type { CreateProject } from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
-import { toProjectViewModel, toProjectViewModels } from '@/adapters/project';
+import {
+  toProjectViewModel,
+  toProjectViewModels,
+  toSignatureProgressViewModel,
+} from '@/adapters/project';
 import {
   archiveProject,
   createProject,
   getProject,
+  getSignatureProgress,
   listProjects,
   type ProjectListPage,
 } from '@/lib/api/projects';
 import { useDisplayLocale } from '@/lib/locale';
 import type { ProjectViewModel } from '@/models/project.vm';
+import type { SignatureProgressViewModel } from '@/models/signature-progress.vm';
 
 /**
  * Project data hooks — TanStack Query as the single cache.
@@ -64,6 +70,29 @@ export function useProject(id: string | undefined) {
     queryFn: () => {
       if (!id) throw new Error('useProject requires an id');
       return getProject(id);
+    },
+    enabled: Boolean(id),
+    staleTime: 30_000,
+    select,
+  });
+}
+
+/**
+ * Phase-6 "תמונת מצב" — project signature-progress board (S5a, read-only).
+ * Returns the adapted VM (board copy + bar color derived in the adapter). The
+ * wire carries only counts + the project's own pct — no PII.
+ */
+export function useSignatureProgress(id: string | undefined) {
+  const select = useCallback(
+    (data: import('@emapp/shared-types').SignatureProgress): SignatureProgressViewModel =>
+      toSignatureProgressViewModel(data),
+    [],
+  );
+  return useQuery({
+    queryKey: [...PROJECTS_KEY, 'signature-progress', id],
+    queryFn: () => {
+      if (!id) throw new Error('useSignatureProgress requires an id');
+      return getSignatureProgress(id);
     },
     enabled: Boolean(id),
     staleTime: 30_000,

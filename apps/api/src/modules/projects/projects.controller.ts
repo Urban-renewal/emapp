@@ -56,6 +56,19 @@ export class ProjectsController {
     return { data: await this.projects.get(user, id) };
   }
 
+  // Phase-6 "תמונת מצב" — project signature-progress board (read-only). Same
+  // guards + permission as GET :id; the service owns visibility (no-oracle 404
+  // for cross-org / unassigned-agent) and the aggregate compute. The more
+  // specific two-segment path is registered alongside `:id` with no conflict.
+  @Get(':id/signature-progress')
+  @RequirePermission('projects.read')
+  async signatureProgress(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', UuidParam) id: string,
+  ) {
+    return { data: await this.projects.signatureProgress(user, id) };
+  }
+
   @Post()
   @RequirePermission('projects.create')
   async create(

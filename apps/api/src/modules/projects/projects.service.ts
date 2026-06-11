@@ -16,6 +16,7 @@ import type {
   Project,
   ProjectListItem,
   ProjectStats,
+  SignatureProgress,
   UpdateProject,
 } from '@emapp/shared-types';
 import {
@@ -287,6 +288,108 @@ export class ProjectsService {
       signaturesSignedCount: Number(row.signaturesSignedCount),
       agentsCount: Number(row.agentsCount),
     });
+  }
+
+  /**
+   * Phase-6 "תמונת מצב" — project signature-progress BOARD (S5a, read-only).
+   *
+   * Visibility first: reuse `get()` (which enforces org-isolation via RLS AND
+   * the agent → assigned-project scope). A project not visible to the caller
+   * throws the same no-oracle NOT_FOUND — a cross-org id or an unassigned-agent
+   * id is indistinguishable from "never existed". Only after the project is
+   * proven visible do we compute the aggregates, all under the SAME withTenant
+   * org context (RLS scopes every table touched).
+   *
+   * `apartmentsConsented` is the genuinely-new logic: a BINARY per-apartment
+   * measure (NOT share-weighted). An apartment is consented iff it has >=1 active
+   * owner ownership AND the count of those owners equals the count of those
+   * owners who hold a SIGNED signature_request on a project document. The
+   * "matching signed request" join is `signature_requests sr JOIN documents d ON
+   * d.id = sr.document_id WHERE sr.owner_id = o.owner_id AND sr.status='signed'
+   * AND d.project_id = <projectId>` — identical to how the rest of the repo
+   * defines "this owner signed for this project". NO PII: only counts + the
+   * project's own target/derived percentages leave this method.
+   */
+  async signatureProgress(user: AccessTokenPayload, projectId: string): Promise<SignatureProgress> {
+    // No-oracle visibility gate (org-isolation + agent assigned-project scope).
+    // Throws NOT_FOUND when the project isn't visible to the caller.
+    await this.get(user, projectId);
+
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        const result = await tx.execute(sql`
+          WITH proj_apartments AS (
+            SELECT a.id
+            FROM apartments a
+            INNER JOIN buildings b ON b.id = a.building_id
+            WHERE b.project_id = ${projectId}
+              AND a.archived_at IS NULL
+          ),
+          apt_consent AS (
+            SELECT
+              pa.id,
+              -- active owner ownerships on this apartment
+              (SELECT COUNT(*)::int
+                 FROM ownerships o
+                 WHERE o.apartment_id = pa.id
+                   AND o.ended_at IS NULL
+                   AND o.relationship = 'owner') AS active_owners,
+              -- of those, the ones with a signed request on a project document
+              (SELECT COUNT(*)::int
+                 FROM ownerships o
+                 WHERE o.apartment_id = pa.id
+                   AND o.ended_at IS NULL
+                   AND o.relationship = 'owner'
+                   AND EXISTS (
+                     SELECT 1
+                     FROM signature_requests sr
+                     INNER JOIN documents d ON d.id = sr.document_id
+                     WHERE sr.owner_id = o.owner_id
+                       AND sr.status = 'signed'
+                       AND d.project_id = ${projectId}
+                   )) AS signed_owners
+            FROM proj_apartments pa
+          )
+          SELECT
+            (SELECT COUNT(*)::int FROM proj_apartments) AS total_apartments,
+            (SELECT COUNT(*)::int FROM apt_consent
+               WHERE active_owners > 0 AND active_owners = signed_owners) AS apartments_consented,
+            (SELECT COUNT(*)::int FROM signature_requests sr
+               INNER JOIN documents d ON d.id = sr.document_id
+               WHERE d.project_id = ${projectId} AND sr.status = 'signed') AS signatures_signed,
+            (SELECT COUNT(*)::int FROM signature_requests sr
+               INNER JOIN documents d ON d.id = sr.document_id
+               WHERE d.project_id = ${projectId} AND sr.status = 'pending') AS signatures_pending,
+            (SELECT target_signature_pct FROM projects WHERE id = ${projectId}) AS target_signature_pct
+        `);
+        const r = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
+
+        const totalApartments = Number(r['total_apartments'] ?? 0);
+        const apartmentsConsented = Number(r['apartments_consented'] ?? 0);
+        const signaturesSigned = Number(r['signatures_signed'] ?? 0);
+        const signaturesPending = Number(r['signatures_pending'] ?? 0);
+        // pg `numeric` arrives as a string (or null) — normalise to number|null.
+        const rawTarget = r['target_signature_pct'];
+        const targetSignaturePct =
+          rawTarget === null || rawTarget === undefined ? null : Number(rawTarget);
+
+        const consentedPct =
+          totalApartments > 0 ? Math.round((apartmentsConsented / totalApartments) * 100) : 0;
+        const metThreshold = targetSignaturePct !== null && consentedPct >= targetSignaturePct;
+
+        return {
+          totalApartments,
+          apartmentsConsented,
+          signaturesSigned,
+          signaturesPending,
+          targetSignaturePct,
+          consentedPct,
+          metThreshold,
+        };
+      },
+      { userId: user.sub },
+    );
   }
 
   /**

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { OwnerSchema } from './owner';
+import { ProjectStatusEnum, ProjectTypeEnum } from './project';
 
 // Canonical Ownership contract (Doc 11 SoT; Phase 3 Slice 5).
 //
@@ -176,10 +177,33 @@ export type SetOwnerships = z.infer<typeof SetOwnershipsInput>;
 export const ApartmentOwnerSchema = OwnerSchema.extend({
   ownershipId: z.string().uuid(),
   ownershipPct: z.number().min(0).max(100),
+  // S3d — surface the EXACT Tabu share fraction alongside the lossy compat
+  // percent so a 1/3 co-owner renders as "1/3" (not just 33.33%). OPTIONAL so
+  // pre-S3d fixtures / older sample literals that omit them still parse (the
+  // live BE projection always supplies both). Denominator > 0 when present
+  // (DB CHECK ownerships_share_den_positive).
+  shareNumerator: z.number().int().min(0).optional(),
+  shareDenominator: z.number().int().positive().optional(),
   relationship: RelationshipSchema,
   role: z.string().max(50).nullable(),
 });
 export type ApartmentOwner = z.infer<typeof ApartmentOwnerSchema>;
+
+/**
+ * S3d — lean owner→project summary. The DISTINCT projects an owner is tied to
+ * via ACTIVE ownerships (owner → ownerships → apartments → buildings →
+ * projects), returned by GET /api/v1/owners/:id/projects. This is a PROJECT
+ * shape — it carries NO owner PII (national_id/phone/name): the endpoint
+ * answers "which projects" not "who". Reuses the locked project enums so the
+ * FE renders type/status with the same labels as the projects list.
+ */
+export const OwnerProjectSummarySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(200),
+  type: ProjectTypeEnum,
+  status: ProjectStatusEnum,
+});
+export type OwnerProjectSummary = z.infer<typeof OwnerProjectSummarySchema>;
 
 /** GET list query — cursor pagination only (D.16; never offset). */
 export const ListOwnershipsQuery = z.object({

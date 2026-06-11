@@ -94,6 +94,17 @@ export class OwnersController {
     return { data: await this.owners.get(user, id) };
   }
 
+  // S3d — owner → projects surfacing. The DISTINCT projects the owner is tied to
+  // via active ownerships (owner → ownerships → apartments → buildings →
+  // projects). Coarse gate `owners.read` (mirrors the owner detail surface); the
+  // FINE view_owners gate + org/agent project-scope live in the service. Returns
+  // a lean PROJECT list ({data}) — NO owner PII.
+  @Get(':id/projects')
+  @RequirePermission('owners.read')
+  async listProjects(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
+    return this.owners.listProjects(user, id);
+  }
+
   // D.54 — reveal-on-demand cleartext PII for ONE owner. POST (not GET) so the
   // owner id + result never land in access logs / browser history, and so it is
   // a deliberate per-owner action (audited, ISO A.12.4). The COARSE gate is

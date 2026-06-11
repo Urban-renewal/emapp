@@ -10,7 +10,8 @@ import { OwnerPiiReveal } from '@/components/owners/owner-pii-reveal';
 import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
-import { useArchiveOwner, useOwner } from '@/hooks/use-owners';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { useArchiveOwner, useOwner, useOwnerProjects } from '@/hooks/use-owners';
 import { useHasPermission } from '@/hooks/use-permissions';
 import { useSessionProfile } from '@/hooks/use-session';
 import { ApiClientError } from '@/lib/api/errors';
@@ -52,6 +53,9 @@ export default function OwnerDetailPage() {
   const router = useRouter();
   const id = params?.id;
   const { data, isLoading, isError, error } = useOwner(id);
+  // S3d — the projects this owner is tied to (via active ownerships). BE
+  // org/agent-scopes the list; the response carries projects only, no PII.
+  const { data: projects } = useOwnerProjects(id);
   const archive = useArchiveOwner();
   const [actionError, setActionError] = useState<string | null>(null);
   // PII reveal authority. The BE reveal endpoint (`resolveOwnerPiiFidelity`)
@@ -226,6 +230,40 @@ export default function OwnerDetailPage() {
               </span>
             </div>
           )}
+        </section>
+      )}
+
+      {/* S3d — Projects the owner is tied to (via active ownerships). Rendered
+       *  only when there is at least one — an owner with no active ownership
+       *  shows nothing (the BE returns []). Each row links to the project. */}
+      {projects && projects.length > 0 && (
+        <section className="card card-pad" aria-labelledby="own-projects-h">
+          <h2
+            id="own-projects-h"
+            className="text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            {t('projectsSection')}
+          </h2>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {projects.map((p) => (
+              <li key={p.id}>
+                <Link
+                  href={`/projects/${p.id}`}
+                  className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm hover:underline"
+                  style={{ color: 'var(--text)' }}
+                >
+                  <span className="min-w-0 truncate">
+                    <NameDisplay name={p.name} />
+                    <span className="ms-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+                      {p.typeLabel}
+                    </span>
+                  </span>
+                  <StatusBadge color={p.statusColor}>{p.statusLabel}</StatusBadge>
+                </Link>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 

@@ -1,19 +1,22 @@
 'use client';
 
-import type { CreateOwner, Owner, OwnerPiiReveal } from '@emapp/shared-types';
+import type { CreateOwner, Owner, OwnerPiiReveal, OwnerProjectSummary } from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
 import { toOwnerViewModel, toOwnerViewModels } from '@/adapters/owner';
+import { toOwnerProjectViewModels } from '@/adapters/owner-project';
 import {
   archiveOwner,
   createOwner,
   getOwner,
+  getOwnerProjects,
   listOwners,
   revealOwnerPii,
   type OwnerListPage,
 } from '@/lib/api/owners';
 import { useDisplayLocale } from '@/lib/locale';
+import type { OwnerProjectViewModel } from '@/models/owner-project.vm';
 import type { OwnerViewModel } from '@/models/owner.vm';
 
 const OWNERS_KEY = ['owners'] as const;
@@ -43,6 +46,29 @@ export function useOwner(id: string | undefined) {
     queryFn: () => {
       if (!id) throw new Error('useOwner requires an id');
       return getOwner(id);
+    },
+    enabled: Boolean(id),
+    staleTime: 30_000,
+    select,
+  });
+}
+
+/**
+ * S3d — the DISTINCT projects an owner is tied to via active ownerships.
+ * Returns ViewModels (type/status labelled). The BE org/agent-scopes the list,
+ * so this never surfaces a project the caller can't see. No owner PII on the
+ * wire — it's a project list.
+ */
+export function useOwnerProjects(id: string | undefined) {
+  const select = useCallback(
+    (data: OwnerProjectSummary[]): OwnerProjectViewModel[] => toOwnerProjectViewModels(data),
+    [],
+  );
+  return useQuery<OwnerProjectSummary[], Error, OwnerProjectViewModel[]>({
+    queryKey: [...OWNERS_KEY, 'projects', id],
+    queryFn: () => {
+      if (!id) throw new Error('useOwnerProjects requires an id');
+      return getOwnerProjects(id);
     },
     enabled: Boolean(id),
     staleTime: 30_000,

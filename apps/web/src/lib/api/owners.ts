@@ -11,10 +11,12 @@
  */
 import {
   OwnerPiiRevealSchema,
+  OwnerProjectSummarySchema,
   OwnerSchema,
   type CreateOwner,
   type Owner,
   type OwnerPiiReveal,
+  type OwnerProjectSummary,
   type OwnerSearch,
 } from '@emapp/shared-types';
 import { z } from 'zod';
@@ -50,6 +52,20 @@ export async function getOwner(id: string): Promise<Owner> {
   const res = await apiClient.get<unknown>(`/owners/${id}`);
   if (!isOk(res)) throw new ApiClientError(res.error);
   return OwnerDataSchema.parse({ data: res.data }).data;
+}
+
+const OwnerProjectsDataSchema = z.object({ data: z.array(OwnerProjectSummarySchema) });
+
+/**
+ * S3d — the DISTINCT projects an owner is tied to via active ownerships
+ * (GET /owners/:id/projects). The response carries PROJECTS only — no owner
+ * PII (national_id/phone). Defensive `.parse()` (the FE never trusts the wire);
+ * the BE org/agent-scopes the list so a caller never sees a project they can't.
+ */
+export async function getOwnerProjects(id: string): Promise<OwnerProjectSummary[]> {
+  const res = await apiClient.get<unknown>(`/owners/${id}/projects`);
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return OwnerProjectsDataSchema.parse({ data: res.data }).data;
 }
 
 /**

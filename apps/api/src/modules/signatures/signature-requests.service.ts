@@ -659,6 +659,13 @@ export class SignatureRequestsService {
                 .limit(1);
         if (!proj) throw NOT_FOUND;
 
+        // (1b) Agent-capability gate — a campaign is a signature WRITE, so an
+        // agent needs `manage_signatures` (Manager passes). createBulk re-checks
+        // it per chunk, but gating here (before deriving owners) is the explicit
+        // defense-in-depth the D.54 fail-open guard requires for an agent-loosened
+        // write endpoint.
+        await requireAgentCapability(tx, user, 'manage_signatures');
+
         // (2) Document-belongs-to-project gate. loadVisibleDocument 404s a
         // foreign/archived/non-finalised doc (RLS-scoped). Then the doc's scope
         // MUST resolve to THIS project: a project-scoped doc must carry this

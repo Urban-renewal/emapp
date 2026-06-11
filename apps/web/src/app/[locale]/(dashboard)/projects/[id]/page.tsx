@@ -16,6 +16,7 @@ import { ApiClientError } from '@/lib/api/errors';
 import type { ProjectViewModel } from '@/models/project.vm';
 
 import { ExportXlsxButton } from './_components/export-xlsx-button';
+import { SignatureCampaignAction } from './_components/signature-campaign-action';
 import { SignatureProgressBar } from './_components/signature-progress-bar';
 import { SignatureProgressBoard } from './_components/signature-progress-board';
 
@@ -295,8 +296,12 @@ export default function ProjectDetailPage() {
                *  Self-fetches via useSignatureProgress (own query key); silent on
                *  error so it never blocks the rest of the detail page. */}
               {id && (
-                <section className="rounded-md border bg-card p-4">
+                <section className="flex flex-col gap-3 rounded-md border bg-card p-4">
                   <SignatureProgressBoard projectId={id} />
+                  {/* S5b — fan out a project document to ALL active owners.
+                   *  BE-authoritative gate (signature_requests.send); the action
+                   *  invalidates the board above + the signatures list on success. */}
+                  <SignatureCampaignAction projectId={id} />
                 </section>
               )}
 

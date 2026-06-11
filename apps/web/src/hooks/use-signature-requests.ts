@@ -3,6 +3,8 @@
 import type {
   CreateSignatureRequest,
   ListSignatureRequestsQueryDto,
+  SignatureCampaignInput,
+  SignatureCampaignResponse,
   SignatureRequest,
   SignatureRequestCreateResponse,
   SignatureRequestLinkResponse,
@@ -16,6 +18,7 @@ import {
 } from '@/adapters/signature-request';
 import {
   cancelSignatureRequest,
+  createSignatureCampaign,
   createSignatureRequest,
   getSignatureRequest,
   listSignatureRequests,
@@ -92,6 +95,25 @@ export function useRetrieveSignatureLink() {
     mutationFn: (id: string) => retrieveSignatureLink(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: SIGREQ_KEY });
+    },
+  });
+}
+
+/**
+ * S5b — SIGNATURE CAMPAIGN. Fan out ONE project document to ALL active owners of
+ * the project. On success we invalidate BOTH the signature-requests queries (new
+ * pending rows) AND the projects queries (the signature-progress board / KPI
+ * counts read off `['projects']`). 0 retries (mutation default) — re-firing a
+ * fan-out that may have succeeded would re-send to owners. Idempotency-Key in the
+ * api layer also guards a double-click.
+ */
+export function useCreateSignatureCampaign(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation<SignatureCampaignResponse, Error, SignatureCampaignInput>({
+    mutationFn: (body) => createSignatureCampaign(projectId, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: SIGREQ_KEY });
+      qc.invalidateQueries({ queryKey: ['projects'] });
     },
   });
 }

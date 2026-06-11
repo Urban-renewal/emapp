@@ -10,6 +10,8 @@ import {
   documents,
   owners,
   ownerships,
+  projectAssignments,
+  projects,
   signatureRequests,
   withTenant,
   type IEmailProvider,
@@ -21,6 +23,8 @@ import type {
   BulkCreateSignatureRequest,
   BulkSignatureRequestResponse,
   BulkSignatureResult,
+  SignatureCampaignInput,
+  SignatureCampaignResponse,
   SignatureRequest,
   SignatureRequestCreateResponse,
   SignatureRequestLinkResponse,
@@ -36,7 +40,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, desc, eq, gt, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
@@ -588,6 +592,145 @@ export class SignatureRequestsService {
         failed: results.filter((r) => r.outcome === 'failed').length,
       },
     };
+  }
+
+  /** S5b — SIGNATURE CAMPAIGN fan-out. Send ONE project document to EVERY active
+   *  owner across the project's apartments in a single action (the manager's
+   *  "send to all owners" button). The recipient list is DERIVED server-side
+   *  (the client never supplies ownerIds — it only picks the project + doc), then
+   *  the existing `createBulk` path is REUSED so every per-owner guarantee holds:
+   *  the Slice-1 #2 association gate, the #3 expired-dedup (skip a LIVE pending),
+   *  the renter gate, and the bounded-concurrency delivery — all unchanged.
+   *
+   *  Steps:
+   *   1. Visibility gate — the project must be visible to the caller. We replicate
+   *      the SAME withTenant existence+scope check projects.get() uses: RLS scopes
+   *      the org (a cross-org id is invisible → no row → no-oracle 404), and for an
+   *      agent the project must be an ACTIVE assignment (an unassigned project is
+   *      likewise invisible → 404). No oracle distinguishes the cases.
+   *   2. Document-belongs-to-project gate — the document must be PROJECT-scoped
+   *      with project_id === projectId. A doc scoped to a DIFFERENT project, or an
+   *      apartment-scoped doc whose apartment is NOT under this project, is rejected
+   *      (BadRequest 400). (loadVisibleDocument already 404s a foreign/archived/
+   *      non-finalised doc.)
+   *   3. Owner derivation — DISTINCT active owners: ownerships.ended_at IS NULL,
+   *      relationship='owner' → apartments (archived_at IS NULL) → buildings →
+   *      projects.id = projectId. (Post-3c, ownerships are owner-only.)
+   *   4. Fan out via createBulk. createBulk caps ownerIds at 200, so for a project
+   *      with >200 owners we CHUNK the derived list into <=200 batches, call
+   *      createBulk per chunk, and SUM the summaries. An empty list short-circuits
+   *      (createBulk's min-1 cap would otherwise reject it).
+   *
+   *  `total` is the count of DISTINCT derived owners; `created`/`skipped` are the
+   *  summed bulk tallies. (`expiresInDays` is accepted for forward-compat but the
+   *  token TTL default applies — createBulk owns the deadline today.) */
+  async createCampaign(
+    user: AccessTokenPayload,
+    projectId: string,
+    input: SignatureCampaignInput,
+  ): Promise<SignatureCampaignResponse> {
+    // Steps 1-3 in ONE tenant tx: visibility gate, doc-belongs-to-project gate,
+    // owner derivation. RLS scopes every table to the caller's org.
+    const ownerIds = await withTenant(
+      user.orgId,
+      async (tx): Promise<string[]> => {
+        // (1) Project-visibility gate — mirrors projects.get(): RLS org-isolation
+        // for everyone, PLUS an active-assignment join for agents. Not visible →
+        // no row → no-oracle 404 (cross-org and unassigned-agent are identical).
+        const [proj] =
+          user.role === 'agent'
+            ? await tx
+                .select({ id: projects.id })
+                .from(projects)
+                .innerJoin(
+                  projectAssignments,
+                  and(
+                    eq(projectAssignments.projectId, projects.id),
+                    eq(projectAssignments.userId, user.sub),
+                    isNull(projectAssignments.unassignedAt),
+                  ),
+                )
+                .where(eq(projects.id, projectId))
+                .limit(1)
+            : await tx
+                .select({ id: projects.id })
+                .from(projects)
+                .where(eq(projects.id, projectId))
+                .limit(1);
+        if (!proj) throw NOT_FOUND;
+
+        // (2) Document-belongs-to-project gate. loadVisibleDocument 404s a
+        // foreign/archived/non-finalised doc (RLS-scoped). Then the doc's scope
+        // MUST resolve to THIS project: a project-scoped doc must carry this
+        // project_id; an apartment-scoped doc's apartment must sit under this
+        // project (apartment → building → project). Anything else → 400.
+        const doc = await this.loadVisibleDocument(tx, input.documentId);
+        const belongsToProject = await this.documentBelongsToProject(tx, doc, projectId);
+        if (!belongsToProject) {
+          throw new BadRequestException({ error: { code: 'document_not_in_project' } });
+        }
+
+        // (3) Derive DISTINCT active owners of THIS project: active owner
+        // ownership → non-archived apartment → building → project = :id.
+        const rows = await tx
+          .selectDistinct({ ownerId: ownerships.ownerId })
+          .from(ownerships)
+          .innerJoin(apartments, eq(apartments.id, ownerships.apartmentId))
+          .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
+          .where(
+            and(
+              eq(buildings.projectId, projectId),
+              isNull(ownerships.endedAt),
+              eq(ownerships.relationship, 'owner'),
+              isNull(apartments.archivedAt),
+            ),
+          );
+        return rows.map((r) => r.ownerId);
+      },
+      { userId: user.sub },
+    );
+
+    const total = ownerIds.length;
+    // No active owners → nothing to fan out (and createBulk's min-1 cap would
+    // reject an empty list). Return the zeroed tally without calling createBulk.
+    if (total === 0) return { created: 0, skipped: 0, total: 0 };
+
+    // (4) Fan out via createBulk, REUSING its #2 gate / #3 dedup / delivery.
+    // createBulk caps ownerIds at 200, so chunk the derived list into <=200
+    // batches and SUM the per-chunk summaries.
+    const CHUNK = 200;
+    let created = 0;
+    let skipped = 0;
+    for (let i = 0; i < ownerIds.length; i += CHUNK) {
+      const chunk = ownerIds.slice(i, i + CHUNK);
+      const res = await this.createBulk(user, { documentId: input.documentId, ownerIds: chunk });
+      created += res.summary.created;
+      skipped += res.summary.skipped;
+    }
+
+    return { created, skipped, total };
+  }
+
+  /** Does `doc` belong to `projectId`? A project-scoped doc must carry this
+   *  project_id directly; an apartment-scoped doc's apartment must sit under this
+   *  project (apartment → building → project). A scope-less doc never belongs.
+   *  RLS-scoped via the caller's tx. */
+  private async documentBelongsToProject(
+    tx: TenantTx,
+    doc: { apartmentId: string | null; projectId: string | null },
+    projectId: string,
+  ): Promise<boolean> {
+    if (doc.projectId) return doc.projectId === projectId;
+    if (doc.apartmentId) {
+      const [row] = await tx
+        .select({ projectId: buildings.projectId })
+        .from(apartments)
+        .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
+        .where(eq(apartments.id, doc.apartmentId))
+        .limit(1);
+      return row?.projectId === projectId;
+    }
+    return false;
   }
 
   /** Resend / remind — refresh an existing PENDING request's link and re-deliver.

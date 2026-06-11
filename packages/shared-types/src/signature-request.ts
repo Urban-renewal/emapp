@@ -129,6 +129,35 @@ export const BulkCreateSignatureRequestInput = z
   .strict();
 export type BulkCreateSignatureRequest = z.infer<typeof BulkCreateSignatureRequestInput>;
 
+/** POST /projects/:id/signature-campaign body — fan out ONE document to ALL
+ * ACTIVE owners across the project's apartments in a single action (S5b). The
+ * server DERIVES the recipient owner list (owner → active ownership → apartment
+ * → building → project = :id), so — unlike the bulk endpoint — the client does
+ * NOT supply ownerIds; it only picks the project-scoped document. The reuse of
+ * the bulk path means the #2 association gate + #3 expired-dedup + delivery all
+ * apply. `expiresInDays` is reserved for a future per-campaign deadline override
+ * (the underlying token TTL default applies when omitted). */
+export const SignatureCampaignInput = z
+  .object({
+    documentId: z.string().uuid(),
+    expiresInDays: z.number().int().min(1).max(365).optional(),
+  })
+  .strict();
+export type SignatureCampaignInput = z.infer<typeof SignatureCampaignInput>;
+
+/** POST /projects/:id/signature-campaign response — the rolled-up fan-out
+ * tallies. `total` is the count of DISTINCT active owners derived for the
+ * project; `created` is how many got a fresh pending request; `skipped` is how
+ * many already had a LIVE pending request (the #3 dedup). created+skipped may be
+ * < total when a derived owner fails the #2 association gate (should not happen
+ * for project-derived owners, but kept honest). */
+export const SignatureCampaignResponseSchema = z.object({
+  created: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+});
+export type SignatureCampaignResponse = z.infer<typeof SignatureCampaignResponseSchema>;
+
 /** Per-owner outcome of a bulk send. `created` = a new pending request + a
  * delivery attempt; `skipped_existing` = that owner already had a pending
  * request for this document; `failed` = owner not visible/in-org or an

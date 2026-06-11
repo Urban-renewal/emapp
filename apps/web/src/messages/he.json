@@ -233,6 +233,17 @@
       "noTarget": "לא הוגדר יעד",
       "signedCount": "{signed} חתימות התקבלו · {pending} ממתינות"
     },
+    "campaign": {
+      "cta": "שלח בקשת חתימה לכל הבעלים",
+      "pickDocument": "בחר מסמך פרויקט",
+      "selectPlaceholder": "בחר מסמך…",
+      "noDocuments": "אין מסמכי פרויקט זמינים לשליחה.",
+      "confirm": "שלח לכל הבעלים",
+      "sending": "שולח…",
+      "cancel": "ביטול",
+      "result": "{created} נשלחו · {skipped} דולגו",
+      "failed": "השליחה נכשלה. נסה שוב."
+    },
     "tenantsTab": {
       "title": "ניהול הבניינים והדיירים",
       "hint": "ניהול דיירים נעשה דרך הבניינים של הפרויקט.",

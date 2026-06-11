@@ -513,6 +513,35 @@ ripple. Reviews (cross-org/agent scope; NO owner PII leak). REAL browser-QA — 
 upload→campaign→drill-down shows the project's apartments with the 3 owners pending (partial/none).
 New FE fetch → stub e2e. merge-on-green.
 
-| Gate                                                                                                                                          | Status |
-| --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |
+| Gate                                                                                                                                                                                                                 | Status |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ✅ · Reproduce-RED ✅ (5) · Build ✅ · IndepTests ✅ · CodeReview ✅ · Security ✅ (no PII in projection) · BrowserQA ✅ (live: דירה 7 0/3 none, noPII) · CI ✅ · Merge ✅ #356→c89f0bb · Critic ✅ · Memory ✅ |
+
+---
+
+## 🏁 V12 MILESTONE — after 12 slices (signing loop COMPLETE)
+
+**SLICE 5d ✅ CLOSED — merged c89f0bb.** With it, the **Phase-6 signing loop is COMPLETE and proven LIVE
+end-to-end**: 5a board (aggregate progress vs threshold) + 5b campaign (one-action fan-out to all owners)
+
+- 5c upload (the signature document) + 5d drill-down (per-apartment: WHO hasn't signed). The owner's most
+  emphatic pain ("החתימה איך לעזאזל היא קורית, לא ראיתי שום אפשרות") is answered: upload a doc on a project
+  → send to all owners → see X/Y consented vs 66% → drill to "דירה 7: 0/3" → chase them.
+
+**V12 DELIVERED (12 slices, ~18 PRs, ZERO merge-on-red):**
+
+- Owner-reported bugs: #1 doc inline-view, #2 sig-association, #3 expired-dedup, #4/#9 invite link,
+  #5 signing reachable, #6 import 0-changes, #7 member resend, #8 permission groups (slices 1,2,4a,4b).
+- §2 ENTITY-MODEL refactor: 3a shell-owners, 3b exact-fraction shares, 3c renter→discovery-source,
+  3d owner↔project + co-ownership.
+- Phase-6 signing loop: 5a-5d (above).
+- 8 memory controls captured; the pipeline (test-author≠builder → manager-scrutiny → independent
+  code+security review → architecture guards → CI → live/honest browser-QA → merge-on-green) caught
+  10+ real CRITICAL/HIGH + multiple CI ripples + a D.54 fail-open guard gap, all root-fixed.
+
+**NEXT BIG PHASE — Phase-5 Tabu נסח (design §6):** the gold source for ownership. DESIGN FORK for the
+owner to steer (design itself says "API נראה בהמשך כי זה כרוך בתשלום"): the נסח UPLOAD reuses the now-proven
+document flow, but the PARSE approach (auto-extract owners+shares heuristically vs a guided manual-map
+screen vs the deferred paid Tabu API) is a product decision. Manual owner+share entry ALREADY works
+(shell-owners 3a + fraction-shares 3b + the ownerships PUT). The autonomous run continues on safe
+high-value polish (the accumulated critic notes) until the Tabu parse-approach is chosen.

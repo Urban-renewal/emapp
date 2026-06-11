@@ -73,8 +73,8 @@ export function useUploadDocument() {
       file: File;
       type: import('@emapp/shared-types').DocumentType;
       mimeType: import('@emapp/shared-types').DocumentMime;
-      projectId?: string;
-      apartmentId?: string;
+      projectId?: string | null;
+      apartmentId?: string | null;
     }) => {
       const contentHash = await sha256OfBlob(args.file);
       // §v9-M-3 — canonicalize the mime ONCE so the signed Content-

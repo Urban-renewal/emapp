@@ -244,6 +244,17 @@
       "result": "{created} sent · {skipped} skipped",
       "failed": "Send failed. Try again."
     },
+    "docUpload": {
+      "cta": "Upload signature document",
+      "uploading": "Uploading…",
+      "pickFile": "Choose a file to upload.",
+      "uploaded": "Uploaded",
+      "mimeNotAllowed": "This file type is not allowed. Please upload a PDF / image.",
+      "tooLarge": "File exceeds the maximum size (50MB).",
+      "sizeMismatch": "File size did not match. Please re-upload.",
+      "hashMismatch": "File content did not match. Please re-upload.",
+      "failed": "Upload failed. Try again."
+    },
     "tenantsTab": {
       "title": "Manage buildings and residents",
       "hint": "Resident management is handled via the project's buildings.",

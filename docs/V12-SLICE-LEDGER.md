@@ -545,3 +545,28 @@ document flow, but the PARSE approach (auto-extract owners+shares heuristically 
 screen vs the deferred paid Tabu API) is a product decision. Manual owner+share entry ALREADY works
 (shell-owners 3a + fraction-shares 3b + the ownerships PUT). The autonomous run continues on safe
 high-value polish (the accumulated critic notes) until the Tabu parse-approach is chosen.
+
+---
+
+## 🎯🎯 SIGNING LOOP — BOTH HALVES PROVEN LIVE (post-13-slices verification)
+
+After the 13 merged slices, I verified the OWNER-SIDE signing flow LIVE (the other half of the owner's
+"החתימה איך לעזאזל היא קורית" pain — the manager side / campaign was already proven). Full chain, live:
+
+- **Manager side:** upload signature doc (project-scoped) → finalize (scan clean) → signature-campaign →
+  N pending requests → 5a board shows pending vs threshold → 5d drill-down shows per-apartment who's out.
+- **Owner side (verified now):** create request → `signUrl` (token) → GET /sign/:token → **200** (preview
+  shows the document) → POST /sign/:token { signatureSvg, acknowledgeConsent } → **200** → status 'signed'
+  → 5a board `signaturesSigned` rose to 1.
+  **The COMPLETE signing loop works end-to-end. No bug, no new slice — verification of the core flow's
+  second half. The public-sign flow is sound.**
+
+## ✅ V12 STATUS — CORE COMPLETE (13 slices, ~19 PRs, ZERO merge-on-red)
+
+All owner-reported bugs (#1-#9) + the §2 entity-model refactor (3a-3d) + Phase-4 onboarding/access
+(4a #6 import-summary, 4b #8 capability-presets) + the Phase-6 signing loop (5a board, 5b campaign,
+5c upload, 5d drill-down — both halves proven live) + 6a DSAR audit-fidelity. 8 memory controls.
+**NEXT BIG PHASE — Phase-5 Tabu נסח parse — awaits the OWNER'S design steer** (parse approach:
+heuristic-auto vs guided-manual-map vs deferred-paid-API; the upload reuses the proven document flow;
+manual owner+share entry already works via 3a shells + 3b fractions). No low-value work invented in the
+interim — the autonomous run stays on genuine value or honest consolidation until that steer.

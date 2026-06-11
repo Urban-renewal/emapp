@@ -32,6 +32,16 @@ export interface ImportViewModel {
   failedRows: number;
   /** Percent 0-100, or null when totalRows is unknown (early states). */
   progressPct: number | null;
+  /** #6 — per-entity change-summary for the PREVIEW (count-only dry-run).
+   *  null until the worker's validate stage has computed it. Drives the
+   *  "N new owners · M apartments · K linked" line instead of "0 changes". */
+  changeSummary: {
+    ownersCreated: number;
+    ownersMatched: number;
+    apartmentsCreated: number;
+    buildingsCreated: number;
+    ownershipsCreated: number;
+  } | null;
   dryRun: boolean;
   createdRelative: string;
   startedRelative: string | null;

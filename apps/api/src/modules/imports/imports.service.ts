@@ -125,6 +125,9 @@ function toView(row: typeof importJobs.$inferSelect): ImportJobView {
     processedRows: row.processedRows,
     okRows: row.okRows,
     failedRows: row.failedRows,
+    // #6 — per-entity change-summary computed by the worker's validate
+    // stage (COUNT-ONLY dry-run). null until validate has run.
+    changeSummary: row.changeSummary ?? null,
     dryRun: row.dryRun,
     requireConfirm: row.requireConfirm,
     confirmedAt: row.confirmedAt,

@@ -104,6 +104,7 @@ export function toImportViewModel(i: ImportJob, locale: 'he' | 'en' = 'he'): Imp
     okRows: i.okRows,
     failedRows: i.failedRows,
     progressPct,
+    changeSummary: i.changeSummary ?? null,
     dryRun: i.dryRun,
     createdRelative: formatRelative(i.createdAt, locale),
     startedRelative: i.startedAt ? formatRelative(i.startedAt, locale) : null,

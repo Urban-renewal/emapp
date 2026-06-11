@@ -146,6 +146,17 @@ export default function ImportDetailPage() {
         <div className="space-y-3 rounded-md border border-amber-300 bg-amber-50 p-4">
           <h2 className="text-sm font-semibold text-amber-900">{t('previewTitle')}</h2>
           <p className="text-sm text-amber-800">{t('previewHint')}</p>
+          {/* #6 — real per-entity change-summary (count-only dry-run) so the
+              manager sees what the import WOULD do, instead of "0 changes". */}
+          {data.changeSummary && (
+            <p className="text-sm font-medium text-amber-900">
+              {t('previewChanges', {
+                owners: data.changeSummary.ownersCreated,
+                apartments: data.changeSummary.apartmentsCreated,
+                linked: data.changeSummary.ownershipsCreated,
+              })}
+            </p>
+          )}
           <p className="text-sm text-amber-900">
             {t('previewSummary', { ok: counters.okRows, failed: counters.failedRows })}
           </p>

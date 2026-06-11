@@ -77,6 +77,20 @@ export const ImportJobSchema = z.object({
   processedRows: z.number().int().min(0),
   okRows: z.number().int().min(0),
   failedRows: z.number().int().min(0),
+  /** #6 — per-ENTITY change-summary computed as a COUNT-ONLY dry-run in
+   *  the validate/preview stage. Lets the PREVIEW report "N new owners ·
+   *  M apartments · K linked" instead of "0 changes". Nullable: rows that
+   *  haven't reached validate yet (queued/parsing) carry null. */
+  changeSummary: z
+    .object({
+      ownersCreated: z.number().int().min(0),
+      ownersMatched: z.number().int().min(0),
+      apartmentsCreated: z.number().int().min(0),
+      buildingsCreated: z.number().int().min(0),
+      ownershipsCreated: z.number().int().min(0),
+    })
+    .nullable()
+    .optional(),
   dryRun: z.boolean(),
   /** 0048 — preview→confirm flow flags. */
   requireConfirm: z.boolean(),

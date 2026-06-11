@@ -570,3 +570,10 @@ All owner-reported bugs (#1-#9) + the §2 entity-model refactor (3a-3d) + Phase-
 heuristic-auto vs guided-manual-map vs deferred-paid-API; the upload reuses the proven document flow;
 manual owner+share entry already works via 3a shells + 3b fractions). No low-value work invented in the
 interim — the autonomous run stays on genuine value or honest consolidation until that steer.
+
+### Consolidation health check (post-13-slices, main)
+
+typecheck 5/5 packages = 0 errors. Core V12 logic specs green: signature-campaign + signature-progress
+
+- signature-progress-apartments + data-subject = 30/30. (Live-server contract specs skipped — http_429
+  without a running server is env, not a regression.) **main is healthy. V12 core complete + verified.**

@@ -198,8 +198,33 @@ Pipeline: test-author BEFORE builder (RED: discovery-record create + occupant-ne
 rows migrate). FULL-suite ripple check (touches signatures + ownerships + owner-renter.spec). Reviews
 (security: PII-in-notes + recipient guard). browser-QA. merge-on-green. Regen api-docs.
 
+| Gate                                                                                                                                                                                                                                                                                                                                                    | Status |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ✅ · Reproduce-RED ✅ (8 tests, 42P01) · Build ✅ · IndepTests ✅ · CodeReview ✅ (CRITICAL: restored dropped search_path coverage) · Security ✅ (RLS USING+WITH CHECK; recipient-guard intact; DISABLE-TRIGGER safe; Gate-6 trailer) · BrowserQA ✅ (live: POST 201 / GET 1 / PATCH 200) · CI ✅ · Merge ✅ #349→724bf41 · Critic ✅ · Memory ✅ |
+
+**SLICE 3c ✅ CLOSED — merged 724bf41.** A renter is now a discovery-source (discovery_records,
+apartment-attached) — never an owner, never a signer, structurally impossible as a recipient.
+The reviews caught: code CRITICAL (the rework silently dropped the §v8-M5 search_path-hardening
+assertion on the sum-trigger — restored as owner-renter Section E); security flagged a MED (free-text
+discovery `notes` readable org-wide by Viewer — product decision; the audio/transcript slots stay
+deferred). Critic notes (follow-ups): (a) add a cross-org INSERT (WITH CHECK) negative RLS test for
+discovery_records (test #8 only proves cross-org READ); (b) the FE discovery panel (apartment status+
+notes) is a fast-follow — occupants have no FE entry point until it lands; (c) pre-existing dupe
+`settings` i18n key at he/en.json line 76 (not ours — flag for a cleanup pass).
+
+---
+
+## Slice 3d — owner↔project surfacing + co-ownership · branch feat/s3d-owner-project (off main)
+
+Design §2: surface the owner↔project relationship (derived via ownership: owner → ownership →
+apartment → building → project) + co-ownership (multiple owners on one apartment, already supported
+by ownerships + the fraction sum). Goals: (a) list an owner's projects (derived); (b) allow an owner
+to be in a project WITHOUT an apartment yet (a project-level shell association); (c) surface co-owners
+on an apartment (the fraction shares). SPEC carefully; test-author BEFORE builder; FULL-suite ripple;
+reviews; browser-QA; merge-on-green.
+
 | Gate                                                                                                                                          | Status |
 | --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Spec ✅ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |
+| Spec ⏳ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |
 
 Rule: any real-red → slice stays OPEN with the blocker named here; never force-merge.

@@ -1,8 +1,10 @@
 import {
+  ApplyCapabilityPresetInput,
   CreateMemberInput,
   ListMembersQuery,
   UpdateAgentCapabilitiesInput,
   UpdateMemberInput,
+  type ApplyCapabilityPreset,
   type CreateMember,
   type ListMembersQueryDto,
   type UpdateAgentCapabilities,
@@ -57,6 +59,16 @@ export class MembersController {
     return this.members.list(user, query);
   }
 
+  // S4b #8 — the code-defined capability-preset catalog (design §7). A static
+  // path, declared BEFORE the `:userId` routes so it never matches as a userId.
+  // members.read gate: any org user with the members surface may read the
+  // catalog (it carries no per-member data).
+  @Get('capability-presets')
+  @RequirePermission('members.read')
+  async listCapabilityPresets(@CurrentUser() user: AccessTokenPayload) {
+    return { data: this.members.listCapabilityPresets(user) };
+  }
+
   @Post()
   @RequirePermission('members.invite')
   async create(
@@ -105,6 +117,22 @@ export class MembersController {
     @Body(new ZodValidationPipe(UpdateAgentCapabilitiesInput)) body: UpdateAgentCapabilities,
   ) {
     return { data: await this.members.updateCapabilities(user, userId, body) };
+  }
+
+  // S4b #8 — apply a NAMED capability preset to an agent. SAME governance gate
+  // as PATCH :userId/capabilities (members.update): applying a preset is a
+  // member-administration write of the agent's JSONB flags. The service
+  // delegates to updateCapabilities so agent-only / invariant / audit / tenant
+  // isolation all apply verbatim. `:userId/apply-capability-preset` is specific
+  // enough not to collide with the static `capability-presets` GET.
+  @Post(':userId/apply-capability-preset')
+  @RequirePermission('members.update')
+  async applyCapabilityPreset(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('userId', UuidParam) userId: string,
+    @Body(new ZodValidationPipe(ApplyCapabilityPresetInput)) body: ApplyCapabilityPreset,
+  ) {
+    return { data: await this.members.applyCapabilityPreset(user, userId, body.presetKey) };
   }
 
   @Delete(':userId')

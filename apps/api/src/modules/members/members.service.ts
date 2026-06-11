@@ -14,10 +14,15 @@ import {
   type IEmailProvider,
   type TenantTx,
 } from '@emapp/db';
-import { DEFAULT_AGENT_CAPABILITIES } from '@emapp/shared-types';
+import {
+  CAPABILITY_PRESETS,
+  DEFAULT_AGENT_CAPABILITIES,
+  findCapabilityPreset,
+} from '@emapp/shared-types';
 import type {
   AcceptInvite,
   AgentCapabilities,
+  CapabilityPreset,
   CreateMember,
   Member,
   UpdateAgentCapabilities,
@@ -50,6 +55,8 @@ const INVALID_INVITE = new BadRequestException({ error: { code: 'invalid_invite'
 // revoked invites are terminal: nothing to resend, and re-minting a token for
 // an accepted member would be a password-reset oracle).
 const NOT_PENDING = new BadRequestException({ error: { code: 'member_not_pending' } });
+// S4b #8 — an apply-preset call naming a key not in the code-defined catalog.
+const UNKNOWN_PRESET = new BadRequestException({ error: { code: 'unknown_preset' } });
 
 const INVITE_TTL = '7d';
 const JWT_ISS = 'emapp';
@@ -527,6 +534,11 @@ export class MembersService {
     user: AccessTokenPayload,
     targetUserId: string,
     input: UpdateAgentCapabilities,
+    // S4b #8 — when the update originated from applying a named preset, the
+    // key is threaded through purely for the audit detail (provenance); it
+    // does NOT change any enforcement (agent-only / merge / invariant all
+    // run identically).
+    presetKey?: string,
   ): Promise<Member> {
     return withTenant(
       user.orgId,
@@ -583,7 +595,7 @@ export class MembersService {
           targetTable: 'memberships',
           targetId: row.id,
           beforeState: { capabilities: before.capabilities },
-          afterState: { capabilities: merged },
+          afterState: presetKey ? { capabilities: merged, presetKey } : { capabilities: merged },
           sessionId: user.sid,
         });
         return {
@@ -601,6 +613,35 @@ export class MembersService {
       },
       { userId: user.sub },
     );
+  }
+
+  /**
+   * S4b #8 — the code-defined capability-preset catalog (design §7). No DB:
+   * the presets are CODE (shared-types `CAPABILITY_PRESETS`). Kept on the
+   * service so the controller stays a thin pass-through; `user` is accepted
+   * for symmetry with the other tenant-scoped reads (the catalog is the same
+   * for every org, but the route is members.read-gated per tenant).
+   */
+  listCapabilityPresets(_user: AccessTokenPayload): readonly CapabilityPreset[] {
+    return CAPABILITY_PRESETS;
+  }
+
+  /**
+   * S4b #8 — apply a named preset to an agent. Looks up the preset (unknown →
+   * 400 `unknown_preset`), then delegates to `updateCapabilities` so ALL the
+   * existing behavior is reused verbatim: agent-only (`capabilities_agent_only`
+   * for a non-agent), withTenant, the `view_owner_pii ⇒ view_owners`
+   * invariant, and the audit. The preset bundle is the FULL 7-flag set, so the
+   * merge in updateCapabilities SETS every flag (no stale flag survives).
+   */
+  async applyCapabilityPreset(
+    user: AccessTokenPayload,
+    targetUserId: string,
+    presetKey: string,
+  ): Promise<Member> {
+    const preset = findCapabilityPreset(presetKey);
+    if (!preset) throw UNKNOWN_PRESET;
+    return this.updateCapabilities(user, targetUserId, preset.capabilities, preset.key);
   }
 
   async revoke(user: AccessTokenPayload, targetUserId: string): Promise<void> {

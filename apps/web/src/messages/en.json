@@ -1032,6 +1032,11 @@
     "capabilities": {
       "title": "Permissions",
       "hint": "Choose this agent's permissions. The default is least-privilege; grant only what's needed.",
+      "presetSection": "Permission preset",
+      "presetHint": "Pick a ready-made permission preset and apply it in one click. You can fine-tune the individual permissions below afterwards.",
+      "presetPlaceholder": "Choose a preset…",
+      "applyPreset": "Apply",
+      "applyingPreset": "Applying…",
       "readSection": "View",
       "writeSection": "Edit",
       "cap": {

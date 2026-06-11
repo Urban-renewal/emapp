@@ -24,6 +24,9 @@ export * from './note';
 export * from './audit';
 export * from './project-assignment';
 export * from './member';
+// S4b · #8 — capability PRESETS (design §7): a code-defined catalog of named
+// role presets (no table). Applying a preset reuses the updateCapabilities path.
+export * from './capability-presets';
 // P2 Phase 1 — custom roles (org-defined permission groups). Management CRUD +
 // assign/revoke wire shapes over the existing IAM data model (roles.org_id).
 export * from './role';

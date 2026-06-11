@@ -21,12 +21,16 @@
  */
 import {
   AcceptInviteInput,
+  ApplyCapabilityPresetInput,
+  CapabilityPresetSchema,
   ClearMemberOverrideInput,
   MemberPermissionOverrideSchema,
   MemberSchema,
   SetMemberOverrideInput,
   UpdateAgentCapabilitiesInput,
   type AcceptInvite,
+  type ApplyCapabilityPreset,
+  type CapabilityPreset,
   type ClearMemberOverride,
   type CreateMember,
   type Member,
@@ -136,6 +140,38 @@ export async function updateMemberCapabilities(
 ): Promise<Member> {
   const validated = UpdateAgentCapabilitiesInput.parse(body);
   const res = await apiClient.patch<unknown>(`/members/${userId}/capabilities`, validated);
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return MemberDataSchema.parse({ data: res.data }).data;
+}
+
+// ───────────────────────────────────────────────────────────────────
+// S4b #8 — capability PRESETS (design §7). A code-defined catalog; the
+// manager picks a named preset instead of toggling the 7 raw flags.
+//   GET  /api/v1/members/capability-presets        → { data: CapabilityPreset[] }
+//   POST /api/v1/members/:userId/apply-capability-preset → { data: Member }
+// Defensive Zod parse on the read; body parse before the write.
+// ───────────────────────────────────────────────────────────────────
+export async function listCapabilityPresets(): Promise<CapabilityPreset[]> {
+  const res = await apiClient.get<unknown>(`/members/capability-presets`);
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return z.array(CapabilityPresetSchema).parse(res.data);
+}
+
+/**
+ * POST /members/:userId/apply-capability-preset — set an agent's capability
+ * flags to a named preset's bundle. Reuses the BE capabilities path, so the
+ * same errors apply: 400 `capabilities_agent_only` (non-agent), 400
+ * `unknown_preset` (bad key). Returns the updated member.
+ */
+export async function applyCapabilityPreset(
+  userId: string,
+  body: ApplyCapabilityPreset,
+): Promise<Member> {
+  const validated = ApplyCapabilityPresetInput.parse(body);
+  const res = await apiClient.post<unknown>(
+    `/members/${userId}/apply-capability-preset`,
+    validated,
+  );
   if (!isOk(res)) throw new ApiClientError(res.error);
   return MemberDataSchema.parse({ data: res.data }).data;
 }

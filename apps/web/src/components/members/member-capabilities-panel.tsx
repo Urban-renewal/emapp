@@ -10,7 +10,12 @@ import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
-import { useUpdateMemberCapabilities } from '@/hooks/use-members';
+import {
+  useApplyCapabilityPreset,
+  useCapabilityPresets,
+  useUpdateMemberCapabilities,
+} from '@/hooks/use-members';
+import { useDisplayLocale } from '@/lib/locale';
 import type { MemberViewModel } from '@/models/member.vm';
 
 /**
@@ -47,9 +52,13 @@ const WRITE_GROUPS: AgentCapabilityKey[] = [
 
 export function MemberCapabilitiesPanel({ member }: Props) {
   const t = useTranslations('members.capabilities');
+  const locale = useDisplayLocale();
   const mutation = useUpdateMemberCapabilities();
+  const presetsQuery = useCapabilityPresets();
+  const applyPresetMutation = useApplyCapabilityPreset();
   const [caps, setCaps] = useState<AgentCapabilities>(member.capabilities);
   const [saved, setSaved] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState('');
 
   // Re-seed only when we navigate to a DIFFERENT member (keyed on userId),
   // not on every list-refetch identity change — otherwise a background
@@ -57,6 +66,7 @@ export function MemberCapabilitiesPanel({ member }: Props) {
   useEffect(() => {
     setCaps(member.capabilities);
     setSaved(false);
+    setSelectedPreset('');
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once per member; capabilities intentionally read at seed time only
   }, [member.userId]);
 
@@ -112,6 +122,29 @@ export function MemberCapabilitiesPanel({ member }: Props) {
     setCaps(DEFAULT_AGENT_CAPABILITIES);
   }
 
+  // S4b #8 — apply a NAMED preset: the BE sets the agent's flags to the
+  // preset bundle (reusing the capabilities path) and returns the updated
+  // member; on success we reflect the bundle in the local toggles so the
+  // manager can still fine-tune below.
+  const presets = presetsQuery.data ?? [];
+  const activePreset = presets.find((p) => p.key === selectedPreset);
+
+  async function onApplyPreset() {
+    if (!activePreset) return;
+    reset();
+    setSaved(false);
+    try {
+      await applyPresetMutation.mutateAsync({
+        userId: member.userId,
+        body: { presetKey: activePreset.key },
+      });
+      setCaps(activePreset.capabilities);
+      setSaved(true);
+    } catch (e) {
+      handle(e);
+    }
+  }
+
   const canSave = !member.isRevoked && dirty && !mutation.isPending;
 
   return (
@@ -140,6 +173,43 @@ export function MemberCapabilitiesPanel({ member }: Props) {
         }}
         className="space-y-4"
       >
+        {/* S4b #8 — named preset picker. Pick a Hebrew/English-labelled role
+            preset + "apply" to set all 7 flags at once; the raw toggles below
+            remain for fine-tuning. */}
+        <fieldset className="space-y-2 border-b pb-4" disabled={member.isRevoked}>
+          <legend className="text-sm font-medium">{t('presetSection')}</legend>
+          <p className="text-xs text-muted-foreground">{t('presetHint')}</p>
+          <div className="flex flex-wrap items-end gap-2">
+            <select
+              aria-label={t('presetSection')}
+              className="min-w-48 flex-1 rounded-md border bg-background px-3 py-2 text-sm disabled:opacity-50"
+              value={selectedPreset}
+              disabled={presetsQuery.isLoading || applyPresetMutation.isPending}
+              onChange={(e) => setSelectedPreset(e.target.value)}
+            >
+              <option value="">{t('presetPlaceholder')}</option>
+              {presets.map((p) => (
+                <option key={p.key} value={p.key} dir="auto">
+                  {locale === 'en' ? p.nameEn : p.nameHe}
+                </option>
+              ))}
+            </select>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!activePreset || applyPresetMutation.isPending}
+              onClick={onApplyPreset}
+            >
+              {applyPresetMutation.isPending ? t('applyingPreset') : t('applyPreset')}
+            </Button>
+          </div>
+          {activePreset && (
+            <p className="text-xs text-muted-foreground" dir="auto">
+              {locale === 'en' ? activePreset.descriptionEn : activePreset.descriptionHe}
+            </p>
+          )}
+        </fieldset>
+
         {/* Read scope. */}
         <fieldset className="space-y-2" disabled={member.isRevoked}>
           <legend className="text-sm font-medium">{t('readSection')}</legend>

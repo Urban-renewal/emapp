@@ -266,6 +266,8 @@ describe('T6.9 — SSE delivers progress events', () => {
       // awaiting_confirm gate + show when a preview was confirmed.
       'requireConfirm',
       'confirmedAt',
+      // S4a (#6): per-entity change-summary surfaced on the preview.
+      'changeSummary',
     ]);
     for (const k of Object.keys(view)) {
       expect(allowed.has(k), `disallowed key "${k}" in view`).toBe(true);

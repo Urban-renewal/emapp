@@ -1,0 +1,14 @@
+-- #6 import "real change-summary" (design §6).
+--
+-- The import PREVIEW (requireConfirm=true → pauses at 'awaiting_confirm'
+-- after validate, NO domain rows written) currently surfaces only ROW
+-- counts. It has NO per-ENTITY change-summary, so a preview of a sheet
+-- with N brand-new owners reports "0 changes".
+--
+-- This column holds the counting DRY-RUN result computed in the
+-- validate/preview stage:
+--   { ownersCreated, ownersMatched, apartmentsCreated, buildingsCreated,
+--     ownershipsCreated }
+-- Nullable: pre-existing rows + rows that haven't reached validate yet
+-- have no summary.
+ALTER TABLE import_jobs ADD COLUMN change_summary jsonb;

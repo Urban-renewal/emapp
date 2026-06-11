@@ -520,6 +520,165 @@ async function resolveOwnersBatch(
   return result;
 }
 
+/** Per-ENTITY change-summary shape (#6 — design §6). Mirrors the
+ *  Drizzle `import_jobs.change_summary` $type + shared-types
+ *  `ImportJobSchema.changeSummary`. */
+interface ChangeSummary {
+  ownersCreated: number;
+  ownersMatched: number;
+  apartmentsCreated: number;
+  buildingsCreated: number;
+  ownershipsCreated: number;
+}
+
+/** #6 — COUNT-ONLY dry-run of the find-or-create pipeline. Computes the
+ *  per-entity change-summary the PREVIEW surfaces WITHOUT writing any
+ *  domain rows. This is the read-half of persistStage's resolve* helpers:
+ *  it runs the exact same existing-vs-new SELECTs (STEP 1 of each batch
+ *  resolver) but performs NO INSERT.
+ *
+ *  Counting rules (must match persistStage's materialisation semantics):
+ *    - owners: dedupe the ok rows by national_id_hash; SELECT which hashes
+ *      already exist (active) in the org → ownersMatched; the remaining
+ *      distinct hashes → ownersCreated. (national_id is REQUIRED in the
+ *      import path, so every ok row has a hash — imports have no shells.)
+ *      We never "silent fill-blanks" a matched owner — matching is purely
+ *      by hash, no write.
+ *    - buildings: distinct (project, address) in the sheet that are NOT
+ *      already an active building → buildingsCreated.
+ *    - apartments: distinct (building, number) in the sheet that are NOT
+ *      already an active apartment → apartmentsCreated. New buildings have
+ *      no apartments yet, so every apartment under a new building counts as
+ *      created; apartments under an EXISTING building are looked up.
+ *    - ownerships: one per ok row (mirrors persistStage's `newOwnerships`
+ *      — a row per (owner, apartment) tuple).
+ *
+ *  SECURITY: reads national_id_hash ONLY for set-membership counting. The
+ *  cleartext national_id never leaves the ValidatedRow; nothing is logged.
+ *  NO INSERT anywhere in this function → the preview writes zero domain
+ *  rows (import.change-summary.spec.ts test #4). */
+async function computeChangeSummary(
+  tx: TenantTx,
+  orgId: string,
+  projectId: string | null,
+  okRows: readonly ValidatedRow[],
+): Promise<ChangeSummary> {
+  // ── Owners: dedupe by national_id_hash. national_id is REQUIRED in the
+  //    import path (row-validator rejects an empty one as `empty_required`,
+  //    and extractValidatedRow pads to 9 digits), so every ok row has a hash
+  //    — unlike the owner entity model (slice 3a), imports have no shells.
+  const distinctHashes = new Set<string>();
+  for (const r of okRows) {
+    distinctHashes.add(hashField(r.nationalId, env.PII_HASH_KEY));
+  }
+
+  let ownersMatched = 0;
+  if (distinctHashes.size > 0) {
+    const hashes = [...distinctHashes];
+    const existing = await tx
+      .select({ hash: owners.nationalIdHash })
+      .from(owners)
+      .where(
+        and(
+          eq(owners.orgId, orgId),
+          inArray(owners.nationalIdHash, hashes),
+          sql`${owners.archivedAt} IS NULL`,
+        ),
+      );
+    const existingHashes = new Set<string>();
+    for (const e of existing) if (e.hash !== null) existingHashes.add(e.hash);
+    ownersMatched = existingHashes.size;
+  }
+  const ownersCreated = distinctHashes.size - ownersMatched;
+
+  // ── Buildings: distinct addresses in the sheet not already active under
+  //    the project. Without a project there is nothing to materialise.
+  const distinctAddresses = new Set<string>();
+  for (const r of okRows) distinctAddresses.add(r.buildingAddress);
+
+  let existingAddresses = new Set<string>();
+  if (projectId !== null && distinctAddresses.size > 0) {
+    const addrs = [...distinctAddresses];
+    const existing = await tx
+      .select({ address: buildings.address })
+      .from(buildings)
+      .where(
+        and(
+          eq(buildings.projectId, projectId),
+          inArray(buildings.address, addrs),
+          sql`${buildings.archivedAt} IS NULL`,
+        ),
+      );
+    existingAddresses = new Set(existing.map((b) => b.address));
+  }
+  const buildingsCreated = distinctAddresses.size - existingAddresses.size;
+
+  // ── Apartments: distinct (address, number) in the sheet not already an
+  //    active apartment. Apartments under a NEW building (no building row
+  //    yet) are all new; under an EXISTING building we look them up. We
+  //    key by address rather than building-id since no building rows are
+  //    created in this dry-run.
+  const distinctApts = new Map<string, { address: string; number: string }>();
+  for (const r of okRows) {
+    const key = `${r.buildingAddress}\x00${r.apartmentNumber}`;
+    if (!distinctApts.has(key)) {
+      distinctApts.set(key, { address: r.buildingAddress, number: r.apartmentNumber });
+    }
+  }
+
+  let apartmentsCreated = distinctApts.size;
+  if (projectId !== null && existingAddresses.size > 0) {
+    // Resolve building ids for the EXISTING addresses only — new buildings
+    // have no apartments to match against.
+    const existingBuildings = await tx
+      .select({ id: buildings.id, address: buildings.address })
+      .from(buildings)
+      .where(
+        and(
+          eq(buildings.projectId, projectId),
+          inArray(buildings.address, [...existingAddresses]),
+          sql`${buildings.archivedAt} IS NULL`,
+        ),
+      );
+    const addressToBuildingId = new Map(existingBuildings.map((b) => [b.address, b.id]));
+    const buildingIds = [...addressToBuildingId.values()];
+    if (buildingIds.length > 0) {
+      const existingApts = await tx
+        .select({ buildingId: apartments.buildingId, number: apartments.number })
+        .from(apartments)
+        .where(
+          and(inArray(apartments.buildingId, buildingIds), sql`${apartments.archivedAt} IS NULL`),
+        );
+      // Build the set of existing (address, number) keys present in DB.
+      const buildingIdToAddress = new Map(
+        [...addressToBuildingId.entries()].map(([addr, id]) => [id, addr]),
+      );
+      const existingAptKeys = new Set<string>();
+      for (const a of existingApts) {
+        const addr = buildingIdToAddress.get(a.buildingId);
+        if (addr !== undefined) existingAptKeys.add(`${addr}\x00${a.number}`);
+      }
+      let matchedApts = 0;
+      for (const key of distinctApts.keys()) {
+        if (existingAptKeys.has(key)) matchedApts += 1;
+      }
+      apartmentsCreated = distinctApts.size - matchedApts;
+    }
+  }
+
+  // ── Ownerships: one per ok row (mirrors persistStage's newOwnerships,
+  //    a row per (owner, apartment) tuple).
+  const ownershipsCreated = okRows.length;
+
+  return {
+    ownersCreated,
+    ownersMatched,
+    apartmentsCreated,
+    buildingsCreated,
+    ownershipsCreated,
+  };
+}
+
 /** Linear transition order. The handler walks forward only — never
  *  backward. Cancellation comes from a separate API endpoint (S8), not
  *  from inside the handler. */
@@ -1365,6 +1524,25 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
     await withTenant(
       payload.orgId,
       async (tx) => {
+        // #6 — per-entity change-summary for the PREVIEW. COUNT-ONLY
+        // dry-run: find-or-create lookups for the ok rows WITHOUT any
+        // INSERT (see computeChangeSummary). We fetch project_id in the
+        // SAME tx (buildings/apartments are scoped to the project). This
+        // is what makes the preview report "N new owners" instead of
+        // "0 changes". Computed for every validate pass (preview AND
+        // real-run) — harmless for the real run (it's just counts) and
+        // keeps the awaiting_confirm/requireConfirm path correct.
+        const [projRow] = await tx
+          .select({ projectId: importJobs.projectId })
+          .from(importJobs)
+          .where(eq(importJobs.id, payload.jobId))
+          .limit(1);
+        const changeSummary = await computeChangeSummary(
+          tx,
+          payload.orgId,
+          projRow?.projectId ?? null,
+          okRows,
+        );
         await tx
           .update(importJobs)
           .set({
@@ -1373,6 +1551,7 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
             processedRows: parsed.rows.length,
             okRows: okCount,
             failedRows: failedCount,
+            changeSummary,
             updatedAt: new Date(),
           })
           .where(eq(importJobs.id, payload.jobId));

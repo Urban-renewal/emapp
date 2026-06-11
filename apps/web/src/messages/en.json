@@ -416,6 +416,7 @@
     "previewTitle": "Preview — awaiting confirmation",
     "previewHint": "The file was validated but NOT yet loaded into the org. Review the summary and confirm to load, or cancel to discard the import.",
     "previewSummary": "{ok} valid rows · {failed} rows with errors. Only the valid rows will be loaded.",
+    "previewChanges": "{owners} new owners · {apartments} apartments · {linked} linked",
     "confirmLoad": "Confirm & load",
     "confirming": "Loading…",
     "confirmFailed": "Failed to confirm the import.",

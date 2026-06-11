@@ -416,6 +416,7 @@
     "previewTitle": "תצוגה מקדימה — ממתין לאישור",
     "previewHint": "הקובץ נבדק אך עדיין לא נטען לארגון. בדוק את הסיכום ואשר כדי לטעון, או בטל כדי לבטל את הייבוא.",
     "previewSummary": "{ok} שורות תקינות · {failed} שורות עם שגיאות. רק השורות התקינות ייטענו.",
+    "previewChanges": "{owners} בעלים חדשים · {apartments} דירות · {linked} מקושרים",
     "confirmLoad": "אשר וטען",
     "confirming": "טוען…",
     "confirmFailed": "אישור הייבוא נכשל.",

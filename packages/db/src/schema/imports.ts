@@ -102,6 +102,20 @@ export const importJobs = pgTable(
      *  actually find these templates). Migration 0031. */
     parsedHeaders: jsonb('parsed_headers').$type<string[]>(),
 
+    /** #6 (migration 0067) — per-ENTITY change-summary for the PREVIEW.
+     *  Computed as a COUNT-ONLY dry-run in validateStage (find-or-create
+     *  lookups WITHOUT writing domain rows) for the ok rows. Surfaced on
+     *  the status/result DTO + FE so a preview of N brand-new owners
+     *  reports "N new owners" instead of "0 changes". Nullable: rows that
+     *  haven't reached validate yet have no summary. */
+    changeSummary: jsonb('change_summary').$type<{
+      ownersCreated: number;
+      ownersMatched: number;
+      apartmentsCreated: number;
+      buildingsCreated: number;
+      ownershipsCreated: number;
+    }>(),
+
     /** v8 §v8-S1 — R2 bytes purge timestamp. Set when the worker
      *  (or API cancel path) deletes the R2 object after a terminal
      *  state. Migration 0032's CHECK enforces "non-null only when

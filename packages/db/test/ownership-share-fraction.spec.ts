@@ -261,15 +261,19 @@ describe('ownership share as fraction (S3b — exact Tabu fractions, sum = 1)', 
     expect(result.ok).toBe(false);
   });
 
-  // ── TEST #3 — renters are EXCLUDED from the share sum ────────────────────
-  // An apartment whose OWNERS' fractions sum to the whole, PLUS a renter
-  // (relationship = 'renter'), still commits — the renter is not part of the
-  // ownership sum. Existing invariant (migration 0051) that must survive the
-  // fraction change. RED today for columns-missing; GREEN post-builder.
-  it('3) EXCLUDES renters from the share sum (owners = whole + a renter still commits)', async () => {
+  // ── TEST #3 — the owner-only share sum (occupants are NOT ownership rows) ──
+  // REWORKED for S3c (migration 0066): `relationship='renter'` was RETIRED from
+  // ownerships (the CHECK now pins it to ('owner')) and occupants moved to the
+  // apartment-attached `discovery_records` table. The old "owners=whole + a
+  // renter still commits" case is no longer expressible — a renter ownership
+  // INSERT is now rejected by the CHECK (23514). The surviving, still-valid
+  // assertion is the one this test always really exercised: an apartment whose
+  // SOLE owner holds the WHOLE (1/1) COMMITS. (The occupant-excluded-from-the-sum
+  // guarantee is now STRUCTURAL — an occupant has no ownership row at all — and
+  // is asserted in the rewritten owner-renter.spec.ts via discovery_records.)
+  it('3) ACCEPTS a single owner holding the whole apartment (1/1) — occupants are not ownership rows', async () => {
     const aptId = await makeApartment(seed.buildingId, 'frac-3');
     const ownerA = await makeOwner(seed.orgId);
-    const renter = await makeOwner(seed.orgId);
 
     const result = await providerDb
       .transaction(async (tx) => {
@@ -277,11 +281,6 @@ describe('ownership share as fraction (S3b — exact Tabu fractions, sum = 1)', 
         await tx.execute(sql`
           INSERT INTO ownerships (apartment_id, owner_id, ownership_pct, relationship, share_numerator, share_denominator)
           VALUES (${aptId}, ${ownerA}, 0, 'owner', 1, 1)
-        `);
-        // A renter — excluded from the sum. Carries a 0/1 share (does not own).
-        await tx.execute(sql`
-          INSERT INTO ownerships (apartment_id, owner_id, ownership_pct, relationship, share_numerator, share_denominator)
-          VALUES (${aptId}, ${renter}, 0, 'renter', 0, 1)
         `);
       })
       .then(
@@ -294,9 +293,7 @@ describe('ownership share as fraction (S3b — exact Tabu fractions, sum = 1)', 
         result.code === '42703'
           ? 'RED (columns missing: share_numerator/share_denominator do not exist yet — 42703)'
           : `RED (rejected: code=${result.code ?? 'n/a'} message=${result.message})`;
-      throw new Error(
-        `Expected owners=1/1 + a renter to COMMIT (renter excluded from the sum), but it was rejected. ${shape}`,
-      );
+      throw new Error(`Expected a single owner=1/1 to COMMIT, but it was rejected. ${shape}`);
     }
     expect(result.ok).toBe(true);
   });

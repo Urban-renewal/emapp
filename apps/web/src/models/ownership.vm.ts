@@ -17,8 +17,8 @@ export interface OwnershipViewModel {
   nationalIdMasked: string;
   phoneMasked: string | null;
   ownershipPct: number;
-  /** Feature A — owner vs renter. Renters carry pct 0 and are excluded
-   *  from the 100% ownership sum (mirrors `SetOwnershipsInput`). */
-  relationship: 'owner' | 'renter';
+  /** S3c — ownerships are owner-only (occupants moved to discovery_records).
+   *  Mirrors `RelationshipSchema` in shared-types. */
+  relationship: 'owner';
   role: string | null;
 }

@@ -15,6 +15,7 @@ import { CalendarModule } from './modules/calendar/calendar.module';
 import { CalendarEmailModule } from './modules/calendar-email/calendar-email.module';
 import { ContractorPortalModule } from './modules/contractor-portal/contractor-portal.module';
 import { ContractorsModule } from './modules/contractors/contractors.module';
+import { DiscoveryModule } from './modules/discovery/discovery.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { ExportModule } from './modules/export/export.module';
 import { ImportsModule } from './modules/imports/imports.module';
@@ -62,6 +63,10 @@ import { QueueModule } from './queue/queue.module';
     ApartmentsModule,
     OwnersModule,
     OwnershipsModule,
+    // S3c — "renter → discovery-source": apartment-attached discovery records
+    // (occupant) replacing the retired ownerships 'renter'. CRUD under an
+    // apartment; withTenant + RLS via-parent.
+    DiscoveryModule,
     ContractorsModule,
     DocumentsModule,
     SharesModule,

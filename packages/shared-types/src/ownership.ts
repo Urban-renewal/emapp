@@ -13,12 +13,13 @@ import { OwnerSchema } from './owner';
 // shape is doc-drift vs this locked trigger (recorded — D.25 / PROGRESS;
 // no Gate-2 deviation: we conform TO the locked invariant).
 
-// Feature A (P2 / D.25 sum-trigger change) — owner vs renter. A renter
-// does NOT sign and is EXCLUDED from the 100% ownership sum; renters carry
-// ownershipPct === 0 (option (a): column stays NOT NULL, the DB trigger
-// excludes by relationship). This Zod enum is the authoritative API-edge
-// enforcement (mirrors the DB CHECK ('owner','renter')).
-export const RelationshipSchema = z.enum(['owner', 'renter']);
+// S3c ("renter → discovery-source", migration 0066) — 'renter' was RETIRED from
+// ownerships. An occupant is NOT an owner/signer; it is a DISCOVERY SOURCE on the
+// apartment (see `discovery-record.ts`). The ownership relationship is therefore
+// owner-only now: this Zod enum mirrors the DB CHECK (relationship IN ('owner')).
+// Kept as an enum (not a literal) so the single existing value has one named
+// source of truth and a future non-owner relationship has an obvious home.
+export const RelationshipSchema = z.enum(['owner']);
 export type Relationship = z.infer<typeof RelationshipSchema>;
 
 export const OwnershipSchema = z.object({
@@ -66,8 +67,10 @@ const shareEntry = z
     shareDenominator: z.number().int().positive().max(DEN_MAX).optional(),
   })
   .strict()
-  .refine((e) => (e.relationship === 'renter' ? e.ownershipPct === 0 : e.ownershipPct > 0), {
-    message: 'owners must have ownershipPct > 0; renters must have ownershipPct === 0',
+  // S3c — ownerships are owner-only now (occupants moved to discovery_records).
+  // An owner must hold a real (>0) share.
+  .refine((e) => e.ownershipPct > 0, {
+    message: 'owners must have ownershipPct > 0',
   })
   .refine(
     // Either BOTH fraction parts are present, or NEITHER (pct-only). A lone
@@ -78,9 +81,8 @@ const shareEntry = z
   .refine(
     // An OWNER must hold a real share — its EFFECTIVE numerator (explicit, or
     // derived from pct) must be >= 1. A 0-share owner is invalid (mirrors the
-    // pct>0 rule above). Renters may carry a 0 numerator.
+    // pct>0 rule above). (S3c — ownerships are owner-only now.)
     (e) => {
-      if (e.relationship !== 'owner') return true;
       const { numerator } = deriveShareFraction(e);
       return numerator >= 1;
     },
@@ -120,19 +122,19 @@ function gcdBig(a: bigint, b: bigint): bigint {
 /**
  * Atomic full-set replace for an apartment's active ownerships
  * (PUT /apartments/:id/ownerships). The OWNER rows' EXACT fractions must be
- * EMPTY (clear all / renters only) or sum to exactly 1 — the legal end states
- * the DB trigger enforces. ownerId must be unique within the set. The server
- * ends all current active ownerships and inserts this set in one transaction.
+ * EMPTY (clear all) or sum to exactly 1 — the legal end states the DB trigger
+ * enforces. ownerId must be unique within the set. The server ends all current
+ * active ownerships and inserts this set in one transaction. (S3c — ownerships
+ * are owner-only; occupants live in discovery_records.)
  */
 export const SetOwnershipsInput = z
   .object({ owners: z.array(shareEntry).max(50) })
   .strict()
   .refine(
     (v) => {
-      // Feature A: only OWNER rows count toward the share invariant (renters
-      // are excluded — they carry a 0 share). An owner-less set (empty, or
-      // renters only) is the "clear" / no-owner legal end state the DB trigger
-      // also allows. This MUST agree with the trigger predicate
+      // Only OWNER rows count toward the share invariant. An owner-less set
+      // (empty) is the "clear" / no-owner legal end state the DB trigger also
+      // allows. This MUST agree with the trigger predicate
       // `... AND relationship = 'owner'`.
       //
       // EXACT FRACTION sum = 1 via INTEGER cross-multiplication — a MIRROR of

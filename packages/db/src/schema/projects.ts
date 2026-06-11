@@ -317,3 +317,44 @@ export const ownerships = pgTable(
 
 export type Ownership = typeof ownerships.$inferSelect;
 export type NewOwnership = typeof ownerships.$inferInsert;
+
+// S3c — discovery_records (migration 0066). "renter → discovery-source": an
+// occupant is NOT an owner/signer — it is a DISCOVERY SOURCE attached to an
+// APARTMENT (a field worker spoke to whoever lives there to learn who the owner
+// is). Retires the overloaded ownerships.relationship='renter'. RLS via parent
+// (Template B, like building_sections): apartment → building → project → org.
+// `status` is a closed enum at the Zod boundary AND a DB CHECK; recording_ref /
+// transcript are §6 DEFERRED slots (audio + transcript), present but never
+// populated this slice (the create/update DTOs omit them).
+export const discoveryRecords = pgTable(
+  'discovery_records',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    apartmentId: uuid('apartment_id')
+      .notNull()
+      .references(() => apartments.id, { onDelete: 'cascade' }),
+    // Closed enum (DB CHECK + Zod): not_visited | no_answer | spoke_to_occupant
+    //   | owner_identified | refused.
+    status: text('status').notNull().default('not_visited'),
+    notes: text('notes'),
+    // §6 DEFERRED slots — never populated this slice.
+    recordingRef: text('recording_ref'),
+    transcript: text('transcript'),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+  },
+  (table) => ({
+    orgIdx: index('idx_discovery_records_org').on(table.orgId),
+    apartmentIdx: index('idx_discovery_records_apartment')
+      .on(table.apartmentId)
+      .where(sql`archived_at IS NULL`),
+  }),
+);
+
+export type DiscoveryRecord = typeof discoveryRecords.$inferSelect;
+export type NewDiscoveryRecord = typeof discoveryRecords.$inferInsert;

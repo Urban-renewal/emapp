@@ -73,7 +73,6 @@
     "contractors": "קבלנים",
     "notes": "הערות",
     "audit": "יומן ביקורת",
-    "settings": "הגדרות",
     "provider": "מטה Provider",
     "providerConsole": "מסוף Provider EMAPP",
     "tagline": "התחדשות עירונית",
@@ -126,10 +125,22 @@
     "loginCta": "כניסה למערכת",
     "forgotPassword": "שכחתי סיסמה",
     "rolePicker": {
-      "manager": { "label": "מנהל", "sub": "אימייל וסיסמה" },
-      "agent": { "label": "סוכן", "sub": "אימייל או טלפון" },
-      "contractor": { "label": "קבלן", "sub": "אימייל וסיסמה" },
-      "tenant": { "label": "דייר", "sub": "תעודת זהות + טלפון" },
+      "manager": {
+        "label": "מנהל",
+        "sub": "אימייל וסיסמה"
+      },
+      "agent": {
+        "label": "סוכן",
+        "sub": "אימייל או טלפון"
+      },
+      "contractor": {
+        "label": "קבלן",
+        "sub": "אימייל וסיסמה"
+      },
+      "tenant": {
+        "label": "דייר",
+        "sub": "תעודת זהות + טלפון"
+      },
       "comingSoonAgent": "בקרוב — בשלב זה רק כניסת מנהל זמינה",
       "comingSoonContractor": "בקרוב — כניסת קבלן בנפרד דרך share-link",
       "comingSoonTenant": "בקרוב — כניסת דייר דרך SMS OTP"
@@ -656,7 +667,8 @@
     "field": {
       "type": "סוג",
       "file": "קובץ"
-    }
+    },
+    "notSensitive": "המסמך אינו מסומן כרגיש — יש להעלות בנתיב הרגיל"
   },
   "ownerships": {
     "title": "חלוקת בעלויות",

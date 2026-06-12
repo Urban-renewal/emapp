@@ -26,6 +26,7 @@ import { ObservabilityModule } from './modules/observability/observability.modul
 import { OrgModule } from './modules/org/org.module';
 import { OwnersModule } from './modules/owners/owners.module';
 import { OwnershipsModule } from './modules/ownerships/ownerships.module';
+import { ParcelSetupsModule } from './modules/parcel-setups/parcel-setups.module';
 import { PortalModule } from './modules/portal/portal.module';
 import { ProjectAssignmentsModule } from './modules/project-assignments/project-assignments.module';
 import { ProjectsModule } from './modules/projects/projects.module';
@@ -72,6 +73,11 @@ import { QueueModule } from './queue/queue.module';
     // extraction runs pointing at a finalized source doc; draft lifecycle.
     // withTenant + RLS direct org_id; create gated by edit_project_data (D.54).
     TabuModule,
+    // P3a — parcel-setup envelope + manual path → skeleton: project-attached
+    // גוש-חלקה setup; STRICT no-PII draft payload; confirm = audit-first,
+    // idempotent, atomic buildings+apartments creation with provenance.
+    // withTenant + RLS direct org_id; writes gated by edit_project_data (D.54).
+    ParcelSetupsModule,
     ContractorsModule,
     DocumentsModule,
     SharesModule,

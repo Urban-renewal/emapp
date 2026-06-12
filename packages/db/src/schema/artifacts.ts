@@ -445,3 +445,65 @@ export const tabuExtractionRows = pgTable(
 
 export type TabuExtractionRow = typeof tabuExtractionRows.$inferSelect;
 export type NewTabuExtractionRow = typeof tabuExtractionRows.$inferInsert;
+
+// P3a — parcel_setups (migration 0073). The PROJECT-attached envelope around a
+// single גוש-חלקה setup run (docs/DESIGN-phase3-parcel-autosetup.md §4):
+// block+parcel(+sub) in, a draft buildings/apartments jsonb payload (NO PII —
+// the STRICT Zod schema in shared-types + the service re-parse make PII keys
+// structurally impossible), draft→confirmed/discarded lifecycle. CONFIRM
+// materializes the physical skeleton (buildings + apartments) atomically and
+// stamps buildings.source_parcel_setup_id (provenance, mirror of
+// ownerships.source_extraction_id 0071). RLS = direct org_id (documents-style),
+// FORCE — mirrors tabu_extractions (0068). Public-record data, no pgcrypto.
+
+/**
+ * Local structural mirror of `@emapp/shared-types` `ParcelSetupPayload`.
+ * `@emapp/db` does NOT depend on `@emapp/shared-types` (cycle rule), so the
+ * canonical STRICT Zod schema there is the source of truth and this is just
+ * the storage-layer type for the jsonb column. `floorsCount`/`number` are
+ * DRAFT-ONLY hints (no building columns — confirm does not map them).
+ */
+export interface ParcelSetupPayloadStored {
+  buildings: Array<{
+    address: string;
+    city?: string;
+    number?: string;
+    floorsCount?: number;
+    apartments: Array<{ number: string; floor?: number }>;
+  }>;
+}
+
+export const parcelSetups = pgTable(
+  'parcel_setups',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    // §7.1-4 — P3a attaches to an EXISTING project.
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    // PUBLIC land-registration numbers (גוש/חלקה/תת) — not PII.
+    blockNumber: text('block_number').notNull(),
+    parcelNumber: text('parcel_number').notNull(),
+    subParcel: text('sub_parcel'),
+    // Closed enum (DB CHECK + Zod): draft | confirmed | discarded.
+    status: text('status').notNull().default('draft'),
+    // The user's DRAFT buildings/apartments. Public record — no pgcrypto.
+    payload: jsonb('payload').$type<ParcelSetupPayloadStored>(),
+    // 'manual' this slice; provider keys arrive with P3b.
+    source: text('source').notNull().default('manual'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  },
+  (table) => ({
+    orgProjectIdx: index('idx_parcel_setups_org_project').on(table.orgId, table.projectId),
+  }),
+);
+
+export type ParcelSetup = typeof parcelSetups.$inferSelect;
+export type NewParcelSetup = typeof parcelSetups.$inferInsert;

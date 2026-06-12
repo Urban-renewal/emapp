@@ -16,7 +16,7 @@ import { projectTypeEnum, projectStatusEnum, apartmentStatusEnum } from './_enum
 import { bytea, citext } from './_types';
 // Type-only at runtime via the lazy `.references(() => …)` callback — the
 // projects↔artifacts import cycle never dereferences during module eval.
-import { tabuExtractions } from './artifacts';
+import { parcelSetups, tabuExtractions } from './artifacts';
 import { organizations, users } from './tenancy';
 
 /**
@@ -105,6 +105,12 @@ export const buildings = pgTable(
     subparcel: text('subparcel'),
     aptCount: integer('apt_count').notNull().default(0),
     notes: text('notes'),
+    // P3a (migration 0073) — provenance: the parcel setup whose confirm
+    // created this building (mirror ownerships.source_extraction_id, 0071).
+    // NULL for buildings created by any other path. Apartments inherit via
+    // their building — no duplicate column. Lazy callback keeps the
+    // projects↔artifacts ESM cycle safe (same pattern as sourceExtractionId).
+    sourceParcelSetupId: uuid('source_parcel_setup_id').references(() => parcelSetups.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),

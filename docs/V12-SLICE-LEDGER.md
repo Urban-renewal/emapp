@@ -678,3 +678,16 @@ recommendation, documents everything, and continues through the full green-gate 
 queue: 7c-FE (F1 unlock modal+F3 review UI+F2 NIT) → perf fix A (local docker PG for dev) → 7d
 doc-bytes envelope encryption → next roadmap value. PII-egress to a real AI engine still requires the
 owner-provisioned creds+DPA (built behind the seam only).
+
+### Slice 7c ✅ CLOSED — merged #362. **PHASE-5 COMPLETE (7a+7b-extract+7b-OTP+7c).**
+
+The full נסח→ownership loop is LIVE: upload(sensitive)→403→OTP unlock(modal)→extract(pluggable
+stub)→decrypted review(masked-by-role)→edit(masked-ת.ז. read-only)→idempotent confirm→owners(hash-match
+or shells)+ownerships(fractions+provenance 0071)→signer signs→tenant portal. Evidence: 21 RED-first
+tests, both reviews PASS (0 findings; 1 FE flag implemented), live-QA twice + the 6-entity smoke.
+FE bonus root-fix: a wrong step-up OTP no longer logs the user out (SUPPRESS_EVENT + spec).
+
+### Perf fix A — kit authored (PR #363 DRAFT): review caught a REAL CRITICAL (wrapper bypassed
+
+Infisical → PII keys missing at migrate) — fixed; merge blocked on a REAL run (Docker not installed
+on the dev machine — owner action). Honest: no perf evidence until then.

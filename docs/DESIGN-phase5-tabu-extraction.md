@@ -54,3 +54,18 @@ owners (שלדים 3a) + ownerships (שברים מדויקים 3b, atomic, sum-t
 | 7b-OTP     | step-up unlock לסשן + שער-מסמכים-רגישים (0070)                       | ✅ #361 (בקרת-אבטחה: 2 HIGH תוקנו-בשורש+ננעלו) |
 | 7c         | סקירה-מפוענחת מאחורי OTP + confirm→ownerships+provenance + FE-unlock | 🟢 הבא (כולל browser-QA שרשרת-מלאה)            |
 | 7d         | הצפנת-bytes-המסמך במעטפה (R2 at-rest)                                | ⏳ אחרי 7c                                     |
+
+## 5. Slice 7c — סקירה+אישור (spec)
+
+- **BE:** `GET /tabu-extractions/:id/rows` — שורות מפוענחות (decryptField) **רק** מאחורי unlock תקף
+  (אחרת 403 pii_step_up_required, אותה-posture כמו שער-המסמכים) + masking-לפי-תפקיד (D.19/D.47).
+  `PATCH /tabu-extractions/:id/rows/:rowId` — עריכת שורה (edited=true; cap edit_project_data).
+  `POST /tabu-extractions/:id/confirm` — audit-first, אידמפוטנטי (WHERE status='draft'), אטומי:
+  יצירת/התאמת owners (שלדי-3a; התאמה לפי hash-ת.ז. כשקיימת) + החלפת ownerships של הדירה בשברים
+  המאושרים (טריגר-סכום, טרנזקציה אחת) + confirmed_at + provenance (עמודת source_extraction_id על
+  ownerships — migration, when > 1782745200000). + 3 ה-MINORs הרטרואקטיביים (טסט-pagination,
+  טסט-agent-getOne, יישור limit-default).
+- **FE:** מודאל-unlock (request→קוד→verify, נפתח על כל 403 pii_step_up_required) + מסך-סקירה צד-לצד
+  (מציג-נסח ↔ שורות מפוענחות, עריכה, אישור) בעמוד-הדירה. he+en. stub ל-e2e.
+- **Browser-QA (חוב 7a/7b נסגר כאן): השרשרת המלאה חיה** — העלאת-נסח(רגיש) → 403 → OTP unlock →
+  extract(stub) → סקירה → עריכה → confirm → ownerships בשברים נכונים + provenance → הלוח משתקף.

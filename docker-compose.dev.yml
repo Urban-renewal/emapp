@@ -1,0 +1,32 @@
+# Local dev Postgres — OPT-IN perf fix (V12 perf diagnosis: dev→Neon us-east-1
+# RTT ~165ms/query × 7-8 sequential queries ≈ 1.2-1.5s/request; local PG ≈ <1ms).
+#
+# Usage (one-time):  docker compose -f docker-compose.dev.yml up -d
+#                    pnpm db:local:migrate
+# Then point Infisical dev DATABASE_URL (or a local override) at:
+#   postgresql://emapp:emapp_local_dev@localhost:5433/emapp
+#
+# NOTE: postgres:16 (debian) — NOT alpine — because migration 0013 creates the
+# he_il_icu ICU collation (D.11) which needs the ICU-enabled build.
+# Extensions (pgcrypto, citext) are created by infra/local-db/init.sql.
+# Neon stays the default everywhere (CI/staging/prod untouched); this is dev-only.
+services:
+  db:
+    image: postgres:16
+    container_name: emapp-local-db
+    environment:
+      POSTGRES_USER: emapp
+      POSTGRES_PASSWORD: emapp_local_dev
+      POSTGRES_DB: emapp
+    ports:
+      - '5433:5432'
+    volumes:
+      - emapp_local_pg:/var/lib/postgresql/data
+      - ./infra/local-db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U emapp -d emapp']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  emapp_local_pg:

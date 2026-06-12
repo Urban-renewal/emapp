@@ -308,6 +308,43 @@ _(no body)_
 
 **Errors:** `validation_error`, `429`
 
+### POST /api/v1/auth/step-up/request
+
+- **Auth:** AuthGuard
+- **Summary:** Request a PII step-up OTP (7b-OTP, D-P5.5). 6-digit code emailed to the caller; hashed at rest; 3/15min rate limit (the 4th in-window request sends no email).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { "ok": true } }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `token_expired`, `invalid_session`, `429`
+
+### POST /api/v1/auth/step-up/verify
+
+- **Auth:** AuthGuard
+- **Summary:** Verify the step-up OTP → stamp pii_unlocked_at on the CALLER’S CURRENT session only (unlocks sensitive-document downloads for security.piiUnlockTtlMinutes, default 60).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `code` | string | yes | pattern="^\\d{6}$" |
+
+
+**Response**
+
+```json
+{ "data": { "ok": true } }
+```
+
+**Errors:** `validation_error`, `missing_token`, `invalid_token`, `invalid_step_up_code`, `429`
+
 ### POST /api/v1/auth/switch-org
 
 - **Auth:** AuthGuard

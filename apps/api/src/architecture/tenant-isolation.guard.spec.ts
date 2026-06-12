@@ -25,6 +25,11 @@ const ALLOWLIST = new Set<string>([
   'auth/auth.service.ts',
   'auth/provider/provider-auth.service.ts',
   'auth/session-validity.ts',
+  // 7b-OTP (D-P5.5) — PII step-up unlock. Auth-INFRA tables only
+  // (step_up_codes / auth_sessions / users / audit_log-with-explicit-org):
+  // session-keyed, no RLS, same posture as the tenant OTP service below.
+  // Code hashed at rest; the unlock stamps ONLY the caller's session.
+  'auth/step-up.service.ts',
   'auth/tenant/otp.service.ts',
   'export/export-rate-limit.service.ts',
   'portal/portal.service.ts',

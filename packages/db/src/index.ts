@@ -118,6 +118,15 @@ export type {
   ExtractionRow,
 } from './providers/extraction/extraction.interface';
 export { StubExtractionProvider } from './providers/extraction/stub.provider';
+// P3b — pluggable parcel-data provider (zero-egress Stub default; LocalMapi
+// reads the bulk-מפ"י-loaded parcel_lookup reference table, migration 0074).
+export type {
+  IParcelDataProvider,
+  ParcelLookupQuery,
+  ParcelLookupResult,
+} from './providers/parcel/parcel.interface';
+export { StubParcelDataProvider } from './providers/parcel/stub.provider';
+export { LocalMapiParcelDataProvider } from './providers/parcel/local-mapi.provider';
 export type {
   IStorageProvider,
   UploadUrlOptions,

@@ -1809,7 +1809,7 @@ _(no body)_
 **Response**
 
 ```json
-{ "data": { ...ParcelSetup } }
+{ "data": { ...ParcelSetup } }  (P3b: wire includes providerStatus + providerCity)
 ```
 
 **Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
@@ -2305,7 +2305,7 @@ _(no body)_
 ### POST /api/v1/projects/:projectId/parcel-setups
 
 - **Auth:** AuthGuard + TenantGuard (buildings.create; D.54 agent fine gate edit_project_data)
-- **Summary:** P3a — create a parcel-setup (גוש-חלקה) draft envelope on an EXISTING project. Project visibility is no-oracle 404.
+- **Summary:** P3a — create a parcel-setup (גוש-חלקה) draft envelope on an EXISTING project. Project visibility is no-oracle 404. P3b — after the draft insert the pluggable parcel-data provider (PARCEL_LOOKUP_ENABLED → LocalMapi, else zero-egress Stub) is consulted with ONLY block/parcel/sub (zero-PII egress): found → source=the provider id (never from the DTO) + providerCity + providerStatus=found; not-found/Stub/provider error → FAIL-OPEN: draft stands, source=manual, providerStatus=not_found.
 
 **Request body**
 
@@ -2319,7 +2319,7 @@ _(no body)_
 **Response**
 
 ```json
-{ "data": { ...ParcelSetup } }  (status=draft, source=manual, payload=null)
+{ "data": { ...ParcelSetup } }  (status=draft, payload=null; source=manual|"local-mapi", providerStatus="found"|"not_found", providerCity=string|null)
 ```
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`

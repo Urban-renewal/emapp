@@ -1517,9 +1517,15 @@ const ENDPOINTS: Endpoint[] = [
     auth: 'AuthGuard + TenantGuard (buildings.create; D.54 agent fine gate edit_project_data)',
     summary:
       'P3a — create a parcel-setup (גוש-חלקה) draft envelope on an EXISTING project. ' +
-      'Project visibility is no-oracle 404.',
+      'Project visibility is no-oracle 404. P3b — after the draft insert the pluggable ' +
+      'parcel-data provider (PARCEL_LOOKUP_ENABLED → LocalMapi, else zero-egress Stub) is ' +
+      'consulted with ONLY block/parcel/sub (zero-PII egress): found → source=the provider ' +
+      'id (never from the DTO) + providerCity + providerStatus=found; not-found/Stub/provider ' +
+      'error → FAIL-OPEN: draft stands, source=manual, providerStatus=not_found.',
     request: CreateParcelSetupInput,
-    response: '{ "data": { ...ParcelSetup } }  (status=draft, source=manual, payload=null)',
+    response:
+      '{ "data": { ...ParcelSetup } }  (status=draft, payload=null; source=manual|"local-mapi", ' +
+      'providerStatus="found"|"not_found", providerCity=string|null)',
     errors: [
       'validation_error',
       'forbidden',
@@ -1553,7 +1559,7 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/parcel-setups/:id',
     auth: 'AuthGuard + TenantGuard (buildings.read)',
     summary: 'Get one parcel setup by id (org scope no-oracle 404; Agent → assigned only).',
-    response: '{ "data": { ...ParcelSetup } }',
+    response: '{ "data": { ...ParcelSetup } }  (P3b: wire includes providerStatus + providerCity)',
     errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {

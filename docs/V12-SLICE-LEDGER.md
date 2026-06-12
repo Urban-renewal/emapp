@@ -777,3 +777,10 @@ web 860/860. worker signature-expiry 9/9. **main is healthy.**
 
 lexically ('10' before '2') in the 5d drill-down (ORDER BY a.number) + the apartments lists. Small,
 real, owner-visible. Then: P3d-dark-prep or the next owner directive.
+
+### #369 ✅ merged — document_not_sensitive mapped (the one real gap from the owner's 7d-FE task;
+
+all else verified already-shipped in #364). ### Numeric sort — PR #370 armed (RED-first spec pins the
+interleaved natural order at the 5d drill-down + the contractor portal; ::numeric overflow-safe;
+honest proportionate-rigor note in the PR). LESSON recorded: parallel agents share the working tree —
+stage precisely, never `git add -A` while a sibling agent runs.

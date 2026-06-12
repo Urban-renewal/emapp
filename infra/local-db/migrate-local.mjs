@@ -1,13 +1,18 @@
-// Portable (win/posix) local-DB migrate wrapper — sets DATABASE_URL for the
-// child without needing cross-env at the workspace root.
+// Portable (win/posix) local-DB migrate wrapper.
+// Routes through `infisical run` so PII_ENCRYPTION_KEY / PII_HASH_KEY reach the
+// migrate runner (its assertPiiKeysPresent sentinel + the 0033 pgcrypto backfill
+// REQUIRE them) — only DATABASE_URL is overridden to the local container.
 import { spawnSync } from 'node:child_process';
-const r = spawnSync('pnpm', ['--filter', '@emapp/db', 'db:migrate'], {
-  stdio: 'inherit',
-  shell: true,
-  env: {
-    ...process.env,
-    DATABASE_URL: 'postgresql://emapp:emapp_local_dev@localhost:5433/emapp',
-    SKIP_ENV_VALIDATION: 'true',
+const r = spawnSync(
+  'infisical',
+  ['run', '--env=dev', '--', 'pnpm', '--filter', '@emapp/db', 'db:migrate'],
+  {
+    stdio: 'inherit',
+    shell: true,
+    env: {
+      ...process.env,
+      DATABASE_URL: 'postgresql://emapp:emapp_local_dev@localhost:5433/emapp',
+    },
   },
-});
+);
 process.exit(r.status ?? 1);

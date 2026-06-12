@@ -21,7 +21,15 @@ DATABASE_URL=postgresql://emapp:emapp_local_dev@localhost:5433/emapp \
 
 Tests: same override before `vitest run`.
 
-**Notes:** PII_ENCRYPTION_KEY etc. still come from Infisical (only the DB moves).
+**Notes:** `db:local:migrate` routes through `infisical run --env=dev` so the
+mandatory PII keys reach the migrate runner; ONLY `DATABASE_URL` is overridden.
+NOTE: Infisical may inject its own DATABASE_URL — the wrapper's env override is
+applied by Node AFTER infisical's injection? NO — infisical injects into the
+child it spawns, so the wrapper sets DATABASE_URL on infisical's env and pnpm
+inherits it; if infisical's dev env ALSO defines DATABASE_URL it will OVERRIDE
+ours — in that case run with `infisical run --env=dev --` manually and export
+DATABASE_URL inside, or verify with `pnpm db:local:migrate` and check the target
+host in the migrate output. (To be settled in the runtime verification below.)
 Fresh DB = no seed data; run signup/QA flows to populate. `docker compose down -v`
 resets. The status checks/CI are untouched.
 

@@ -257,6 +257,25 @@ export const handlers = [
       createdAt: new Date(),
       updatedAt: new Date(),
     });
+    // 7d — SENSITIVE docs (id_document/financial by type, or explicit
+    // sensitive:true) get NO presigned PUT; bytes go through the API
+    // content path. Mirrors documents.service.ts so the offline FE
+    // exercises the same branch decision.
+    const sensitive =
+      parsed.data.type === 'id_document' ||
+      parsed.data.type === 'financial' ||
+      parsed.data.sensitive === true;
+    if (sensitive) {
+      return HttpResponse.json(
+        dataEnvelope({
+          document: doc,
+          uploadUrl: null,
+          uploadExpiresInSeconds: null,
+          contentUploadPath: `/api/v1/documents/${doc.id}/content`,
+        }),
+        { status: 201 },
+      );
+    }
     return HttpResponse.json(
       dataEnvelope({
         document: doc,
@@ -266,6 +285,11 @@ export const handlers = [
       { status: 201 },
     );
   }),
+  // 7d — sensitive content upload (raw octet-stream body). The real route
+  // integrity-checks + scans + encrypts; offline we just acknowledge.
+  http.post(`${API}/documents/:id/content`, () =>
+    HttpResponse.json(dataEnvelope({ uploaded: true })),
+  ),
   http.get(`${API}/documents/:id`, ({ params }) => {
     const d = SAMPLE_DOCUMENTS.find((x) => x.id === params['id']);
     return d ? HttpResponse.json(dataEnvelope(d)) : errorEnvelope('not_found', 404);

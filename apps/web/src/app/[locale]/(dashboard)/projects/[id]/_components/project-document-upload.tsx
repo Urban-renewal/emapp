@@ -1,12 +1,18 @@
 'use client';
 
-import { DocumentMimeEnum, type DocumentMime, type DocumentType } from '@emapp/shared-types';
+import {
+  DOCUMENT_SCAN_REJECTED_CODE,
+  DocumentMimeEnum,
+  type DocumentMime,
+  type DocumentType,
+} from '@emapp/shared-types';
 import { useQueryClient } from '@tanstack/react-query';
 import { Upload } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 
 import { useUploadDocument } from '@/hooks/use-documents';
+import { integrityMismatchField } from '@/lib/api/documents';
 import { ApiClientError } from '@/lib/api/errors';
 
 /**
@@ -170,24 +176,19 @@ export function ProjectDocumentUpload({ projectId }: { projectId: string }) {
  * Map a finalize/upload failure to a localized, ACTIONABLE message. When the
  * BE returns the Slice 5c integrity-mismatch `details.field`, surface the
  * field-specific copy ("size" → גודל / "hash" → תוכן); otherwise a generic
- * upload-failed message.
+ * upload-failed message. 7d adds the AV-scan rejection (409 on the content
+ * path) and the hook's pre-network 50MB ceiling.
  */
 function errorMessage(e: unknown, t: (k: string) => string): string {
   if (e instanceof ApiClientError) {
     if (e.code === 'document_integrity_mismatch') {
-      const field = integrityField(e.details);
+      const field = integrityMismatchField(e.details);
       if (field === 'size') return t('sizeMismatch');
       if (field === 'hash') return t('hashMismatch');
     }
+    if (e.code === DOCUMENT_SCAN_REJECTED_CODE) return t('scanRejected');
+    if (e.code === 'document_too_large') return t('tooLarge');
     if (e.code === 'storage_unavailable' || e.code === 'upload_failed') return t('failed');
   }
   return t('failed');
-}
-
-function integrityField(details: unknown): 'size' | 'hash' | null {
-  if (details && typeof details === 'object' && 'field' in details) {
-    const f = (details as { field?: unknown }).field;
-    if (f === 'size' || f === 'hash') return f;
-  }
-  return null;
 }

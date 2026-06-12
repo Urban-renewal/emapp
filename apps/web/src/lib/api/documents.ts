@@ -5,27 +5,35 @@
  *  - r2_key is NEVER on the wire — the FE never receives a key. POST
  *    /documents returns `{ document, uploadUrl, uploadExpiresInSeconds }`
  *    where uploadUrl is a short-lived presigned PUT (5 min).
- *  - GET /documents/:id/download returns `{ url, expiresInSeconds }` —
- *    a short-lived presigned GET (2 min). The FE opens it as an
- *    attachment.
+ *  - 7d: SENSITIVE docs (id_document/financial, or sensitive:true) get
+ *    `uploadUrl: null` + `contentUploadPath` instead — their bytes go
+ *    through POST /documents/:id/content (raw octet-stream) so the server
+ *    can integrity-check, AV-scan and envelope-encrypt the plaintext. The
+ *    content route stamps uploaded itself: NO finalize on that leg.
+ *  - GET /documents/:id/download is dual-mode (7d): plain docs answer the
+ *    `{ url, expiresInSeconds }` presign JSON (2 min); bytes_encrypted
+ *    docs are decrypt-STREAMED by the API (a presigned URL would serve
+ *    ciphertext) — see fetchDownload.
  *  - Finalize verifies size+hash; mismatch → server archives + purges.
  *  - MIME is an allow-list (enforced by shared-types DocumentMimeEnum).
- *  - 50 MB hard ceiling.
+ *  - 50 MB hard ceiling (also pre-checked client-side in uploadDocumentFlow).
  */
 import {
+  DOCUMENT_MAX_SIZE_BYTES,
   DocumentDownloadResponseSchema,
   DocumentSchema,
   DocumentUploadResponseSchema,
   type CreateDocument,
   type Document,
   type DocumentMime,
+  type DocumentType,
   type DocumentUploadResponse,
   type FinalizeDocument,
   type ListDocumentsQueryDto,
 } from '@emapp/shared-types';
 import { z } from 'zod';
 
-import { apiClient, isList, isOk } from '../api-client';
+import { apiClient, apiFetchRaw, isList, isOk } from '../api-client';
 
 import { ApiClientError, isEmptyResponseSuccess } from './errors';
 import { PageSchema } from './paging';
@@ -33,6 +41,15 @@ import { PageSchema } from './paging';
 const DocumentDataSchema = z.object({ data: DocumentSchema });
 const UploadResponseDataSchema = z.object({ data: DocumentUploadResponseSchema });
 const DownloadResponseDataSchema = z.object({ data: DocumentDownloadResponseSchema });
+// D.16 error envelope — parsed off raw (non-apiClient) responses (7d byte
+// paths) so error codes/details surface as the same ApiClientError shape.
+const ErrorEnvelopeSchema = z.object({
+  error: z.object({
+    code: z.string(),
+    message: z.string().optional(),
+    details: z.unknown().optional(),
+  }),
+});
 
 export interface DocumentListPage {
   items: Document[];
@@ -71,6 +88,145 @@ export async function createDocument(body: CreateDocument): Promise<DocumentUplo
   return UploadResponseDataSchema.parse({ data: res.data }).data;
 }
 
+/** 7d — which leg the freshly-created document's bytes take. */
+export type UploadPlan =
+  | { mode: 'presigned'; uploadUrl: string }
+  | { mode: 'content'; contentUploadPath: string };
+
+/** The /api/v1 prefix apiFetchRaw prepends — the BE's `contentUploadPath`
+ *  arrives WITH it (`/api/v1/documents/<id>/content`), so we validate the
+ *  full path and strip the prefix before handing it to the client. */
+const API_V1_PREFIX = '/api/v1';
+// Tight shape allow-list — RELATIVE, exactly the content route for ONE
+// document id. An absolute URL (or any other path) coming back in
+// `contentUploadPath` would otherwise let a compromised/buggy response
+// redirect the raw PII bytes (+ cookies, same-origin) to an arbitrary
+// endpoint. Fail closed on anything that isn't the known route.
+const CONTENT_UPLOAD_PATH_RE =
+  /^\/api\/v1\/documents\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/content$/i;
+
+/**
+ * 7d branch decision (pure — pinned by documents-content-path.spec.ts):
+ *  - `uploadUrl` present → the presigned-PUT leg, UNCHANGED from pre-7d.
+ *  - `uploadUrl: null` + a valid relative `contentUploadPath` → the
+ *    sensitive-doc API content leg (raw bytes via POST, NO finalize —
+ *    the content route stamps `uploaded` itself; finalize would 409
+ *    `document_already_uploaded`).
+ *  - anything else (null + missing/malformed path) → fail closed.
+ */
+export function resolveUploadPlan(
+  created: Pick<DocumentUploadResponse, 'uploadUrl' | 'contentUploadPath'>,
+): UploadPlan {
+  if (created.uploadUrl) return { mode: 'presigned', uploadUrl: created.uploadUrl };
+  const path = created.contentUploadPath;
+  if (typeof path === 'string' && CONTENT_UPLOAD_PATH_RE.test(path)) {
+    return { mode: 'content', contentUploadPath: path };
+  }
+  throw new ApiClientError({
+    code: 'invalid_response',
+    message: 'create returned neither a presigned uploadUrl nor a valid contentUploadPath',
+  });
+}
+
+/**
+ * 7d — POST the raw bytes of a SENSITIVE document to the API content path
+ * (`application/octet-stream`, same-origin credentials like every API call —
+ * the route is auth-guarded; unlike a presigned URL the path carries no
+ * secret). On 200 the server has already integrity-checked (size+sha256
+ * against the create-declared values), AV-scanned and envelope-encrypted
+ * the plaintext AND stamped the row uploaded — the caller must NOT finalize.
+ * Errors surface the envelope code/details (`document_integrity_mismatch`
+ * + details.field, `document_scan_rejected`, `storage_unavailable`, …).
+ */
+export async function uploadDocumentContent(contentUploadPath: string, blob: Blob): Promise<void> {
+  if (!CONTENT_UPLOAD_PATH_RE.test(contentUploadPath)) {
+    throw new ApiClientError({ code: 'invalid_response', message: 'bad contentUploadPath' });
+  }
+  // timeoutMs: 0 — a 50MB body can exceed the 15s default; same posture as
+  // uploadToPresigned (which has no timeout at all).
+  const res = await apiFetchRaw(contentUploadPath.slice(API_V1_PREFIX.length), {
+    method: 'POST',
+    body: blob,
+    headers: { 'Content-Type': 'application/octet-stream' },
+    timeoutMs: 0,
+  });
+  if (res.ok) return;
+  let parsed: unknown = null;
+  try {
+    parsed = await res.json();
+  } catch {
+    // non-JSON failure body — fall through to the generic code.
+  }
+  const env = ErrorEnvelopeSchema.safeParse(parsed);
+  if (env.success) throw new ApiClientError(env.data.error);
+  throw new ApiClientError({
+    code: 'upload_failed',
+    message: `content upload returned ${res.status}`,
+  });
+}
+
+export interface UploadDocumentArgs {
+  file: File;
+  type: DocumentType;
+  mimeType: DocumentMime;
+  projectId?: string | null;
+  apartmentId?: string | null;
+}
+
+/**
+ * The full upload orchestration (extracted from useUploadDocument so the
+ * 7d branch decision is seam-testable without React):
+ *   create → resolveUploadPlan →
+ *     presigned: PUT to R2 → finalize          (pre-7d flow, UNCHANGED)
+ *     content:   POST bytes to the API → DONE   (no finalize — it would 409)
+ * Client-side 50MB ceiling enforced BEFORE any network/hashing so an
+ * oversized pick fails fast with an actionable code.
+ */
+export async function uploadDocumentFlow(args: UploadDocumentArgs): Promise<Document> {
+  if (args.file.size > DOCUMENT_MAX_SIZE_BYTES) {
+    throw new ApiClientError({
+      code: 'document_too_large',
+      message: `file exceeds the ${DOCUMENT_MAX_SIZE_BYTES}-byte ceiling`,
+    });
+  }
+  const contentHash = await sha256OfBlob(args.file);
+  // §v9-M-3 — canonicalize the mime ONCE so the signed Content-Type at
+  // create-time matches what we PUT to R2.
+  const mimeType = canonicalMime(args.mimeType) as DocumentMime;
+  const created = await createDocument({
+    name: args.file.name,
+    type: args.type,
+    mimeType,
+    sizeBytes: args.file.size,
+    contentHash,
+    projectId: args.projectId ?? null,
+    apartmentId: args.apartmentId ?? null,
+  });
+  const plan = resolveUploadPlan(created);
+  if (plan.mode === 'content') {
+    // 7d sensitive leg — the content route verifies/scans/encrypts and
+    // stamps `uploaded` itself; finalize after it would 409.
+    await uploadDocumentContent(plan.contentUploadPath, args.file);
+    return created.document;
+  }
+  await uploadToPresigned(plan.uploadUrl, args.file, mimeType);
+  return finalizeDocument(created.document.id, {
+    sizeBytes: args.file.size,
+    contentHash,
+  });
+}
+
+/** Narrow the BE's `document_integrity_mismatch` `details` to the offending
+ *  field so callers can render the actionable copy ("size" → גודל /
+ *  "hash" → תוכן). Shared by /documents/new + ProjectDocumentUpload. */
+export function integrityMismatchField(details: unknown): 'size' | 'hash' | null {
+  if (details && typeof details === 'object' && 'field' in details) {
+    const f = (details as { field?: unknown }).field;
+    if (f === 'size' || f === 'hash') return f;
+  }
+  return null;
+}
+
 /** POST /documents/:id/finalize — confirm the upload matched the
  *  declared size + hash. Server cross-checks with R2 metadata. */
 export async function finalizeDocument(id: string, body: FinalizeDocument): Promise<Document> {
@@ -79,19 +235,71 @@ export async function finalizeDocument(id: string, body: FinalizeDocument): Prom
   return DocumentDataSchema.parse({ data: res.data }).data;
 }
 
-/** GET /documents/:id/download — receive a short-lived presigned GET URL.
- *  `disposition` selects the R2 Content-Disposition the presigned URL is
- *  signed for: `attachment` (default) → save dialog; `inline` → the PDF
- *  renders in-tab. Both pass the AV-scan gate (only clean docs).
- *  Never log this URL. */
-export async function getDownloadUrl(
+/** What a download click resolved to (7d dual-mode contract):
+ *  - `presign` — the plain-doc branch: a short-lived presigned GET URL the
+ *    FE opens in a new tab (byte-identical to the pre-7d behaviour).
+ *  - `bytes` — the sensitive-doc branch: the API decrypt-STREAMED the
+ *    object itself (a presigned URL would serve ciphertext); the FE turns
+ *    the Blob into an object URL and opens/saves per the disposition. */
+export type DocumentDownloadResult =
+  | { kind: 'presign'; url: string; expiresInSeconds: number }
+  | { kind: 'bytes'; blob: Blob; filename: string | null };
+
+/** Strict `application/json` content-type check — anything else on the
+ *  download wire is the document byte stream. Exported for the seam spec. */
+export function isJsonContentType(contentType: string | null): boolean {
+  return /^application\/json\b/i.test((contentType ?? '').trim());
+}
+
+/** GET /documents/:id/download — dual-mode (7d).
+ *  JSON response → the existing `{ data: { url, expiresInSeconds } }`
+ *  presign contract (plain docs). Non-JSON response (content-type is the
+ *  doc mime / octet-stream) → the decrypt-streamed bytes of a SENSITIVE
+ *  doc; returned as a Blob + the server-stamped filename.
+ *  `disposition`: `attachment` (default) → save dialog; `inline` → renders
+ *  in-tab. All BE gates (403 `pii_step_up_required` → the step-up modal,
+ *  ghost/scan 409s) arrive as JSON error envelopes and throw
+ *  ApiClientError exactly like before. Never log the URL. */
+export async function fetchDownload(
   id: string,
   disposition: 'inline' | 'attachment' = 'attachment',
-): Promise<{ url: string; expiresInSeconds: number }> {
+): Promise<DocumentDownloadResult> {
   const qs = disposition === 'inline' ? '?disposition=inline' : '';
-  const res = await apiClient.get<unknown>(`/documents/${id}/download${qs}`);
-  if (!isOk(res)) throw new ApiClientError(res.error);
-  return DownloadResponseDataSchema.parse({ data: res.data }).data;
+  // timeoutMs: 0 — a 50MB decrypt-stream can legitimately exceed the 15s
+  // default; same no-timeout posture as the presigned PUT upload.
+  const res = await apiFetchRaw(`/documents/${id}/download${qs}`, {
+    method: 'GET',
+    timeoutMs: 0,
+  });
+  if (isJsonContentType(res.headers.get('content-type'))) {
+    let parsed: unknown = null;
+    try {
+      parsed = await res.json();
+    } catch {
+      throw new ApiClientError({ code: 'invalid_response' });
+    }
+    if (parsed && typeof parsed === 'object' && 'error' in parsed) {
+      throw new ApiClientError(ErrorEnvelopeSchema.parse(parsed).error);
+    }
+    if (parsed && typeof parsed === 'object' && 'data' in parsed) {
+      const { url, expiresInSeconds } = DownloadResponseDataSchema.parse(parsed).data;
+      return { kind: 'presign', url, expiresInSeconds };
+    }
+    throw new ApiClientError({ code: 'invalid_response' });
+  }
+  if (!res.ok) {
+    // Non-JSON failure (proxy hiccup etc.) — no envelope to surface.
+    throw new ApiClientError({
+      code: 'download_failed',
+      message: `download returned ${res.status}`,
+    });
+  }
+  const blob = await res.blob();
+  return {
+    kind: 'bytes',
+    blob,
+    filename: parseDispositionFilename(res.headers.get('content-disposition')),
+  };
 }
 
 export async function archiveDocument(id: string): Promise<void> {
@@ -164,6 +372,32 @@ export async function uploadToPresigned(url: string, blob: Blob, mimeType: strin
       message: `R2 upload returned ${res.status}`,
     });
   }
+}
+
+/**
+ * RFC 6266 `filename=` / `filename*=` parsing for the 7d byte-stream
+ * download — same narrow parser as ExportXlsxButton's (kept here because
+ * lib/api must not import from app/ components). Prefers `filename*=`
+ * (RFC 5987 UTF-8) so Hebrew document names survive; the BE-stamped
+ * header is the authoritative filename source (never the display name —
+ * PII / U+202E spoof rationale, see export-xlsx-button.tsx).
+ * Exported for the seam spec.
+ */
+export function parseDispositionFilename(header: string | null): string | null {
+  if (!header) return null;
+  const rfc5987 = /filename\*\s*=\s*[^']*'[^']*'([^;]+)/i.exec(header);
+  if (rfc5987 && rfc5987[1]) {
+    try {
+      return decodeURIComponent(rfc5987[1].trim());
+    } catch {
+      // fall through to plain filename=
+    }
+  }
+  const plain = /filename\s*=\s*("([^"]*)"|([^;]+))/i.exec(header);
+  if (plain) {
+    return (plain[2] ?? plain[3] ?? '').trim() || null;
+  }
+  return null;
 }
 
 /** Compute SHA-256 of a Blob — used as the document content hash. */

@@ -19,8 +19,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createDocument,
+  fetchDownload,
   finalizeDocument,
-  getDownloadUrl,
   sha256OfBlob,
   uploadToPresigned,
 } from './documents';
@@ -57,7 +57,11 @@ function jsonResp(status: number, body: unknown): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
+    // 7d — fetchDownload discriminates on the content-type header
+    // (JSON envelope vs decrypt-streamed bytes).
+    headers: new Headers({ 'content-type': 'application/json' }),
     json: () => Promise.resolve(body),
+    clone: () => jsonResp(status, body),
   } as unknown as Response;
 }
 
@@ -208,21 +212,31 @@ describe('Documents sha256 + finalize', () => {
 });
 
 describe('Documents download URL — adversarial', () => {
-  it('D14) getDownloadUrl returns a URL string with expiresInSeconds — no other PII / r2 key fields', async () => {
+  it('D14) fetchDownload (JSON branch) returns kind=presign with url + expiresInSeconds — no other PII / r2 key fields', async () => {
     globalThis.fetch = vi.fn(() =>
       Promise.resolve(
         jsonResp(200, { data: { url: 'https://r2/dl?sig=X', expiresInSeconds: 120 } }),
       ),
     ) as unknown as typeof fetch;
-    const out = await getDownloadUrl(SAMPLE_DOC.id);
-    expect(Object.keys(out).sort()).toEqual(['expiresInSeconds', 'url']);
+    const out = await fetchDownload(SAMPLE_DOC.id);
+    expect(out.kind).toBe('presign');
+    expect(Object.keys(out).sort()).toEqual(['expiresInSeconds', 'kind', 'url']);
   });
 
-  it('D15) getDownloadUrl propagates 404 (RLS-filtered) as ApiClientError.code=not_found — no leak about why', async () => {
+  it('D15) fetchDownload propagates 404 (RLS-filtered) as ApiClientError.code=not_found — no leak about why', async () => {
     globalThis.fetch = vi.fn(() =>
       Promise.resolve(jsonResp(404, { error: { code: 'not_found' } })),
     ) as unknown as typeof fetch;
-    await expect(getDownloadUrl(SAMPLE_DOC.id)).rejects.toMatchObject({ code: 'not_found' });
+    await expect(fetchDownload(SAMPLE_DOC.id)).rejects.toMatchObject({ code: 'not_found' });
+  });
+
+  it('D15b) fetchDownload propagates the 7c step-up gate (403 pii_step_up_required) so the unlock modal wiring stays intact', async () => {
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve(jsonResp(403, { error: { code: 'pii_step_up_required' } })),
+    ) as unknown as typeof fetch;
+    await expect(fetchDownload(SAMPLE_DOC.id)).rejects.toMatchObject({
+      code: 'pii_step_up_required',
+    });
   });
 
   it('D16) static-grep — documents.ts source does NOT contain console.log of the presigned URL', async () => {

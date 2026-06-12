@@ -658,3 +658,14 @@ names+natids+shares from the uploaded נסח) → PATCH edit=200 → **confirm=2
 owner pressed ("ביצעת טסט ידני???") — the BE was built integration-tested-only at that point; lesson:
 the live chain belongs BEFORE declaring a BE sub-slice done, not deferred to the FE stage.
 Remaining for 7c: code+security reviews → FE (unlock modal + review screen) → e2e stubs → PR (Gate-6 0071) → merge-on-green.
+
+### FULL MULTI-ROLE BROWSER SMOKE (owner-mandated, 2026-06-12) — all 6 entities, real UI
+
+Tool: preview Chromium against the live web (Chrome-ext unavailable → standard downgrade-note). Evidence = raw statuses/text.
+**Manager** ✓ login FORM→redirect /he (auth cookies httpOnly, not js-readable); project page tab "לוח בקרה": 5a board ("0/1 דירות הסכימו·יעד 66%"), 5d drill-down expands ("דירה 7·קומה 4·0/2 חתמו" — correct post-confirm), 5c upload + 5b campaign buttons present; documents list+detail.
+**Public signer** ✓ anonymous /sign/:token: "שלום שרה כהן" + privacy notice (P0.C2) + SVG pad → drew → "החתימה נקלטה בהצלחה ✓"; tampered token → 401 invalid_token (no internals); board moved 1→2 signed; drill-down → "1/2·partial".
+**Contractor** ✓ token-path exchanged to httpOnly cookie (URL clean); portal lists ONLY plain project docs; **a project-level financial (sensitive) doc: NOT in list + direct-id probe → 404 no-oracle (HIGH-2 live-proven)**.
+**Agent** ✓ sees only the assigned project; tabu write w/o edit_project_data → 403 (D.54 live); rows after own unlock → nationalId MASKED "•••••••82" (D.19/D.47 live).
+**Viewer** ✓ all writes 403 (project create / tabu / campaign); rows masked.
+**Tenant** ✓ OTP via SMS (Noop→stderr code) → verify 200 → portal/me="שרה כהן" (the נסח-born owner!) → UI: "שלום, שרה·דירה 7·אחוז בעלות 50%" + her signature "signed". **The full Phase-5→Phase-6 loop closed live: נסח→extract→confirm→owner→sign→portal.**
+**FINDINGS:** (F1, known-FE-gap) sensitive doc הצג w/o unlock → generic "ההורדה נכשלה." — no step-up modal (BE 403 correct; = the 7c-FE work). (F2, NIT) "דירה דירה 7" duplication — apartment.number already contains "דירה", the designation VM prepends another (drill-down + tenant portal). (F3) tabu review/confirm has NO UI yet (API-only; = 7c-FE). No security findings — all gates held live.

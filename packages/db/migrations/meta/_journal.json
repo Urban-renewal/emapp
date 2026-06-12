@@ -498,6 +498,13 @@
 			"when": 1782745200000,
 			"tag": "0070_pii_stepup_sensitive_documents",
 			"breakpoints": true
+		},
+		{
+			"idx": 71,
+			"version": "7",
+			"when": 1782831600000,
+			"tag": "0071_ownerships_source_extraction",
+			"breakpoints": true
 		}
 	]
 }

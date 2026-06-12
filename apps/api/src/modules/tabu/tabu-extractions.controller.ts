@@ -1,10 +1,12 @@
 import {
   CreateTabuExtractionInput,
   ListOwnershipsQuery,
+  UpdateTabuExtractionRowInput,
   type CreateTabuExtraction,
   type ListOwnershipsQueryDto,
+  type UpdateTabuExtractionRow,
 } from '@emapp/shared-types';
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
@@ -67,5 +69,39 @@ export class TabuExtractionsController {
   @RequirePermission('apartments.update')
   async extract(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.tabu.runExtraction(user, id) };
+  }
+
+  // 7c — the DECRYPTED parsed rows for the review screen. A READ, so
+  // `apartments.read` — but the service additionally requires a VALID
+  // per-session PII unlock (403 pii_step_up_required) and applies the D.54
+  // role-fidelity masking to national_id.
+  @Get('tabu-extractions/:id/rows')
+  @RequirePermission('apartments.read')
+  async listRows(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
+    return { data: await this.tabu.listRows(user, id) };
+  }
+
+  // 7c — edit one parsed row before confirm (re-encrypts PII, edited=true).
+  // A WRITE: `apartments.update` + the service-level unlock gate + the D.54
+  // fine agent gate (edit_project_data) + draft-only.
+  @Patch('tabu-extractions/:id/rows/:rowId')
+  @RequirePermission('apartments.update')
+  async updateRow(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', UuidParam) id: string,
+    @Param('rowId', UuidParam) rowId: string,
+    @Body(new ZodValidationPipe(UpdateTabuExtractionRowInput)) body: UpdateTabuExtractionRow,
+  ) {
+    await this.tabu.updateRow(user, id, rowId, body);
+    return { data: { ok: true } };
+  }
+
+  // 7c — THE commit: audit-first, idempotent (WHERE status='draft' → 409 on
+  // a second confirm), atomic owners-match/create + ownership replace with
+  // provenance. Same gates as updateRow. No body.
+  @Post('tabu-extractions/:id/confirm')
+  @RequirePermission('apartments.update')
+  async confirm(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
+    return { data: await this.tabu.confirm(user, id) };
   }
 }

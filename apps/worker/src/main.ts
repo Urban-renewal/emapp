@@ -30,6 +30,8 @@ import {
   AUDIT_RETENTION_JOB_NAME,
   REAPER_CRON_HOURLY,
   REAPER_JOB_NAME,
+  SIGNATURE_EXPIRY_CRON_HOURLY,
+  SIGNATURE_EXPIRY_JOB_NAME,
 } from '@emapp/jobs';
 // eslint-disable-next-line import/no-named-as-default
 import PgBoss from 'pg-boss';
@@ -40,6 +42,7 @@ import { registerCrashHandlers, registerSignalHandlers, smokeTestDb } from './bo
 import { AuditRetentionHandler } from './handlers/audit-retention.handler';
 import { ImportJobHandler } from './handlers/import-job.handler';
 import { ReaperHandler } from './handlers/reaper.handler';
+import { SignatureExpiryHandler } from './handlers/signature-expiry.handler';
 import {
   LegacyAliasResolver,
   MappingResolverChain,
@@ -271,6 +274,41 @@ async function main(): Promise<void> {
     log.error(
       { err: e instanceof Error ? e.message : 'unknown' },
       'audit retention registration failed',
+    );
+    process.exit(1);
+  }
+
+  // V12 slice-1 critic follow-up — signature-request expiry sweep. The
+  // THIRD periodic consumer: flips lapsed pending signature_requests to
+  // 'expired' (the 0063-admitted status) hourly at :30 — offset from the
+  // reaper's on-the-hour tick. Same two-step idempotent wiring: register
+  // the consumer (createQueue + work) then schedule the producer (cron).
+  // Concurrency 1 — serial keeps two ticks from racing on the same UPDATE.
+  const signatureExpiryHandler = new SignatureExpiryHandler();
+  try {
+    await registerHandler({
+      boss: boss as unknown as BossLike,
+      registration: {
+        handler: signatureExpiryHandler,
+        payloadSchema: signatureExpiryHandler.payloadSchema,
+      },
+      concurrency: 1,
+      log: {
+        info: (msg, meta) => log.info(meta ?? {}, msg),
+        warn: (msg, meta) => log.warn(meta ?? {}, msg),
+        error: (msg, meta) => log.error(meta ?? {}, msg),
+      },
+      signal: shutdownController.signal,
+    });
+    await boss.schedule(SIGNATURE_EXPIRY_JOB_NAME, SIGNATURE_EXPIRY_CRON_HOURLY);
+    log.info(
+      { name: signatureExpiryHandler.name, cron: SIGNATURE_EXPIRY_CRON_HOURLY },
+      'signature expiry sweep scheduled',
+    );
+  } catch (e: unknown) {
+    log.error(
+      { err: e instanceof Error ? e.message : 'unknown' },
+      'signature expiry sweep registration failed',
     );
     process.exit(1);
   }

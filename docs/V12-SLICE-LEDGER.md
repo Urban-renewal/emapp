@@ -724,3 +724,8 @@ established (jobs-pkg constants + handler + boss.schedule + BYPASSRLS helper in 
 
 standing authorization — LocalMapi-first/ask-at-confirm/attach-to-existing). P3a (envelope+manual
 skeleton path) — test-author 18 RED done; builder in flight.
+
+### P3a LIVE QA ✅ — draft 201 → PATCH payload 200 → PII-key probe 400 (strict-Zod structural
+
+defense live) → confirm 201 → idempotent 409 → skeleton VERIFIED via existing routes (הרצל 10+12,
+3 apts on b1). Builder evidence: 18/18 + ripple + tc 8 pkgs; migration 0073 journaled.

@@ -10,6 +10,8 @@ import {
   index,
   uniqueIndex,
   check,
+  real,
+  boolean,
 } from 'drizzle-orm/pg-core';
 
 import { bytea, inet } from './_types';
@@ -375,6 +377,13 @@ export const tabuExtractions = pgTable(
       .references(() => users.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    // 7b (migration 0069) — the full source text the engine read, pgcrypto-
+    // ENCRYPTED (it embeds PII verbatim). NEVER plaintext, NEVER logged.
+    rawTextEncrypted: bytea('raw_text_encrypted'),
+    // 7b — the engineId that produced the rows (e.g. 'stub'/'gemini').
+    extractionEngine: text('extraction_engine'),
+    // 7b — when the extraction run completed.
+    extractedAt: timestamp('extracted_at', { withTimezone: true }),
   },
   (table) => ({
     orgApartmentIdx: index('idx_tabu_extractions_org_apartment').on(table.orgId, table.apartmentId),
@@ -383,3 +392,43 @@ export const tabuExtractions = pgTable(
 
 export type TabuExtraction = typeof tabuExtractions.$inferSelect;
 export type NewTabuExtraction = typeof tabuExtractions.$inferInsert;
+
+// S7b-extract — tabu_extraction_rows (migration 0069). The parse OUTPUT: one row
+// per owner the extraction engine found on the source נסח. Owner PII (name,
+// national_id) is pgcrypto-ENCRYPTED at rest (bytea ciphertext — NEVER plaintext,
+// NEVER logged; same posture as owners.*_encrypted) alongside the share fraction,
+// a per-row confidence, and a stable position. RLS = direct org_id (documents-
+// style, migration 0004), FORCE. A re-run on a draft REPLACES the rows (DELETE-
+// then-INSERT) — hence app_user holds DELETE here (unlike the status-only
+// envelope). ON DELETE CASCADE from the parent extraction.
+export const tabuExtractionRows = pgTable(
+  'tabu_extraction_rows',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    extractionId: uuid('extraction_id')
+      .notNull()
+      .references(() => tabuExtractions.id, { onDelete: 'cascade' }),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    // PII — pgcrypto ciphertext. NULLable: the engine may emit a partial row.
+    nameEncrypted: bytea('name_encrypted'),
+    nationalIdEncrypted: bytea('national_id_encrypted'),
+    shareNumerator: bigint('share_numerator', { mode: 'number' }),
+    shareDenominator: bigint('share_denominator', { mode: 'number' }),
+    confidence: real('confidence'),
+    edited: boolean('edited').notNull().default(false),
+    position: integer('position').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    extractionIdx: index('idx_tabu_extraction_rows_extraction').on(
+      table.extractionId,
+      table.position,
+    ),
+    orgIdx: index('idx_tabu_extraction_rows_org').on(table.orgId),
+  }),
+);
+
+export type TabuExtractionRow = typeof tabuExtractionRows.$inferSelect;
+export type NewTabuExtractionRow = typeof tabuExtractionRows.$inferInsert;

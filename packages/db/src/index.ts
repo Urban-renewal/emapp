@@ -111,6 +111,13 @@ export { FakeSMSProvider } from './providers/sms/fake.provider';
 export { InforuSmsProvider, toInternational } from './providers/sms/inforu.provider';
 export type { InforuSmsConfig } from './providers/sms/inforu.provider';
 export type {
+  IExtractionProvider,
+  ExtractionInput,
+  ExtractionResult,
+  ExtractionRow,
+} from './providers/extraction/extraction.interface';
+export { StubExtractionProvider } from './providers/extraction/stub.provider';
+export type {
   IStorageProvider,
   UploadUrlOptions,
   DownloadUrlOptions,

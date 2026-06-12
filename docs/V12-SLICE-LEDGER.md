@@ -669,3 +669,12 @@ Tool: preview Chromium against the live web (Chrome-ext unavailable → standard
 **Viewer** ✓ all writes 403 (project create / tabu / campaign); rows masked.
 **Tenant** ✓ OTP via SMS (Noop→stderr code) → verify 200 → portal/me="שרה כהן" (the נסח-born owner!) → UI: "שלום, שרה·דירה 7·אחוז בעלות 50%" + her signature "signed". **The full Phase-5→Phase-6 loop closed live: נסח→extract→confirm→owner→sign→portal.**
 **FINDINGS:** (F1, known-FE-gap) sensitive doc הצג w/o unlock → generic "ההורדה נכשלה." — no step-up modal (BE 403 correct; = the 7c-FE work). (F2, NIT) "דירה דירה 7" duplication — apartment.number already contains "דירה", the designation VM prepends another (drill-down + tenant portal). (F3) tabu review/confirm has NO UI yet (API-only; = 7c-FE). No security findings — all gates held live.
+
+### STANDING AUTHORIZATION (owner, 2026-06-12)
+
+"תבחן את השלב הבא ותמשיך לפי ההמלצה שלך, תתעד הכל... יש לך אישור להמשיך, אל תמתין לי בשום מצב."
+The loop no longer idle-waits: when the queue empties it picks the next phase per the manager's own
+recommendation, documents everything, and continues through the full green-gate pipeline. Recommended
+queue: 7c-FE (F1 unlock modal+F3 review UI+F2 NIT) → perf fix A (local docker PG for dev) → 7d
+doc-bytes envelope encryption → next roadmap value. PII-egress to a real AI engine still requires the
+owner-provisioned creds+DPA (built behind the seam only).

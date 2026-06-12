@@ -598,3 +598,14 @@ design §6 (upload+parse, paid-API deferred). Memory: project_phase5_tabu_parse_
 | Gate (7a)                                                                                                                                     | Status |
 | --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
 | Spec ⏳ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |
+
+### Phase-5 REVISED (owner, 2026-06-12 round 2) — supersedes the heuristic plan
+
+7a ✅ merged (#358, envelope). NEW direction: (1) extraction by an **AI model** (Claude vision/text),
+not heuristic regex — OPEN owner decision: it sends נסח PII to an external processor (zero-retention+DPA
+needed; DO NOT send נסח out until owner approves). (2) **3-layer encryption**: doc bytes envelope-encrypted
+at rest + extracted data pgcrypto + access = permission **+ OTP step-up**. (3) **OTP unlock ONCE/session**
+unlocks ALL authorized docs (reuse SMS-OTP). Revised slices: 7b-OTP+doc-encrypt (decision-independent) ·
+7b-extract (awaits AI-PII nod) · 7c OTP-gated review+confirm. OPEN SCOPE QUESTIONS before building 7b-OTP:
+does the OTP-gate apply to ALL documents or only נסח/PII-sensitive ones? unlock TTL? which roles? — these
+change existing document-view behavior, so confirm with the owner first. Memory: project_phase5_tabu_parse_decision.

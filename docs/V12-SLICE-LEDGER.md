@@ -764,3 +764,11 @@ the skeleton with provenance, live-proven in the real UI. Pluggable provider (St
 P3d owner-gated). Patterns established: the envelope template (3x), the provider seam (2x).
 Remaining owner/ops: GovMap token+ToS (P3d), the mapi 669MB bulk load, staging/prod DOC_ENCRYPTION_KEY,
 Docker for the perf kit #363 (draft).
+
+### SESSION CONSOLIDATION (post Phase-3/Phase-5/sweeper — ~9 merges) — HONEST HEALTH
+
+typecheck 8/8 pkgs = 0. api cross-section (documents+tabu+parcel-setups+architecture+step-up):
+191/213 — the 22 fails are documents.contract + documents-deep.contract, the LIVE-SERVER black-box
+suites failing at signup/throttle against the local dev api (the documented env pattern, proven on
+clean baselines twice this session; they skip cleanly when no server runs and pass in CI w/ the bypass).
+web 860/860. worker signature-expiry 9/9. **main is healthy.**

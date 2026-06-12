@@ -25,6 +25,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
@@ -134,6 +135,8 @@ export interface ParcelSetupListPage {
  */
 @Injectable()
 export class ParcelSetupsService {
+  private readonly logger = new Logger(ParcelSetupsService.name);
+
   constructor(
     @Inject(PARCEL_DATA_PROVIDER) private readonly parcelDataProvider: IParcelDataProvider,
   ) {}
@@ -236,9 +239,14 @@ export class ParcelSetupsService {
               ? { subParcel: parsedInput.data.subParcel }
               : {}),
           });
-        } catch {
-          // Never log the error verbatim here (lookup data is public, but the
-          // posture is uniform); the manual path is the designed fallback.
+        } catch (e) {
+          // Fail-open is the designed fallback (manual path), but a silently
+          // swallowed provider failure would hide a permanently-broken lookup
+          // (review LOW): warn with the error MESSAGE only — never the query
+          // values (uniform no-data-in-logs posture).
+          this.logger.warn(
+            `parcel lookup failed, falling back to manual: ${e instanceof Error ? e.message : 'unknown'}`,
+          );
           lookup = null;
         }
 

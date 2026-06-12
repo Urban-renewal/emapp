@@ -747,3 +747,11 @@ P3b in flight (21-test RED contract done incl. zero-PII-egress + fail-open provi
 edits ride the ACTIVE branch only). Provider-seam pattern now 2x (extraction+parcel) = the
 generic-engine mandate's established template. P3c (the FE payoff screen) in flight — FE test-author
 done (seam 21 RED + a pinned 4-axis e2e), builder running.
+
+### P3c LIVE BROWSER CHAIN ✅ (the Phase-3 payoff, real UI end-to-end)
+
+login(form) → project → לוח בקרה → הקמה מגוש-חלקה → 6638/42/3 → **'זוהה: תל אביב'** (LocalMapi fixture)
+→ builder: address + city PRE-FILLED 'תל אביב' + generator 1×3 → **'ייווצרו 1 בניינים ו-3 דירות'** →
+אישור והקמה (disabled-until-valid held) → success panel → **the skeleton EXISTS: 'שדרות הגושים' ·
+תל אביב · apartments 1,2,3** (verified via the buildings/apartments routes). FE review PASS (0 findings;
+seam fresh-objects no-PII verified; wire-order pinned). web 860/860 + seam 22/22 + e2e 3/3 real.

@@ -625,3 +625,13 @@ change existing document-view behavior, so confirm with the owner first. Memory:
    the legacy html. Memory: project_api_docs_manual_registry.
    **7b-extract ✅ CLOSED — merged (#359, incl. the scan-clean LOW fix).** Phase-5 next: 7b-OTP + 7c, blocked
    on D-P5.7 (OTP scope) + D-P5.8 (TTL) — see the design doc §1.
+
+### Slice 7b-OTP ✅ (PR #361, auto-merge armed) — D-P5.5/7/8 implemented
+
+Test-author RED-first (21) → builder → manager-verify → MANDATORY security review → **BLOCK: 2 real
+HIGHs** → root-fixed (PATCH-type sensitive re-derive turn-ON-only; contractor fail-closed exclusion of
+sensitive docs — external tier has no OTP session) + locked (sensitive-gate-hardening.spec 3) → 90/90
+ripple + architecture guards + tc 5/5=0. Gate-6 trailer (migration 0070). Retroactive dedicated
+code-review of 7a+7b-extract: PASS (3 MINORs folded into 7c: list-pagination test, agent-getOne test,
+limit-default 20→25 align). Sequencing note: FE has no unlock UI until 7c → sensitive docs 403 in FE
+(accepted, 7c next). 7d (doc-bytes envelope encryption) split out — D-P5.4 second half.

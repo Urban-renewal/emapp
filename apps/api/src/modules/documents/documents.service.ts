@@ -1,6 +1,7 @@
 import {
   AuditService,
   apartments,
+  authSessions,
   buildings,
   documents,
   projectAssignments,
@@ -25,6 +26,7 @@ import {
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -35,6 +37,7 @@ import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import { getOrgSettings } from '../../common/org-settings.resolver';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
@@ -60,6 +63,20 @@ const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
 const SCAN_REJECTED = new ConflictException({
   error: { code: DOCUMENT_SCAN_REJECTED_CODE },
 });
+
+/**
+ * 7b-OTP (D-P5.5/7/8) — the caller's session has NO valid PII unlock for a
+ * SENSITIVE document. 403, DISTINCT + actionable (the FE opens the step-up
+ * OTP dialog), NOT 404: this is only ever thrown AFTER the per-record
+ * visibility check passed, so the caller is already authorized to know the
+ * doc exists — it is never an existence oracle.
+ */
+const PII_STEP_UP_REQUIRED = new ForbiddenException({
+  error: { code: 'pii_step_up_required', message: 'נדרש אימות נוסף לצפייה במסמך רגיש' },
+});
+
+/** PII-bearing document types — sensitive-by-type at create (D-P5.7). */
+const SENSITIVE_DOC_TYPES: ReadonlySet<string> = new Set(['id_document', 'financial']);
 
 /** P0.B1 — read an object's bytes (bounded) for scanning. The scanner takes a
  *  lazy loader so a provider that fetches out-of-band never triggers this. */
@@ -298,6 +315,12 @@ export class DocumentsService {
               r2Key,
               contentHash: input.contentHash,
               uploadedBy: user.sub,
+              // 7b-OTP (D-P5.7) — server-derived, TURN-ON ONLY: PII-bearing
+              // types are sensitive regardless of the client flag; the client
+              // may explicitly opt IN for any other type but can NEVER force
+              // a sensitive-by-type doc off the gate (sensitive:false on an
+              // id_document is IGNORED).
+              sensitive: SENSITIVE_DOC_TYPES.has(input.type) || input.sensitive === true,
             })
             .returning();
         } catch {
@@ -653,6 +676,28 @@ export class DocumentsService {
       async (tx) => {
         // 0049 — require finalised: a ghost's presigned URL would 404 (NoSuchKey).
         const row = await this.loadVisible(tx, user, id, true);
+        // 7b-OTP (D-P5.5/7/8) — the SENSITIVE-document gate. Ordered AFTER the
+        // visibility + ghost + scan checks in loadVisible (never an existence
+        // oracle) and BEFORE the download audit + presign. A sensitive doc is
+        // served ONLY when the CALLER'S CURRENT session (user.sid) holds a
+        // VALID unlock: pii_unlocked_at NOT NULL and younger than the org's
+        // security.piiUnlockTtlMinutes (default 60). NON-sensitive docs skip
+        // this block entirely — behavior byte-for-byte unchanged (D-P5.7).
+        if (row.sensitive) {
+          const { security } = await getOrgSettings(tx, user.orgId);
+          const ttlMs = security.piiUnlockTtlMinutes * 60_000;
+          // auth_sessions is auth-infra (no RLS; app_user has SELECT). An
+          // unknown/ghost sid simply finds no row → locked (fail-closed).
+          const [sess] = await tx
+            .select({ piiUnlockedAt: authSessions.piiUnlockedAt })
+            .from(authSessions)
+            .where(eq(authSessions.id, user.sid))
+            .limit(1);
+          const unlockedAt = sess?.piiUnlockedAt ?? null;
+          if (!unlockedAt || unlockedAt.getTime() + ttlMs <= Date.now()) {
+            throw PII_STEP_UP_REQUIRED;
+          }
+        }
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
@@ -785,7 +830,13 @@ export class DocumentsService {
         await requireAgentCapability(tx, user, 'manage_documents');
         const patch: Partial<typeof documents.$inferInsert> = { updatedAt: new Date() };
         if (input.name !== undefined) patch.name = input.name;
-        if (input.type !== undefined) patch.type = input.type;
+        if (input.type !== undefined) {
+          patch.type = input.type;
+          // D-P5.7 turn-ON-only: retyping TO a sensitive type re-derives
+          // sensitive=true (else upload-as-other → PATCH-to-id_document would
+          // bypass the step-up gate). Never turns sensitive OFF.
+          if (SENSITIVE_DOC_TYPES.has(input.type)) patch.sensitive = true;
+        }
         const [row] = await tx.update(documents).set(patch).where(eq(documents.id, id)).returning();
         if (!row) throw NOT_FOUND;
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({

@@ -41,6 +41,7 @@ import {
   ListTasksQuery,
   OtpRequestSchema,
   OtpVerifySchema,
+  StepUpVerifySchema,
   OwnerSearchInput,
   OwnerEraseInput,
   SetOwnershipsInput,
@@ -180,6 +181,27 @@ const ENDPOINTS: Endpoint[] = [
     request: OtpVerifySchema,
     response: '{ "data": { "ok": true } }  (+ tenant_access cookie)',
     errors: ['validation_error', 'invalid_otp', '429'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/auth/step-up/request',
+    auth: 'AuthGuard',
+    summary:
+      'Request a PII step-up OTP (7b-OTP, D-P5.5). 6-digit code emailed to the caller; ' +
+      'hashed at rest; 3/15min rate limit (the 4th in-window request sends no email).',
+    response: '{ "data": { "ok": true } }',
+    errors: ['missing_token', 'invalid_token', 'token_expired', 'invalid_session', '429'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/auth/step-up/verify',
+    auth: 'AuthGuard',
+    summary:
+      'Verify the step-up OTP → stamp pii_unlocked_at on the CALLER’S CURRENT session only ' +
+      '(unlocks sensitive-document downloads for security.piiUnlockTtlMinutes, default 60).',
+    request: StepUpVerifySchema,
+    response: '{ "data": { "ok": true } }',
+    errors: ['validation_error', 'missing_token', 'invalid_token', 'invalid_step_up_code', '429'],
   },
   {
     method: 'POST',

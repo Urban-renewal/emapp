@@ -158,6 +158,17 @@ export class TabuExtractionsService {
         //    the visibility + apartment-scope checks → never an existence oracle.
         if (!doc.uploadedAt || doc.scanStatus !== 'clean') throw DOC_NOT_FINALIZED;
 
+        // 5b. 7b-OTP (D-P5.7) — a נסח holds owner PII (names + national_id),
+        //     so the SOURCE document becomes SENSITIVE the moment an
+        //     extraction is attached to it (turn-ON only, never off). Its
+        //     download now requires the per-session PII step-up unlock.
+        if (!doc.sensitive) {
+          await tx
+            .update(documents)
+            .set({ sensitive: true, updatedAt: new Date() })
+            .where(eq(documents.id, doc.id));
+        }
+
         // 6. Insert the draft envelope.
         const [row] = await tx
           .insert(tabuExtractions)

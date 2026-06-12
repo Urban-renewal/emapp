@@ -432,6 +432,43 @@ _(no body)_
 
 **Errors:** `validation_error`, `429`
 
+### POST /api/v1/auth/step-up/request
+
+- **Auth:** AuthGuard
+- **Summary:** Request a PII step-up OTP (7b-OTP, D-P5.5). 6-digit code emailed to the caller; hashed at rest; 3/15min rate limit (the 4th in-window request sends no email).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { "ok": true } }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `token_expired`, `invalid_session`, `429`
+
+### POST /api/v1/auth/step-up/verify
+
+- **Auth:** AuthGuard
+- **Summary:** Verify the step-up OTP → stamp pii_unlocked_at on the CALLER’S CURRENT session only (unlocks sensitive-document downloads for security.piiUnlockTtlMinutes, default 60).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `code` | string | yes | pattern="^\\d{6}$" |
+
+
+**Response**
+
+```json
+{ "data": { "ok": true } }
+```
+
+**Errors:** `validation_error`, `missing_token`, `invalid_token`, `invalid_step_up_code`, `429`
+
 ### POST /api/v1/auth/switch-org
 
 - **Auth:** AuthGuard
@@ -790,6 +827,7 @@ _(no body)_
 | `mimeType` | string | yes | enum=["application/pdf","image/png","image/jpeg","image/webp","image/gif","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/vnd.ms-excel","text/csv","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/msword","text/plain"] |
 | `name` | string | yes | minLength=1, maxLength=255 |
 | `projectId` | unknown | no | — |
+| `sensitive` | boolean | no | — |
 | `sizeBytes` | integer | yes | minimum=1, maximum=52428800 |
 | `type` | string | yes | enum=["agreement","blueprint","regulation","contract","permit","id_document","floor_plan","financial","other"] |
 
@@ -1517,6 +1555,7 @@ _(no body)_
 | `messaging` | object | no | — |
 | `notifications` | object | no | — |
 | `privacy` | object | no | — |
+| `security` | object | no | — |
 | `signatures` | object | no | — |
 | `timezone` | string | no | minLength=1 |
 

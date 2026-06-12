@@ -88,6 +88,17 @@ export const OtpVerifySchema = z.object({
 });
 export type OtpVerifyDto = z.infer<typeof OtpVerifySchema>;
 
+/** PII step-up verify (7b-OTP, D-P5.5) — 6-digit single-use code, emailed to
+ * the AUTHENTICATED org user. Success stamps `pii_unlocked_at` on the caller's
+ * CURRENT session only. The request endpoint has no body (the identity comes
+ * from the access token), so only the verify schema is modeled. */
+export const StepUpVerifySchema = z
+  .object({
+    code: z.string().regex(/^\d{6}$/, 'Step-up code must be 6 digits'),
+  })
+  .strict();
+export type StepUpVerifyDto = z.infer<typeof StepUpVerifySchema>;
+
 /** GET /api/v1/me response body. Mirrors `UserProfile` in
  *  apps/api/src/modules/auth/auth.service.ts:37 (verbatim shape).
  *  Org `slug` is the public URL-safe identifier (D.31 G1a) — zero PII.

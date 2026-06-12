@@ -52,6 +52,13 @@ export const documents = pgTable(
     /** 0056 (P0.B1) — AV signature/threat label for an 'infected' verdict, or
      *  a short content-free reason for 'error'. NEVER file content or PII. */
     scanSignature: text('scan_signature'),
+    /** 0070 (7b-OTP, D-P5.5/7/8) — PII-bearing document. Derived server-side at
+     *  create (type id_document/financial, or explicit client opt-in — turn-ON
+     *  only) and marked by tabu-extraction create (the נסח holds PII). The
+     *  download path requires a VALID per-session step-up unlock
+     *  (auth_sessions.pii_unlocked_at within the org's TTL) before the
+     *  presigned GET is minted; non-sensitive docs are untouched. */
+    sensitive: boolean('sensitive').notNull().default(false),
   },
   (table) => ({
     r2KeyUnique: uniqueIndex('documents_r2_key_unique').on(table.r2Key),

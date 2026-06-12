@@ -122,6 +122,11 @@ const documentWriteShape = {
   contentHash: z.string().min(1).max(128),
   projectId: z.string().uuid().nullable().optional(),
   apartmentId: z.string().uuid().nullable().optional(),
+  /** 7b-OTP (D-P5.7) — explicit client opt-IN to the sensitive-document gate.
+   * TURN-ON ONLY: the server derives sensitive=true for PII-bearing types
+   * (id_document / financial) regardless; `sensitive:false` can NEVER force a
+   * sensitive-by-type doc off the gate. Absent → by-type derivation alone. */
+  sensitive: z.boolean().optional(),
 } as const;
 
 /** POST /documents — declares metadata; server generates the key and

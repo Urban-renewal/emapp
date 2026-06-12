@@ -36,6 +36,7 @@ const FULL_DEFAULT: OrgSettings = {
     requireExplicitConsent: false,
   },
   limits: { bulkCap: 200, defaultPageSize: 25 },
+  security: { piiUnlockTtlMinutes: 60 },
 };
 
 /** Assert a resolved tree equals the full default, leaf-by-leaf. */
@@ -56,6 +57,7 @@ function expectIsFullDefault(s: OrgSettings): void {
   expect(s.privacy.requireExplicitConsent).toBe(false);
   expect(s.limits.bulkCap).toBe(200);
   expect(s.limits.defaultPageSize).toBe(25);
+  expect(s.security.piiUnlockTtlMinutes).toBe(60);
 }
 
 describe('DEFAULT_ORG_SETTINGS — baseline pin', () => {

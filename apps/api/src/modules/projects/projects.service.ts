@@ -451,7 +451,11 @@ export class ProjectsService {
           INNER JOIN buildings b ON b.id = a.building_id
           WHERE b.project_id = ${projectId}
             AND a.archived_at IS NULL
-          ORDER BY a.number ASC
+          -- Natural (numeric-aware) order: extracted numeral first (digitless
+          -- labels last), raw label as the lexical tie-break. ::numeric (not
+          -- ::bigint) so a pathologically long digit-run cannot overflow.
+          ORDER BY NULLIF(regexp_replace(a.number, '\\D', '', 'g'), '')::numeric ASC NULLS LAST,
+                   a.number ASC
         `);
         const rows = (result as unknown as { rows: Array<Record<string, unknown>> }).rows;
 

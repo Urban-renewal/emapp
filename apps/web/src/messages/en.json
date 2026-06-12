@@ -263,6 +263,7 @@
       "tooLarge": "File exceeds the maximum size (50MB).",
       "sizeMismatch": "File size did not match. Please re-upload.",
       "hashMismatch": "File content did not match. Please re-upload.",
+      "scanRejected": "The file was rejected by the security scan",
       "failed": "Upload failed. Try again."
     },
     "tenantsTab": {
@@ -582,6 +583,9 @@
     "uploadFailed": "Upload to storage failed",
     "storageUnavailable": "Storage is temporarily unavailable. Retry shortly.",
     "sizeMismatch": "Uploaded file size doesn't match the declared size. Try again.",
+    "hashMismatch": "Uploaded file content doesn't match the declared hash. Try again.",
+    "scanRejected": "The file was rejected by the security scan",
+    "fileTooLarge": "File too large (up to 50MB)",
     "mimeNotAllowed": "This file type is not allowed. Upload PDF / image / Excel / Word.",
     "tooLarge": "File is larger than allowed (max 50MB).",
     "pickFile": "Pick a file to upload.",

@@ -55,6 +55,13 @@ export interface StorageObjectMeta {
 export interface IStorageProvider {
   getUploadUrl(key: string, opts: UploadUrlOptions): Promise<string>;
   getDownloadUrl(key: string, opts: DownloadUrlOptions): Promise<string>;
+  /** 7d (D-P5.4 second half) — SERVER-SIDE object write. Used by the
+   *  sensitive-document content-upload path: the API verifies + scans the
+   *  plaintext, encrypts it into the EMAPPENC app-envelope, and PUTs the
+   *  envelope itself (no presigned URL is ever minted for sensitive bytes).
+   *  `opts.contentType` defaults to `application/octet-stream` — the stored
+   *  envelope is opaque ciphertext, never the document's own MIME. */
+  putObject(key: string, body: Buffer, opts?: { contentType?: string }): Promise<void>;
   delete(key: string): Promise<void>;
   /** Return object metadata, or `null` if the object isn't yet present
    *  / the provider can't attest. Callers MUST treat null as "no

@@ -74,6 +74,9 @@ class RecordingStorage implements IStorageProvider {
   async delete(key: string): Promise<void> {
     this.deleted.push(key);
   }
+  // 7d interface parity — this suite exercises the presign/finalize path
+  // only; the server-side write is never reached here.
+  async putObject(): Promise<void> {}
   async getObjectStream(): Promise<Readable> {
     return Readable.from([Buffer.from('%PDF-1.4 fake bytes')]);
   }

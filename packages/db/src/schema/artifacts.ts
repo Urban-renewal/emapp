@@ -59,6 +59,12 @@ export const documents = pgTable(
      *  (auth_sessions.pii_unlocked_at within the org's TTL) before the
      *  presigned GET is minted; non-sensitive docs are untouched. */
     sensitive: boolean('sensitive').notNull().default(false),
+    /** 0072 (7d, D-P5.4 second half) — the stored object is an AES-256-GCM
+     *  app-envelope (EMAPPENC|v1|keyId|iv|tag|ciphertext; key =
+     *  DOC_ENCRYPTION_KEY, never in R2). Set by the sensitive content-upload
+     *  path (POST /documents/:id/content). The download path decrypt-streams
+     *  when true; plain (false) docs keep the presigned-GET path unchanged. */
+    bytesEncrypted: boolean('bytes_encrypted').notNull().default(false),
   },
   (table) => ({
     r2KeyUnique: uniqueIndex('documents_r2_key_unique').on(table.r2Key),

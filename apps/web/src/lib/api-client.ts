@@ -207,6 +207,81 @@ async function rawFetch<T>(path: string, init: ApiFetchOptions): Promise<RawFetc
   return { res, body: parsed as ApiResponse<T> };
 }
 
+/**
+ * 7d — RAW fetch through the same conventions as apiFetch (same-origin
+ * credentials, /api/v1 prefix, 15s default timeout with per-call override,
+ * single-flight silent refresh on 401 `token_expired`, terminal-401
+ * `emapp:unauthenticated` event) but returning the native `Response`
+ * WITHOUT the JSON-envelope guard.
+ *
+ * Use it ONLY for endpoints whose success body is not a D.16 JSON
+ * envelope: the sensitive-document content upload
+ * (POST /documents/:id/content — raw octet-stream request body) and the
+ * sensitive-document download (GET /documents/:id/download — the API
+ * decrypt-STREAMS the bytes; only the plain-doc branch answers JSON).
+ * Error responses from these routes are still JSON envelopes — the caller
+ * parses them itself (see lib/api/documents.ts).
+ *
+ * Body replay note: pass only replayable bodies (Blob/File/string) — on a
+ * refresh-then-replay the same `body` is sent again.
+ */
+export async function apiFetchRaw(path: string, init: ApiFetchOptions = {}): Promise<Response> {
+  const first = await nativeRawFetch(path, init);
+  if (first.status === 401 && !(init.noRefresh ?? false)) {
+    const code = await peekErrorCode(first);
+    if (code === 'token_expired' && (await attemptRefresh())) {
+      // Replay ONCE — no second refresh attempt on the replay's result.
+      const replay = await nativeRawFetch(path, { ...init, noRefresh: true });
+      await emitIfRawUnauthenticated(replay);
+      return replay;
+    }
+  }
+  await emitIfRawUnauthenticated(first);
+  return first;
+}
+
+/** The fetch leg of apiFetchRaw — same headers/credentials/timeout posture
+ *  as rawFetch, minus the JSON parse (the body stays a stream). */
+async function nativeRawFetch(path: string, init: ApiFetchOptions): Promise<Response> {
+  const { timeoutMs, noRefresh, ...rest } = init;
+  void noRefresh;
+  const effectiveTimeout = timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  let signal: AbortSignal | undefined = rest.signal ?? undefined;
+  if (effectiveTimeout > 0 && !signal) {
+    signal = AbortSignal.timeout(effectiveTimeout);
+  }
+  return fetch(`${API_PREFIX}${path}`, {
+    ...rest,
+    method: rest.method ?? 'GET',
+    credentials: 'same-origin',
+    headers: { ...((rest.headers as Record<string, string> | undefined) ?? {}) },
+    signal,
+  });
+}
+
+/** Best-effort `error.code` from a Response WITHOUT consuming its body
+ *  (clone + JSON parse; non-JSON bodies → undefined). */
+async function peekErrorCode(res: Response): Promise<string | undefined> {
+  try {
+    const parsed: unknown = await res.clone().json();
+    if (parsed && typeof parsed === 'object' && 'error' in parsed) {
+      const code = (parsed as { error?: { code?: unknown } }).error?.code;
+      if (typeof code === 'string') return code;
+    }
+  } catch {
+    // non-JSON body — no envelope code to peek at.
+  }
+  return undefined;
+}
+
+/** Raw-path twin of maybeEmitUnauthenticated — peeks the code off a clone
+ *  so the suppression set (form-level codes) applies identically. */
+async function emitIfRawUnauthenticated(res: Response): Promise<void> {
+  if (res.status !== 401) return;
+  const code = await peekErrorCode(res);
+  maybeEmitUnauthenticated(401, { error: { code: code ?? 'unauthorized' } });
+}
+
 function shouldAttemptRefresh(
   status: number,
   body: ApiResponse<unknown>,

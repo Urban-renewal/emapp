@@ -92,6 +92,9 @@ import {
   UpdateDocumentInput,
   // S7c — tabu review+confirm loop.
   UpdateTabuExtractionRowInput,
+  // P3a — parcel-setup envelope + manual path → skeleton.
+  CreateParcelSetupInput,
+  UpdateParcelSetupPayloadInput,
 } from '@emapp/shared-types';
 import type { ZodTypeAny } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -1501,6 +1504,96 @@ const ENDPOINTS: Endpoint[] = [
       'tabu_extraction_not_draft',
       'tabu_rows_incomplete',
       'ownership_sum_invalid',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+
+  // — Parcel setups (P3a — envelope + manual path → skeleton) —
+  {
+    method: 'POST',
+    path: '/api/v1/projects/:projectId/parcel-setups',
+    auth: 'AuthGuard + TenantGuard (buildings.create; D.54 agent fine gate edit_project_data)',
+    summary:
+      'P3a — create a parcel-setup (גוש-חלקה) draft envelope on an EXISTING project. ' +
+      'Project visibility is no-oracle 404.',
+    request: CreateParcelSetupInput,
+    response: '{ "data": { ...ParcelSetup } }  (status=draft, source=manual, payload=null)',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/projects/:projectId/parcel-setups',
+    auth: 'AuthGuard + TenantGuard (buildings.read)',
+    summary:
+      'List parcel setups of a project, cursor-paginated. Org-scoped (FORCE RLS); ' +
+      'Agent → assigned projects only.',
+    request: ListOwnershipsQuery,
+    response:
+      '{ "data": [ {ParcelSetup} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/parcel-setups/:id',
+    auth: 'AuthGuard + TenantGuard (buildings.read)',
+    summary: 'Get one parcel setup by id (org scope no-oracle 404; Agent → assigned only).',
+    response: '{ "data": { ...ParcelSetup } }',
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/parcel-setups/:id',
+    auth: 'AuthGuard + TenantGuard (buildings.update; D.54 agent fine gate edit_project_data)',
+    summary:
+      'P3a — save the draft buildings/apartments payload. DRAFT-only (409 ' +
+      'parcel_setup_not_draft). STRICT no-PII Zod at every level (unknown keys like ' +
+      'ownerName/nationalId/phone are rejected); re-parsed in the service (defense-in-depth).',
+    request: UpdateParcelSetupPayloadInput,
+    response: '{ "data": { ...ParcelSetup } }  (payload persisted)',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'parcel_setup_not_draft',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/parcel-setups/:id/confirm',
+    auth: 'AuthGuard + TenantGuard (buildings.create; D.54 agent fine gate edit_project_data)',
+    summary:
+      'P3a — THE manual-path commit: audit-first (ids+counts only — never addresses), ' +
+      'IDEMPOTENT single-claim (WHERE status=draft; second confirm → 409), ATOMIC — creates the ' +
+      'buildings (stamped source_parcel_setup_id) + their apartments under the project. A ' +
+      'unique-collision with the existing skeleton → clean 409 parcel_skeleton_conflict with ' +
+      'FULL rollback (setup stays draft, no orphan audit). No body.',
+    response: '{ "data": { ...ParcelSetup } }  (status=confirmed, confirmedAt set)',
+    errors: [
+      'forbidden',
+      'not_found',
+      'parcel_payload_missing',
+      'parcel_setup_not_draft',
+      'parcel_skeleton_conflict',
+      'validation_error',
       'missing_token',
       'invalid_token',
       'token_expired',

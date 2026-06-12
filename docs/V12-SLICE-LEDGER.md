@@ -714,3 +714,18 @@ the slice-1 critic note: nothing flips newly-lapsing pending signature_requests 
 derives, but the DB rows + counts drift + no notification). Small, real lifecycle-completing value,
 exercises the WORKER (untouched debt). Phase-3 גוש-חלקה scoping doc queued right after (the next big
 phase needs its design doc before code, like Phase-5 got).
+
+### Sweeper ✅ CLOSED — merged (#365). The slice-1 critic note resolved (atomic CTE flips+per-org
+
+audit; review PASS both; 9 RED-first tests; the factories slug root-fix). Worker cron template now
+established (jobs-pkg constants + handler + boss.schedule + BYPASSRLS helper in db).
+
+### Phase-3 underway: scoping doc on main (verified source matrix; §7.1 manager decisions under the
+
+standing authorization — LocalMapi-first/ask-at-confirm/attach-to-existing). P3a (envelope+manual
+skeleton path) — test-author 18 RED done; builder in flight.
+
+### P3a LIVE QA ✅ — draft 201 → PATCH payload 200 → PII-key probe 400 (strict-Zod structural
+
+defense live) → confirm 201 → idempotent 409 → skeleton VERIFIED via existing routes (הרצל 10+12,
+3 apts on b1). Builder evidence: 18/18 + ripple + tc 8 pkgs; migration 0073 journaled.

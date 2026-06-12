@@ -6,6 +6,8 @@ import {
   projectAssignments,
   projects,
   withTenant,
+  type IParcelDataProvider,
+  type ParcelLookupResult,
   type ParcelSetup as ParcelSetupRow,
   type TenantTx,
 } from '@emapp/db';
@@ -21,7 +23,9 @@ import {
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
@@ -29,6 +33,8 @@ import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
+
+import { PARCEL_DATA_PROVIDER } from './parcel-data-provider.factory';
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
 
@@ -85,6 +91,9 @@ function toWire(r: ParcelSetupRow): ParcelSetup {
     status: r.status as ParcelSetupStatus,
     source: r.source,
     payload: (r.payload ?? null) as ParcelSetup['payload'],
+    // P3b — the create-time provider lookup outcome ('found' | 'not_found').
+    providerStatus: r.providerStatus,
+    providerCity: r.providerCity,
     createdBy: r.createdBy,
     createdAt: r.createdAt,
     confirmedAt: r.confirmedAt,
@@ -106,8 +115,15 @@ export interface ParcelSetupListPage {
  * (STRICT no-PII Zod — re-parsed HERE, defense-in-depth), and a
  * draft→confirmed/discarded lifecycle. CONFIRM materializes the skeleton
  * (buildings + apartments) atomically with provenance
- * (buildings.source_parcel_setup_id). MANUAL path only this slice — NO
- * provider seam, NO constructor deps (IParcelDataProvider is P3b).
+ * (buildings.source_parcel_setup_id).
+ *
+ * P3b — the pluggable IParcelDataProvider (PARCEL_DATA_PROVIDER token, FIRST
+ * ctor arg — mirrors TabuExtractionsService) is consulted on create, AFTER the
+ * draft insert: found → source = the provider's providerId + provider_city +
+ * provider_status='found'; not-found / Stub / provider THROW → fail-open (§5):
+ * the draft stands, source stays 'manual', provider_status='not_found'. The
+ * lookup carries ONLY block/parcel/sub (zero-PII egress) and NEVER touches the
+ * user's draft payload.
  *
  * Tenant isolation is direct org_id (FORCE RLS, mirror tabu_extractions 0068)
  * inside withTenant. Authz mirrors buildings (the project is the parent
@@ -119,6 +135,12 @@ export interface ParcelSetupListPage {
  */
 @Injectable()
 export class ParcelSetupsService {
+  private readonly logger = new Logger(ParcelSetupsService.name);
+
+  constructor(
+    @Inject(PARCEL_DATA_PROVIDER) private readonly parcelDataProvider: IParcelDataProvider,
+  ) {}
+
   // Throws 404 unless the project is visible to this user (org via RLS +,
   // for agents, an active assignment). Mirrors BuildingsService.
   private async assertProjectVisible(
@@ -188,7 +210,7 @@ export class ParcelSetupsService {
         await this.assertProjectVisible(tx, user, projectId);
         await requireAgentCapability(tx, user, 'edit_project_data');
 
-        const [row] = await tx
+        const [inserted] = await tx
           .insert(parcelSetups)
           .values({
             orgId: user.orgId,
@@ -201,6 +223,50 @@ export class ParcelSetupsService {
             createdBy: user.sub,
           })
           .returning();
+        if (!inserted) throw NOT_FOUND;
+
+        // P3b — consult the pluggable provider AFTER the draft insert.
+        // ZERO-PII egress (§5): the lookup carries ONLY the PUBLIC
+        // block/parcel/sub — never org/user/project data. FAIL-OPEN (§5): a
+        // throwing provider must NOT break create — the draft stands and the
+        // manual path proceeds (source='manual', provider_status='not_found').
+        let lookup: ParcelLookupResult | null = null;
+        try {
+          lookup = await this.parcelDataProvider.lookup({
+            blockNumber: parsedInput.data.blockNumber,
+            parcelNumber: parsedInput.data.parcelNumber,
+            ...(parsedInput.data.subParcel !== undefined
+              ? { subParcel: parsedInput.data.subParcel }
+              : {}),
+          });
+        } catch (e) {
+          // Fail-open is the designed fallback (manual path), but a silently
+          // swallowed provider failure would hide a permanently-broken lookup
+          // (review LOW): warn with the error MESSAGE only — never the query
+          // values (uniform no-data-in-logs posture).
+          this.logger.warn(
+            `parcel lookup failed, falling back to manual: ${e instanceof Error ? e.message : 'unknown'}`,
+          );
+          lookup = null;
+        }
+
+        // Stamp the outcome. source = the provider's OWN providerId — never
+        // the DTO (it is the review flag; CreateParcelSetupInput is strict, so
+        // a forged `source` key was already rejected with 400 above). The
+        // user's draft payload is NEVER touched (stays NULL until PATCH).
+        const [row] = await tx
+          .update(parcelSetups)
+          .set(
+            lookup?.found
+              ? {
+                  source: lookup.providerId,
+                  providerCity: lookup.city ?? null,
+                  providerStatus: 'found',
+                }
+              : { providerStatus: 'not_found' },
+          )
+          .where(eq(parcelSetups.id, inserted.id))
+          .returning();
         if (!row) throw NOT_FOUND;
 
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
@@ -210,7 +276,12 @@ export class ParcelSetupsService {
           action: 'parcel_setup.create',
           targetTable: 'parcel_setups',
           targetId: row.id,
-          afterState: { projectId, status: row.status, source: row.source },
+          afterState: {
+            projectId,
+            status: row.status,
+            source: row.source,
+            providerStatus: row.providerStatus,
+          },
           sessionId: user.sid,
         });
         return toWire(row);

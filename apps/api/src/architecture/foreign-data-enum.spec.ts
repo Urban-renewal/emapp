@@ -115,6 +115,7 @@ describe('chain-risk Class 5 — wire schemas tolerate BE-owned free-text values
       'actionType', // provider_audit_log.action_type → DB CHECK (migration 0034)
       'unitType', // apartments.unit_type → READ wires are tolerant (z.string); strict enum only on the WRITE input
       'kind', // building_sections.kind → strict enum only on CreateProjectSectionInput (WRITE); no READ-wire strict-enum
+      'providerStatus', // parcel_setups.provider_status → BE-stamped only ('found'|'not_found'; NULL pre-P3b) — never client input; tolerant READ wire (z.string().nullable()) (P3b, migration 0074)
     ]);
     const found = new Set<string>();
     for (const f of readdirSync(SCHEMA_DIR).filter((n) => n.endsWith('.ts'))) {

@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 import { defineConfig, mergeConfig } from 'vitest/config';
 
 import rootConfig from '../../vitest.config';
@@ -18,6 +20,26 @@ import rootConfig from '../../vitest.config';
 export default mergeConfig(
   rootConfig,
   defineConfig({
+    resolve: {
+      alias: [
+        // P3b — packages/db/scripts/* are workspace SCRIPTS (not exported via
+        // the @emapp/db barrel). The parcel-data-provider spec reaches the
+        // loader via a deep RELATIVE dynamic import; on Windows vite-node
+        // resolves runtime-dynamic relative specifiers against the
+        // ROOT-relative module id (walks past '/'), so the specifier never
+        // reaches the real file. Pin the exact specifier to the absolute
+        // file instead (no wildcard — exactly this one script).
+        {
+          // The runner URL-joins the relative specifier against the
+          // ROOT-relative importer id first, clamping at '/', so the id that
+          // reaches the resolver is exactly '/packages/db/scripts/…'.
+          find: /^(?:(?:\.\.\/)+|\/)packages\/db\/scripts\/load-parcel-lookup(?:\.ts)?$/,
+          replacement: fileURLToPath(
+            new URL('../../packages/db/scripts/load-parcel-lookup.ts', import.meta.url),
+          ),
+        },
+      ],
+    },
     test: {
       include: ['src/**/*.spec.ts'],
       env: {

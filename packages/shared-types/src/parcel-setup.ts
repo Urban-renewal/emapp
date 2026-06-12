@@ -60,8 +60,14 @@ export const ParcelSetupSchema = z.object({
   parcelNumber: z.string(),
   subParcel: z.string().nullable(),
   status: ParcelSetupStatusSchema,
-  // 'manual' this slice; provider keys arrive with P3b.
+  // 'manual', or the provider's providerId ('local-mapi') when the P3b lookup
+  // found the parcel — stamped server-side from the provider result ONLY
+  // (never from the DTO; it is the review flag).
   source: z.string(),
+  // P3b — the create-time provider lookup outcome: 'found' | 'not_found'
+  // (NULL only on pre-P3b rows). providerCity is stamped when found.
+  providerStatus: z.string().nullable(),
+  providerCity: z.string().nullable(),
   payload: ParcelSetupPayload.nullable(),
   createdBy: z.string().uuid(),
   createdAt: z.coerce.date(),

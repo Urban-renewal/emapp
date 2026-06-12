@@ -519,6 +519,13 @@
 			"when": 1783004400000,
 			"tag": "0073_parcel_setups",
 			"breakpoints": true
+		},
+		{
+			"idx": 74,
+			"version": "7",
+			"when": 1783090800000,
+			"tag": "0074_parcel_lookup",
+			"breakpoints": true
 		}
 	]
 }

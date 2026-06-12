@@ -12,6 +12,8 @@ import {
   check,
   real,
   boolean,
+  doublePrecision,
+  unique,
 } from 'drizzle-orm/pg-core';
 
 import { bytea, inet } from './_types';
@@ -492,8 +494,14 @@ export const parcelSetups = pgTable(
     status: text('status').notNull().default('draft'),
     // The user's DRAFT buildings/apartments. Public record — no pgcrypto.
     payload: jsonb('payload').$type<ParcelSetupPayloadStored>(),
-    // 'manual' this slice; provider keys arrive with P3b.
+    // 'manual', or the provider's providerId ('local-mapi') when the P3b
+    // lookup found the parcel — stamped from the provider result ONLY, never
+    // from the DTO (it is the review flag).
     source: text('source').notNull().default('manual'),
+    // P3b (migration 0074) — what the provider lookup yielded on create:
+    // provider_status 'found' | 'not_found'; provider_city only when found.
+    providerCity: text('provider_city'),
+    providerStatus: text('provider_status'),
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id),
@@ -507,3 +515,35 @@ export const parcelSetups = pgTable(
 
 export type ParcelSetup = typeof parcelSetups.$inferSelect;
 export type NewParcelSetup = typeof parcelSetups.$inferInsert;
+
+// P3b — parcel_lookup (migration 0074). A GLOBAL reference table holding the
+// bulk-מפ"י open-data parcels (block/parcel[/sub] → city + centroid), filled
+// by scripts/load-parcel-lookup.ts and read by LocalMapiParcelDataProvider.
+// DELIBERATELY NO org_id and NO RLS — this is a PUBLIC NATIONAL RECORD,
+// identical for every tenant, holding zero tenant data and zero PII (full
+// rationale lives in the 0074 migration comment). app_user is SELECT-only;
+// writes happen exclusively via the owner-role loader script.
+export const parcelLookup = pgTable(
+  'parcel_lookup',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // PUBLIC land-registration numbers (גוש/חלקה/תת) — not PII.
+    blockNumber: text('block_number').notNull(),
+    parcelNumber: text('parcel_number').notNull(),
+    // NULL = the whole-parcel record (no תת-חלקה).
+    subParcel: text('sub_parcel'),
+    city: text('city'),
+    centroidLat: doublePrecision('centroid_lat'),
+    centroidLng: doublePrecision('centroid_lng'),
+  },
+  (table) => ({
+    // NULLS NOT DISTINCT — two NULL-sub rows for the same block/parcel are
+    // duplicates too (PG16). This is the loader's UPSERT conflict target.
+    blockParcelSubUq: unique('parcel_lookup_block_parcel_sub_key')
+      .on(table.blockNumber, table.parcelNumber, table.subParcel)
+      .nullsNotDistinct(),
+  }),
+);
+
+export type ParcelLookupRow = typeof parcelLookup.$inferSelect;
+export type NewParcelLookupRow = typeof parcelLookup.$inferInsert;

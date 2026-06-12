@@ -203,7 +203,13 @@ async function loadService(): Promise<ParcelSetupsServiceLike> {
   // P3a is the MANUAL path only — no provider seam (that is P3b), so the
   // service should construct without deps. If the builder adds constructor
   // deps, THIS is the single place to wire fakes.
-  const instance = new Ctor();
+  // P3b landed: the service now takes the IParcelDataProvider as its FIRST
+  // ctor arg (PARCEL_DATA_PROVIDER). Wire the ZERO-EGRESS Stub — it always
+  // answers "no data", so every P3a behavior stays the pure manual path.
+  const { StubParcelDataProvider } = (await import('@emapp/db')) as {
+    StubParcelDataProvider: new () => unknown;
+  };
+  const instance = new Ctor(new StubParcelDataProvider());
   const probe = instance as unknown as Record<string, unknown>;
   for (const m of [
     METHOD_CREATE,
@@ -938,8 +944,15 @@ describe('parcel_setups · schema + migration pins', () => {
     expect(entry!.when).toBeGreaterThan(JOURNAL_MAX_WHEN_BEFORE_P3A);
     for (const other of journal.entries) {
       if (other === entry) continue;
-      // Strictly greater than every pre-existing entry, or drizzle SILENTLY
+      // Strictly greater than every PRE-EXISTING entry, or drizzle SILENTLY
       // skips it (memory M-1; dev 0056 was hand-patched for exactly this).
+      // P3b adjustment (documented deviation): later slices legitimately
+      // append NEWER entries (0074_parcel_lookup — whose own spec F1 carries
+      // the live max-`when` M-1 guard), so this pin is scoped to entries that
+      // PRECEDE 0073 — exactly what "pre-existing" always meant. The
+      // all-entries form can never hold again once any post-P3a migration
+      // exists.
+      if (other.idx > entry!.idx) continue;
       expect(entry!.when).toBeGreaterThan(other.when);
     }
   });

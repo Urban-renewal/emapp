@@ -19,6 +19,7 @@ import {
   type CreateDocument,
   type Document,
   type DocumentMime,
+  type DocumentUploadResponse,
   type FinalizeDocument,
   type ListDocumentsQueryDto,
 } from '@emapp/shared-types';
@@ -60,10 +61,11 @@ export async function getDocument(id: string): Promise<Document> {
 
 /** POST /documents — declare metadata, get back a presigned PUT URL.
  *  §v9-P0-3 idempotent (a double-clicked Upload should not mint two
- *  presigned URLs / two DB rows). */
-export async function createDocument(
-  body: CreateDocument,
-): Promise<{ document: Document; uploadUrl: string; uploadExpiresInSeconds: number }> {
+ *  presigned URLs / two DB rows).
+ *  7d: a SENSITIVE doc (id_document/financial, or sensitive:true) returns
+ *  `uploadUrl: null` + `contentUploadPath` — its bytes go through the API
+ *  content path, not a presigned PUT. */
+export async function createDocument(body: CreateDocument): Promise<DocumentUploadResponse> {
   const res = await apiClient.postIdempotent<unknown>(`/documents`, body);
   if (!isOk(res)) throw new ApiClientError(res.error);
   return UploadResponseDataSchema.parse({ data: res.data }).data;

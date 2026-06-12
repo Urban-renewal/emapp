@@ -17,6 +17,7 @@ import {
   uploadToPresigned,
   type DocumentListPage,
 } from '@/lib/api/documents';
+import { ApiClientError } from '@/lib/api/errors';
 import { useDisplayLocale } from '@/lib/locale';
 import type { DocumentViewModel } from '@/models/document.vm';
 
@@ -89,6 +90,17 @@ export function useUploadDocument() {
         projectId: args.projectId ?? null,
         apartmentId: args.apartmentId ?? null,
       });
+      // 7d: a SENSITIVE doc (id_document/financial) gets NO presigned PUT —
+      // its bytes must go through POST /documents/:id/content (raw-body API
+      // upload). The FE content-upload path is the follow-up 7d FE slice;
+      // until it lands, surface an honest, actionable error instead of
+      // PUT-ing to a null URL.
+      if (!created.uploadUrl) {
+        throw new ApiClientError({
+          code: 'document_content_upload_required',
+          message: 'sensitive documents upload via the API content path (7d FE slice pending)',
+        });
+      }
       await uploadToPresigned(created.uploadUrl, args.file, mimeType);
       const finalized = await finalizeDocument(created.document.id, {
         sizeBytes: args.file.size,

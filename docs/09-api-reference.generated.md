@@ -816,7 +816,7 @@ _(no body)_
 ### POST /api/v1/documents
 
 - **Auth:** AuthGuard + TenantGuard (documents.create; agent fine gate manage_documents)
-- **Summary:** Create a document row + return a short-lived presigned PUT URL (presign-after-authorize). 30/min throttle.
+- **Summary:** Create a document row + return a short-lived presigned PUT URL (presign-after-authorize). 30/min throttle. 7d: a SENSITIVE doc (id_document/financial by type, or sensitive:true) gets NO presigned PUT — uploadUrl is null and contentUploadPath points at POST /documents/:id/content (the API-side encrypted upload path).
 
 **Request body**
 
@@ -835,7 +835,7 @@ _(no body)_
 **Response**
 
 ```json
-{ "data": { "document": { ...Document }, "uploadUrl": "https://…" } }
+{ "data": { "document": { ...Document }, "uploadUrl": "https://…|null", "contentUploadPath": "/api/v1/documents/:id/content (sensitive only)" } }
 ```
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `storage_unavailable`, `missing_token`, `invalid_token`, `token_expired`
@@ -895,10 +895,27 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
+### POST /api/v1/documents/:id/content
+
+- **Auth:** AuthGuard + TenantGuard (documents.create; agent fine gate manage_documents)
+- **Summary:** 7d — SENSITIVE-only content upload: RAW bytes (application/octet-stream, dedicated 50MB bodyLimit), 30/min throttle. Server verifies sha256+size against the create-declared values (mismatch → 400 document_integrity_mismatch with details.field=size|hash; nothing stored), scans the PLAINTEXT (non-clean → fail-closed archive + 409 document_scan_rejected), encrypts AES-256-GCM into the EMAPPENC app-envelope (DOC_ENCRYPTION_KEY, never in R2) and stores it server-side. Stamps uploaded_at + scan_status=clean + bytes_encrypted=true — no finalize step. Plain docs are rejected (400 document_not_sensitive — presign is their only path).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { "uploaded": true } }
+```
+
+**Errors:** `invalid_content_body`, `document_not_sensitive`, `document_already_uploaded`, `document_integrity_mismatch`, `document_scan_rejected`, `forbidden`, `not_found`, `storage_unavailable`, `missing_token`, `invalid_token`, `token_expired`
+
 ### GET /api/v1/documents/:id/download
 
 - **Auth:** AuthGuard + TenantGuard (documents.read)
-- **Summary:** Short-lived presigned GET URL for the stored object (?disposition=inline|attachment). 30/min throttle (bulk-exfil defense).
+- **Summary:** Short-lived presigned GET URL for the stored object (?disposition=inline|attachment). 30/min throttle (bulk-exfil defense). 7d behavioral note: a bytes_encrypted (sensitive, app-envelope) doc is NOT presigned — the API decrypt-STREAMS the bytes itself (Content-Type = doc mime, Content-Disposition per the disposition param). Same gates either way (visibility/ghost/scan + 403 pii_step_up_required without a valid session unlock). Plain docs: byte-identical presign response.
 
 **Request body**
 
@@ -910,7 +927,7 @@ _(no body)_
 **Response**
 
 ```json
-{ "data": { "url": "https://…", ... } }
+{ "data": { "url": "https://…", ... } } — or the raw decrypted bytes (streamed) when the doc is bytes_encrypted
 ```
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `storage_unavailable`, `missing_token`, `invalid_token`, `token_expired`

@@ -33,6 +33,12 @@ const serverSchema = {
   PROVIDER_DATABASE_URL: z.string().url().optional(),
   PII_ENCRYPTION_KEY: z.string().length(44),
   PII_HASH_KEY: z.string().length(44),
+  // 7d (D-P5.4 second half) — AES-256-GCM key for the sensitive-document
+  // app-envelope (EMAPPENC). Same shape + channel as PII_ENCRYPTION_KEY:
+  // base64 of 32 random bytes (44 chars), delivered via Infisical, NEVER
+  // logged. The key deliberately never reaches R2 — that is the whole
+  // threat model (a bucket dump / R2-credential leak yields ciphertext).
+  DOC_ENCRYPTION_KEY: z.string().length(44),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   // Connection-layer scale knobs — ops-tunable per environment WITHOUT
   // a code change. client.ts applies these with the current production-

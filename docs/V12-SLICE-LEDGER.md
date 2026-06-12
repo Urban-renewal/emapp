@@ -772,3 +772,8 @@ typecheck 8/8 pkgs = 0. api cross-section (documents+tabu+parcel-setups+architec
 suites failing at signup/throttle against the local dev api (the documented env pattern, proven on
 clean baselines twice this session; they skip cleanly when no server runs and pass in CI w/ the bypass).
 web 860/860. worker signature-expiry 9/9. **main is healthy.**
+
+### NEXT PICK (documented): the NUMERIC apartment sort (the F2-adjacent NIT) — apartment numbers sort
+
+lexically ('10' before '2') in the 5d drill-down (ORDER BY a.number) + the apartments lists. Small,
+real, owner-visible. Then: P3d-dark-prep or the next owner directive.

@@ -635,3 +635,14 @@ ripple + architecture guards + tc 5/5=0. Gate-6 trailer (migration 0070). Retroa
 code-review of 7a+7b-extract: PASS (3 MINORs folded into 7c: list-pagination test, agent-getOne test,
 limit-default 20→25 align). Sequencing note: FE has no unlock UI until 7c → sensitive docs 403 in FE
 (accepted, 7c next). 7d (doc-bytes envelope encryption) split out — D-P5.4 second half.
+
+### Perf diagnosis (owner: "זמן הריצה קיצוני ארוך מדי", 2026-06-12) — ROOT CAUSE FOUND
+
+Measured: raw RTT dev-machine→Neon = ~165ms/query (DB in **us-east-1**, dev in Israel). withTenant is
+already RT-optimal (3 round-trips: BEGIN+ROLE batched · one set_config · COMMIT). A typical authed
+request = 7-8 sequential queries × 165ms ≈ 1.2-1.5s — matches the measured numbers exactly. NOT a code
+problem, no N+1: **geography**. Also explains the slow test suites (30-60s/file). Production (Railway+
+Neon same-region, RTT 1-3ms) ≈ 20-40ms/request — under the 200ms baseline (verify on staging).
+Real fixes offered (no cache hand-waving): **A. local docker Postgres for dev (~50x, recommended)** or
+B. move the dev Neon branch to eu-central-1 (~2.5x, zero-infra). Awaiting the owner's pick (it changes
+his Infisical dev DATABASE_URL + dev workflow).

@@ -318,13 +318,18 @@ export class TabuExtractionsService {
         //    never an existence oracle.
         await requireAgentCapability(tx, user, 'edit_project_data');
 
-        // 3. Load the FINALIZED source document (org-scoped by RLS).
+        // 3. Load the source document (org-scoped by RLS) + RE-ASSERT it is
+        //    finalized — uploaded AND scan-clean — before reading its bytes.
+        //    Mirrors create()'s finalized gate (P0.B1 AV gate): a doc that has
+        //    since been quarantined (scan_status != 'clean') must never have its
+        //    bytes read + parsed here, even though it was finalized at create-time.
         const [doc] = await tx
           .select()
           .from(documents)
           .where(eq(documents.id, extraction.sourceDocumentId))
           .limit(1);
         if (!doc || doc.archivedAt) throw NOT_FOUND;
+        if (!doc.uploadedAt || doc.scanStatus !== 'clean') throw DOC_NOT_FINALIZED;
 
         const bytes = await this.readObjectBytes(doc.r2Key);
 

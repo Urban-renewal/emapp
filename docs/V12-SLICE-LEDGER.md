@@ -691,3 +691,13 @@ FE bonus root-fix: a wrong step-up OTP no longer logs the user out (SUPPRESS_EVE
 
 Infisical → PII keys missing at migrate) — fixed; merge blocked on a REAL run (Docker not installed
 on the dev machine — owner action). Honest: no perf evidence until then.
+
+### 7d LIVE MANUAL QA ✅ (all statuses recorded)
+
+sensitive create → uploadUrl **null** + contentUploadPath ✓ → POST octet-stream → **200** → download
+locked → **403 pii_step_up_required** → OTP unlock → download → **200 application/pdf, sha256(bytes)===
+declared** (decrypt round-trip). **AT-REST in REAL R2: first 8 bytes `EMAPPENC`, plaintext ABSENT,
+length=plaintext+39** (read via the S3 SDK with the r2_key from SQL). Plain-doc regression: presign
+present → PUT → finalize 200 → download JSON url 200 (byte-identical path). QA gotcha root-caused:
+a stale 7c-era api process held :3000 (EADDRINUSE in the new log; health green from the OLD server)
+— killed + fresh start; LESSON: after branch switch verify the log has no EADDRINUSE before QA.

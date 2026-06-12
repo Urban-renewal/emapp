@@ -16,6 +16,7 @@ import { ApiClientError } from '@/lib/api/errors';
 import type { ProjectViewModel } from '@/models/project.vm';
 
 import { ExportXlsxButton } from './_components/export-xlsx-button';
+import { ParcelSetupSection } from './_components/parcel-setup-section';
 import { ProjectDocumentUpload } from './_components/project-document-upload';
 import { SignatureCampaignAction } from './_components/signature-campaign-action';
 import { SignatureProgressApartments } from './_components/signature-progress-apartments';
@@ -69,6 +70,9 @@ export default function ProjectDetailPage() {
   // IAM slice 5b — permission gates (UX; BE is authoritative).
   const canArchive = useHasPermission('projects.archive');
   const canExport = useHasPermission('export.run');
+  // P3c — the parcel-setup confirm materializes buildings + apartments, so
+  // the affordance gates on buildings.create (UX; BE is authoritative).
+  const canCreateBuildings = useHasPermission('buildings.create');
   const [actionError, setActionError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>('tenants');
 
@@ -315,6 +319,13 @@ export default function ProjectDetailPage() {
                   <SignatureCampaignAction projectId={id} />
                 </section>
               )}
+
+              {/* P3c — "הקמה מגוש-חלקה": parcel-setup preview/confirm flow
+               *  (block/parcel lookup → builder rows → PATCH payload →
+               *  confirm → buildings skeleton). §7.1-2: the confirm stays
+               *  disabled until the user makes an explicit apartments
+               *  decision per building — never a silent default. */}
+              {id && canCreateBuildings && <ParcelSetupSection projectId={id} />}
 
               {/* Owner-approved staged overlay (Gate-6) — signature progress
                *  bar with milestone tick marks + the legal target marker. Pure

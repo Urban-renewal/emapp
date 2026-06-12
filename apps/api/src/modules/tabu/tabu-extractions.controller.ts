@@ -58,4 +58,14 @@ export class TabuExtractionsController {
   async getOne(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.tabu.getOne(user, id) };
   }
+
+  // 7b-extract — RUN the pluggable extraction engine on a DRAFT extraction:
+  // parse the source נסח → ENCRYPT + store owner/share rows. A WRITE (the fine
+  // agent gate requireAgentCapability('edit_project_data') + draft-only +
+  // source-doc load all stay in the service), so it reuses `apartments.update`.
+  @Post('tabu-extractions/:id/extract')
+  @RequirePermission('apartments.update')
+  async extract(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
+    return { data: await this.tabu.runExtraction(user, id) };
+  }
 }

@@ -784,3 +784,14 @@ all else verified already-shipped in #364). ### Numeric sort — PR #370 armed (
 interleaved natural order at the 5d drill-down + the contractor portal; ::numeric overflow-safe;
 honest proportionate-rigor note in the PR). LESSON recorded: parallel agents share the working tree —
 stage precisely, never `git add -A` while a sibling agent runs.
+
+### HOLD MODE (documented call under the standing authorization)
+
+P3d-dark-prep evaluated and DEFERRED honestly: the GovMap server-side wire shape is UNVERIFIED (the
+scoping doc's own finding — browser JS-SDK docs only). Coding the provider against a guessed format
+would pin the guess, not reality → near-certain rework when the owner provisions the token. Fails the
+no-busywork bar. **Everything actionable autonomously is DONE**: Phase-5 100%, Phase-3 P3a-c, sweeper,
+api-docs+guard, 7d encryption, the smoke matrix, consolidation green, the F-NITs (sort #370 armed).
+**The remaining queue is ALL owner-gated:** GovMap token+ToS (P3d) · the mapi 669MB bulk load (loader
+ready) · staging/prod DOC_ENCRYPTION_KEY · Docker Desktop (perf kit #363 draft) · any new directive.
+The loop holds (regression glance per fire, ~25min cadence), acts immediately on owner input.

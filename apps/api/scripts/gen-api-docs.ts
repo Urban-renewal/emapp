@@ -90,6 +90,8 @@ import {
   UpdateCustomRoleInput,
   UpdateDiscoveryRecordInput,
   UpdateDocumentInput,
+  // S7c — tabu review+confirm loop.
+  UpdateTabuExtractionRowInput,
 } from '@emapp/shared-types';
 import type { ZodTypeAny } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -189,7 +191,9 @@ const ENDPOINTS: Endpoint[] = [
     summary:
       'Request a PII step-up OTP (7b-OTP, D-P5.5). 6-digit code emailed to the caller; ' +
       'hashed at rest; 3/15min rate limit (the 4th in-window request sends no email).',
-    response: '{ "data": { "ok": true } }',
+    response:
+      '{ "data": { "ok": true } }  (dev/QA ONLY — EXPOSE_STEP_UP_CODE=true + NODE_ENV ' +
+      'development|test, read at request time — adds "code": "123456"; fail-closed in production)',
     errors: ['missing_token', 'invalid_token', 'token_expired', 'invalid_session', '429'],
   },
   {
@@ -1431,6 +1435,72 @@ const ENDPOINTS: Endpoint[] = [
       'forbidden',
       'not_found',
       'tabu_source_not_finalized',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/tabu-extractions/:id/rows',
+    auth: 'AuthGuard + TenantGuard (apartments.read; VALID per-session PII unlock REQUIRED)',
+    summary:
+      'S7c — the DECRYPTED parsed rows for the review screen. 403 pii_step_up_required without a ' +
+      'valid unlock (pii_unlocked_at + security.piiUnlockTtlMinutes, default 60); national_id is ' +
+      '•-masked for callers with masked owner-PII fidelity (D.19/D.47/D.54). Reveal is audited.',
+    response:
+      '{ "data": [ { "id": uuid, "name": "string|null", "nationalId": "string|null", ' +
+      '"shareNumerator": int|null, "shareDenominator": int|null, "confidence": number|null, ' +
+      '"edited": bool, "position": int } ] }',
+    errors: [
+      'pii_step_up_required',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/tabu-extractions/:id/rows/:rowId',
+    auth:
+      'AuthGuard + TenantGuard (apartments.update; PII unlock REQUIRED + D.54 agent fine gate ' +
+      'edit_project_data)',
+    summary:
+      'S7c — edit one parsed row before confirm: PII re-encrypted (pgcrypto), edited=true. ' +
+      'DRAFT-only (409 tabu_extraction_not_draft).',
+    request: UpdateTabuExtractionRowInput,
+    response: '{ "data": { "ok": true } }',
+    errors: [
+      'validation_error',
+      'pii_step_up_required',
+      'forbidden',
+      'not_found',
+      'tabu_extraction_not_draft',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/tabu-extractions/:id/confirm',
+    auth:
+      'AuthGuard + TenantGuard (apartments.update; PII unlock REQUIRED + D.54 agent fine gate ' +
+      'edit_project_data)',
+    summary:
+      'S7c — THE commit: audit-first, IDEMPOTENT (WHERE status=draft; second confirm → 409), ' +
+      'atomic — owners matched by national_id hash or created as shells, the apartment’s active ' +
+      'ownerships REPLACED with the confirmed fractions (deferred sum trigger = 1 at COMMIT), ' +
+      'source_extraction_id stamped on every written row. No body.',
+    response: '{ "data": { ...TabuExtraction } }  (status=confirmed, confirmedAt set)',
+    errors: [
+      'pii_step_up_required',
+      'forbidden',
+      'not_found',
+      'tabu_extraction_not_draft',
+      'tabu_rows_incomplete',
+      'ownership_sum_invalid',
       'missing_token',
       'invalid_token',
       'token_expired',

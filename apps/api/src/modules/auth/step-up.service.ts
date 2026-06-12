@@ -30,6 +30,29 @@ const RL_MAX = 3; // 3 requests / 15 min / user — the 4th sends NO email
 /** The audit action the FE/forensics key on (pinned by the 7b-OTP spec). */
 export const PII_UNLOCK_AUDIT_ACTION = 'session.pii_unlocked';
 
+/** 7c — NODE_ENV values allowed to expose the step-up code (mirrors the
+ * EXPOSE_INVITE_TOKEN L-3 hardening, members/invite-email.ts): ONLY
+ * 'development' | 'test'. Anything else — unset, 'production', 'staging',
+ * a typo like 'prod' — stays CLOSED. The allowlist itself may be a module
+ * const (NODE_ENV is process-stable); the opt-in flag below is not. */
+const STEP_UP_CODE_ENV_ALLOWLIST = new Set(['development', 'test']);
+
+/**
+ * 7c — dev/QA exposure of the step-up OTP code in the request() RESULT
+ * (mirrors EXPOSE_INVITE_TOKEN exactly): IFF EXPOSE_STEP_UP_CODE === 'true'
+ * AND NODE_ENV is in the strict allowlist. FAIL-CLOSED everywhere else —
+ * the email is the canonical delivery channel.
+ *
+ * READ AT REQUEST TIME (not frozen into a module const) so QA can toggle
+ * the env flag without restarting/touching module state.
+ */
+function exposeStepUpCode(): boolean {
+  return (
+    process.env['EXPOSE_STEP_UP_CODE'] === 'true' &&
+    STEP_UP_CODE_ENV_ALLOWLIST.has(process.env['NODE_ENV'] ?? '')
+  );
+}
+
 @Injectable()
 export class StepUpService {
   private readonly logger = new Logger(StepUpService.name);
@@ -45,9 +68,13 @@ export class StepUpService {
    *    in-window request is a SILENT no-op — no email, no oracle).
    *  - The code is bound to (user, session): a stolen code cannot unlock a
    *    different session.
-   *  - The code itself is NEVER logged and NEVER returned.
+   *  - The code itself is NEVER logged. It is NEVER returned in production:
+   *    the ONLY exception is the dev/QA exposure (7c) — { code } in the
+   *    result IFF exposeStepUpCode() (EXPOSE_STEP_UP_CODE === 'true' AND
+   *    NODE_ENV in the strict development|test allowlist, read at request
+   *    time). Fail-closed otherwise — the result is {}.
    */
-  async request(user: AccessTokenPayload): Promise<void> {
+  async request(user: AccessTokenPayload): Promise<{ code?: string }> {
     const invalid = new UnauthorizedException({
       error: { code: 'invalid_session', message: 'נדרשת התחברות מחדש' },
     });
@@ -79,7 +106,7 @@ export class StepUpService {
           gt(stepUpCodes.createdAt, new Date(Date.now() - RL_WINDOW_MS)),
         ),
       )) as Array<{ n: number }>;
-    if ((rl[0]?.n ?? 0) >= RL_MAX) return;
+    if ((rl[0]?.n ?? 0) >= RL_MAX) return {};
 
     const [recipient] = await db
       .select({ email: users.email })
@@ -114,6 +141,10 @@ export class StepUpService {
           `for org=${user.orgId} user=${user.sub}: ${result.error ?? 'unknown'}`,
       );
     }
+
+    // 7c dev/QA exposure (EXPOSE_INVITE_TOKEN pattern) — fail-closed:
+    // production / unset / typo'd NODE_ENV or a missing flag → {}.
+    return exposeStepUpCode() ? { code } : {};
   }
 
   /**

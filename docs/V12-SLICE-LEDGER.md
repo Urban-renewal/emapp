@@ -729,3 +729,10 @@ skeleton path) — test-author 18 RED done; builder in flight.
 
 defense live) → confirm 201 → idempotent 409 → skeleton VERIFIED via existing routes (הרצל 10+12,
 3 apts on b1). Builder evidence: 18/18 + ripple + tc 8 pkgs; migration 0073 journaled.
+
+### P3b LIVE QA ✅ — fixture loaded (10 rows via the loader) → create w/ fixture parcel 6638/42/3:
+
+source='local-mapi' + providerCity='תל אביב' + providerStatus='found' · unknown parcel → manual/
+not_found. Review: SECURITY PASS (1 LOW → fixed: warn-no-values on swallowed provider error) + the
+Gate-6 trailer carried on the PR. OPS NOTE: the real mapi bulk (669MB monthly ZIP) load = owner/ops
+step; the loader script is ready (packages/db/scripts/load-parcel-lookup.ts).

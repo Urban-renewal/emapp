@@ -609,3 +609,19 @@ unlocks ALL authorized docs (reuse SMS-OTP). Revised slices: 7b-OTP+doc-encrypt 
 7b-extract (awaits AI-PII nod) · 7c OTP-gated review+confirm. OPEN SCOPE QUESTIONS before building 7b-OTP:
 does the OTP-gate apply to ALL documents or only נסח/PII-sensitive ones? unlock TTL? which roles? — these
 change existing document-view behavior, so confirm with the owner first. Memory: project_phase5_tabu_parse_decision.
+
+### Owner process-review (2026-06-12) — 3 points, all addressed
+
+1. **Plan not in a design doc** — VALID. Fixed: `docs/DESIGN-phase5-tabu-extraction.md` (single source of
+   truth: D-P5.1..8 owner decisions verbatim, architecture, security invariants, slice map). Ledger stays
+   the execution log; the design doc is the plan.
+2. **Pipeline accounting (honest):** 7a + 7b-extract ran test-author→builder→manager-verify→code+security
+   reviews→CI→merge-on-green (incl. a LOW root-fix). **Browser-QA was skipped in both** ("no UI") — valid
+   for 7a, but 7b-extract could have had a live API chain run. DEBT: the 7c slice MUST live-run the full
+   chain (upload→extract→review→confirm) as its browser-QA, covering 7a+7b retroactively.
+3. **api-reference gap** — REAL + SYSTEMIC (the manual ENDPOINTS registry had drifted 64 endpoints behind;
+   the stale-check verified file==script, not script==code). Root-fixed in PR #360: all 153 endpoints
+   registered + an api-docs-coverage architecture guard (both-directions assert, RED-proven) + a banner on
+   the legacy html. Memory: project_api_docs_manual_registry.
+   **7b-extract ✅ CLOSED — merged (#359, incl. the scan-clean LOW fix).** Phase-5 next: 7b-OTP + 7c, blocked
+   on D-P5.7 (OTP scope) + D-P5.8 (TTL) — see the design doc §1.

@@ -346,3 +346,40 @@ export const cacheKv = pgTable(
 
 export type CacheKv = typeof cacheKv.$inferSelect;
 export type NewCacheKv = typeof cacheKv.$inferInsert;
+
+// S7a — tabu_extractions (migration 0068). The ENVELOPE around a single Tabu
+// (נסח טאבו) extraction run on an apartment: it points at the FINALIZED source
+// document (a נסח טאבו PDF) the parse will read and carries a draft→confirmed/
+// discarded lifecycle. Envelope ONLY this slice — NO parse, NO owner/share PII
+// rows, NO commit (those are 7b/7c). RLS = direct org_id (documents-style,
+// migration 0004). `status` is a closed enum at the Zod boundary AND a DB CHECK.
+// Lives here (not projects.ts) because the source_document_id FK references the
+// local `documents` table — avoids a projects↔artifacts import cycle.
+export const tabuExtractions = pgTable(
+  'tabu_extractions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    apartmentId: uuid('apartment_id')
+      .notNull()
+      .references(() => apartments.id, { onDelete: 'cascade' }),
+    sourceDocumentId: uuid('source_document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'restrict' }),
+    // Closed enum (DB CHECK + Zod): draft | confirmed | discarded.
+    status: text('status').notNull().default('draft'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  },
+  (table) => ({
+    orgApartmentIdx: index('idx_tabu_extractions_org_apartment').on(table.orgId, table.apartmentId),
+  }),
+);
+
+export type TabuExtraction = typeof tabuExtractions.$inferSelect;
+export type NewTabuExtraction = typeof tabuExtractions.$inferInsert;

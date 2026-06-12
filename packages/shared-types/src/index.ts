@@ -10,6 +10,9 @@ export * from './ownership';
 // S3c — discovery_records ("renter → discovery-source"). Apartment-attached
 // discovery source (occupant), replacing the retired ownerships 'renter'.
 export * from './discovery-record';
+// S7a — tabu_extractions ("Tabu extraction envelope + lifecycle"). Apartment-
+// attached extraction run pointing at a finalized source doc; draft lifecycle.
+export * from './tabu-extraction';
 // P0.C1 — data-subject rights (access export + erasure / right-to-be-forgotten).
 export * from './data-subject';
 export * from './contractor';

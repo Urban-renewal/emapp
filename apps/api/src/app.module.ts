@@ -33,6 +33,7 @@ import { ProviderModule } from './modules/provider/provider.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { SharesModule } from './modules/shares/shares.module';
 import { SignaturesModule } from './modules/signatures/signatures.module';
+import { TabuModule } from './modules/tabu/tabu.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { QueueModule } from './queue/queue.module';
 
@@ -67,6 +68,10 @@ import { QueueModule } from './queue/queue.module';
     // (occupant) replacing the retired ownerships 'renter'. CRUD under an
     // apartment; withTenant + RLS via-parent.
     DiscoveryModule,
+    // S7a — "Tabu extraction envelope + lifecycle": apartment-attached
+    // extraction runs pointing at a finalized source doc; draft lifecycle.
+    // withTenant + RLS direct org_id; create gated by edit_project_data (D.54).
+    TabuModule,
     ContractorsModule,
     DocumentsModule,
     SharesModule,

@@ -80,6 +80,10 @@ export default function NewDocumentPage() {
         else if (e.code === DOCUMENT_SCAN_REJECTED_CODE) setError(t('scanRejected'));
         // 7d — client-side 50MB ceiling (thrown before any network).
         else if (e.code === 'document_too_large') setError(t('fileTooLarge'));
+        // 7d — the content route is sensitive-only; the normal flow can't
+        // trigger this (resolveUploadPlan routes by the BE response), but map
+        // it actionably rather than falling to the generic failure.
+        else if (e.code === 'document_not_sensitive') setError(t('notSensitive'));
         else if (e.code === 'upload_failed') setError(t('uploadFailed'));
         else setError(t('createFailed'));
       } else {

@@ -73,7 +73,6 @@
     "contractors": "Contractors",
     "notes": "Notes",
     "audit": "Audit log",
-    "settings": "Settings",
     "provider": "Provider",
     "providerConsole": "EMAPP Provider Console",
     "tagline": "Urban Renewal",
@@ -126,10 +125,22 @@
     "loginCta": "Sign in",
     "forgotPassword": "Forgot password?",
     "rolePicker": {
-      "manager": { "label": "Manager", "sub": "Email and password" },
-      "agent": { "label": "Agent", "sub": "Email or phone" },
-      "contractor": { "label": "Contractor", "sub": "Email and password" },
-      "tenant": { "label": "Resident", "sub": "National ID + phone" },
+      "manager": {
+        "label": "Manager",
+        "sub": "Email and password"
+      },
+      "agent": {
+        "label": "Agent",
+        "sub": "Email or phone"
+      },
+      "contractor": {
+        "label": "Contractor",
+        "sub": "Email and password"
+      },
+      "tenant": {
+        "label": "Resident",
+        "sub": "National ID + phone"
+      },
       "comingSoonAgent": "Coming soon — only Manager sign-in is wired today",
       "comingSoonContractor": "Coming soon — Contractor signs in via a share link",
       "comingSoonTenant": "Coming soon — Resident signs in via SMS OTP"
@@ -656,7 +667,8 @@
     "field": {
       "type": "Type",
       "file": "File"
-    }
+    },
+    "notSensitive": "This document is not marked sensitive — use the standard upload"
   },
   "ownerships": {
     "title": "Ownership shares",

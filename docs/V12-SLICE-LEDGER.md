@@ -577,3 +577,24 @@ typecheck 5/5 packages = 0 errors. Core V12 logic specs green: signature-campaig
 
 - signature-progress-apartments + data-subject = 30/30. (Live-server contract specs skipped — http_429
   without a running server is env, not a regression.) **main is healthy. V12 core complete + verified.**
+
+---
+
+## 🟢 PHASE-5 — Tabu נסח: auto-parse + manual-confirm (owner-steered 2026-06-12)
+
+OWNER DECISION: heuristic AUTO-PARSE of an uploaded נסח + MANDATORY human review/confirm before any
+ownership is committed ("פיענוח אוטומטי עם אפשרות לאשר ידנית... כדי שעין תוודא התאמה ותאשר"). Matches
+design §6 (upload+parse, paid-API deferred). Memory: project_phase5_tabu_parse_decision.
+
+**Slice plan:**
+
+- **7a foundation (THIS):** migration tabu_extractions + tabu_extraction_rows (draft model) + RLS;
+  API create-extraction from a finalized apartment-scoped נסח doc (STUB parse → empty/placeholder draft)
+  - GET draft. NO real parse yet, NO commit yet — just the model + the draft lifecycle.
+- **7b parser:** add pdf-parse; extract R2 נסח text; heuristic name/national_id/share extraction → rows.
+- **7c review+confirm:** edit draft rows + CONFIRM → commit owners+ownerships (atomic fractions, 3a/3b)
+  - provenance link; FE side-by-side review screen.
+
+| Gate (7a)                                                                                                                                     | Status |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Spec ⏳ · Reproduce-RED ⏳ · Build ⏳ · IndepTests ⏳ · CodeReview ⏳ · Security ⏳ · BrowserQA ⏳ · CI ⏳ · Merge ⏳ · Critic ⏳ · Memory ⏳ |

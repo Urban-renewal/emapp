@@ -802,3 +802,19 @@ dir], (2) monitoring/alert RULES (partially owner-gated: Sentry console), (4) th
 (step-up modal + tabu review, manager-anchored to stable testids) · #373 natural sort (supersedes #370
 — LESSON: long-lived branches carrying ledger edits hit a DIRTY treadmill; supersede with a clean
 code-only branch; batch ledger updates on main between PRs).
+
+## 🏁 PHASE-9 / SESSION CLOSING — the autonomous queue is EMPTY
+
+**Shipped this session (17 PRs, #358-374, ZERO merge-on-red):** Phase-5 100% (7a #358 envelope · 7b-extract
+#359 pluggable+encrypted · 7b-OTP #361 step-up+sensitive-gate · 7c #362 review+confirm+FE-unlock · 7d #364
+EMAPPENC at-rest) · Phase-3 (P3a #366 · P3b #367 · P3c #368 — גוש-חלקה→שלד live) · the expiry sweeper #365 ·
+api-docs 64-endpoint fix + coverage guard #360 · the 6-entity browser smoke + F-fixes (#369 not_sensitive,
+#373 natural sort [supersedes #370]) · the ops RUNBOOK #371 · the Track-D 7c regression net #372 · the
+critical-path E2E chain #374. Plus: the perf root-cause diagnosis + the local-PG kit (#363 draft), the
+Phase-3+Phase-5 design docs, 12 memory controls, heartbeats restored.
+**EVERY remaining item needs an owner-provisioned resource (RUNBOOK §8 + the deploy-gap finding):**
+deploy pipeline (Railway/Pages accounts+configs — none exists in-repo) · staging/prod PII keys +
+DOC_ENCRYPTION_KEY (loss=unrecoverable; vault-backup) · Sentry alert rules/uptime · GovMap P3d token+ToS ·
+the mapi 669MB bulk load (loader ready) · Docker Desktop (unblocks the #363 perf verification) · the v7 R2
+credential rotation · legal/pen-test items. The loop HOLDS: acts immediately on owner input or on any of
+the above unblocking; one-line status otherwise.

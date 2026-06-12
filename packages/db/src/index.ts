@@ -65,6 +65,7 @@ export * from './helpers/resolve-share';
 export * from './helpers/signature-progress';
 export * from './helpers/reap-expired-rows';
 export * from './helpers/audit-retention';
+export * from './helpers/signature-expiry-sweep';
 export * from './helpers/org-suspension';
 export * from './helpers/notifications';
 export * from './helpers/idempotency';

@@ -1008,8 +1008,12 @@ export class DocumentsService {
     const iv = envelope.subarray(ivStart, ivStart + ENVELOPE_IV_LEN);
     const tag = envelope.subarray(ivStart + ENVELOPE_IV_LEN, ENVELOPE_HEADER_LEN);
     const ciphertext = envelope.subarray(ENVELOPE_HEADER_LEN);
+    // Key fetch OUTSIDE the try: a key MISCONFIG must surface as the ops 503
+    // (doc_encryption_unavailable), not be swallowed into the generic 500
+    // corruption code (review LOW-1).
+    const key = docEncryptionKey();
     try {
-      const decipher = createDecipheriv('aes-256-gcm', docEncryptionKey(), iv);
+      const decipher = createDecipheriv('aes-256-gcm', key, iv);
       decipher.setAuthTag(tag);
       return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
     } catch {

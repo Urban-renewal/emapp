@@ -827,6 +827,7 @@ _(no body)_
 | `mimeType` | string | yes | enum=["application/pdf","image/png","image/jpeg","image/webp","image/gif","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/vnd.ms-excel","text/csv","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/msword","text/plain"] |
 | `name` | string | yes | minLength=1, maxLength=255 |
 | `projectId` | unknown | no | — |
+| `sensitive` | boolean | no | — |
 | `sizeBytes` | integer | yes | minimum=1, maximum=52428800 |
 | `type` | string | yes | enum=["agreement","blueprint","regulation","contract","permit","id_document","floor_plan","financial","other"] |
 
@@ -1554,6 +1555,7 @@ _(no body)_
 | `messaging` | object | no | — |
 | `notifications` | object | no | — |
 | `privacy` | object | no | — |
+| `security` | object | no | — |
 | `signatures` | object | no | — |
 | `timezone` | string | no | minLength=1 |
 

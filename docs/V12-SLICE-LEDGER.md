@@ -736,3 +736,8 @@ source='local-mapi' + providerCity='תל אביב' + providerStatus='found' · u
 not_found. Review: SECURITY PASS (1 LOW → fixed: warn-no-values on swallowed provider error) + the
 Gate-6 trailer carried on the PR. OPS NOTE: the real mapi bulk (669MB monthly ZIP) load = owner/ops
 step; the loader script is ready (packages/db/scripts/load-parcel-lookup.ts).
+
+### P3a ✅ CLOSED — merged (#366). Envelope+manual-skeleton live-QA'd; review PASS 0 findings.
+
+The tabu-extractions envelope is now the CANONICAL template (used 3x: tabu, step-up posture, parcel).
+P3b in flight (21-test RED contract done incl. zero-PII-egress + fail-open provider; builder running).

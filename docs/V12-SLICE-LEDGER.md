@@ -741,3 +741,9 @@ step; the loader script is ready (packages/db/scripts/load-parcel-lookup.ts).
 
 The tabu-extractions envelope is now the CANONICAL template (used 3x: tabu, step-up posture, parcel).
 P3b in flight (21-test RED contract done incl. zero-PII-egress + fail-open provider; builder running).
+
+### P3b ✅ CLOSED — merged (#367; the ledger DIRTY conflict resolved append-both — LESSON: ledger
+
+edits ride the ACTIVE branch only). Provider-seam pattern now 2x (extraction+parcel) = the
+generic-engine mandate's established template. P3c (the FE payoff screen) in flight — FE test-author
+done (seam 21 RED + a pinned 4-axis e2e), builder running.

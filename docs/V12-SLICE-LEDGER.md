@@ -796,3 +796,9 @@ stats EXISTS (org/stats consumed) — audit corrections recorded. GENUINE remain
 infra): (1) a critical-path E2E chain spec [queued after the Track-D 7c codification merges — same
 dir], (2) monitoring/alert RULES (partially owner-gated: Sentry console), (4) the ops RUNBOOK
 [writer dispatched]. Heartbeat protocol gap fixed (track-b 2026-06-12 + gen:progress).
+
+### Launch-infra batch ✅ — #371 RUNBOOK (honest deploy-gap finding) · #372 Track-D 7c regression net
+
+(step-up modal + tabu review, manager-anchored to stable testids) · #373 natural sort (supersedes #370
+— LESSON: long-lived branches carrying ledger edits hit a DIRTY treadmill; supersede with a clean
+code-only branch; batch ledger updates on main between PRs).

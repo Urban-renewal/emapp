@@ -788,3 +788,11 @@ api-docs+guard, 7d encryption, the smoke matrix, consolidation green, the F-NITs
 **The remaining queue is ALL owner-gated:** GovMap token+ToS (P3d) · the mapi 669MB bulk load (loader
 ready) · staging/prod DOC_ENCRYPTION_KEY · Docker Desktop (perf kit #363 draft) · any new directive.
 The loop holds (regression glance per fire, ~25min cadence), acts immediately on owner input.
+
+### ROADMAP GAP AUDIT (owner-tasked continuation) — ~95% delivered; the audit's top-5 critically
+
+re-verified by the manager: #5 contractor-portal EXISTS (live-walked this session) and #3 dashboard
+stats EXISTS (org/stats consumed) — audit corrections recorded. GENUINE remaining (Phase-9 launch
+infra): (1) a critical-path E2E chain spec [queued after the Track-D 7c codification merges — same
+dir], (2) monitoring/alert RULES (partially owner-gated: Sentry console), (4) the ops RUNBOOK
+[writer dispatched]. Heartbeat protocol gap fixed (track-b 2026-06-12 + gen:progress).

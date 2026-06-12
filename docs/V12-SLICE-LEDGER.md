@@ -646,3 +646,15 @@ Neon same-region, RTT 1-3ms) ≈ 20-40ms/request — under the 200ms baseline (v
 Real fixes offered (no cache hand-waving): **A. local docker Postgres for dev (~50x, recommended)** or
 B. move the dev Neon branch to eu-central-1 (~2.5x, zero-infra). Awaiting the owner's pick (it changes
 his Infisical dev DATABASE_URL + dev workflow).
+
+### 7c BE — LIVE MANUAL QA ✅ (owner-prompted, 2026-06-12) — FULL CHAIN, every status recorded
+
+upload נסח(id_document/sensitive, stub-parsable)+finalize=200 → download w/o unlock=**403
+pii_step_up_required** → step-up request=200(+dev code, EXPOSE_STEP_UP_CODE) → verify=200 → download
+w/ unlock=200 → create extraction=201 → extract(stub)=201 rowCount:2 → GET rows(decrypted)=200 (exact
+names+natids+shares from the uploaded נסח) → PATCH edit=200 → **confirm=200 → ownerships REPLACED:
+שרה כהן 1/2 (new shell) + existing owner REUSED via natid-hash match 1/2** → second confirm=**409**
+(idempotent). This closes the 7a/7b live-QA debt. Honest note: this manual chain ran only AFTER the
+owner pressed ("ביצעת טסט ידני???") — the BE was built integration-tested-only at that point; lesson:
+the live chain belongs BEFORE declaring a BE sub-slice done, not deferred to the FE stage.
+Remaining for 7c: code+security reviews → FE (unlock modal + review screen) → e2e stubs → PR (Gate-6 0071) → merge-on-green.

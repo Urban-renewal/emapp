@@ -219,9 +219,16 @@ function shouldAttemptRefresh(
 }
 
 /** §v9-P0-4 — emit `emapp:unauthenticated` for terminal 401s only.
- *  Form-level codes (invalid_credentials/invalid_otp/not_member) and
+ *  Form-level codes (invalid_credentials/invalid_otp/not_member, and the 7c
+ *  PII step-up `invalid_step_up_code` — a wrong OTP in the unlock dialog must
+ *  show an inline error, NOT boot the whole session to /login) and
  *  successful responses are suppressed. */
-const SUPPRESS_EVENT = new Set(['invalid_credentials', 'invalid_otp', 'not_member']);
+const SUPPRESS_EVENT = new Set([
+  'invalid_credentials',
+  'invalid_otp',
+  'not_member',
+  'invalid_step_up_code',
+]);
 function maybeEmitUnauthenticated(status: number, body: ApiResponse<unknown>): void {
   if (status !== 401) return;
   if (typeof window === 'undefined') return;

@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
+import { isStepUpCancelled, useStepUpUnlock } from '@/components/step-up-unlock';
 import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
@@ -24,6 +25,10 @@ export default function DocumentDetailPage() {
   const download = useDownloadDocument();
   const canDownload = useHasPermission('documents.download');
   const canArchive = useHasPermission('documents.archive');
+  // 7c F1 — sensitive docs answer 403 `pii_step_up_required` until the
+  // session holds a fresh PII unlock; the hook opens the OTP dialog and
+  // retries the download (replacing the bare "ההורדה נכשלה." for that code).
+  const stepUp = useStepUpUnlock();
   const [actionError, setActionError] = useState<string | null>(null);
   // Which disposition is currently in flight, so only the clicked button
   // shows its pending label (both share the one download mutation).
@@ -54,7 +59,10 @@ export default function DocumentDetailPage() {
     setActionError(null);
     setPendingDisposition(disposition);
     try {
-      const { url } = await download.mutateAsync({ id, disposition });
+      // 7c F1 — on 403 pii_step_up_required the unlock dialog opens
+      // (request→code→verify) and the download is retried once. All other
+      // errors keep their existing handling below.
+      const { url } = await stepUp.withStepUp(() => download.mutateAsync({ id, disposition }));
       // §RED-1 defense-in-depth — schema-level scheme allowlist is the
       // primary defense (DocumentDownloadResponseSchema.url is
       // HttpsUrlSchema), but we re-verify the protocol here before
@@ -69,6 +77,11 @@ export default function DocumentDetailPage() {
       // honored by R2 with the requested Content-Disposition server-side.
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (e) {
+      // 7c F1 — the user dismissed the step-up dialog: not a failure, no
+      // error line (they can click הצג/הורד again whenever they're ready).
+      if (isStepUpCancelled(e)) {
+        return;
+      }
       // 0050 (ghost-doc UX) — the BE returns the distinct
       // `document_upload_incomplete` code ONLY for the owner's own
       // never-finalised doc (a foreign id stays a generic 404). Surface the
@@ -146,6 +159,9 @@ export default function DocumentDetailPage() {
       </div>
 
       {actionError && <p className="text-sm text-destructive">{actionError}</p>}
+
+      {/* 7c F1 — the step-up unlock modal (renders null while closed). */}
+      {stepUp.dialog}
     </div>
   );
 }

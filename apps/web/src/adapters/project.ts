@@ -7,6 +7,7 @@ import type {
   SignatureProgress,
 } from '@emapp/shared-types';
 
+import { formatApartmentLabel } from '@/lib/apartment-label';
 import { stripBidiOverrides } from '@/lib/bidi';
 import { formatRelative } from '@/lib/format';
 import type { ApartmentSignatureProgressViewModel } from '@/models/apartment-signature-progress.vm';
@@ -161,7 +162,10 @@ export function toApartmentSignatureProgressViewModel(
   a: ApartmentSignatureProgress,
 ): ApartmentSignatureProgressViewModel {
   const number = stripBidiOverrides(a.number);
-  const designation = a.floor !== null ? `דירה ${number} · קומה ${a.floor}` : `דירה ${number}`;
+  // 7c F2 — formatApartmentLabel dedups numbers that already carry the
+  // "דירה" word (imported/extracted data), fixing the live "דירה דירה 7".
+  const numberSeg = formatApartmentLabel(number);
+  const designation = a.floor !== null ? `${numberSeg} · קומה ${a.floor}` : numberSeg;
   return {
     apartmentId: a.apartmentId,
     number,

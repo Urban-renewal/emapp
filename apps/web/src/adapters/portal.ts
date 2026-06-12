@@ -19,6 +19,7 @@ import type {
   TenantPortalSignature,
 } from '@emapp/shared-types';
 
+import { formatApartmentLabel } from '@/lib/apartment-label';
 import { stripBidiOverrides } from '@/lib/bidi';
 import { formatRelative } from '@/lib/format';
 import type {
@@ -208,8 +209,9 @@ export function toPortalApartmentRowViewModel(
       : locale === 'he'
         ? `קומה ${row.apartment.floor}`
         : `Floor ${row.apartment.floor}`;
-  const numberSeg =
-    locale === 'he' ? `דירה ${row.apartment.number}` : `Apt ${row.apartment.number}`;
+  // 7c F2 — formatApartmentLabel dedups numbers that already carry the
+  // "דירה" word (imported/extracted data), fixing the live "דירה דירה 7".
+  const numberSeg = formatApartmentLabel(row.apartment.number, locale === 'he' ? 'דירה' : 'Apt');
   const apartmentDesignation = floorSeg ? `${numberSeg} · ${floorSeg}` : numberSeg;
 
   const sizeLabel =

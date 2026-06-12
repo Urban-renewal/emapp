@@ -59,11 +59,43 @@ import {
   // D.37 / Phase 6.5 — Provider Admin BE read-only surface.
   ListTenantsQuerySchema,
   ProviderAuditQuerySchema,
+  // V12 coverage closure — every controller route documented (enforced by
+  // src/architecture/api-docs-coverage.spec.ts).
+  ApplyCapabilityPresetInput,
+  AssignRoleInput,
+  BulkCreateSignatureRequestInput,
+  ClearMemberOverrideInput,
+  CreateCustomRoleInput,
+  CreateDiscoveryRecordInput,
+  CreateDocumentInput,
+  CreateSignatureRequestInput,
+  CreateTabuExtractionInput,
+  DownloadDocumentQuery,
+  FinalizeDocumentInput,
+  ListDocumentsQuery,
+  ListImportsQuery,
+  ListSignatureRequestsQuery,
+  ListTenantUsersQuerySchema,
+  OnboardOrgBodySchema,
+  OrgSettingsPatchSchema,
+  PortalUpdateContactSchema,
+  ProviderSelfAuditQuerySchema,
+  PublicSignSubmitInput,
+  RevokeRoleInput,
+  SetMemberOverrideInput,
+  SignatureCampaignInput,
+  SuspendTenantBodySchema,
+  UpdateAgentCapabilitiesInput,
+  UpdateCustomRoleInput,
+  UpdateDiscoveryRecordInput,
+  UpdateDocumentInput,
 } from '@emapp/shared-types';
 import type { ZodTypeAny } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
+import { ForgotPasswordSchema } from '../src/modules/auth/dto/forgot-password.dto';
 import { LoginSchema, OrgSwitchSchema } from '../src/modules/auth/dto/login.dto';
+import { ResetPasswordSchema } from '../src/modules/auth/dto/reset-password.dto';
 import { SignupSchema } from '../src/modules/auth/dto/signup.dto';
 import { ProviderLoginSchema } from '../src/modules/auth/provider/provider-login.dto';
 
@@ -1164,6 +1196,981 @@ const ENDPOINTS: Endpoint[] = [
     response:
       'text/event-stream; one ImportSseEvent JSON object per `data:` line (see @emapp/shared-types#ImportSseEventSchema)',
     errors: ['forbidden', 'not_found'],
+  },
+
+  // ── V12 coverage closure (2026-06-12) ──────────────────────────
+  // Every entry below mirrors a REAL controller route that predated the
+  // coverage guard (src/architecture/api-docs-coverage.spec.ts). Routing
+  // facts verified against the controllers; error codes against the services.
+
+  // — Auth: password reset (P1 R0.1) —
+  {
+    method: 'POST',
+    path: '/api/v1/auth/forgot-password',
+    auth: 'Public',
+    summary:
+      'Request a password-reset email. ALWAYS the same generic 200 (anti-enumeration); 5 / 15 min / IP throttle; per-email abuse capped in the repository.',
+    request: ForgotPasswordSchema,
+    response: '{ "data": { "ok": true, "message": "<generic Hebrew — never reveals existence>" } }',
+    errors: ['validation_error', '429'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/auth/reset-password',
+    auth: 'Public (one-time reset token)',
+    summary:
+      'Consume the 256-bit single-use reset token + set the new password (argon2id). Generic invalid_reset_token on any failure (no oracle). 10 / 15 min / IP.',
+    request: ResetPasswordSchema,
+    response: '{ "data": { "ok": true } }',
+    errors: ['validation_error', 'invalid_reset_token', '429'],
+  },
+
+  // — Org dashboard + settings —
+  {
+    method: 'GET',
+    path: '/api/v1/org/stats',
+    auth: 'AuthGuard + TenantGuard (projects.read)',
+    summary:
+      'Org-wide aggregate KPI stats for the home dashboard (counts only, no PII). All org roles.',
+    response: '{ "data": { ...OrgStats } }',
+    errors: ['missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/org/settings',
+    auth: 'AuthGuard + TenantGuard (org.settings.read — Owner/Admin)',
+    summary:
+      'P6-1 — read the resolved per-org settings (organizations.settings JSONB seam). org.* governance permission — Manager does NOT hold it.',
+    response: '{ "data": { ...OrgSettings } }',
+    errors: ['forbidden', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/org/settings',
+    auth: 'AuthGuard + TenantGuard (org.settings.update — Owner/Admin)',
+    summary:
+      'P6-1 — partial update of the org settings (unknown-key-strict). Floor violations (loosening below the security floor) rejected.',
+    request: OrgSettingsPatchSchema,
+    response: '{ "data": { ...OrgSettings } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'org_settings_floor_violation',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+
+  // — Projects: signature-progress board + campaign —
+  {
+    method: 'GET',
+    path: '/api/v1/projects/:id/signature-progress',
+    auth: 'AuthGuard + TenantGuard (projects.read)',
+    summary:
+      'Phase-6 "תמונת מצב" — aggregate signature-progress board (read-only). Service owns visibility (no-oracle 404 for cross-org / unassigned-agent).',
+    response: '{ "data": { ...SignatureProgress (counts, no PII) } }',
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/projects/:id/signature-progress/apartments',
+    auth: 'AuthGuard + TenantGuard (projects.read)',
+    summary:
+      'S5d — per-apartment signature-progress DRILL-DOWN (read-only). Apartment designation + counts + derived status; NO owner PII.',
+    response: '{ "data": [ {ApartmentSignatureProgress} ] }',
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/projects/:id/signature-campaign',
+    auth: 'AuthGuard + TenantGuard (signature_requests.send)',
+    summary:
+      'S5b — fan out ONE project document to ALL active owners of the project (reuses bulk-send: gate + dedup + delivery). 10/min throttle (email-bomb defense); doc-belongs-to-project enforced.',
+    request: SignatureCampaignInput,
+    response: '{ "data": { ...CampaignResult (created/skipped counts) } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'document_not_in_project',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+      '429',
+    ],
+  },
+
+  // — Discovery records (S3c renter → discovery-source) —
+  {
+    method: 'GET',
+    path: '/api/v1/apartments/:apartmentId/discovery-records',
+    auth: 'AuthGuard + TenantGuard (apartments.read)',
+    summary:
+      'List discovery records of an apartment, cursor-paginated. Via-parent isolation; Agent → assigned projects only.',
+    request: ListOwnershipsQuery,
+    response:
+      '{ "data": [ {DiscoveryRecord} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/apartments/:apartmentId/discovery-records',
+    auth: 'AuthGuard + TenantGuard (apartments.update; agent fine gate edit_project_data)',
+    summary: 'Create a discovery record under an apartment. apartmentId from the URL.',
+    request: CreateDiscoveryRecordInput,
+    response: '{ "data": { ...DiscoveryRecord } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/discovery-records/:id',
+    auth: 'AuthGuard + TenantGuard (apartments.update; agent fine gate edit_project_data)',
+    summary: 'Partial update of a discovery record (via-parent org scope).',
+    request: UpdateDiscoveryRecordInput,
+    response: '{ "data": { ...DiscoveryRecord } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+
+  // — Tabu extractions (S7a/S7b) —
+  {
+    method: 'GET',
+    path: '/api/v1/apartments/:apartmentId/tabu-extractions',
+    auth: 'AuthGuard + TenantGuard (apartments.read)',
+    summary:
+      'List tabu extractions of an apartment, cursor-paginated. Via-parent isolation; Agent → assigned projects only.',
+    request: ListOwnershipsQuery,
+    response:
+      '{ "data": [ {TabuExtraction} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/apartments/:apartmentId/tabu-extractions',
+    auth: 'AuthGuard + TenantGuard (apartments.update; agent fine gate edit_project_data)',
+    summary:
+      'Create a tabu-extraction envelope for an apartment. Source document must be FINALIZED and apartment-scoped.',
+    request: CreateTabuExtractionInput,
+    response: '{ "data": { ...TabuExtraction } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'tabu_source_not_finalized',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/tabu-extractions/:id',
+    auth: 'AuthGuard + TenantGuard (apartments.read)',
+    summary: 'Get one tabu extraction by id (via-parent org scope; Agent → assigned only).',
+    response: '{ "data": { ...TabuExtraction } }',
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/tabu-extractions/:id/extract',
+    auth: 'AuthGuard + TenantGuard (apartments.update; D.54 agent fine gate)',
+    summary:
+      'S7b — run the extraction engine over the finalized source document; persists tabu_extraction_rows. No body.',
+    response: '{ "data": { "rowCount": int, "engineId": "string" } }',
+    errors: [
+      'forbidden',
+      'not_found',
+      'tabu_source_not_finalized',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+
+  // — Documents (slice-5a engine-gated; fine gate manage_documents in service) —
+  {
+    method: 'GET',
+    path: '/api/v1/documents',
+    auth: 'AuthGuard + TenantGuard (documents.read)',
+    summary:
+      'List org documents, cursor-paginated. Doc/project visibility scoping in the service; r2Key never returned.',
+    request: ListDocumentsQuery,
+    response:
+      '{ "data": [ {Document} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/documents',
+    auth: 'AuthGuard + TenantGuard (documents.create; agent fine gate manage_documents)',
+    summary:
+      'Create a document row + return a short-lived presigned PUT URL (presign-after-authorize). 30/min throttle.',
+    request: CreateDocumentInput,
+    response: '{ "data": { "document": { ...Document }, "uploadUrl": "https://…" } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'storage_unavailable',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/documents/:id',
+    auth: 'AuthGuard + TenantGuard (documents.read)',
+    summary: 'Get one document by id (org-scoped; visibility-scoped in the service).',
+    response: '{ "data": { ...Document } }',
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/documents/:id/download',
+    auth: 'AuthGuard + TenantGuard (documents.read)',
+    summary:
+      'Short-lived presigned GET URL for the stored object (?disposition=inline|attachment). 30/min throttle (bulk-exfil defense).',
+    request: DownloadDocumentQuery,
+    response: '{ "data": { "url": "https://…", ... } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'storage_unavailable',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/documents/:id/finalize',
+    auth: 'AuthGuard + TenantGuard (documents.create; agent fine gate manage_documents)',
+    summary:
+      'Mark the upload complete after the FE PUT to R2 — integrity-checks the stored object (size/hash) before flipping status.',
+    request: FinalizeDocumentInput,
+    response: '{ "data": { ...Document } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'document_conflict',
+      'document_integrity_mismatch',
+      'storage_unavailable',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/documents/:id',
+    auth: 'AuthGuard + TenantGuard (documents.update; agent fine gate manage_documents)',
+    summary: 'Partial metadata update (r2Key never accepted).',
+    request: UpdateDocumentInput,
+    response: '{ "data": { ...Document } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/documents/:id',
+    auth: 'AuthGuard + TenantGuard (documents.archive; agent fine gate manage_documents)',
+    summary: 'Soft delete (archivedAt — "ארכוב"). Idempotent. 204.',
+    response: '(204 No Content)',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+
+  // — Imports: list + preview-confirm (post-S11 / 0048) —
+  {
+    method: 'GET',
+    path: '/api/v1/imports',
+    auth: 'Manager/Agent/Viewer (imports.read)',
+    summary:
+      'List org imports, cursor-paginated (read=ALL per D.17; Agent → imports of assigned projects only).',
+    request: ListImportsQuery,
+    response:
+      '{ "data": [ {ImportJob} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: ['validation_error', 'invalid_cursor'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/imports/:id/confirm',
+    auth: 'Manager (imports.map; creator only)',
+    summary:
+      '0048 preview→confirm — commit a preview-paused import (status=awaiting_confirm): re-queues a full persisting run. 30/min throttle.',
+    response: '{ "data": ImportJob }',
+    errors: ['forbidden', 'not_found', 'import_not_awaiting_confirm'],
+  },
+
+  // — Members: capability governance (D.46 / S4b) + invite resend —
+  {
+    method: 'GET',
+    path: '/api/v1/members/capability-presets',
+    auth: 'AuthGuard + TenantGuard (members.read)',
+    summary:
+      'S4b — the code-defined capability-preset catalog (design §7). Static; carries no per-member data.',
+    response: '{ "data": [ {CapabilityPreset} ] }',
+    errors: ['forbidden', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/members/:userId/resend',
+    auth: 'AuthGuard + TenantGuard (members.invite)',
+    summary:
+      'Re-issue the invite for a still-PENDING membership (re-mint token + re-send email best-effort; dev returns the link). 5/min throttle (email-bomb defense).',
+    response: '{ "data": { "inviteToken"?: "<jwt — dev only>" } }',
+    errors: [
+      'forbidden',
+      'not_found',
+      'member_not_pending',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+      '429',
+    ],
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/members/:userId/capabilities',
+    auth: 'AuthGuard + TenantGuard (members.update)',
+    summary:
+      "D.46 — set an AGENT's capability flags (JSONB). Agent-only target; invariants (e.g. view_owner_pii requires view_owners) enforced + audited in the service.",
+    request: UpdateAgentCapabilitiesInput,
+    response: '{ "data": { ...Member } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'capabilities_agent_only',
+      'view_owner_pii_requires_view_owners',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/members/:userId/apply-capability-preset',
+    auth: 'AuthGuard + TenantGuard (members.update)',
+    summary:
+      'S4b — apply a NAMED capability preset to an agent (delegates to the capabilities update: same gates/invariants/audit).',
+    request: ApplyCapabilityPresetInput,
+    response: '{ "data": { ...Member } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'unknown_preset',
+      'capabilities_agent_only',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+
+  // — Member permission overrides (P2 Phase 2 — Owner/Admin governance) —
+  {
+    method: 'GET',
+    path: '/api/v1/members/:userId/overrides',
+    auth: 'AuthGuard + TenantGuard (roles.read)',
+    summary: "List a member's per-user permission overrides (grant/deny layers).",
+    response: '{ "data": [ {MemberOverride} ] }',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'PUT',
+    path: '/api/v1/members/:userId/overrides',
+    auth: 'AuthGuard + TenantGuard (roles.manage — Owner/Admin; Manager does NOT hold it)',
+    summary:
+      'Set (upsert) ONE grant/deny override. Anti-escalation + last-Owner guards in the service.',
+    request: SetMemberOverrideInput,
+    response: '{ "data": { ...MemberOverride } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'unknown_permission',
+      'override_escalation',
+      'override_owner_tier_only',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/members/:userId/overrides',
+    auth: 'AuthGuard + TenantGuard (roles.manage — Owner/Admin)',
+    summary: 'Clear one override by its key (key in the BODY). Idempotent. 204.',
+    request: ClearMemberOverrideInput,
+    response: '(204 No Content)',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+
+  // — Notifications: unread-count (M2-perf) —
+  {
+    method: 'GET',
+    path: '/api/v1/notifications/unread-count',
+    auth: 'AuthGuard + TenantGuard (self-scoped RLS)',
+    summary:
+      "Constant-time unread count for the caller's bell (partial index; FE polls ~30s). Own rows only (RLS user_id = app.user_id).",
+    response: '{ "data": { "count": int } }',
+    errors: ['missing_token', 'invalid_token', 'token_expired'],
+  },
+
+  // — Owners: project surfacing + reveal-on-demand (S3d / D.54) —
+  {
+    method: 'GET',
+    path: '/api/v1/owners/:id/projects',
+    auth: 'AuthGuard + TenantGuard (owners.read)',
+    summary:
+      'S3d — the DISTINCT projects the owner is tied to via active ownerships. Lean project list; NO owner PII.',
+    response: '{ "data": [ {Project — lean} ] }',
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/owners/:id/reveal-pii',
+    auth: 'AuthGuard + TenantGuard (owners.read; FINE view_owner_pii fidelity gate in service)',
+    summary:
+      'D.54 — reveal-on-demand CLEARTEXT PII for ONE owner. POST (never in URL/access logs); audited per reveal (ISO A.12.4); 20/min throttle.',
+    response: '{ "data": { ...Owner (CLEARTEXT national_id/phone) } }',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+
+  // — Tenant Portal (D.40 / V11 B.S4) — own-record-only, SMS-OTP tier —
+  {
+    method: 'GET',
+    path: '/api/v1/portal/me',
+    auth: 'TenantAuthGuard (tenant_access cookie, audience emapp-tenant)',
+    summary: "The resident's OWN record (masked). Every query scoped to the JWT sub (owner.id).",
+    response: '{ "data": { ...own Owner (masked) } }',
+    errors: ['missing_token', 'invalid_token', 'session_revoked'],
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/portal/me',
+    auth: 'TenantAuthGuard',
+    summary:
+      'P4 — resident self-updates OWN contact details (EMAIL only; phone is the OTP factor, national_id immutable — strict schema rejects them). 10 / 10 min throttle.',
+    request: PortalUpdateContactSchema,
+    response: '{ "data": { ...own Owner (masked) } }',
+    errors: ['validation_error', 'missing_token', 'invalid_token', 'session_revoked', '429'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/portal/apartment',
+    auth: 'TenantAuthGuard',
+    summary: "The resident's own apartment(s) via active ownerships.",
+    response: '{ "data": [ {Apartment} ] }',
+    errors: ['missing_token', 'invalid_token', 'session_revoked'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/portal/documents',
+    auth: 'TenantAuthGuard',
+    summary: 'Documents visible to the resident (own project scope).',
+    response: '{ "data": [ {Document} ] }',
+    errors: ['missing_token', 'invalid_token', 'session_revoked'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/portal/signatures',
+    auth: 'TenantAuthGuard',
+    summary: "The resident's OWN signature requests (status view; no other resident's data).",
+    response: '{ "data": [ {SignatureRequest — own} ] }',
+    errors: ['missing_token', 'invalid_token', 'session_revoked'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/portal/progress',
+    auth: 'TenantAuthGuard',
+    summary:
+      "D2 S5 — AGGREGATE signature progress for the tenant's project(s). Counts only; never another resident's data/PII.",
+    response: '{ "data": { ...progress counts } }',
+    errors: ['missing_token', 'invalid_token', 'session_revoked'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/portal/signatures/:id/resend',
+    auth: 'TenantAuthGuard',
+    summary:
+      'B-RESIDENT-1 — resident re-sends THEIR OWN pending signing link to their on-file phone/email. Own-record scoped (no-oracle 404); 3 / 10 min throttle (each call sends an SMS). Returns delivery status only — never the link.',
+    response: '{ "data": { ...per-channel delivery status } }',
+    errors: ['not_found', 'missing_token', 'invalid_token', 'session_revoked', '429'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/portal/logout',
+    auth: 'TenantAuthGuard',
+    summary:
+      'M-1 — tenant-initiated revoke: soft-revokes the tenant session bound to the JWT sid + clears the cookie. Idempotent. 204.',
+    response: '(204 No Content)',
+    errors: ['missing_token', 'invalid_token', 'session_revoked'],
+  },
+
+  // — Contractor portal (D2-DEF-1 / D.46) — share-token tier, read-only —
+  {
+    method: 'GET',
+    path: '/api/v1/contractor/project',
+    auth: 'ContractorAuthGuard (share-access token)',
+    summary:
+      "The shared project's detail. Authority = the share's strict JSONB perms (resolved per-method in the service). 60/min throttle.",
+    response: '{ "data": { ...Project } }',
+    errors: ['missing_token', 'invalid_token', 'forbidden', 'not_found'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/contractor/progress',
+    auth: 'ContractorAuthGuard (share-access token)',
+    summary: 'Aggregate signature progress of the shared project (counts only; share-perm gated).',
+    response: '{ "data": { ...progress counts } }',
+    errors: ['missing_token', 'invalid_token', 'forbidden', 'not_found'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/contractor/documents',
+    auth: 'ContractorAuthGuard (share-access token)',
+    summary: 'Documents of the shared project the share permits (share-perm gated).',
+    response: '{ "data": [ {Document} ], "page": { ... } }',
+    errors: ['missing_token', 'invalid_token', 'forbidden', 'not_found'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/contractor/documents/:id/download',
+    auth: 'ContractorAuthGuard (share-access token)',
+    summary: 'Short-lived presigned GET URL for a share-visible document.',
+    response: '{ "data": { "url": "https://…", ... } }',
+    errors: ['missing_token', 'invalid_token', 'forbidden', 'not_found', 'storage_unavailable'],
+  },
+
+  // — Shares: mint the contractor credential —
+  {
+    method: 'POST',
+    path: '/api/v1/shares/:id/link',
+    auth: 'AuthGuard + TenantGuard (shares.create; manager-only in service)',
+    summary:
+      'D2-DEF-1 — mint a share-access link (the contractor credential) for an existing active share. Audited.',
+    response: '{ "data": { ...ShareLink } }',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+
+  // — Public signing (T5.6) — the :token JWT IS the credential —
+  {
+    method: 'GET',
+    path: '/api/v1/sign/:token',
+    auth: 'Public (signing JWT in the path IS the credential)',
+    summary:
+      'Resident-facing signing-page preview (document + signer context). 30 / IP / hour. Generic invalid_token on any token failure (no oracle).',
+    response: '{ "data": { ...SignPreview } }',
+    errors: ['invalid_token', 'storage_unavailable', '429'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/sign/:token',
+    auth: 'Public (signing JWT in the path IS the credential)',
+    summary:
+      'Submit the signature (SVG, size-capped) + explicit consent. Single-use; signature encrypted at rest (pgcrypto). 5 / IP / hour.',
+    request: PublicSignSubmitInput,
+    response: '{ "data": { ...SignResult } }',
+    errors: [
+      'validation_error',
+      'invalid_token',
+      'consent_required',
+      'signature_request_already_signed',
+      'encryption_not_configured',
+      '429',
+    ],
+  },
+
+  // — Signature requests (org tier; fine gate manage_signatures in service) —
+  {
+    method: 'GET',
+    path: '/api/v1/signature-requests',
+    auth: 'AuthGuard + TenantGuard (signature_requests.read)',
+    summary:
+      'List signature requests, cursor-paginated. Underlying-document visibility scoping in the service.',
+    request: ListSignatureRequestsQuery,
+    response:
+      '{ "data": [ {SignatureRequest} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/signature-requests',
+    auth: 'AuthGuard + TenantGuard (signature_requests.send; agent fine gate manage_signatures)',
+    summary:
+      'Create + deliver ONE signing request (emails the resident, reserves a 7-day token). The signing JWT is server-minted, only ever returned embedded in signUrl. 30/min throttle.',
+    request: CreateSignatureRequestInput,
+    response: '{ "data": { ...SignatureRequest } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'recipient_not_associated',
+      'signature_request_pending_exists',
+      'signature_request_conflict',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+      '429',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/signature-requests/bulk',
+    auth: 'AuthGuard + TenantGuard (signature_requests.send; agent fine gate manage_signatures)',
+    summary:
+      'Bulk send — ONE document to MANY owners (≤200) in one action; per-recipient dedup. 10/min throttle (each call fans out deliveries).',
+    request: BulkCreateSignatureRequestInput,
+    response: '{ "data": { ...BulkCreateResult (created/skipped) } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+      '429',
+    ],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/signature-requests/:id',
+    auth: 'AuthGuard + TenantGuard (signature_requests.read)',
+    summary: 'Get one signature request (document-visibility scoped; no-oracle 404).',
+    response: '{ "data": { ...SignatureRequest } }',
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/signature-requests/:id/signed-document',
+    auth: 'AuthGuard + TenantGuard (owners.read; FINE PII fidelity gate in service)',
+    summary:
+      'Download the SIGNED ARTIFACT (signature-certificate PDF: signer + doc hash + signed-at + rendered signature). Carries decrypted owner PII — gate mirrors reveal-pii (manager · agent iff view_owner_pii · viewer never). Binary response, not the {data} envelope.',
+    response:
+      '(binary — Content-Type from the renderer; Content-Disposition: attachment; Cache-Control: no-store)',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/signature-requests/:id/cancel',
+    auth: 'AuthGuard + TenantGuard (signature_requests.cancel; agent fine gate manage_signatures)',
+    summary: 'Cancel = state transition (pending → cancelled).',
+    response: '{ "data": { ...SignatureRequest } }',
+    errors: [
+      'forbidden',
+      'not_found',
+      'signature_request_not_pending',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/signature-requests/:id/resend',
+    auth: 'AuthGuard + TenantGuard (signature_requests.send; agent fine gate manage_signatures)',
+    summary:
+      "Resend / remind — refresh a PENDING request's link (new token + 7-day expiry) and re-deliver. 30/min throttle.",
+    response: '{ "data": { ...SignatureRequest } }',
+    errors: [
+      'forbidden',
+      'not_found',
+      'signature_request_not_pending',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+      '429',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/signature-requests/:id/link',
+    auth: 'AuthGuard + TenantGuard (signature_requests.send; agent fine gate manage_signatures)',
+    summary:
+      'P4 — retrieve the signing link for OUT-OF-BAND delivery (phone-less owner). Re-mints a fresh token (prior link dies); signUrl is a BEARER credential so the gate matches SEND, not read. POST (mutates jti); 30/min throttle.',
+    response: '{ "data": { "request": { ...SignatureRequest }, "signUrl": "https://…" } }',
+    errors: [
+      'forbidden',
+      'not_found',
+      'signature_request_not_pending',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+      '429',
+    ],
+  },
+
+  // — Roles (P2 Phase 1 — custom permission groups; Owner/Admin governance) —
+  {
+    method: 'GET',
+    path: '/api/v1/roles',
+    auth: 'AuthGuard + TenantGuard (roles.read — every org role incl. Viewer)',
+    summary: 'List system + org-custom roles.',
+    response: '{ "data": [ {Role} ] }',
+    errors: ['forbidden', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/roles/catalog',
+    auth: 'AuthGuard + TenantGuard (roles.read)',
+    summary: 'The grantable permission catalog (drives the FE picker; never hardcoded FE-side).',
+    response: '{ "data": [ {PermissionCatalogEntry} ] }',
+    errors: ['forbidden', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/roles',
+    auth: 'AuthGuard + TenantGuard (roles.manage — Owner/Admin ONLY; Manager cannot mint roles)',
+    summary:
+      'Create an org-custom role. Fine anti-escalation in the service: grants must be a subset of the actor effective set; governance roles.*/org.* are Owner-only.',
+    request: CreateCustomRoleInput,
+    response: '{ "data": { ...Role } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'role_name_taken',
+      'unknown_permission',
+      'permission_not_held',
+      'governance_owner_only',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/roles/:id',
+    auth: 'AuthGuard + TenantGuard (roles.manage — Owner/Admin)',
+    summary: 'Update an org-custom role (system roles immutable). Same anti-escalation gates.',
+    request: UpdateCustomRoleInput,
+    response: '{ "data": { ...Role } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'role_not_found',
+      'system_role_immutable',
+      'unknown_permission',
+      'permission_not_held',
+      'governance_owner_only',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/roles/:id',
+    auth: 'AuthGuard + TenantGuard (roles.manage — Owner/Admin)',
+    summary: 'Delete an org-custom role (rejected while assigned; system roles immutable). 204.',
+    response: '(204 No Content)',
+    errors: [
+      'forbidden',
+      'role_not_found',
+      'role_in_use',
+      'system_role_immutable',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/roles/assignments',
+    auth: 'AuthGuard + TenantGuard (roles.assign — Owner/Admin)',
+    summary:
+      'Assign a role to a member (tier guard for Owner/Admin grants; cannot self-assign). 204.',
+    request: AssignRoleInput,
+    response: '(204 No Content)',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'member_not_found',
+      'role_not_found',
+      'owner_required_for_tier',
+      'cannot_assign_self',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/roles/assignments',
+    auth: 'AuthGuard + TenantGuard (roles.revoke — Owner/Admin)',
+    summary: 'Revoke a role assignment (last-Owner safety guard). 204.',
+    request: RevokeRoleInput,
+    response: '(204 No Content)',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'assignment_not_found',
+      'cannot_revoke_last_owner',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+
+  // — Provider Admin: identity + self-audit + writes (D.45 / D.49) —
+  {
+    method: 'GET',
+    path: '/api/v1/provider/me',
+    auth: 'ProviderAuthGuard',
+    summary:
+      'Provider Admin self-identity (gates the FE /provider subtree). No audit row — identity probes are not cross-tenant access (D.37 satisfied by login + each cross-tenant call).',
+    response: '{ "data": { ...ProviderProfile } }',
+    errors: ['missing_token', 'invalid_token', 'token_expired', 'session_revoked'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/provider/audit/self',
+    auth: 'ProviderAuthGuard + ProviderAuthorizationGuard',
+    summary:
+      'B-PROVIDER-2 — the PROVIDER\'S OWN action log (provider_audit_log; distinct from the customers\' /provider/audit). Answers "who on our team accessed customer X, when, why?". 30/min.',
+    request: ProviderSelfAuditQuerySchema,
+    response:
+      '{ "data": [ {ProviderSelfAuditItem} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'reason_required',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+      'session_revoked',
+      'forbidden',
+    ],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/provider/tenants/:id/users',
+    auth: 'ProviderAuthGuard + ProviderAuthorizationGuard',
+    summary:
+      "Tier-1 #1 — the target org's MEMBERS, cursor-paginated, READ-ONLY + PII-MASKED. 10/min cap (bounds member-graph enumeration).",
+    request: ListTenantUsersQuerySchema,
+    response:
+      '{ "data": [ {TenantUserItem (masked)} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'reason_required',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+      'session_revoked',
+      'forbidden',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/provider/tenants',
+    auth: 'ProviderAuthGuard + ProviderAuthorizationGuard (PROVIDER_POLICY write)',
+    summary:
+      'D.45 — onboard a tenant: create the Org + invite its first Manager (atomic). Mandatory access_reason; audit-first interceptor; 10/min write posture.',
+    request: OnboardOrgBodySchema,
+    response: '{ "data": { ...OnboardOrgResult } }',
+    errors: [
+      'validation_error',
+      'reason_required',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+      'session_revoked',
+      'forbidden',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/provider/tenants/:id/suspend',
+    auth: 'ProviderAuthGuard + ProviderAuthorizationGuard (PROVIDER_POLICY write)',
+    summary:
+      'D.49 — suspend a tenant org (org-tier auth + data access blocked while suspended). Mandatory access_reason; audited; 10/min.',
+    request: SuspendTenantBodySchema,
+    response: '{ "data": { ...TenantSuspensionState } }',
+    errors: [
+      'validation_error',
+      'reason_required',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+      'session_revoked',
+      'forbidden',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/provider/tenants/:id/reactivate',
+    auth: 'ProviderAuthGuard + ProviderAuthorizationGuard (PROVIDER_POLICY write)',
+    summary: 'D.49 — reactivate a suspended tenant org. Mandatory access_reason; audited; 10/min.',
+    response: '{ "data": { ...TenantSuspensionState } }',
+    errors: [
+      'reason_required',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+      'session_revoked',
+      'forbidden',
+    ],
   },
 ];
 

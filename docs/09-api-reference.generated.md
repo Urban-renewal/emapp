@@ -7,6 +7,48 @@
 
 ## Endpoints
 
+### GET /api/v1/apartments/:apartmentId/discovery-records
+
+- **Auth:** AuthGuard + TenantGuard (apartments.read)
+- **Summary:** List discovery records of an apartment, cursor-paginated. Via-parent isolation; Agent → assigned projects only.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {DiscoveryRecord} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/apartments/:apartmentId/discovery-records
+
+- **Auth:** AuthGuard + TenantGuard (apartments.update; agent fine gate edit_project_data)
+- **Summary:** Create a discovery record under an apartment. apartmentId from the URL.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `notes` | unknown | no | — |
+| `status` | string | no | enum=["not_visited","no_answer","spoke_to_occupant","owner_identified","refused"] |
+
+
+**Response**
+
+```json
+{ "data": { ...DiscoveryRecord } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
 ### GET /api/v1/apartments/:apartmentId/owners
 
 - **Auth:** AuthGuard + TenantGuard
@@ -68,6 +110,47 @@
 ```
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `ownership_sum_invalid`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/apartments/:apartmentId/tabu-extractions
+
+- **Auth:** AuthGuard + TenantGuard (apartments.read)
+- **Summary:** List tabu extractions of an apartment, cursor-paginated. Via-parent isolation; Agent → assigned projects only.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {TabuExtraction} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/apartments/:apartmentId/tabu-extractions
+
+- **Auth:** AuthGuard + TenantGuard (apartments.update; agent fine gate edit_project_data)
+- **Summary:** Create a tabu-extraction envelope for an apartment. Source document must be FINALIZED and apartment-scoped.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `documentId` | string | yes | format="uuid" |
+
+
+**Response**
+
+```json
+{ "data": { ...TabuExtraction } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `tabu_source_not_finalized`, `missing_token`, `invalid_token`, `token_expired`
 
 ### DELETE /api/v1/apartments/:id
 
@@ -188,6 +271,26 @@ _(no body)_
 
 **Errors:** `validation_error`, `invalid_invite`, `429`
 
+### POST /api/v1/auth/forgot-password
+
+- **Auth:** Public
+- **Summary:** Request a password-reset email. ALWAYS the same generic 200 (anti-enumeration); 5 / 15 min / IP throttle; per-email abuse capped in the repository.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `email` | string | yes | format="email" |
+
+
+**Response**
+
+```json
+{ "data": { "ok": true, "message": "<generic Hebrew — never reveals existence>" } }
+```
+
+**Errors:** `validation_error`, `429`
+
 ### POST /api/v1/auth/login
 
 - **Auth:** Public
@@ -284,6 +387,27 @@ _(no body)_
 ```
 
 **Errors:** `missing_refresh_token`, `invalid_refresh`
+
+### POST /api/v1/auth/reset-password
+
+- **Auth:** Public (one-time reset token)
+- **Summary:** Consume the 256-bit single-use reset token + set the new password (argon2id). Generic invalid_reset_token on any failure (no oracle). 10 / 15 min / IP.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `newPassword` | string | yes | minLength=12, maxLength=256 |
+| `token` | string | yes | minLength=1, maxLength=512 |
+
+
+**Response**
+
+```json
+{ "data": { "ok": true } }
+```
+
+**Errors:** `validation_error`, `invalid_reset_token`, `429`
 
 ### POST /api/v1/auth/signup
 
@@ -435,6 +559,74 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/contractor/documents
+
+- **Auth:** ContractorAuthGuard (share-access token)
+- **Summary:** Documents of the shared project the share permits (share-perm gated).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": [ {Document} ], "page": { ... } }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `forbidden`, `not_found`
+
+### GET /api/v1/contractor/documents/:id/download
+
+- **Auth:** ContractorAuthGuard (share-access token)
+- **Summary:** Short-lived presigned GET URL for a share-visible document.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { "url": "https://…", ... } }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `forbidden`, `not_found`, `storage_unavailable`
+
+### GET /api/v1/contractor/progress
+
+- **Auth:** ContractorAuthGuard (share-access token)
+- **Summary:** Aggregate signature progress of the shared project (counts only; share-perm gated).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...progress counts } }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `forbidden`, `not_found`
+
+### GET /api/v1/contractor/project
+
+- **Auth:** ContractorAuthGuard (share-access token)
+- **Summary:** The shared project's detail. Authority = the share's strict JSONB perms (resolved per-method in the service). 60/min throttle.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Project } }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `forbidden`, `not_found`
+
 ### GET /api/v1/contractors
 
 - **Auth:** AuthGuard + TenantGuard
@@ -540,6 +732,194 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `contractor_exists`, `missing_token`, `invalid_token`, `token_expired`
 
+### PATCH /api/v1/discovery-records/:id
+
+- **Auth:** AuthGuard + TenantGuard (apartments.update; agent fine gate edit_project_data)
+- **Summary:** Partial update of a discovery record (via-parent org scope).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `notes` | unknown | no | — |
+| `status` | string | no | enum=["not_visited","no_answer","spoke_to_occupant","owner_identified","refused"] |
+
+
+**Response**
+
+```json
+{ "data": { ...DiscoveryRecord } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/documents
+
+- **Auth:** AuthGuard + TenantGuard (documents.read)
+- **Summary:** List org documents, cursor-paginated. Doc/project visibility scoping in the service; r2Key never returned.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `apartmentId` | string | no | format="uuid" |
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+| `projectId` | string | no | format="uuid" |
+
+
+**Response**
+
+```json
+{ "data": [ {Document} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/documents
+
+- **Auth:** AuthGuard + TenantGuard (documents.create; agent fine gate manage_documents)
+- **Summary:** Create a document row + return a short-lived presigned PUT URL (presign-after-authorize). 30/min throttle.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `apartmentId` | unknown | no | — |
+| `contentHash` | string | yes | minLength=1, maxLength=128 |
+| `mimeType` | string | yes | enum=["application/pdf","image/png","image/jpeg","image/webp","image/gif","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/vnd.ms-excel","text/csv","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/msword","text/plain"] |
+| `name` | string | yes | minLength=1, maxLength=255 |
+| `projectId` | unknown | no | — |
+| `sizeBytes` | integer | yes | minimum=1, maximum=52428800 |
+| `type` | string | yes | enum=["agreement","blueprint","regulation","contract","permit","id_document","floor_plan","financial","other"] |
+
+
+**Response**
+
+```json
+{ "data": { "document": { ...Document }, "uploadUrl": "https://…" } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `storage_unavailable`, `missing_token`, `invalid_token`, `token_expired`
+
+### DELETE /api/v1/documents/:id
+
+- **Auth:** AuthGuard + TenantGuard (documents.archive; agent fine gate manage_documents)
+- **Summary:** Soft delete (archivedAt — "ארכוב"). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/documents/:id
+
+- **Auth:** AuthGuard + TenantGuard (documents.read)
+- **Summary:** Get one document by id (org-scoped; visibility-scoped in the service).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Document } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### PATCH /api/v1/documents/:id
+
+- **Auth:** AuthGuard + TenantGuard (documents.update; agent fine gate manage_documents)
+- **Summary:** Partial metadata update (r2Key never accepted).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `name` | string | no | minLength=1, maxLength=255 |
+| `type` | string | no | enum=["agreement","blueprint","regulation","contract","permit","id_document","floor_plan","financial","other"] |
+
+
+**Response**
+
+```json
+{ "data": { ...Document } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/documents/:id/download
+
+- **Auth:** AuthGuard + TenantGuard (documents.read)
+- **Summary:** Short-lived presigned GET URL for the stored object (?disposition=inline|attachment). 30/min throttle (bulk-exfil defense).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `disposition` | string | no | enum=["attachment","inline"] |
+
+
+**Response**
+
+```json
+{ "data": { "url": "https://…", ... } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `storage_unavailable`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/documents/:id/finalize
+
+- **Auth:** AuthGuard + TenantGuard (documents.create; agent fine gate manage_documents)
+- **Summary:** Mark the upload complete after the FE PUT to R2 — integrity-checks the stored object (size/hash) before flipping status.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `contentHash` | string | yes | minLength=1, maxLength=128 |
+| `sizeBytes` | integer | yes | minimum=1, maximum=52428800 |
+
+
+**Response**
+
+```json
+{ "data": { ...Document } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `document_conflict`, `document_integrity_mismatch`, `storage_unavailable`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/imports
+
+- **Auth:** Manager/Agent/Viewer (imports.read)
+- **Summary:** List org imports, cursor-paginated (read=ALL per D.17; Agent → imports of assigned projects only).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1, maxLength=255 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+| `projectId` | string | no | format="uuid" |
+
+
+**Response**
+
+```json
+{ "data": [ {ImportJob} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`
+
 ### POST /api/v1/imports
 
 - **Auth:** Manager
@@ -599,6 +979,23 @@ _(no body)_
 ```
 
 **Errors:** `not_found`
+
+### POST /api/v1/imports/:id/confirm
+
+- **Auth:** Manager (imports.map; creator only)
+- **Summary:** 0048 preview→confirm — commit a preview-paused import (status=awaiting_confirm): re-queues a full persisting run. 30/min throttle.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": ImportJob }
+```
+
+**Errors:** `forbidden`, `not_found`, `import_not_awaiting_confirm`
 
 ### GET /api/v1/imports/:id/errors
 
@@ -774,6 +1171,148 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `cannot_modify_self`, `cannot_remove_last_manager`, `missing_token`, `invalid_token`, `token_expired`
 
+### POST /api/v1/members/:userId/apply-capability-preset
+
+- **Auth:** AuthGuard + TenantGuard (members.update)
+- **Summary:** S4b — apply a NAMED capability preset to an agent (delegates to the capabilities update: same gates/invariants/audit).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `presetKey` | string | yes | minLength=1 |
+
+
+**Response**
+
+```json
+{ "data": { ...Member } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `unknown_preset`, `capabilities_agent_only`, `missing_token`, `invalid_token`, `token_expired`
+
+### PATCH /api/v1/members/:userId/capabilities
+
+- **Auth:** AuthGuard + TenantGuard (members.update)
+- **Summary:** D.46 — set an AGENT's capability flags (JSONB). Agent-only target; invariants (e.g. view_owner_pii requires view_owners) enforced + audited in the service.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `edit_project_data` | boolean | no | — |
+| `manage_documents` | boolean | no | — |
+| `manage_signatures` | boolean | no | — |
+| `manage_tasks` | boolean | no | — |
+| `run_imports` | boolean | no | — |
+| `view_owner_pii` | boolean | no | — |
+| `view_owners` | boolean | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Member } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `capabilities_agent_only`, `view_owner_pii_requires_view_owners`, `missing_token`, `invalid_token`, `token_expired`
+
+### DELETE /api/v1/members/:userId/overrides
+
+- **Auth:** AuthGuard + TenantGuard (roles.manage — Owner/Admin)
+- **Summary:** Clear one override by its key (key in the BODY). Idempotent. 204.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `permission` | string | yes | minLength=1, maxLength=120 |
+| `scopeId` | string | no | format="uuid" |
+| `scopeType` | string | no | enum=["org","project"] |
+
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/members/:userId/overrides
+
+- **Auth:** AuthGuard + TenantGuard (roles.read)
+- **Summary:** List a member's per-user permission overrides (grant/deny layers).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": [ {MemberOverride} ] }
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### PUT /api/v1/members/:userId/overrides
+
+- **Auth:** AuthGuard + TenantGuard (roles.manage — Owner/Admin; Manager does NOT hold it)
+- **Summary:** Set (upsert) ONE grant/deny override. Anti-escalation + last-Owner guards in the service.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `effect` | string | yes | enum=["grant","deny"] |
+| `permission` | string | yes | minLength=1, maxLength=120 |
+| `scopeId` | string | no | format="uuid" |
+| `scopeType` | string | no | enum=["org","project"] |
+
+
+**Response**
+
+```json
+{ "data": { ...MemberOverride } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `unknown_permission`, `override_escalation`, `override_owner_tier_only`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/members/:userId/resend
+
+- **Auth:** AuthGuard + TenantGuard (members.invite)
+- **Summary:** Re-issue the invite for a still-PENDING membership (re-mint token + re-send email best-effort; dev returns the link). 5/min throttle (email-bomb defense).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { "inviteToken"?: "<jwt — dev only>" } }
+```
+
+**Errors:** `forbidden`, `not_found`, `member_not_pending`, `missing_token`, `invalid_token`, `token_expired`, `429`
+
+### GET /api/v1/members/capability-presets
+
+- **Auth:** AuthGuard + TenantGuard (members.read)
+- **Summary:** S4b — the code-defined capability-preset catalog (design §7). Static; carries no per-member data.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": [ {CapabilityPreset} ] }
+```
+
+**Errors:** `forbidden`, `missing_token`, `invalid_token`, `token_expired`
+
 ### GET /api/v1/notes
 
 - **Auth:** AuthGuard + TenantGuard
@@ -928,6 +1467,85 @@ _(no body)_
 
 **Errors:** `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/notifications/unread-count
+
+- **Auth:** AuthGuard + TenantGuard (self-scoped RLS)
+- **Summary:** Constant-time unread count for the caller's bell (partial index; FE polls ~30s). Own rows only (RLS user_id = app.user_id).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { "count": int } }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/org/settings
+
+- **Auth:** AuthGuard + TenantGuard (org.settings.read — Owner/Admin)
+- **Summary:** P6-1 — read the resolved per-org settings (organizations.settings JSONB seam). org.* governance permission — Manager does NOT hold it.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...OrgSettings } }
+```
+
+**Errors:** `forbidden`, `missing_token`, `invalid_token`, `token_expired`
+
+### PATCH /api/v1/org/settings
+
+- **Auth:** AuthGuard + TenantGuard (org.settings.update — Owner/Admin)
+- **Summary:** P6-1 — partial update of the org settings (unknown-key-strict). Floor violations (loosening below the security floor) rejected.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `branding` | object | no | — |
+| `consent` | object | no | — |
+| `limits` | object | no | — |
+| `locale` | string | no | enum=["he","en","ar"] |
+| `messaging` | object | no | — |
+| `notifications` | object | no | — |
+| `privacy` | object | no | — |
+| `signatures` | object | no | — |
+| `timezone` | string | no | minLength=1 |
+
+
+**Response**
+
+```json
+{ "data": { ...OrgSettings } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `org_settings_floor_violation`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/org/stats
+
+- **Auth:** AuthGuard + TenantGuard (projects.read)
+- **Summary:** Org-wide aggregate KPI stats for the home dashboard (counts only, no PII). All org roles.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...OrgStats } }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `token_expired`
+
 ### GET /api/v1/owners
 
 - **Auth:** AuthGuard + TenantGuard
@@ -1068,6 +1686,40 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/owners/:id/projects
+
+- **Auth:** AuthGuard + TenantGuard (owners.read)
+- **Summary:** S3d — the DISTINCT projects the owner is tied to via active ownerships. Lean project list; NO owner PII.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": [ {Project — lean} ] }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/owners/:id/reveal-pii
+
+- **Auth:** AuthGuard + TenantGuard (owners.read; FINE view_owner_pii fidelity gate in service)
+- **Summary:** D.54 — reveal-on-demand CLEARTEXT PII for ONE owner. POST (never in URL/access logs); audited per reveal (ISO A.12.4); 20/min throttle.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Owner (CLEARTEXT national_id/phone) } }
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
 ### POST /api/v1/owners/search
 
 - **Auth:** AuthGuard + TenantGuard
@@ -1088,6 +1740,145 @@ _(no body)_
 ```
 
 **Errors:** `validation_error`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/portal/apartment
+
+- **Auth:** TenantAuthGuard
+- **Summary:** The resident's own apartment(s) via active ownerships.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": [ {Apartment} ] }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `session_revoked`
+
+### GET /api/v1/portal/documents
+
+- **Auth:** TenantAuthGuard
+- **Summary:** Documents visible to the resident (own project scope).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": [ {Document} ] }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `session_revoked`
+
+### POST /api/v1/portal/logout
+
+- **Auth:** TenantAuthGuard
+- **Summary:** M-1 — tenant-initiated revoke: soft-revokes the tenant session bound to the JWT sid + clears the cookie. Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `missing_token`, `invalid_token`, `session_revoked`
+
+### GET /api/v1/portal/me
+
+- **Auth:** TenantAuthGuard (tenant_access cookie, audience emapp-tenant)
+- **Summary:** The resident's OWN record (masked). Every query scoped to the JWT sub (owner.id).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...own Owner (masked) } }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `session_revoked`
+
+### PATCH /api/v1/portal/me
+
+- **Auth:** TenantAuthGuard
+- **Summary:** P4 — resident self-updates OWN contact details (EMAIL only; phone is the OTP factor, national_id immutable — strict schema rejects them). 10 / 10 min throttle.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `email` | unknown | yes | — |
+
+
+**Response**
+
+```json
+{ "data": { ...own Owner (masked) } }
+```
+
+**Errors:** `validation_error`, `missing_token`, `invalid_token`, `session_revoked`, `429`
+
+### GET /api/v1/portal/progress
+
+- **Auth:** TenantAuthGuard
+- **Summary:** D2 S5 — AGGREGATE signature progress for the tenant's project(s). Counts only; never another resident's data/PII.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...progress counts } }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `session_revoked`
+
+### GET /api/v1/portal/signatures
+
+- **Auth:** TenantAuthGuard
+- **Summary:** The resident's OWN signature requests (status view; no other resident's data).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": [ {SignatureRequest — own} ] }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `session_revoked`
+
+### POST /api/v1/portal/signatures/:id/resend
+
+- **Auth:** TenantAuthGuard
+- **Summary:** B-RESIDENT-1 — resident re-sends THEIR OWN pending signing link to their on-file phone/email. Own-record scoped (no-oracle 404); 3 / 10 min throttle (each call sends an SMS). Returns delivery status only — never the link.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...per-channel delivery status } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `session_revoked`, `429`
 
 ### GET /api/v1/projects
 
@@ -1235,6 +2026,61 @@ _(no body)_
 ```
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`, `http_429`
+
+### POST /api/v1/projects/:id/signature-campaign
+
+- **Auth:** AuthGuard + TenantGuard (signature_requests.send)
+- **Summary:** S5b — fan out ONE project document to ALL active owners of the project (reuses bulk-send: gate + dedup + delivery). 10/min throttle (email-bomb defense); doc-belongs-to-project enforced.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `documentId` | string | yes | format="uuid" |
+| `expiresInDays` | integer | no | minimum=1, maximum=365 |
+
+
+**Response**
+
+```json
+{ "data": { ...CampaignResult (created/skipped counts) } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `document_not_in_project`, `missing_token`, `invalid_token`, `token_expired`, `429`
+
+### GET /api/v1/projects/:id/signature-progress
+
+- **Auth:** AuthGuard + TenantGuard (projects.read)
+- **Summary:** Phase-6 "תמונת מצב" — aggregate signature-progress board (read-only). Service owns visibility (no-oracle 404 for cross-org / unassigned-agent).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...SignatureProgress (counts, no PII) } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/projects/:id/signature-progress/apartments
+
+- **Auth:** AuthGuard + TenantGuard (projects.read)
+- **Summary:** S5d — per-apartment signature-progress DRILL-DOWN (read-only). Apartment designation + counts + derived status; NO owner PII.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": [ {ApartmentSignatureProgress} ] }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/projects/:projectId/assignments
 
@@ -1392,6 +2238,31 @@ _(no body)_
 
 **Errors:** `validation_error`, `invalid_cursor`, `reason_required`, `missing_token`, `invalid_token`, `token_expired`, `session_revoked`, `forbidden`
 
+### GET /api/v1/provider/audit/self
+
+- **Auth:** ProviderAuthGuard + ProviderAuthorizationGuard
+- **Summary:** B-PROVIDER-2 — the PROVIDER'S OWN action log (provider_audit_log; distinct from the customers' /provider/audit). Answers "who on our team accessed customer X, when, why?". 30/min.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `actionType` | string | no | minLength=1, maxLength=128, pattern="^[a-z][a-z0-9_.-]*$" |
+| `affectedOrgId` | string | no | format="uuid" |
+| `cursor` | string | no | minLength=1 |
+| `fromDate` | string | no | format="date-time" |
+| `limit` | integer | no | minimum=1, maximum=100 |
+| `toDate` | string | no | format="date-time" |
+
+
+**Response**
+
+```json
+{ "data": [ {ProviderSelfAuditItem} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `reason_required`, `missing_token`, `invalid_token`, `token_expired`, `session_revoked`, `forbidden`
+
 ### POST /api/v1/provider/auth/login
 
 - **Auth:** Public (MFA mandatory)
@@ -1448,6 +2319,23 @@ _(no body)_
 
 **Errors:** `missing_refresh_token`, `invalid_refresh`
 
+### GET /api/v1/provider/me
+
+- **Auth:** ProviderAuthGuard
+- **Summary:** Provider Admin self-identity (gates the FE /provider subtree). No audit row — identity probes are not cross-tenant access (D.37 satisfied by login + each cross-tenant call).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...ProviderProfile } }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `token_expired`, `session_revoked`
+
 ### GET /api/v1/provider/system-health
 
 - **Auth:** ProviderAuthGuard + ProviderAuthorizationGuard
@@ -1487,6 +2375,28 @@ _(no body)_
 
 **Errors:** `validation_error`, `invalid_cursor`, `reason_required`, `missing_token`, `invalid_token`, `token_expired`, `session_revoked`, `forbidden`
 
+### POST /api/v1/provider/tenants
+
+- **Auth:** ProviderAuthGuard + ProviderAuthorizationGuard (PROVIDER_POLICY write)
+- **Summary:** D.45 — onboard a tenant: create the Org + invite its first Manager (atomic). Mandatory access_reason; audit-first interceptor; 10/min write posture.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `managerEmail` | string | yes | maxLength=254, format="email" |
+| `managerName` | string | yes | minLength=1, maxLength=120 |
+| `orgName` | string | yes | minLength=2, maxLength=120 |
+
+
+**Response**
+
+```json
+{ "data": { ...OnboardOrgResult } }
+```
+
+**Errors:** `validation_error`, `reason_required`, `missing_token`, `invalid_token`, `token_expired`, `session_revoked`, `forbidden`
+
 ### GET /api/v1/provider/tenants/:id
 
 - **Auth:** ProviderAuthGuard + ProviderAuthorizationGuard
@@ -1503,6 +2413,201 @@ _(no body)_
 ```
 
 **Errors:** `reason_required`, `not_found`, `missing_token`, `invalid_token`, `token_expired`, `session_revoked`, `forbidden`
+
+### POST /api/v1/provider/tenants/:id/reactivate
+
+- **Auth:** ProviderAuthGuard + ProviderAuthorizationGuard (PROVIDER_POLICY write)
+- **Summary:** D.49 — reactivate a suspended tenant org. Mandatory access_reason; audited; 10/min.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...TenantSuspensionState } }
+```
+
+**Errors:** `reason_required`, `not_found`, `missing_token`, `invalid_token`, `token_expired`, `session_revoked`, `forbidden`
+
+### POST /api/v1/provider/tenants/:id/suspend
+
+- **Auth:** ProviderAuthGuard + ProviderAuthorizationGuard (PROVIDER_POLICY write)
+- **Summary:** D.49 — suspend a tenant org (org-tier auth + data access blocked while suspended). Mandatory access_reason; audited; 10/min.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `note` | string | no | minLength=1, maxLength=500 |
+
+
+**Response**
+
+```json
+{ "data": { ...TenantSuspensionState } }
+```
+
+**Errors:** `validation_error`, `reason_required`, `not_found`, `missing_token`, `invalid_token`, `token_expired`, `session_revoked`, `forbidden`
+
+### GET /api/v1/provider/tenants/:id/users
+
+- **Auth:** ProviderAuthGuard + ProviderAuthorizationGuard
+- **Summary:** Tier-1 #1 — the target org's MEMBERS, cursor-paginated, READ-ONLY + PII-MASKED. 10/min cap (bounds member-graph enumeration).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {TenantUserItem (masked)} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `reason_required`, `not_found`, `missing_token`, `invalid_token`, `token_expired`, `session_revoked`, `forbidden`
+
+### GET /api/v1/roles
+
+- **Auth:** AuthGuard + TenantGuard (roles.read — every org role incl. Viewer)
+- **Summary:** List system + org-custom roles.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": [ {Role} ] }
+```
+
+**Errors:** `forbidden`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/roles
+
+- **Auth:** AuthGuard + TenantGuard (roles.manage — Owner/Admin ONLY; Manager cannot mint roles)
+- **Summary:** Create an org-custom role. Fine anti-escalation in the service: grants must be a subset of the actor effective set; governance roles.*/org.* are Owner-only.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `description` | string | no | maxLength=280 |
+| `name` | string | yes | minLength=2, maxLength=80 |
+| `permissions` | array | yes | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Role } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `role_name_taken`, `unknown_permission`, `permission_not_held`, `governance_owner_only`, `missing_token`, `invalid_token`, `token_expired`
+
+### DELETE /api/v1/roles/:id
+
+- **Auth:** AuthGuard + TenantGuard (roles.manage — Owner/Admin)
+- **Summary:** Delete an org-custom role (rejected while assigned; system roles immutable). 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `forbidden`, `role_not_found`, `role_in_use`, `system_role_immutable`, `missing_token`, `invalid_token`, `token_expired`
+
+### PATCH /api/v1/roles/:id
+
+- **Auth:** AuthGuard + TenantGuard (roles.manage — Owner/Admin)
+- **Summary:** Update an org-custom role (system roles immutable). Same anti-escalation gates.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `description` | unknown | no | — |
+| `name` | string | no | minLength=2, maxLength=80 |
+| `permissions` | array | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...Role } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `role_not_found`, `system_role_immutable`, `unknown_permission`, `permission_not_held`, `governance_owner_only`, `missing_token`, `invalid_token`, `token_expired`
+
+### DELETE /api/v1/roles/assignments
+
+- **Auth:** AuthGuard + TenantGuard (roles.revoke — Owner/Admin)
+- **Summary:** Revoke a role assignment (last-Owner safety guard). 204.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `roleId` | string | yes | format="uuid" |
+| `userId` | string | yes | format="uuid" |
+
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `validation_error`, `forbidden`, `assignment_not_found`, `cannot_revoke_last_owner`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/roles/assignments
+
+- **Auth:** AuthGuard + TenantGuard (roles.assign — Owner/Admin)
+- **Summary:** Assign a role to a member (tier guard for Owner/Admin grants; cannot self-assign). 204.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `roleId` | string | yes | format="uuid" |
+| `userId` | string | yes | format="uuid" |
+
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `validation_error`, `forbidden`, `member_not_found`, `role_not_found`, `owner_required_for_tier`, `cannot_assign_self`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/roles/catalog
+
+- **Auth:** AuthGuard + TenantGuard (roles.read)
+- **Summary:** The grantable permission catalog (drives the FE picker; never hardcoded FE-side).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": [ {PermissionCatalogEntry} ] }
+```
+
+**Errors:** `forbidden`, `missing_token`, `invalid_token`, `token_expired`
 
 ### DELETE /api/v1/shares/:id
 
@@ -1540,6 +2645,246 @@ _(no body)_
 ```
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/shares/:id/link
+
+- **Auth:** AuthGuard + TenantGuard (shares.create; manager-only in service)
+- **Summary:** D2-DEF-1 — mint a share-access link (the contractor credential) for an existing active share. Audited.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...ShareLink } }
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/sign/:token
+
+- **Auth:** Public (signing JWT in the path IS the credential)
+- **Summary:** Resident-facing signing-page preview (document + signer context). 30 / IP / hour. Generic invalid_token on any token failure (no oracle).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...SignPreview } }
+```
+
+**Errors:** `invalid_token`, `storage_unavailable`, `429`
+
+### POST /api/v1/sign/:token
+
+- **Auth:** Public (signing JWT in the path IS the credential)
+- **Summary:** Submit the signature (SVG, size-capped) + explicit consent. Single-use; signature encrypted at rest (pgcrypto). 5 / IP / hour.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `acknowledgeConsent` | boolean | no | — |
+| `signatureSvg` | string | yes | minLength=50, maxLength=262144, pattern="^<svg[\\s\\S]*<\\/svg>$" |
+
+
+**Response**
+
+```json
+{ "data": { ...SignResult } }
+```
+
+**Errors:** `validation_error`, `invalid_token`, `consent_required`, `signature_request_already_signed`, `encryption_not_configured`, `429`
+
+### GET /api/v1/signature-requests
+
+- **Auth:** AuthGuard + TenantGuard (signature_requests.read)
+- **Summary:** List signature requests, cursor-paginated. Underlying-document visibility scoping in the service.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `documentId` | string | no | format="uuid" |
+| `limit` | integer | no | minimum=1, maximum=100 |
+| `ownerId` | string | no | format="uuid" |
+| `status` | string | no | enum=["pending","signed","cancelled","expired"] |
+
+
+**Response**
+
+```json
+{ "data": [ {SignatureRequest} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/signature-requests
+
+- **Auth:** AuthGuard + TenantGuard (signature_requests.send; agent fine gate manage_signatures)
+- **Summary:** Create + deliver ONE signing request (emails the resident, reserves a 7-day token). The signing JWT is server-minted, only ever returned embedded in signUrl. 30/min throttle.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `documentId` | string | yes | format="uuid" |
+| `ownerId` | string | yes | format="uuid" |
+
+
+**Response**
+
+```json
+{ "data": { ...SignatureRequest } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `recipient_not_associated`, `signature_request_pending_exists`, `signature_request_conflict`, `missing_token`, `invalid_token`, `token_expired`, `429`
+
+### GET /api/v1/signature-requests/:id
+
+- **Auth:** AuthGuard + TenantGuard (signature_requests.read)
+- **Summary:** Get one signature request (document-visibility scoped; no-oracle 404).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...SignatureRequest } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/signature-requests/:id/cancel
+
+- **Auth:** AuthGuard + TenantGuard (signature_requests.cancel; agent fine gate manage_signatures)
+- **Summary:** Cancel = state transition (pending → cancelled).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...SignatureRequest } }
+```
+
+**Errors:** `forbidden`, `not_found`, `signature_request_not_pending`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/signature-requests/:id/link
+
+- **Auth:** AuthGuard + TenantGuard (signature_requests.send; agent fine gate manage_signatures)
+- **Summary:** P4 — retrieve the signing link for OUT-OF-BAND delivery (phone-less owner). Re-mints a fresh token (prior link dies); signUrl is a BEARER credential so the gate matches SEND, not read. POST (mutates jti); 30/min throttle.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { "request": { ...SignatureRequest }, "signUrl": "https://…" } }
+```
+
+**Errors:** `forbidden`, `not_found`, `signature_request_not_pending`, `missing_token`, `invalid_token`, `token_expired`, `429`
+
+### POST /api/v1/signature-requests/:id/resend
+
+- **Auth:** AuthGuard + TenantGuard (signature_requests.send; agent fine gate manage_signatures)
+- **Summary:** Resend / remind — refresh a PENDING request's link (new token + 7-day expiry) and re-deliver. 30/min throttle.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...SignatureRequest } }
+```
+
+**Errors:** `forbidden`, `not_found`, `signature_request_not_pending`, `missing_token`, `invalid_token`, `token_expired`, `429`
+
+### GET /api/v1/signature-requests/:id/signed-document
+
+- **Auth:** AuthGuard + TenantGuard (owners.read; FINE PII fidelity gate in service)
+- **Summary:** Download the SIGNED ARTIFACT (signature-certificate PDF: signer + doc hash + signed-at + rendered signature). Carries decrypted owner PII — gate mirrors reveal-pii (manager · agent iff view_owner_pii · viewer never). Binary response, not the {data} envelope.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(binary — Content-Type from the renderer; Content-Disposition: attachment; Cache-Control: no-store)
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/signature-requests/bulk
+
+- **Auth:** AuthGuard + TenantGuard (signature_requests.send; agent fine gate manage_signatures)
+- **Summary:** Bulk send — ONE document to MANY owners (≤200) in one action; per-recipient dedup. 10/min throttle (each call fans out deliveries).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `documentId` | string | yes | format="uuid" |
+| `ownerIds` | array | yes | — |
+
+
+**Response**
+
+```json
+{ "data": { ...BulkCreateResult (created/skipped) } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`, `429`
+
+### GET /api/v1/tabu-extractions/:id
+
+- **Auth:** AuthGuard + TenantGuard (apartments.read)
+- **Summary:** Get one tabu extraction by id (via-parent org scope; Agent → assigned only).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...TabuExtraction } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/tabu-extractions/:id/extract
+
+- **Auth:** AuthGuard + TenantGuard (apartments.update; D.54 agent fine gate)
+- **Summary:** S7b — run the extraction engine over the finalized source document; persists tabu_extraction_rows. No body.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { "rowCount": int, "engineId": "string" } }
+```
+
+**Errors:** `forbidden`, `not_found`, `tabu_source_not_finalized`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/tasks
 

@@ -923,6 +923,12 @@ footer .footer-meta {
 <div class="sub">כל שדה · כל שגיאה · עיבוד JSON · מוצר אמיתי</div>
 <div class="tag">EMAPP · API Documentation</div>
 </div>
+<div style="background: var(--warning-light); border: 1px solid var(--warning-border); border-radius: 8px; padding: 14px 18px; margin: 16px 0;">
+<strong>📌 רפרנס ה-Endpoints החי הוא הקובץ המיוצר:</strong> <code>docs/09-api-reference.generated.md</code> —
+מיוצר אוטומטית מ-<code>apps/api/scripts/gen-api-docs.ts</code> (Zod schemas = source of truth) ומכסה את <em>כל</em> ה-routes
+(נאכף ע"י <code>apps/api/src/architecture/api-docs-coverage.spec.ts</code> — route בלי entry מפיל את ה-CI).
+המסמך הזה (HTML) הוא מסמך המוצר/הארכיטקטורה; חלק 3 (Endpoints) שבו עלול לפגר אחרי הקוד — בכל סתירה, הקובץ המיוצר גובר.
+</div>
 <p><strong>מה זה:</strong> התיעוד המלא של ה-API. לא טבלת תמצית — מסמך מוצר: כל שדה עם טיפוס וּוולידציה, כל קוד שגיאה ומה ה-FE מציג, ועיבוד ה-JSON בצד לקוח כרצף מלא.</p>
 <p><strong>מחליף</strong> את הגרסה התמציתית. זה ה-API הרשמי.</p>
 <p><strong>⚠️ source of truth:</strong> הצורות כאן הן השתקפות של <code>packages/shared-types</code> (Zod). Claude Code מייצר את חלק 3 (Endpoints) אוטומטית מה-schema (§1.4). סתירה בין מסמך לקוד → הקוד גובר, ולכן הוא מיוצר ממנו.</p>

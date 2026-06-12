@@ -23,7 +23,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 
 import { STORAGE_PROVIDER, safeDownloadFilename } from '../documents/storage';
 
@@ -99,7 +99,13 @@ export class ContractorReadService {
         .from(apartments)
         .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
         .where(and(eq(buildings.projectId, ctx.projectId), isNull(apartments.archivedAt)))
-        .orderBy(asc(apartments.number));
+        // Natural (numeric-aware) order: extracted numeral first (digitless
+        // labels last), raw label as the lexical tie-break. ::numeric (not
+        // ::bigint) so a pathologically long digit-run cannot overflow.
+        .orderBy(
+          sql`NULLIF(regexp_replace(${apartments.number}, '\\D', '', 'g'), '')::numeric ASC NULLS LAST`,
+          asc(apartments.number),
+        );
 
       const aptsByBuilding = new Map<
         string,

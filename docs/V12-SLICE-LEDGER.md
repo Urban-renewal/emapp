@@ -701,3 +701,16 @@ length=plaintext+39** (read via the S3 SDK with the r2_key from SQL). Plain-doc 
 present → PUT → finalize 200 → download JSON url 200 (byte-identical path). QA gotcha root-caused:
 a stale 7c-era api process held :3000 (EADDRINUSE in the new log; health green from the OLD server)
 — killed + fresh start; LESSON: after branch switch verify the log has no EADDRINUSE before QA.
+
+### Slice 7d ✅ CLOSED — merged 8dc6b38 (#364). **D-P5.4 fully closed → PHASE-5 100% COMPLETE**
+
+(decisions D-P5.1..8 all implemented: AI-pluggable extraction, encryption of data+doc-bytes, OTP
+step-up, review+confirm, provenance). OWNER ACTIONS outstanding: staging/prod DOC_ENCRYPTION_KEY;
+Docker install to unblock the perf kit #363.
+
+### NEXT PICK (per the standing authorization; rationale): **the pending→expired SWEEPER cron** —
+
+the slice-1 critic note: nothing flips newly-lapsing pending signature_requests to 'expired' (the FE
+derives, but the DB rows + counts drift + no notification). Small, real lifecycle-completing value,
+exercises the WORKER (untouched debt). Phase-3 גוש-חלקה scoping doc queued right after (the next big
+phase needs its design doc before code, like Phase-5 got).

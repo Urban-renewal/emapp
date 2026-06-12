@@ -755,3 +755,12 @@ login(form) → project → לוח בקרה → הקמה מגוש-חלקה → 6
 אישור והקמה (disabled-until-valid held) → success panel → **the skeleton EXISTS: 'שדרות הגושים' ·
 תל אביב · apartments 1,2,3** (verified via the buildings/apartments routes). FE review PASS (0 findings;
 seam fresh-objects no-PII verified; wire-order pinned). web 860/860 + seam 22/22 + e2e 3/3 real.
+
+## 🏁 PHASE-3 COMPLETE (P3a #366 · P3b #367 · P3c #368) — גוש-חלקה → שלד, end-to-end LIVE
+
+The owner's "המערכת מקימה את הפרויקט" vision delivered: enter גוש-חלקה → LocalMapi lookup ('זוהה:
+תל אביב') → the buildings/apartments builder (user decides — no silent heuristic) → atomic confirm →
+the skeleton with provenance, live-proven in the real UI. Pluggable provider (Stub/LocalMapi; GovMap
+P3d owner-gated). Patterns established: the envelope template (3x), the provider seam (2x).
+Remaining owner/ops: GovMap token+ToS (P3d), the mapi 669MB bulk load, staging/prod DOC_ENCRYPTION_KEY,
+Docker for the perf kit #363 (draft).

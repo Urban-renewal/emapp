@@ -646,3 +646,145 @@ Neon same-region, RTT 1-3ms) ≈ 20-40ms/request — under the 200ms baseline (v
 Real fixes offered (no cache hand-waving): **A. local docker Postgres for dev (~50x, recommended)** or
 B. move the dev Neon branch to eu-central-1 (~2.5x, zero-infra). Awaiting the owner's pick (it changes
 his Infisical dev DATABASE_URL + dev workflow).
+
+### 7c BE — LIVE MANUAL QA ✅ (owner-prompted, 2026-06-12) — FULL CHAIN, every status recorded
+
+upload נסח(id_document/sensitive, stub-parsable)+finalize=200 → download w/o unlock=**403
+pii_step_up_required** → step-up request=200(+dev code, EXPOSE_STEP_UP_CODE) → verify=200 → download
+w/ unlock=200 → create extraction=201 → extract(stub)=201 rowCount:2 → GET rows(decrypted)=200 (exact
+names+natids+shares from the uploaded נסח) → PATCH edit=200 → **confirm=200 → ownerships REPLACED:
+שרה כהן 1/2 (new shell) + existing owner REUSED via natid-hash match 1/2** → second confirm=**409**
+(idempotent). This closes the 7a/7b live-QA debt. Honest note: this manual chain ran only AFTER the
+owner pressed ("ביצעת טסט ידני???") — the BE was built integration-tested-only at that point; lesson:
+the live chain belongs BEFORE declaring a BE sub-slice done, not deferred to the FE stage.
+Remaining for 7c: code+security reviews → FE (unlock modal + review screen) → e2e stubs → PR (Gate-6 0071) → merge-on-green.
+
+### FULL MULTI-ROLE BROWSER SMOKE (owner-mandated, 2026-06-12) — all 6 entities, real UI
+
+Tool: preview Chromium against the live web (Chrome-ext unavailable → standard downgrade-note). Evidence = raw statuses/text.
+**Manager** ✓ login FORM→redirect /he (auth cookies httpOnly, not js-readable); project page tab "לוח בקרה": 5a board ("0/1 דירות הסכימו·יעד 66%"), 5d drill-down expands ("דירה 7·קומה 4·0/2 חתמו" — correct post-confirm), 5c upload + 5b campaign buttons present; documents list+detail.
+**Public signer** ✓ anonymous /sign/:token: "שלום שרה כהן" + privacy notice (P0.C2) + SVG pad → drew → "החתימה נקלטה בהצלחה ✓"; tampered token → 401 invalid_token (no internals); board moved 1→2 signed; drill-down → "1/2·partial".
+**Contractor** ✓ token-path exchanged to httpOnly cookie (URL clean); portal lists ONLY plain project docs; **a project-level financial (sensitive) doc: NOT in list + direct-id probe → 404 no-oracle (HIGH-2 live-proven)**.
+**Agent** ✓ sees only the assigned project; tabu write w/o edit_project_data → 403 (D.54 live); rows after own unlock → nationalId MASKED "•••••••82" (D.19/D.47 live).
+**Viewer** ✓ all writes 403 (project create / tabu / campaign); rows masked.
+**Tenant** ✓ OTP via SMS (Noop→stderr code) → verify 200 → portal/me="שרה כהן" (the נסח-born owner!) → UI: "שלום, שרה·דירה 7·אחוז בעלות 50%" + her signature "signed". **The full Phase-5→Phase-6 loop closed live: נסח→extract→confirm→owner→sign→portal.**
+**FINDINGS:** (F1, known-FE-gap) sensitive doc הצג w/o unlock → generic "ההורדה נכשלה." — no step-up modal (BE 403 correct; = the 7c-FE work). (F2, NIT) "דירה דירה 7" duplication — apartment.number already contains "דירה", the designation VM prepends another (drill-down + tenant portal). (F3) tabu review/confirm has NO UI yet (API-only; = 7c-FE). No security findings — all gates held live.
+
+### STANDING AUTHORIZATION (owner, 2026-06-12)
+
+"תבחן את השלב הבא ותמשיך לפי ההמלצה שלך, תתעד הכל... יש לך אישור להמשיך, אל תמתין לי בשום מצב."
+The loop no longer idle-waits: when the queue empties it picks the next phase per the manager's own
+recommendation, documents everything, and continues through the full green-gate pipeline. Recommended
+queue: 7c-FE (F1 unlock modal+F3 review UI+F2 NIT) → perf fix A (local docker PG for dev) → 7d
+doc-bytes envelope encryption → next roadmap value. PII-egress to a real AI engine still requires the
+owner-provisioned creds+DPA (built behind the seam only).
+
+### Slice 7c ✅ CLOSED — merged #362. **PHASE-5 COMPLETE (7a+7b-extract+7b-OTP+7c).**
+
+The full נסח→ownership loop is LIVE: upload(sensitive)→403→OTP unlock(modal)→extract(pluggable
+stub)→decrypted review(masked-by-role)→edit(masked-ת.ז. read-only)→idempotent confirm→owners(hash-match
+or shells)+ownerships(fractions+provenance 0071)→signer signs→tenant portal. Evidence: 21 RED-first
+tests, both reviews PASS (0 findings; 1 FE flag implemented), live-QA twice + the 6-entity smoke.
+FE bonus root-fix: a wrong step-up OTP no longer logs the user out (SUPPRESS_EVENT + spec).
+
+### Perf fix A — kit authored (PR #363 DRAFT): review caught a REAL CRITICAL (wrapper bypassed
+
+Infisical → PII keys missing at migrate) — fixed; merge blocked on a REAL run (Docker not installed
+on the dev machine — owner action). Honest: no perf evidence until then.
+
+### 7d LIVE MANUAL QA ✅ (all statuses recorded)
+
+sensitive create → uploadUrl **null** + contentUploadPath ✓ → POST octet-stream → **200** → download
+locked → **403 pii_step_up_required** → OTP unlock → download → **200 application/pdf, sha256(bytes)===
+declared** (decrypt round-trip). **AT-REST in REAL R2: first 8 bytes `EMAPPENC`, plaintext ABSENT,
+length=plaintext+39** (read via the S3 SDK with the r2_key from SQL). Plain-doc regression: presign
+present → PUT → finalize 200 → download JSON url 200 (byte-identical path). QA gotcha root-caused:
+a stale 7c-era api process held :3000 (EADDRINUSE in the new log; health green from the OLD server)
+— killed + fresh start; LESSON: after branch switch verify the log has no EADDRINUSE before QA.
+
+### Slice 7d ✅ CLOSED — merged 8dc6b38 (#364). **D-P5.4 fully closed → PHASE-5 100% COMPLETE**
+
+(decisions D-P5.1..8 all implemented: AI-pluggable extraction, encryption of data+doc-bytes, OTP
+step-up, review+confirm, provenance). OWNER ACTIONS outstanding: staging/prod DOC_ENCRYPTION_KEY;
+Docker install to unblock the perf kit #363.
+
+### NEXT PICK (per the standing authorization; rationale): **the pending→expired SWEEPER cron** —
+
+the slice-1 critic note: nothing flips newly-lapsing pending signature_requests to 'expired' (the FE
+derives, but the DB rows + counts drift + no notification). Small, real lifecycle-completing value,
+exercises the WORKER (untouched debt). Phase-3 גוש-חלקה scoping doc queued right after (the next big
+phase needs its design doc before code, like Phase-5 got).
+
+### Sweeper ✅ CLOSED — merged (#365). The slice-1 critic note resolved (atomic CTE flips+per-org
+
+audit; review PASS both; 9 RED-first tests; the factories slug root-fix). Worker cron template now
+established (jobs-pkg constants + handler + boss.schedule + BYPASSRLS helper in db).
+
+### Phase-3 underway: scoping doc on main (verified source matrix; §7.1 manager decisions under the
+
+standing authorization — LocalMapi-first/ask-at-confirm/attach-to-existing). P3a (envelope+manual
+skeleton path) — test-author 18 RED done; builder in flight.
+
+### P3a LIVE QA ✅ — draft 201 → PATCH payload 200 → PII-key probe 400 (strict-Zod structural
+
+defense live) → confirm 201 → idempotent 409 → skeleton VERIFIED via existing routes (הרצל 10+12,
+3 apts on b1). Builder evidence: 18/18 + ripple + tc 8 pkgs; migration 0073 journaled.
+
+### P3b LIVE QA ✅ — fixture loaded (10 rows via the loader) → create w/ fixture parcel 6638/42/3:
+
+source='local-mapi' + providerCity='תל אביב' + providerStatus='found' · unknown parcel → manual/
+not_found. Review: SECURITY PASS (1 LOW → fixed: warn-no-values on swallowed provider error) + the
+Gate-6 trailer carried on the PR. OPS NOTE: the real mapi bulk (669MB monthly ZIP) load = owner/ops
+step; the loader script is ready (packages/db/scripts/load-parcel-lookup.ts).
+
+### P3a ✅ CLOSED — merged (#366). Envelope+manual-skeleton live-QA'd; review PASS 0 findings.
+
+The tabu-extractions envelope is now the CANONICAL template (used 3x: tabu, step-up posture, parcel).
+P3b in flight (21-test RED contract done incl. zero-PII-egress + fail-open provider; builder running).
+
+### P3b ✅ CLOSED — merged (#367; the ledger DIRTY conflict resolved append-both — LESSON: ledger
+
+edits ride the ACTIVE branch only). Provider-seam pattern now 2x (extraction+parcel) = the
+generic-engine mandate's established template. P3c (the FE payoff screen) in flight — FE test-author
+done (seam 21 RED + a pinned 4-axis e2e), builder running.
+
+### P3c LIVE BROWSER CHAIN ✅ (the Phase-3 payoff, real UI end-to-end)
+
+login(form) → project → לוח בקרה → הקמה מגוש-חלקה → 6638/42/3 → **'זוהה: תל אביב'** (LocalMapi fixture)
+→ builder: address + city PRE-FILLED 'תל אביב' + generator 1×3 → **'ייווצרו 1 בניינים ו-3 דירות'** →
+אישור והקמה (disabled-until-valid held) → success panel → **the skeleton EXISTS: 'שדרות הגושים' ·
+תל אביב · apartments 1,2,3** (verified via the buildings/apartments routes). FE review PASS (0 findings;
+seam fresh-objects no-PII verified; wire-order pinned). web 860/860 + seam 22/22 + e2e 3/3 real.
+
+## 🏁 PHASE-3 COMPLETE (P3a #366 · P3b #367 · P3c #368) — גוש-חלקה → שלד, end-to-end LIVE
+
+The owner's "המערכת מקימה את הפרויקט" vision delivered: enter גוש-חלקה → LocalMapi lookup ('זוהה:
+תל אביב') → the buildings/apartments builder (user decides — no silent heuristic) → atomic confirm →
+the skeleton with provenance, live-proven in the real UI. Pluggable provider (Stub/LocalMapi; GovMap
+P3d owner-gated). Patterns established: the envelope template (3x), the provider seam (2x).
+Remaining owner/ops: GovMap token+ToS (P3d), the mapi 669MB bulk load, staging/prod DOC_ENCRYPTION_KEY,
+Docker for the perf kit #363 (draft).
+
+### SESSION CONSOLIDATION (post Phase-3/Phase-5/sweeper — ~9 merges) — HONEST HEALTH
+
+typecheck 8/8 pkgs = 0. api cross-section (documents+tabu+parcel-setups+architecture+step-up):
+191/213 — the 22 fails are documents.contract + documents-deep.contract, the LIVE-SERVER black-box
+suites failing at signup/throttle against the local dev api (the documented env pattern, proven on
+clean baselines twice this session; they skip cleanly when no server runs and pass in CI w/ the bypass).
+web 860/860. worker signature-expiry 9/9. **main is healthy.**
+
+### NEXT PICK (documented): the NUMERIC apartment sort (the F2-adjacent NIT) — apartment numbers sort
+
+lexically ('10' before '2') in the 5d drill-down (ORDER BY a.number) + the apartments lists. Small,
+real, owner-visible. Then: P3d-dark-prep or the next owner directive.
+
+### HOLD MODE (documented call under the standing authorization)
+
+P3d-dark-prep evaluated and DEFERRED honestly: the GovMap server-side wire shape is UNVERIFIED (the
+scoping doc's own finding — browser JS-SDK docs only). Coding the provider against a guessed format
+would pin the guess, not reality → near-certain rework when the owner provisions the token. Fails the
+no-busywork bar. **Everything actionable autonomously is DONE**: Phase-5 100%, Phase-3 P3a-c, sweeper,
+api-docs+guard, 7d encryption, the smoke matrix, consolidation green, the F-NITs (sort #370 armed).
+**The remaining queue is ALL owner-gated:** GovMap token+ToS (P3d) · the mapi 669MB bulk load (loader
+ready) · staging/prod DOC_ENCRYPTION_KEY · Docker Desktop (perf kit #363 draft) · any new directive.
+The loop holds (regression glance per fire, ~25min cadence), acts immediately on owner input.

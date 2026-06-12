@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  DOCUMENT_SCAN_REJECTED_CODE,
   DocumentMimeEnum,
   DocumentTypeEnum,
   type DocumentMime,
@@ -13,6 +14,7 @@ import { useRef, useState } from 'react';
 import { DOCUMENT_TYPE_LABELS_HE } from '@/adapters/document';
 import { Button } from '@/components/ui/button';
 import { useUploadDocument } from '@/hooks/use-documents';
+import { integrityMismatchField } from '@/lib/api/documents';
 import { ApiClientError } from '@/lib/api/projects';
 
 const DOC_TYPES: DocumentType[] = [...DocumentTypeEnum.options];
@@ -68,6 +70,20 @@ export default function NewDocumentPage() {
       if (e instanceof ApiClientError) {
         if (e.code === 'storage_unavailable') setError(t('storageUnavailable'));
         else if (e.code === 'upload_size_mismatch') setError(t('sizeMismatch'));
+        // 7d — the API content path (and finalize) name the offending
+        // integrity check in details.field: size → גודל, hash → תוכן.
+        else if (e.code === 'document_integrity_mismatch')
+          setError(
+            integrityMismatchField(e.details) === 'size' ? t('sizeMismatch') : t('hashMismatch'),
+          );
+        // 7d — AV gate rejected the bytes (409, fail-closed, actionable).
+        else if (e.code === DOCUMENT_SCAN_REJECTED_CODE) setError(t('scanRejected'));
+        // 7d — client-side 50MB ceiling (thrown before any network).
+        else if (e.code === 'document_too_large') setError(t('fileTooLarge'));
+        // 7d — the content route is sensitive-only; the normal flow can't
+        // trigger this (resolveUploadPlan routes by the BE response), but map
+        // it actionably rather than falling to the generic failure.
+        else if (e.code === 'document_not_sensitive') setError(t('notSensitive'));
         else if (e.code === 'upload_failed') setError(t('uploadFailed'));
         else setError(t('createFailed'));
       } else {

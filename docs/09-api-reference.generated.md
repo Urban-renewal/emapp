@@ -432,6 +432,43 @@ _(no body)_
 
 **Errors:** `validation_error`, `429`
 
+### POST /api/v1/auth/step-up/request
+
+- **Auth:** AuthGuard
+- **Summary:** Request a PII step-up OTP (7b-OTP, D-P5.5). 6-digit code emailed to the caller; hashed at rest; 3/15min rate limit (the 4th in-window request sends no email).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { "ok": true } }  (dev/QA ONLY — EXPOSE_STEP_UP_CODE=true + NODE_ENV development|test, read at request time — adds "code": "123456"; fail-closed in production)
+```
+
+**Errors:** `missing_token`, `invalid_token`, `token_expired`, `invalid_session`, `429`
+
+### POST /api/v1/auth/step-up/verify
+
+- **Auth:** AuthGuard
+- **Summary:** Verify the step-up OTP → stamp pii_unlocked_at on the CALLER’S CURRENT session only (unlocks sensitive-document downloads for security.piiUnlockTtlMinutes, default 60).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `code` | string | yes | pattern="^\\d{6}$" |
+
+
+**Response**
+
+```json
+{ "data": { "ok": true } }
+```
+
+**Errors:** `validation_error`, `missing_token`, `invalid_token`, `invalid_step_up_code`, `429`
+
 ### POST /api/v1/auth/switch-org
 
 - **Auth:** AuthGuard
@@ -779,7 +816,7 @@ _(no body)_
 ### POST /api/v1/documents
 
 - **Auth:** AuthGuard + TenantGuard (documents.create; agent fine gate manage_documents)
-- **Summary:** Create a document row + return a short-lived presigned PUT URL (presign-after-authorize). 30/min throttle.
+- **Summary:** Create a document row + return a short-lived presigned PUT URL (presign-after-authorize). 30/min throttle. 7d: a SENSITIVE doc (id_document/financial by type, or sensitive:true) gets NO presigned PUT — uploadUrl is null and contentUploadPath points at POST /documents/:id/content (the API-side encrypted upload path).
 
 **Request body**
 
@@ -790,6 +827,7 @@ _(no body)_
 | `mimeType` | string | yes | enum=["application/pdf","image/png","image/jpeg","image/webp","image/gif","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/vnd.ms-excel","text/csv","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/msword","text/plain"] |
 | `name` | string | yes | minLength=1, maxLength=255 |
 | `projectId` | unknown | no | — |
+| `sensitive` | boolean | no | — |
 | `sizeBytes` | integer | yes | minimum=1, maximum=52428800 |
 | `type` | string | yes | enum=["agreement","blueprint","regulation","contract","permit","id_document","floor_plan","financial","other"] |
 
@@ -797,7 +835,7 @@ _(no body)_
 **Response**
 
 ```json
-{ "data": { "document": { ...Document }, "uploadUrl": "https://…" } }
+{ "data": { "document": { ...Document }, "uploadUrl": "https://…|null", "contentUploadPath": "/api/v1/documents/:id/content (sensitive only)" } }
 ```
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `storage_unavailable`, `missing_token`, `invalid_token`, `token_expired`
@@ -857,10 +895,27 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
+### POST /api/v1/documents/:id/content
+
+- **Auth:** AuthGuard + TenantGuard (documents.create; agent fine gate manage_documents)
+- **Summary:** 7d — SENSITIVE-only content upload: RAW bytes (application/octet-stream, dedicated 50MB bodyLimit), 30/min throttle. Server verifies sha256+size against the create-declared values (mismatch → 400 document_integrity_mismatch with details.field=size|hash; nothing stored), scans the PLAINTEXT (non-clean → fail-closed archive + 409 document_scan_rejected), encrypts AES-256-GCM into the EMAPPENC app-envelope (DOC_ENCRYPTION_KEY, never in R2) and stores it server-side. Stamps uploaded_at + scan_status=clean + bytes_encrypted=true — no finalize step. Plain docs are rejected (400 document_not_sensitive — presign is their only path).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { "uploaded": true } }
+```
+
+**Errors:** `invalid_content_body`, `document_not_sensitive`, `document_already_uploaded`, `document_integrity_mismatch`, `document_scan_rejected`, `forbidden`, `not_found`, `storage_unavailable`, `missing_token`, `invalid_token`, `token_expired`
+
 ### GET /api/v1/documents/:id/download
 
 - **Auth:** AuthGuard + TenantGuard (documents.read)
-- **Summary:** Short-lived presigned GET URL for the stored object (?disposition=inline|attachment). 30/min throttle (bulk-exfil defense).
+- **Summary:** Short-lived presigned GET URL for the stored object (?disposition=inline|attachment). 30/min throttle (bulk-exfil defense). 7d behavioral note: a bytes_encrypted (sensitive, app-envelope) doc is NOT presigned — the API decrypt-STREAMS the bytes itself (Content-Type = doc mime, Content-Disposition per the disposition param). Same gates either way (visibility/ghost/scan + 403 pii_step_up_required without a valid session unlock). Plain docs: byte-identical presign response.
 
 **Request body**
 
@@ -872,7 +927,7 @@ _(no body)_
 **Response**
 
 ```json
-{ "data": { "url": "https://…", ... } }
+{ "data": { "url": "https://…", ... } } — or the raw decrypted bytes (streamed) when the doc is bytes_encrypted
 ```
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `storage_unavailable`, `missing_token`, `invalid_token`, `token_expired`
@@ -1517,6 +1572,7 @@ _(no body)_
 | `messaging` | object | no | — |
 | `notifications` | object | no | — |
 | `privacy` | object | no | — |
+| `security` | object | no | — |
 | `signatures` | object | no | — |
 | `timezone` | string | no | minLength=1 |
 
@@ -1740,6 +1796,60 @@ _(no body)_
 ```
 
 **Errors:** `validation_error`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/parcel-setups/:id
+
+- **Auth:** AuthGuard + TenantGuard (buildings.read)
+- **Summary:** Get one parcel setup by id (org scope no-oracle 404; Agent → assigned only).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...ParcelSetup } }  (P3b: wire includes providerStatus + providerCity)
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### PATCH /api/v1/parcel-setups/:id
+
+- **Auth:** AuthGuard + TenantGuard (buildings.update; D.54 agent fine gate edit_project_data)
+- **Summary:** P3a — save the draft buildings/apartments payload. DRAFT-only (409 parcel_setup_not_draft). STRICT no-PII Zod at every level (unknown keys like ownerName/nationalId/phone are rejected); re-parsed in the service (defense-in-depth).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `payload` | object | yes | — |
+
+
+**Response**
+
+```json
+{ "data": { ...ParcelSetup } }  (payload persisted)
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `parcel_setup_not_draft`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/parcel-setups/:id/confirm
+
+- **Auth:** AuthGuard + TenantGuard (buildings.create; D.54 agent fine gate edit_project_data)
+- **Summary:** P3a — THE manual-path commit: audit-first (ids+counts only — never addresses), IDEMPOTENT single-claim (WHERE status=draft; second confirm → 409), ATOMIC — creates the buildings (stamped source_parcel_setup_id) + their apartments under the project. A unique-collision with the existing skeleton → clean 409 parcel_skeleton_conflict with FULL rollback (setup stays draft, no orphan audit). No body.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...ParcelSetup } }  (status=confirmed, confirmedAt set)
+```
+
+**Errors:** `forbidden`, `not_found`, `parcel_payload_missing`, `parcel_setup_not_draft`, `parcel_skeleton_conflict`, `validation_error`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/portal/apartment
 
@@ -2167,6 +2277,49 @@ _(no body)_
 
 ```json
 { "data": { ...Building } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/projects/:projectId/parcel-setups
+
+- **Auth:** AuthGuard + TenantGuard (buildings.read)
+- **Summary:** List parcel setups of a project, cursor-paginated. Org-scoped (FORCE RLS); Agent → assigned projects only.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {ParcelSetup} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/projects/:projectId/parcel-setups
+
+- **Auth:** AuthGuard + TenantGuard (buildings.create; D.54 agent fine gate edit_project_data)
+- **Summary:** P3a — create a parcel-setup (גוש-חלקה) draft envelope on an EXISTING project. Project visibility is no-oracle 404. P3b — after the draft insert the pluggable parcel-data provider (PARCEL_LOOKUP_ENABLED → LocalMapi, else zero-egress Stub) is consulted with ONLY block/parcel/sub (zero-PII egress): found → source=the provider id (never from the DTO) + providerCity + providerStatus=found; not-found/Stub/provider error → FAIL-OPEN: draft stands, source=manual, providerStatus=not_found.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `blockNumber` | string | yes | minLength=1, maxLength=20 |
+| `parcelNumber` | string | yes | minLength=1, maxLength=20 |
+| `subParcel` | string | no | minLength=1, maxLength=20 |
+
+
+**Response**
+
+```json
+{ "data": { ...ParcelSetup } }  (status=draft, payload=null; source=manual|"local-mapi", providerStatus="found"|"not_found", providerCity=string|null)
 ```
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
@@ -2869,6 +3022,23 @@ _(no body)_
 
 **Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
+### POST /api/v1/tabu-extractions/:id/confirm
+
+- **Auth:** AuthGuard + TenantGuard (apartments.update; PII unlock REQUIRED + D.54 agent fine gate edit_project_data)
+- **Summary:** S7c — THE commit: audit-first, IDEMPOTENT (WHERE status=draft; second confirm → 409), atomic — owners matched by national_id hash or created as shells, the apartment’s active ownerships REPLACED with the confirmed fractions (deferred sum trigger = 1 at COMMIT), source_extraction_id stamped on every written row. No body.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...TabuExtraction } }  (status=confirmed, confirmedAt set)
+```
+
+**Errors:** `pii_step_up_required`, `forbidden`, `not_found`, `tabu_extraction_not_draft`, `tabu_rows_incomplete`, `ownership_sum_invalid`, `missing_token`, `invalid_token`, `token_expired`
+
 ### POST /api/v1/tabu-extractions/:id/extract
 
 - **Auth:** AuthGuard + TenantGuard (apartments.update; D.54 agent fine gate)
@@ -2885,6 +3055,46 @@ _(no body)_
 ```
 
 **Errors:** `forbidden`, `not_found`, `tabu_source_not_finalized`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/tabu-extractions/:id/rows
+
+- **Auth:** AuthGuard + TenantGuard (apartments.read; VALID per-session PII unlock REQUIRED)
+- **Summary:** S7c — the DECRYPTED parsed rows for the review screen. 403 pii_step_up_required without a valid unlock (pii_unlocked_at + security.piiUnlockTtlMinutes, default 60); national_id is •-masked for callers with masked owner-PII fidelity (D.19/D.47/D.54). Reveal is audited.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": [ { "id": uuid, "name": "string|null", "nationalId": "string|null", "shareNumerator": int|null, "shareDenominator": int|null, "confidence": number|null, "edited": bool, "position": int } ] }
+```
+
+**Errors:** `pii_step_up_required`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### PATCH /api/v1/tabu-extractions/:id/rows/:rowId
+
+- **Auth:** AuthGuard + TenantGuard (apartments.update; PII unlock REQUIRED + D.54 agent fine gate edit_project_data)
+- **Summary:** S7c — edit one parsed row before confirm: PII re-encrypted (pgcrypto), edited=true. DRAFT-only (409 tabu_extraction_not_draft).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `name` | string | no | minLength=1, maxLength=200 |
+| `nationalId` | string | no | minLength=1, maxLength=20 |
+| `shareDenominator` | integer | no | minimum=1 |
+| `shareNumerator` | integer | no | minimum=0 |
+
+
+**Response**
+
+```json
+{ "data": { "ok": true } }
+```
+
+**Errors:** `validation_error`, `pii_step_up_required`, `forbidden`, `not_found`, `tabu_extraction_not_draft`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/tasks
 

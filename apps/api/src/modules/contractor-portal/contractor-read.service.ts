@@ -187,6 +187,10 @@ export class ContractorReadService {
             // P0.B1 — FAIL-CLOSED malware gate: never list a doc to an external
             // contractor unless it scanned `clean` (download is gated too).
             eq(documents.scanStatus, 'clean'),
+            // D-P5.7 — SENSITIVE docs (id_document/financial/נסח/explicit) are
+            // NEVER exposed to an external contractor: this tier has no OTP
+            // step-up session, so the only fail-closed posture is exclusion.
+            eq(documents.sensitive, false),
           ),
         )
         .orderBy(asc(documents.name)),
@@ -224,6 +228,9 @@ export class ContractorReadService {
             // download ONLY a scan-`clean` doc; any other status → 404
             // (no-oracle), never a minted presigned URL.
             eq(documents.scanStatus, 'clean'),
+            // D-P5.7 — a SENSITIVE doc is never served to a contractor (no OTP
+            // step-up exists for this external tier) → 404, no-oracle.
+            eq(documents.sensitive, false),
           ),
         )
         .limit(1);

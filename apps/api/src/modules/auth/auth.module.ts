@@ -15,6 +15,8 @@ import { ProviderAuthController } from './provider/provider-auth.controller';
 import { ProviderAuthGuard } from './provider/provider-auth.guard';
 import { ProviderAuthService } from './provider/provider-auth.service';
 import { ProviderMeController } from './provider/provider-me.controller';
+import { StepUpController } from './step-up.controller';
+import { StepUpService } from './step-up.service';
 import { OtpController } from './tenant/otp.controller';
 import { OtpService, SMS_PROVIDER } from './tenant/otp.service';
 import { smsProviderFactory } from './tenant/sms-provider.factory';
@@ -33,6 +35,7 @@ import { TenantAuthGuard } from './tenant/tenant-auth.guard';
     ProviderAuthController,
     ProviderMeController,
     OtpController,
+    StepUpController,
   ],
   providers: [
     AuthService,
@@ -53,6 +56,9 @@ import { TenantAuthGuard } from './tenant/tenant-auth.guard';
     ProviderAuthGuard,
     OtpService,
     TenantAuthGuard,
+    // 7b-OTP (D-P5.5) — PII step-up unlock. Delivers via the SAME single
+    // EMAIL_PROVIDER factory registered above (org users have email).
+    StepUpService,
     // ISMSProvider behind a token. The factory picks the real Israeli gateway
     // (Inforu) when SMS_PROVIDER_* creds are present, fails fast in production
     // if they're missing, and falls back to Noop in dev/test (D.20). Wiring

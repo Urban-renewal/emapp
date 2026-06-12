@@ -64,6 +64,31 @@ test.describe('§E-J2c — Manager creates an apartment', () => {
       });
     });
 
+    // 7c F3 — the apartment detail page (post-create redirect target) now
+    // renders the נסח-טאבו review section (when /me grants apartments.update),
+    // which fetches the extraction lifecycle list + the apartment-scoped
+    // documents for the source-doc picker. Explicit empty-list stubs
+    // (registered AFTER the catch-all — Playwright matches last-registered
+    // first) per memory:project_e2e_stub_new_endpoint.
+    await page.route(`**/api/v1/apartments/${NEW_APT_ID}/tabu-extractions**`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [], page: { limit: 25, cursor: null, has_more: false } }),
+      });
+    });
+    await page.route('**/api/v1/documents?**', async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [], page: { limit: 50, cursor: null, has_more: false } }),
+      });
+    });
+
     await page.route(`**/api/v1/buildings/${BUILDING_ID}/apartments`, async (route) => {
       if (route.request().method() !== 'POST') {
         await route.fallback();

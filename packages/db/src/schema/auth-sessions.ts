@@ -23,6 +23,12 @@ export const authSessions = pgTable(
     replacedBy: uuid('replaced_by'),
     ip: text('ip'),
     userAgent: text('user_agent'),
+    // 0070 (7b-OTP, D-P5.5/8) — stamped by a successful PII step-up OTP verify
+    // on THIS session only. A sensitive-document download is allowed while
+    // pii_unlocked_at + security.piiUnlockTtlMinutes (org settings, default
+    // 60) > now(). NULL = locked. Once-per-SESSION: other live sessions of the
+    // same user stay locked.
+    piiUnlockedAt: timestamp('pii_unlocked_at', { withTimezone: true }),
   },
   (table) => ({
     userActiveIdx: index('idx_auth_sessions_user').on(table.userId),

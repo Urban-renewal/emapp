@@ -28,7 +28,9 @@ import { z } from 'zod';
 // TTLs are NOT modeled here — they are LOCKED or tighten-only and enforced in
 // Phase 6, not via this open settings seam. Keeping them out keeps the
 // "configurable" surface free of security controls a careless manager could
-// weaken.
+// weaken. EXCEPTION (owner decision 2026-06-12, D-P5.8): `security.
+// piiUnlockTtlMinutes` IS modeled — it is hard-BOUNDED 5..480 at the schema,
+// so the worst a manager can configure is a reviewed, bounded range.
 // ─────────────────────────────────────────────────────────────────────────
 
 /** Notification delivery channels (in-app shipped; email/SMS land later). */
@@ -173,6 +175,23 @@ export const LimitsSettingsSchema = z
   .default({});
 export type LimitsSettings = z.infer<typeof LimitsSettingsSchema>;
 
+/**
+ * Security namespace (7b-OTP — D-P5.8). `piiUnlockTtlMinutes` = how long a
+ * per-session PII step-up unlock (auth_sessions.pii_unlocked_at) stays valid
+ * before a sensitive-document download requires a fresh OTP. Default 60 min;
+ * BOUNDED 5..480 — the floor keeps the unlock usable (an unworkably-short TTL
+ * would push users to bulk-download), the ceiling keeps a stolen session's
+ * exposure bounded to one working day. NOTE: this knob is deliberately
+ * bounded-both-ways at the schema (unlike the open ergonomics knobs above) —
+ * it is a security control a manager may tune only within the reviewed range.
+ */
+export const SecuritySettingsSchema = z
+  .object({
+    piiUnlockTtlMinutes: z.number().int().min(5).max(480).default(60),
+  })
+  .default({});
+export type SecuritySettings = z.infer<typeof SecuritySettingsSchema>;
+
 // Base object schema (no `.catch` — referencing the final schema inside its own
 // `.catch` would create a self-referential type). The fully-defaulted tree is
 // derived from this base, then each namespace gets its own `.catch` (below) so
@@ -187,6 +206,7 @@ const OrgSettingsObject = z.object({
   consent: ConsentSettingsSchema,
   privacy: PrivacySettingsSchema,
   limits: LimitsSettingsSchema,
+  security: SecuritySettingsSchema,
 });
 
 /** The fully-defaulted settings tree (today's behavior). Handy for tests and
@@ -226,6 +246,7 @@ export const OrgSettingsSchema = z
     consent: ConsentSettingsSchema.catch(() => DEFAULT_ORG_SETTINGS.consent),
     privacy: PrivacySettingsSchema.catch(() => DEFAULT_ORG_SETTINGS.privacy),
     limits: LimitsSettingsSchema.catch(() => DEFAULT_ORG_SETTINGS.limits),
+    security: SecuritySettingsSchema.catch(() => DEFAULT_ORG_SETTINGS.security),
   })
   .catch(() => DEFAULT_ORG_SETTINGS);
 export type OrgSettings = z.infer<typeof OrgSettingsObject>;

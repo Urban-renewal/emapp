@@ -10,6 +10,8 @@ import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useApartmentList } from '@/hooks/use-apartments';
 import { useHasPermission } from '@/hooks/use-permissions';
+import { formatApartmentLabel } from '@/lib/apartment-label';
+import { useDisplayLocale } from '@/lib/locale';
 
 export default function ApartmentsPage() {
   const t = useTranslations('apartments');
@@ -19,6 +21,7 @@ export default function ApartmentsPage() {
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   // IAM slice 5b — "add apartment" CTA gated on `apartments.create`.
   const canCreate = useHasPermission('apartments.create');
+  const locale = useDisplayLocale();
   const { data, isLoading, isError, refetch } = useApartmentList(buildingId, {
     limit: 25,
     cursor,
@@ -66,8 +69,10 @@ export default function ApartmentsPage() {
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-3">
+                      {/* 7c F2 — dedup "דירה דירה 7" (number may already
+                          carry the word; formatApartmentLabel decides). */}
                       <h2 className="truncate text-base font-semibold">
-                        {t('numberPrefix', { number: a.number })}
+                        {formatApartmentLabel(a.number, locale === 'he' ? 'דירה' : 'Apartment')}
                       </h2>
                       <StatusBadge color={a.statusColor}>{a.statusLabel}</StatusBadge>
                       {a.isArchived && (

@@ -122,6 +122,11 @@ const documentWriteShape = {
   contentHash: z.string().min(1).max(128),
   projectId: z.string().uuid().nullable().optional(),
   apartmentId: z.string().uuid().nullable().optional(),
+  /** 7b-OTP (D-P5.7) — explicit client opt-IN to the sensitive-document gate.
+   * TURN-ON ONLY: the server derives sensitive=true for PII-bearing types
+   * (id_document / financial) regardless; `sensitive:false` can NEVER force a
+   * sensitive-by-type doc off the gate. Absent → by-type derivation alone. */
+  sensitive: z.boolean().optional(),
 } as const;
 
 /** POST /documents — declares metadata; server generates the key and
@@ -171,8 +176,16 @@ export type ListDocumentsQueryDto = z.infer<typeof ListDocumentsQuery>;
  * https for R2 in prod, but http is allowed for offline/mock dev. */
 export const DocumentUploadResponseSchema = z.object({
   document: DocumentSchema,
-  uploadUrl: HttpOrHttpsUrlSchema,
-  uploadExpiresInSeconds: z.number().int().positive(),
+  /** 7d (D-P5.4 second half): SENSITIVE docs get NO presigned PUT — their
+   *  bytes must flow through the API content path so the server can verify,
+   *  scan and app-envelope-encrypt the plaintext. `null` for sensitive docs;
+   *  plain docs keep the presigned PUT unchanged. */
+  uploadUrl: HttpOrHttpsUrlSchema.nullable(),
+  uploadExpiresInSeconds: z.number().int().positive().nullable(),
+  /** 7d — present ONLY for sensitive docs: the API path the client must POST
+   *  the raw bytes to (`/api/v1/documents/<id>/content`, raw body,
+   *  application/octet-stream, 50MB ceiling). */
+  contentUploadPath: z.string().optional(),
 });
 export type DocumentUploadResponse = z.infer<typeof DocumentUploadResponseSchema>;
 

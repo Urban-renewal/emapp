@@ -133,6 +133,8 @@ class FixedBytesStorage implements IStorageProvider {
   async head(): Promise<null> {
     return null;
   }
+  // 7d interface parity — never reached by this suite.
+  async putObject(): Promise<void> {}
   async getObjectStream(): Promise<Readable> {
     return Readable.from([this.bytes]);
   }

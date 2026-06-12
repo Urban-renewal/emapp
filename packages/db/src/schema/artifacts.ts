@@ -12,6 +12,8 @@ import {
   check,
   real,
   boolean,
+  doublePrecision,
+  unique,
 } from 'drizzle-orm/pg-core';
 
 import { bytea, inet } from './_types';
@@ -52,6 +54,19 @@ export const documents = pgTable(
     /** 0056 (P0.B1) — AV signature/threat label for an 'infected' verdict, or
      *  a short content-free reason for 'error'. NEVER file content or PII. */
     scanSignature: text('scan_signature'),
+    /** 0070 (7b-OTP, D-P5.5/7/8) — PII-bearing document. Derived server-side at
+     *  create (type id_document/financial, or explicit client opt-in — turn-ON
+     *  only) and marked by tabu-extraction create (the נסח holds PII). The
+     *  download path requires a VALID per-session step-up unlock
+     *  (auth_sessions.pii_unlocked_at within the org's TTL) before the
+     *  presigned GET is minted; non-sensitive docs are untouched. */
+    sensitive: boolean('sensitive').notNull().default(false),
+    /** 0072 (7d, D-P5.4 second half) — the stored object is an AES-256-GCM
+     *  app-envelope (EMAPPENC|v1|keyId|iv|tag|ciphertext; key =
+     *  DOC_ENCRYPTION_KEY, never in R2). Set by the sensitive content-upload
+     *  path (POST /documents/:id/content). The download path decrypt-streams
+     *  when true; plain (false) docs keep the presigned-GET path unchanged. */
+    bytesEncrypted: boolean('bytes_encrypted').notNull().default(false),
   },
   (table) => ({
     r2KeyUnique: uniqueIndex('documents_r2_key_unique').on(table.r2Key),
@@ -432,3 +447,103 @@ export const tabuExtractionRows = pgTable(
 
 export type TabuExtractionRow = typeof tabuExtractionRows.$inferSelect;
 export type NewTabuExtractionRow = typeof tabuExtractionRows.$inferInsert;
+
+// P3a — parcel_setups (migration 0073). The PROJECT-attached envelope around a
+// single גוש-חלקה setup run (docs/DESIGN-phase3-parcel-autosetup.md §4):
+// block+parcel(+sub) in, a draft buildings/apartments jsonb payload (NO PII —
+// the STRICT Zod schema in shared-types + the service re-parse make PII keys
+// structurally impossible), draft→confirmed/discarded lifecycle. CONFIRM
+// materializes the physical skeleton (buildings + apartments) atomically and
+// stamps buildings.source_parcel_setup_id (provenance, mirror of
+// ownerships.source_extraction_id 0071). RLS = direct org_id (documents-style),
+// FORCE — mirrors tabu_extractions (0068). Public-record data, no pgcrypto.
+
+/**
+ * Local structural mirror of `@emapp/shared-types` `ParcelSetupPayload`.
+ * `@emapp/db` does NOT depend on `@emapp/shared-types` (cycle rule), so the
+ * canonical STRICT Zod schema there is the source of truth and this is just
+ * the storage-layer type for the jsonb column. `floorsCount`/`number` are
+ * DRAFT-ONLY hints (no building columns — confirm does not map them).
+ */
+export interface ParcelSetupPayloadStored {
+  buildings: Array<{
+    address: string;
+    city?: string;
+    number?: string;
+    floorsCount?: number;
+    apartments: Array<{ number: string; floor?: number }>;
+  }>;
+}
+
+export const parcelSetups = pgTable(
+  'parcel_setups',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    // §7.1-4 — P3a attaches to an EXISTING project.
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    // PUBLIC land-registration numbers (גוש/חלקה/תת) — not PII.
+    blockNumber: text('block_number').notNull(),
+    parcelNumber: text('parcel_number').notNull(),
+    subParcel: text('sub_parcel'),
+    // Closed enum (DB CHECK + Zod): draft | confirmed | discarded.
+    status: text('status').notNull().default('draft'),
+    // The user's DRAFT buildings/apartments. Public record — no pgcrypto.
+    payload: jsonb('payload').$type<ParcelSetupPayloadStored>(),
+    // 'manual', or the provider's providerId ('local-mapi') when the P3b
+    // lookup found the parcel — stamped from the provider result ONLY, never
+    // from the DTO (it is the review flag).
+    source: text('source').notNull().default('manual'),
+    // P3b (migration 0074) — what the provider lookup yielded on create:
+    // provider_status 'found' | 'not_found'; provider_city only when found.
+    providerCity: text('provider_city'),
+    providerStatus: text('provider_status'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  },
+  (table) => ({
+    orgProjectIdx: index('idx_parcel_setups_org_project').on(table.orgId, table.projectId),
+  }),
+);
+
+export type ParcelSetup = typeof parcelSetups.$inferSelect;
+export type NewParcelSetup = typeof parcelSetups.$inferInsert;
+
+// P3b — parcel_lookup (migration 0074). A GLOBAL reference table holding the
+// bulk-מפ"י open-data parcels (block/parcel[/sub] → city + centroid), filled
+// by scripts/load-parcel-lookup.ts and read by LocalMapiParcelDataProvider.
+// DELIBERATELY NO org_id and NO RLS — this is a PUBLIC NATIONAL RECORD,
+// identical for every tenant, holding zero tenant data and zero PII (full
+// rationale lives in the 0074 migration comment). app_user is SELECT-only;
+// writes happen exclusively via the owner-role loader script.
+export const parcelLookup = pgTable(
+  'parcel_lookup',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // PUBLIC land-registration numbers (גוש/חלקה/תת) — not PII.
+    blockNumber: text('block_number').notNull(),
+    parcelNumber: text('parcel_number').notNull(),
+    // NULL = the whole-parcel record (no תת-חלקה).
+    subParcel: text('sub_parcel'),
+    city: text('city'),
+    centroidLat: doublePrecision('centroid_lat'),
+    centroidLng: doublePrecision('centroid_lng'),
+  },
+  (table) => ({
+    // NULLS NOT DISTINCT — two NULL-sub rows for the same block/parcel are
+    // duplicates too (PG16). This is the loader's UPSERT conflict target.
+    blockParcelSubUq: unique('parcel_lookup_block_parcel_sub_key')
+      .on(table.blockNumber, table.parcelNumber, table.subParcel)
+      .nullsNotDistinct(),
+  }),
+);
+
+export type ParcelLookupRow = typeof parcelLookup.$inferSelect;
+export type NewParcelLookupRow = typeof parcelLookup.$inferInsert;

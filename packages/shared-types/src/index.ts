@@ -13,6 +13,9 @@ export * from './discovery-record';
 // S7a — tabu_extractions ("Tabu extraction envelope + lifecycle"). Apartment-
 // attached extraction run pointing at a finalized source doc; draft lifecycle.
 export * from './tabu-extraction';
+// P3a — parcel_setups (parcel-setup envelope + manual path → physical
+// skeleton). Project-attached גוש-חלקה setup; STRICT no-PII draft payload.
+export * from './parcel-setup';
 // P0.C1 — data-subject rights (access export + erasure / right-to-be-forgotten).
 export * from './data-subject';
 export * from './contractor';

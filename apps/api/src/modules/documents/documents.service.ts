@@ -830,7 +830,13 @@ export class DocumentsService {
         await requireAgentCapability(tx, user, 'manage_documents');
         const patch: Partial<typeof documents.$inferInsert> = { updatedAt: new Date() };
         if (input.name !== undefined) patch.name = input.name;
-        if (input.type !== undefined) patch.type = input.type;
+        if (input.type !== undefined) {
+          patch.type = input.type;
+          // D-P5.7 turn-ON-only: retyping TO a sensitive type re-derives
+          // sensitive=true (else upload-as-other → PATCH-to-id_document would
+          // bypass the step-up gate). Never turns sensitive OFF.
+          if (SENSITIVE_DOC_TYPES.has(input.type)) patch.sensitive = true;
+        }
         const [row] = await tx.update(documents).set(patch).where(eq(documents.id, id)).returning();
         if (!row) throw NOT_FOUND;
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({

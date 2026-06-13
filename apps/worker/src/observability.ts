@@ -14,10 +14,11 @@
  * PII-safe and kept so Sentry keeps real grouping/diagnosis. The full error is
  * still in the worker's pino logs (with PII redaction) for forensics.
  *
- * NOTE (Theme C — duplication): this mirrors the API exception filter's S1
- * scrub (`apps/api/src/common/filters/http-exception.filter.ts`). A follow-up
- * slice should extract ONE shared PII-safe-capture helper both call.
+ * The PII scrub itself is the shared `scrubPgErrorPii` from @emapp/db (Theme-C —
+ * one implementation, one test surface, also used by the API exception filter).
+ * This function adds the worker-specific context tags + never-throw wrapping.
  */
+import { scrubPgErrorPii } from '@emapp/db';
 import * as Sentry from '@sentry/node';
 
 export interface WorkerErrorContext {
@@ -35,19 +36,11 @@ export function captureWorkerException(err: unknown, context: WorkerErrorContext
   // throw in strict mode), we drop the Sentry event rather than risk capturing
   // unscrubbed detail/hint.
   try {
-    // Scrub pg cause.detail/hint down the chain (depth-bounded), collecting the
-    // PII-safe pgcode(s) for Sentry context as we go.
-    const pgCodes: string[] = [];
-    let cause: unknown = (err as { cause?: unknown })?.cause;
-    let depth = 0;
-    while (cause && depth < 5) {
-      const c = cause as { code?: unknown; detail?: unknown; hint?: unknown; cause?: unknown };
-      if (typeof c.code === 'string') pgCodes.push(c.code);
-      delete c.detail;
-      delete c.hint;
-      cause = c.cause;
-      depth += 1;
-    }
+    // Scrub pg cause.detail/hint (PII) before the external capture, via the
+    // shared @emapp/db helper (Theme-C — one implementation, one test surface).
+    // Fail closed: if it could not scrub (frozen cause), drop the event.
+    const { pgCodes, scrubbed } = scrubPgErrorPii(err);
+    if (!scrubbed) return;
 
     const tags: Record<string, string | number> = {};
     if (context.jobName) tags.jobName = context.jobName;

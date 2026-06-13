@@ -171,6 +171,7 @@ export {
 export type { IMetricsProvider, MetricLabels } from './providers/metrics/metrics.interface';
 export { NoopMetricsProvider } from './providers/metrics/noop.provider';
 export { PrometheusMetricsProvider } from './providers/metrics/prometheus.provider';
+export { scrubPgErrorPii, type PgScrubResult } from './pg-error-scrub';
 export type { IAlertSink, AlertEvent, AlertSeverity } from './providers/alert/alert.interface';
 export { NoopAlertSink } from './providers/alert/noop.provider';
 export { WebhookAlertSink, type WebhookAlertConfig } from './providers/alert/webhook.provider';

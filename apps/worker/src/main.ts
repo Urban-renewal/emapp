@@ -24,6 +24,10 @@
  * testable. main.ts wires real `process.exit`, real `pool`, real
  * pg-boss, and real IJobHandler instances.
  */
+// S2 — initialise Sentry FIRST (DSN-gated) so the SDK is ready before any
+// handler runs and before crash handlers register their capture.
+import './instrument';
+
 import { env, pool, reloadEnv } from '@emapp/db';
 import {
   AUDIT_RETENTION_CRON_DAILY,

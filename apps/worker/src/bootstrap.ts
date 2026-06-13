@@ -8,6 +8,8 @@
  * Each function returns a clear effect or a clear error — callers
  * compose them in production (main.ts) and in tests (with mocks).
  */
+import { captureWorkerException } from './observability';
+
 /** Minimal `Pool` shape we need — typed structurally so we don't take
  *  a direct `pg` dep in this package (the dep is owned by @emapp/db). */
 export interface PoolLike {
@@ -84,14 +86,33 @@ export function registerSignalHandlers(opts: {
 export function registerCrashHandlers(opts: {
   log: BootLogger;
   exit?: (code: number) => void;
+  /** PII-safe Sentry capture hook (S2). Injectable so tests can spy without
+   *  the @sentry/node module; defaults to the real `captureWorkerException`. */
+  capture?: (err: unknown) => void;
 }): void {
   const exit = opts.exit ?? ((code: number): never => process.exit(code));
+  const capture = opts.capture ?? captureWorkerException;
   process.on('uncaughtException', (err: Error) => {
     opts.log.fatal({ err: err.message, stack: err.stack }, 'uncaughtException — exiting');
+    // S2 — surface the crash in Sentry BEFORE exiting (Railway restarts us).
+    // Guarded: a capture failure must NEVER block the non-zero exit (D.29 —
+    // the process MUST exit so Railway restarts it). `captureWorkerException`
+    // is already best-effort; this is belt-and-suspenders for an injected
+    // capture too.
+    try {
+      capture(err);
+    } catch {
+      /* never block the crash exit */
+    }
     exit(1);
   });
   process.on('unhandledRejection', (reason: unknown) => {
     opts.log.fatal({ reason: String(reason) }, 'unhandledRejection — exiting');
+    try {
+      capture(reason);
+    } catch {
+      /* never block the crash exit */
+    }
     exit(1);
   });
 }

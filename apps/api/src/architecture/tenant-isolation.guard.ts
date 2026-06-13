@@ -44,7 +44,7 @@ export function findRawClientImporters(modulesDir: string): string[] {
   return out.sort();
 }
 
-function importsRawClient(src: string): boolean {
+export function importsRawClient(src: string): boolean {
   // Match `import { ... } from '@emapp/db'` (single or multi-line) and check
   // whether any imported binding is a raw-client token.
   const re = /import\s*\{([^}]*)\}\s*from\s*['"]@emapp\/db['"]/gs;
@@ -57,5 +57,11 @@ function importsRawClient(src: string): boolean {
       .filter(Boolean);
     if (names.some((n) => RAW_CLIENT_TOKENS.has(n))) return true;
   }
+  // H2 — a NAMESPACE import (`import * as x from '@emapp/db'`) exposes the raw
+  // client via property access (`x.db` / `x.pool`) and would evade the
+  // named-import check above, silently puncturing RLS. Flag it: a module that
+  // namespace-imports @emapp/db could reach the raw client, so it must be
+  // refactored onto a wrapper or be a reviewed allowlist entry.
+  if (/import\s+\*\s+as\s+\w+\s+from\s*['"]@emapp\/db['"]/.test(src)) return true;
   return false;
 }

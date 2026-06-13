@@ -895,3 +895,19 @@ as the manager (manager@alpha.dev) on a real dev server + as the signer:
 - **No bugs found in these flows.** The owner-reported document/signature issues are confirmed
   fixed and working end-to-end in the browser. (Also fixed this session: the forgot-password
   bounce #377 — caught by exactly this kind of unauth live-walk.)
+
+## 🧭 OPERATING SHIFT (2026-06-14) — technical-lead model + audit-driven roadmap
+
+Owner reframed the need: not task-execution but an assertive technical lead owning
+holistic quality (docs/ENGINEERING-CHARTER.md). Established the source-of-truth roadmap
+docs/ENGINEERING-AUDIT.md (25-agent audit, adversarially verified — 8 themes, 31-slice
+backlog). Verdict: healthy + shippable; day-2 risks sliced macro→micro.
+
+- **Theme E CLOSED — keyset ms-precision #378 merged (4c417eb).** Code+security review PASS;
+  live row-skip across ~22 endpoints fixed; D.58. (The fix the audit flagged as built-but-unmerged.)
+- **NEXT WAVE — Observability (answers "can I see the failure chain?"):** S1 caught-500s→Sentry,
+  S2 worker Sentry, S3 fail-loud on missing alert config. Each through the green-gate.
+- **S1 nuance caught (technical-lead depth):** a naive `Sentry.captureException(exception)` would
+  ship pg `cause.detail/hint` (which can contain national_id values) to an EXTERNAL service. S1
+  must capture PII-SAFE (message + pgcode + route/IDs; scrub detail/hint). Independent test-author
+  pins both: 5xx→captured, 4xx→not, and the captured payload carries NO PII markers.

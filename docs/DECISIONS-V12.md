@@ -554,6 +554,49 @@ same-ms/different-micros walk — RED before, GREEN after). Memory:
 
 ---
 
+## D.59 — Missing alert-webhook config in prod: loud-warn, NOT hard-fail
+
+**Context:** audit slice S3 (observability, Theme A). `alertSinkFactory`
+(`apps/api/src/modules/observability/observability.factory.ts`) returns a real
+`WebhookAlertSink` when `ALERT_WEBHOOK_URL` is set, else a `NoopAlertSink`. In
+production with the URL unset, breach-detection SECURITY alerts (failed-login
+bursts, authz-denial bursts, provider-PII spikes from `BreachDetectionService`)
+were detected but delivered to a no-op sink **silently** — no one is paged.
+
+**Decision:** in production, when `ALERT_WEBHOOK_URL` is unset, emit a LOUD,
+impossible-to-miss signal — a NestJS `Logger.error` + `Sentry.captureMessage(…,
+'warning')` (Sentry is now wired by S1/S2) — then STILL return `NoopAlertSink`
+so the app boots. **NOT a hard boot failure.**
+
+**Why loud-warn, not hard-fail (the audit offered "refuse to boot"):**
+
+- The codebase has an EXPLICIT fail-open-observability stance — the metrics
+  factory in the same file documents "metrics are fail-open and non-essential,
+  so — unlike SMS — there is NO fail-fast in prod." Alerting is the same class:
+  operator observability, not essential-to-serving.
+- Hard-failing app boot on an operator-only config couples app UPTIME to the
+  alert webhook → a missing/typo'd webhook becomes a **self-inflicted DoS for
+  all users**. The encryption fail-fast is hard because encryption is essential
+  (no key = unreadable/corrupt data); alerting is not in that class.
+- Loud-warn (ERROR log + a Sentry warning that itself surfaces in the alerting
+  tool) makes the gap unmissable on first deploy without taking the app down.
+
+**Scope note:** gated on `NODE_ENV === 'production'` (matches the 6 existing
+prod checks in apps/api). There is no distinct `'staging'` NODE_ENV in this
+codebase — staging deploys run as `NODE_ENV=production` (staging is an Infisical
+_environment_, not a runtime NODE_ENV), so the warn covers staging too.
+
+**Owner revisit:** if the owner prefers the stricter posture (hard-fail prod
+boot, or block readiness), it's a one-line change — flagged for their call; the
+default here is the fail-open-consistent loud-warn.
+
+**Tests pinning it:** `observability.factory.spec.ts` — prod+unset → Logger.error
+
+- `captureMessage('…','warning')` + returns `NoopAlertSink`; prod+set → real
+  `WebhookAlertSink`, silent; non-prod (dev AND test) → `NoopAlertSink`, silent.
+
+---
+
 ## Plan impact
 
 - **D.46** adds a permission-model slice to Track D.

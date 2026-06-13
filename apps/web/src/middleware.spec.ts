@@ -112,6 +112,40 @@ describe('middleware — adversarial', () => {
     expect(res.headers.get('location')).toMatch(/\/he\/login$/);
   });
 
+  // ─── Locale-less PUBLIC routes (forgot-password bug) ───
+  // A locale-less public link (e.g. login's `<Link href="/forgot-password">`,
+  // the app-wide locale-less href convention) must NOT be bounced to login by
+  // the auth gate — it must be recognised as public and deferred to next-intl
+  // for locale-prefixing. Before the fix, `isPublicRoute` required a locale
+  // prefix, so an UNAUTHENTICATED visitor clicking "forgot password" was
+  // redirected to /he/login and could never reach the reset flow.
+  it('M8a) unauthenticated /forgot-password (locale-less) is PUBLIC — NOT bounced to login', () => {
+    const res = middleware(mockReq({ pathname: '/forgot-password' }));
+    // Deferred to next-intl (mocked → next()), NOT a 307 to /he/login.
+    expect(res.status).not.toBe(307);
+  });
+
+  it('M8b) unauthenticated /signup (locale-less) is PUBLIC — NOT bounced to login', () => {
+    const res = middleware(mockReq({ pathname: '/signup' }));
+    expect(res.status).not.toBe(307);
+  });
+
+  it('M8c) unauthenticated /reset-password (locale-less) is PUBLIC — NOT bounced to login', () => {
+    const res = middleware(mockReq({ pathname: '/reset-password' }));
+    expect(res.status).not.toBe(307);
+  });
+
+  it('M8d) locale-PREFIXED /he/forgot-password stays public (regression guard)', () => {
+    const res = middleware(mockReq({ pathname: '/he/forgot-password' }));
+    expect(res.status).not.toBe(307);
+  });
+
+  it('M8e) locale-less /projects (PROTECTED) still bounces to login — fix is public-only', () => {
+    const res = middleware(mockReq({ pathname: '/projects' }));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toMatch(/\/he\/login$/);
+  });
+
   it('M9) middleware does not set headers itself — headers are applied at the next.config.ts level (see M10)', () => {
     const res = middleware(mockReq({ pathname: '/he/login' }));
     expect(res).toBeDefined();

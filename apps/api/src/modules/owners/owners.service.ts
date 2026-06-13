@@ -31,13 +31,18 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, isNull, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   requireAgentCapability,
   resolveOwnerPiiFidelity,
 } from '../../common/authz/agent-capabilities';
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 import type { CreateOwner, OwnerSearch, UpdateOwner } from './owner.dto';
@@ -242,16 +247,13 @@ export class OwnersService {
         await this.assertAgentCanViewOwners(tx, user);
         const scope = this.agentOwnerScope(user);
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(owners.createdAt, new Date(cur.c)),
-              and(eq(owners.createdAt, new Date(cur.c)), lt(owners.id, cur.i)),
-            )
+          ? keysetCondition(owners.createdAt, owners.id, cur)
           : undefined;
         return tx
           .select(ownerCols)
           .from(owners)
           .where(and(isNull(owners.archivedAt), isNull(owners.erasedAt), scope, keyset))
-          .orderBy(desc(owners.createdAt), desc(owners.id))
+          .orderBy(...keysetOrderBy(owners.createdAt, owners.id))
           .limit(limit + 1);
       },
       { userId: user.sub },

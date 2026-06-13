@@ -28,9 +28,14 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 export interface ProjectListPage {
@@ -191,12 +196,7 @@ export class ProjectsService {
     const rows = await withTenant(
       user.orgId,
       async (tx) => {
-        const keyset = cur
-          ? or(
-              lt(projects.createdAt, new Date(cur.c)),
-              and(eq(projects.createdAt, new Date(cur.c)), lt(projects.id, cur.i)),
-            )
-          : undefined;
+        const keyset = cur ? keysetCondition(projects.createdAt, projects.id, cur) : undefined;
 
         const stats = statsSubqueries(sql`${projects.id}`);
 
@@ -216,7 +216,7 @@ export class ProjectsService {
               ),
             )
             .where(and(isNull(projects.archivedAt), keyset))
-            .orderBy(desc(projects.createdAt), desc(projects.id))
+            .orderBy(...keysetOrderBy(projects.createdAt, projects.id))
             .limit(limit + 1);
         }
 
@@ -224,7 +224,7 @@ export class ProjectsService {
           .select({ p: projects, ...stats })
           .from(projects)
           .where(and(isNull(projects.archivedAt), keyset))
-          .orderBy(desc(projects.createdAt), desc(projects.id))
+          .orderBy(...keysetOrderBy(projects.createdAt, projects.id))
           .limit(limit + 1);
       },
       { userId: user.sub },

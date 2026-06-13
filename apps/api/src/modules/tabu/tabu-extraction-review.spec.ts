@@ -1145,6 +1145,52 @@ describe('7c · G) retroactive MINORs (list pagination / agent getOne / limit de
     expect((got as { id: string }).id).toBe(exId);
   }, 40_000);
 
+  it('K1) [keyset micros] same-millisecond different-microsecond rows must not be dropped across cursor pages', async () => {
+    // The cursor encodes createdAt.toISOString() = MILLISECOND precision, but
+    // created_at is timestamptz at MICROSECOND precision (Postgres now()).
+    // When several rows share a millisecond but differ in microseconds and the
+    // page boundary falls among them, the keyset (compared against the
+    // ms-truncated cursor) silently DROPS the straddling row(s). Force the
+    // collision deterministically: 3 rows, same ms (.123), distinct micros.
+    const aptId = await seedApartment(projectId);
+    const docId = await seedFinalizedDoc(org.id, managerId, aptId);
+    const e1 = await seedExtraction(org.id, aptId, docId, managerId);
+    const e2 = await seedExtraction(org.id, aptId, docId, managerId);
+    const e3 = await seedExtraction(org.id, aptId, docId, managerId);
+
+    const c = await providerPool.connect();
+    try {
+      await c.query(`UPDATE tabu_extractions SET created_at = $1::timestamptz WHERE id = $2`, [
+        '2026-01-01 00:00:00.123100+00',
+        e1,
+      ]);
+      await c.query(`UPDATE tabu_extractions SET created_at = $1::timestamptz WHERE id = $2`, [
+        '2026-01-01 00:00:00.123400+00',
+        e2,
+      ]);
+      await c.query(`UPDATE tabu_extractions SET created_at = $1::timestamptz WHERE id = $2`, [
+        '2026-01-01 00:00:00.123700+00',
+        e3,
+      ]);
+    } finally {
+      c.release();
+    }
+
+    const svc = makeEnvelopeSvc();
+    const user = payload(managerId, 'manager', randomUUID());
+
+    const page1 = await svc.list(user, aptId, { limit: 2 });
+    const page2 = await svc.list(user, aptId, { limit: 2, cursor: page1.page.cursor! });
+
+    const seen = [...page1.data, ...page2.data].map((r) => r.id);
+    // No loss, no overlap: the union across the two pages must be all 3 ids.
+    expect(new Set(seen).size, 'cursor pages must not produce duplicate ids').toBe(seen.length);
+    expect(seen.length, 'a same-ms/different-micros row was DROPPED across the page boundary').toBe(
+      3,
+    );
+    expect(new Set(seen)).toEqual(new Set([e1, e2, e3]));
+  }, 40_000);
+
   it(`G3) [MINOR c] service list default limit aligns with the DTO default (${DTO_DEFAULT_LIMIT}, ListOwnershipsQuery)`, async () => {
     const aptId = await seedApartment(projectId);
     const svc = makeEnvelopeSvc();

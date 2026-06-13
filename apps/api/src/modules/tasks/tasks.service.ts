@@ -18,10 +18,15 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
 
 import { agentHasCapability, requireAgentCapability } from '../../common/authz/agent-capabilities';
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CalendarEmailService } from '../calendar-email/calendar-email.service';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
@@ -239,10 +244,7 @@ export class TasksService {
       user.orgId,
       async (tx) => {
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(tasks.createdAt, new Date(cur.c)),
-              and(eq(tasks.createdAt, new Date(cur.c)), lt(tasks.id, cur.i)),
-            )
+          ? keysetCondition(tasks.createdAt, tasks.id, cur)
           : undefined;
         if (user.role === 'agent') {
           return tx
@@ -253,7 +255,7 @@ export class TasksService {
               and(eq(taskAssignees.taskId, tasks.id), eq(taskAssignees.userId, user.sub)),
             )
             .where(and(isNull(tasks.archivedAt), keyset))
-            .orderBy(desc(tasks.createdAt), desc(tasks.id))
+            .orderBy(...keysetOrderBy(tasks.createdAt, tasks.id))
             .limit(limit + 1)
             .then((res) => res.map((x) => x.t));
         }
@@ -261,7 +263,7 @@ export class TasksService {
           .select()
           .from(tasks)
           .where(and(isNull(tasks.archivedAt), keyset))
-          .orderBy(desc(tasks.createdAt), desc(tasks.id))
+          .orderBy(...keysetOrderBy(tasks.createdAt, tasks.id))
           .limit(limit + 1);
       },
       { userId: user.sub },

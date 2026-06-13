@@ -38,10 +38,15 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, isNull, or, sql, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import { getOrgSettings } from '../../common/org-settings.resolver';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
@@ -1180,17 +1185,14 @@ export class DocumentsService {
         }
 
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(documents.createdAt, new Date(cur.c)),
-              and(eq(documents.createdAt, new Date(cur.c)), lt(documents.id, cur.i)),
-            )
+          ? keysetCondition(documents.createdAt, documents.id, cur)
           : undefined;
 
         return tx
           .select()
           .from(documents)
           .where(and(...filters, keyset))
-          .orderBy(desc(documents.createdAt), desc(documents.id))
+          .orderBy(...keysetOrderBy(documents.createdAt, documents.id))
           .limit(limit + 1);
       },
       { userId: user.sub },

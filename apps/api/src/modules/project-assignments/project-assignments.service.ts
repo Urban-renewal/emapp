@@ -15,9 +15,14 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
+import { and, eq, isNull, type SQL } from 'drizzle-orm';
 
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 export interface ProjectAssignmentListPage {
@@ -83,13 +88,7 @@ export class ProjectAssignmentsService {
       async (tx) => {
         await this.assertProjectVisible(tx, user, projectId);
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(projectAssignments.assignedAt, new Date(cur.c)),
-              and(
-                eq(projectAssignments.assignedAt, new Date(cur.c)),
-                lt(projectAssignments.id, cur.i),
-              ),
-            )
+          ? keysetCondition(projectAssignments.assignedAt, projectAssignments.id, cur)
           : undefined;
         return tx
           .select()
@@ -102,7 +101,7 @@ export class ProjectAssignmentsService {
               keyset,
             ),
           )
-          .orderBy(desc(projectAssignments.assignedAt), desc(projectAssignments.id))
+          .orderBy(...keysetOrderBy(projectAssignments.assignedAt, projectAssignments.id))
           .limit(limit + 1);
       },
       { userId: user.sub },

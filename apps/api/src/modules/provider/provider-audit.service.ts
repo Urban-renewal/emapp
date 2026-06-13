@@ -46,9 +46,15 @@ import type {
   ProviderSelfAuditQuery,
 } from '@emapp/shared-types';
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, gte, like, lt, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, gte, like, lte, sql, type SQL } from 'drizzle-orm';
 
-import { decodeCursorOrThrow, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursorOrThrow,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+  type KeysetCursor,
+} from '../../common/keyset-cursor';
 
 import type { ProviderActor } from './current-provider.decorator';
 
@@ -91,10 +97,9 @@ export class ProviderAuditService {
   ): Promise<ApiList<ProviderAuditItem>> {
     // Decode cursor BEFORE entering withProvider — fail fast on bad input.
     // SA-11: `decodeCursorOrThrow` centralises the decode+throw pattern.
-    let cursorDecoded: { createdAt: Date; id: string } | null = null;
+    let cursorDecoded: KeysetCursor | null = null;
     if (query.cursor) {
-      const dec = decodeCursorOrThrow(query.cursor);
-      cursorDecoded = { createdAt: new Date(dec.c), id: dec.i };
+      cursorDecoded = decodeCursorOrThrow(query.cursor);
     }
 
     const fetchLimit = query.limit + 1;
@@ -112,12 +117,7 @@ export class ProviderAuditService {
     if (query.fromDate) filters.push(gte(auditLog.createdAt, query.fromDate));
     if (query.toDate) filters.push(lte(auditLog.createdAt, query.toDate));
     if (cursorDecoded) {
-      filters.push(
-        or(
-          lt(auditLog.createdAt, cursorDecoded.createdAt),
-          and(eq(auditLog.createdAt, cursorDecoded.createdAt), lt(auditLog.id, cursorDecoded.id)),
-        )!,
-      );
+      filters.push(keysetCondition(auditLog.createdAt, auditLog.id, cursorDecoded));
     }
     const wherePred = filters.length === 0 ? undefined : and(...filters);
 
@@ -138,7 +138,7 @@ export class ProviderAuditService {
           })
           .from(auditLog)
           .where(wherePred)
-          .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
+          .orderBy(...keysetOrderBy(auditLog.createdAt, auditLog.id))
           .limit(fetchLimit);
       },
       {
@@ -201,10 +201,9 @@ export class ProviderAuditService {
     reason: string,
     query: ProviderSelfAuditQuery,
   ): Promise<ApiList<ProviderSelfAuditItem>> {
-    let cursorDecoded: { startedAt: Date; id: string } | null = null;
+    let cursorDecoded: KeysetCursor | null = null;
     if (query.cursor) {
-      const dec = decodeCursorOrThrow(query.cursor);
-      cursorDecoded = { startedAt: new Date(dec.c), id: dec.i };
+      cursorDecoded = decodeCursorOrThrow(query.cursor);
     }
     const fetchLimit = query.limit + 1;
 
@@ -219,15 +218,7 @@ export class ProviderAuditService {
     if (query.fromDate) filters.push(gte(providerAuditLog.startedAt, query.fromDate));
     if (query.toDate) filters.push(lte(providerAuditLog.startedAt, query.toDate));
     if (cursorDecoded) {
-      filters.push(
-        or(
-          lt(providerAuditLog.startedAt, cursorDecoded.startedAt),
-          and(
-            eq(providerAuditLog.startedAt, cursorDecoded.startedAt),
-            lt(providerAuditLog.id, cursorDecoded.id),
-          ),
-        )!,
-      );
+      filters.push(keysetCondition(providerAuditLog.startedAt, providerAuditLog.id, cursorDecoded));
     }
     const wherePred = filters.length === 0 ? undefined : and(...filters);
 
@@ -253,7 +244,7 @@ export class ProviderAuditService {
           })
           .from(providerAuditLog)
           .where(wherePred)
-          .orderBy(desc(providerAuditLog.startedAt), desc(providerAuditLog.id))
+          .orderBy(...keysetOrderBy(providerAuditLog.startedAt, providerAuditLog.id))
           .limit(fetchLimit);
       },
       {

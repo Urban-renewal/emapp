@@ -40,10 +40,15 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, desc, eq, gt, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import { getOrgSettings } from '../../common/org-settings.resolver';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { SMS_PROVIDER } from '../auth/tenant/otp.service';
@@ -1158,20 +1163,14 @@ export class SignatureRequestsService {
         }
 
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(signatureRequests.createdAt, new Date(cur.c)),
-              and(
-                eq(signatureRequests.createdAt, new Date(cur.c)),
-                lt(signatureRequests.id, cur.i),
-              ),
-            )
+          ? keysetCondition(signatureRequests.createdAt, signatureRequests.id, cur)
           : undefined;
 
         return tx
           .select()
           .from(signatureRequests)
           .where(and(...filters, keyset))
-          .orderBy(desc(signatureRequests.createdAt), desc(signatureRequests.id))
+          .orderBy(...keysetOrderBy(signatureRequests.createdAt, signatureRequests.id))
           .limit(limit + 1);
       },
       { userId: user.sub },

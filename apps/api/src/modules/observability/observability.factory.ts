@@ -8,6 +8,8 @@ import {
   type IAlertSink,
   type IMetricsProvider,
 } from '@emapp/db';
+import { Logger } from '@nestjs/common';
+import * as Sentry from '@sentry/node';
 
 /**
  * Env-driven selection for the observability seam (P0.B2) — mirrors
@@ -44,6 +46,23 @@ export function alertSinkFactory(): IAlertSink {
       authToken: process.env['ALERT_WEBHOOK_TOKEN'],
       timeoutMs: numericEnv('ALERT_WEBHOOK_TIMEOUT_MS'),
     });
+  }
+  // S3 (audit Theme A) — in PRODUCTION a missing ALERT_WEBHOOK_URL means
+  // breach-detection SECURITY alerts (failed-login bursts, authz-denial bursts,
+  // provider-PII spikes) are detected but delivered to a NO-OP sink, silently.
+  // We deliberately do NOT hard-fail (D.59): alerting is operator observability,
+  // not essential-to-serving — coupling app UPTIME to an operator-only config
+  // would be a self-inflicted DoS, and contradicts the fail-open stance the
+  // metrics factory above documents. Instead we make the gap LOUD and
+  // impossible to miss — an ERROR log + a Sentry warning (Sentry is wired by
+  // S1/S2) — then return the no-op sink so the app still boots.
+  if (process.env['NODE_ENV'] === 'production') {
+    const message =
+      'ALERT_WEBHOOK_URL is unset in production — breach-detection alerts are going to a NO-OP sink. ' +
+      'Security alerts (failed-login bursts, authz-denial bursts, provider-PII spikes) will NOT be ' +
+      'delivered. Set ALERT_WEBHOOK_URL (Infisical) to wire real alerting.';
+    new Logger('alertSinkFactory').error(message);
+    Sentry.captureMessage(message, 'warning');
   }
   return new NoopAlertSink();
 }

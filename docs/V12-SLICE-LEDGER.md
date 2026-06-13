@@ -923,3 +923,24 @@ backlog). Verdict: healthy + shippable; day-2 risks sliced macro→micro.
 - **NEXT: S3** — fail-loud on missing alert/metrics config (breach-detection alert sink defaults to a
   silent no-op unless a config value is set → breaches detected but no one paged). Mirror the encryption
   fail-fast.
+
+### S3 DESIGN ANALYSIS (observability) — fail-loud on missing alert config
+
+`alertSinkFactory` (observability.factory.ts) silently returns `NoopAlertSink` when
+`ALERT_WEBHOOK_URL` is unset → in prod, breach-detection alerts (failed-login bursts,
+authz-denial bursts, provider-PII spikes — SECURITY signals) are detected but go NOWHERE.
+
+**Design fork (genuine, surfaced for the owner):**
+
+- (A) HARD-FAIL prod boot if no ALERT_WEBHOOK_URL (the audit's "mirror the encryption
+  fail-fast"). CON: contradicts the codebase's EXPLICIT fail-open-observability stance
+  (the metrics-factory comment) + couples app UPTIME to an operator-only config → a missing
+  alert webhook becomes a self-inflicted DoS for all users.
+- (B) **LOUD-WARN (recommended):** in prod with no ALERT_WEBHOOK_URL, emit a prominent
+  ERROR log + `Sentry.captureMessage(level=warning)` (surfaces in Sentry — now wired by S1)
+  before returning NoopAlertSink. The gap is impossible to miss on first deploy, WITHOUT
+  taking the app down. Consistent with the fail-open philosophy; alerting is operator
+  observability, not essential-to-serving.
+
+**Recommendation: (B).** Will implement as the next slice unless the owner prefers (A).
+Small, testable: prod+no-url → warn+captureMessage; prod+url → real sink, no warn; dev → noop.

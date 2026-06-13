@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { findRawClientImporters } from './tenant-isolation.guard';
+import { findRawClientImporters, importsRawClient } from './tenant-isolation.guard';
 
 const MODULES_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'modules');
 
@@ -59,5 +59,14 @@ describe('architecture: tenant-isolation guard (CLAUDE.md — no direct db outsi
         `Remove them from the allowlist to keep the ratchet honest:\n` +
         stale.map((f) => `  - ${f}`).join('\n'),
     ).toEqual([]);
+  });
+
+  // H2 — the detector must also catch a NAMESPACE import, which would otherwise
+  // reach the raw client (`x.db`) while evading the named-import check.
+  it('detects a namespace import of @emapp/db (not just named imports)', () => {
+    expect(importsRawClient("import { withTenant } from '@emapp/db';")).toBe(false);
+    expect(importsRawClient("import { db } from '@emapp/db';")).toBe(true);
+    expect(importsRawClient("import * as emappDb from '@emapp/db';")).toBe(true);
+    expect(importsRawClient("import * as x from '@emapp/db'\nx.pool.query('…')")).toBe(true);
   });
 });

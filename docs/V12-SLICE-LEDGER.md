@@ -960,3 +960,11 @@ Small, testable: prod+no-url → warn+captureMessage; prod+url → real sink, no
 **Tonight's tally: keyset #378 (Theme E) + observability S1/S2/S3 (#379/#380/#381) — 4 merged, zero
 merge-on-red, all full green-gate (indep test-author + code + security review). Plus the charter + audit
 roadmap (the operating-model shift the owner asked for).**
+
+### ✅ Theme-C MERGED (#382, b678ad9) — shared scrubPgErrorPii in @emapp/db; API filter S1 + worker S2
+
+dedup'd to one tested impl; API filter gains fail-closed (strict improvement). 5 PRs tonight.
+**NEXT: Theme-H** — auth-presence ratchet. Decompose: H1 architecture test (every domain controller is
+authenticated → catches a forgotten @UseGuards as a BUILD failure, mirrors the RLS ratchet); H2 harden the
+RLS ratchet to also catch namespace/barrel @emapp/db imports; H3 (larger, deferred) the global default-deny
+@Public()-aware guard (security-model change — careful/owner-aware). This slice = H1.

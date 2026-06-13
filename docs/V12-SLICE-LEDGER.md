@@ -944,3 +944,19 @@ authz-denial bursts, provider-PII spikes — SECURITY signals) are detected but 
 
 **Recommendation: (B).** Will implement as the next slice unless the owner prefers (A).
 Small, testable: prod+no-url → warn+captureMessage; prod+url → real sink, no warn; dev → noop.
+
+### 🏁 OBSERVABILITY WAVE COMPLETE (audit Theme A) — 2026-06-14 (overnight)
+
+- **S1 #379** — in-request 5xx → Sentry, PII-safe.
+- **S2 #380** — worker job + crash failures → Sentry, PII-safe + fail-closed (code-review BLOCK caught
+  the unguarded-capture-before-exit hole → fixed).
+- **S3 #381 (D.59)** — loud-warn (not hard-fail) when prod ALERT_WEBHOOK_URL unset → breach-detection
+  security alerts no longer silently dropped unnoticed.
+  "Can I see the failure chain?" is now substantially YES: 500s + worker faults reach Sentry; a missing
+  alert pager is loud. Owner follow-up (noted): a Sentry alert-rule on the S3 message + the deploy pipeline.
+  **NEXT: Theme-C** — extract ONE shared PII-safe Sentry-capture helper (the API filter S1 + worker S2 now
+  duplicate the scrub-then-capture). Then Theme-H auth-guard ratchet, then the bigger authz/test themes.
+
+**Tonight's tally: keyset #378 (Theme E) + observability S1/S2/S3 (#379/#380/#381) — 4 merged, zero
+merge-on-red, all full green-gate (indep test-author + code + security review). Plus the charter + audit
+roadmap (the operating-model shift the owner asked for).**

@@ -911,3 +911,15 @@ backlog). Verdict: healthy + shippable; day-2 risks sliced macro→micro.
   ship pg `cause.detail/hint` (which can contain national_id values) to an EXTERNAL service. S1
   must capture PII-SAFE (message + pgcode + route/IDs; scrub detail/hint). Independent test-author
   pins both: 5xx→captured, 4xx→not, and the captured payload carries NO PII markers.
+
+### Observability wave (audit Theme A) — progress
+
+- **S1 ✅ #379 (f4870ac)** — in-request 5xx → Sentry, PII-safe (scrub pg detail/hint before capture).
+- **S2 ✅ #380 (39e9b39)** — worker job + crash failures → Sentry, PII-safe + fail-closed; DSN-gated init.
+  Code-review caught + fixed a real robustness hole (unguarded capture before exit(1) → could hang
+  instead of restart, defeating D.29). Both via full green-gate (indep test-author + code + security review).
+- **Theme-C follow-up noted:** the PII-safe-capture scrub now exists in BOTH the API filter (S1) and the
+  worker (S2) — extract ONE shared helper.
+- **NEXT: S3** — fail-loud on missing alert/metrics config (breach-detection alert sink defaults to a
+  silent no-op unless a config value is set → breaches detected but no one paged). Mirror the encryption
+  fail-fast.

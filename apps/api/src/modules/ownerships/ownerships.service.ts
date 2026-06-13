@@ -24,10 +24,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 
 import { canViewOwners } from '../../common/authz/agent-capabilities';
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 export interface OwnershipListPage {
@@ -195,16 +200,13 @@ export class OwnershipsService {
       async (tx) => {
         await this.assertApartmentVisible(tx, user, apartmentId);
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(ownerships.createdAt, new Date(cur.c)),
-              and(eq(ownerships.createdAt, new Date(cur.c)), lt(ownerships.id, cur.i)),
-            )
+          ? keysetCondition(ownerships.createdAt, ownerships.id, cur)
           : undefined;
         return tx
           .select()
           .from(ownerships)
           .where(and(eq(ownerships.apartmentId, apartmentId), isNull(ownerships.endedAt), keyset))
-          .orderBy(desc(ownerships.createdAt), desc(ownerships.id))
+          .orderBy(...keysetOrderBy(ownerships.createdAt, ownerships.id))
           .limit(limit + 1);
       },
       { userId: user.sub },
@@ -240,10 +242,7 @@ export class OwnershipsService {
         // masked for everyone (reveal-on-demand for cleartext).
         if (!(await canViewOwners(tx, user))) throw FORBIDDEN;
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(ownerships.createdAt, new Date(cur.c)),
-              and(eq(ownerships.createdAt, new Date(cur.c)), lt(ownerships.id, cur.i)),
-            )
+          ? keysetCondition(ownerships.createdAt, ownerships.id, cur)
           : undefined;
         return tx
           .select({
@@ -271,7 +270,7 @@ export class OwnershipsService {
           .from(ownerships)
           .innerJoin(owners, eq(owners.id, ownerships.ownerId))
           .where(and(eq(ownerships.apartmentId, apartmentId), isNull(ownerships.endedAt), keyset))
-          .orderBy(desc(ownerships.createdAt), desc(ownerships.id))
+          .orderBy(...keysetOrderBy(ownerships.createdAt, ownerships.id))
           .limit(limit + 1);
       },
       { userId: user.sub },

@@ -19,9 +19,15 @@
 import { organizations, withProvider } from '@emapp/db';
 import type { ApiList, ListTenantsQuery, TenantListItem } from '@emapp/shared-types';
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, ilike, lt, or, sql } from 'drizzle-orm';
+import { and, ilike, sql } from 'drizzle-orm';
 
-import { decodeCursorOrThrow, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursorOrThrow,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+  type KeysetCursor,
+} from '../../common/keyset-cursor';
 
 import type { ProviderActor } from './current-provider.decorator';
 
@@ -45,10 +51,9 @@ export class ProviderTenantsService {
     // a client error (400), no point opening a Provider session for it.
     // SA-11: `decodeCursorOrThrow` centralises the 4-line decode+throw
     // pattern that was duplicated across provider services.
-    let cursorDecoded: { createdAt: Date; id: string } | null = null;
+    let cursorDecoded: KeysetCursor | null = null;
     if (query.cursor) {
-      const dec = decodeCursorOrThrow(query.cursor);
-      cursorDecoded = { createdAt: new Date(dec.c), id: dec.i };
+      cursorDecoded = decodeCursorOrThrow(query.cursor);
     }
 
     // Fetch limit+1 so we can compute `has_more` without a second
@@ -88,16 +93,11 @@ export class ProviderTenantsService {
             AND o.archived_at IS NULL
         )`.as('owners_count');
 
-        // Cursor predicate: (createdAt < c) OR (createdAt = c AND id < i)
-        // — strict less-than to avoid re-emitting the cursor row.
+        // Cursor predicate via the shared ms-precise keyset helper (D.58) —
+        // compares + orders at millisecond precision so the ms cursor round-
+        // trips losslessly. Pairs with keysetOrderBy below.
         const cursorPred = cursorDecoded
-          ? or(
-              lt(organizations.createdAt, cursorDecoded.createdAt),
-              and(
-                eq(organizations.createdAt, cursorDecoded.createdAt),
-                lt(organizations.id, cursorDecoded.id),
-              ),
-            )
+          ? keysetCondition(organizations.createdAt, organizations.id, cursorDecoded)
           : undefined;
 
         // Optional name search. Escape LIKE wildcards (% _ \) so a query like
@@ -123,7 +123,7 @@ export class ProviderTenantsService {
           })
           .from(organizations)
           .where(wherePred)
-          .orderBy(desc(organizations.createdAt), desc(organizations.id))
+          .orderBy(...keysetOrderBy(organizations.createdAt, organizations.id))
           .limit(fetchLimit);
       },
       {

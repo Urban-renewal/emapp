@@ -16,10 +16,15 @@ import type {
   UpdateDiscoveryRecord,
 } from '@emapp/shared-types';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
+import { and, eq, isNull, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 export interface DiscoveryRecordListPage {
@@ -114,10 +119,7 @@ export class DiscoveryService {
       async (tx) => {
         await this.assertApartmentVisible(tx, user, apartmentId);
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(discoveryRecords.createdAt, new Date(cur.c)),
-              and(eq(discoveryRecords.createdAt, new Date(cur.c)), lt(discoveryRecords.id, cur.i)),
-            )
+          ? keysetCondition(discoveryRecords.createdAt, discoveryRecords.id, cur)
           : undefined;
         return tx
           .select()
@@ -129,7 +131,7 @@ export class DiscoveryService {
               keyset,
             ),
           )
-          .orderBy(desc(discoveryRecords.createdAt), desc(discoveryRecords.id))
+          .orderBy(...keysetOrderBy(discoveryRecords.createdAt, discoveryRecords.id))
           .limit(limit + 1);
       },
       { userId: user.sub },

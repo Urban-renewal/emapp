@@ -69,10 +69,15 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, sql, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import { JOB_PRODUCER } from '../../queue/queue.module';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { STORAGE_PROVIDER, UPLOAD_URL_TTL_SECONDS } from '../documents/storage';
@@ -305,7 +310,7 @@ export class ImportsService {
         }
 
         // Build the WHERE clauses progressively.
-        const filters: (ReturnType<typeof eq> | ReturnType<typeof and> | undefined)[] = [];
+        const filters: (SQL | undefined)[] = [];
         if (query.projectId) {
           filters.push(eq(importJobs.projectId, query.projectId));
         }
@@ -322,22 +327,18 @@ export class ImportsService {
               AND pa.unassigned_at IS NULL
               AND pa.project_id = ${importJobs.projectId}
           )`;
-          filters.push(viaAssignment as unknown as ReturnType<typeof eq>);
+          filters.push(viaAssignment);
         }
 
-        // Keyset: rows older than the cursor (created_at, id) tuple.
-        // Drizzle has no native row-value comparison; emit it as raw SQL
-        // for index-friendly ordering. Same trick as documents.list.
+        // Keyset: rows older than the cursor (created_at, id) tuple, compared
+        // at millisecond precision so the ms cursor round-trips losslessly
+        // (D.58, via the shared helper). Pairs with keysetOrderBy below.
         if (cur) {
-          filters.push(
-            sql`(${importJobs.createdAt}, ${importJobs.id}) < (${new Date(cur.c)}::timestamptz, ${cur.i}::uuid)` as unknown as ReturnType<
-              typeof eq
-            >,
-          );
+          filters.push(keysetCondition(importJobs.createdAt, importJobs.id, cur));
         }
 
         const where = filters.length
-          ? and(...(filters.filter(Boolean) as Parameters<typeof and>))
+          ? and(...filters.filter((f): f is SQL => f !== undefined))
           : undefined;
 
         // limit + 1 lookahead — if we get `limit + 1` rows, there's a
@@ -347,7 +348,7 @@ export class ImportsService {
           .select()
           .from(importJobs)
           .where(where)
-          .orderBy(desc(importJobs.createdAt), desc(importJobs.id))
+          .orderBy(...keysetOrderBy(importJobs.createdAt, importJobs.id))
           .limit(limit + 1);
       },
       { userId: user.sub },

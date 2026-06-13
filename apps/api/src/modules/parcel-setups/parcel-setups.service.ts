@@ -28,10 +28,15 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
+import { and, eq, isNull, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 import { PARCEL_DATA_PROVIDER } from './parcel-data-provider.factory';
@@ -460,16 +465,13 @@ export class ParcelSetupsService {
       async (tx) => {
         await this.assertProjectVisible(tx, user, projectId);
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(parcelSetups.createdAt, new Date(cur.c)),
-              and(eq(parcelSetups.createdAt, new Date(cur.c)), lt(parcelSetups.id, cur.i)),
-            )
+          ? keysetCondition(parcelSetups.createdAt, parcelSetups.id, cur)
           : undefined;
         return tx
           .select()
           .from(parcelSetups)
           .where(and(eq(parcelSetups.projectId, projectId), keyset))
-          .orderBy(desc(parcelSetups.createdAt), desc(parcelSetups.id))
+          .orderBy(...keysetOrderBy(parcelSetups.createdAt, parcelSetups.id))
           .limit(limit + 1);
       },
       { userId: user.sub },

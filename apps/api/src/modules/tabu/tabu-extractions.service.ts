@@ -36,13 +36,18 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
+import { and, asc, eq, isNull, type SQL } from 'drizzle-orm';
 
 import {
   requireAgentCapability,
   resolveOwnerPiiFidelity,
 } from '../../common/authz/agent-capabilities';
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import { getOrgSettings } from '../../common/org-settings.resolver';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { STORAGE_PROVIDER } from '../documents/storage';
@@ -269,16 +274,13 @@ export class TabuExtractionsService {
       async (tx) => {
         await this.assertApartmentVisible(tx, user, apartmentId);
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(tabuExtractions.createdAt, new Date(cur.c)),
-              and(eq(tabuExtractions.createdAt, new Date(cur.c)), lt(tabuExtractions.id, cur.i)),
-            )
+          ? keysetCondition(tabuExtractions.createdAt, tabuExtractions.id, cur)
           : undefined;
         return tx
           .select()
           .from(tabuExtractions)
           .where(and(eq(tabuExtractions.apartmentId, apartmentId), keyset))
-          .orderBy(desc(tabuExtractions.createdAt), desc(tabuExtractions.id))
+          .orderBy(...keysetOrderBy(tabuExtractions.createdAt, tabuExtractions.id))
           .limit(limit + 1);
       },
       { userId: user.sub },

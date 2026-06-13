@@ -8,9 +8,14 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, isNull, lt, or } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 export interface ContractorListPage {
@@ -66,15 +71,10 @@ export class ContractorsService {
           .where(
             and(
               isNull(contractors.archivedAt),
-              cur
-                ? or(
-                    lt(contractors.createdAt, new Date(cur.c)),
-                    and(eq(contractors.createdAt, new Date(cur.c)), lt(contractors.id, cur.i)),
-                  )
-                : undefined,
+              cur ? keysetCondition(contractors.createdAt, contractors.id, cur) : undefined,
             ),
           )
-          .orderBy(desc(contractors.createdAt), desc(contractors.id))
+          .orderBy(...keysetOrderBy(contractors.createdAt, contractors.id))
           .limit(limit + 1),
       { userId: user.sub },
     );

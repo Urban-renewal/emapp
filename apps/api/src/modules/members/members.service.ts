@@ -37,9 +37,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { and, desc, eq, inArray, isNotNull, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, ne, sql, type SQL } from 'drizzle-orm';
 
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import { getOrgSettings } from '../../common/org-settings.resolver';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { hashPassword } from '../auth/password';
@@ -332,10 +337,7 @@ export class MembersService {
       user.orgId,
       async (tx) => {
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(memberships.createdAt, new Date(cur.c)),
-              and(eq(memberships.createdAt, new Date(cur.c)), lt(memberships.id, cur.i)),
-            )
+          ? keysetCondition(memberships.createdAt, memberships.id, cur)
           : undefined;
         return tx
           .select({
@@ -354,7 +356,7 @@ export class MembersService {
           .from(memberships)
           .innerJoin(users, eq(users.id, memberships.userId))
           .where(keyset)
-          .orderBy(desc(memberships.createdAt), desc(memberships.id))
+          .orderBy(...keysetOrderBy(memberships.createdAt, memberships.id))
           .limit(limit + 1);
       },
       { userId: user.sub },

@@ -16,10 +16,15 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
+import { and, eq, isNull, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
@@ -126,16 +131,13 @@ export class ApartmentsService {
       async (tx) => {
         await this.assertBuildingVisible(tx, user, buildingId);
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(apartments.createdAt, new Date(cur.c)),
-              and(eq(apartments.createdAt, new Date(cur.c)), lt(apartments.id, cur.i)),
-            )
+          ? keysetCondition(apartments.createdAt, apartments.id, cur)
           : undefined;
         return tx
           .select()
           .from(apartments)
           .where(and(eq(apartments.buildingId, buildingId), isNull(apartments.archivedAt), keyset))
-          .orderBy(desc(apartments.createdAt), desc(apartments.id))
+          .orderBy(...keysetOrderBy(apartments.createdAt, apartments.id))
           .limit(limit + 1);
       },
       { userId: user.sub },

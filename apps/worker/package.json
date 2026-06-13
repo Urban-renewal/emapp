@@ -19,6 +19,7 @@
     "@emapp/jobs": "workspace:*",
     "@emapp/shared-types": "workspace:*",
     "@emapp/validators": "workspace:^",
+    "@sentry/node": "^8.0.0",
     "drizzle-orm": "^0.45.2",
     "exceljs": "^4.4.0",
     "pg-boss": "^10.1.5",

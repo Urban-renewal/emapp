@@ -323,6 +323,9 @@ importers:
       '@emapp/validators':
         specifier: workspace:^
         version: link:../../packages/validators
+      '@sentry/node':
+        specifier: ^8.0.0
+        version: 8.55.2
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.28.17)(pg@8.20.0)(postgres@3.4.9)
@@ -8276,7 +8279,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@20.19.41)(@vitest/coverage-v8@4.1.8)(@vitest/ui@4.1.8)(msw@2.14.6(@types/node@20.19.41)(typescript@5.9.3))(vite@6.4.3(@types/node@20.19.41)(jiti@2.6.1)(terser@5.47.1)(tsx@4.22.4)(yaml@2.9.0))
+      vitest: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@20.19.41)(@vitest/coverage-v8@4.1.8)(@vitest/ui@4.1.8)(msw@2.14.6(@types/node@20.19.41)(typescript@5.9.3))(vite@6.4.3(@types/node@20.19.41)(jiti@1.21.7)(terser@5.47.1)(tsx@4.22.4)(yaml@2.9.0))
 
   '@vitest/expect@4.1.8':
     dependencies:
@@ -8341,7 +8344,7 @@ snapshots:
       sirv: 3.0.2
       tinyglobby: 0.2.16
       tinyrainbow: 3.1.0
-      vitest: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@20.19.41)(@vitest/coverage-v8@4.1.8)(@vitest/ui@4.1.8)(msw@2.14.6(@types/node@20.19.41)(typescript@5.9.3))(vite@6.4.3(@types/node@20.19.41)(jiti@2.6.1)(terser@5.47.1)(tsx@4.22.4)(yaml@2.9.0))
+      vitest: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@20.19.41)(@vitest/coverage-v8@4.1.8)(@vitest/ui@4.1.8)(msw@2.14.6(@types/node@20.19.41)(typescript@5.9.3))(vite@6.4.3(@types/node@20.19.41)(jiti@1.21.7)(terser@5.47.1)(tsx@4.22.4)(yaml@2.9.0))
 
   '@vitest/utils@4.1.8':
     dependencies:

@@ -852,3 +852,15 @@ NOT overclaimed as "fixes M-1".
 Files: `packages/db/src/migrations/journal-integrity.ts` (new) · `test/journal-integrity.spec.ts`
 (new) · `scripts/migrate.ts` (preflight) · `test/migrator-guards.spec.ts` (+preflight teeth) ·
 `packages/db/CLAUDE.md` (enforcement note) · memory `project-migration-silent-skip-m1` updated.
+
+### ✅ CLOSED — journal-integrity guard MERGED `cc2e2cd` (#375). Unblocked by `7f3a695` (#376,
+
+esbuild >=0.28.1 override) — a newly-published high advisory on the vitest-toolchain
+dev-dep `esbuild <0.28.1` had started failing the required `pnpm audit --audit-level=high`
+gate on EVERY PR (diff-unrelated, repo-wide). Fixed in its own minimal PR following the
+repo's existing `pnpm.overrides` advisory-pin convention; toolchain re-verified (audit
+0-high · vitest 27/27 · api webpack build). The one `test` red on #375's first run was the
+documented `tabu-extraction-review` G1 cursor-walk keyset-pagination flake (parallel-row
+pollution, `expected +0 to be 1`) — NOT touched by the packages/db-only diff; did not
+recur on rerun. Both PRs green-CLEAN before merge. M-1 memory updated: static half DONE,
+runtime live-DB reconciliation (`findUnappliedMigrations` primitive ready) still owner-side.

@@ -864,3 +864,15 @@ documented `tabu-extraction-review` G1 cursor-walk keyset-pagination flake (para
 pollution, `expected +0 to be 1`) — NOT touched by the packages/db-only diff; did not
 recur on rerun. Both PRs green-CLEAN before merge. M-1 memory updated: static half DONE,
 runtime live-DB reconciliation (`findUnappliedMigrations` primitive ready) still owner-side.
+
+### 🔎 FINDING (deferred, scoped follow-up) — keyset pagination micros bug. While root-causing
+
+the `tabu-extraction-review` G1 flake I confirmed it's NOT mere parallel pollution: the shared
+`apps/api/src/common/keyset-cursor.ts` `encodeCursor` emits `createdAt.toISOString()`
+(millisecond) while every `created_at` column is `now()` (microsecond), so the keyset compares a
+full-precision column against a truncated cursor and SILENTLY DROPS any row sharing a millisecond
+with the page boundary. Affects ~18 paginated endpoints. Real but low real-world trigger (≥3 rows
+in one entity within 1 ms). Deferred — systemic + a precision-design choice; NOT cowboyed solo
+late in this burst. Full root cause + deterministic RED recipe + 2 candidate fixes recorded in
+memory `project_keyset_cursor_microsecond_bug`. Distinct from the provider-audit volume flake
+(don't conflate). Recommended next slice for an owner-scheduled session.

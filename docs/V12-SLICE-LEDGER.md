@@ -876,3 +876,22 @@ in one entity within 1 ms). Deferred — systemic + a precision-design choice; N
 late in this burst. Full root cause + deterministic RED recipe + 2 candidate fixes recorded in
 memory `project_keyset_cursor_microsecond_bug`. Distinct from the provider-audit volume flake
 (don't conflate). Recommended next slice for an owner-scheduled session.
+
+### ✅ LIVE BROWSER QA (owner-demanded, 2026-06-13) — documents + send-for-signature
+
+Closes the Slice-1 "⚠️ HONEST" BrowserQA gap (the live UI repro was deferred there). Walked
+as the manager (manager@alpha.dev) on a real dev server + as the signer:
+
+- **Documents:** list (26 real docs) · detail (הצג/הורד/ארכוב) · download GET /documents/:id/download → 200 (presign). ✅
+- **Send-for-signature (the owner-reported #2/#3 fixes), proven LIVE:**
+  - `/signature-requests/new` form (document + owner selects) renders.
+  - **#2 assignment-matrix:** POST with a NON-associated owner (שרה כהן-לוי → "הסכם דייר דירה 1")
+    → **409 `recipient_not_associated`** (correctly refused).
+  - **Happy path:** POST with the apartment's ACTUAL owner (047213fc, "דנה כהן") → **201** +
+    `{request, signUrl, delivery}`.
+  - **#3 dedup:** re-POST the same pair → **409 `signature_request_pending_exists`**.
+  - **Signing page:** loaded `/sign/<jwt>` → 200, renders FULLY: "שלום דנה כהן", the document,
+    the Israeli privacy notice, the signature pad ("חתום עם העכבר"), "שלח חתימה". Not bounced.
+- **No bugs found in these flows.** The owner-reported document/signature issues are confirmed
+  fixed and working end-to-end in the browser. (Also fixed this session: the forgot-password
+  bounce #377 — caught by exactly this kind of unauth live-walk.)

@@ -41,7 +41,18 @@ const PUBLIC_ROUTE_REGEX = new RegExp(
   // the token. Both stay in PUBLIC_ROUTE_REGEX (not AUTH_ROUTE_REGEX) so an
   // already-authenticated user is NOT bounced away (they may be helping reset
   // another account / following their own link with a stale session).
-  `^\\/[a-z]{2}\\/(login|signup|forgot-password|reset-password|provider\\/login|tenant\\/login|accept-invite\\/${JWT_SHAPE}|contractor\\/share(\\/${JWT_SHAPE})?)$`,
+  // The locale prefix is OPTIONAL — `(?:\/[a-z]{2})?`. The app navigates with
+  // LOCALE-LESS hrefs everywhere (the sidebar/auth pages use `<Link href="/x">`
+  // and rely on next-intl to 308-prefix the locale). For an UNAUTHENTICATED
+  // visitor that prefixing happens AFTER this middleware, so the auth gate sees
+  // the raw `/forgot-password` first; requiring a locale prefix here made the
+  // gate treat it as protected and bounce the visitor to /he/login — they could
+  // never reach the reset flow (same for /signup, /reset-password). Making the
+  // prefix optional lets the gate recognise the locale-less public form, skip
+  // the bounce, and defer to next-intl for prefixing. Protected paths (e.g.
+  // /projects) are unaffected — they are not in this allowlist, so a locale-less
+  // protected path still bounces to login in one hop (M8/M8e).
+  `^(?:\\/[a-z]{2})?\\/(login|signup|forgot-password|reset-password|provider\\/login|tenant\\/login|accept-invite\\/${JWT_SHAPE}|contractor\\/share(\\/${JWT_SHAPE})?)$`,
 );
 /**
  * Org-tier auth routes — bounce ANY user with `access_token` away.

@@ -28,8 +28,15 @@ Drizzle ORM schema, migrations, DB pools, and the tenant/provider access wrapper
 - `src/audit/audit.service.ts` — append-only `audit_log` writer.
 - `migrations/` — SQL migrations. Some are GENERATED (drizzle-kit), many are
   HAND-WRITTEN (e.g. 0016–0019: RLS/auth infra). Hand-written ones MUST get a
-  `meta/_journal.json` entry with a `when` greater than the previous max or
-  the migrator silently skips them.
+  `meta/_journal.json` entry with a `when` STRICTLY GREATER than the previous
+  max or the migrator silently skips them (it applies an entry only if its
+  `when` exceeds a single MAX(created_at) snapshot taken before the apply loop).
+  This is now ENFORCED: `src/migrations/journal-integrity.ts` (`checkJournalIntegrity`)
+  fails CI via `test/journal-integrity.spec.ts`, and `migrate.ts` runs it as
+  preflight #0 (`assertJournalIntegrity`) — a too-low `when` throws before any
+  db connection instead of silently vanishing. `findUnappliedMigrations` is the
+  pure primitive for the owner-side runtime drift check (live
+  `__drizzle_migrations` reconciliation; not yet wired at boot).
 - `test/global-setup.ts` — vitest globalSetup runs `migrate()` ONCE before
   workers (fixed the concurrent-migrate CI race; no per-migration scripts).
 - `drizzle.config.ts` — drizzle-kit config, reads `DATABASE_URL`.

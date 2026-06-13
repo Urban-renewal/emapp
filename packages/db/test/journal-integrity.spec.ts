@@ -4,7 +4,7 @@
  *
  *   1. LIVE assertion — the REAL `_journal.json` shipped in this repo is
  *      healthy (idx contiguous, tags unique, every .sql present, `when`
- *      strictly increasing modulo the one grandfathered historical inversion).
+ *      strictly increasing modulo the two grandfathered historical inversions).
  *      This is the guard that fails a PR which hand-authors a too-low `when`.
  *
  *   2. TEETH — synthetic journals that VIOLATE each invariant must produce the

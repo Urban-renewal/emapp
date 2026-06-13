@@ -818,3 +818,37 @@ DOC_ENCRYPTION_KEY (loss=unrecoverable; vault-backup) · Sentry alert rules/upti
 the mapi 669MB bulk load (loader ready) · Docker Desktop (unblocks the #363 perf verification) · the v7 R2
 credential rotation · legal/pen-test items. The loop HOLDS: acts immediately on owner input or on any of
 the above unblocking; one-line status otherwise.
+
+## 🛡️ POST-CLOSING HARDENING — journal-integrity guard (M-1 static half) · 2026-06-13
+
+Owner re-fired the loop ("תמשיך", model→Opus) → manager picked genuine non-owner-gated
+value over re-arming HOLD. Slice: the **migration silent-skip guard** (M-1 memory's
+"pre-prod CI guard" TODO), branch `feat/journal-integrity-guard`.
+
+**Root cause (verified from drizzle-orm 0.45 source, not assumed):** the node-postgres
+migrator (`pg-core/dialect.js migrate()`) takes a SINGLE `MAX(created_at)` snapshot
+before the apply loop and NEVER advances it in-loop — so on a db at watermark W, any
+journal entry with `when <= W` is silently skipped while `migrate.ts` logs success.
+This team hand-authors `_journal.json` entries (CLAUDE.md), making a too-low `when` an
+easy unguarded footgun.
+
+**Honest scope split:** the STATIC half (journal monotonicity + idx/file integrity) is
+now enforced; the RUNTIME half (M-1 proper = a shared dev DB whose watermark was lifted
+above an unmerged migration by sibling branches) needs the live `__drizzle_migrations`
+and stays owner-side — primitive `findUnappliedMigrations` shipped + unit-pinned for it.
+NOT overclaimed as "fixes M-1".
+
+| Gate            | Status | Evidence                                                                                                                                                                                                             |
+| --------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spec            | ✅     | this section + the M-1 memory                                                                                                                                                                                        |
+| Reproduce (RED) | ✅     | real-journal test was genuinely RED — surfaced an UNKNOWN 2nd inversion (idx 7 `0007_warm_owl`) my naive neighbor-scan missed; forced the correct running-max model + exact grandfather set                          |
+| Build           | ✅     | `checkJournalIntegrity` + `findUnappliedMigrations` (pure) + `assertJournalIntegrity` migrate.ts preflight #0                                                                                                        |
+| Indep tests     | ✅     | 26/26 (journal-integrity 13 + migrator-guards 13, incl. tmp-dir teeth); typecheck 0; lint 0                                                                                                                          |
+| Code-review     | ✅     | code-reviewer agent PASS — independently re-verified migrator semantics from node_modules, grandfather exactness against real data, teeth (a stub returning [] fails), edge cases. D.51 root-cause statement present |
+| Security        | N/A    | no auth/PII/RLS/external-input/migration-SQL surface; reads a checked-in JSON. Reviewer confirmed no PII leak in error strings, no plaster                                                                           |
+| Browser QA      | N/A    | pure db-package logic, nothing browser-observable                                                                                                                                                                    |
+| Process note    | —      | proportionality call: solo RED-first authorship + independent code-review (not a separate test-author agent) for a ~120-line static guard — recorded honestly                                                        |
+
+Files: `packages/db/src/migrations/journal-integrity.ts` (new) · `test/journal-integrity.spec.ts`
+(new) · `scripts/migrate.ts` (preflight) · `test/migrator-guards.spec.ts` (+preflight teeth) ·
+`packages/db/CLAUDE.md` (enforcement note) · memory `project-migration-silent-skip-m1` updated.

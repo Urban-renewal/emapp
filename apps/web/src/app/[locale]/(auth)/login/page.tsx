@@ -4,7 +4,7 @@ import { LoginSchema, type LoginDto } from '@emapp/shared-types';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 
@@ -39,6 +39,7 @@ const SIGNUP_ENABLED = process.env['NEXT_PUBLIC_SIGNUP_ENABLED'] === '1';
 export default function LoginPage() {
   const t = useTranslations('auth');
   const router = useRouter();
+  const locale = useLocale();
   const [serverError, setServerError] = useState<string | null>(null);
 
   const {
@@ -52,7 +53,11 @@ export default function LoginPage() {
     setServerError(null);
     const res = await apiClient.post<{ user: object }>('/auth/login', data);
     if (isOk(res)) {
-      router.push('/');
+      // PERF: navigate straight to the locale root (e.g. `/he`), not `/` — the
+      // latter bounces through a next-intl redirect that re-renders the (heavy,
+      // server-side) dashboard an extra time. `refresh()` re-fetches the RSC
+      // with the freshly-set auth cookie so the dashboard renders authenticated.
+      router.replace(`/${locale}`);
       router.refresh();
       return;
     }

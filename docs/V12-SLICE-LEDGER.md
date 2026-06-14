@@ -998,3 +998,10 @@ RLS ratchet to also catch namespace/barrel @emapp/db imports; H3 (larger, deferr
   Next <Link> nav → proved destination by loading it (memory feedback_browser_walk_as_human_not_fetch).
   **NEXT (UI priority): Performance — optimistic UI on mutations + parallelize sequential page fetches +
   skeletons, MEASURE before/after. Then demo-data cleanup (junk owners).**
+
+- **#388 (58b3cd8)** — **perf slice 1: optimistic mark-read**. Found the real cause: 0/21 FE mutations
+  were optimistic → every click waited for POST + refetch (mark-read measured ~900ms click→UI). Added
+  optimistic onMutate to mark-read + mark-all-read (pure tested transforms applyMarkRead/applyMarkAllRead,
+  rollback onError, reconcile onSettled). MEASURED live as manager: ~900ms → <50ms (flips before server
+  responds, no flicker-back). Green-gate: 4 transform tests + web 870/870 · code-review PASS · live-walked.
+  **NEXT: optimistic apartment status-change + archive (same pattern, MEASURE). Then demo-data cleanup.**

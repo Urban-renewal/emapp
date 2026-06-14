@@ -988,3 +988,13 @@ RLS ratchet to also catch namespace/barrel @emapp/db imports; H3 (larger, deferr
   → demo-data cleanup queued.
   **NEXT (UI priority): notifications wiring (deep-links + real events) → performance (optimistic UI +
   parallel fetches, measured) → demo-data cleanup.**
+
+- **#387 (85cb3f2)** — **notifications deep-links**. Notifications were event-generated + FE-rendered
+  but every emit passed link:null → dead text ("התראות לא עובדות"). Central notificationLink builder;
+  all 7 emit sites deep-link to the entity (document/apartment/note/task detail · project shares).
+  Ratchet spec fails on any future link:null. Green-gate: helper+ratchet green · code-review PASS · LIVE
+  human walk (agent triggered apartment_status_changed → manager notification rendered clickable 'פתח' →
+  apt-2 detail loaded showing the exact change). Preview-harness gap noted: preview_click doesn't fire
+  Next <Link> nav → proved destination by loading it (memory feedback_browser_walk_as_human_not_fetch).
+  **NEXT (UI priority): Performance — optimistic UI on mutations + parallelize sequential page fetches +
+  skeletons, MEASURE before/after. Then demo-data cleanup (junk owners).**

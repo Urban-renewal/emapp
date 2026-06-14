@@ -162,6 +162,17 @@ export const ListDocumentsQuery = z
     cursor: z.string().min(1).optional(),
     projectId: z.string().uuid().optional(),
     apartmentId: z.string().uuid().optional(),
+    /**
+     * `'true'` returns ARCHIVED documents (the default view filters them out, so
+     * archived docs would otherwise be invisible in the cockpit). Explicit
+     * 'true'|'false' enum — NOT z.coerce.boolean (which coerces the *string*
+     * 'false' to `true`). Inferred type is boolean.
+     */
+    archived: z
+      .enum(['true', 'false'])
+      .optional()
+      .default('false')
+      .transform((v) => v === 'true'),
   })
   .strict();
 export type ListDocumentsQueryDto = z.infer<typeof ListDocumentsQuery>;

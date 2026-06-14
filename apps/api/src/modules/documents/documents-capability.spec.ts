@@ -188,3 +188,47 @@ describe('D.46 — manage_documents agent enforcement', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
+
+// ---- show-archived view filter -------------------------------------------
+async function seedArchivedDoc(projectId: string | null): Promise<string> {
+  const c = await providerPool.connect();
+  try {
+    const r = await c.query<{ id: string }>(
+      `INSERT INTO documents (org_id, project_id, name, type, mime_type, size_bytes, r2_key, content_hash, uploaded_by, archived_at)
+       VALUES ($1, $2, 'arch.pdf', 'other', 'application/pdf', 100, $3, 'h', $4, now()) RETURNING id`,
+      [org.id, projectId, `org/${org.id}/doc/${randomUUID()}`, managerId],
+    );
+    return r.rows[0]!.id;
+  } finally {
+    c.release();
+  }
+}
+
+async function listDocIds(archived: boolean): Promise<Set<string>> {
+  const ids = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const page = await svc.list(manager(), { limit: 100, cursor, archived });
+    for (const d of page.data) ids.add(d.id);
+    cursor = page.page.cursor ?? undefined;
+  } while (cursor);
+  return ids;
+}
+
+describe('documents list — show-archived filter', () => {
+  it('default/active view returns active docs and EXCLUDES archived', async () => {
+    const active = await seedDoc(assignedProjectId);
+    const archived = await seedArchivedDoc(assignedProjectId);
+    const ids = await listDocIds(false);
+    expect(ids.has(active), 'active doc present in active view').toBe(true);
+    expect(ids.has(archived), 'archived doc NOT in active view').toBe(false);
+  }, 30_000);
+
+  it('archived view returns archived docs and EXCLUDES active', async () => {
+    const active = await seedDoc(assignedProjectId);
+    const archived = await seedArchivedDoc(assignedProjectId);
+    const ids = await listDocIds(true);
+    expect(ids.has(archived), 'archived doc present in archived view').toBe(true);
+    expect(ids.has(active), 'active doc NOT in archived view').toBe(false);
+  }, 30_000);
+});

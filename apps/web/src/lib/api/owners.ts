@@ -37,11 +37,13 @@ export interface OwnerListPage {
 }
 
 export async function listOwners(
-  query: { limit?: number; cursor?: string } = {},
+  query: { limit?: number; cursor?: string; archived?: boolean } = {},
 ): Promise<OwnerListPage> {
   const params = new URLSearchParams();
   if (query.limit !== undefined) params.set('limit', String(query.limit));
   if (query.cursor) params.set('cursor', query.cursor);
+  // Only send when true — the BE defaults to the active view.
+  if (query.archived) params.set('archived', 'true');
   const qs = params.toString();
   const res = await apiClient.getList<unknown>(`/owners${qs ? `?${qs}` : ''}`);
   if (!isList<unknown>(res)) throw new ApiClientError(res.error);

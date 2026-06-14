@@ -150,5 +150,16 @@ export type OwnerSearch = z.infer<typeof OwnerSearchInput>;
 export const ListOwnersQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   cursor: z.string().min(1).optional(),
+  /**
+   * `'true'` returns the ARCHIVED owners (the default view filters them out, so
+   * archived records would otherwise be invisible in the cockpit). Explicit
+   * 'true'|'false' enum — NOT z.coerce.boolean, which coerces the *string*
+   * 'false' to `true`. Inferred type is boolean.
+   */
+  archived: z
+    .enum(['true', 'false'])
+    .optional()
+    .default('false')
+    .transform((v) => v === 'true'),
 });
 export type ListOwnersQueryDto = z.infer<typeof ListOwnersQuery>;

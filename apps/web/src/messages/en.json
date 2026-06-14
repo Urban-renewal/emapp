@@ -630,7 +630,12 @@
       "apartments": "Apartments",
       "pendingSignatures": "Pending signatures",
       "actions": "Actions"
-    }
+    },
+    "tab": {
+      "active": "Active",
+      "archived": "Archived"
+    },
+    "emptyArchived": "No archived owners."
   },
   "documents": {
     "listTitle": "Documents",

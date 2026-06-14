@@ -1028,3 +1028,11 @@ Every owner complaint addressed, each via full green-gate + LIVE manager browser
   **Lessons banked to memory:** drizzle bare-"id" correlated-subquery gotcha; browser-walk = operate as a
   human not fetch (+ preview-harness fidelity gaps); changed response schema breaks populated e2e stubs.
   High-value prioritized UI work is DONE; remaining items are marginal — awaiting owner steer for next priority.
+
+- **#391 (623d30f)** — **owners show-archived view** (owner: 'תמשיך' → built my recommended option for the
+  archived-visibility gap). Soft-archived owners were invisible (list filters isNull(archived_at); badge
+  was dead code). Added GET /owners?archived=true (string-enum param, NOT z.coerce.boolean) + active/archived
+  toggle. Same masking/RLS/agent-scope/erased-exclusion. Green-gate: BE spec 6/6 (bidirectional) · code +
+  security review PASS · live-walked. CI CAUGHT a build/conformance FAILURE (new ?archived param drifted
+  the generated api-reference) → regenerated docs/09-api-reference.generated.md (lesson banked). Did NOT
+  merge on red. **NEXT: same show-archived for documents (identical gap); then awaiting owner steer.**

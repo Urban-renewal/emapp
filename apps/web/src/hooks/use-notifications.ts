@@ -13,6 +13,11 @@ import {
 import { useDisplayLocale } from '@/lib/locale';
 import type { NotificationViewModel } from '@/models/notification.vm';
 
+import { applyMarkAllRead, applyMarkRead } from './notifications-optimistic';
+
+/** Snapshot of every notifications-list cache entry, for optimistic rollback. */
+type NotificationCacheSnapshot = [readonly unknown[], NotificationListPage | undefined][];
+
 /**
  * Notifications data hooks.
  *
@@ -58,11 +63,31 @@ export function useNotificationBell() {
   return useNotificationList({ limit: BELL_LIMIT });
 }
 
+/**
+ * Mark-read with OPTIMISTIC UI: the row's unread state (and therefore the bell
+ * badge + the "unread" filter) flips the instant the user clicks — no wait for
+ * the server round-trip + refetch. `onMutate` snapshots every notifications
+ * cache, applies the flip, and `onError` restores the snapshot; `onSettled`
+ * reconciles with the server. cancelQueries first so an in-flight poll can't
+ * clobber the optimistic value (TanStack optimistic-update recipe).
+ */
 export function useMarkNotificationRead() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => markNotificationRead(id),
-    onSuccess: () => {
+    onMutate: async (id: string): Promise<{ prev: NotificationCacheSnapshot }> => {
+      await qc.cancelQueries({ queryKey: NOTIFICATIONS_KEY });
+      const prev = qc.getQueriesData<NotificationListPage>({ queryKey: NOTIFICATIONS_KEY });
+      const at = new Date();
+      qc.setQueriesData<NotificationListPage>({ queryKey: NOTIFICATIONS_KEY }, (old) =>
+        old ? applyMarkRead(old, id, at) : old,
+      );
+      return { prev };
+    },
+    onError: (_e, _id, ctx) => {
+      ctx?.prev.forEach(([key, data]) => qc.setQueryData(key, data));
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
     },
   });
@@ -72,7 +97,19 @@ export function useMarkAllNotificationsRead() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => markAllNotificationsRead(),
-    onSuccess: () => {
+    onMutate: async (): Promise<{ prev: NotificationCacheSnapshot }> => {
+      await qc.cancelQueries({ queryKey: NOTIFICATIONS_KEY });
+      const prev = qc.getQueriesData<NotificationListPage>({ queryKey: NOTIFICATIONS_KEY });
+      const at = new Date();
+      qc.setQueriesData<NotificationListPage>({ queryKey: NOTIFICATIONS_KEY }, (old) =>
+        old ? applyMarkAllRead(old, at) : old,
+      );
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      ctx?.prev.forEach(([key, data]) => qc.setQueryData(key, data));
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
     },
   });

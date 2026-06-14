@@ -21,7 +21,7 @@ import type { OwnerListItemViewModel } from '@/models/owner.vm';
 
 const OWNERS_KEY = ['owners'] as const;
 
-export function useOwnerList(query: { limit?: number; cursor?: string } = {}) {
+export function useOwnerList(query: { limit?: number; cursor?: string; archived?: boolean } = {}) {
   const locale = useDisplayLocale();
   const select = useCallback(
     (data: OwnerListPage) => ({

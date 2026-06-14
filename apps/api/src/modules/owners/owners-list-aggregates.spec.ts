@@ -382,3 +382,60 @@ describe('(b) agent project-scope on owners-list aggregates', () => {
     }
   }, 30_000);
 });
+
+// ---- (c) archived view filter (show-archived) ------------------------------
+// Seed an owner that is ALREADY soft-archived (archived_at set on insert), so
+// no extra drizzle `eq`/update plumbing is needed.
+async function seedArchivedOwner(orgId: string): Promise<string> {
+  return withTenant(orgId, async (tx) => {
+    const pii = await encryptOwnerPii(tx as never, {
+      nationalId: natId(),
+      name: 'ארכיון',
+      phone: '0541113333',
+    });
+    const [row] = await tx
+      .insert(owners)
+      .values({
+        orgId,
+        nameEncrypted: pii.nameEncrypted,
+        nameHash: pii.nameHash,
+        email: `arch-${randomUUID()}@test.local`,
+        nationalIdEncrypted: pii.nationalIdEncrypted,
+        nationalIdHash: pii.nationalIdHash,
+        phoneEncrypted: pii.phoneEncrypted,
+        phoneHash: pii.phoneHash,
+        archivedAt: new Date(),
+      })
+      .returning({ id: owners.id });
+    return row!.id;
+  });
+}
+
+async function listAllIds(user: AccessTokenPayload, archived: boolean): Promise<Set<string>> {
+  const ids = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const page = await ownersSvc.list(user, { limit: 100, cursor, archived });
+    for (const o of page.data) ids.add(o.id);
+    cursor = page.page.cursor ?? undefined;
+  } while (cursor);
+  return ids;
+}
+
+describe('(c) owners-list archived filter (show-archived view)', () => {
+  it('default/active view returns active owners and EXCLUDES archived', async () => {
+    const active = await seedOwner(org.id);
+    const archived = await seedArchivedOwner(org.id);
+    const ids = await listAllIds(manager(), false);
+    expect(ids.has(active), 'active owner present in active view').toBe(true);
+    expect(ids.has(archived), 'archived owner NOT in active view').toBe(false);
+  }, 30_000);
+
+  it('archived view returns archived owners and EXCLUDES active', async () => {
+    const active = await seedOwner(org.id);
+    const archived = await seedArchivedOwner(org.id);
+    const ids = await listAllIds(manager(), true);
+    expect(ids.has(archived), 'archived owner present in archived view').toBe(true);
+    expect(ids.has(active), 'active owner NOT in archived view').toBe(false);
+  }, 30_000);
+});

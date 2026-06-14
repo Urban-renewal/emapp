@@ -32,7 +32,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   requireAgentCapability,
@@ -292,13 +292,19 @@ export class OwnersService {
 
   async list(
     user: AccessTokenPayload,
-    query: { limit: number; cursor?: string },
+    query: { limit: number; cursor?: string; archived?: boolean },
   ): Promise<OwnerListPage> {
     const { limit } = query;
     const cur = query.cursor ? decodeCursor(query.cursor) : null;
     if (query.cursor && !cur) {
       throw new BadRequestException({ error: { code: 'invalid_cursor' } });
     }
+    // Default view = ACTIVE owners; `archived: true` returns the archived ones
+    // (so soft-archived records are reachable from the cockpit, not invisible).
+    // Erased (crypto-shredded) owners are excluded from BOTH views.
+    const archivedFilter = query.archived
+      ? isNotNull(owners.archivedAt)
+      : isNull(owners.archivedAt);
     const rows = await withTenant(
       user.orgId,
       async (tx) => {
@@ -312,7 +318,7 @@ export class OwnersService {
         return tx
           .select({ ...ownerCols, ...this.listAggregateCols(user) })
           .from(owners)
-          .where(and(isNull(owners.archivedAt), isNull(owners.erasedAt), scope, keyset))
+          .where(and(archivedFilter, isNull(owners.erasedAt), scope, keyset))
           .orderBy(...keysetOrderBy(owners.createdAt, owners.id))
           .limit(limit + 1);
       },

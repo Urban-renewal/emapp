@@ -14,10 +14,22 @@ export default function OwnersPage() {
   const t = useTranslations('owners');
   const tp = useTranslations('projects');
   const [cursor, setCursor] = useState<string | undefined>(undefined);
+  // Active (default) vs archived view — soft-archived owners are otherwise
+  // invisible in the cockpit. Switching resets pagination.
+  const [archived, setArchived] = useState(false);
   // IAM slice 5b — create CTA gated on `owners.create` (UX; BE is authoritative).
   const canCreate = useHasPermission('owners.create');
-  const { data, isLoading, isError, error, refetch } = useOwnerList({ limit: 25, cursor });
+  const { data, isLoading, isError, error, refetch } = useOwnerList({
+    limit: 25,
+    cursor,
+    archived,
+  });
   const items = data?.items ?? [];
+
+  const tabs: { key: boolean; label: string }[] = [
+    { key: false, label: t('tab.active') },
+    { key: true, label: t('tab.archived') },
+  ];
 
   return (
     <div className="space-y-6">
@@ -30,6 +42,33 @@ export default function OwnersPage() {
         )}
       </div>
 
+      {/* Active / archived view toggle — archived owners are reachable here. */}
+      <div className="flex gap-1.5" role="tablist" aria-label={t('listTitle')}>
+        {tabs.map((tab) => {
+          const active = archived === tab.key;
+          return (
+            <button
+              key={String(tab.key)}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => {
+                if (archived === tab.key) return;
+                setArchived(tab.key);
+                setCursor(undefined);
+              }}
+              className={
+                active
+                  ? 'rounded-full bg-foreground px-3 py-1 text-xs font-medium text-background'
+                  : 'rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted'
+              }
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
       <ListPageShell
         isLoading={isLoading}
         isError={isError}
@@ -38,7 +77,7 @@ export default function OwnersPage() {
         page={data?.page}
         cursor={cursor}
         loadFailedLabel={t('loadFailed')}
-        emptyLabel={t('empty')}
+        emptyLabel={archived ? t('emptyArchived') : t('empty')}
         accessDeniedTitle={tp('accessDeniedTitle')}
         accessDeniedBody={tp('accessDeniedBody')}
         retryLabel={tp('retry')}

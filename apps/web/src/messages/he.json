@@ -630,7 +630,12 @@
       "apartments": "דירות",
       "pendingSignatures": "חתימות ממתינות",
       "actions": "פעולות"
-    }
+    },
+    "tab": {
+      "active": "פעילים",
+      "archived": "בארכיון"
+    },
+    "emptyArchived": "אין בעלי דירות בארכיון."
   },
   "documents": {
     "listTitle": "מסמכים",

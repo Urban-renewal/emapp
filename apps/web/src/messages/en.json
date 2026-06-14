@@ -12,7 +12,7 @@
       "signaturesReceived": "Signatures received",
       "pending": "Pending",
       "placeholder": "—",
-      "comingSoon": "Summary values land in a dedicated slice"
+      "comingSoon": "Summary figures will appear here soon"
     },
     "action": {
       "newProject": "New project",
@@ -22,12 +22,12 @@
     "calendar": {
       "title": "This week",
       "empty": "No tasks this week",
-      "comingHint": "Full calendar wires up in A.S12 (Calendar + ICS)"
+      "comingHint": "A full weekly calendar view is on the way"
     },
     "conversations": {
       "title": "Recent conversations",
       "empty": "No conversations to show",
-      "comingHint": "Chat lands later (Phase 2)"
+      "comingHint": "Chat coming in a future update"
     },
     "agent": {
       "pageTitle": "My work",
@@ -206,8 +206,8 @@
     "noResults": "No results match the search",
     "viewCards": "Cards view",
     "viewTable": "Table view",
-    "dataPendingHint": "Extended values (block/parcel/units/signatures/agents) will appear once the API is enriched",
-    "headerHint": "Extended values (contractor/signatures/agents/units) will appear once the API is enriched",
+    "dataPendingHint": "Extended details — block/parcel, units, signatures, agents — will appear here soon",
+    "headerHint": "Extended details — contractor, signatures, agents, units — will appear here soon",
     "kpi": {
       "contractor": "Linked contractor",
       "signatures": "Signatures received",
@@ -217,12 +217,12 @@
     "export": {
       "excel": "Export to Excel",
       "pdf": "Export to PDF",
-      "comingSoon": "Coming soon — Phase 5",
-      "pdfComingSoon": "Coming soon — Phase 5 (B.S9)",
+      "comingSoon": "Coming soon",
+      "pdfComingSoon": "PDF export — coming soon",
       "downloading": "Exporting...",
       "downloaded": "Download complete",
       "failed": "Export failed. Please try again.",
-      "notReady": "Export endpoint not yet live — coming soon.",
+      "notReady": "Export is not yet available — coming soon.",
       "aria": "Export project to Excel"
     },
     "tab": {
@@ -335,7 +335,7 @@
     },
     "tasksTab": {
       "title": "Project tasks",
-      "hint": "Per-project tasks will wire up in A.S12 (Calendar + ICS). In the meantime — the global tasks list.",
+      "hint": "Per-project tasks are coming soon. In the meantime — the global tasks list.",
       "cta": "Open tasks list"
     },
     "wizard": {
@@ -614,7 +614,7 @@
     "actionSendDoc": "Send for signature",
     "actionAddNote": "Add note",
     "actionCreateTask": "Create task",
-    "actionsComingSoon": "Quick actions wire up once the API is enriched",
+    "actionsComingSoon": "Quick actions will be available here soon",
     "field": {
       "name": "Full name",
       "nationalId": "National ID (9 digits)",
@@ -668,7 +668,7 @@
     "noResults": "No results match the search",
     "viewCards": "Cards view",
     "viewTable": "Table view",
-    "dataPendingHint": "Advanced filters (by project/owner/signature status) will appear once the API is enriched",
+    "dataPendingHint": "Advanced filters — by project, owner, signature status — coming soon",
     "signaturesEntry": "Signature requests",
     "signaturesHint": "Signature requests on documents are managed on a separate page.",
     "column": {
@@ -906,7 +906,7 @@
     "pcNav": {
       "consoleTagline": "Platform Console",
       "envChip": "Production · prod-il-1",
-      "stubHint": "Coming soon — a BE slice is needed before this becomes usable.",
+      "stubHint": "Coming soon — this tab will be enabled later.",
       "group": {
         "overview": "Overview",
         "biz": "Business",
@@ -1275,7 +1275,7 @@
     "empty": "No additional members yet. Click \"Invite member\".",
     "noResults": "No members match your search.",
     "searchPlaceholder": "Search by name, email, or role…",
-    "dataPendingHint": "Per-member activity (assigned projects, weekly actions) will land in a later slice — the current view only renders fields the API already exposes.",
+    "dataPendingHint": "Per-member activity (assigned projects, weekly actions) is coming soon — for now only the available fields are shown.",
     "loadFailed": "Failed to load members",
     "notFound": "Member not found",
     "primary": "Org owner",
@@ -1366,7 +1366,7 @@
       "section": "My documents",
       "loadFailed": "Failed to load documents.",
       "empty": "No documents on your file yet.",
-      "downloadHint": "Direct download will ship in a separate slice. For now, ask the team for a copy."
+      "downloadHint": "Direct download is coming soon. For now, ask the team for a copy."
     },
     "signatures": {
       "section": "Signature requests",
@@ -1386,8 +1386,8 @@
   "settings": {
     "listTitle": "Settings",
     "subtitle": "Organization, team, integrations, and security",
-    "dataPendingHint": "Settings is scaffolding for now — the General tab is read-only (org + user). The other tabs (notification preferences, integrations, MFA & session management) need BE work and ship in later slices.",
-    "comingSoon": "Coming soon — a BE slice is needed before this becomes editable.",
+    "dataPendingHint": "The General tab shows your organization and user details (read-only). The other tabs — notification preferences, integrations, MFA & session management — are coming soon.",
+    "comingSoon": "Editing will be available in a future update.",
     "tab": {
       "general": "General",
       "team": "Team",
@@ -1403,7 +1403,7 @@
       "userName": "Signed-in user",
       "userEmail": "Email",
       "userRole": "Role",
-      "readOnlyHint": "Fields are read-only. Renaming the organization or editing the user profile will be enabled once the BE update endpoint lands."
+      "readOnlyHint": "Fields are read-only. Renaming the organization or editing the user profile will be available in a future update."
     },
     "team": {
       "section": "Team & permissions",
@@ -1507,7 +1507,7 @@
     },
     "security": {
       "section": "Security",
-      "description": "MFA enrollment, active sessions, and access log. We will wire this once /api/v1/sessions is added."
+      "description": "MFA enrollment, active sessions, and access log. Coming in a future update."
     }
   },
   "tasks": {

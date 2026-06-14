@@ -53,31 +53,26 @@ export async function ManagerHome() {
   const kpis: ReadonlyArray<{
     key: string;
     label: string;
-    tone: 'info' | 'success' | 'warning';
     value: string;
   }> = [
     {
       key: 'activeProjects',
       label: t('kpi.activeProjects'),
-      tone: 'info',
       value: fmt(stats?.activeProjects),
     },
     {
       key: 'residents',
       label: t('kpi.residents'),
-      tone: 'info',
       value: fmt(stats?.residents),
     },
     {
       key: 'signaturesReceived',
       label: t('kpi.signaturesReceived'),
-      tone: 'success',
       value: fmt(stats?.signaturesReceived),
     },
     {
       key: 'pending',
       label: t('kpi.pending'),
-      tone: 'warning',
       value: fmt(stats?.signaturesPending),
     },
   ];
@@ -101,14 +96,8 @@ export async function ManagerHome() {
             <div className="mb-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
               {kpi.label}
             </div>
-            <div className="flex items-baseline gap-2">
-              <div className="text-2xl font-bold tabular" style={{ color: 'var(--text)' }}>
-                {kpi.value}
-              </div>
-              <span className={`badge badge-${kpi.tone}`}>
-                <span className="badge-dot" aria-hidden="true" />
-                <span>{kpi.value}</span>
-              </span>
+            <div className="text-2xl font-bold tabular" style={{ color: 'var(--text)' }}>
+              {kpi.value}
             </div>
           </div>
         ))}

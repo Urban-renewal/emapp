@@ -968,3 +968,23 @@ dedup'd to one tested impl; API filter gains fail-closed (strict improvement). 5
 authenticated → catches a forgotten @UseGuards as a BUILD failure, mirrors the RLS ratchet); H2 harden the
 RLS ratchet to also catch namespace/barrel @emapp/db imports; H3 (larger, deferred) the global default-deny
 @Public()-aware guard (security-model change — careful/owner-aware). This slice = H1.
+
+### ✅ UI-PRIORITY WAVE (owner: UI quality is #1) — 2026-06-14
+
+- **#385 (98b0e69)** — signature recipient scoped to the document's apartment owners; owner-select
+  disabled until a document is picked (wrong recipient impossible). e2e j4 updated to the new contract.
+- **#386 (5546ad9)** — **owners dense management table**. List was a bare name-roster; now an actionable
+  table: name · masked identity · apartments owned · pending signatures · view. BE enriches GET /owners
+  with apartmentCount + pendingSignatureCount via correlated subqueries (one round-trip, keyset intact),
+  AGENT-SCOPED (no cross-project count leak). Additive OwnerListItemSchema. Full green-gate: indep RED
+  spec 4/4 · security-review PASS (tenant-isolation + agent-scope) · code-review PASS · LIVE manager
+  browser walk (real counts render; דנה כהן = 2 apts / 1 pending). Two regressions CAUGHT BY e2e + branch
+  protection (owners-list parse broke j4 + j2e populated stubs) → fixed the stubs (MSW sample + e2e) →
+  re-verified green. Bug surfaced + saved to memory: drizzle ${owners.id} renders bare "id" in a raw
+  select-subquery → silent count 0 (use literal owners.id).
+- **Browser-walk discipline reset** — owner called out that prior "walks" used fetch/eval shortcuts.
+  Operated the real UI as the manager (click/type), proving the protocol. Memory:
+  feedback_browser_walk_as_human_not_fetch. Surfaced demo-data junk owners (אבי gpe.exe, audit-owner-\*)
+  → demo-data cleanup queued.
+  **NEXT (UI priority): notifications wiring (deep-links + real events) → performance (optimistic UI +
+  parallel fetches, measured) → demo-data cleanup.**

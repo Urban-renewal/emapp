@@ -26,6 +26,7 @@ import {
   keysetOrderBy,
 } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { notificationLink } from '../notifications/notification-links';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
@@ -318,7 +319,7 @@ export class ApartmentsService {
           type: 'apartment_status_changed',
           title: 'סטטוס דירה עודכן',
           body: `דירה ${apartment.number} → ${toStatus}`,
-          link: null,
+          link: notificationLink.apartment(apartment.id),
           metadata: {
             apartmentId: apartment.id,
             fromStatus,

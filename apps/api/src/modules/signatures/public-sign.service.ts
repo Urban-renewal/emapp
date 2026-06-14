@@ -35,6 +35,7 @@ import {
   safeDownloadFilename,
 } from '../documents/storage';
 import { EMAIL_PROVIDER } from '../members/invite-email';
+import { notificationLink } from '../notifications/notification-links';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
 import { notifyAfterSign } from './signature-link-delivery';
@@ -529,7 +530,7 @@ export class PublicSignService {
           type: 'signature_received',
           title: 'התקבלה חתימה',
           body: `המסמך "${result.notify.documentName}" נחתם.`,
-          link: null,
+          link: notificationLink.document(result.documentId),
           metadata: { documentId: result.documentId, ownerId: result.ownerId },
         });
       }

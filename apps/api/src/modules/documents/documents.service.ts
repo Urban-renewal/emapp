@@ -49,6 +49,7 @@ import {
 } from '../../common/keyset-cursor';
 import { getOrgSettings } from '../../common/org-settings.resolver';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { notificationLink } from '../notifications/notification-links';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
@@ -483,7 +484,7 @@ export class DocumentsService {
           type: 'document_uploaded',
           title: 'מסמך חדש בפרויקט',
           body: `המסמך "${row.name}" הועלה.`,
-          link: null,
+          link: notificationLink.document(row.id),
           metadata: { documentId: row.id },
         });
       } catch (e) {

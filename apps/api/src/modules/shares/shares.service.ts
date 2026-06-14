@@ -28,6 +28,7 @@ import {
 } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { ShareTokenService } from '../contractor-portal/share-token.service';
+import { notificationLink } from '../notifications/notification-links';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
@@ -364,7 +365,7 @@ export class SharesService {
           type: 'share_revoked',
           title: 'גישת קבלן בוטלה',
           body: `הרשאת ${notifyContractorName} בוטלה.`,
-          link: null,
+          link: notifyProjectId ? notificationLink.projectShares(notifyProjectId) : null,
           metadata: { shareId: id, projectId: notifyProjectId },
         });
       } catch (e) {

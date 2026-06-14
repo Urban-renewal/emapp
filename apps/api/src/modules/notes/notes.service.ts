@@ -26,6 +26,7 @@ import {
   keysetOrderBy,
 } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { notificationLink } from '../notifications/notification-links';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
@@ -273,7 +274,7 @@ export class NotesService {
           type: 'note_added',
           title: 'הערה חדשה נוספה',
           body: 'נוספה הערה חדשה.',
-          link: null,
+          link: notificationLink.note(note.id),
           metadata: { noteId: note.id },
         });
       } catch (e) {

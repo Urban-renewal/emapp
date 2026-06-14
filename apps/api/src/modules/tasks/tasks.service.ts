@@ -29,6 +29,7 @@ import {
 } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CalendarEmailService } from '../calendar-email/calendar-email.service';
+import { notificationLink } from '../notifications/notification-links';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
@@ -409,7 +410,7 @@ export class TasksService {
           type: 'task_assigned',
           title: 'הוקצתה לך משימה',
           body: `המשימה "${created.title}" הוקצתה לך.`,
-          link: null,
+          link: notificationLink.task(created.id),
           metadata: { taskId: created.id },
         });
       } catch {
@@ -697,7 +698,7 @@ export class TasksService {
           type: 'task_assigned',
           title: 'הוקצתה לך משימה',
           body: `המשימה "${result.taskTitle}" הוקצתה לך.`,
-          link: null,
+          link: notificationLink.task(taskId),
           metadata: { taskId },
         });
       } catch {

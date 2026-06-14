@@ -84,6 +84,11 @@ const MOCK_OWNER = {
   createdAt: '2026-05-01T00:00:00.000Z',
   updatedAt: '2026-05-01T00:00:00.000Z',
   archivedAt: null,
+  // OwnerListItem aggregates — the owners-list parse (OwnerListItemSchema)
+  // now requires these; without them the list query throws and the
+  // signature page's owner select never enables.
+  apartmentCount: 1,
+  pendingSignatureCount: 0,
 } as const;
 
 test.describe('§E-J4 — Signature lifecycle (create + display signUrl)', () => {

@@ -122,6 +122,10 @@ test.describe('§E-J2e — Ownerships set-replace (D.25 sum=100)', () => {
               createdAt: now,
               updatedAt: now,
               archivedAt: null,
+              // OwnerListItem aggregates — required by the owners-list parse
+              // (OwnerListItemSchema); without them the list query throws.
+              apartmentCount: 0,
+              pendingSignatureCount: 0,
             },
           ],
           page: { limit: 100, cursor: null, has_more: false },

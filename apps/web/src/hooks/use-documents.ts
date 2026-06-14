@@ -26,6 +26,7 @@ export function useDocumentList(
     cursor?: string;
     projectId?: string;
     apartmentId?: string;
+    archived?: boolean;
   } = {},
 ) {
   const locale = useDisplayLocale();

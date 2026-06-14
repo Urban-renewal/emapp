@@ -38,7 +38,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, eq, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import {
@@ -1136,7 +1136,13 @@ export class DocumentsService {
 
   async list(
     user: AccessTokenPayload,
-    query: { limit: number; cursor?: string; projectId?: string; apartmentId?: string },
+    query: {
+      limit: number;
+      cursor?: string;
+      projectId?: string;
+      apartmentId?: string;
+      archived?: boolean;
+    },
   ): Promise<DocumentListPage> {
     const { limit } = query;
     const cur = query.cursor ? decodeCursor(query.cursor) : null;
@@ -1150,7 +1156,11 @@ export class DocumentsService {
         if (query.projectId) await this.assertProjectVisible(tx, user, query.projectId);
         if (query.apartmentId) await this.assertApartmentVisible(tx, user, query.apartmentId);
 
-        const filters: (SQL | undefined)[] = [isNull(documents.archivedAt)];
+        // Default view = ACTIVE docs; `archived: true` returns the archived ones
+        // (otherwise soft-archived docs are unreachable from the cockpit).
+        const filters: (SQL | undefined)[] = [
+          query.archived ? isNotNull(documents.archivedAt) : isNull(documents.archivedAt),
+        ];
         if (query.projectId) filters.push(eq(documents.projectId, query.projectId));
         if (query.apartmentId) filters.push(eq(documents.apartmentId, query.apartmentId));
 

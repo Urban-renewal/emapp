@@ -45,9 +45,12 @@ export default function DocumentsPage() {
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [view, setView] = useState<'cards' | 'table'>('cards');
   const [query, setQuery] = useState('');
+  // Active (default) vs archived view — soft-archived docs are otherwise
+  // invisible in the cockpit. Switching resets pagination.
+  const [archived, setArchived] = useState(false);
   // IAM slice 5b — "upload" CTA (creates a document) gated on `documents.create`.
   const canCreate = useHasPermission('documents.create');
-  const { data, isLoading, isError, refetch } = useDocumentList({ limit: 25, cursor });
+  const { data, isLoading, isError, refetch } = useDocumentList({ limit: 25, cursor, archived });
 
   const items = useMemo(() => data?.items ?? [], [data?.items]);
   const page = data?.page;
@@ -146,6 +149,38 @@ export default function DocumentsPage() {
           >
             <ListIcon className="h-[15px] w-[15px]" aria-hidden="true" />
           </button>
+        </div>
+
+        {/* Active / archived view toggle — archived docs are reachable here. */}
+        <div role="tablist" aria-label={t('listTitle')} className="flex gap-1.5">
+          {[
+            { key: false, label: t('tab.active') },
+            { key: true, label: t('tab.archived') },
+          ].map((tab) => {
+            const isActive = archived === tab.key;
+            return (
+              <button
+                key={String(tab.key)}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => {
+                  if (archived === tab.key) return;
+                  setArchived(tab.key);
+                  setCursor(undefined);
+                }}
+                className="rounded-full px-3 py-1 text-xs font-medium transition-colors"
+                style={{
+                  background: isActive ? 'var(--text)' : 'var(--bg-surface)',
+                  color: isActive ? 'var(--bg-surface)' : 'var(--text-muted)',
+                  border: isActive ? 'none' : '1px solid var(--border)',
+                  cursor: 'pointer',
+                }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
 
         <Link href="/signature-requests" className="btn btn-secondary" title={t('signaturesHint')}>

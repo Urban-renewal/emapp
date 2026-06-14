@@ -800,6 +800,7 @@ _(no body)_
 | field | type | required | constraints |
 |---|---|---|---|
 | `apartmentId` | string | no | format="uuid" |
+| `archived` | string | no | enum=["true","false"] |
 | `cursor` | string | no | minLength=1 |
 | `limit` | integer | no | minimum=1, maximum=100 |
 | `projectId` | string | no | format="uuid" |

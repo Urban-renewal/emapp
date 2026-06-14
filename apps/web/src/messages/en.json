@@ -681,7 +681,11 @@
       "type": "Type",
       "file": "File"
     },
-    "notSensitive": "This document is not marked sensitive — use the standard upload"
+    "notSensitive": "This document is not marked sensitive — use the standard upload",
+    "tab": {
+      "active": "Active",
+      "archived": "Archived"
+    }
   },
   "ownerships": {
     "title": "Ownership shares",

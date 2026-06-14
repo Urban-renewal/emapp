@@ -29,7 +29,6 @@ import {
   type DocumentType,
   type DocumentUploadResponse,
   type FinalizeDocument,
-  type ListDocumentsQueryDto,
 } from '@emapp/shared-types';
 import { z } from 'zod';
 
@@ -56,12 +55,22 @@ export interface DocumentListPage {
   page: { limit: number; cursor: string | null; has_more: boolean };
 }
 
-export async function listDocuments(query: ListDocumentsQueryDto): Promise<DocumentListPage> {
+export async function listDocuments(
+  query: {
+    limit?: number;
+    cursor?: string;
+    projectId?: string;
+    apartmentId?: string;
+    archived?: boolean;
+  } = {},
+): Promise<DocumentListPage> {
   const params = new URLSearchParams();
   if (query.limit !== undefined) params.set('limit', String(query.limit));
   if (query.cursor) params.set('cursor', query.cursor);
   if (query.projectId) params.set('projectId', query.projectId);
   if (query.apartmentId) params.set('apartmentId', query.apartmentId);
+  // Only send when true — the BE defaults to the active view.
+  if (query.archived) params.set('archived', 'true');
   const qs = params.toString();
   const res = await apiClient.getList<unknown>(`/documents${qs ? `?${qs}` : ''}`);
   if (!isList<unknown>(res)) throw new ApiClientError(res.error);

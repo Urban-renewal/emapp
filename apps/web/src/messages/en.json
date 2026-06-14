@@ -842,8 +842,12 @@
       "signedAt": "Signed at",
       "cancelledAt": "Cancelled at",
       "documentId": "Document ID",
-      "ownerId": "Owner ID"
-    }
+      "ownerId": "Owner ID",
+      "ownerNeedsDocument": "Pick a document first",
+      "unnamedOwner": "Unnamed",
+      "noApartmentOwners": "No owners are registered for this document's apartment."
+    },
+    "recipientNotAssociated": "The selected owner isn't registered on the document's apartment. Pick an owner of that apartment."
   },
   "sign": {
     "loading": "Loading...",

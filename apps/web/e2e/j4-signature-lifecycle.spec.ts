@@ -200,10 +200,14 @@ test.describe('§E-J4 — Signature lifecycle (create + display signUrl)', () =>
     const docSelect = page.locator('select#document');
     const ownerSelect = page.locator('select#owner');
     await expect(docSelect).toBeEnabled({ timeout: 10_000 });
-    await expect(ownerSelect).toBeEnabled({ timeout: 10_000 });
+    // The recipient dropdown is scoped to the chosen document's apartment
+    // owners, so it stays DISABLED until a document is picked (a wrong
+    // recipient is impossible). Picking the document enables it.
+    await expect(ownerSelect).toBeDisabled();
 
-    // §AXIS-T — pick the document + owner, submit.
+    // §AXIS-T — pick the document → the owner select enables → pick owner, submit.
     await docSelect.selectOption(DOC_ID);
+    await expect(ownerSelect).toBeEnabled({ timeout: 10_000 });
     await ownerSelect.selectOption(OWNER_ID);
 
     await Promise.all([

@@ -842,8 +842,12 @@
       "signedAt": "נחתם",
       "cancelledAt": "בוטל",
       "documentId": "מזהה מסמך",
-      "ownerId": "מזהה בעל דירה"
-    }
+      "ownerId": "מזהה בעל דירה",
+      "ownerNeedsDocument": "בחרו מסמך תחילה",
+      "unnamedOwner": "ללא שם",
+      "noApartmentOwners": "אין בעלי דירות רשומים לדירה של מסמך זה."
+    },
+    "recipientNotAssociated": "בעל הדירה שנבחר אינו רשום כבעלים של הדירה שבמסמך. בחרו בעל דירה של אותה דירה."
   },
   "sign": {
     "loading": "טוען...",

@@ -1010,3 +1010,21 @@ RLS ratchet to also catch namespace/barrel @emapp/db imports; H3 (larger, deferr
   click→UI). Optimistic onMutate patches status + statusChangedAt in BOTH cache shapes (detail record +
   building list page) via a pure shape-aware transform ('items' in data discriminant). MEASURED live:
   ~1020ms → ~37ms. Green-gate: 5 transform tests · web 875/875 · code-review PASS · live-walked.
+
+- **#390 (b9c40b8)** — **demo-data hygiene**. Audit e2e specs created owners against the real dev
+  backend with no cleanup → audit-owner-<ts> + bidi-spoof (.exe) junk accumulated. Shipped a dry-run-safe
+  archive-junk-owners.ts tool (soft/reversible via the audited endpoint; dry-run: 2 junk/47 active, 0 false
+  positives; --apply OWNER-GATED — classifier correctly blocks autonomous mass data change) + layer2
+  afterAll that archives the owners it creates each run.
+
+### 🏁 UI-QUALITY WAVE COMPLETE (owner: "UI quality is #1") — 2026-06-14
+
+Every owner complaint addressed, each via full green-gate + LIVE manager browser walk:
+
+- #384 documents open · #385 signature recipient scoped · #386 owners dense table · #387 notifications
+  deep-linked · #388 optimistic mark-read (~900ms→<50ms) · #389 optimistic apt-status (~1020ms→~37ms) ·
+  #390 demo-data cleanup tool + recurrence fix.
+  **Owner-gated remaining:** run archive-junk-owners.ts --apply to clear the 2 named junk owners.
+  **Lessons banked to memory:** drizzle bare-"id" correlated-subquery gotcha; browser-walk = operate as a
+  human not fetch (+ preview-harness fidelity gaps); changed response schema breaks populated e2e stubs.
+  High-value prioritized UI work is DONE; remaining items are marginal — awaiting owner steer for next priority.

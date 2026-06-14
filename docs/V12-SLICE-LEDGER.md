@@ -1005,3 +1005,8 @@ RLS ratchet to also catch namespace/barrel @emapp/db imports; H3 (larger, deferr
   rollback onError, reconcile onSettled). MEASURED live as manager: ~900ms → <50ms (flips before server
   responds, no flicker-back). Green-gate: 4 transform tests + web 870/870 · code-review PASS · live-walked.
   **NEXT: optimistic apartment status-change + archive (same pattern, MEASURE). Then demo-data cleanup.**
+
+- **#389 (4b8ce21)** — **perf slice 2: optimistic apartment status-change**. Was invalidate-only (~1020ms
+  click→UI). Optimistic onMutate patches status + statusChangedAt in BOTH cache shapes (detail record +
+  building list page) via a pure shape-aware transform ('items' in data discriminant). MEASURED live:
+  ~1020ms → ~37ms. Green-gate: 5 transform tests · web 875/875 · code-review PASS · live-walked.

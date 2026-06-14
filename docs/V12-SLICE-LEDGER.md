@@ -1042,3 +1042,12 @@ Every owner complaint addressed, each via full green-gate + LIVE manager browser
   fail this time). Green-gate: BE spec 9/9 (bidirectional) · code + security review PASS · live-walked.
   **Archived-visibility gap now CLOSED on both owners + documents lists.** Awaiting owner consent to archive
   the 2 named junk owners; otherwise high-value queue is empty.
+
+- **#393 (merged)** — **perf: post-login server render**. Owner pushed me to analyze login from a REAL
+  browser click (not API/curl) — the waterfall revealed the bottleneck is the post-login server-side
+  dashboard render firing 3× at ~4.3s, NOT the login POST. Two real fixes: (a) getMe() request-memoized
+  with React cache() (it was called 2+× per render, each a /me round-trip); (b) login navigates straight
+  to /${locale} instead of / (skips the next-intl redirect's extra heavy render). MEASURED live: ~7s → ~5s
+  (render 4.3s→3.0s, renders 3→2). Remainder = remote-Neon round-trip jitter (dev) + Next dev-mode RSC
+  overhead — both absent in prod; fixes help prod too. LESSON: measure the real browser waterfall, not the
+  API in isolation — API-only measurement hid the duplicate-getMe + redirect-render cost.

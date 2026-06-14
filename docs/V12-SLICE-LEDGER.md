@@ -1036,3 +1036,9 @@ Every owner complaint addressed, each via full green-gate + LIVE manager browser
   security review PASS · live-walked. CI CAUGHT a build/conformance FAILURE (new ?archived param drifted
   the generated api-reference) → regenerated docs/09-api-reference.generated.md (lesson banked). Did NOT
   merge on red. **NEXT: same show-archived for documents (identical gap); then awaiting owner steer.**
+
+- **#392 (merged)** — **documents show-archived view** (mirror of #391 for documents; owner 'תמשיך'). Same
+  active/archived toggle + GET /documents?archived=true; api-docs regenerated upfront (no build/conformance
+  fail this time). Green-gate: BE spec 9/9 (bidirectional) · code + security review PASS · live-walked.
+  **Archived-visibility gap now CLOSED on both owners + documents lists.** Awaiting owner consent to archive
+  the 2 named junk owners; otherwise high-value queue is empty.

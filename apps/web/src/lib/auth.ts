@@ -2,6 +2,7 @@
 
 import { UserProfileSchema, type UserProfile } from '@emapp/shared-types';
 import { cookies, headers } from 'next/headers';
+import { cache } from 'react';
 
 export type { UserProfile };
 
@@ -19,7 +20,18 @@ export type { UserProfile };
  * on top of Cloudflare Pages' Host normalization — a future CF
  * misconfiguration cannot weaponize the Server Action.
  */
-export async function getMe(): Promise<UserProfile | null> {
+/**
+ * PERF (2026-06-14): request-memoized with React `cache()`. A single dashboard
+ * render calls getMe() from MULTIPLE server components (the (dashboard) layout
+ * AND the page, plus provider layout) — without memoization each call was a
+ * full `/me` round-trip to the API → DB, serially. A live login walk measured
+ * the post-login server render at ~4.3s, dominated by these duplicate `/me`s.
+ * `cache()` dedupes to ONE fetch per request (its scope is request-local in
+ * RSC, so there is no cross-request/cross-user leakage). The exported `getMe`
+ * stays a valid Server Action (async export from a 'use server' module);
+ * `getMeCached` is the module-private memoized implementation it delegates to.
+ */
+const getMeCached = cache(async (): Promise<UserProfile | null> => {
   const cookieStore = await cookies();
   const accessToken = cookieStore.get('access_token')?.value;
   if (!accessToken) return null;
@@ -42,6 +54,10 @@ export async function getMe(): Promise<UserProfile | null> {
   } catch {
     return null;
   }
+});
+
+export async function getMe(): Promise<UserProfile | null> {
+  return getMeCached();
 }
 
 /**

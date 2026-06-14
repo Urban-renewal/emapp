@@ -622,6 +622,14 @@
       "email": "אימייל",
       "notes": "הערות",
       "idExists": "ת.ז. זו כבר רשומה בארגון"
+    },
+    "view": "צפייה",
+    "col": {
+      "name": "בעל דירה",
+      "identity": "זיהוי",
+      "apartments": "דירות",
+      "pendingSignatures": "חתימות ממתינות",
+      "actions": "פעולות"
     }
   },
   "documents": {

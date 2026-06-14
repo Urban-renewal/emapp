@@ -622,6 +622,14 @@
       "email": "Email",
       "notes": "Notes",
       "idExists": "This national ID is already registered in the organization"
+    },
+    "view": "View",
+    "col": {
+      "name": "Owner",
+      "identity": "Identity",
+      "apartments": "Apartments",
+      "pendingSignatures": "Pending signatures",
+      "actions": "Actions"
     }
   },
   "documents": {

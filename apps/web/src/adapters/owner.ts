@@ -1,8 +1,8 @@
-import type { Owner } from '@emapp/shared-types';
+import type { Owner, OwnerListItem } from '@emapp/shared-types';
 
 import { stripBidiOverrides } from '@/lib/bidi';
 import { formatRelative } from '@/lib/format';
-import type { OwnerViewModel } from '@/models/owner.vm';
+import type { OwnerListItemViewModel, OwnerViewModel } from '@/models/owner.vm';
 
 /**
  * Wire → ViewModel adapter for Owner. Masking happens server-side; this
@@ -40,4 +40,23 @@ export function toOwnerViewModel(o: Owner, locale: 'he' | 'en' = 'he'): OwnerVie
 
 export function toOwnerViewModels(items: Owner[], locale: 'he' | 'en' = 'he'): OwnerViewModel[] {
   return items.map((o) => toOwnerViewModel(o, locale));
+}
+
+/** List-row adapter — the detail VM plus the two list-only count aggregates. */
+export function toOwnerListItemViewModel(
+  o: OwnerListItem,
+  locale: 'he' | 'en' = 'he',
+): OwnerListItemViewModel {
+  return {
+    ...toOwnerViewModel(o, locale),
+    apartmentCount: o.apartmentCount,
+    pendingSignatureCount: o.pendingSignatureCount,
+  };
+}
+
+export function toOwnerListItemViewModels(
+  items: OwnerListItem[],
+  locale: 'he' | 'en' = 'he',
+): OwnerListItemViewModel[] {
+  return items.map((o) => toOwnerListItemViewModel(o, locale));
 }

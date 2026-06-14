@@ -10,11 +10,13 @@
  *  - The client never URL-encodes a national_id or phone anywhere.
  */
 import {
+  OwnerListItemSchema,
   OwnerPiiRevealSchema,
   OwnerProjectSummarySchema,
   OwnerSchema,
   type CreateOwner,
   type Owner,
+  type OwnerListItem,
   type OwnerPiiReveal,
   type OwnerProjectSummary,
   type OwnerSearch,
@@ -30,7 +32,7 @@ const OwnerDataSchema = z.object({ data: OwnerSchema });
 const OwnerPiiRevealDataSchema = z.object({ data: OwnerPiiRevealSchema });
 
 export interface OwnerListPage {
-  items: Owner[];
+  items: OwnerListItem[];
   page: { limit: number; cursor: string | null; has_more: boolean };
 }
 
@@ -43,7 +45,7 @@ export async function listOwners(
   const qs = params.toString();
   const res = await apiClient.getList<unknown>(`/owners${qs ? `?${qs}` : ''}`);
   if (!isList<unknown>(res)) throw new ApiClientError(res.error);
-  const items = z.array(OwnerSchema).parse(res.data);
+  const items = z.array(OwnerListItemSchema).parse(res.data);
   const page = PageSchema.parse(res.page);
   return { items, page };
 }

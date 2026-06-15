@@ -16,7 +16,10 @@
     "format": "prettier --write .",
     "prepare": "husky",
     "gen:progress": "tsx scripts/gen-progress.ts",
-    "gen:progress:check": "tsx scripts/gen-progress.ts --check"
+    "gen:progress:check": "tsx scripts/gen-progress.ts --check",
+    "db:local:up": "docker compose -f docker-compose.dev.yml up -d",
+    "db:local:migrate": "node infra/local-db/migrate-local.mjs",
+    "db:local:down": "docker compose -f docker-compose.dev.yml down"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.0.0",

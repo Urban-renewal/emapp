@@ -1,8 +1,10 @@
 'use client';
 
+import type { UserProfile } from '@emapp/shared-types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 
+import { SESSION_ME_QUERY_KEY } from '@/hooks/use-session';
 import { ApiClientError } from '@/lib/api/errors';
 
 /**
@@ -30,28 +32,46 @@ import { ApiClientError } from '@/lib/api/errors';
  * StrictMode's double-render in dev, and a per-request fresh client
  * in SSR).
  */
-export function QueryProvider({ children }: { children: ReactNode }) {
-  const [client] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 30_000,
-            refetchOnWindowFocus: true,
-            // §PERF-4 — never retry a definitive server response; retry
-            // only transient network failures, and cap the backoff so
-            // even those surface fast.
-            retry: (failureCount, error) => {
-              if (error instanceof ApiClientError) return false;
-              return failureCount < 2;
-            },
-            retryDelay: (attempt) => Math.min(250 * 2 ** attempt, 2000),
+export function QueryProvider({
+  children,
+  initialSession,
+}: {
+  children: ReactNode;
+  /**
+   * The org-tier profile already resolved by the dashboard layout
+   * server-side. When present it SEEDS the `['session','me']` cache so
+   * `useSessionProfile` reads it on first paint instead of firing a
+   * redundant client-side `/me` (which is ~4 DB round-trips). Undefined
+   * for the Provider tier (that console doesn't use this org hook).
+   */
+  initialSession?: UserProfile;
+}) {
+  const [client] = useState(() => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          staleTime: 30_000,
+          refetchOnWindowFocus: true,
+          // §PERF-4 — never retry a definitive server response; retry
+          // only transient network failures, and cap the backoff so
+          // even those surface fast.
+          retry: (failureCount, error) => {
+            if (error instanceof ApiClientError) return false;
+            return failureCount < 2;
           },
-          mutations: {
-            retry: 0,
-          },
+          retryDelay: (attempt) => Math.min(250 * 2 ** attempt, 2000),
         },
-      }),
-  );
+        mutations: {
+          retry: 0,
+        },
+      },
+    });
+    // §PERF — hydrate the session cache from the server-resolved profile.
+    // `useSessionProfile` (staleTime 5min) then returns this without a
+    // network call until it goes stale. Same value the hook would parse,
+    // so no hydration mismatch.
+    if (initialSession) queryClient.setQueryData(SESSION_ME_QUERY_KEY, initialSession);
+    return queryClient;
+  });
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }

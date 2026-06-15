@@ -42,7 +42,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const isProvider = session.tier === 'provider';
 
   return (
-    <QueryProvider>
+    <QueryProvider initialSession={session.tier === 'org' ? session.profile : undefined}>
       <div className="flex h-screen" style={{ background: 'var(--bg-app)' }}>
         {isProvider ? (
           <PCSidebar userName={session.profile.name} userRole={session.profile.role} />

@@ -15,10 +15,17 @@ import { apiClient, isOk } from '@/lib/api-client';
  * It is UX only — every privileged action is gated SERVER-side regardless
  * of what this returns. Long staleTime + shared cache key → one fetch per
  * session, no duplicate calls.
+ *
+ * The dashboard layout SEEDS this cache from the server-resolved profile
+ * (see `QueryProvider`), so the very first paint already has the role and
+ * this hook makes NO `/me` fetch — it only refetches after `staleTime`.
+ * The key is exported so the seed and the read can never drift apart.
  */
+export const SESSION_ME_QUERY_KEY = ['session', 'me'] as const;
+
 export function useSessionProfile() {
   return useQuery<UserProfile, Error>({
-    queryKey: ['session', 'me'],
+    queryKey: SESSION_ME_QUERY_KEY,
     queryFn: async () => {
       const res = await apiClient.get<unknown>('/me');
       if (!isOk(res)) throw new ApiClientError(res.error);

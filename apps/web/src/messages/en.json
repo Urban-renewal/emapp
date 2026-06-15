@@ -1665,7 +1665,9 @@
     "threadEmpty": "No messages in this conversation yet",
     "composerPlaceholder": "Write a message…",
     "send": "Send",
-    "justYou": "Just you"
+    "justYou": "Just you",
+    "viewAll": "All messages",
+    "openMessages": "Open messages"
   },
   "notes": {
     "listTitle": "Notes",

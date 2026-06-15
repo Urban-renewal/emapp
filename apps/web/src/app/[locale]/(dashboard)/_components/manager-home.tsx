@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 
 import { HomeActions } from './home-actions';
+import { HomeConversations } from './home-conversations';
 
 /**
  * ManagerHome — the V11 A.S3 manager-oriented dashboard home, extracted
@@ -149,19 +150,9 @@ export async function ManagerHome() {
               <h3 id="home-conversations-heading">{t('conversations.title')}</h3>
             </div>
           </div>
-          <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
-            <MessageSquare
-              className="h-10 w-10"
-              style={{ color: 'var(--text-soft)' }}
-              aria-hidden="true"
-            />
-            <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
-              {t('conversations.empty')}
-            </p>
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              {t('conversations.comingHint')}
-            </p>
-          </div>
+          {/* Slice 3 — live recent threads (client island) replaces the former
+           *  "chat coming later" stub now that team messaging is real. */}
+          <HomeConversations />
         </section>
       </div>
     </div>

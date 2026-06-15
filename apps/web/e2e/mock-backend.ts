@@ -301,6 +301,28 @@ function installDefaultHandlers(): void {
     },
   }));
 
+  // Team messaging (Slice 3) — the dashboard "Recent conversations" card
+  // (HomeConversations island) polls /api/v1/conversations and side-loads
+  // /api/v1/members on every dashboard render. Like the notifications bell
+  // above, without these handlers /he/ navigation 404s on every E2E test and
+  // the §P0-3 console guardrail fires. Empty lists — the FE state (empty card)
+  // is the same whether the lists are empty or populated. Per-test page.route()
+  // stubs still override these for the messaging-specific specs.
+  setMockHandler('GET', '/api/v1/conversations', () => ({
+    status: 200,
+    body: {
+      data: [],
+      page: { limit: 25, cursor: null, has_more: false },
+    },
+  }));
+  setMockHandler('GET', '/api/v1/members', () => ({
+    status: 200,
+    body: {
+      data: [],
+      page: { limit: 100, cursor: null, has_more: false },
+    },
+  }));
+
   // §J14 — refresh: succeeds by default (covers silent-refresh test
   // by per-test override that returns 401 first then OK).
   setMockHandler('POST', '/api/v1/auth/refresh', () => ({

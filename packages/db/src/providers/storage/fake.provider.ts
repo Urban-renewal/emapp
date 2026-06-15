@@ -71,6 +71,14 @@ export class FakeStorageProvider implements IStorageProvider {
     this.objects.set(key, body);
   }
 
+  /** 7d — server-side object write (IStorageProvider.putObject). Stores into
+   *  the same in-memory `objects` map so tests read back exactly what was
+   *  PUT via `getObjectStream`/`objects.get`. The contentType is accepted
+   *  for interface parity but not modelled (no metadata store here). */
+  async putObject(key: string, body: Buffer, _opts?: { contentType?: string }): Promise<void> {
+    this.objects.set(key, body);
+  }
+
   async getObjectStream(key: string): Promise<Readable> {
     const buf = this.objects.get(key);
     if (!buf) throw new Error(`FakeStorageProvider: no object for key ${key}`);

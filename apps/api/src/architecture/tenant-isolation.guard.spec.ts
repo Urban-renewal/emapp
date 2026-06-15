@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { findRawClientImporters } from './tenant-isolation.guard';
+import { findRawClientImporters, importsRawClient } from './tenant-isolation.guard';
 
 const MODULES_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'modules');
 
@@ -25,6 +25,11 @@ const ALLOWLIST = new Set<string>([
   'auth/auth.service.ts',
   'auth/provider/provider-auth.service.ts',
   'auth/session-validity.ts',
+  // 7b-OTP (D-P5.5) — PII step-up unlock. Auth-INFRA tables only
+  // (step_up_codes / auth_sessions / users / audit_log-with-explicit-org):
+  // session-keyed, no RLS, same posture as the tenant OTP service below.
+  // Code hashed at rest; the unlock stamps ONLY the caller's session.
+  'auth/step-up.service.ts',
   'auth/tenant/otp.service.ts',
   'export/export-rate-limit.service.ts',
   'portal/portal.service.ts',
@@ -54,5 +59,14 @@ describe('architecture: tenant-isolation guard (CLAUDE.md — no direct db outsi
         `Remove them from the allowlist to keep the ratchet honest:\n` +
         stale.map((f) => `  - ${f}`).join('\n'),
     ).toEqual([]);
+  });
+
+  // H2 — the detector must also catch a NAMESPACE import, which would otherwise
+  // reach the raw client (`x.db`) while evading the named-import check.
+  it('detects a namespace import of @emapp/db (not just named imports)', () => {
+    expect(importsRawClient("import { withTenant } from '@emapp/db';")).toBe(false);
+    expect(importsRawClient("import { db } from '@emapp/db';")).toBe(true);
+    expect(importsRawClient("import * as emappDb from '@emapp/db';")).toBe(true);
+    expect(importsRawClient("import * as x from '@emapp/db'\nx.pool.query('…')")).toBe(true);
   });
 });

@@ -38,7 +38,12 @@ export interface LoginableTestProviderUser extends TestProviderUser {
 export async function createTestOrg(name: string, slug?: string): Promise<TestOrg> {
   const [org] = await db
     .insert(organizations)
-    .values({ name, slug: slug ?? name.toLowerCase().replace(/\s+/g, '-') })
+    // Normalize BOTH the derived and the caller-provided slug to the DB's
+    // CHECK format (organizations_slug_format, migration 0010: lowercase
+    // alnum + hyphens) — callers pass human tags like `swpA-<ts>` and the
+    // factory owns making them insertable. TestOrg doesn't expose slug, so
+    // no caller can depend on the pre-normalized casing.
+    .values({ name, slug: (slug ?? name).toLowerCase().replace(/\s+/g, '-') })
     .returning();
 
   if (!org) throw new Error('Failed to create test org');

@@ -13,10 +13,18 @@
  * via the v8.5 test seam (assertPiiKeysPresent + setupAndVerifyGucs),
  * so they fail loudly if a future hand weakens either guard.
  */
-import type { PoolClient } from 'pg';
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { assertPiiKeysPresent, setupAndVerifyGucs } from '../scripts/migrate';
+import type { PoolClient } from 'pg';
+import { afterAll, describe, expect, it } from 'vitest';
+
+import {
+  assertJournalIntegrity,
+  assertPiiKeysPresent,
+  setupAndVerifyGucs,
+} from '../scripts/migrate';
 import { pool } from '../src/client';
 
 describe('v8.5 migrator — assertPiiKeysPresent fail-fast', () => {
@@ -185,5 +193,49 @@ describe('v8.5 migrator — setupAndVerifyGucs (in-transaction contract)', () =>
     } finally {
       client.release();
     }
+  });
+});
+
+describe('v12 migrator — assertJournalIntegrity preflight (silent-skip guard)', () => {
+  // No db: pure preflight over the journal folder. Pins that the migrator
+  // refuses to run on a journal that would silently skip a migration.
+  const tmpDirs: string[] = [];
+  function fixture(journal: unknown, sqlTags: string[]): string {
+    const dir = mkdtempSync(join(tmpdir(), 'journal-guard-'));
+    tmpDirs.push(dir);
+    mkdirSync(join(dir, 'meta'), { recursive: true });
+    writeFileSync(join(dir, 'meta', '_journal.json'), JSON.stringify(journal));
+    for (const tag of sqlTags) writeFileSync(join(dir, `${tag}.sql`), 'SELECT 1;');
+    return dir;
+  }
+  afterAll(() => {
+    for (const d of tmpDirs) rmSync(d, { recursive: true, force: true });
+  });
+
+  it('11) the real ./migrations journal passes the preflight (no throw)', () => {
+    // vitest cwd for @emapp/db is packages/db, so './migrations' is the real one.
+    expect(() => assertJournalIntegrity('./migrations')).not.toThrow();
+  });
+
+  it('12) a journal with a too-low tip `when` → throws "integrity check failed"', () => {
+    const dir = fixture(
+      {
+        version: '7',
+        dialect: 'postgresql',
+        entries: [
+          { idx: 0, version: '7', when: 2000, tag: '0000_a', breakpoints: true },
+          { idx: 1, version: '7', when: 1000, tag: '0001_b', breakpoints: true },
+        ],
+      },
+      ['0000_a', '0001_b'],
+    );
+    expect(() => assertJournalIntegrity(dir)).toThrow(/integrity check failed/i);
+    expect(() => assertJournalIntegrity(dir)).toThrow(/when_not_increasing/);
+  });
+
+  it('13) a missing journal file → throws "not found" (never a silent pass)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'journal-guard-empty-'));
+    tmpDirs.push(dir);
+    expect(() => assertJournalIntegrity(dir)).toThrow(/journal not found/i);
   });
 });

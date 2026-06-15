@@ -14,10 +14,15 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
+import { and, eq, isNull, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 export interface BuildingListPage {
@@ -115,16 +120,13 @@ export class BuildingsService {
       async (tx) => {
         await this.assertProjectVisible(tx, user, projectId);
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(buildings.createdAt, new Date(cur.c)),
-              and(eq(buildings.createdAt, new Date(cur.c)), lt(buildings.id, cur.i)),
-            )
+          ? keysetCondition(buildings.createdAt, buildings.id, cur)
           : undefined;
         return tx
           .select()
           .from(buildings)
           .where(and(eq(buildings.projectId, projectId), isNull(buildings.archivedAt), keyset))
-          .orderBy(desc(buildings.createdAt), desc(buildings.id))
+          .orderBy(...keysetOrderBy(buildings.createdAt, buildings.id))
           .limit(limit + 1);
       },
       { userId: user.sub },

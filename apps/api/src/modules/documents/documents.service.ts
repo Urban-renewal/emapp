@@ -1,8 +1,13 @@
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { Readable } from 'node:stream';
+
 import {
   AuditService,
   apartments,
+  authSessions,
   buildings,
   documents,
+  env,
   projectAssignments,
   projects,
   withTenant,
@@ -25,17 +30,26 @@ import {
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
+import { getOrgSettings } from '../../common/org-settings.resolver';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { notificationLink } from '../notifications/notification-links';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
@@ -60,6 +74,62 @@ const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
 const SCAN_REJECTED = new ConflictException({
   error: { code: DOCUMENT_SCAN_REJECTED_CODE },
 });
+
+/**
+ * 7b-OTP (D-P5.5/7/8) — the caller's session has NO valid PII unlock for a
+ * SENSITIVE document. 403, DISTINCT + actionable (the FE opens the step-up
+ * OTP dialog), NOT 404: this is only ever thrown AFTER the per-record
+ * visibility check passed, so the caller is already authorized to know the
+ * doc exists — it is never an existence oracle.
+ */
+const PII_STEP_UP_REQUIRED = new ForbiddenException({
+  error: { code: 'pii_step_up_required', message: 'נדרש אימות נוסף לצפייה במסמך רגיש' },
+});
+
+/** PII-bearing document types — sensitive-by-type at create (D-P5.7). */
+const SENSITIVE_DOC_TYPES: ReadonlySet<string> = new Set(['id_document', 'financial']);
+
+// ── 7d (D-P5.4 second half) — app-envelope encryption for SENSITIVE bytes ───
+// At-rest layout (self-describing — no migration needed for the format):
+//   'EMAPPENC'(8B ascii) | version(1B=0x01) | keyId(2B) | iv(12B) |
+//   tag(16B) | ciphertext (AES-256-GCM ⇒ same length as plaintext).
+// Key = base64-decode(env.DOC_ENCRYPTION_KEY) — Infisical-delivered, never in
+// R2, NEVER logged. NO AAD (pinned by doc-encryption-7d.spec.ts G1 — a future
+// AAD addition must update that spec first). iv is random PER OBJECT.
+const ENVELOPE_MAGIC = Buffer.from('EMAPPENC', 'ascii');
+const ENVELOPE_VERSION = 0x01;
+/** Key-slot id for future rotation. 0x0001 = the current DOC_ENCRYPTION_KEY. */
+const ENVELOPE_KEY_ID = Buffer.from([0x00, 0x01]);
+const ENVELOPE_IV_LEN = 12;
+const ENVELOPE_TAG_LEN = 16;
+/** magic(8) + version(1) + keyId(2) + iv(12) + tag(16) */
+const ENVELOPE_HEADER_LEN = ENVELOPE_MAGIC.length + 1 + 2 + ENVELOPE_IV_LEN + ENVELOPE_TAG_LEN;
+
+/**
+ * 7d — the content-path integrity gate failed: the RAW bytes the client
+ * POSTed do not match the size/hash it declared at create. 400 (a client
+ * error — resend the right bytes), DISTINCT from finalize's 409 because the
+ * row is left intact for a retry (nothing was stored, nothing archived).
+ * `details.field` names the offending check ('size' | 'hash') so the FE can
+ * render an actionable message — same shape as the finalize mismatch.
+ */
+function integrityMismatch(field: 'size' | 'hash'): BadRequestException {
+  return new BadRequestException({
+    error: { code: 'document_integrity_mismatch', details: { field } },
+  });
+}
+
+/** base64-decode the doc-envelope key, fail-closed on misconfig. The error
+ *  carries NO key material — only the remedy. */
+function docEncryptionKey(): Buffer {
+  const b64 = env.DOC_ENCRYPTION_KEY;
+  const key = b64 ? Buffer.from(b64, 'base64') : Buffer.alloc(0);
+  if (key.length !== 32) {
+    // 503 (ops misconfig — not a client error). Never logs/echoes the value.
+    throw new ServiceUnavailableException({ error: { code: 'doc_encryption_unavailable' } });
+  }
+  return key;
+}
 
 /** P0.B1 — read an object's bytes (bounded) for scanning. The scanner takes a
  *  lazy loader so a provider that fetches out-of-band never triggers this. */
@@ -267,6 +337,12 @@ export class DocumentsService {
 
   async create(user: AccessTokenPayload, input: CreateDocument): Promise<DocumentUploadResponse> {
     const r2Key = newDocumentKey(user.orgId);
+    // 7b-OTP (D-P5.7) — server-derived, TURN-ON ONLY: PII-bearing types are
+    // sensitive regardless of the client flag; the client may explicitly opt
+    // IN for any other type but can NEVER force a sensitive-by-type doc off
+    // the gate (sensitive:false on an id_document is IGNORED).
+    // 7d — this derivation now ALSO selects the upload channel (see below).
+    const sensitive = SENSITIVE_DOC_TYPES.has(input.type) || input.sensitive === true;
     // #6 — recipients for the document_uploaded notification. Resolved INSIDE the
     // tx (an org-scoped read, satisfying the producer's "recipient ∈ org"
     // invariant) but EMITTED after commit. Declared here to survive the tx scope.
@@ -298,6 +374,8 @@ export class DocumentsService {
               r2Key,
               contentHash: input.contentHash,
               uploadedBy: user.sub,
+              // 7b-OTP (D-P5.7) — derived above (turn-ON only).
+              sensitive,
             })
             .returning();
         } catch {
@@ -356,34 +434,40 @@ export class DocumentsService {
 
     // Presign AFTER commit (not a DB op). Bound the PUT to the declared
     // content-type and a hard size ceiling (defense-in-depth + DoS bound).
-    let uploadUrl: string;
-    try {
-      uploadUrl = await this.storage.getUploadUrl(r2Key, {
-        contentType: input.mimeType,
-        maxSizeBytes: Math.min(input.sizeBytes, DOCUMENT_MAX_SIZE_BYTES),
-        ttlSeconds: UPLOAD_URL_TTL_SECONDS,
-      });
-    } catch (e) {
-      // Compensate: a row with no usable upload URL is useless — archive
-      // it so it can't dangle. Never surface storage internals.
-      await withTenant(
-        user.orgId,
-        async (tx) => {
-          await tx
-            .update(documents)
-            .set({ archivedAt: new Date(), updatedAt: new Date() })
-            .where(eq(documents.id, row.id));
-        },
-        { userId: user.sub },
-      ).catch(() => undefined);
-      this.logger.error(
-        `presign(upload) failed (doc=${row.id}): ${e instanceof Error ? e.message : 'unknown'}`,
-      );
-      // 503, not 400: this is an infra outage (object-storage unreachable),
-      // not a client error. Correct status matters for monitoring/alerting
-      // and lets the client safely retry. (Audit finding 2026-05-20.)
-      throw new ServiceUnavailableException({ error: { code: 'storage_unavailable' } });
-    }
+    //
+    // 7d — SENSITIVE docs get NO presigned PUT, ever (not even minted-and-
+    // discarded): their bytes must flow through POST /documents/:id/content
+    // so the server verifies + scans the PLAINTEXT and stores only the
+    // app-envelope ciphertext. Plain docs keep the presign byte-identically.
+    let uploadUrl: string | null = null;
+    if (!sensitive)
+      try {
+        uploadUrl = await this.storage.getUploadUrl(r2Key, {
+          contentType: input.mimeType,
+          maxSizeBytes: Math.min(input.sizeBytes, DOCUMENT_MAX_SIZE_BYTES),
+          ttlSeconds: UPLOAD_URL_TTL_SECONDS,
+        });
+      } catch (e) {
+        // Compensate: a row with no usable upload URL is useless — archive
+        // it so it can't dangle. Never surface storage internals.
+        await withTenant(
+          user.orgId,
+          async (tx) => {
+            await tx
+              .update(documents)
+              .set({ archivedAt: new Date(), updatedAt: new Date() })
+              .where(eq(documents.id, row.id));
+          },
+          { userId: user.sub },
+        ).catch(() => undefined);
+        this.logger.error(
+          `presign(upload) failed (doc=${row.id}): ${e instanceof Error ? e.message : 'unknown'}`,
+        );
+        // 503, not 400: this is an infra outage (object-storage unreachable),
+        // not a client error. Correct status matters for monitoring/alerting
+        // and lets the client safely retry. (Audit finding 2026-05-20.)
+        throw new ServiceUnavailableException({ error: { code: 'storage_unavailable' } });
+      }
 
     // #6 — fire-and-forget AFTER a successful presign (a doc that failed presign
     // was archived above + threw, so it never reaches here). emitMany self-guards:
@@ -400,7 +484,7 @@ export class DocumentsService {
           type: 'document_uploaded',
           title: 'מסמך חדש בפרויקט',
           body: `המסמך "${row.name}" הועלה.`,
-          link: null,
+          link: notificationLink.document(row.id),
           metadata: { documentId: row.id },
         });
       } catch (e) {
@@ -410,6 +494,18 @@ export class DocumentsService {
       }
     }
 
+    // 7d — sensitive create answers with the API content path INSTEAD of a
+    // presigned PUT (uploadUrl: null). The relative API path is enough for
+    // the FE's same-origin apiClient; it carries no secret (the route is
+    // auth-guarded), unlike a presigned URL.
+    if (sensitive) {
+      return {
+        document: toDocument(row),
+        uploadUrl: null,
+        uploadExpiresInSeconds: null,
+        contentUploadPath: `/api/v1/documents/${row.id}/content`,
+      };
+    }
     return {
       document: toDocument(row),
       uploadUrl,
@@ -601,7 +697,30 @@ export class DocumentsService {
 
     // NON-CLEAN (infected | error) — archive the row, record the verdict, purge
     // the object, and reject. The file is now unreachable (fail-closed).
-    const purgeKey = await withTenant(
+    await this.recordScanReject(user, row, verdict, signature);
+    await this.storage.delete(row.r2Key).catch((e: unknown) => {
+      this.logger.error(
+        `purge after scan reject failed (doc=${row.id}): ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+    });
+    throw SCAN_REJECTED;
+  }
+
+  /**
+   * Shared fail-closed posture for a non-clean scan verdict (P0.B1 / 7d):
+   * archive the row, persist the verdict + content-free signature label, and
+   * audit `document.scan_reject` (ids + verdict only — never file content).
+   * The caller decides whether a storage purge is also needed (finalize path:
+   * yes, the object was already PUT; 7d content path: no — the plaintext was
+   * never stored, so there is nothing at rest to purge).
+   */
+  private async recordScanReject(
+    user: AccessTokenPayload,
+    row: DocumentRow,
+    verdict: 'infected' | 'error',
+    signature: string | undefined,
+  ): Promise<void> {
+    await withTenant(
       user.orgId,
       async (tx) => {
         await tx
@@ -624,16 +743,9 @@ export class DocumentsService {
           metadata: { verdict, signature: signature ?? null },
           sessionId: user.sid,
         });
-        return row.r2Key;
       },
       { userId: user.sub },
     );
-    await this.storage.delete(purgeKey).catch((e: unknown) => {
-      this.logger.error(
-        `purge after scan reject failed (doc=${row.id}): ${e instanceof Error ? e.message : 'unknown'}`,
-      );
-    });
-    throw SCAN_REJECTED;
   }
 
   async get(user: AccessTokenPayload, id: string): Promise<Document> {
@@ -653,6 +765,14 @@ export class DocumentsService {
       async (tx) => {
         // 0049 — require finalised: a ghost's presigned URL would 404 (NoSuchKey).
         const row = await this.loadVisible(tx, user, id, true);
+        // 7b-OTP (D-P5.5/7/8) — the SENSITIVE-document gate. Ordered AFTER the
+        // visibility + ghost + scan checks in loadVisible (never an existence
+        // oracle) and BEFORE the download audit + presign. A sensitive doc is
+        // served ONLY when the CALLER'S CURRENT session (user.sid) holds a
+        // VALID unlock: pii_unlocked_at NOT NULL and younger than the org's
+        // security.piiUnlockTtlMinutes (default 60). NON-sensitive docs skip
+        // this block entirely — behavior byte-for-byte unchanged (D-P5.7).
+        if (row.sensitive) await this.assertPiiUnlocked(tx, user);
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
@@ -700,9 +820,329 @@ export class DocumentsService {
     return { url, expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS };
   }
 
+  /**
+   * 7b-OTP (D-P5.5/7/8) — the SENSITIVE-document gate, shared by the presign
+   * download path and the 7d decrypt-stream path. A sensitive doc is served
+   * ONLY when the CALLER'S CURRENT session (user.sid) holds a VALID unlock:
+   * pii_unlocked_at NOT NULL and younger than the org's
+   * security.piiUnlockTtlMinutes (default 60). MUST be called only AFTER the
+   * per-record visibility checks (never an existence oracle).
+   */
+  private async assertPiiUnlocked(tx: TenantTx, user: AccessTokenPayload): Promise<void> {
+    const { security } = await getOrgSettings(tx, user.orgId);
+    const ttlMs = security.piiUnlockTtlMinutes * 60_000;
+    // auth_sessions is auth-infra (no RLS; app_user has SELECT). An
+    // unknown/ghost sid simply finds no row → locked (fail-closed).
+    const [sess] = await tx
+      .select({ piiUnlockedAt: authSessions.piiUnlockedAt })
+      .from(authSessions)
+      .where(eq(authSessions.id, user.sid))
+      .limit(1);
+    const unlockedAt = sess?.piiUnlockedAt ?? null;
+    if (!unlockedAt || unlockedAt.getTime() + ttlMs <= Date.now()) {
+      throw PII_STEP_UP_REQUIRED;
+    }
+  }
+
+  /**
+   * 7d (D-P5.4 second half) — SENSITIVE content upload through the API.
+   * POST /documents/:id/content (raw bytes). Flow, in order:
+   *   1. visibility + capability (same no-oracle posture as everywhere);
+   *   2. SENSITIVE-only (plain docs keep the presign path → 400) and not
+   *      already uploaded (409);
+   *   3. integrity attestation on the PLAINTEXT — size first, then sha256
+   *      against the create-declared values (mismatch → 400
+   *      document_integrity_mismatch + details.field; NOTHING stored, row
+   *      left intact for a corrected retry). Stronger than finalize's
+   *      layer-2: the server hashed the actual bytes itself.
+   *   4. scan the PLAINTEXT (P0.B1 preserved — never the ciphertext);
+   *      non-clean → the same fail-closed archive+reject posture as the
+   *      presign path (no purge needed: nothing was ever stored);
+   *   5. encrypt AES-256-GCM into the EMAPPENC envelope (random iv per
+   *      object; key from env, never logged) → storage.putObject;
+   *   6. stamp uploaded_at + scan_status='clean' + bytes_encrypted=true
+   *      and audit (ids only).
+   */
+  async uploadContent(
+    user: AccessTokenPayload,
+    id: string,
+    body: Buffer,
+  ): Promise<{ uploaded: true }> {
+    const check = await withTenant(
+      user.orgId,
+      async (tx) => {
+        const row = await this.loadVisible(tx, user, id, false);
+        await requireAgentCapability(tx, user, 'manage_documents');
+        if (!row.sensitive) {
+          // The content route is SENSITIVE-ONLY; a plain doc's only upload
+          // path is the presigned PUT it received at create.
+          throw new BadRequestException({ error: { code: 'document_not_sensitive' } });
+        }
+        if (row.uploadedAt) {
+          // Already finalised — content is immutable post-upload.
+          throw new ConflictException({ error: { code: 'document_already_uploaded' } });
+        }
+        // Integrity: size FIRST (cheap + names the actionable field), then
+        // the server-computed sha256 of the actual raw bytes.
+        const mismatchField: 'size' | 'hash' | null =
+          body.length !== row.sizeBytes
+            ? 'size'
+            : createHash('sha256').update(body).digest('hex') !== row.contentHash
+              ? 'hash'
+              : null;
+        if (mismatchField !== null) {
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+            orgId: user.orgId,
+            actorId: user.sub,
+            actorType: 'user',
+            action: 'document.integrity_reject',
+            targetTable: 'documents',
+            targetId: row.id,
+            sessionId: user.sid,
+          });
+        }
+        return { row, mismatchField };
+      },
+      { userId: user.sub },
+    );
+    // Thrown OUTSIDE the tx so the integrity_reject audit row commits.
+    if (check.mismatchField !== null) throw integrityMismatch(check.mismatchField);
+    const { row } = check;
+
+    // P0.B1 — scan the PLAINTEXT before anything is stored. Fail-closed at
+    // every branch, mirroring scanGate (a thrown scanner = 'error').
+    let verdict: 'clean' | 'infected' | 'error' = 'error';
+    let signature: string | undefined;
+    try {
+      const result = await this.scanner.scan({
+        key: row.r2Key,
+        bytes: async () => body,
+      });
+      verdict = result.verdict;
+      signature = result.signature;
+    } catch (e) {
+      this.logger.error(
+        `file scan threw (doc=${row.id}): ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+      verdict = 'error';
+      signature = 'scan_threw';
+    }
+    if (verdict !== 'clean') {
+      // Same archive+reject posture as the presign path; NO purge — the
+      // plaintext was never stored, nothing exists at rest.
+      await this.recordScanReject(user, row, verdict, signature);
+      throw SCAN_REJECTED;
+    }
+
+    // Encrypt → store. Only the opaque envelope ever reaches storage.
+    const envelope = this.encryptEnvelope(body);
+    try {
+      await this.storage.putObject(row.r2Key, envelope, {
+        contentType: 'application/octet-stream',
+      });
+    } catch (e) {
+      this.logger.error(
+        `putObject failed (doc=${row.id}): ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+      // Infra outage — same governed 503 as the presign failures. The row
+      // stays un-uploaded (still retryable); nothing was persisted.
+      throw new ServiceUnavailableException({ error: { code: 'storage_unavailable' } });
+    }
+
+    await withTenant(
+      user.orgId,
+      async (tx) => {
+        await tx
+          .update(documents)
+          .set({
+            uploadedAt: new Date(),
+            scanStatus: 'clean',
+            scanSignature: null,
+            bytesEncrypted: true,
+            updatedAt: new Date(),
+          })
+          .where(eq(documents.id, row.id));
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'document.content_upload',
+          targetTable: 'documents',
+          targetId: row.id,
+          sessionId: user.sid,
+        });
+      },
+      { userId: user.sub },
+    );
+    return { uploaded: true };
+  }
+
+  /** Build the at-rest envelope: EMAPPENC|v1|keyId|iv|tag|ciphertext.
+   *  iv is RANDOM PER OBJECT (GCM requirement — an iv reuse under the same
+   *  key would be catastrophic); NO AAD (pinned, see constants above). */
+  private encryptEnvelope(plain: Buffer): Buffer {
+    const iv = randomBytes(ENVELOPE_IV_LEN);
+    const cipher = createCipheriv('aes-256-gcm', docEncryptionKey(), iv);
+    const ciphertext = Buffer.concat([cipher.update(plain), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return Buffer.concat([
+      ENVELOPE_MAGIC,
+      Buffer.from([ENVELOPE_VERSION]),
+      ENVELOPE_KEY_ID,
+      iv,
+      tag,
+      ciphertext,
+    ]);
+  }
+
+  /** Parse + decrypt the at-rest envelope. Any malformed/garbled object is a
+   *  500 with a stable code and NO detail (corruption or key mismatch — an
+   *  ops incident, never a client-actionable state; bytes never logged). */
+  private decryptEnvelope(envelope: Buffer, docId: string): Buffer {
+    const fail = (): never => {
+      this.logger.error(`envelope decrypt failed (doc=${docId})`);
+      throw new InternalServerErrorException({ error: { code: 'document_decrypt_failed' } });
+    };
+    if (
+      envelope.length < ENVELOPE_HEADER_LEN ||
+      !envelope.subarray(0, ENVELOPE_MAGIC.length).equals(ENVELOPE_MAGIC) ||
+      envelope[ENVELOPE_MAGIC.length] !== ENVELOPE_VERSION
+    ) {
+      return fail();
+    }
+    const ivStart = ENVELOPE_MAGIC.length + 1 + 2; // magic | version | keyId
+    const iv = envelope.subarray(ivStart, ivStart + ENVELOPE_IV_LEN);
+    const tag = envelope.subarray(ivStart + ENVELOPE_IV_LEN, ENVELOPE_HEADER_LEN);
+    const ciphertext = envelope.subarray(ENVELOPE_HEADER_LEN);
+    // Key fetch OUTSIDE the try: a key MISCONFIG must surface as the ops 503
+    // (doc_encryption_unavailable), not be swallowed into the generic 500
+    // corruption code (review LOW-1).
+    const key = docEncryptionKey();
+    try {
+      const decipher = createDecipheriv('aes-256-gcm', key, iv);
+      decipher.setAuthTag(tag);
+      return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+    } catch {
+      return fail();
+    }
+  }
+
+  /**
+   * 7d — sensitive download: the API decrypt-streams the bytes itself (a
+   * presigned URL would hand the client ciphertext). For bytes_encrypted
+   * docs ONLY. Runs the EXACT same gate chain as getDownloadUrl: visibility
+   * → ghost → scan (loadVisible requireUploaded=true) → PII step-up unlock
+   * (403 pii_step_up_required without a valid session unlock) → audit.
+   */
+  async getDecryptedStream(
+    user: AccessTokenPayload,
+    id: string,
+    disposition: 'attachment' | 'inline' = 'attachment',
+  ): Promise<{
+    stream: Readable;
+    mimeType: string;
+    name: string;
+    sizeBytes: number;
+    disposition: 'attachment' | 'inline';
+  }> {
+    const row = await withTenant(
+      user.orgId,
+      async (tx) => {
+        const r = await this.loadVisible(tx, user, id, true);
+        // The OTP unlock gate stays exactly where it is in the presign path:
+        // after visibility/ghost/scan, before the audit + serve.
+        if (r.sensitive) await this.assertPiiUnlocked(tx, user);
+        if (!r.bytesEncrypted) {
+          // Decrypt-stream is only for app-envelope objects; a plain object
+          // here means the caller routed wrongly (resolveDownload prevents
+          // this) — refuse rather than stream raw storage bytes.
+          throw new ConflictException({ error: { code: 'document_conflict' } });
+        }
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'document.download',
+          targetTable: 'documents',
+          targetId: r.id,
+          sessionId: user.sid,
+        });
+        return r;
+      },
+      { userId: user.sub },
+    );
+    let envelope: Buffer;
+    try {
+      envelope = await readObjectBytes(
+        this.storage,
+        row.r2Key,
+        DOCUMENT_MAX_SIZE_BYTES + ENVELOPE_HEADER_LEN,
+      );
+    } catch (e) {
+      this.logger.error(
+        `envelope read failed (doc=${row.id}): ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+      throw new ServiceUnavailableException({ error: { code: 'storage_unavailable' } });
+    }
+    const plaintext = this.decryptEnvelope(envelope, row.id);
+    return {
+      stream: Readable.from(plaintext),
+      mimeType: row.mimeType,
+      name: row.name,
+      sizeBytes: plaintext.length,
+      disposition,
+    };
+  }
+
+  /**
+   * 7d — download dispatch for the controller: bytes_encrypted docs are
+   * decrypt-streamed by the API; everything else keeps the byte-identical
+   * presign path. The peek is NOT an oracle: an unknown/foreign id reads as
+   * "not encrypted" and falls through to getDownloadUrl, which performs the
+   * full visibility chain and throws the same generic 404 as before.
+   */
+  async resolveDownload(
+    user: AccessTokenPayload,
+    id: string,
+    disposition: 'attachment' | 'inline' = 'attachment',
+  ): Promise<
+    | { kind: 'presign'; data: DocumentDownloadResponse }
+    | {
+        kind: 'stream';
+        stream: Readable;
+        mimeType: string;
+        name: string;
+        sizeBytes: number;
+        disposition: 'attachment' | 'inline';
+      }
+  > {
+    const encrypted = await withTenant(
+      user.orgId,
+      async (tx) => {
+        const [r] = await tx
+          .select({ bytesEncrypted: documents.bytesEncrypted })
+          .from(documents)
+          .where(eq(documents.id, id))
+          .limit(1);
+        return r?.bytesEncrypted ?? false;
+      },
+      { userId: user.sub },
+    );
+    if (!encrypted) {
+      return { kind: 'presign', data: await this.getDownloadUrl(user, id, disposition) };
+    }
+    return { kind: 'stream', ...(await this.getDecryptedStream(user, id, disposition)) };
+  }
+
   async list(
     user: AccessTokenPayload,
-    query: { limit: number; cursor?: string; projectId?: string; apartmentId?: string },
+    query: {
+      limit: number;
+      cursor?: string;
+      projectId?: string;
+      apartmentId?: string;
+      archived?: boolean;
+    },
   ): Promise<DocumentListPage> {
     const { limit } = query;
     const cur = query.cursor ? decodeCursor(query.cursor) : null;
@@ -716,7 +1156,11 @@ export class DocumentsService {
         if (query.projectId) await this.assertProjectVisible(tx, user, query.projectId);
         if (query.apartmentId) await this.assertApartmentVisible(tx, user, query.apartmentId);
 
-        const filters: (SQL | undefined)[] = [isNull(documents.archivedAt)];
+        // Default view = ACTIVE docs; `archived: true` returns the archived ones
+        // (otherwise soft-archived docs are unreachable from the cockpit).
+        const filters: (SQL | undefined)[] = [
+          query.archived ? isNotNull(documents.archivedAt) : isNull(documents.archivedAt),
+        ];
         if (query.projectId) filters.push(eq(documents.projectId, query.projectId));
         if (query.apartmentId) filters.push(eq(documents.apartmentId, query.apartmentId));
 
@@ -752,17 +1196,14 @@ export class DocumentsService {
         }
 
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(documents.createdAt, new Date(cur.c)),
-              and(eq(documents.createdAt, new Date(cur.c)), lt(documents.id, cur.i)),
-            )
+          ? keysetCondition(documents.createdAt, documents.id, cur)
           : undefined;
 
         return tx
           .select()
           .from(documents)
           .where(and(...filters, keyset))
-          .orderBy(desc(documents.createdAt), desc(documents.id))
+          .orderBy(...keysetOrderBy(documents.createdAt, documents.id))
           .limit(limit + 1);
       },
       { userId: user.sub },
@@ -785,7 +1226,13 @@ export class DocumentsService {
         await requireAgentCapability(tx, user, 'manage_documents');
         const patch: Partial<typeof documents.$inferInsert> = { updatedAt: new Date() };
         if (input.name !== undefined) patch.name = input.name;
-        if (input.type !== undefined) patch.type = input.type;
+        if (input.type !== undefined) {
+          patch.type = input.type;
+          // D-P5.7 turn-ON-only: retyping TO a sensitive type re-derives
+          // sensitive=true (else upload-as-other → PATCH-to-id_document would
+          // bypass the step-up gate). Never turns sensitive OFF.
+          if (SENSITIVE_DOC_TYPES.has(input.type)) patch.sensitive = true;
+        }
         const [row] = await tx.update(documents).set(patch).where(eq(documents.id, id)).returning();
         if (!row) throw NOT_FOUND;
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({

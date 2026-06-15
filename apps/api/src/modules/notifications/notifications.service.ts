@@ -1,9 +1,14 @@
 import { notifications, withTenant } from '@emapp/db';
 import type { Notification } from '@emapp/shared-types';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { eq, isNull, sql, type SQL } from 'drizzle-orm';
 
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 export interface NotificationListPage {
@@ -73,16 +78,13 @@ export class NotificationsService {
       user.orgId,
       async (tx) => {
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(notifications.createdAt, new Date(cur.c)),
-              and(eq(notifications.createdAt, new Date(cur.c)), lt(notifications.id, cur.i)),
-            )
+          ? keysetCondition(notifications.createdAt, notifications.id, cur)
           : undefined;
         return tx
           .select()
           .from(notifications)
           .where(keyset)
-          .orderBy(desc(notifications.createdAt), desc(notifications.id))
+          .orderBy(...keysetOrderBy(notifications.createdAt, notifications.id))
           .limit(limit + 1);
       },
       { userId: user.sub },

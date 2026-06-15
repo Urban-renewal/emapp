@@ -16,7 +16,12 @@ import {
 import { useDisplayLocale } from '@/lib/locale';
 import type { ApartmentViewModel } from '@/models/apartment.vm';
 
+import { applyApartmentStatus, type ApartmentCache } from './apartment-optimistic';
+
 const APARTMENTS_KEY = ['apartments'] as const;
+
+/** Snapshot of every apartments cache entry (detail + lists), for rollback. */
+type ApartmentCacheSnapshot = [readonly unknown[], ApartmentCache | undefined][];
 
 export function useApartmentList(
   buildingId: string | undefined,
@@ -81,12 +86,38 @@ export function useArchiveApartment() {
   });
 }
 
+/**
+ * Status change with OPTIMISTIC UI: the apartment's status (the badge, the
+ * detail header, the row in the building list) flips the instant the manager
+ * clicks — no wait for the PATCH + refetch. Patches BOTH cache shapes (detail
+ * record + any list page) under ['apartments'], snapshots for rollback on
+ * error, reconciles onSettled. cancelQueries first so an in-flight fetch can't
+ * clobber the optimistic value (TanStack optimistic-update recipe).
+ */
 export function useUpdateApartmentStatus() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: ApartmentStatus }) =>
       updateApartmentStatus(id, status),
-    onSuccess: () => {
+    onMutate: async ({
+      id,
+      status,
+    }: {
+      id: string;
+      status: ApartmentStatus;
+    }): Promise<{ prev: ApartmentCacheSnapshot }> => {
+      await qc.cancelQueries({ queryKey: APARTMENTS_KEY });
+      const prev = qc.getQueriesData<ApartmentCache>({ queryKey: APARTMENTS_KEY });
+      const at = new Date();
+      qc.setQueriesData<ApartmentCache>({ queryKey: APARTMENTS_KEY }, (old) =>
+        applyApartmentStatus(old, id, status, at),
+      );
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      ctx?.prev.forEach(([key, data]) => qc.setQueryData(key, data));
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: APARTMENTS_KEY });
     },
   });

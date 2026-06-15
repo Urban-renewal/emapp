@@ -20,12 +20,14 @@ import { DocumentsModule } from './modules/documents/documents.module';
 import { ExportModule } from './modules/export/export.module';
 import { ImportsModule } from './modules/imports/imports.module';
 import { MembersModule } from './modules/members/members.module';
+import { MessagingModule } from './modules/messaging/messaging.module';
 import { NotesModule } from './modules/notes/notes.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
 import { OrgModule } from './modules/org/org.module';
 import { OwnersModule } from './modules/owners/owners.module';
 import { OwnershipsModule } from './modules/ownerships/ownerships.module';
+import { ParcelSetupsModule } from './modules/parcel-setups/parcel-setups.module';
 import { PortalModule } from './modules/portal/portal.module';
 import { ProjectAssignmentsModule } from './modules/project-assignments/project-assignments.module';
 import { ProjectsModule } from './modules/projects/projects.module';
@@ -72,12 +74,22 @@ import { QueueModule } from './queue/queue.module';
     // extraction runs pointing at a finalized source doc; draft lifecycle.
     // withTenant + RLS direct org_id; create gated by edit_project_data (D.54).
     TabuModule,
+    // P3a — parcel-setup envelope + manual path → skeleton: project-attached
+    // גוש-חלקה setup; STRICT no-PII draft payload; confirm = audit-first,
+    // idempotent, atomic buildings+apartments creation with provenance.
+    // withTenant + RLS direct org_id; writes gated by edit_project_data (D.54).
+    ParcelSetupsModule,
     ContractorsModule,
     DocumentsModule,
     SharesModule,
     TasksModule,
     NotificationsModule,
     NotesModule,
+    // Internal team messaging — member ↔ member conversations (dashboard
+    // "Recent conversations" → a real feature). Participation-based authz
+    // (AuthGuard + TenantGuard + RLS participant scoping + service viewer-RO),
+    // deliberately OUTSIDE the IAM capability matrix. Migration 0075.
+    MessagingModule,
     AuditModule,
     ProjectAssignmentsModule,
     MembersModule,

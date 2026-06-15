@@ -1,9 +1,14 @@
 import { auditLog, withTenant } from '@emapp/db';
 import type { AuditEntry } from '@emapp/shared-types';
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
-import { and, desc, eq, lt, or, type SQL } from 'drizzle-orm';
+import { type SQL } from 'drizzle-orm';
 
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 export interface AuditListPage {
@@ -35,10 +40,7 @@ export class AuditReadService {
       user.orgId,
       async (tx) => {
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(auditLog.createdAt, new Date(cur.c)),
-              and(eq(auditLog.createdAt, new Date(cur.c)), lt(auditLog.id, cur.i)),
-            )
+          ? keysetCondition(auditLog.createdAt, auditLog.id, cur)
           : undefined;
         return tx
           .select({
@@ -54,7 +56,7 @@ export class AuditReadService {
           })
           .from(auditLog)
           .where(keyset)
-          .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
+          .orderBy(...keysetOrderBy(auditLog.createdAt, auditLog.id))
           .limit(limit + 1);
       },
       { userId: user.sub },

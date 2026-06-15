@@ -214,11 +214,18 @@ describe('api-client 401 handling — adversarial', () => {
   // §v9-P0-4 SUPPRESS_EVENT coverage (D.31 G2 — form-level 401 codes
   // MUST NOT fire the global unauthenticated event; they belong to the
   // calling form's field-error UI). The api-client maintains the set
-  // `SUPPRESS_EVENT = { invalid_credentials, invalid_otp, not_member }`
-  // — each MUST be runtime-suppressed. A12-suppress-N covers them
-  // generically (table-driven) so a future addition to the SUPPRESS
-  // set is auto-tested.
-  const SUPPRESSED_CODES = ['invalid_credentials', 'invalid_otp', 'not_member'] as const;
+  // `SUPPRESS_EVENT = { invalid_credentials, invalid_otp, not_member,
+  // invalid_step_up_code }` — each MUST be runtime-suppressed.
+  // A12-suppress-N covers them generically (table-driven) so a future
+  // addition to the SUPPRESS set is auto-tested. `invalid_step_up_code`
+  // (7c F1): a wrong OTP typed in the PII unlock dialog is a form-level
+  // concern — booting the session to /login on a typo would be hostile.
+  const SUPPRESSED_CODES = [
+    'invalid_credentials',
+    'invalid_otp',
+    'not_member',
+    'invalid_step_up_code',
+  ] as const;
   for (const code of SUPPRESSED_CODES) {
     it(`A12-suppress-${code}) 401 with code=${code} does NOT fire UNAUTHENTICATED_EVENT (form-level error)`, async () => {
       globalThis.fetch = stubFetch(() => ({

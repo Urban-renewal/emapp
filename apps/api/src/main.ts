@@ -10,6 +10,7 @@ import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { assertDevBypassNotInProduction } from './common/dev-auth-bypass';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
+import { CONTENT_UPLOAD_BODY_LIMIT_BYTES } from './modules/documents/documents.controller';
 import { resetStorageProvider } from './modules/documents/storage';
 import { installProcessGuards } from './process-guards';
 
@@ -70,11 +71,18 @@ async function bootstrap() {
   // handler (and return their proper 401, not a framework 400).
   const fastify = app.getHttpAdapter().getInstance() as unknown as {
     removeContentTypeParser?: (t: string) => void;
-    addContentTypeParser: (
-      t: string,
-      o: { parseAs: 'string' },
-      h: (req: unknown, body: string, done: (e: Error | null, v?: unknown) => void) => void,
-    ) => void;
+    addContentTypeParser: {
+      (
+        t: string,
+        o: { parseAs: 'string' },
+        h: (req: unknown, body: string, done: (e: Error | null, v?: unknown) => void) => void,
+      ): void;
+      (
+        t: string,
+        o: { parseAs: 'buffer'; bodyLimit: number },
+        h: (req: unknown, body: Buffer, done: (e: Error | null, v?: unknown) => void) => void,
+      ): void;
+    };
   };
   // Replace Fastify's built-in JSON parser (which 400s on empty body).
   try {
@@ -98,6 +106,18 @@ async function bootstrap() {
       done(e);
     }
   });
+
+  // 7d — RAW-body parser for the sensitive-document content upload
+  // (POST /api/v1/documents/:id/content). Buffers the bytes for the
+  // integrity-verify → plaintext-scan → encrypt pipeline. The DEDICATED
+  // bodyLimit (52_428_800 = DOCUMENT_MAX_SIZE_BYTES) applies ONLY to this
+  // content type — the documents content route is its sole consumer — so
+  // every JSON route keeps Fastify's default 1MB ceiling.
+  fastify.addContentTypeParser(
+    'application/octet-stream',
+    { parseAs: 'buffer', bodyLimit: CONTENT_UPLOAD_BODY_LIMIT_BYTES },
+    (_req, body, done) => done(null, body),
+  );
 
   // §M-1 — 404 envelope normalization happens in GlobalExceptionFilter
   // (see common/filters/http-exception.filter.ts). NestJS+Fastify will

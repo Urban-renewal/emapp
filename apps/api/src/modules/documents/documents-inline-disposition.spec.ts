@@ -74,6 +74,8 @@ class RecordingStorage implements IStorageProvider {
     return null;
   }
   async delete(): Promise<void> {}
+  // 7d interface parity — never reached by this suite.
+  async putObject(): Promise<void> {}
   async getObjectStream(): Promise<Readable> {
     return Readable.from([Buffer.from('%PDF-1.4 fake bytes')]);
   }

@@ -69,3 +69,22 @@ owners (שלדים 3a) + ownerships (שברים מדויקים 3b, atomic, sum-t
   (מציג-נסח ↔ שורות מפוענחות, עריכה, אישור) בעמוד-הדירה. he+en. stub ל-e2e.
 - **Browser-QA (חוב 7a/7b נסגר כאן): השרשרת המלאה חיה** — העלאת-נסח(רגיש) → 403 → OTP unlock →
   extract(stub) → סקירה → עריכה → confirm → ownerships בשברים נכונים + provenance → הלוח משתקף.
+
+## 7d — הצפנת-bytes של מסמכים רגישים (D-P5.4 חצי-שני) — החלטת-עיצוב (מתועדת תחת ההרשאה)
+
+**מודל-האיום:** R2 מצפין-במנוחה כברירת-מחדל, אבל דליפת-credential/דאמפ-bucket חושפת נסחים (PII).
+הגנה אמיתית = הצפנה אפליקטיבית שהמפתח שלה אינו ב-R2.
+
+**ההחלטה — אופציה (a): app-envelope למסמכים רגישים בלבד.**
+
+- **העלאה רגישה** עוברת דרך ה-API (לא presign): `POST /documents/:id/content` (bytes; bodyLimit
+  ייעודי 52MB) → השרת מאמת hash/size מול-ההצהרה על ה-plaintext (אטסטציה חזקה מ-layer-2) → **סורק את
+  ה-plaintext** (P0.B1 נשמר) → מצפין **AES-256-GCM** (מפתח DOC_ENCRYPTION_KEY מ-Infisical) → putObject.
+- **פורמט-עצמי** של האובייקט: `EMAPPENC|v1|keyId|iv|tag|ciphertext` → אין migration; + עמודת
+  `bytes_encrypted boolean` (migration 0072) לידיעה-מוקדמת בנתיב-ההגשה.
+- **הורדה רגישה**: הנתיב הקיים (כבר OTP-gated) עובר מ-presign ל-**decrypt-stream** מה-API.
+- **מסמכים רגילים: ללא שינוי** (presign דו-כיווני, אפס עלות-API).
+- finalize למסמך-מוצפן: layer-2 (head-attestation) מוחלף באטסטציית-השרת (הוא חישב את ה-hash בעצמו).
+  **נדחו:** (b) SSE-C — המפתח היה מגיע ללקוח ב-headers של presign (דליפה); (c) הסתמכות על R2-default —
+  לא מגן מפני דליפת-credential. **עלות:** bytes-רגישים עוברים דרך ה-API (מקובל — נסחים קטנים; רגילים
+  לא מושפעים). putObject מתווסף ל-IStorageProvider (R2+Fake).

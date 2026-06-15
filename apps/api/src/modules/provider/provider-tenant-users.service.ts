@@ -41,7 +41,7 @@ import type { ApiList, ListTenantUsersQuery, TenantUserItem } from '@emapp/share
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 
-import { decodeCursorOrThrow, encodeCursor } from '../../common/keyset-cursor';
+import { decodeCursorOrThrow, encodeCursor, type KeysetCursor } from '../../common/keyset-cursor';
 
 import type { ProviderActor } from './current-provider.decorator';
 
@@ -72,10 +72,9 @@ export class ProviderTenantUsersService {
     // Decode the cursor BEFORE entering withProvider — a malformed cursor
     // is a client error (400 invalid_cursor), no point opening a Provider
     // session for it (SA-11 helper).
-    let cursorDecoded: { createdAt: Date; id: string } | null = null;
+    let cursorDecoded: KeysetCursor | null = null;
     if (query.cursor) {
-      const dec = decodeCursorOrThrow(query.cursor);
-      cursorDecoded = { createdAt: new Date(dec.c), id: dec.i };
+      cursorDecoded = decodeCursorOrThrow(query.cursor);
     }
 
     // Fetch limit+1 so `has_more` is computed without a second round-trip.
@@ -134,12 +133,12 @@ export class ProviderTenantUsersService {
             ${
               cursorDecoded
                 ? sql`AND (
-                    m.created_at < ${cursorDecoded.createdAt.toISOString()}
-                    OR (m.created_at = ${cursorDecoded.createdAt.toISOString()} AND m.id < ${cursorDecoded.id})
+                    date_trunc('milliseconds', m.created_at) < ${cursorDecoded.c}::timestamptz
+                    OR (date_trunc('milliseconds', m.created_at) = ${cursorDecoded.c}::timestamptz AND m.id < ${cursorDecoded.i})
                   )`
                 : sql``
             }
-          ORDER BY m.created_at DESC, m.id DESC
+          ORDER BY date_trunc('milliseconds', m.created_at) DESC, m.id DESC
           LIMIT ${fetchLimit}
         `);
 

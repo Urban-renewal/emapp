@@ -17,10 +17,16 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, isNull, or, sql, type SQL } from 'drizzle-orm';
 
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { notificationLink } from '../notifications/notification-links';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
@@ -157,15 +163,10 @@ export class NotesService {
             and(
               isNull(notes.archivedAt),
               this.agentVisibility(user),
-              cur
-                ? or(
-                    lt(notes.createdAt, new Date(cur.c)),
-                    and(eq(notes.createdAt, new Date(cur.c)), lt(notes.id, cur.i)),
-                  )
-                : undefined,
+              cur ? keysetCondition(notes.createdAt, notes.id, cur) : undefined,
             ),
           )
-          .orderBy(desc(notes.createdAt), desc(notes.id))
+          .orderBy(...keysetOrderBy(notes.createdAt, notes.id))
           .limit(limit + 1),
       { userId: user.sub },
     );
@@ -273,7 +274,7 @@ export class NotesService {
           type: 'note_added',
           title: 'הערה חדשה נוספה',
           body: 'נוספה הערה חדשה.',
-          link: null,
+          link: notificationLink.note(note.id),
           metadata: { noteId: note.id },
         });
       } catch (e) {

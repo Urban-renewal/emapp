@@ -21,3 +21,15 @@ export interface OwnerViewModel {
   isArchived: boolean;
   createdRelative: string;
 }
+
+/**
+ * Owner as shown in the LIST table — the detail VM plus two management-context
+ * aggregates the list endpoint carries (the detail/get endpoint does NOT, so
+ * these live only here). Both are counts (no PII). `apartmentCount` = apartments
+ * the owner actively owns; `pendingSignatureCount` = their open signature
+ * requests. For an agent both are project-scoped server-side.
+ */
+export interface OwnerListItemViewModel extends OwnerViewModel {
+  apartmentCount: number;
+  pendingSignatureCount: number;
+}

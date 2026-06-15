@@ -15,6 +15,7 @@ import {
   DocumentSchema,
   ImportErrorSchema,
   ImportJobSchema,
+  OwnerListItemSchema,
   OwnerSchema,
   ProjectSchema,
   SignatureDeliveryReportSchema,
@@ -49,6 +50,12 @@ describe('SAMPLE_* — schema-parse gate (drift detector)', () => {
   });
   it('5) SAMPLE_OWNERS parse against OwnerSchema (masked PII only — §v9-M-4 regex)', () => {
     SAMPLE_OWNERS.forEach((o) => expect(() => OwnerSchema.parse(o)).not.toThrow());
+  });
+  it('5b) SAMPLE_OWNERS satisfy OwnerListItemSchema (the offline GET /owners list contract)', () => {
+    // The MSW `GET /owners` handler returns SAMPLE_OWNERS, and the FE parses
+    // list items with OwnerListItemSchema — so the sample MUST carry the two
+    // aggregate counts or offline mode would throw on the owners page.
+    SAMPLE_OWNERS.forEach((o) => expect(() => OwnerListItemSchema.parse(o)).not.toThrow());
   });
   it('6) SAMPLE_APARTMENT_OWNERS parse against ApartmentOwnerSchema', () => {
     SAMPLE_APARTMENT_OWNERS.forEach((o) =>

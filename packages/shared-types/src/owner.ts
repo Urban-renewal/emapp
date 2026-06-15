@@ -56,6 +56,24 @@ export const OwnerSchema = z.object({
 export type Owner = z.infer<typeof OwnerSchema>;
 
 /**
+ * Owner as returned by the LIST endpoint (GET /owners) — the masked Owner plus
+ * two management-context aggregates so the list is an actionable table, not a
+ * bare name-list. Both are non-negative integers and carry NO PII (counts only).
+ *
+ * `apartmentCount` — the owner's ACTIVE ownerships (apartments they currently
+ * own). `pendingSignatureCount` — their signature_requests in status 'pending'.
+ * For an AGENT both counts are scoped to assigned projects (the BE mirrors the
+ * agent owner-scope), so a count never leaks a project the agent can't see.
+ *
+ * Additive over OwnerSchema: get/reveal/search keep returning plain Owner.
+ */
+export const OwnerListItemSchema = OwnerSchema.extend({
+  apartmentCount: z.number().int().nonnegative(),
+  pendingSignatureCount: z.number().int().nonnegative(),
+});
+export type OwnerListItem = z.infer<typeof OwnerListItemSchema>;
+
+/**
  * D.54 — reveal-on-demand response (POST /owners/:id/reveal-pii). A SEPARATE
  * schema from `OwnerSchema` (which is masked-only and tripwire-protected): this
  * one deliberately carries the CLEARTEXT national_id/phone of a single owner,
@@ -132,5 +150,16 @@ export type OwnerSearch = z.infer<typeof OwnerSearchInput>;
 export const ListOwnersQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   cursor: z.string().min(1).optional(),
+  /**
+   * `'true'` returns the ARCHIVED owners (the default view filters them out, so
+   * archived records would otherwise be invisible in the cockpit). Explicit
+   * 'true'|'false' enum — NOT z.coerce.boolean, which coerces the *string*
+   * 'false' to `true`. Inferred type is boolean.
+   */
+  archived: z
+    .enum(['true', 'false'])
+    .optional()
+    .default('false')
+    .transform((v) => v === 'true'),
 });
 export type ListOwnersQueryDto = z.infer<typeof ListOwnersQuery>;

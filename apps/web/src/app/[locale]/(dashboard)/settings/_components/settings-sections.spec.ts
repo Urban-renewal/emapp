@@ -92,6 +92,7 @@ const SEEDED: OrgSettings = {
   consent: { tama38_1: 66, tama38_2: 80, pinui_binui: 80 },
   privacy: { noticeText: 'הודעת פרטיות', noticeVersion: 'v1', requireExplicitConsent: false },
   limits: { bulkCap: 321, defaultPageSize: 77 },
+  security: { piiUnlockTtlMinutes: 60 },
 };
 
 // ── Mocks (hoisted before the component imports) ─────────────────────────────

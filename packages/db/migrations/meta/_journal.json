@@ -491,6 +491,55 @@
 			"when": 1782658800000,
 			"tag": "0069_tabu_extraction_rows",
 			"breakpoints": true
+		},
+		{
+			"idx": 70,
+			"version": "7",
+			"when": 1782745200000,
+			"tag": "0070_pii_stepup_sensitive_documents",
+			"breakpoints": true
+		},
+		{
+			"idx": 71,
+			"version": "7",
+			"when": 1782831600000,
+			"tag": "0071_ownerships_source_extraction",
+			"breakpoints": true
+		},
+		{
+			"idx": 72,
+			"version": "7",
+			"when": 1782918000000,
+			"tag": "0072_documents_bytes_encrypted",
+			"breakpoints": true
+		},
+		{
+			"idx": 73,
+			"version": "7",
+			"when": 1783004400000,
+			"tag": "0073_parcel_setups",
+			"breakpoints": true
+		},
+		{
+			"idx": 74,
+			"version": "7",
+			"when": 1783090800000,
+			"tag": "0074_parcel_lookup",
+			"breakpoints": true
+		},
+		{
+			"idx": 75,
+			"version": "7",
+			"when": 1783177200000,
+			"tag": "0075_team_messaging",
+			"breakpoints": true
+		},
+		{
+			"idx": 76,
+			"version": "7",
+			"when": 1783263600000,
+			"tag": "0076_message_notification_type",
+			"breakpoints": true
 		}
 	]
 }

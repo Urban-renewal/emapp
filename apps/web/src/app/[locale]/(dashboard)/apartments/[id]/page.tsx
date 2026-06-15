@@ -18,8 +18,11 @@ import {
 } from '@/hooks/use-apartments';
 import { useApartmentCoOwnerShares } from '@/hooks/use-ownerships';
 import { useHasPermission } from '@/hooks/use-permissions';
+import { formatApartmentLabel } from '@/lib/apartment-label';
 import { ApiClientError } from '@/lib/api/errors';
 import { useDisplayLocale } from '@/lib/locale';
+
+import { TabuReviewSection } from './_components/tabu-review-section';
 
 export default function ApartmentDetailPage() {
   const t = useTranslations('apartments');
@@ -99,7 +102,11 @@ export default function ApartmentDetailPage() {
 
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold">{t('numberPrefix', { number: data.number })}</h1>
+          {/* 7c F2 — formatApartmentLabel dedups numbers that already carry
+              the "דירה" word (live finding: h1 rendered "דירה דירה 7"). */}
+          <h1 className="text-2xl font-bold">
+            {formatApartmentLabel(data.number, locale === 'he' ? 'דירה' : 'Apartment')}
+          </h1>
           <div className="flex items-center gap-2">
             <StatusBadge color={data.statusColor}>{data.statusLabel}</StatusBadge>
             <span className="text-xs text-muted-foreground">
@@ -186,6 +193,11 @@ export default function ApartmentDetailPage() {
           </Button>
         </div>
       </div>
+
+      {/* 7c F3 — נסח-טאבו extraction review + confirm. Write-flow: mounted
+          only for actors holding apartments.update (mirrors the BE gate, so
+          the section's queries never fire for viewers). */}
+      {canUpdate && !data.isArchived && <TabuReviewSection apartmentId={data.id} />}
 
       {actionError && <p className="text-sm text-destructive">{actionError}</p>}
     </div>

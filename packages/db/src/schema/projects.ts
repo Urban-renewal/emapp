@@ -14,6 +14,9 @@ import {
 
 import { projectTypeEnum, projectStatusEnum, apartmentStatusEnum } from './_enums';
 import { bytea, citext } from './_types';
+// Type-only at runtime via the lazy `.references(() => …)` callback — the
+// projects↔artifacts import cycle never dereferences during module eval.
+import { parcelSetups, tabuExtractions } from './artifacts';
 import { organizations, users } from './tenancy';
 
 /**
@@ -102,6 +105,12 @@ export const buildings = pgTable(
     subparcel: text('subparcel'),
     aptCount: integer('apt_count').notNull().default(0),
     notes: text('notes'),
+    // P3a (migration 0073) — provenance: the parcel setup whose confirm
+    // created this building (mirror ownerships.source_extraction_id, 0071).
+    // NULL for buildings created by any other path. Apartments inherit via
+    // their building — no duplicate column. Lazy callback keeps the
+    // projects↔artifacts ESM cycle safe (same pattern as sourceExtractionId).
+    sourceParcelSetupId: uuid('source_parcel_setup_id').references(() => parcelSetups.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -297,6 +306,12 @@ export const ownerships = pgTable(
     // the API edge. DISTINCT from the pre-existing `role` text column above
     // (values like 'primary') — do NOT overload `role`.
     relationship: text('relationship').notNull().default('owner'),
+    // S7c (migration 0071) — provenance: the tabu extraction whose confirm
+    // wrote this row (docs/DESIGN-phase5-tabu-extraction.md §5). NULL for
+    // rows written by any other path (manual replaceSet, import). Lazy
+    // callback keeps the projects↔artifacts ESM cycle safe (artifacts.ts
+    // already imports apartments/owners from here).
+    sourceExtractionId: uuid('source_extraction_id').references(() => tabuExtractions.id),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     endedAt: timestamp('ended_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

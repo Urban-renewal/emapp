@@ -51,6 +51,9 @@ interface R2Deps {
     Key: string;
     ContentType: string;
     ContentLength: number;
+    /** 7d server-side putObject — the real SDK accepts the body inline;
+     *  presign-minting call sites simply omit it. */
+    Body?: Buffer;
   }) => unknown;
   GetObjectCommand: new (opts: {
     Bucket: string;
@@ -123,6 +126,23 @@ export class R2StorageProvider implements IStorageProvider {
       });
       return this.deps.getSignedUrl(this.deps.client, cmd, { expiresIn: opts.ttlSeconds });
     });
+  }
+
+  /** 7d — server-side object write (sensitive-document app-envelope). The
+   *  bytes here are ALWAYS the opaque EMAPPENC ciphertext envelope, never
+   *  plaintext document content — nothing sensitive to log either way. */
+  async putObject(key: string, body: Buffer, opts?: { contentType?: string }): Promise<void> {
+    await withErrorTelemetry('putObject', () =>
+      this.deps.client.send(
+        new this.deps.PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          ContentType: opts?.contentType ?? 'application/octet-stream',
+          ContentLength: body.length,
+          Body: body,
+        }),
+      ),
+    );
   }
 
   async delete(key: string): Promise<void> {

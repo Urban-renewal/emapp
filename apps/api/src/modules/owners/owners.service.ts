@@ -19,6 +19,7 @@ import {
   ProjectStatusEnum,
   ProjectTypeEnum,
   type Owner,
+  type OwnerListItem,
   type OwnerPiiReveal,
   type OwnerProjectSummary,
 } from '@emapp/shared-types';
@@ -31,19 +32,24 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   requireAgentCapability,
   resolveOwnerPiiFidelity,
 } from '../../common/authz/agent-capabilities';
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 import type { CreateOwner, OwnerSearch, UpdateOwner } from './owner.dto';
 
 export interface OwnerListPage {
-  data: Owner[];
+  data: OwnerListItem[];
   page: { limit: number; cursor: string | null; has_more: boolean };
 }
 
@@ -225,15 +231,80 @@ export class OwnersService {
     )`;
   }
 
+  /**
+   * List-only management aggregates per owner: how many apartments they
+   * actively own + how many signature requests are still pending. Returned as
+   * correlated scalar subqueries so the page stays ONE round-trip (no N+1) and
+   * keyset pagination on owners.created_at/id is untouched. count(*)::int never
+   * yields NULL (a no-match owner ⇒ 0), so the wire field is always a number.
+   *
+   * For an AGENT the counts are project-scoped exactly like agentOwnerScope: the
+   * apartment count joins ownerships→apartments→buildings→project_assignments,
+   * and the pending-signature count joins signature_requests→documents→
+   * apartments→buildings→project_assignments. An unscoped count would leak the
+   * SIZE of an owner's footprint in projects the agent isn't assigned to —
+   * information the row itself withholds — so the scope is a security control,
+   * not just a filter. Manager/viewer roles count org-wide (RLS-bound).
+   */
+  private listAggregateCols(user: AccessTokenPayload): {
+    apartmentCount: SQL<number>;
+    pendingSignatureCount: SQL<number>;
+  } {
+    // NB: the correlated reference to the outer row is the literal,
+    // table-qualified `owners.id` — NOT a drizzle `${owners.id}` interpolation.
+    // Drizzle renders the latter as a BARE "id" inside a raw subquery, which
+    // then binds to the inner table's own id (ownerships.id / signature_
+    // requests.id) and silently makes the predicate `ow.owner_id = ow.id` —
+    // a false match that counts 0. `owners.id` is unambiguous here because no
+    // subquery aliases a table `owners`.
+    if (user.role === 'agent') {
+      return {
+        apartmentCount: sql<number>`(
+          SELECT count(*)::int FROM ownerships ow
+          JOIN apartments a ON a.id = ow.apartment_id
+          JOIN buildings b ON b.id = a.building_id
+          JOIN project_assignments pa ON pa.project_id = b.project_id
+            AND pa.user_id = ${user.sub} AND pa.unassigned_at IS NULL
+          WHERE ow.owner_id = owners.id AND ow.ended_at IS NULL
+        )`,
+        pendingSignatureCount: sql<number>`(
+          SELECT count(*)::int FROM signature_requests sr
+          JOIN documents d ON d.id = sr.document_id
+          JOIN apartments a ON a.id = d.apartment_id
+          JOIN buildings b ON b.id = a.building_id
+          JOIN project_assignments pa ON pa.project_id = b.project_id
+            AND pa.user_id = ${user.sub} AND pa.unassigned_at IS NULL
+          WHERE sr.owner_id = owners.id AND sr.status = 'pending'
+        )`,
+      };
+    }
+    return {
+      apartmentCount: sql<number>`(
+        SELECT count(*)::int FROM ownerships ow
+        WHERE ow.owner_id = owners.id AND ow.ended_at IS NULL
+      )`,
+      pendingSignatureCount: sql<number>`(
+        SELECT count(*)::int FROM signature_requests sr
+        WHERE sr.owner_id = owners.id AND sr.status = 'pending'
+      )`,
+    };
+  }
+
   async list(
     user: AccessTokenPayload,
-    query: { limit: number; cursor?: string },
+    query: { limit: number; cursor?: string; archived?: boolean },
   ): Promise<OwnerListPage> {
     const { limit } = query;
     const cur = query.cursor ? decodeCursor(query.cursor) : null;
     if (query.cursor && !cur) {
       throw new BadRequestException({ error: { code: 'invalid_cursor' } });
     }
+    // Default view = ACTIVE owners; `archived: true` returns the archived ones
+    // (so soft-archived records are reachable from the cockpit, not invisible).
+    // Erased (crypto-shredded) owners are excluded from BOTH views.
+    const archivedFilter = query.archived
+      ? isNotNull(owners.archivedAt)
+      : isNull(owners.archivedAt);
     const rows = await withTenant(
       user.orgId,
       async (tx) => {
@@ -242,16 +313,13 @@ export class OwnersService {
         await this.assertAgentCanViewOwners(tx, user);
         const scope = this.agentOwnerScope(user);
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(owners.createdAt, new Date(cur.c)),
-              and(eq(owners.createdAt, new Date(cur.c)), lt(owners.id, cur.i)),
-            )
+          ? keysetCondition(owners.createdAt, owners.id, cur)
           : undefined;
         return tx
-          .select(ownerCols)
+          .select({ ...ownerCols, ...this.listAggregateCols(user) })
           .from(owners)
-          .where(and(isNull(owners.archivedAt), isNull(owners.erasedAt), scope, keyset))
-          .orderBy(desc(owners.createdAt), desc(owners.id))
+          .where(and(archivedFilter, isNull(owners.erasedAt), scope, keyset))
+          .orderBy(...keysetOrderBy(owners.createdAt, owners.id))
           .limit(limit + 1);
       },
       { userId: user.sub },
@@ -260,7 +328,11 @@ export class OwnersService {
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
     const last = pageRows[pageRows.length - 1];
     return {
-      data: pageRows.map(toOwner),
+      data: pageRows.map((r) => ({
+        ...toOwner(r),
+        apartmentCount: r.apartmentCount,
+        pendingSignatureCount: r.pendingSignatureCount,
+      })),
       page: { limit, cursor: hasMore && last ? encodeCursor(last) : null, has_more: hasMore },
     };
   }

@@ -18,11 +18,17 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
+import { and, eq, isNull, type SQL } from 'drizzle-orm';
 
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { ShareTokenService } from '../contractor-portal/share-token.service';
+import { notificationLink } from '../notifications/notification-links';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
@@ -174,16 +180,13 @@ export class SharesService {
       async (tx) => {
         await this.assertProjectVisible(tx, user, projectId);
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(shares.createdAt, new Date(cur.c)),
-              and(eq(shares.createdAt, new Date(cur.c)), lt(shares.id, cur.i)),
-            )
+          ? keysetCondition(shares.createdAt, shares.id, cur)
           : undefined;
         return tx
           .select()
           .from(shares)
           .where(and(eq(shares.projectId, projectId), isNull(shares.revokedAt), keyset))
-          .orderBy(desc(shares.createdAt), desc(shares.id))
+          .orderBy(...keysetOrderBy(shares.createdAt, shares.id))
           .limit(limit + 1);
       },
       { userId: user.sub },
@@ -362,7 +365,7 @@ export class SharesService {
           type: 'share_revoked',
           title: 'גישת קבלן בוטלה',
           body: `הרשאת ${notifyContractorName} בוטלה.`,
-          link: null,
+          link: notifyProjectId ? notificationLink.projectShares(notifyProjectId) : null,
           metadata: { shareId: id, projectId: notifyProjectId },
         });
       } catch (e) {

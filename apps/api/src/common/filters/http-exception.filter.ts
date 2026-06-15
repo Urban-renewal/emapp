@@ -1,3 +1,4 @@
+import { scrubPgErrorPii } from '@emapp/db';
 import {
   ExceptionFilter,
   Catch,
@@ -6,6 +7,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import * as Sentry from '@sentry/node';
 import type { FastifyReply } from 'fastify';
 
 // D.16: error envelope { error: { code, message, details? } }
@@ -54,10 +56,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       if (exception instanceof Error) {
         debugChain.push({ message: exception.message });
       }
+      const pgCodes: string[] = [];
       let cause: unknown = (exception as { cause?: unknown })?.cause;
       let depth = 0;
       while (cause && depth < 5) {
         const pg = cause as { message?: string; code?: string; detail?: string; hint?: string };
+        if (pg.code) pgCodes.push(pg.code);
         this.logger.error(
           `  ↳ cause[${depth}] pgcode=${pg.code ?? '?'} ${pg.message ?? String(cause)}${pg.detail ? ` | detail=${pg.detail}` : ''}${pg.hint ? ` | hint=${pg.hint}` : ''}`,
         );
@@ -69,6 +73,30 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         });
         cause = (cause as { cause?: unknown })?.cause;
         depth += 1;
+      }
+
+      // S1 (audit Theme A — observability) — report the 5xx to Sentry so an
+      // in-request fault is not invisible to the alerting tool. The full cause
+      // (incl. pg detail/hint) is ALREADY in the server logs above for forensics;
+      // before handing the error to Sentry — an EXTERNAL service — scrub the pg
+      // `cause.detail`/`hint`, because those carry column VALUES (e.g.
+      // `Key (national_id)=(…)`), i.e. PII that must never leave the boundary
+      // (root CLAUDE.md). The pgcode + top message + stack are PII-safe and stay,
+      // so Sentry keeps real grouping/stack. The exception is terminal here
+      // (response about to be sent), so mutating it has no downstream reader.
+      // Theme-C: the scrub is the shared @emapp/db `scrubPgErrorPii` (one impl,
+      // shared with the worker). FAIL CLOSED — if it could not scrub (frozen
+      // cause), drop the Sentry event rather than risk leaking detail/hint.
+      // (pgCodes for the Sentry context come from the forensic loop above; the
+      // helper's pgCodes return is discarded here — we only need its scrub + the
+      // fail-closed flag, since the loop already collected codes while logging.)
+      const { scrubbed } = scrubPgErrorPii(exception);
+      if (scrubbed) {
+        Sentry.captureException(exception, {
+          level: 'error',
+          tags: { httpStatus: status },
+          ...(pgCodes.length > 0 ? { contexts: { pg: { codes: pgCodes } } } : {}),
+        });
       }
     }
 

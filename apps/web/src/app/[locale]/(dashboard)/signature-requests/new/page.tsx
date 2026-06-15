@@ -2,11 +2,12 @@
 
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { useDocumentList } from '@/hooks/use-documents';
 import { useOwnerList } from '@/hooks/use-owners';
+import { useApartmentOwners } from '@/hooks/use-ownerships';
 import { useCreateSignatureRequest } from '@/hooks/use-signature-requests';
 import { ApiClientError } from '@/lib/api/projects';
 
@@ -25,7 +26,31 @@ export default function NewSignatureRequestPage() {
   const [copied, setCopied] = useState(false);
 
   const documentItems = documents.data?.items ?? [];
-  const ownerItems = owners.data?.items ?? [];
+
+  // The server only accepts a recipient who OWNS the document's apartment
+  // (recipient_not_associated otherwise). So scope the owner dropdown to that
+  // apartment's owners — a wrong pick becomes impossible instead of a cryptic
+  // failure. A project-scoped document (no apartment) falls back to all owners.
+  const selectedDoc = documentItems.find((d) => d.id === documentId);
+  const apartmentId = selectedDoc?.apartmentId ?? null;
+  const apartmentOwners = useApartmentOwners(apartmentId ?? undefined);
+  // Normalise both sources to { id, name } — apartment owners are
+  // OwnershipViewModel ({ ownerId, displayName }); the all-owners fallback is
+  // OwnerViewModel ({ id, name }).
+  const ownerItems: { id: string; name: string }[] = apartmentId
+    ? (apartmentOwners.data?.items ?? []).map((o) => ({ id: o.ownerId, name: o.displayName }))
+    : (owners.data?.items ?? []).map((o) => ({
+        id: o.id,
+        name: o.name ?? t('field.unnamedOwner'),
+      }));
+  const ownerSelectDisabled =
+    !documentId || (apartmentId ? apartmentOwners.isLoading : owners.isLoading);
+
+  // Clear a stale recipient when the document (and therefore the eligible
+  // owners) changes.
+  useEffect(() => {
+    setOwnerId('');
+  }, [documentId]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,6 +64,7 @@ export default function NewSignatureRequestPage() {
     } catch (e) {
       if (e instanceof ApiClientError) {
         if (e.code === 'signature_request_pending_exists') setError(t('pendingExists'));
+        else if (e.code === 'recipient_not_associated') setError(t('recipientNotAssociated'));
         else if (e.code === 'storage_unavailable') setError(t('storageUnavailable'));
         else if (e.code === 'validation_error') setError(t('validationError'));
         else if (e.code === 'forbidden') setError(t('forbidden'));
@@ -133,11 +159,11 @@ export default function NewSignatureRequestPage() {
             id="owner"
             value={ownerId}
             onChange={(e) => setOwnerId(e.target.value)}
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-            disabled={owners.isLoading}
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={ownerSelectDisabled}
           >
             <option value="" disabled>
-              {t('field.ownerPlaceholder')}
+              {!documentId ? t('field.ownerNeedsDocument') : t('field.ownerPlaceholder')}
             </option>
             {ownerItems.map((o) => (
               // §SEC-M4 — dir="auto" gives <option> partial bidi
@@ -149,6 +175,9 @@ export default function NewSignatureRequestPage() {
               </option>
             ))}
           </select>
+          {documentId && apartmentId && ownerItems.length === 0 && !apartmentOwners.isLoading && (
+            <p className="text-xs text-muted-foreground">{t('field.noApartmentOwners')}</p>
+          )}
         </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}

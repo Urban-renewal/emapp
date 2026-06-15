@@ -23,7 +23,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 
 import { STORAGE_PROVIDER, safeDownloadFilename } from '../documents/storage';
 
@@ -99,7 +99,13 @@ export class ContractorReadService {
         .from(apartments)
         .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
         .where(and(eq(buildings.projectId, ctx.projectId), isNull(apartments.archivedAt)))
-        .orderBy(asc(apartments.number));
+        // Natural (numeric-aware) order: extracted numeral first (digitless
+        // labels last), raw label as the lexical tie-break. ::numeric (not
+        // ::bigint) so a pathologically long digit-run cannot overflow.
+        .orderBy(
+          sql`NULLIF(regexp_replace(${apartments.number}, '\\D', '', 'g'), '')::numeric ASC NULLS LAST`,
+          asc(apartments.number),
+        );
 
       const aptsByBuilding = new Map<
         string,
@@ -187,6 +193,10 @@ export class ContractorReadService {
             // P0.B1 — FAIL-CLOSED malware gate: never list a doc to an external
             // contractor unless it scanned `clean` (download is gated too).
             eq(documents.scanStatus, 'clean'),
+            // D-P5.7 — SENSITIVE docs (id_document/financial/נסח/explicit) are
+            // NEVER exposed to an external contractor: this tier has no OTP
+            // step-up session, so the only fail-closed posture is exclusion.
+            eq(documents.sensitive, false),
           ),
         )
         .orderBy(asc(documents.name)),
@@ -224,6 +234,9 @@ export class ContractorReadService {
             // download ONLY a scan-`clean` doc; any other status → 404
             // (no-oracle), never a minted presigned URL.
             eq(documents.scanStatus, 'clean'),
+            // D-P5.7 — a SENSITIVE doc is never served to a contractor (no OTP
+            // step-up exists for this external tier) → 404, no-oracle.
+            eq(documents.sensitive, false),
           ),
         )
         .limit(1);

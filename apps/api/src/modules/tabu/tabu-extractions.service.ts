@@ -1,10 +1,15 @@
 import {
   AuditService,
   apartments,
+  authSessions,
   buildings,
+  decryptField,
   documents,
   encryptField,
+  encryptOwnerPii,
   env as dbEnv,
+  hashField,
+  owners,
   projectAssignments,
   projects,
   tabuExtractionRows,
@@ -15,22 +20,77 @@ import {
   type TabuExtraction as TabuExtractionRow,
   type TenantTx,
 } from '@emapp/db';
+import { ListOwnershipsQuery } from '@emapp/shared-types';
 import type {
   CreateTabuExtraction,
   TabuExtraction,
+  TabuExtractionReviewRow,
   TabuExtractionStatus,
+  UpdateTabuExtractionRow,
 } from '@emapp/shared-types';
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { and, asc, eq, isNull, type SQL } from 'drizzle-orm';
 
-import { requireAgentCapability } from '../../common/authz/agent-capabilities';
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  requireAgentCapability,
+  resolveOwnerPiiFidelity,
+} from '../../common/authz/agent-capabilities';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
+import { getOrgSettings } from '../../common/org-settings.resolver';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { STORAGE_PROVIDER } from '../documents/storage';
+import {
+  isOwnershipSumRaise,
+  replaceApartmentOwnershipSet,
+  type OwnershipReplacementEntry,
+} from '../ownerships/ownerships.service';
 
 import { EXTRACTION_PROVIDER } from './extraction-provider.factory';
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
+
+/** MINOR (c) — the service no-query default MUST equal the Zod DTO default
+ *  (ListOwnershipsQuery.limit, currently 25). Derived, not hardcoded, so a
+ *  DTO change cannot drift the service again. */
+const DEFAULT_LIST_LIMIT = ListOwnershipsQuery.parse({}).limit;
+
+/** 7c — the review/confirm surface materializes decrypted owner PII, so it
+ * sits behind the SAME per-session unlock gate as the sensitive-document
+ * download (7b-OTP, D-P5.5/7/8). 403 — the FE opens the OTP dialog. Only
+ * ever thrown AFTER the apartment-visibility check passed, so it is never
+ * an existence oracle. */
+const PII_STEP_UP_REQUIRED = new ForbiddenException({
+  error: { code: 'pii_step_up_required' },
+});
+
+/** 7c — review writes (row edit) and confirm apply to a DRAFT only. A
+ * confirmed/discarded extraction is terminal → 409 (the caller already
+ * passed visibility, so the lifecycle state is not a secret here; for
+ * confirm specifically the 409 IS the idempotency contract). */
+const NOT_DRAFT = new ConflictException({ error: { code: 'tabu_extraction_not_draft' } });
+
+/** 7c — confirm needs every parsed row to carry a share fraction and at
+ * least one identity field; a partial parse must be edited first. */
+const ROWS_INCOMPLETE = new BadRequestException({ error: { code: 'tabu_rows_incomplete' } });
+
+const SUM_INVALID = new BadRequestException({ error: { code: 'ownership_sum_invalid' } });
+
+/** Owners-surface mask style (NID_MASK): bullets + the last 2 chars. */
+function maskNationalId(nid: string): string {
+  return '•••••••' + nid.slice(-2);
+}
 
 /** The source document is not in a state that can be extracted (not finalized
  * — upload never completed, or AV scan not clean). 409: the doc exists + is
@@ -158,6 +218,17 @@ export class TabuExtractionsService {
         //    the visibility + apartment-scope checks → never an existence oracle.
         if (!doc.uploadedAt || doc.scanStatus !== 'clean') throw DOC_NOT_FINALIZED;
 
+        // 5b. 7b-OTP (D-P5.7) — a נסח holds owner PII (names + national_id),
+        //     so the SOURCE document becomes SENSITIVE the moment an
+        //     extraction is attached to it (turn-ON only, never off). Its
+        //     download now requires the per-session PII step-up unlock.
+        if (!doc.sensitive) {
+          await tx
+            .update(documents)
+            .set({ sensitive: true, updatedAt: new Date() })
+            .where(eq(documents.id, doc.id));
+        }
+
         // 6. Insert the draft envelope.
         const [row] = await tx
           .insert(tabuExtractions)
@@ -192,7 +263,7 @@ export class TabuExtractionsService {
     apartmentId: string,
     query?: { limit?: number; cursor?: string },
   ): Promise<TabuExtractionListPage> {
-    const limit = query?.limit ?? 20;
+    const limit = query?.limit ?? DEFAULT_LIST_LIMIT;
     const cursor = query?.cursor;
     const cur = cursor ? decodeCursor(cursor) : null;
     if (cursor && !cur) {
@@ -203,16 +274,13 @@ export class TabuExtractionsService {
       async (tx) => {
         await this.assertApartmentVisible(tx, user, apartmentId);
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(tabuExtractions.createdAt, new Date(cur.c)),
-              and(eq(tabuExtractions.createdAt, new Date(cur.c)), lt(tabuExtractions.id, cur.i)),
-            )
+          ? keysetCondition(tabuExtractions.createdAt, tabuExtractions.id, cur)
           : undefined;
         return tx
           .select()
           .from(tabuExtractions)
           .where(and(eq(tabuExtractions.apartmentId, apartmentId), keyset))
-          .orderBy(desc(tabuExtractions.createdAt), desc(tabuExtractions.id))
+          .orderBy(...keysetOrderBy(tabuExtractions.createdAt, tabuExtractions.id))
           .limit(limit + 1);
       },
       { userId: user.sub },
@@ -401,5 +469,323 @@ export class TabuExtractionsService {
       },
       { userId: user.sub },
     );
+  }
+
+  /**
+   * 7c — the PII unlock gate (D-P5.5/7/8). The caller's CURRENT session
+   * (user.sid) must hold a VALID unlock: auth_sessions.pii_unlocked_at NOT
+   * NULL AND younger than the org's security.piiUnlockTtlMinutes (default
+   * 60). Byte-for-byte the sensitive-document download gate
+   * (DocumentsService.getDownloadUrl). Fail-closed: an unknown/ghost sid
+   * finds no row → locked. ALWAYS ordered AFTER assertApartmentVisible so
+   * the 403 is never an existence oracle.
+   */
+  private async assertPiiUnlocked(tx: TenantTx, user: AccessTokenPayload): Promise<void> {
+    const { security } = await getOrgSettings(tx, user.orgId);
+    const ttlMs = security.piiUnlockTtlMinutes * 60_000;
+    // auth_sessions is auth-infra (no RLS; app_user has SELECT).
+    const [sess] = await tx
+      .select({ piiUnlockedAt: authSessions.piiUnlockedAt })
+      .from(authSessions)
+      .where(eq(authSessions.id, user.sid))
+      .limit(1);
+    const unlockedAt = sess?.piiUnlockedAt ?? null;
+    if (!unlockedAt || unlockedAt.getTime() + ttlMs <= Date.now()) {
+      throw PII_STEP_UP_REQUIRED;
+    }
+  }
+
+  // Load the extraction + enforce the via-parent visibility (no-oracle 404).
+  private async loadVisibleExtraction(
+    tx: TenantTx,
+    user: AccessTokenPayload,
+    extractionId: string,
+  ): Promise<TabuExtractionRow> {
+    const [extraction] = await tx
+      .select()
+      .from(tabuExtractions)
+      .where(eq(tabuExtractions.id, extractionId))
+      .limit(1);
+    if (!extraction) throw NOT_FOUND;
+    await this.assertApartmentVisible(tx, user, extraction.apartmentId);
+    return extraction;
+  }
+
+  /**
+   * 7c — GET /tabu-extractions/:id/rows: the DECRYPTED parsed rows for the
+   * side-by-side review screen.
+   *
+   * Gates (in order — never an oracle):
+   *   1. extraction visible (RLS org + agent assigned-project) → else 404;
+   *   2. VALID per-session PII unlock → else 403 pii_step_up_required;
+   *   3. role masking (D.19/D.47 via resolveOwnerPiiFidelity, D.54): a
+   *      'masked' caller (viewer / agent without view_owner_pii) gets the
+   *      •-masked national_id (owners NID_MASK style); 'unmasked' gets clear.
+   *
+   * The reveal is AUDITED (ids + rowCount + fidelity ONLY). PII values are
+   * NEVER logged and NEVER placed in audit/metadata/errors.
+   */
+  async listRows(
+    user: AccessTokenPayload,
+    extractionId: string,
+  ): Promise<TabuExtractionReviewRow[]> {
+    const encKey = dbEnv.PII_ENCRYPTION_KEY;
+    if (!encKey) {
+      throw new Error('PII_ENCRYPTION_KEY is required for tabu extraction review');
+    }
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        const extraction = await this.loadVisibleExtraction(tx, user, extractionId);
+        await this.assertPiiUnlocked(tx, user);
+        const fidelity = await resolveOwnerPiiFidelity(tx, user);
+
+        const rows = await tx
+          .select()
+          .from(tabuExtractionRows)
+          .where(eq(tabuExtractionRows.extractionId, extractionId))
+          .orderBy(asc(tabuExtractionRows.position));
+
+        const out: TabuExtractionReviewRow[] = [];
+        for (const r of rows) {
+          const name = r.nameEncrypted ? await decryptField(tx, r.nameEncrypted, encKey) : null;
+          let nationalId = r.nationalIdEncrypted
+            ? await decryptField(tx, r.nationalIdEncrypted, encKey)
+            : null;
+          if (nationalId && fidelity === 'masked') nationalId = maskNationalId(nationalId);
+          out.push({
+            id: r.id,
+            name,
+            nationalId,
+            shareNumerator: r.shareNumerator,
+            shareDenominator: r.shareDenominator,
+            confidence: r.confidence,
+            edited: r.edited,
+            position: r.position,
+          });
+        }
+
+        // Audit the PII reveal — ids + rowCount + fidelity ONLY, NEVER values.
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'tabu_extraction.rows_revealed',
+          targetTable: 'tabu_extractions',
+          targetId: extraction.id,
+          metadata: { rowCount: rows.length, fidelity },
+          sessionId: user.sid,
+        });
+        return out;
+      },
+      { userId: user.sub },
+    );
+  }
+
+  /**
+   * 7c — PATCH /tabu-extractions/:id/rows/:rowId: review-screen edit of one
+   * parsed row BEFORE confirm. Edited PII values are RE-ENCRYPTED (pgcrypto,
+   * PII_ENCRYPTION_KEY); the row is stamped edited=true. DRAFT-only (409).
+   *
+   * Gates (in order): visibility (404) → PII unlock (403
+   * pii_step_up_required — the edit round-trips PII) → D.54
+   * requireAgentCapability('edit_project_data') in THIS named method (the
+   * static guard does not cover named service methods) → draft-only (409)
+   * → row exists on THIS extraction (404).
+   *
+   * Audit carries the row id + patched FIELD NAMES only — never values.
+   */
+  async updateRow(
+    user: AccessTokenPayload,
+    extractionId: string,
+    rowId: string,
+    patch: UpdateTabuExtractionRow,
+  ): Promise<void> {
+    const encKey = dbEnv.PII_ENCRYPTION_KEY;
+    if (!encKey) {
+      throw new Error('PII_ENCRYPTION_KEY is required for tabu extraction review');
+    }
+    await withTenant(
+      user.orgId,
+      async (tx) => {
+        const extraction = await this.loadVisibleExtraction(tx, user, extractionId);
+        await this.assertPiiUnlocked(tx, user);
+        await requireAgentCapability(tx, user, 'edit_project_data');
+        if (extraction.status !== 'draft') throw NOT_DRAFT;
+
+        const [row] = await tx
+          .select({ id: tabuExtractionRows.id })
+          .from(tabuExtractionRows)
+          .where(
+            and(
+              eq(tabuExtractionRows.id, rowId),
+              eq(tabuExtractionRows.extractionId, extraction.id),
+            ),
+          )
+          .limit(1);
+        if (!row) throw NOT_FOUND;
+
+        const set: Partial<typeof tabuExtractionRows.$inferInsert> = { edited: true };
+        if (patch.name !== undefined) {
+          set.nameEncrypted = await encryptField(tx, patch.name, encKey);
+        }
+        if (patch.nationalId !== undefined) {
+          set.nationalIdEncrypted = await encryptField(tx, patch.nationalId, encKey);
+        }
+        if (patch.shareNumerator !== undefined) set.shareNumerator = patch.shareNumerator;
+        if (patch.shareDenominator !== undefined) set.shareDenominator = patch.shareDenominator;
+        await tx.update(tabuExtractionRows).set(set).where(eq(tabuExtractionRows.id, rowId));
+
+        // Audit — row id + patched field NAMES only. NEVER any PII value.
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'tabu_extraction.row_updated',
+          targetTable: 'tabu_extraction_rows',
+          targetId: rowId,
+          metadata: { extractionId: extraction.id, fields: Object.keys(patch) },
+          sessionId: user.sid,
+        });
+      },
+      { userId: user.sub },
+    );
+  }
+
+  /**
+   * 7c — POST /tabu-extractions/:id/confirm: THE commit (D-P5.1 — the human
+   * eye approved the parse). Audit-first, IDEMPOTENT, ATOMIC in ONE
+   * withTenant tx:
+   *
+   *   1. Gates: visibility (404) → PII unlock (403 — confirm materializes
+   *      decrypted PII) → D.54 edit_project_data in THIS named method.
+   *   2. Audit 'tabu_extraction.confirm' FIRST (ids only; rolls back with
+   *      the tx if anything below fails — no orphan audit).
+   *   3. SINGLE-CLAIM: UPDATE … SET status='confirmed', confirmed_at=now()
+   *      WHERE id=:id AND status='draft' RETURNING. No row claimed (second
+   *      confirm / discarded) → 409, NOTHING written (tx rolls back).
+   *   4. Per parsed row: match an EXISTING org owner by national_id HMAC
+   *      hash (hashField + the org-unique-active index — the import-path
+   *      dedup mechanism) → REUSE; else CREATE a 3a shell owner via
+   *      encryptOwnerPii (encrypted + hash-matchable).
+   *   5. REPLACE the apartment's active ownerships with the confirmed
+   *      fractions via the SHARED replaceApartmentOwnershipSet (3b
+   *      semantics: end-all + insert-new in the SAME tx; the deferred sum
+   *      trigger validates fraction-sum = 1 at COMMIT), stamping
+   *      ownerships.source_extraction_id = :id on EVERY inserted row.
+   *
+   * NEVER logs PII; the audit row carries ids/rowCount only.
+   */
+  async confirm(user: AccessTokenPayload, extractionId: string): Promise<TabuExtraction> {
+    const encKey = dbEnv.PII_ENCRYPTION_KEY;
+    const hashKey = dbEnv.PII_HASH_KEY;
+    if (!encKey || !hashKey) {
+      throw new Error('PII keys are required for tabu extraction confirm');
+    }
+    try {
+      return await withTenant(
+        user.orgId,
+        async (tx) => {
+          const extraction = await this.loadVisibleExtraction(tx, user, extractionId);
+          await this.assertPiiUnlocked(tx, user);
+          await requireAgentCapability(tx, user, 'edit_project_data');
+
+          // Audit-FIRST (ids only). Inside the tx: a later 409/throw rolls
+          // it back, so a failed confirm leaves no "confirmed" audit trace.
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+            orgId: user.orgId,
+            actorId: user.sub,
+            actorType: 'user',
+            action: 'tabu_extraction.confirm',
+            targetTable: 'tabu_extractions',
+            targetId: extraction.id,
+            afterState: { apartmentId: extraction.apartmentId, status: 'confirmed' },
+            sessionId: user.sid,
+          });
+
+          // IDEMPOTENT single-claim: only a DRAFT can be confirmed, exactly
+          // once. A second confirm (or a discarded extraction) claims no row
+          // → 409 conflict, NOT a double-write.
+          const [claimed] = await tx
+            .update(tabuExtractions)
+            .set({ status: 'confirmed', confirmedAt: new Date() })
+            .where(and(eq(tabuExtractions.id, extraction.id), eq(tabuExtractions.status, 'draft')))
+            .returning();
+          if (!claimed) throw NOT_DRAFT;
+
+          const rows = await tx
+            .select()
+            .from(tabuExtractionRows)
+            .where(eq(tabuExtractionRows.extractionId, extraction.id))
+            .orderBy(asc(tabuExtractionRows.position));
+
+          const entries: OwnershipReplacementEntry[] = [];
+          for (const r of rows) {
+            // Every committed row needs a share fraction + at least one
+            // identity field — a partial parse must be edited before
+            // confirm. (A mid-loop throw rolls the whole tx back.)
+            const shareNumerator = r.shareNumerator;
+            const shareDenominator = r.shareDenominator;
+            if (shareNumerator == null || shareDenominator == null || shareDenominator <= 0) {
+              throw ROWS_INCOMPLETE;
+            }
+            if (!r.nameEncrypted && !r.nationalIdEncrypted) throw ROWS_INCOMPLETE;
+
+            const name = r.nameEncrypted ? await decryptField(tx, r.nameEncrypted, encKey) : null;
+            const nationalId = r.nationalIdEncrypted
+              ? await decryptField(tx, r.nationalIdEncrypted, encKey)
+              : null;
+
+            // Hash-match an existing active org owner (RLS org-scopes the
+            // SELECT; the partial unique index guarantees at most one).
+            let ownerId: string | null = null;
+            if (nationalId) {
+              const [existing] = await tx
+                .select({ id: owners.id })
+                .from(owners)
+                .where(
+                  and(
+                    eq(owners.nationalIdHash, hashField(nationalId, hashKey)),
+                    isNull(owners.archivedAt),
+                  ),
+                )
+                .limit(1);
+              if (existing) ownerId = existing.id;
+            }
+            if (!ownerId) {
+              // 3a shell owner — encrypted + HMAC-hashed so it is itself
+              // hash-matchable by future confirms/imports.
+              const pii = await encryptOwnerPii(tx, { name, nationalId });
+              const [created] = await tx
+                .insert(owners)
+                .values({ orgId: user.orgId, ...pii })
+                .returning({ id: owners.id });
+              if (!created) throw NOT_FOUND;
+              ownerId = created.id;
+            }
+            entries.push({
+              ownerId,
+              shareNumerator,
+              shareDenominator,
+              relationship: 'owner',
+              sourceExtractionId: extraction.id,
+            });
+          }
+
+          // 3b semantics via the SHARED helper: end-all + insert-new in THIS
+          // tx; the deferred sum trigger validates fraction-sum = 1 at COMMIT.
+          // Provenance stamped on every inserted row (entries above).
+          await replaceApartmentOwnershipSet(tx, extraction.apartmentId, entries);
+
+          return toWire(claimed);
+        },
+        { userId: user.sub },
+      );
+    } catch (e) {
+      // Deferred-trigger backstop: a COMMIT-time sum raise surfaces as a
+      // clean 400 (rows not summing to exactly 1), never a 500.
+      if (isOwnershipSumRaise(e)) throw SUM_INVALID;
+      throw e;
+    }
   }
 }

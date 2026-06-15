@@ -12,7 +12,7 @@
       "signaturesReceived": "Signatures received",
       "pending": "Pending",
       "placeholder": "—",
-      "comingSoon": "Summary values land in a dedicated slice"
+      "comingSoon": "Summary figures will appear here soon"
     },
     "action": {
       "newProject": "New project",
@@ -22,12 +22,12 @@
     "calendar": {
       "title": "This week",
       "empty": "No tasks this week",
-      "comingHint": "Full calendar wires up in A.S12 (Calendar + ICS)"
+      "comingHint": "A full weekly calendar view is on the way"
     },
     "conversations": {
       "title": "Recent conversations",
       "empty": "No conversations to show",
-      "comingHint": "Chat lands later (Phase 2)"
+      "comingHint": "Chat coming in a future update"
     },
     "agent": {
       "pageTitle": "My work",
@@ -72,8 +72,8 @@
     "tasks": "Tasks",
     "contractors": "Contractors",
     "notes": "Notes",
+    "messages": "Messages",
     "audit": "Audit log",
-    "settings": "Settings",
     "provider": "Provider",
     "providerConsole": "EMAPP Provider Console",
     "tagline": "Urban Renewal",
@@ -126,10 +126,22 @@
     "loginCta": "Sign in",
     "forgotPassword": "Forgot password?",
     "rolePicker": {
-      "manager": { "label": "Manager", "sub": "Email and password" },
-      "agent": { "label": "Agent", "sub": "Email or phone" },
-      "contractor": { "label": "Contractor", "sub": "Email and password" },
-      "tenant": { "label": "Resident", "sub": "National ID + phone" },
+      "manager": {
+        "label": "Manager",
+        "sub": "Email and password"
+      },
+      "agent": {
+        "label": "Agent",
+        "sub": "Email or phone"
+      },
+      "contractor": {
+        "label": "Contractor",
+        "sub": "Email and password"
+      },
+      "tenant": {
+        "label": "Resident",
+        "sub": "National ID + phone"
+      },
       "comingSoonAgent": "Coming soon — only Manager sign-in is wired today",
       "comingSoonContractor": "Coming soon — Contractor signs in via a share link",
       "comingSoonTenant": "Coming soon — Resident signs in via SMS OTP"
@@ -195,8 +207,8 @@
     "noResults": "No results match the search",
     "viewCards": "Cards view",
     "viewTable": "Table view",
-    "dataPendingHint": "Extended values (block/parcel/units/signatures/agents) will appear once the API is enriched",
-    "headerHint": "Extended values (contractor/signatures/agents/units) will appear once the API is enriched",
+    "dataPendingHint": "Extended details — block/parcel, units, signatures, agents — will appear here soon",
+    "headerHint": "Extended details — contractor, signatures, agents, units — will appear here soon",
     "kpi": {
       "contractor": "Linked contractor",
       "signatures": "Signatures received",
@@ -206,12 +218,12 @@
     "export": {
       "excel": "Export to Excel",
       "pdf": "Export to PDF",
-      "comingSoon": "Coming soon — Phase 5",
-      "pdfComingSoon": "Coming soon — Phase 5 (B.S9)",
+      "comingSoon": "Coming soon",
+      "pdfComingSoon": "PDF export — coming soon",
       "downloading": "Exporting...",
       "downloaded": "Download complete",
       "failed": "Export failed. Please try again.",
-      "notReady": "Export endpoint not yet live — coming soon.",
+      "notReady": "Export is not yet available — coming soon.",
       "aria": "Export project to Excel"
     },
     "tab": {
@@ -263,7 +275,53 @@
       "tooLarge": "File exceeds the maximum size (50MB).",
       "sizeMismatch": "File size did not match. Please re-upload.",
       "hashMismatch": "File content did not match. Please re-upload.",
+      "scanRejected": "The file was rejected by the security scan",
       "failed": "Upload failed. Try again."
+    },
+    "parcelSetup": {
+      "title": "Setup from block-parcel",
+      "action": "Setup from block-parcel",
+      "hint": "Enter block and parcel, locate the address, and create the project's buildings and apartments skeleton.",
+      "blockLabel": "Block",
+      "parcelLabel": "Parcel",
+      "subParcelLabel": "Sub-parcel (optional)",
+      "lookup": "Continue",
+      "looking": "Checking…",
+      "createFailed": "Creating the setup failed. Try again.",
+      "detected": "Found: {city}",
+      "notFoundManual": "Not found — continue with manual entry",
+      "buildingTitle": "Building {num}",
+      "addressLabel": "Address",
+      "cityLabel": "City",
+      "buildingNumberLabel": "Building number (optional)",
+      "floorsCountLabel": "Floors count (optional)",
+      "genLegend": "Apartment generator — floors × apartments per floor",
+      "genFloorsLabel": "Floors",
+      "genPerFloorLabel": "Apartments per floor",
+      "aptsLegend": "Manually entered apartments",
+      "aptNumberLabel": "Apartment number",
+      "aptFloorLabel": "Floor (optional)",
+      "addApartment": "Add apartment manually",
+      "removeApartment": "Remove apartment",
+      "addBuilding": "Add building",
+      "removeBuilding": "Remove building",
+      "confirm": "Confirm and create",
+      "confirming": "Creating…",
+      "confirmedOk": "Setup complete — the buildings and apartments were created.",
+      "alreadyConfirmed": "Already confirmed",
+      "skeletonConflict": "Some of the buildings/apartments already exist in the project",
+      "saveFailed": "Saving the draft failed. Try again.",
+      "confirmFailed": "The setup failed. Try again.",
+      "loadingBuildings": "Loading buildings…",
+      "buildingsNow": "Buildings in project: {count}",
+      "errNoRows": "Add at least one building.",
+      "errAddressRequired": "Enter an address for every building.",
+      "errNoDecision": "Define apartments — via the generator or manual entry.",
+      "errAmbiguous": "Both the generator and manual apartments are set — choose one.",
+      "errInvalidGenerator": "Generator values must be whole numbers of 1 or more.",
+      "errTooMany": "More than 1000 apartments per building — reduce the generator.",
+      "errEmptyApartments": "No manually entered apartments were defined.",
+      "errAptNumberRequired": "Enter a number for every apartment."
     },
     "tenantsTab": {
       "title": "Manage buildings and residents",
@@ -278,7 +336,7 @@
     },
     "tasksTab": {
       "title": "Project tasks",
-      "hint": "Per-project tasks will wire up in A.S12 (Calendar + ICS). In the meantime — the global tasks list.",
+      "hint": "Per-project tasks are coming soon. In the meantime — the global tasks list.",
       "cta": "Open tasks list"
     },
     "wizard": {
@@ -557,7 +615,7 @@
     "actionSendDoc": "Send for signature",
     "actionAddNote": "Add note",
     "actionCreateTask": "Create task",
-    "actionsComingSoon": "Quick actions wire up once the API is enriched",
+    "actionsComingSoon": "Quick actions will be available here soon",
     "field": {
       "name": "Full name",
       "nationalId": "National ID (9 digits)",
@@ -565,7 +623,20 @@
       "email": "Email",
       "notes": "Notes",
       "idExists": "This national ID is already registered in the organization"
-    }
+    },
+    "view": "View",
+    "col": {
+      "name": "Owner",
+      "identity": "Identity",
+      "apartments": "Apartments",
+      "pendingSignatures": "Pending signatures",
+      "actions": "Actions"
+    },
+    "tab": {
+      "active": "Active",
+      "archived": "Archived"
+    },
+    "emptyArchived": "No archived owners."
   },
   "documents": {
     "listTitle": "Documents",
@@ -582,6 +653,9 @@
     "uploadFailed": "Upload to storage failed",
     "storageUnavailable": "Storage is temporarily unavailable. Retry shortly.",
     "sizeMismatch": "Uploaded file size doesn't match the declared size. Try again.",
+    "hashMismatch": "Uploaded file content doesn't match the declared hash. Try again.",
+    "scanRejected": "The file was rejected by the security scan",
+    "fileTooLarge": "File too large (up to 50MB)",
     "mimeNotAllowed": "This file type is not allowed. Upload PDF / image / Excel / Word.",
     "tooLarge": "File is larger than allowed (max 50MB).",
     "pickFile": "Pick a file to upload.",
@@ -595,7 +669,7 @@
     "noResults": "No results match the search",
     "viewCards": "Cards view",
     "viewTable": "Table view",
-    "dataPendingHint": "Advanced filters (by project/owner/signature status) will appear once the API is enriched",
+    "dataPendingHint": "Advanced filters — by project, owner, signature status — coming soon",
     "signaturesEntry": "Signature requests",
     "signaturesHint": "Signature requests on documents are managed on a separate page.",
     "column": {
@@ -607,6 +681,11 @@
     "field": {
       "type": "Type",
       "file": "File"
+    },
+    "notSensitive": "This document is not marked sensitive — use the standard upload",
+    "tab": {
+      "active": "Active",
+      "archived": "Archived"
     }
   },
   "ownerships": {
@@ -662,6 +741,65 @@
       "office": "Office",
       "mixed": "Mixed-use"
     }
+  },
+  "stepUp": {
+    "title": "Additional verification",
+    "explain": "Viewing sensitive documents requires additional verification",
+    "sendCode": "Send code",
+    "sending": "Sending...",
+    "codeSent": "A 6-digit code was sent to your email address.",
+    "codeLabel": "Verification code (6 digits)",
+    "verify": "Verify",
+    "verifying": "Verifying...",
+    "cancel": "Cancel",
+    "invalidCode": "The code is wrong or expired. Try again.",
+    "rateLimited": "Too many attempts. Try again later.",
+    "requestFailed": "Sending the code failed. Try again."
+  },
+  "tabu": {
+    "sectionTitle": "Tabu extract",
+    "sectionHint": "Extract ownerships from a Tabu extract: pick a document, run the parse, review the rows and confirm — confirming replaces the apartment's ownerships.",
+    "loading": "Loading...",
+    "noDocs": "No documents for this apartment yet.",
+    "uploadDoc": "Upload a Tabu extract",
+    "pickDocLabel": "Source document (Tabu)",
+    "pickDocPlaceholder": "Pick a document...",
+    "createExtraction": "Create extraction",
+    "creating": "Creating...",
+    "createFailed": "Creating the extraction failed. Make sure the document finished uploading and belongs to this apartment.",
+    "draftBadge": "Draft extraction",
+    "runExtract": "Run parse",
+    "running": "Parsing...",
+    "extractOk": "Parse finished — {count} rows.",
+    "extractFailed": "Parse failed. Try again.",
+    "showRows": "Show rows for review",
+    "loadingRows": "Loading rows...",
+    "rowsLoadFailed": "Loading the rows failed.",
+    "noRows": "No parsed rows yet — run the parse.",
+    "col": {
+      "name": "Name",
+      "nationalId": "National ID",
+      "share": "Share",
+      "confidence": "Confidence",
+      "edited": "Edited"
+    },
+    "shareNumeratorLabel": "Share numerator",
+    "shareDenominatorLabel": "Share denominator",
+    "maskedIdHint": "National ID is masked — you don't hold full PII visibility; the field is not editable.",
+    "editedYes": "Edited",
+    "edit": "Edit",
+    "save": "Save",
+    "saving": "Saving...",
+    "cancelEdit": "Cancel",
+    "rowSaveFailed": "Saving the row failed.",
+    "confirmSummary": "Replaces the apartment's current owners — {count} owners, total shares {total}",
+    "shareFull": "full",
+    "shareUnknown": "unknown",
+    "confirmCta": "Confirm and write ownerships",
+    "confirming": "Confirming...",
+    "confirmOk": "Ownerships written successfully.",
+    "alreadyConfirmed": "Already confirmed",
+    "confirmFailed": "Confirm failed. Try again."
   },
   "signatureRequests": {
     "listTitle": "Signature Requests",
@@ -722,8 +860,12 @@
       "signedAt": "Signed at",
       "cancelledAt": "Cancelled at",
       "documentId": "Document ID",
-      "ownerId": "Owner ID"
-    }
+      "ownerId": "Owner ID",
+      "ownerNeedsDocument": "Pick a document first",
+      "unnamedOwner": "Unnamed",
+      "noApartmentOwners": "No owners are registered for this document's apartment."
+    },
+    "recipientNotAssociated": "The selected owner isn't registered on the document's apartment. Pick an owner of that apartment."
   },
   "sign": {
     "loading": "Loading...",
@@ -765,7 +907,7 @@
     "pcNav": {
       "consoleTagline": "Platform Console",
       "envChip": "Production · prod-il-1",
-      "stubHint": "Coming soon — a BE slice is needed before this becomes usable.",
+      "stubHint": "Coming soon — this tab will be enabled later.",
       "group": {
         "overview": "Overview",
         "biz": "Business",
@@ -1134,7 +1276,7 @@
     "empty": "No additional members yet. Click \"Invite member\".",
     "noResults": "No members match your search.",
     "searchPlaceholder": "Search by name, email, or role…",
-    "dataPendingHint": "Per-member activity (assigned projects, weekly actions) will land in a later slice — the current view only renders fields the API already exposes.",
+    "dataPendingHint": "Per-member activity (assigned projects, weekly actions) is coming soon — for now only the available fields are shown.",
     "loadFailed": "Failed to load members",
     "notFound": "Member not found",
     "primary": "Org owner",
@@ -1225,7 +1367,7 @@
       "section": "My documents",
       "loadFailed": "Failed to load documents.",
       "empty": "No documents on your file yet.",
-      "downloadHint": "Direct download will ship in a separate slice. For now, ask the team for a copy."
+      "downloadHint": "Direct download is coming soon. For now, ask the team for a copy."
     },
     "signatures": {
       "section": "Signature requests",
@@ -1245,8 +1387,8 @@
   "settings": {
     "listTitle": "Settings",
     "subtitle": "Organization, team, integrations, and security",
-    "dataPendingHint": "Settings is scaffolding for now — the General tab is read-only (org + user). The other tabs (notification preferences, integrations, MFA & session management) need BE work and ship in later slices.",
-    "comingSoon": "Coming soon — a BE slice is needed before this becomes editable.",
+    "dataPendingHint": "The General tab shows your organization and user details (read-only). The other tabs — notification preferences, integrations, MFA & session management — are coming soon.",
+    "comingSoon": "Editing will be available in a future update.",
     "tab": {
       "general": "General",
       "team": "Team",
@@ -1262,7 +1404,7 @@
       "userName": "Signed-in user",
       "userEmail": "Email",
       "userRole": "Role",
-      "readOnlyHint": "Fields are read-only. Renaming the organization or editing the user profile will be enabled once the BE update endpoint lands."
+      "readOnlyHint": "Fields are read-only. Renaming the organization or editing the user profile will be available in a future update."
     },
     "team": {
       "section": "Team & permissions",
@@ -1366,7 +1508,7 @@
     },
     "security": {
       "section": "Security",
-      "description": "MFA enrollment, active sessions, and access log. We will wire this once /api/v1/sessions is added."
+      "description": "MFA enrollment, active sessions, and access log. Coming in a future update."
     }
   },
   "tasks": {
@@ -1507,6 +1649,25 @@
     "noDocuments": "No shared documents.",
     "download": "Download",
     "downloadFailed": "Download failed. Try again."
+  },
+  "messages": {
+    "title": "Messages",
+    "subtitle": "Internal conversations with your team",
+    "threads": "Conversations",
+    "newConversation": "New conversation",
+    "noMembers": "No other team members",
+    "loading": "Loading…",
+    "loadFailed": "Failed to load conversations",
+    "empty": "No conversations yet",
+    "emptyHint": "Start a new conversation with a teammate",
+    "noMessagesYet": "No messages yet",
+    "selectThread": "Select a conversation to view it",
+    "threadEmpty": "No messages in this conversation yet",
+    "composerPlaceholder": "Write a message…",
+    "send": "Send",
+    "justYou": "Just you",
+    "viewAll": "All messages",
+    "openMessages": "Open messages"
   },
   "notes": {
     "listTitle": "Notes",

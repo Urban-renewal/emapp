@@ -65,6 +65,7 @@ export * from './helpers/resolve-share';
 export * from './helpers/signature-progress';
 export * from './helpers/reap-expired-rows';
 export * from './helpers/audit-retention';
+export * from './helpers/signature-expiry-sweep';
 export * from './helpers/org-suspension';
 export * from './helpers/notifications';
 export * from './helpers/idempotency';
@@ -117,6 +118,15 @@ export type {
   ExtractionRow,
 } from './providers/extraction/extraction.interface';
 export { StubExtractionProvider } from './providers/extraction/stub.provider';
+// P3b — pluggable parcel-data provider (zero-egress Stub default; LocalMapi
+// reads the bulk-מפ"י-loaded parcel_lookup reference table, migration 0074).
+export type {
+  IParcelDataProvider,
+  ParcelLookupQuery,
+  ParcelLookupResult,
+} from './providers/parcel/parcel.interface';
+export { StubParcelDataProvider } from './providers/parcel/stub.provider';
+export { LocalMapiParcelDataProvider } from './providers/parcel/local-mapi.provider';
 export type {
   IStorageProvider,
   UploadUrlOptions,
@@ -161,6 +171,7 @@ export {
 export type { IMetricsProvider, MetricLabels } from './providers/metrics/metrics.interface';
 export { NoopMetricsProvider } from './providers/metrics/noop.provider';
 export { PrometheusMetricsProvider } from './providers/metrics/prometheus.provider';
+export { scrubPgErrorPii, type PgScrubResult } from './pg-error-scrub';
 export type { IAlertSink, AlertEvent, AlertSeverity } from './providers/alert/alert.interface';
 export { NoopAlertSink } from './providers/alert/noop.provider';
 export { WebhookAlertSink, type WebhookAlertConfig } from './providers/alert/webhook.provider';

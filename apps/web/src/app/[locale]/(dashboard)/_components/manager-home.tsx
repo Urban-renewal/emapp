@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 
 import { HomeActions } from './home-actions';
+import { HomeConversations } from './home-conversations';
 
 /**
  * ManagerHome — the V11 A.S3 manager-oriented dashboard home, extracted
@@ -53,31 +54,26 @@ export async function ManagerHome() {
   const kpis: ReadonlyArray<{
     key: string;
     label: string;
-    tone: 'info' | 'success' | 'warning';
     value: string;
   }> = [
     {
       key: 'activeProjects',
       label: t('kpi.activeProjects'),
-      tone: 'info',
       value: fmt(stats?.activeProjects),
     },
     {
       key: 'residents',
       label: t('kpi.residents'),
-      tone: 'info',
       value: fmt(stats?.residents),
     },
     {
       key: 'signaturesReceived',
       label: t('kpi.signaturesReceived'),
-      tone: 'success',
       value: fmt(stats?.signaturesReceived),
     },
     {
       key: 'pending',
       label: t('kpi.pending'),
-      tone: 'warning',
       value: fmt(stats?.signaturesPending),
     },
   ];
@@ -101,14 +97,8 @@ export async function ManagerHome() {
             <div className="mb-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
               {kpi.label}
             </div>
-            <div className="flex items-baseline gap-2">
-              <div className="text-2xl font-bold tabular" style={{ color: 'var(--text)' }}>
-                {kpi.value}
-              </div>
-              <span className={`badge badge-${kpi.tone}`}>
-                <span className="badge-dot" aria-hidden="true" />
-                <span>{kpi.value}</span>
-              </span>
+            <div className="text-2xl font-bold tabular" style={{ color: 'var(--text)' }}>
+              {kpi.value}
             </div>
           </div>
         ))}
@@ -160,19 +150,9 @@ export async function ManagerHome() {
               <h3 id="home-conversations-heading">{t('conversations.title')}</h3>
             </div>
           </div>
-          <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
-            <MessageSquare
-              className="h-10 w-10"
-              style={{ color: 'var(--text-soft)' }}
-              aria-hidden="true"
-            />
-            <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
-              {t('conversations.empty')}
-            </p>
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              {t('conversations.comingHint')}
-            </p>
-          </div>
+          {/* Slice 3 — live recent threads (client island) replaces the former
+           *  "chat coming later" stub now that team messaging is real. */}
+          <HomeConversations />
         </section>
       </div>
     </div>

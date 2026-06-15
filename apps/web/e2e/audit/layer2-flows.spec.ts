@@ -1,6 +1,8 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { request } from '@playwright/test';
+
 import { test, expect, WEB, API } from './_helpers';
 
 /**
@@ -34,8 +36,28 @@ function validNationalId(): string {
 
 const ts = Date.now();
 
+/**
+ * Owners this suite creates against the REAL dev backend (the owner-create flow
+ * below). Tracked + soft-archived in afterAll so the audit run stops polluting
+ * the demo org's owners list (`audit-owner-*` rows were accumulating). We delete
+ * ONLY ids we created this run, by exact id — standard fixture teardown.
+ */
+const createdOwnerIds: string[] = [];
+
 test.describe('Layer 2 — manager flows', () => {
   test.use({ storageState: join(__dirname, '.auth', 'manager.json') });
+
+  test.afterAll(async () => {
+    if (createdOwnerIds.length === 0) return;
+    const ctx = await request.newContext({
+      storageState: join(__dirname, '.auth', 'manager.json'),
+    });
+    for (const id of createdOwnerIds) {
+      // Soft archive (DELETE = archived_at); best-effort, never fail teardown.
+      await ctx.delete(`${API}/api/v1/owners/${id}`).catch(() => {});
+    }
+    await ctx.dispose();
+  });
 
   test('FLOW project-create (wizard 3-step)', async ({ page }) => {
     const name = `audit-proj-${ts}`;
@@ -131,6 +153,8 @@ test.describe('Layer 2 — manager flows', () => {
     }
     ev.feFormPostStatus = feStatus;
     ev.feFormLandedDetail = /\/owners\/[0-9a-f-]{36}/.test(page.url());
+    const feOwnerId = page.url().match(/\/owners\/([0-9a-f-]{36})/)?.[1];
+    if (feOwnerId) createdOwnerIds.push(feOwnerId);
 
     // (b) Authoritative D.19 check via the REAL API (deterministic).
     const nid2 = validNationalId();
@@ -140,6 +164,8 @@ test.describe('Layer 2 — manager flows', () => {
     });
     const apiStatus = apiResp.status();
     const apiBody = await apiResp.json().catch(() => null);
+    const apiOwnerId = (apiBody as { data?: { id?: string } } | null)?.data?.id;
+    if (apiOwnerId) createdOwnerIds.push(apiOwnerId);
     const raw = JSON.stringify(apiBody ?? {});
     ev.apiCreateStatus = apiStatus;
     ev.apiResponseKeys = apiBody?.data ? Object.keys(apiBody.data) : [];

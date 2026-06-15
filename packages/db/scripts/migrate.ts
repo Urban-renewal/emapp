@@ -38,6 +38,8 @@
  *   composition; no logic lives there that isn't tested through one
  *   of these helpers.
  */
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -45,7 +47,35 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool, type PoolClient } from 'pg';
 
 import { env } from '../src/env';
+import { checkJournalIntegrity, type Journal } from '../src/migrations/journal-integrity';
 import * as schema from '../src/schema/index';
+
+/**
+ * v12 silent-skip preflight — assert the migration journal is healthy BEFORE
+ * connecting to any db. The migrator silently skips a journal entry whose
+ * `when` is below the db's current watermark (drizzle takes a single
+ * MAX(created_at) snapshot and never advances it in-loop), so a hand-authored
+ * entry with a too-low `when` would vanish with a misleading "applied
+ * successfully". This runs the same pure guard the CI spec pins
+ * (journal-integrity.spec.ts) at the real migrate moment — CI + boot, per the
+ * M-1 finding. Exported so migrator-guards.spec.ts can pin it without a db.
+ */
+export function assertJournalIntegrity(migrationsFolder: string): void {
+  const journalPath = join(migrationsFolder, 'meta', '_journal.json');
+  if (!existsSync(journalPath)) {
+    throw new Error(`Migration journal not found at ${journalPath} — refusing to migrate.`);
+  }
+  const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as Journal;
+  const violations = checkJournalIntegrity(journal, (tag) =>
+    existsSync(join(migrationsFolder, `${tag}.sql`)),
+  );
+  if (violations.length > 0) {
+    const lines = violations.map((v) => `  - [${v.kind}] idx ${v.idx} (${v.tag}): ${v.detail}`);
+    throw new Error(
+      `Migration journal integrity check failed — refusing to migrate:\n${lines.join('\n')}`,
+    );
+  }
+}
 
 /** v8.5 fail-fast sentinel — refuses to migrate without keys.
  *  Exported so tests can pin the EXACT error messages a future hand
@@ -152,6 +182,10 @@ export async function setupAndVerifyGucs(
 }
 
 async function main() {
+  // Preflight #0 — journal integrity. Cheap, no db, runs first so a
+  // silent-skip-inducing journal fails loud before we touch Neon.
+  assertJournalIntegrity('./migrations');
+
   assertPiiKeysPresent({
     PII_ENCRYPTION_KEY: env.PII_ENCRYPTION_KEY,
     PII_HASH_KEY: env.PII_HASH_KEY,

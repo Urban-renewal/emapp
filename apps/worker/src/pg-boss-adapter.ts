@@ -21,6 +21,8 @@
 import { isNonRetryable, type IJobHandler, type JobContext, type JobLogger } from '@emapp/jobs';
 import type { z } from 'zod';
 
+import { captureWorkerException } from './observability';
+
 /** Minimal pg-boss surface this adapter consumes. Matches the v10 API
  *  shape we use (createQueue, work, start, stop). */
 export interface BossLike {
@@ -194,6 +196,9 @@ async function runOne<TPayload>(opts: {
         reason: err instanceof Error ? err.message : 'unknown',
       });
     }
+    // S2 — a failing job is now VISIBLE in Sentry (PII-safe capture scrubs the
+    // pg cause detail/hint), not just a log line that may not reach it.
+    captureWorkerException(err, { jobName: handler.name, jobId, attempt });
     throw err;
   }
 }

@@ -24,10 +24,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 
 import { canViewOwners } from '../../common/authz/agent-capabilities';
-import { decodeCursor, encodeCursor } from '../../common/keyset-cursor';
+import {
+  decodeCursor,
+  encodeCursor,
+  keysetCondition,
+  keysetOrderBy,
+} from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 export interface OwnershipListPage {
@@ -64,6 +69,60 @@ function toOwnership(r: typeof ownerships.$inferSelect): Ownership {
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   };
+}
+
+/** One row of an atomic ownership-set replacement (the 3b semantics). */
+export interface OwnershipReplacementEntry {
+  ownerId: string;
+  shareNumerator: number;
+  shareDenominator: number;
+  relationship: 'owner' | 'renter';
+  role?: string | null;
+  /** S7c provenance (migration 0071) — the tabu extraction whose confirm
+   *  wrote this row. NULL for the manual replaceSet / import paths. */
+  sourceExtractionId?: string | null;
+}
+
+/**
+ * THE trigger-sensitive atomic full-set replace (3b semantics) — end ALL
+ * currently-active ownerships of the apartment + insert the new set in the
+ * CALLER'S tx, so the DEFERRED sum trigger (migration 0065) validates the
+ * exact fraction-sum = 1 (over relationship='owner' rows) at COMMIT.
+ *
+ * Single shared mechanic for every replace path (manual PUT replaceSet AND
+ * the S7c tabu confirm) — do NOT re-implement the end+insert pair anywhere
+ * else; a partial copy that splits the two statements across transactions
+ * trips the trigger mid-way. ownership_pct is ALWAYS recomputed from the
+ * canonical fraction (round(num/den*100, 2)) so the compat percent cannot
+ * drift from the exact share.
+ */
+export async function replaceApartmentOwnershipSet(
+  tx: TenantTx,
+  apartmentId: string,
+  entries: OwnershipReplacementEntry[],
+): Promise<(typeof ownerships.$inferSelect)[]> {
+  // End every currently-active ownership for the apartment.
+  await tx
+    .update(ownerships)
+    .set({ endedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(ownerships.apartmentId, apartmentId), isNull(ownerships.endedAt)));
+
+  if (entries.length === 0) return [];
+  return tx
+    .insert(ownerships)
+    .values(
+      entries.map((e) => ({
+        apartmentId,
+        ownerId: e.ownerId,
+        ownershipPct: String(fractionToPct(e.shareNumerator, e.shareDenominator)),
+        shareNumerator: e.shareNumerator,
+        shareDenominator: e.shareDenominator,
+        relationship: e.relationship,
+        role: e.role ?? null,
+        sourceExtractionId: e.sourceExtractionId ?? null,
+      })),
+    )
+    .returning();
 }
 
 // Masked owner columns — identical policy to OwnersService (decrypt+mask
@@ -141,16 +200,13 @@ export class OwnershipsService {
       async (tx) => {
         await this.assertApartmentVisible(tx, user, apartmentId);
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(ownerships.createdAt, new Date(cur.c)),
-              and(eq(ownerships.createdAt, new Date(cur.c)), lt(ownerships.id, cur.i)),
-            )
+          ? keysetCondition(ownerships.createdAt, ownerships.id, cur)
           : undefined;
         return tx
           .select()
           .from(ownerships)
           .where(and(eq(ownerships.apartmentId, apartmentId), isNull(ownerships.endedAt), keyset))
-          .orderBy(desc(ownerships.createdAt), desc(ownerships.id))
+          .orderBy(...keysetOrderBy(ownerships.createdAt, ownerships.id))
           .limit(limit + 1);
       },
       { userId: user.sub },
@@ -186,10 +242,7 @@ export class OwnershipsService {
         // masked for everyone (reveal-on-demand for cleartext).
         if (!(await canViewOwners(tx, user))) throw FORBIDDEN;
         const keyset: SQL | undefined = cur
-          ? or(
-              lt(ownerships.createdAt, new Date(cur.c)),
-              and(eq(ownerships.createdAt, new Date(cur.c)), lt(ownerships.id, cur.i)),
-            )
+          ? keysetCondition(ownerships.createdAt, ownerships.id, cur)
           : undefined;
         return tx
           .select({
@@ -217,7 +270,7 @@ export class OwnershipsService {
           .from(ownerships)
           .innerJoin(owners, eq(owners.id, ownerships.ownerId))
           .where(and(eq(ownerships.apartmentId, apartmentId), isNull(ownerships.endedAt), keyset))
-          .orderBy(desc(ownerships.createdAt), desc(ownerships.id))
+          .orderBy(...keysetOrderBy(ownerships.createdAt, ownerships.id))
           .limit(limit + 1);
       },
       { userId: user.sub },
@@ -298,41 +351,27 @@ export class OwnershipsService {
             if (found.length !== ids.length) throw NOT_FOUND;
           }
 
-          // End every currently-active ownership for the apartment.
-          await tx
-            .update(ownerships)
-            .set({ endedAt: new Date(), updatedAt: new Date() })
-            .where(and(eq(ownerships.apartmentId, apartmentId), isNull(ownerships.endedAt)));
-
-          let created: (typeof ownerships.$inferSelect)[] = [];
-          if (input.owners.length > 0) {
-            created = await tx
-              .insert(ownerships)
-              .values(
-                input.owners.map((o) => {
-                  // S3b — derive-on-write: prefer an explicit fraction, else
-                  // derive num/den from pct. ALWAYS recompute ownership_pct from
-                  // the canonical fraction so the compat percent stays consistent
-                  // (round(num/den*100, 2)). The DB sum trigger validates the
-                  // EXACT fraction sum = 1 over owner rows.
-                  const { numerator, denominator } = deriveShareFraction(o);
-                  return {
-                    apartmentId,
-                    ownerId: o.ownerId,
-                    ownershipPct: String(fractionToPct(numerator, denominator)),
-                    shareNumerator: numerator,
-                    shareDenominator: denominator,
-                    // Feature A (D.25) — persist owner/renter per row. The atomic
-                    // end-all + insert-new invariant is UNCHANGED; the row simply
-                    // carries `relationship` now. The DB trigger sums only
-                    // 'owner' rows; renters (pct 0) ride along, excluded.
-                    relationship: o.relationship,
-                    role: o.role ?? null,
-                  };
-                }),
-              )
-              .returning();
-          }
+          // S7c — the atomic end-all + insert-new pair lives in the SHARED
+          // replaceApartmentOwnershipSet helper (also used by the tabu
+          // confirm). S3b — derive-on-write: prefer an explicit fraction,
+          // else derive num/den from pct; ownership_pct is recomputed from
+          // the canonical fraction inside the helper. Feature A (D.25) —
+          // `relationship` rides along per row; the DB trigger sums only
+          // 'owner' rows.
+          const created = await replaceApartmentOwnershipSet(
+            tx,
+            apartmentId,
+            input.owners.map((o) => {
+              const { numerator, denominator } = deriveShareFraction(o);
+              return {
+                ownerId: o.ownerId,
+                shareNumerator: numerator,
+                shareDenominator: denominator,
+                relationship: o.relationship,
+                role: o.role ?? null,
+              };
+            }),
+          );
 
           await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
             orgId: user.orgId,
@@ -361,7 +400,7 @@ export class OwnershipsService {
   }
 }
 
-function isOwnershipSumRaise(e: unknown): boolean {
+export function isOwnershipSumRaise(e: unknown): boolean {
   let cur: unknown = e;
   let depth = 0;
   while (cur && depth < 6) {

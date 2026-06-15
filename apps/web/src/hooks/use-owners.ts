@@ -4,7 +4,7 @@ import type { CreateOwner, Owner, OwnerPiiReveal, OwnerProjectSummary } from '@e
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
-import { toOwnerViewModel, toOwnerViewModels } from '@/adapters/owner';
+import { toOwnerListItemViewModels, toOwnerViewModel } from '@/adapters/owner';
 import { toOwnerProjectViewModels } from '@/adapters/owner-project';
 import {
   archiveOwner,
@@ -17,20 +17,24 @@ import {
 } from '@/lib/api/owners';
 import { useDisplayLocale } from '@/lib/locale';
 import type { OwnerProjectViewModel } from '@/models/owner-project.vm';
-import type { OwnerViewModel } from '@/models/owner.vm';
+import type { OwnerListItemViewModel } from '@/models/owner.vm';
 
 const OWNERS_KEY = ['owners'] as const;
 
-export function useOwnerList(query: { limit?: number; cursor?: string } = {}) {
+export function useOwnerList(query: { limit?: number; cursor?: string; archived?: boolean } = {}) {
   const locale = useDisplayLocale();
   const select = useCallback(
     (data: OwnerListPage) => ({
-      items: toOwnerViewModels(data.items, locale),
+      items: toOwnerListItemViewModels(data.items, locale),
       page: data.page,
     }),
     [locale],
   );
-  return useQuery<OwnerListPage, Error, { items: OwnerViewModel[]; page: OwnerListPage['page'] }>({
+  return useQuery<
+    OwnerListPage,
+    Error,
+    { items: OwnerListItemViewModel[]; page: OwnerListPage['page'] }
+  >({
     queryKey: [...OWNERS_KEY, 'list', query, locale],
     queryFn: () => listOwners(query),
     staleTime: 30_000,

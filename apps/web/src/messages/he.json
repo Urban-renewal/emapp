@@ -1665,7 +1665,9 @@
     "threadEmpty": "אין הודעות בשיחה הזו עדיין",
     "composerPlaceholder": "כתוב הודעה...",
     "send": "שלח",
-    "justYou": "רק אתה"
+    "justYou": "רק אתה",
+    "viewAll": "כל ההודעות",
+    "openMessages": "פתח הודעות"
   },
   "notes": {
     "listTitle": "הערות",

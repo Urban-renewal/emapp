@@ -15,6 +15,7 @@ import {
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, gt, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
@@ -26,6 +27,8 @@ import {
   keysetOrderBy,
 } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { notificationLink } from '../notifications/notification-links';
+import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
 export interface ConversationListPage {
   data: Conversation[];
@@ -69,6 +72,42 @@ function toMessage(r: typeof messages.$inferSelect): Message {
  */
 @Injectable()
 export class MessagingService {
+  private readonly logger = new Logger(MessagingService.name);
+
+  constructor(private readonly notifications: NotificationsProducerService) {}
+
+  /**
+   * Fan out a `message_received` notification to the OTHER participants of a
+   * conversation — best-effort, AFTER commit. The message body is member-
+   * internal and is NEVER placed in the notification: only a generic title +
+   * the deep-link to the thread (the recipient opens it to read the content
+   * through the normal RLS-scoped path). A notify failure must never fail the
+   * send (self-guarded + try/catch — mirrors the notes note_added posture).
+   */
+  private async notifyParticipants(
+    orgId: string,
+    conversationId: string,
+    recipientIds: readonly string[],
+  ): Promise<void> {
+    if (recipientIds.length === 0) return;
+    try {
+      await this.notifications.emitMany(recipientIds, {
+        orgId,
+        type: 'message_received',
+        title: 'הודעה חדשה',
+        body: null,
+        link: notificationLink.message(conversationId),
+        metadata: { conversationId },
+      });
+    } catch (e) {
+      this.logger.error(
+        `message_received notify failed (conv=${conversationId}): ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
+    }
+  }
+
   /**
    * Enrich raw conversation rows with the per-member view: the participant id
    * list, the latest-message preview, and the member-relative unread count.
@@ -223,7 +262,11 @@ export class MessagingService {
   async create(user: AccessTokenPayload, input: CreateConversation): Promise<Conversation> {
     if (user.role === 'viewer') throw FORBIDDEN;
 
-    return withTenant(
+    // Set inside the tx only if a first message is actually sent; the
+    // message_received fan-out then runs AFTER commit (best-effort).
+    let notifyRecipients: string[] = [];
+    let notifyConversationId = '';
+    const created = await withTenant(
       user.orgId,
       async (tx) => {
         // Validate every named participant is an ACTIVE member of this org —
@@ -279,7 +322,8 @@ export class MessagingService {
         );
 
         // Optional first message (atomic with the thread; participant rows now
-        // exist so the messages WITH CHECK passes).
+        // exist so the messages WITH CHECK passes). Its arrival notifies the
+        // other participants after commit.
         if (input.body) {
           await tx.insert(messages).values({
             orgId: user.orgId,
@@ -287,6 +331,8 @@ export class MessagingService {
             senderId: user.sub,
             body: input.body,
           });
+          notifyRecipients = named;
+          notifyConversationId = convId;
         }
 
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
@@ -319,6 +365,8 @@ export class MessagingService {
       },
       { userId: user.sub },
     );
+    await this.notifyParticipants(user.orgId, notifyConversationId, notifyRecipients);
+    return created;
   }
 
   async listMessages(
@@ -375,7 +423,8 @@ export class MessagingService {
     body: string,
   ): Promise<Message> {
     if (user.role === 'viewer') throw FORBIDDEN;
-    return withTenant(
+    let notifyRecipients: string[] = [];
+    const sent = await withTenant(
       user.orgId,
       async (tx) => {
         // RLS hides a non-participant thread → 404 (no oracle). The messages
@@ -432,10 +481,25 @@ export class MessagingService {
           sessionId: user.sid,
         });
 
+        // Resolve the OTHER participants (inside the tx) for the after-commit
+        // message_received fan-out.
+        const recipients = await tx
+          .select({ userId: conversationParticipants.userId })
+          .from(conversationParticipants)
+          .where(
+            and(
+              eq(conversationParticipants.conversationId, conversationId),
+              ne(conversationParticipants.userId, user.sub),
+            ),
+          );
+        notifyRecipients = recipients.map((r) => r.userId);
+
         return toMessage(row);
       },
       { userId: user.sub },
     );
+    await this.notifyParticipants(user.orgId, conversationId, notifyRecipients);
+    return sent;
   }
 
   async markRead(user: AccessTokenPayload, conversationId: string): Promise<void> {

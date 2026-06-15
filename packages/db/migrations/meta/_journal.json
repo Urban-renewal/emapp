@@ -533,6 +533,13 @@
 			"when": 1783177200000,
 			"tag": "0075_team_messaging",
 			"breakpoints": true
+		},
+		{
+			"idx": 76,
+			"version": "7",
+			"when": 1783263600000,
+			"tag": "0076_message_notification_type",
+			"breakpoints": true
 		}
 	]
 }

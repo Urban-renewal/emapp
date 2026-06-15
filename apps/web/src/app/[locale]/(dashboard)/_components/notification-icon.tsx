@@ -8,6 +8,7 @@ import {
   FileSignature,
   FileText,
   Home,
+  MessageSquare,
   ShieldOff,
   StickyNote,
 } from 'lucide-react';
@@ -55,6 +56,7 @@ const TYPE_TO_VISUAL: Record<NotificationType, NotificationVisual> = {
   note_added: { icon: StickyNote, tone: 'navy' },
   share_revoked: { icon: ShieldOff, tone: 'danger' },
   mention: { icon: AtSign, tone: 'navy' },
+  message_received: { icon: MessageSquare, tone: 'navy' },
 };
 
 interface Props {

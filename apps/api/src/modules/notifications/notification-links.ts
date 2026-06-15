@@ -22,4 +22,6 @@ export const notificationLink = {
   task: (taskId: string): string => `/tasks/${taskId}`,
   /** A project's contractor-shares screen (share grant/revoke surface). */
   projectShares: (projectId: string): string => `/projects/${projectId}/shares`,
+  /** A team-messaging conversation thread (the /messages ?c= deep-link). */
+  message: (conversationId: string): string => `/messages?c=${conversationId}`,
 } as const;

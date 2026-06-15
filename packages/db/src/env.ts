@@ -6,7 +6,19 @@ import { z } from 'zod';
  * validation against the live `process.env` without code duplication.
  */
 const serverSchema = {
+  // DB target flag — selects HOW to load the database (remote Neon, local
+  // Postgres, or a future service). Loosely typed here on purpose: the
+  // canonical target vocabulary + validation live in ONE place
+  // (`db-target.ts#DB_TARGETS` / `resolveDbTarget`), so adding a target never
+  // touches this schema. Unset → "neon" (the team default).
+  DB_TARGET: z.string().optional(),
   DATABASE_URL: z.string().url(),
+  // Local-Postgres connection used when DB_TARGET=local (resolved by
+  // `db-target.ts`). Kept OUT of code (the password is a throwaway dev
+  // credential) — supplied via the gitignored launcher or Infisical. Optional:
+  // only the `local` target requires it, and `resolveDbTarget` fails fast with
+  // an actionable message if it's missing while local is selected.
+  LOCAL_DATABASE_URL: z.string().url().optional(),
   // v8.5 — Neon's `-pooler` host is transaction-pooled; drizzle's
   // migrator opens its OWN transactions per migration, breaking
   // session-scoped GUCs the v8.5 migrator sets. DATABASE_MIGRATE_URL

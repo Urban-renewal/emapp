@@ -16,6 +16,33 @@ powershell -ExecutionPolicy Bypass -File .\start-dev-local.ps1
 # 4. open http://localhost:3001
 ```
 
+## Choosing the database: the `DB_TARGET` flag
+
+How the app loads the database is selected by ONE env flag — no per-URL
+juggling. The resolver lives in `packages/db/src/db-target.ts` and every
+connection-opener (the app pool, the provider/BYPASSRLS pool, the migrator, and
+pg-boss in both the API and the worker) reads through it, so they can never
+drift onto different databases.
+
+| `DB_TARGET`             | reads                                                                         | used for                             |
+| ----------------------- | ----------------------------------------------------------------------------- | ------------------------------------ |
+| `neon` (default, unset) | `DATABASE_URL` + `PROVIDER_DATABASE_URL` + `DATABASE_MIGRATE_URL` (Infisical) | the shared team DB (us-east-1)       |
+| `local`                 | `LOCAL_DATABASE_URL`                                                          | the Postgres on your machine (~1 ms) |
+
+Switching is one variable. Adding a future managed-Postgres service is one entry
+in `DB_TARGETS` + one resolver strategy — **no consumer changes** (Open/Closed).
+
+```powershell
+# run the whole stack on the LOCAL db:
+$env:DB_TARGET = 'local'
+$env:LOCAL_DATABASE_URL = 'postgresql://postgres:1234@localhost:5432/emapp?sslmode=disable'
+# (start-dev-local.ps1 sets both for you, AFTER Infisical injection)
+
+# migrate the LOCAL db (resolver routes the migrator at LOCAL_DATABASE_URL,
+# NOT Infisical's Neon DATABASE_MIGRATE_URL):
+pnpm db:local:migrate
+```
+
 ## Why local Postgres (the #1 perf lever)
 
 Infisical's dev `DATABASE_URL` points at **remote Neon (us-east-1)**. Every
@@ -33,10 +60,12 @@ These live at the repo root and are in `.gitignore`. Re-create them if missing:
 ```powershell
 param([switch]$Inner)
 if ($Inner) {
-  # Runs INSIDE `infisical run` — override AFTER injection so it wins over the
-  # remote URL Infisical injects. THIS is the crux: setting DATABASE_URL before
-  # `infisical run` does NOT work — Infisical overrides it back to remote Neon.
-  $env:DATABASE_URL = 'postgresql://postgres:1234@localhost:5432/emapp?sslmode=disable'
+  # Runs INSIDE `infisical run` — set AFTER injection so it wins. THIS is the
+  # crux: setting these before `infisical run` does NOT work for Infisical-owned
+  # vars. DB_TARGET + LOCAL_DATABASE_URL are NOT Infisical secrets, so they pass
+  # through; the db-target resolver routes every connection at the local DB.
+  $env:DB_TARGET = 'local'
+  $env:LOCAL_DATABASE_URL = 'postgresql://postgres:1234@localhost:5432/emapp?sslmode=disable'
   $env:DEV_AUTH_BYPASS = '1'      # enables the fixed dev code 000000 (see below)
   pnpm dev
 } else {

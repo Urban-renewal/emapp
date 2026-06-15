@@ -27,6 +27,15 @@ export {
   type StorageErrorStats,
 } from './client';
 export { env, reloadEnv } from './env';
+export {
+  resolveDbTarget,
+  isDbTarget,
+  DB_TARGETS,
+  DEFAULT_DB_TARGET,
+  type DbTarget,
+  type ResolvedDbTarget,
+  type DbTargetEnv,
+} from './db-target';
 export { withTenant, type TenantTx } from './wrappers/with-tenant';
 export { withProvider } from './wrappers/with-provider';
 export { withBootstrap } from './wrappers/with-bootstrap';

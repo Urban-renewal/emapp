@@ -1,38 +1,55 @@
-# Local dev Postgres (opt-in perf fix)
+# Local dev Postgres (the #1 perf lever)
 
-**Why:** the dev Neon DB lives in us-east-1 → ~165ms per query from Israel →
-1.2-1.5s per authenticated request and 30-60s test files (V12 perf diagnosis,
-ledger 2026-06-12). A local PG brings that to <1ms/query.
+**Why:** the dev Neon DB lives in us-east-1 → ~165 ms per query from Israel →
+1.2–1.5 s per authenticated request and 30–60 s test files (V12 perf diagnosis,
+ledger 2026-06-12). A local Postgres brings that to <1 ms/query (measured: `/me`
+~134 ms vs ~1 s, owners ~229 ms vs ~1.8 s).
 
-**One-time setup** (requires Docker Desktop):
+## Selecting local: the `DB_TARGET` flag (single source of truth)
 
-```bash
-docker compose -f docker-compose.dev.yml up -d      # starts PG16+ICU on :5433
-pnpm db:local:migrate                                # applies all migrations
+How the app loads the database is one env flag, resolved by
+`packages/db/src/db-target.ts`. Every connection-opener (app pool, provider
+pool, migrator, pg-boss) reads through it — they can never split onto different
+databases.
+
+```
+DB_TARGET=local
+LOCAL_DATABASE_URL=<your local Postgres URL>
 ```
 
-**Switching the api/web to local:** override DATABASE_URL for the session
-(do NOT change Infisical dev — Neon stays the team default):
+`LOCAL_DATABASE_URL` is whatever local PG you run — pick ONE:
+
+| How you got local PG                                                               | `LOCAL_DATABASE_URL`                                              |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| **Native install** (default; what `docs/LOCAL-DEV.md` + `start-dev-local.ps1` use) | `postgresql://postgres:1234@localhost:5432/emapp?sslmode=disable` |
+| **Docker kit** (`docker compose -f docker-compose.dev.yml up -d`, binds `:5433`)   | `postgresql://emapp@localhost:5433/emapp`                         |
+
+> Do NOT change Infisical's `DATABASE_URL` — Neon stays the team default
+> (`DB_TARGET` unset → `neon`). `DB_TARGET` / `LOCAL_DATABASE_URL` are NOT
+> Infisical secrets, so setting them locally passes through the injection.
+
+## Commands
 
 ```bash
-DATABASE_URL=postgresql://emapp@localhost:5433/emapp \
-  infisical run --env=dev -- pnpm --filter @emapp/api dev
+# migrate the local DB (resolver routes the migrator at LOCAL_DATABASE_URL,
+# NOT Infisical's Neon DATABASE_MIGRATE_URL — that was the silent-migrate-Neon
+# trap before the flag). Defaults to the native :5432 URL; override by exporting
+# LOCAL_DATABASE_URL first.
+pnpm db:local:migrate
+
+# run the whole stack on local (sets DB_TARGET=local + LOCAL_DATABASE_URL):
+powershell -ExecutionPolicy Bypass -File .\start-dev-local.ps1
 ```
 
-Tests: same override before `vitest run`.
+`db:local:migrate` routes through `infisical run --env=dev` so the mandatory PII
+keys reach the migrate runner. Fresh DB = no seed data → `pnpm --filter @emapp/db
+seed:dev` (also via the flag). See `docs/LOCAL-DEV.md` for the full walkthrough +
+the 6-role login credentials.
 
-**Notes:** `db:local:migrate` routes through `infisical run --env=dev` so the
-mandatory PII keys reach the migrate runner; ONLY `DATABASE_URL` is overridden.
-NOTE: Infisical may inject its own DATABASE_URL — the wrapper's env override is
-applied by Node AFTER infisical's injection? NO — infisical injects into the
-child it spawns, so the wrapper sets DATABASE_URL on infisical's env and pnpm
-inherits it; if infisical's dev env ALSO defines DATABASE_URL it will OVERRIDE
-ours — in that case run with `infisical run --env=dev --` manually and export
-DATABASE_URL inside, or verify with `pnpm db:local:migrate` and check the target
-host in the migrate output. (To be settled in the runtime verification below.)
-Fresh DB = no seed data; run signup/QA flows to populate. `docker compose down -v`
-resets. The status checks/CI are untouched.
+## Docker kit note (opt-in, unverified)
 
-**Verification status (2026-06-12):** authored + statically validated; RUNTIME
-verification (migrate+boot+spec timing) pending Docker Desktop on the dev
-machine — not installed at authoring time (honest ledger note).
+`docker-compose.dev.yml` provisions PG16+ICU on `:5433` (passwordless `emapp`
+role). It was authored 2026-06-12 but **never runtime-verified** (Docker Desktop
+wasn't installed on the dev machine). The native :5432 install is the
+runtime-proven path; the Docker kit is an alternative for a clean reproducible
+container — point `LOCAL_DATABASE_URL` at `:5433` if you use it.

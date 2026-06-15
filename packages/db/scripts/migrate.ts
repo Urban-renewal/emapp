@@ -46,6 +46,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool, type PoolClient } from 'pg';
 
+import { resolveDbTarget } from '../src/db-target';
 import { env } from '../src/env';
 import { checkJournalIntegrity, type Journal } from '../src/migrations/journal-integrity';
 import * as schema from '../src/schema/index';
@@ -191,16 +192,19 @@ async function main() {
     PII_HASH_KEY: env.PII_HASH_KEY,
   });
 
-  // v8.5 — Neon's `-pooler` host is TRANSACTION-pooled (pgbouncer-style):
-  // each statement may go to a different backend, so SET LOCAL / session
-  // GUCs do not survive across drizzle's per-migration transactions.
-  // DATABASE_MIGRATE_URL is the DIRECT endpoint (no `-pooler` in host)
-  // and is used ONLY by this script. Falls back to DATABASE_URL when
-  // unset so local-dev workflows keep working with a single env var.
-  const connectionString = env.DATABASE_MIGRATE_URL ?? env.DATABASE_URL;
-  const usingMigrateUrl = !!env.DATABASE_MIGRATE_URL;
+  // The migrator needs a DIRECT (or session-pooled) endpoint so the session-
+  // level encryption GUCs below survive every BEGIN drizzle opens. The target
+  // resolver owns that choice: for `neon` it returns DATABASE_MIGRATE_URL (the
+  // direct host) falling back to DATABASE_URL; for `local` it returns the
+  // local URL (no pooler). One flag, no per-script URL juggling.
+  const dbTarget = resolveDbTarget(env);
+  const connectionString = dbTarget.migrateUrl;
   process.stdout.write(
-    `Migrator: using ${usingMigrateUrl ? 'DATABASE_MIGRATE_URL (direct)' : 'DATABASE_URL'}\n`,
+    `Migrator: DB_TARGET=${dbTarget.target} (${
+      dbTarget.migrateDirect
+        ? 'direct endpoint'
+        : 'WARNING: pooled DATABASE_URL fallback — set DATABASE_MIGRATE_URL to a direct endpoint'
+    })\n`,
   );
 
   // Dedicated pool sized at 1 connection — the migrator only ever

@@ -271,3 +271,99 @@ export const projectAssignments = pgTable(
 
 export type ProjectAssignment = typeof projectAssignments.$inferSelect;
 export type NewProjectAssignment = typeof projectAssignments.$inferInsert;
+
+// ─── Internal team messaging (member ↔ member conversations) ─────────────────
+// Org-scoped collaboration between org members. Authorization is
+// PARTICIPATION-based (record-level), enforced by RLS (org isolation on all
+// three; participant isolation on the sensitive content via a subquery into
+// conversation_participants — see migration 0075) + the service layer. It is
+// deliberately NOT in the IAM capability matrix: messaging is a baseline
+// member surface gated by who is in the thread, not a grantable resource
+// permission. Viewer = read-only (cannot create/send) is enforced in the
+// service. Mirrors the notes/notifications posture (org RLS + service scoping).
+export const conversations = pgTable(
+  'conversations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    // NULL for 1:1 DMs (the UI derives the title from the other participant);
+    // set for named group threads.
+    title: text('title'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    // Denormalized recency key — bumped on every message insert so the
+    // conversation list sorts by latest activity with no join/aggregate.
+    lastMessageAt: timestamp('last_message_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+  },
+  (table) => ({
+    orgRecentIdx: index('idx_conversations_org_recent')
+      .on(table.orgId, table.lastMessageAt.desc())
+      .where(sql`archived_at IS NULL`),
+  }),
+);
+
+export type Conversation = typeof conversations.$inferSelect;
+export type NewConversation = typeof conversations.$inferInsert;
+
+export const conversationParticipants = pgTable(
+  'conversation_participants',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    // Unread = messages with created_at > last_read_at. NULL = never opened.
+    lastReadAt: timestamp('last_read_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    convUserUnique: uniqueIndex('conversation_participants_conv_user_unique').on(
+      table.conversationId,
+      table.userId,
+    ),
+    userIdx: index('idx_conversation_participants_user').on(table.userId),
+  }),
+);
+
+export type ConversationParticipant = typeof conversationParticipants.$inferSelect;
+export type NewConversationParticipant = typeof conversationParticipants.$inferInsert;
+
+export const messages = pgTable(
+  'messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    senderId: uuid('sender_id')
+      .notNull()
+      .references(() => users.id),
+    body: text('body').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    convCreatedIdx: index('idx_messages_conversation_created').on(
+      table.conversationId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
+  }),
+);
+
+export type Message = typeof messages.$inferSelect;
+export type NewMessage = typeof messages.$inferInsert;

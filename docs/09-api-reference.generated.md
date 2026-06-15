@@ -769,6 +769,124 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `contractor_exists`, `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/conversations
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List the caller’s conversations (RLS participant-scoped), cursor-paginated by recency, with participant ids, last-message preview, and unread count.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Conversation} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/conversations
+
+- **Auth:** AuthGuard + TenantGuard (Manager/Agent)
+- **Summary:** Start a conversation with one or more active org members (creator added automatically); optional first message. Viewer forbidden.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `body` | string | no | minLength=1, maxLength=5000 |
+| `participantIds` | array | yes | — |
+| `title` | string | no | minLength=1, maxLength=120 |
+
+
+**Response**
+
+```json
+{ "data": { ...Conversation } }
+```
+
+**Errors:** `validation_error`, `invalid_participant`, `forbidden`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/conversations/:id
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Get one conversation the caller participates in (no-oracle 404 otherwise).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...Conversation } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/conversations/:id/messages
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List messages in a conversation the caller participates in, cursor-paginated (newest first). No-oracle 404 if not a participant.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {Message} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/conversations/:id/messages
+
+- **Auth:** AuthGuard + TenantGuard (Manager/Agent)
+- **Summary:** Send a message into a conversation the caller participates in (DB WITH CHECK enforces participant-only post). Viewer forbidden; no-oracle 404 if not a participant.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `body` | string | yes | minLength=1, maxLength=5000 |
+
+
+**Response**
+
+```json
+{ "data": { ...Message } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/conversations/:id/read
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** Mark the conversation read up to now (sets the caller’s last_read_at). Idempotent. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
 ### PATCH /api/v1/discovery-records/:id
 
 - **Auth:** AuthGuard + TenantGuard (apartments.update; agent fine gate edit_project_data)

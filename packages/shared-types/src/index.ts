@@ -27,6 +27,10 @@ export * from './contractor-read';
 export * from './task';
 export * from './notification';
 export * from './note';
+// Internal team messaging — member ↔ member conversations (dashboard "Recent
+// conversations" → a real feature). Participation-based authz (RLS + service),
+// NOT the IAM matrix; viewer is read-only.
+export * from './conversation';
 export * from './audit';
 export * from './project-assignment';
 export * from './member';

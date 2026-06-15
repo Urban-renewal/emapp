@@ -49,4 +49,6 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   'note_added',
   'share_revoked',
   'mention',
+  // Team messaging (migration 0076) — a new message arrived in a conversation.
+  'message_received',
 ]);

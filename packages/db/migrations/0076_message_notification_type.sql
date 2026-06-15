@@ -1,0 +1,12 @@
+-- 0076: team messaging — add the 'message_received' notification type.
+--
+-- Slice 4 of the messaging epic fans out an in-app notification to the OTHER
+-- participants when a message is sent. This adds the dedicated enum value the
+-- producer emits (kept in sync with packages/db/src/schema/_enums.ts and the
+-- shared-types NotificationTypeEnum contract).
+--
+-- ADD VALUE is additive-only and irreversible by design; safe in a tx on PG16
+-- because the new value is NOT referenced within this same migration (mirrors
+-- migration 0062's project_type 'other' addition). IF NOT EXISTS makes a
+-- concurrent test-worker migrate() idempotent.
+ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'message_received';

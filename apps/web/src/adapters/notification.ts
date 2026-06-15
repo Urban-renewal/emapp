@@ -27,6 +27,7 @@ const TYPE_LABELS_HE: Record<NotificationType, string> = {
   note_added: 'הערה חדשה',
   share_revoked: 'הרשאת שיתוף בוטלה',
   mention: 'הוזכרת',
+  message_received: 'הודעה חדשה',
 };
 
 const TYPE_LABELS_EN: Record<NotificationType, string> = {
@@ -37,6 +38,7 @@ const TYPE_LABELS_EN: Record<NotificationType, string> = {
   note_added: 'New note',
   share_revoked: 'Share permission revoked',
   mention: 'You were mentioned',
+  message_received: 'New message',
 };
 
 /** Accept only relative in-app paths. Protocol-relative `//evil.com`

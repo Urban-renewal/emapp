@@ -28,6 +28,7 @@ import { providerPool } from '../../../../../packages/db/src/client';
 import { createTestOrg, type TestOrg } from '../../../../../packages/db/test/factories';
 import { setupTestDatabase } from '../../../../../packages/db/test/setup';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
 import { MessagingService } from './messaging.service';
 
@@ -41,7 +42,20 @@ let agentBId: string; // a member who is NOT a participant
 let viewerId: string; // a viewer (read-only) participant
 let otherOrgUserId: string;
 
-const svc = new MessagingService();
+const svc = new MessagingService(new NotificationsProducerService());
+
+async function notifCount(userId: string, type: string): Promise<number> {
+  const c = await providerPool.connect();
+  try {
+    const r = await c.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM notifications WHERE org_id = $1 AND user_id = $2 AND type = $3`,
+      [org.id, userId, type],
+    );
+    return Number(r.rows[0]!.n);
+  } finally {
+    c.release();
+  }
+}
 
 function actor(
   userId: string,
@@ -316,6 +330,48 @@ describe('messaging · participant validation', () => {
         (e: unknown) => e,
       );
     expect(httpStatus(foreignErr)).toBe(400);
+  }, 30_000);
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// N) notification fan-out (message_received → other participants, not sender)
+// ───────────────────────────────────────────────────────────────────────────
+describe('messaging · notification fan-out', () => {
+  it('N1) a new message notifies the OTHER participants (message_received), never the sender', async () => {
+    // create WITH a first message → the other participant (agentA) is notified.
+    const created = await svc.create(actor(managerId, org.id, 'manager'), {
+      participantIds: [agentAId],
+      body: 'first message',
+    });
+    expect(await notifCount(agentAId, 'message_received')).toBeGreaterThanOrEqual(1);
+
+    // agentA replies → the manager is notified (+1); the sender is never self-notified.
+    const mgrBefore = await notifCount(managerId, 'message_received');
+    const agentBefore = await notifCount(agentAId, 'message_received');
+    await svc.sendMessage(actor(agentAId, org.id, 'agent'), created.id, 'reply');
+    expect(await notifCount(managerId, 'message_received')).toBe(mgrBefore + 1);
+    expect(await notifCount(agentAId, 'message_received')).toBe(agentBefore);
+  }, 30_000);
+
+  it('N2) the notification carries the thread deep-link and NEVER the message body', async () => {
+    const created = await svc.create(actor(managerId, org.id, 'manager'), {
+      participantIds: [agentAId],
+    });
+    await svc.sendMessage(actor(managerId, org.id, 'manager'), created.id, 'SECRET-BODY-XYZ');
+    const c = await providerPool.connect();
+    try {
+      const r = await c.query<{ link: string; body: string | null }>(
+        `SELECT link, body FROM notifications
+         WHERE org_id = $1 AND user_id = $2 AND type = 'message_received'
+         ORDER BY created_at DESC LIMIT 1`,
+        [org.id, agentAId],
+      );
+      expect(r.rows[0]!.link).toBe(`/messages?c=${created.id}`);
+      // the member-internal body must never leak into the notification.
+      expect(r.rows[0]!.body ?? '').not.toContain('SECRET-BODY-XYZ');
+    } finally {
+      c.release();
+    }
   }, 30_000);
 });
 

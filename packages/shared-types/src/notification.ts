@@ -17,6 +17,8 @@ export const NotificationTypeEnum = z.enum([
   'note_added',
   'share_revoked',
   'mention',
+  // Team messaging — a new message arrived in a conversation the user is in.
+  'message_received',
 ]);
 export type NotificationType = z.infer<typeof NotificationTypeEnum>;
 

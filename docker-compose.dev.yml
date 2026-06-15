@@ -16,10 +16,15 @@ services:
     container_name: emapp-local-db
     environment:
       POSTGRES_USER: emapp
-      POSTGRES_PASSWORD: emapp_local_dev
+      # Dev-only default for this OPT-IN local container. NOT a production
+      # credential (prod = Neon + Infisical-managed). Override by exporting
+      # POSTGRES_PASSWORD before `docker compose up`. Allowlisted in
+      # .gitguardian.yaml as a documented non-secret dev default.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-emapp_local_dev}
       POSTGRES_DB: emapp
     ports:
-      - '5433:5432'
+      # Bind to localhost ONLY — the dev DB is never exposed on the LAN.
+      - '127.0.0.1:5433:5432'
     volumes:
       - emapp_local_pg:/var/lib/postgresql/data
       - ./infra/local-db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro

@@ -1,0 +1,17 @@
+# GitGuardian configuration — https://docs.gitguardian.com/ggshield-docs/configuration
+#
+# Secret-scanning allowlist. Entries here are DOCUMENTED false positives, each
+# justified inline. This is NOT a place to hide real secrets — production
+# credentials live in Infisical and are never committed.
+version: 2
+
+secret:
+  ignored-matches:
+    # Local-dev-only Postgres password for the OPT-IN docker-compose.dev.yml kit
+    # (infra/local-db). NOT a production credential: it guards an empty,
+    # ephemeral Postgres container bound to 127.0.0.1:5433 that holds only
+    # dev/test data on a developer's own machine. Production uses Neon with
+    # Infisical-managed credentials; this value never reaches any real system.
+    # See docker-compose.dev.yml header + PR #363.
+    - name: local-dev postgres password (docker-compose.dev.yml)
+      match: emapp_local_dev

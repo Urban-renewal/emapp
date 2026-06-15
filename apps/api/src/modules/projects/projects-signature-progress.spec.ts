@@ -297,6 +297,19 @@ async function seedAgentUser(): Promise<string> {
   return u!.id;
 }
 
+/** Active project assignment (the bond `assertProjectVisible`'s agent branch reads). */
+async function assignAgent(projectId: string, agentId: string): Promise<void> {
+  const c = await providerPool.connect();
+  try {
+    await c.query(
+      `INSERT INTO project_assignments (project_id, user_id, assigned_by) VALUES ($1, $2, $3)`,
+      [projectId, agentId, managerId],
+    );
+  } finally {
+    c.release();
+  }
+}
+
 beforeAll(async () => {
   await setupTestDatabase();
   svc = new ProjectsService();
@@ -484,5 +497,17 @@ describe('signature-progress board — scoping', () => {
     await expect(callBoard(svc, agentFor(unassignedAgent), projectId)).rejects.toMatchObject({
       response: { error: { code: 'not_found' } },
     });
+  }, 60_000);
+
+  it('an AGENT ASSIGNED to the project → board returns (allow-path, no false 404)', async () => {
+    // Exercises the ALLOW side of assertProjectVisible's agent inner-join
+    // (the unassigned case above only proves the DENY side).
+    const projectId = org.projects[1]!.id;
+    const assignedAgent = await seedAgentUser();
+    await assignAgent(projectId, assignedAgent);
+
+    const board = await callBoard(svc, agentFor(assignedAgent), projectId);
+    expect(typeof board.totalApartments).toBe('number');
+    expect(typeof board.metThreshold).toBe('boolean');
   }, 60_000);
 });

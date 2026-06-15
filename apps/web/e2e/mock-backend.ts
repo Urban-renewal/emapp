@@ -63,34 +63,73 @@ const DEFAULT_PORT = 9999;
 // `export.run ⇒ <r>.read` closure), narrowed to the strings the FE actually
 // gates on. `view_owner_pii` mirrors the BE reveal authority (manager always).
 
-/** Manager effective gate-permissions (incl. members.read + audit.read via the
- *  export.run closure). NOT members.invite / org.settings.read (governance). */
+/**
+ * Manager effective gate-permissions = the FULL operational set (system-roles.ts
+ * `MANAGER = ALL_OPERATIONAL + members.*`; ALL_OPERATIONAL = the catalog minus
+ * members./roles./org. governance) PLUS `members.read` (reached via the
+ * `export.run ⇒ members.read` closure so the roster nav renders).
+ *
+ * This MUST be the full operational set, not a hand-picked subset: once `/me`
+ * is SEEDED into the client cache from the server session (PR #401), EVERY
+ * `useHasPermission` gate reads THIS — so any operational permission a real
+ * manager holds but the mock omits makes that control vanish in e2e (e.g. the
+ * tabu-review section gating on `apartments.read`, the sensitive-document
+ * download on `documents.download`). Mirrors the engine's manager set exactly.
+ */
 const MANAGER_PERMISSIONS = [
+  'projects.read',
   'projects.create',
+  'projects.update',
   'projects.archive',
+  'buildings.read',
   'buildings.create',
+  'buildings.update',
+  'buildings.archive',
+  'apartments.read',
   'apartments.create',
-  // owners.read — the Owners nav item gates on this (P4 #11). Managers hold it
-  // (ALL_OPERATIONAL reads); listing it keeps the mock effective set in sync
-  // with the FE sidebar gate so the Owners link renders in e2e.
+  'apartments.update',
+  'apartments.archive',
   'owners.read',
   'owners.create',
+  'owners.update',
   'owners.archive',
   'owners.reveal_pii',
+  'ownerships.read',
+  'ownerships.set',
+  'documents.read',
   'documents.create',
-  'contractors.create',
-  'contractors.archive',
+  'documents.update',
+  'documents.archive',
+  'documents.download',
+  'signature_requests.read',
+  'signature_requests.send',
+  'signature_requests.cancel',
+  'tasks.read',
+  'tasks.create',
+  'tasks.update',
+  'tasks.archive',
+  'notes.read',
   'notes.create',
   'notes.update',
   'notes.archive',
-  'tasks.create',
-  'tasks.update',
-  'signature_requests.send',
-  'imports.run',
-  'export.run',
+  'contractors.read',
+  'contractors.create',
+  'contractors.update',
+  'contractors.archive',
+  'shares.create',
+  'shares.revoke',
+  'project_assignments.read',
   'project_assignments.manage',
-  'members.read',
+  'imports.read',
+  'imports.run',
+  'imports.cancel',
+  'imports.map',
+  'mapping_templates.read',
+  'mapping_templates.manage',
+  'export.run',
+  'stats.read',
   'audit.read',
+  'members.read',
 ] as const;
 
 /** Agent: operational writes on assigned scope; NO governance reads, no

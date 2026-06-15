@@ -72,6 +72,7 @@
     "tasks": "Tasks",
     "contractors": "Contractors",
     "notes": "Notes",
+    "messages": "Messages",
     "audit": "Audit log",
     "provider": "Provider",
     "providerConsole": "EMAPP Provider Console",
@@ -1648,6 +1649,23 @@
     "noDocuments": "No shared documents.",
     "download": "Download",
     "downloadFailed": "Download failed. Try again."
+  },
+  "messages": {
+    "title": "Messages",
+    "subtitle": "Internal conversations with your team",
+    "threads": "Conversations",
+    "newConversation": "New conversation",
+    "noMembers": "No other team members",
+    "loading": "Loading…",
+    "loadFailed": "Failed to load conversations",
+    "empty": "No conversations yet",
+    "emptyHint": "Start a new conversation with a teammate",
+    "noMessagesYet": "No messages yet",
+    "selectThread": "Select a conversation to view it",
+    "threadEmpty": "No messages in this conversation yet",
+    "composerPlaceholder": "Write a message…",
+    "send": "Send",
+    "justYou": "Just you"
   },
   "notes": {
     "listTitle": "Notes",

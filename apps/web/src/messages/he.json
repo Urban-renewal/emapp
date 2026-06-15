@@ -72,6 +72,7 @@
     "tasks": "משימות",
     "contractors": "קבלנים",
     "notes": "הערות",
+    "messages": "הודעות",
     "audit": "יומן ביקורת",
     "provider": "מטה Provider",
     "providerConsole": "מסוף Provider EMAPP",
@@ -1648,6 +1649,23 @@
     "noDocuments": "אין מסמכים משותפים.",
     "download": "הורדה",
     "downloadFailed": "ההורדה נכשלה. נסה שוב."
+  },
+  "messages": {
+    "title": "הודעות",
+    "subtitle": "שיחות פנימיות עם חברי הצוות",
+    "threads": "שיחות",
+    "newConversation": "שיחה חדשה",
+    "noMembers": "אין חברי צוות נוספים",
+    "loading": "טוען...",
+    "loadFailed": "טעינת השיחות נכשלה",
+    "empty": "אין עדיין שיחות",
+    "emptyHint": "התחל שיחה חדשה עם חבר צוות",
+    "noMessagesYet": "אין הודעות עדיין",
+    "selectThread": "בחר שיחה כדי להציג אותה",
+    "threadEmpty": "אין הודעות בשיחה הזו עדיין",
+    "composerPlaceholder": "כתוב הודעה...",
+    "send": "שלח",
+    "justYou": "רק אתה"
   },
   "notes": {
     "listTitle": "הערות",

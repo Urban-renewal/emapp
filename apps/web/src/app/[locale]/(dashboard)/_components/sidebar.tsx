@@ -10,6 +10,7 @@ import {
   History,
   Home,
   Lock,
+  MessageSquare,
   Settings,
   StickyNote,
   UserPlus,
@@ -40,6 +41,7 @@ interface NavItem {
     | 'tasks'
     | 'contractors'
     | 'notes'
+    | 'messages'
     | 'audit'
     | 'settings'
     | 'provider';
@@ -129,6 +131,7 @@ export function Sidebar({ userName, userRole, tier }: Props) {
     { href: '/tasks', labelKey: 'tasks', icon: CheckSquare, enabled: true },
     { href: '/contractors', labelKey: 'contractors', icon: HardHat, enabled: true },
     { href: '/notes', labelKey: 'notes', icon: StickyNote, enabled: true },
+    { href: '/messages', labelKey: 'messages', icon: MessageSquare, enabled: true },
   ];
 
   if (canReadMembers) {

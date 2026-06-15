@@ -20,6 +20,7 @@ import { DocumentsModule } from './modules/documents/documents.module';
 import { ExportModule } from './modules/export/export.module';
 import { ImportsModule } from './modules/imports/imports.module';
 import { MembersModule } from './modules/members/members.module';
+import { MessagingModule } from './modules/messaging/messaging.module';
 import { NotesModule } from './modules/notes/notes.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
@@ -84,6 +85,11 @@ import { QueueModule } from './queue/queue.module';
     TasksModule,
     NotificationsModule,
     NotesModule,
+    // Internal team messaging — member ↔ member conversations (dashboard
+    // "Recent conversations" → a real feature). Participation-based authz
+    // (AuthGuard + TenantGuard + RLS participant scoping + service viewer-RO),
+    // deliberately OUTSIDE the IAM capability matrix. Migration 0075.
+    MessagingModule,
     AuditModule,
     ProjectAssignmentsModule,
     MembersModule,

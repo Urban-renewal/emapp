@@ -95,6 +95,11 @@ import {
   // P3a — parcel-setup envelope + manual path → skeleton.
   CreateParcelSetupInput,
   UpdateParcelSetupPayloadInput,
+  // Team messaging — member ↔ member conversations.
+  CreateConversationInput,
+  ListConversationsQuery,
+  ListMessagesQuery,
+  SendMessageInput,
 } from '@emapp/shared-types';
 import type { ZodTypeAny } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -921,6 +926,95 @@ const ENDPOINTS: Endpoint[] = [
     summary: 'Soft delete (archivedAt — "ארכוב"). Idempotent. 204.',
     response: '(204 No Content)',
     errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  // ─── Team messaging — member ↔ member conversations (participation-based
+  // authz: AuthGuard + TenantGuard + RLS participant scoping; NOT the IAM
+  // matrix). Viewer is read-only (cannot create a thread or send). ───────────
+  {
+    method: 'GET',
+    path: '/api/v1/conversations',
+    auth: 'AuthGuard + TenantGuard',
+    summary:
+      'List the caller’s conversations (RLS participant-scoped), cursor-paginated by recency, with participant ids, last-message preview, and unread count.',
+    request: ListConversationsQuery,
+    response:
+      '{ "data": [ {Conversation} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/conversations',
+    auth: 'AuthGuard + TenantGuard (Manager/Agent)',
+    summary:
+      'Start a conversation with one or more active org members (creator added automatically); optional first message. Viewer forbidden.',
+    request: CreateConversationInput,
+    response: '{ "data": { ...Conversation } }',
+    errors: [
+      'validation_error',
+      'invalid_participant',
+      'forbidden',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/conversations/:id',
+    auth: 'AuthGuard + TenantGuard',
+    summary: 'Get one conversation the caller participates in (no-oracle 404 otherwise).',
+    response: '{ "data": { ...Conversation } }',
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/conversations/:id/messages',
+    auth: 'AuthGuard + TenantGuard',
+    summary:
+      'List messages in a conversation the caller participates in, cursor-paginated (newest first). No-oracle 404 if not a participant.',
+    request: ListMessagesQuery,
+    response:
+      '{ "data": [ {Message} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/conversations/:id/messages',
+    auth: 'AuthGuard + TenantGuard (Manager/Agent)',
+    summary:
+      'Send a message into a conversation the caller participates in (DB WITH CHECK enforces participant-only post). Viewer forbidden; no-oracle 404 if not a participant.',
+    request: SendMessageInput,
+    response: '{ "data": { ...Message } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/conversations/:id/read',
+    auth: 'AuthGuard + TenantGuard',
+    summary:
+      'Mark the conversation read up to now (sets the caller’s last_read_at). Idempotent. 204.',
+    response: '(204 No Content)',
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'GET',

@@ -913,8 +913,13 @@ describe('parcel_lookup · migration journal + sql pins', () => {
     expect(entry!.when).toBeGreaterThan(JOURNAL_MAX_WHEN_BEFORE_P3B);
     for (const other of journal.entries) {
       if (other === entry) continue;
-      // Strictly greater than every pre-existing entry, or drizzle SILENTLY
-      // skips it (memory M-1; dev 0056 was hand-patched for exactly this).
+      // Strictly greater than every PRECEDING entry, or drizzle SILENTLY skips
+      // it (memory M-1; dev 0056 was hand-patched for exactly this). Later
+      // slices legitimately append NEWER entries with a higher `when` (e.g.
+      // 0075_team_messaging — whose own spec carries the live max-`when` M-1
+      // guard for itself), so this pin is scoped to entries that PRECEDE 0074 —
+      // exactly what "pre-existing" always meant (mirrors parcel-setups.spec G2).
+      if (other.idx > entry!.idx) continue;
       expect(entry!.when).toBeGreaterThan(other.when);
     }
 

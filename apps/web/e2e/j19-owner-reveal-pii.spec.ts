@@ -53,11 +53,19 @@ function profile(role: 'manager' | 'agent' | 'viewer', viewOwnerPii = role === '
   };
 }
 
-async function seedManager(context: import('@playwright/test').BrowserContext) {
+/**
+ * Seed an org session cookie. The mock-backend's SERVER-side `/me` selects the
+ * role from the access_token VALUE PREFIX (`e2e-agent*` → agent, `e2e-viewer*`
+ * → viewer, else manager). This matters because the dashboard layout resolves
+ * the session server-side (`getMe`) and SEEDS the client `useSessionProfile`
+ * cache from it — so the role-gated reveal button is driven by THIS cookie,
+ * not only by the browser-side `page.route('/me')` stub. The two must agree.
+ */
+async function seedSession(context: import('@playwright/test').BrowserContext, tokenValue: string) {
   await context.addCookies([
     {
       name: 'access_token',
-      value: 'e2e-manager-access-jwt',
+      value: tokenValue,
       domain: 'localhost',
       path: '/',
       httpOnly: true,
@@ -66,6 +74,13 @@ async function seedManager(context: import('@playwright/test').BrowserContext) {
     },
   ]);
 }
+
+const seedManager = (context: import('@playwright/test').BrowserContext) =>
+  seedSession(context, 'e2e-manager-access-jwt');
+const seedViewer = (context: import('@playwright/test').BrowserContext) =>
+  seedSession(context, 'e2e-viewer-access-jwt');
+const seedAgent = (context: import('@playwright/test').BrowserContext) =>
+  seedSession(context, 'e2e-agent-access-jwt');
 
 test.describe('§E-J19 — owner reveal PII (D.54)', () => {
   test('1) Manager reveals → POST fires, cleartext shown, URL clean, Hide restores mask', async ({
@@ -167,7 +182,7 @@ test.describe('§E-J19 — owner reveal PII (D.54)', () => {
   });
 
   test('2) Viewer never sees the reveal button (role-gated UX)', async ({ page, context }) => {
-    await seedManager(context); // cookie value irrelevant; /me stub drives the role
+    await seedViewer(context); // server getMe → SEED_VIEWER (no owners.reveal_pii)
     await page.route('**/api/v1/me', async (route) => {
       await route.fulfill({
         status: 200,
@@ -261,7 +276,7 @@ test.describe('§E-J19 — owner reveal PII (D.54)', () => {
     page,
     context,
   }) => {
-    await seedManager(context);
+    await seedAgent(context); // server getMe → SEED_AGENT (view_owner_pii false)
     await stubFor(page, profile('agent', false));
     await page.goto(`/he/owners/${OWNER_ID}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     await expect(page.getByText('•••••••78')).toBeVisible({ timeout: 15_000 });

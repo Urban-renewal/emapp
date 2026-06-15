@@ -8,6 +8,7 @@ import {
   projects,
   withTenant,
   type Project as ProjectRow,
+  type TenantTx,
 } from '@emapp/db';
 import { PROJECT_TYPE_DEFAULT_CONSENT_PCT } from '@emapp/shared-types';
 import type {
@@ -292,11 +293,51 @@ export class ProjectsService {
   }
 
   /**
+   * Lightweight no-oracle visibility gate, designed to run INSIDE an existing
+   * withTenant transaction. Enforces the SAME authz as `get()` — org-isolation
+   * (RLS) plus the agent → assigned-project scope — but WITHOUT the 5 stats
+   * subqueries `get()` computes. The signature-progress methods only need to
+   * know "is this project visible to the caller?"; calling `get()` meant a
+   * SECOND withTenant (extra connection-acquire + BEGIN/SET ROLE round-trip)
+   * plus five thrown-away aggregate subqueries. Throws the same NOT_FOUND
+   * (no oracle — a cross-org id and an unassigned-agent id are indistinguishable
+   * from "never existed").
+   */
+  private async assertProjectVisible(
+    tx: TenantTx,
+    user: AccessTokenPayload,
+    projectId: string,
+  ): Promise<void> {
+    const rows =
+      user.role === 'agent'
+        ? await tx
+            .select({ id: projects.id })
+            .from(projects)
+            .innerJoin(
+              projectAssignments,
+              and(
+                eq(projectAssignments.projectId, projects.id),
+                eq(projectAssignments.userId, user.sub),
+                isNull(projectAssignments.unassignedAt),
+              ),
+            )
+            .where(eq(projects.id, projectId))
+            .limit(1)
+        : await tx
+            .select({ id: projects.id })
+            .from(projects)
+            .where(eq(projects.id, projectId))
+            .limit(1);
+    if (rows.length === 0) throw NOT_FOUND;
+  }
+
+  /**
    * Phase-6 "תמונת מצב" — project signature-progress BOARD (S5a, read-only).
    *
-   * Visibility first: reuse `get()` (which enforces org-isolation via RLS AND
-   * the agent → assigned-project scope). A project not visible to the caller
-   * throws the same no-oracle NOT_FOUND — a cross-org id or an unassigned-agent
+   * Visibility first: `assertProjectVisible` (org-isolation via RLS AND the
+   * agent → assigned-project scope), run INSIDE this method's own withTenant.
+   * A project not visible to the caller throws the same no-oracle NOT_FOUND
+   * — a cross-org id or an unassigned-agent
    * id is indistinguishable from "never existed". Only after the project is
    * proven visible do we compute the aggregates, all under the SAME withTenant
    * org context (RLS scopes every table touched).
@@ -312,13 +353,13 @@ export class ProjectsService {
    * project's own target/derived percentages leave this method.
    */
   async signatureProgress(user: AccessTokenPayload, projectId: string): Promise<SignatureProgress> {
-    // No-oracle visibility gate (org-isolation + agent assigned-project scope).
-    // Throws NOT_FOUND when the project isn't visible to the caller.
-    await this.get(user, projectId);
-
     return withTenant(
       user.orgId,
       async (tx) => {
+        // No-oracle visibility gate, INSIDE this tx (was a separate get() tx
+        // + 5 thrown-away stats subqueries). Throws NOT_FOUND when invisible.
+        await this.assertProjectVisible(tx, user, projectId);
+
         const result = await tx.execute(sql`
           WITH proj_apartments AS (
             SELECT a.id
@@ -396,10 +437,10 @@ export class ProjectsService {
   /**
    * Phase-6 "תמונת מצב" — per-apartment DRILL-DOWN (S5d, read-only).
    *
-   * Same visibility gate as the 5a aggregate: reuse `get()` so a cross-org id or
-   * an unassigned-agent id throws the no-oracle NOT_FOUND BEFORE any compute, and
-   * the whole query runs under the SAME withTenant org context (RLS scopes every
-   * table touched).
+   * Same visibility gate as the 5a aggregate: `assertProjectVisible` so a
+   * cross-org id or an unassigned-agent id throws the no-oracle NOT_FOUND
+   * BEFORE any compute, and the whole query runs under the SAME withTenant org
+   * context (RLS scopes every table touched).
    *
    * This breaks the 5a board's single aggregate CTE out PER apartment: for each
    * non-archived apartment in the project we compute `totalOwners` (active
@@ -416,12 +457,13 @@ export class ProjectsService {
     user: AccessTokenPayload,
     projectId: string,
   ): Promise<ApartmentSignatureProgress[]> {
-    // No-oracle visibility gate (org-isolation + agent assigned-project scope).
-    await this.get(user, projectId);
-
     return withTenant(
       user.orgId,
       async (tx) => {
+        // No-oracle visibility gate, INSIDE this tx (was a separate get() tx
+        // + 5 thrown-away stats subqueries). Throws NOT_FOUND when invisible.
+        await this.assertProjectVisible(tx, user, projectId);
+
         const result = await tx.execute(sql`
           SELECT
             a.id AS apartment_id,

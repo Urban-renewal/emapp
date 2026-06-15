@@ -15,7 +15,7 @@ pnpm db:local:migrate                                # applies all migrations
 (do NOT change Infisical dev — Neon stays the team default):
 
 ```bash
-DATABASE_URL=postgresql://emapp:emapp_local_dev@localhost:5433/emapp \
+DATABASE_URL=postgresql://emapp@localhost:5433/emapp \
   infisical run --env=dev -- pnpm --filter @emapp/api dev
 ```
 

@@ -11,7 +11,7 @@ const r = spawnSync(
     shell: true,
     env: {
       ...process.env,
-      DATABASE_URL: 'postgresql://emapp:emapp_local_dev@localhost:5433/emapp',
+      DATABASE_URL: 'postgresql://emapp@localhost:5433/emapp',
     },
   },
 );

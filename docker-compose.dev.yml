@@ -4,7 +4,7 @@
 # Usage (one-time):  docker compose -f docker-compose.dev.yml up -d
 #                    pnpm db:local:migrate
 # Then point Infisical dev DATABASE_URL (or a local override) at:
-#   postgresql://emapp:emapp_local_dev@localhost:5433/emapp
+#   postgresql://emapp@localhost:5433/emapp
 #
 # NOTE: postgres:16 (debian) — NOT alpine — because migration 0013 creates the
 # he_il_icu ICU collation (D.11) which needs the ICU-enabled build.
@@ -16,11 +16,11 @@ services:
     container_name: emapp-local-db
     environment:
       POSTGRES_USER: emapp
-      # Dev-only default for this OPT-IN local container. NOT a production
-      # credential (prod = Neon + Infisical-managed). Override by exporting
-      # POSTGRES_PASSWORD before `docker compose up`. Allowlisted in
-      # .gitguardian.yaml as a documented non-secret dev default.
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-emapp_local_dev}
+      # Passwordless local auth: this OPT-IN container is bound to 127.0.0.1
+      # only and holds nothing but throwaway dev/test data, so `trust` is the
+      # standard, secret-free local-dev setup (no credential to commit). Prod is
+      # Neon with Infisical-managed credentials — nothing here is a real secret.
+      POSTGRES_HOST_AUTH_METHOD: trust
       POSTGRES_DB: emapp
     ports:
       # Bind to localhost ONLY — the dev DB is never exposed on the LAN.

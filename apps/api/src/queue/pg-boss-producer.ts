@@ -22,7 +22,7 @@
  *     before sending (the IJobProducer interface contract — see
  *     packages/jobs/src/producer.ts).
  */
-import { env } from '@emapp/db';
+import { env, resolveDbTarget } from '@emapp/db';
 import type { IJobProducer, JobSendOptions, JobSendResult } from '@emapp/jobs';
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import PgBoss from 'pg-boss';
@@ -74,7 +74,7 @@ export class PgBossJobProducer implements IJobProducer, OnModuleInit, OnModuleDe
     if (this.startPromise) return this.startPromise;
     this.startPromise = (async () => {
       const boss = new PgBoss({
-        connectionString: env.PROVIDER_DATABASE_URL ?? env.DATABASE_URL,
+        connectionString: resolveDbTarget(env).providerUrl,
         schema: PG_BOSS_SCHEMA,
         // v5 audit fix (HIGH cross-confirmed by SOLID + perf agents):
         // pg-boss defaults migrate:true on start(). With BOTH the

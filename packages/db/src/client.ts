@@ -1,8 +1,16 @@
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool, type PoolClient } from 'pg';
 
+import { resolveDbTarget } from './db-target';
 import { env } from './env';
 import * as schema from './schema/index';
+
+// Resolve the active database target ONCE at module load. Both pools draw
+// their connection strings from here, so the app pool and the provider pool
+// can never drift apart (e.g. app→local while provider→Neon). The boot line
+// makes the active target obvious in logs — no more "am I on Neon or local?".
+const dbTarget = resolveDbTarget();
+process.stderr.write(`[db] target=${dbTarget.target}\n`);
 
 // Ops-tunable with production-safe HARD fallbacks. The fallback (not just
 // a zod .default) is required because @t3-oss/env-core returns raw env
@@ -103,7 +111,7 @@ export function attachClientErrorGuard(p: Pool, name: PoolName): void {
 }
 
 const appPoolConfig = {
-  connectionString: env.DATABASE_URL,
+  connectionString: dbTarget.appUrl,
   max: numEnv(env.DB_POOL_MAX, 20),
   idleTimeoutMillis: numEnv(env.DB_POOL_IDLE_MS, 30000),
   connectionTimeoutMillis: numEnv(env.DB_POOL_CONN_TIMEOUT_MS, 5000),
@@ -118,7 +126,7 @@ export type Database = NodePgDatabase<typeof schema>;
 attachClientErrorGuard(pool, 'appPool');
 
 const providerPoolConfig = {
-  connectionString: env.PROVIDER_DATABASE_URL ?? env.DATABASE_URL,
+  connectionString: dbTarget.providerUrl,
   max: numEnv(env.DB_PROVIDER_POOL_MAX, 5),
   idleTimeoutMillis: numEnv(env.DB_POOL_IDLE_MS, 30000),
   connectionTimeoutMillis: numEnv(env.DB_POOL_CONN_TIMEOUT_MS, 5000),

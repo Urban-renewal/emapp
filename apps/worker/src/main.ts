@@ -28,7 +28,7 @@
 // handler runs and before crash handlers register their capture.
 import './instrument';
 
-import { env, pool, reloadEnv } from '@emapp/db';
+import { env, pool, reloadEnv, resolveDbTarget } from '@emapp/db';
 import {
   AUDIT_RETENTION_CRON_DAILY,
   AUDIT_RETENTION_JOB_NAME,
@@ -126,12 +126,14 @@ async function main(): Promise<void> {
   //    must only be able to SELECT/INSERT/UPDATE its own domain
   //    tables. The provider role is already authorised for DDL (it
   //    owns the migrations) and is the right principal for the queue
-  //    plumbing. Falls back to DATABASE_URL for dev environments that
-  //    haven't set PROVIDER_DATABASE_URL — see @emapp/db env defaults.
+  //    plumbing. The DB-target resolver returns this provider URL for the
+  //    active target (`neon` → PROVIDER_DATABASE_URL ?? DATABASE_URL; `local`
+  //    → the local URL), so the worker queue can never connect to a different
+  //    database than the API's pools.
   //  - migrate:true (default) lets pg-boss apply its own schema on
   //    first start. Idempotent; safe to leave on in prod.
   const boss = new PgBoss({
-    connectionString: env.PROVIDER_DATABASE_URL ?? env.DATABASE_URL,
+    connectionString: resolveDbTarget(env).providerUrl,
     schema: PG_BOSS_SCHEMA,
   });
 

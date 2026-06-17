@@ -19,9 +19,14 @@ import { useDisplayLocale } from '@/lib/locale';
 import type { OwnerProjectViewModel } from '@/models/owner-project.vm';
 import type { OwnerListItemViewModel } from '@/models/owner.vm';
 
-import { OWNERS_KEY, ownersListQueryKey } from './use-owners.keys';
+import {
+  OWNERS_KEY,
+  ownerProjectsQueryKey,
+  ownerQueryKey,
+  ownersListQueryKey,
+} from './use-owners.keys';
 
-export { ownersListQueryKey };
+export { ownerProjectsQueryKey, ownerQueryKey, ownersListQueryKey };
 
 export function useOwnerList(query: { limit?: number; cursor?: string; archived?: boolean } = {}) {
   const locale = useDisplayLocale();
@@ -48,7 +53,9 @@ export function useOwner(id: string | undefined) {
   const locale = useDisplayLocale();
   const select = useCallback((data: Owner) => toOwnerViewModel(data, locale), [locale]);
   return useQuery({
-    queryKey: [...OWNERS_KEY, 'one', id, locale],
+    // See `useProject` — `id` may be undefined before the `enabled` gate; '' is
+    // a placeholder for the key shape only (the query is disabled meanwhile).
+    queryKey: ownerQueryKey(id ?? '', locale),
     queryFn: () => {
       if (!id) throw new Error('useOwner requires an id');
       return getOwner(id);
@@ -71,7 +78,8 @@ export function useOwnerProjects(id: string | undefined) {
     [],
   );
   return useQuery<OwnerProjectSummary[], Error, OwnerProjectViewModel[]>({
-    queryKey: [...OWNERS_KEY, 'projects', id],
+    // No locale segment — the adapter is locale-independent (see the builder).
+    queryKey: ownerProjectsQueryKey(id ?? ''),
     queryFn: () => {
       if (!id) throw new Error('useOwnerProjects requires an id');
       return getOwnerProjects(id);

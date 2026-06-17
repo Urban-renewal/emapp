@@ -41,9 +41,9 @@ import type { SignatureProgressViewModel } from '@/models/signature-progress.vm'
 
 // Query-key builders live in a PLAIN module so the server RSC prefetch can
 // call them too (a `'use client'` export cannot be invoked from the server).
-import { PROJECTS_KEY, projectsListQueryKey } from './use-projects.keys';
+import { PROJECTS_KEY, projectQueryKey, projectsListQueryKey } from './use-projects.keys';
 
-export { projectsListQueryKey };
+export { projectQueryKey, projectsListQueryKey };
 
 export function useProjectList(query: { limit?: number; cursor?: string } = {}) {
   const locale = useDisplayLocale();
@@ -73,7 +73,10 @@ export function useProject(id: string | undefined) {
     [locale],
   );
   return useQuery({
-    queryKey: [...PROJECTS_KEY, 'one', id, locale],
+    // `projectQueryKey` requires a string id; before the `enabled` gate fires
+    // the hook may run with `id === undefined`, so fall back to '' for the key
+    // shape (the query never actually runs while disabled).
+    queryKey: projectQueryKey(id ?? '', locale),
     queryFn: () => {
       if (!id) throw new Error('useProject requires an id');
       return getProject(id);

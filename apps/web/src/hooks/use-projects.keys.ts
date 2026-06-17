@@ -25,3 +25,14 @@ export function projectsListQueryKey(
 ) {
   return [...PROJECTS_KEY, 'list', query, locale] as const;
 }
+
+/**
+ * Shape is `['projects', 'one', id, locale]` — the SINGLE-record detail key
+ * `useProject(id)` reads. Same byte-for-byte parity discipline as the list
+ * builder: the server RSC prefetch (`projects/[id]/page.tsx`) and the client
+ * hook MUST hash identically or the prefetch is a silent cache miss and the
+ * fetch-after-hydration waterfall returns.
+ */
+export function projectQueryKey(id: string, locale: 'he' | 'en') {
+  return [...PROJECTS_KEY, 'one', id, locale] as const;
+}

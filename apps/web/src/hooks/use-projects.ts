@@ -39,7 +39,11 @@ import type { SignatureProgressViewModel } from '@/models/signature-progress.vm'
  * an item's stable id changes.
  */
 
-const PROJECTS_KEY = ['projects'] as const;
+// Query-key builders live in a PLAIN module so the server RSC prefetch can
+// call them too (a `'use client'` export cannot be invoked from the server).
+import { PROJECTS_KEY, projectsListQueryKey } from './use-projects.keys';
+
+export { projectsListQueryKey };
 
 export function useProjectList(query: { limit?: number; cursor?: string } = {}) {
   const locale = useDisplayLocale();
@@ -55,7 +59,7 @@ export function useProjectList(query: { limit?: number; cursor?: string } = {}) 
     Error,
     { items: ProjectViewModel[]; page: ProjectListPage['page'] }
   >({
-    queryKey: [...PROJECTS_KEY, 'list', query, locale],
+    queryKey: projectsListQueryKey(query, locale),
     queryFn: () => listProjects(query),
     staleTime: 30_000,
     select,

@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 
 import { NameDisplay } from '@/components/ui/name-display';
-import type { SessionUser } from '@/lib/session';
+import type { SessionUser } from '@/lib/session-types';
 
 import { NotificationsBell } from './notifications-bell';
 

@@ -3,8 +3,6 @@
 import { ProviderProfileSchema, type ProviderProfile } from '@emapp/shared-types';
 import { cookies, headers } from 'next/headers';
 
-export type { ProviderProfile };
-
 /**
  * Server-side `/provider/me` fetch — V10-S1 closure (H1 Provider FE
  * topology fix).

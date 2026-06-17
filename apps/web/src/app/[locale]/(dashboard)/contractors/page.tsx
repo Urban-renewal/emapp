@@ -1,87 +1,53 @@
-'use client';
+import { HydrationBoundary } from '@tanstack/react-query';
+import { getLocale } from 'next-intl/server';
 
-import Link from 'next/link';
-import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { contractorsListQueryKey } from '@/hooks/use-contractors.keys';
+import { serverListContractors } from '@/lib/api/contractors.server';
+import { prefetchToDehydratedState } from '@/lib/query/prefetch';
 
-import { Button } from '@/components/ui/button';
-import { ListPageShell } from '@/components/ui/list-page-shell';
-import { NameDisplay } from '@/components/ui/name-display';
-import { useContractorList } from '@/hooks/use-contractors';
-import { useHasPermission } from '@/hooks/use-permissions';
+import { ContractorsListClient } from './contractors-list.client';
 
 /**
- * Contractors list — read=ALL. IAM slice 5b: the "Create" CTA now renders
- * only for actors holding `contractors.create` (no more dead button that
- * 403s for agent/viewer). BE remains authoritative.
+ * Contractors list — RSC server-prefetch (perf-research/01-rsc-waterfall.md
+ * §5.2, fan-out batch 2). This is an async Server Component (NO `'use
+ * client'`): it runs the initial `GET /api/v1/contractors?limit=25` ON THE
+ * SERVER during the HTML stream, dehydrates the result, and feeds it through
+ * `<HydrationBoundary>` so the client `useContractorList` hook resolves
+ * SYNCHRONOUSLY from the seeded cache on first render. This kills the `'use
+ * client'` fetch-after-hydration waterfall (~500ms cold dead-time before the
+ * list GET even started) — the same technique PR 401 proved on `/me` and PR
+ * 406 piloted on projects.
+ *
+ * Query-key parity is load-bearing: the server uses `contractorsListQueryKey`
+ * (the SAME exported builder the hook uses) with the `{ limit: 25 }` literal +
+ * the route locale. The client's first render passes `{ limit: 25, cursor:
+ * undefined }`; TanStack's `hashKey` JSON-serializes plain objects and drops
+ * `undefined`, so the two hash identically — a guaranteed cache hit.
+ *
+ * Failure posture: `serverListContractors` throws on any failure;
+ * `prefetchToDehydratedState` swallows it → empty dehydrated state → the
+ * client hook transparently runs its own fetch + existing loading/error UI.
+ * The page NEVER throws.
  */
-export default function ContractorsPage() {
-  const t = useTranslations('contractors');
-  const tp = useTranslations('projects');
-  const [cursor, setCursor] = useState<string | undefined>(undefined);
-  const canCreate = useHasPermission('contractors.create');
-  const { data, isLoading, isError, error, refetch } = useContractorList({ limit: 25, cursor });
-  const items = data?.items ?? [];
+export default async function ContractorsPage() {
+  // Narrow next-intl's `string` locale to the hook's `'he' | 'en'` so the
+  // key's locale segment matches the client `useDisplayLocale()` exactly.
+  const rawLocale = await getLocale();
+  const locale: 'he' | 'en' = rawLocale === 'en' ? 'en' : 'he';
+
+  const query = { limit: 25 };
+
+  const dehydratedState = await prefetchToDehydratedState([
+    (qc) =>
+      qc.prefetchQuery({
+        queryKey: contractorsListQueryKey(query, locale),
+        queryFn: () => serverListContractors(query),
+      }),
+  ]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
-        {canCreate && (
-          <Button asChild>
-            <Link href="/contractors/new">{t('create')}</Link>
-          </Button>
-        )}
-      </div>
-
-      <ListPageShell
-        isLoading={isLoading}
-        isError={isError}
-        error={error}
-        itemCount={items.length}
-        page={data?.page}
-        cursor={cursor}
-        loadFailedLabel={t('loadFailed')}
-        emptyLabel={t('empty')}
-        accessDeniedTitle={tp('accessDeniedTitle')}
-        accessDeniedBody={tp('accessDeniedBody')}
-        retryLabel={tp('retry')}
-        nextLabel={tp('next')}
-        resetLabel={tp('resetToFirstPage')}
-        onRetry={() => refetch()}
-        onNext={(next) => setCursor(next)}
-        onReset={() => setCursor(undefined)}
-      >
-        <ul className="space-y-2">
-          {items.map((c) => (
-            <li key={c.id} className="rounded-md border bg-card p-4">
-              <Link href={`/contractors/${c.id}`} className="block">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-base font-semibold">
-                      <NameDisplay name={c.name} />
-                    </h2>
-                    <p className="mt-1 text-xs text-muted-foreground" dir="ltr">
-                      <NameDisplay name={c.contactEmail} />
-                      {c.contactPhone && <> · {c.contactPhone}</>}
-                    </p>
-                    {c.specialty && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        <NameDisplay name={c.specialty} />
-                      </p>
-                    )}
-                  </div>
-                  {c.isArchived && (
-                    <span className="shrink-0 rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
-                      {tp('archived')}
-                    </span>
-                  )}
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </ListPageShell>
-    </div>
+    <HydrationBoundary state={dehydratedState}>
+      <ContractorsListClient />
+    </HydrationBoundary>
   );
 }

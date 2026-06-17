@@ -16,7 +16,9 @@ import {
 import { useDisplayLocale } from '@/lib/locale';
 import type { ContractorViewModel } from '@/models/contractor.vm';
 
-const CONTRACTORS_KEY = ['contractors'] as const;
+import { CONTRACTORS_KEY, contractorsListQueryKey } from './use-contractors.keys';
+
+export { contractorsListQueryKey };
 
 export function useContractorList(query: { limit?: number; cursor?: string } = {}) {
   const locale = useDisplayLocale();
@@ -32,7 +34,7 @@ export function useContractorList(query: { limit?: number; cursor?: string } = {
     Error,
     { items: ContractorViewModel[]; page: ContractorListPage['page'] }
   >({
-    queryKey: [...CONTRACTORS_KEY, 'list', query, locale],
+    queryKey: contractorsListQueryKey(query, locale),
     queryFn: () => listContractors(query),
     staleTime: 30_000,
     select,

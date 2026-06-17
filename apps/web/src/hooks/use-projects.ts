@@ -41,6 +41,27 @@ import type { SignatureProgressViewModel } from '@/models/signature-progress.vm'
 
 const PROJECTS_KEY = ['projects'] as const;
 
+/**
+ * Exported query-key builder for the projects list — the single source of
+ * truth for this key's shape so the server RSC prefetch
+ * (`projects/page.tsx`) and the client hook can NEVER drift (the
+ * `SESSION_ME_QUERY_KEY` discipline; perf-research/01-rsc-waterfall.md §2.2).
+ *
+ * Shape is `['projects', 'list', query, locale]` — `query` is the LITERAL
+ * object passed to the hook (`{ limit, cursor }`) and `locale` is the
+ * narrowed `'he' | 'en'` from `useDisplayLocale()` (client) /
+ * `getLocale()`-narrowed (server). A byte-for-byte match is load-bearing:
+ * a mismatch = a silent cache miss = the prefetch is wasted and the
+ * waterfall silently returns. The server side passes the SAME `{ limit: 25 }`
+ * literal + the route locale so both keys serialize identically.
+ */
+export function projectsListQueryKey(
+  query: { limit?: number; cursor?: string },
+  locale: 'he' | 'en',
+) {
+  return [...PROJECTS_KEY, 'list', query, locale] as const;
+}
+
 export function useProjectList(query: { limit?: number; cursor?: string } = {}) {
   const locale = useDisplayLocale();
   const select = useCallback(
@@ -55,7 +76,7 @@ export function useProjectList(query: { limit?: number; cursor?: string } = {}) 
     Error,
     { items: ProjectViewModel[]; page: ProjectListPage['page'] }
   >({
-    queryKey: [...PROJECTS_KEY, 'list', query, locale],
+    queryKey: projectsListQueryKey(query, locale),
     queryFn: () => listProjects(query),
     staleTime: 30_000,
     select,

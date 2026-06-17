@@ -31,6 +31,10 @@ import {
 import { useDisplayLocale } from '@/lib/locale';
 import type { MemberViewModel } from '@/models/member.vm';
 
+import { MEMBERS_KEY, membersListQueryKey } from './use-members.keys';
+
+export { membersListQueryKey };
+
 /**
  * Members data hooks — TanStack Query. Same shape as `use-projects.ts`:
  *   - `select` callbacks memoised via `useCallback` (PERF-H3 closure)
@@ -42,8 +46,6 @@ import type { MemberViewModel } from '@/models/member.vm';
  * from the mutation result and then it's gone. `onSuccess` invalidates
  * only the list query so the new pending row appears.
  */
-
-const MEMBERS_KEY = ['members'] as const;
 
 export function useMemberList(query: { limit?: number; cursor?: string } = {}) {
   const locale = useDisplayLocale();
@@ -59,7 +61,7 @@ export function useMemberList(query: { limit?: number; cursor?: string } = {}) {
     Error,
     { items: MemberViewModel[]; page: MemberListPage['page'] }
   >({
-    queryKey: [...MEMBERS_KEY, 'list', query, locale],
+    queryKey: membersListQueryKey(query, locale),
     queryFn: () => listMembers(query),
     staleTime: 30_000,
     select,

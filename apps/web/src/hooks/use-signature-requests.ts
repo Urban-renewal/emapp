@@ -28,7 +28,9 @@ import {
 import { useDisplayLocale } from '@/lib/locale';
 import type { SignatureRequestViewModel } from '@/models/signature-request.vm';
 
-const SIGREQ_KEY = ['signature-requests'] as const;
+import { SIGREQ_KEY, signatureRequestsListQueryKey } from './use-signature-requests.keys';
+
+export { signatureRequestsListQueryKey };
 
 export function useSignatureRequestList(query: Partial<ListSignatureRequestsQueryDto> = {}) {
   const locale = useDisplayLocale();
@@ -44,7 +46,7 @@ export function useSignatureRequestList(query: Partial<ListSignatureRequestsQuer
     Error,
     { items: SignatureRequestViewModel[]; page: SignatureRequestListPage['page'] }
   >({
-    queryKey: [...SIGREQ_KEY, 'list', query, locale],
+    queryKey: signatureRequestsListQueryKey(query, locale),
     queryFn: () => listSignatureRequests(query),
     staleTime: 30_000,
     select,

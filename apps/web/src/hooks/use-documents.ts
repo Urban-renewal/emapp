@@ -18,7 +18,9 @@ import {
 import { useDisplayLocale } from '@/lib/locale';
 import type { DocumentViewModel } from '@/models/document.vm';
 
-const DOCUMENTS_KEY = ['documents'] as const;
+import { DOCUMENTS_KEY, documentsListQueryKey } from './use-documents.keys';
+
+export { documentsListQueryKey };
 
 export function useDocumentList(
   query: {
@@ -42,7 +44,7 @@ export function useDocumentList(
     Error,
     { items: DocumentViewModel[]; page: DocumentListPage['page'] }
   >({
-    queryKey: [...DOCUMENTS_KEY, 'list', query, locale],
+    queryKey: documentsListQueryKey(query, locale),
     queryFn: () => listDocuments({ limit: query.limit ?? 25, ...query }),
     staleTime: 30_000,
     select,

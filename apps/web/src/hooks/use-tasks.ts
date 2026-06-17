@@ -20,6 +20,10 @@ import {
 import { useDisplayLocale } from '@/lib/locale';
 import type { TaskAssigneeViewModel, TaskViewModel } from '@/models/task.vm';
 
+import { TASKS_KEY, tasksListQueryKey } from './use-tasks.keys';
+
+export { tasksListQueryKey };
+
 /**
  * Tasks data hooks. Same shape as use-members / use-projects:
  *   - per-query staleTime 30s
@@ -29,8 +33,6 @@ import type { TaskAssigneeViewModel, TaskViewModel } from '@/models/task.vm';
  * branch on `user.role` here — `listTasks` returns whatever the BE
  * decides the caller can see.
  */
-
-const TASKS_KEY = ['tasks'] as const;
 
 export function useTaskList(query: { limit?: number; cursor?: string } = {}) {
   const locale = useDisplayLocale();
@@ -42,7 +44,7 @@ export function useTaskList(query: { limit?: number; cursor?: string } = {}) {
     [locale],
   );
   return useQuery<TaskListPage, Error, { items: TaskViewModel[]; page: TaskListPage['page'] }>({
-    queryKey: [...TASKS_KEY, 'list', query, locale],
+    queryKey: tasksListQueryKey(query, locale),
     queryFn: () => listTasks(query),
     staleTime: 30_000,
     select,

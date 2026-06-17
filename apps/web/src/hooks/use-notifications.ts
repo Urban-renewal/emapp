@@ -14,6 +14,9 @@ import { useDisplayLocale } from '@/lib/locale';
 import type { NotificationViewModel } from '@/models/notification.vm';
 
 import { applyMarkAllRead, applyMarkRead } from './notifications-optimistic';
+import { NOTIFICATIONS_KEY, notificationsListQueryKey } from './use-notifications.keys';
+
+export { notificationsListQueryKey };
 
 /** Snapshot of every notifications-list cache entry, for optimistic rollback. */
 type NotificationCacheSnapshot = [readonly unknown[], NotificationListPage | undefined][];
@@ -34,7 +37,6 @@ type NotificationCacheSnapshot = [readonly unknown[], NotificationListPage | und
  * would otherwise overwrite each other).
  */
 
-const NOTIFICATIONS_KEY = ['notifications'] as const;
 const BELL_LIMIT = 5;
 
 export function useNotificationList(query: { limit?: number; cursor?: string } = {}) {
@@ -51,7 +53,7 @@ export function useNotificationList(query: { limit?: number; cursor?: string } =
     Error,
     { items: NotificationViewModel[]; page: NotificationListPage['page'] }
   >({
-    queryKey: [...NOTIFICATIONS_KEY, 'list', query, locale],
+    queryKey: notificationsListQueryKey(query, locale),
     queryFn: () => listNotifications(query),
     staleTime: 30_000,
     select,

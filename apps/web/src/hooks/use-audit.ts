@@ -8,6 +8,10 @@ import { listAuditEntries, type AuditListPage } from '@/lib/api/audit';
 import { useDisplayLocale } from '@/lib/locale';
 import type { AuditEntryViewModel } from '@/models/audit-entry.vm';
 
+import { auditListQueryKey } from './use-audit.keys';
+
+export { auditListQueryKey };
+
 /**
  * Audit-read hook (Manager-only via D.17 + the BE
  * AuditReadService.list role check). No mutation surface — the
@@ -17,7 +21,6 @@ import type { AuditEntryViewModel } from '@/models/audit-entry.vm';
  * Cache key includes locale so HE↔EN switching re-renders the
  * adapter without a network refetch.
  */
-const AUDIT_KEY = ['audit'] as const;
 
 export function useAuditList(query: { limit?: number; cursor?: string } = {}) {
   const locale = useDisplayLocale();
@@ -33,7 +36,7 @@ export function useAuditList(query: { limit?: number; cursor?: string } = {}) {
     Error,
     { items: AuditEntryViewModel[]; page: AuditListPage['page'] }
   >({
-    queryKey: [...AUDIT_KEY, 'list', query, locale],
+    queryKey: auditListQueryKey(query, locale),
     queryFn: () => listAuditEntries(query),
     staleTime: 30_000,
     select,

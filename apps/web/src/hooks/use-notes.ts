@@ -17,7 +17,9 @@ import {
 import { useDisplayLocale } from '@/lib/locale';
 import type { NoteViewModel } from '@/models/note.vm';
 
-const NOTES_KEY = ['notes'] as const;
+import { NOTES_KEY, notesListQueryKey } from './use-notes.keys';
+
+export { notesListQueryKey };
 
 export function useNoteList(
   query: { limit?: number; cursor?: string } = {},
@@ -32,7 +34,7 @@ export function useNoteList(
     [locale, userIdToMember],
   );
   return useQuery<NoteListPage, Error, { items: NoteViewModel[]; page: NoteListPage['page'] }>({
-    queryKey: [...NOTES_KEY, 'list', query, locale],
+    queryKey: notesListQueryKey(query, locale),
     queryFn: () => listNotes(query),
     staleTime: 30_000,
     select,

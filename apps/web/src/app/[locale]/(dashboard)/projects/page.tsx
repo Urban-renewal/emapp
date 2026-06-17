@@ -1,7 +1,7 @@
 import { HydrationBoundary } from '@tanstack/react-query';
 import { getLocale } from 'next-intl/server';
 
-import { projectsListQueryKey } from '@/hooks/use-projects';
+import { projectsListQueryKey } from '@/hooks/use-projects.keys';
 import { serverListProjects } from '@/lib/api/projects.server';
 import { prefetchToDehydratedState } from '@/lib/query/prefetch';
 

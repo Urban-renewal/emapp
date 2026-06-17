@@ -16,7 +16,7 @@ import { ProjectsListClient } from './projects-list.client';
  * client `useProjectList` hook resolves SYNCHRONOUSLY from the seeded cache
  * on first render. This kills the `'use client'` fetch-after-hydration
  * waterfall (~500ms–1.4s of cold dead-time before the list GET even
- * started) — the same technique PR #401 proved on `/me`.
+ * started) — the same technique PR 401 proved on `/me`.
  *
  * Query-key parity is load-bearing: the server uses `projectsListQueryKey`
  * (the SAME exported builder the hook uses) with the IDENTICAL `{ limit: 25 }`

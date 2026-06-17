@@ -54,9 +54,8 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: process.env['NEXT_OUTPUT'] === 'standalone' ? 'standalone' : undefined,
   reactStrictMode: true,
-  experimental: {
-    typedRoutes: true,
-  },
+  // Next 15: `typedRoutes` graduated from `experimental` to top-level.
+  typedRoutes: true,
   async headers() {
     return [
       {

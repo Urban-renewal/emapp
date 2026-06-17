@@ -4,8 +4,6 @@ import { UserProfileSchema, type UserProfile } from '@emapp/shared-types';
 import { cookies, headers } from 'next/headers';
 import { cache } from 'react';
 
-export type { UserProfile };
-
 /**
  * Server-side `/me` fetch. Routes through the same Pages Function
  * reverse-proxy that the browser uses (D.35) — single env var

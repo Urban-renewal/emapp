@@ -1,119 +1,53 @@
-'use client';
+import { HydrationBoundary } from '@tanstack/react-query';
+import { getLocale } from 'next-intl/server';
 
-import { useQuery } from '@tanstack/react-query';
-import Link from 'next/link';
-import { useTranslations } from 'next-intl';
-import { useMemo, useState } from 'react';
+import { notesListQueryKey } from '@/hooks/use-notes.keys';
+import { serverListNotes } from '@/lib/api/notes.server';
+import { prefetchToDehydratedState } from '@/lib/query/prefetch';
 
-import type { AssignmentMemberLookup } from '@/adapters/project-assignment';
-import { Button } from '@/components/ui/button';
-import { ListPageShell } from '@/components/ui/list-page-shell';
-import { NameDisplay } from '@/components/ui/name-display';
-import { useNoteList } from '@/hooks/use-notes';
-import { useHasPermission } from '@/hooks/use-permissions';
-import { listMembers } from '@/lib/api/members';
-import { useDisplayLocale } from '@/lib/locale';
+import { NotesListClient } from './notes-list.client';
 
 /**
- * Notes list — D.17 read=ALL (every org role; Viewer gets read-only;
- * Agent + Manager can also create). Pinned notes float to the top
- * (FE-side sort — the BE returns `createdAt DESC` only).
+ * Notes list — RSC server-prefetch (perf-research/01-rsc-waterfall.md §5.2,
+ * fan-out batch 2). This is an async Server Component (NO `'use client'`): it
+ * runs the initial `GET /api/v1/notes?limit=25` ON THE SERVER during the HTML
+ * stream, dehydrates the result, and feeds it through `<HydrationBoundary>` so
+ * the client `useNoteList` hook resolves SYNCHRONOUSLY from the seeded cache
+ * on first render. This kills the `'use client'` fetch-after-hydration
+ * waterfall (~500ms cold dead-time before the list GET even started) — the
+ * same technique PR 401 proved on `/me` and PR 406 piloted on projects.
  *
- * Side-loads /members for Manager-only name enrichment (same pattern
- * as project-assignments / tasks); Agent/Viewer see the createdBy
- * short-id fallback.
+ * Query-key parity is load-bearing: the server uses `notesListQueryKey` (the
+ * SAME exported builder the hook uses) with the `{ limit: 25 }` literal + the
+ * route locale. The client's first render passes `{ limit: 25, cursor:
+ * undefined }`; TanStack's `hashKey` JSON-serializes plain objects and drops
+ * `undefined`, so the two hash identically — a guaranteed cache hit.
+ *
+ * Failure posture: `serverListNotes` throws on any failure;
+ * `prefetchToDehydratedState` swallows it → empty dehydrated state → the
+ * client hook transparently runs its own fetch + existing loading/error UI.
+ * The page NEVER throws. (The `/members` side-load stays client-only — it is
+ * a Manager-only enrichment with its own retry: false cache slot.)
  */
-export default function NotesPage() {
-  const t = useTranslations('notes');
-  const tp = useTranslations('projects');
-  const locale = useDisplayLocale();
-  const [cursor, setCursor] = useState<string | undefined>(undefined);
+export default async function NotesPage() {
+  // Narrow next-intl's `string` locale to the hook's `'he' | 'en'` so the
+  // key's locale segment matches the client `useDisplayLocale()` exactly.
+  const rawLocale = await getLocale();
+  const locale: 'he' | 'en' = rawLocale === 'en' ? 'en' : 'he';
 
-  const membersQuery = useQuery({
-    queryKey: ['members', 'list', { limit: 100 }, locale, 'notes-side-load'],
-    queryFn: () => listMembers({ limit: 100 }),
-    staleTime: 30_000,
-    retry: false,
-  });
-  const lookup = useMemo<Map<string, AssignmentMemberLookup> | undefined>(() => {
-    if (!membersQuery.data) return undefined;
-    const m = new Map<string, AssignmentMemberLookup>();
-    for (const item of membersQuery.data.items) {
-      m.set(item.userId, { name: item.name, email: item.email });
-    }
-    return m;
-  }, [membersQuery.data]);
+  const query = { limit: 25 };
 
-  const { data, isLoading, isError, error, refetch } = useNoteList({ limit: 25, cursor }, lookup);
-  const items = data?.items ?? [];
-  const canCreate = useHasPermission('notes.create');
+  const dehydratedState = await prefetchToDehydratedState([
+    (qc) =>
+      qc.prefetchQuery({
+        queryKey: notesListQueryKey(query, locale),
+        queryFn: () => serverListNotes(query),
+      }),
+  ]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
-        {canCreate && (
-          <Button asChild>
-            <Link href="/notes/new">{t('create')}</Link>
-          </Button>
-        )}
-      </div>
-
-      <ListPageShell
-        isLoading={isLoading}
-        isError={isError}
-        error={error}
-        itemCount={items.length}
-        page={data?.page}
-        cursor={cursor}
-        loadFailedLabel={t('loadFailed')}
-        emptyLabel={t('empty')}
-        accessDeniedTitle={tp('accessDeniedTitle')}
-        accessDeniedBody={tp('accessDeniedBody')}
-        retryLabel={tp('retry')}
-        nextLabel={tp('next')}
-        resetLabel={tp('resetToFirstPage')}
-        onRetry={() => refetch()}
-        onNext={(next) => setCursor(next)}
-        onReset={() => setCursor(undefined)}
-      >
-        <ul className="space-y-2">
-          {items.map((n) => (
-            <li
-              key={n.id}
-              className={
-                n.pinned
-                  ? 'rounded-md border border-amber-300 bg-amber-50 p-4'
-                  : 'rounded-md border bg-card p-4'
-              }
-            >
-              <Link href={`/notes/${n.id}`} className="block">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  {n.pinned && (
-                    <span className="rounded-full bg-amber-200 px-2 py-0.5 font-medium text-amber-900">
-                      {t('pinned')}
-                    </span>
-                  )}
-                  <span>
-                    {n.createdByName ? (
-                      <NameDisplay name={n.createdByName} />
-                    ) : (
-                      <span className="font-mono" dir="ltr">
-                        {t('byUser')} {n.createdByShort}
-                      </span>
-                    )}
-                  </span>
-                  <span aria-hidden="true">·</span>
-                  <span>{n.createdRelative}</span>
-                </div>
-                <p className="mt-2 whitespace-pre-wrap text-sm">
-                  <NameDisplay name={n.body.length > 200 ? `${n.body.slice(0, 200)}…` : n.body} />
-                </p>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </ListPageShell>
-    </div>
+    <HydrationBoundary state={dehydratedState}>
+      <NotesListClient />
+    </HydrationBoundary>
   );
 }

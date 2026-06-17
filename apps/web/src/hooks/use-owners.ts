@@ -19,7 +19,9 @@ import { useDisplayLocale } from '@/lib/locale';
 import type { OwnerProjectViewModel } from '@/models/owner-project.vm';
 import type { OwnerListItemViewModel } from '@/models/owner.vm';
 
-const OWNERS_KEY = ['owners'] as const;
+import { OWNERS_KEY, ownersListQueryKey } from './use-owners.keys';
+
+export { ownersListQueryKey };
 
 export function useOwnerList(query: { limit?: number; cursor?: string; archived?: boolean } = {}) {
   const locale = useDisplayLocale();
@@ -35,7 +37,7 @@ export function useOwnerList(query: { limit?: number; cursor?: string; archived?
     Error,
     { items: OwnerListItemViewModel[]; page: OwnerListPage['page'] }
   >({
-    queryKey: [...OWNERS_KEY, 'list', query, locale],
+    queryKey: ownersListQueryKey(query, locale),
     queryFn: () => listOwners(query),
     staleTime: 30_000,
     select,

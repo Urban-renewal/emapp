@@ -1,95 +1,47 @@
-'use client';
+import { HydrationBoundary } from '@tanstack/react-query';
+import { getLocale } from 'next-intl/server';
 
-import Link from 'next/link';
-import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { tasksListQueryKey } from '@/hooks/use-tasks.keys';
+import { serverListTasks } from '@/lib/api/tasks.server';
+import { prefetchToDehydratedState } from '@/lib/query/prefetch';
 
-import { Button } from '@/components/ui/button';
-import { ListPageShell } from '@/components/ui/list-page-shell';
-import { NameDisplay } from '@/components/ui/name-display';
-import { StatusBadge } from '@/components/ui/status-badge';
-import { useHasPermission } from '@/hooks/use-permissions';
-import { useTaskList } from '@/hooks/use-tasks';
+import { TasksListClient } from './tasks-list.client';
 
 /**
- * Tasks list — D.17 read=ALL with Agent service-layer scoping.
+ * Tasks list — RSC server-prefetch (perf-research/01-rsc-waterfall.md §5.2,
+ * fan-out batch 1). Async Server Component (NO `'use client'`): runs the
+ * initial `GET /api/v1/tasks?limit=25` ON THE SERVER during the HTML stream,
+ * dehydrates it, and feeds it through `<HydrationBoundary>` so the client
+ * `useTaskList` hook resolves SYNCHRONOUSLY from the seeded cache on first
+ * render — killing the fetch-after-hydration waterfall (same technique as
+ * PR 401 / PR 406).
  *
- * The BE returns ONLY rows the caller may see (Manager/Viewer → org;
- * Agent → own assignments). The FE doesn't replicate this filter — it
- * just renders what the wire delivers. IAM slice 5b: the "create" CTA now
- * renders only for actors holding `tasks.create` (manager + agent; viewer
- * never) — no more dead button. BE AuthorizationGuard stays authoritative.
+ * Query-key parity is load-bearing: server uses `tasksListQueryKey` (the SAME
+ * builder the hook uses) with the `{ limit: 25 }` literal + route locale. The
+ * client first render passes `{ limit: 25, cursor: undefined }`; `hashKey`
+ * JSON-drops `undefined`, so the two hash identically — a guaranteed hit.
+ *
+ * Failure posture: a failed `serverListTasks` is swallowed by
+ * `prefetchToDehydratedState` → empty cache → the client hook refetches via
+ * its existing loading/error UI. The page NEVER throws.
  */
-export default function TasksPage() {
-  const t = useTranslations('tasks');
-  const tp = useTranslations('projects');
-  const [cursor, setCursor] = useState<string | undefined>(undefined);
-  const canCreate = useHasPermission('tasks.create');
-  const { data, isLoading, isError, error, refetch } = useTaskList({ limit: 25, cursor });
-  const items = data?.items ?? [];
+export default async function TasksPage() {
+  const rawLocale = await getLocale();
+  const locale: 'he' | 'en' = rawLocale === 'en' ? 'en' : 'he';
+
+  const query = { limit: 25 };
+
+  const dehydratedState = await prefetchToDehydratedState([
+    (qc) =>
+      qc.prefetchQuery({
+        queryKey: tasksListQueryKey(query, locale),
+        queryFn: () => serverListTasks(query),
+      }),
+  ]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
-        {canCreate && (
-          <Button asChild>
-            <Link href="/tasks/new">{t('create')}</Link>
-          </Button>
-        )}
-      </div>
-
-      <ListPageShell
-        isLoading={isLoading}
-        isError={isError}
-        error={error}
-        itemCount={items.length}
-        page={data?.page}
-        cursor={cursor}
-        loadFailedLabel={t('loadFailed')}
-        emptyLabel={t('empty')}
-        accessDeniedTitle={tp('accessDeniedTitle')}
-        accessDeniedBody={tp('accessDeniedBody')}
-        retryLabel={tp('retry')}
-        nextLabel={tp('next')}
-        resetLabel={tp('resetToFirstPage')}
-        onRetry={() => refetch()}
-        onNext={(next) => setCursor(next)}
-        onReset={() => setCursor(undefined)}
-      >
-        <ul className="space-y-2">
-          {items.map((task) => (
-            <li key={task.id} className="rounded-md border bg-card p-4">
-              <Link href={`/tasks/${task.id}`} className="block">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <h2 className="truncate text-base font-semibold">
-                        <NameDisplay name={task.title} />
-                      </h2>
-                      <StatusBadge color={task.statusColor}>{task.statusLabel}</StatusBadge>
-                      {task.priority === 3 && (
-                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
-                          {task.priorityLabel}
-                        </span>
-                      )}
-                      {task.isOverdue && (
-                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
-                          {t('overdue')}
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {task.dueRelative ? <>{t('dueAt', { rel: task.dueRelative })} · </> : null}
-                      {task.createdRelative}
-                    </p>
-                  </div>
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </ListPageShell>
-    </div>
+    <HydrationBoundary state={dehydratedState}>
+      <TasksListClient />
+    </HydrationBoundary>
   );
 }

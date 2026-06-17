@@ -1,167 +1,54 @@
-'use client';
+import { HydrationBoundary } from '@tanstack/react-query';
+import { getLocale } from 'next-intl/server';
 
-import Link from 'next/link';
-import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { ownersListQueryKey } from '@/hooks/use-owners.keys';
+import { serverListOwners } from '@/lib/api/owners.server';
+import { prefetchToDehydratedState } from '@/lib/query/prefetch';
 
-import { Button } from '@/components/ui/button';
-import { ListPageShell } from '@/components/ui/list-page-shell';
-import { NameDisplay } from '@/components/ui/name-display';
-import { useOwnerList } from '@/hooks/use-owners';
-import { useHasPermission } from '@/hooks/use-permissions';
+import { OwnersListClient } from './owners-list.client';
 
-export default function OwnersPage() {
-  const t = useTranslations('owners');
-  const tp = useTranslations('projects');
-  const [cursor, setCursor] = useState<string | undefined>(undefined);
-  // Active (default) vs archived view — soft-archived owners are otherwise
-  // invisible in the cockpit. Switching resets pagination.
-  const [archived, setArchived] = useState(false);
-  // IAM slice 5b — create CTA gated on `owners.create` (UX; BE is authoritative).
-  const canCreate = useHasPermission('owners.create');
-  const { data, isLoading, isError, error, refetch } = useOwnerList({
-    limit: 25,
-    cursor,
-    archived,
-  });
-  const items = data?.items ?? [];
+/**
+ * Owners list — RSC server-prefetch (perf-research/01-rsc-waterfall.md §5.2,
+ * fan-out batch 1). This is an async Server Component (NO `'use client'`): it
+ * runs the initial `GET /api/v1/owners?limit=25` ON THE SERVER during the HTML
+ * stream, dehydrates the result, and feeds it through `<HydrationBoundary>` so
+ * the client `useOwnerList` hook resolves SYNCHRONOUSLY from the seeded cache
+ * on first render. This kills the `'use client'` fetch-after-hydration
+ * waterfall (~500ms cold dead-time before the list GET even started) — the
+ * same technique PR 401 proved on `/me` and PR 406 piloted on projects.
+ *
+ * Query-key parity is load-bearing: the server uses `ownersListQueryKey` (the
+ * SAME exported builder the hook uses) with the `{ limit: 25, archived: false }`
+ * literal + the route locale. The client's first render passes
+ * `{ limit: 25, cursor: undefined, archived: false }`; TanStack's `hashKey`
+ * JSON-serializes plain objects and drops `undefined`, so the two hash
+ * identically — a guaranteed cache hit, not an accidental one.
+ *
+ * Failure posture: `serverListOwners` returns/throws on any failure;
+ * `prefetchToDehydratedState` swallows it → empty dehydrated state → the
+ * client hook transparently runs its own fetch + existing loading/error UI.
+ * The page NEVER throws.
+ */
+export default async function OwnersPage() {
+  // Narrow next-intl's `string` locale to the hook's `'he' | 'en'` so the
+  // key's locale segment matches the client `useDisplayLocale()` exactly.
+  const rawLocale = await getLocale();
+  const locale: 'he' | 'en' = rawLocale === 'en' ? 'en' : 'he';
 
-  const tabs: { key: boolean; label: string }[] = [
-    { key: false, label: t('tab.active') },
-    { key: true, label: t('tab.archived') },
-  ];
+  // The page mounts in the ACTIVE view (archived: false) — match the client.
+  const query = { limit: 25, archived: false };
+
+  const dehydratedState = await prefetchToDehydratedState([
+    (qc) =>
+      qc.prefetchQuery({
+        queryKey: ownersListQueryKey(query, locale),
+        queryFn: () => serverListOwners(query),
+      }),
+  ]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
-        {canCreate && (
-          <Button asChild>
-            <Link href="/owners/new">{t('create')}</Link>
-          </Button>
-        )}
-      </div>
-
-      {/* Active / archived view toggle — archived owners are reachable here. */}
-      <div className="flex gap-1.5" role="tablist" aria-label={t('listTitle')}>
-        {tabs.map((tab) => {
-          const active = archived === tab.key;
-          return (
-            <button
-              key={String(tab.key)}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => {
-                if (archived === tab.key) return;
-                setArchived(tab.key);
-                setCursor(undefined);
-              }}
-              className={
-                active
-                  ? 'rounded-full bg-foreground px-3 py-1 text-xs font-medium text-background'
-                  : 'rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted'
-              }
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <ListPageShell
-        isLoading={isLoading}
-        isError={isError}
-        error={error}
-        itemCount={items.length}
-        page={data?.page}
-        cursor={cursor}
-        loadFailedLabel={t('loadFailed')}
-        emptyLabel={archived ? t('emptyArchived') : t('empty')}
-        accessDeniedTitle={tp('accessDeniedTitle')}
-        accessDeniedBody={tp('accessDeniedBody')}
-        retryLabel={tp('retry')}
-        nextLabel={tp('next')}
-        resetLabel={tp('resetToFirstPage')}
-        onRetry={() => refetch()}
-        onNext={(next) => setCursor(next)}
-        onReset={() => setCursor(undefined)}
-      >
-        {/* Dense management table — name · identity · apartments · pending
-            signatures · action. Replaces the old name-only card list so the
-            page is an actionable cockpit, not a roster of names. */}
-        <div className="overflow-x-auto rounded-md border bg-card">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b text-xs font-medium text-muted-foreground">
-                <th className="px-4 py-2.5 text-start font-medium">{t('col.name')}</th>
-                <th className="px-4 py-2.5 text-start font-medium">{t('col.identity')}</th>
-                <th className="px-4 py-2.5 text-center font-medium">{t('col.apartments')}</th>
-                <th className="px-4 py-2.5 text-center font-medium">
-                  {t('col.pendingSignatures')}
-                </th>
-                <th className="px-4 py-2.5 text-end font-medium">
-                  <span className="sr-only">{t('col.actions')}</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((o) => (
-                <tr
-                  key={o.id}
-                  className="border-b last:border-b-0 transition-colors hover:bg-muted/50"
-                >
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <Link
-                        href={`/owners/${o.id}`}
-                        className="font-semibold hover:underline focus:underline focus:outline-none"
-                      >
-                        <NameDisplay name={o.name} />
-                      </Link>
-                      {o.isArchived && (
-                        <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
-                          {tp('archived')}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="font-mono text-xs text-muted-foreground" dir="ltr">
-                      {o.nationalIdMasked}
-                      {o.phoneMasked ? ` · ${o.phoneMasked}` : ''}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center tabular-nums">
-                    {o.apartmentCount > 0 ? (
-                      o.apartmentCount
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    {o.pendingSignatureCount > 0 ? (
-                      <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 tabular-nums dark:bg-amber-950 dark:text-amber-200">
-                        {o.pendingSignatureCount}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-end">
-                    <Link
-                      href={`/owners/${o.id}`}
-                      className="text-xs font-medium text-primary hover:underline focus:underline focus:outline-none"
-                    >
-                      {t('view')}
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </ListPageShell>
-    </div>
+    <HydrationBoundary state={dehydratedState}>
+      <OwnersListClient />
+    </HydrationBoundary>
   );
 }

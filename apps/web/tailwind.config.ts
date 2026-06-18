@@ -92,6 +92,44 @@ const config: Config = {
           DEFAULT: 'hsl(var(--muted))',
           foreground: 'hsl(var(--muted-foreground))',
         },
+        // ── TIER 2: SEMANTIC color mappings (E2.0, visual-system §3.3) ──
+        // Components author in Tailwind but every utility resolves to a
+        // Tier-2 token (var(--…)) — never a raw hex, never a default
+        // palette class. Re-skin = edit globals.css Tier 1. `card` fixes
+        // the dead `bg-card` (64 sites had no backing token).
+        brand: {
+          DEFAULT: 'var(--brand)',
+          hover: 'var(--brand-hover)',
+          fg: 'var(--brand-fg)',
+        },
+        card: {
+          DEFAULT: 'var(--card)',
+          foreground: 'var(--card-fg)',
+        },
+        surface: {
+          DEFAULT: 'var(--surface)',
+          raised: 'var(--surface-raised)',
+          subtle: 'var(--surface-subtle)',
+          app: 'var(--surface-app)',
+          hover: 'var(--surface-hover)',
+        },
+        text: {
+          DEFAULT: 'var(--text)',
+          muted: 'var(--text-muted)',
+          soft: 'var(--text-soft)',
+        },
+        status: {
+          'success-bg': 'var(--status-success-bg)',
+          'success-fg': 'var(--status-success-fg)',
+          'warning-bg': 'var(--status-warning-bg)',
+          'warning-fg': 'var(--status-warning-fg)',
+          'danger-bg': 'var(--status-danger-bg)',
+          'danger-fg': 'var(--status-danger-fg)',
+          'info-bg': 'var(--status-info-bg)',
+          'info-fg': 'var(--status-info-fg)',
+          'neutral-bg': 'var(--status-neutral-bg)',
+          'neutral-fg': 'var(--status-neutral-fg)',
+        },
         // Partner palette — ADDITIVE.
         navy: {
           50: '#F2F6FB',
@@ -133,12 +171,53 @@ const config: Config = {
           700: '#B91C1C',
         },
       },
+      // Spacing scale — NEW (E2.0, visual-system §2.4). Maps the numeric
+      // keys onto the --space-* Tier-1 tokens so `p-4`/`gap-6`/`space-y-8`
+      // are tokenized (and `p-card` uses the semantic card padding). These
+      // KEEP the same px values Tailwind's defaults had (4/8/12/16/…), so
+      // every existing `p-4`/`gap-3` renders identically — zero regression.
+      spacing: {
+        1: 'var(--space-1)',
+        2: 'var(--space-2)',
+        3: 'var(--space-3)',
+        4: 'var(--space-4)',
+        5: 'var(--space-5)',
+        6: 'var(--space-6)',
+        8: 'var(--space-8)',
+        10: 'var(--space-10)',
+        12: 'var(--space-12)',
+        card: 'var(--space-card)',
+      },
+      // Type scale — NEW (E2.0, visual-system §2.2). [size, { lineHeight }].
+      fontSize: {
+        display: ['var(--text-display-size)', { lineHeight: 'var(--text-display-lh)' }],
+        h1: ['var(--text-h1-size)', { lineHeight: 'var(--text-h1-lh)' }],
+        h2: ['var(--text-h2-size)', { lineHeight: 'var(--text-h2-lh)' }],
+        h3: ['var(--text-h3-size)', { lineHeight: 'var(--text-h3-lh)' }],
+        body: ['var(--text-body-size)', { lineHeight: 'var(--text-body-lh)' }],
+        label: ['var(--text-label-size)', { lineHeight: 'var(--text-label-lh)' }],
+        caption: ['var(--text-caption-size)', { lineHeight: 'var(--text-caption-lh)' }],
+      },
+      fontWeight: {
+        regular: 'var(--weight-regular)',
+        medium: 'var(--weight-medium)',
+        bold: 'var(--weight-bold)',
+      },
       borderRadius: {
-        sm: '6px',
-        md: '8px',
-        lg: 'var(--radius)',
-        xl: '16px',
-        '2xl': '20px',
+        sm: 'var(--r-sm)',
+        md: 'var(--r-md)',
+        // FIX (E2.0): `lg` previously mapped to `var(--radius)` (shadcn
+        // 0.5rem = 8px) while `--r-lg` is 12px — a silent mismatch
+        // (visual-system §1.3). Reconciled to the partner --r-lg (12px),
+        // the intended card radius (§2.5). `.card` in globals.css already
+        // uses var(--r-lg); now `rounded-lg` agrees with it.
+        lg: 'var(--r-lg)',
+        xl: 'var(--r-xl)',
+        '2xl': 'var(--r-2xl)',
+        // semantic radius aliases (Tier 2).
+        card: 'var(--radius-card)',
+        control: 'var(--radius-control)',
+        pill: 'var(--radius-pill)',
       },
       boxShadow: {
         xs: '0 1px 2px rgba(15,23,42,.04)',

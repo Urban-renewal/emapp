@@ -4,6 +4,7 @@ import type { NotificationChannel } from '@emapp/shared-types';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
+import { useToast } from '@/components/ui/action-toast';
 import { useOrgSettings, useUpdateOrgSettings } from '@/hooks/use-org-settings';
 import { useHasPermission } from '@/hooks/use-permissions';
 
@@ -34,6 +35,14 @@ export function NotificationsConfig() {
 
   const { data, isLoading, isError } = useOrgSettings({ enabled: canRead });
   const mutation = useUpdateOrgSettings();
+  const toast = useToast();
+
+  // M0+G6 — announce a successful save through the app-root live-region/toast
+  // (replaces the bespoke inline "saved" span). Fires once per save success.
+  useEffect(() => {
+    if (mutation.isSuccess) toast.show({ message: t('saved') });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire only on the success transition; toast.show is stable
+  }, [mutation.isSuccess]);
 
   // Local draft of the channel set, seeded from the resolved server value.
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
@@ -126,11 +135,6 @@ export function NotificationsConfig() {
               >
                 {mutation.isPending ? t('saving') : t('save')}
               </button>
-              {mutation.isSuccess && !dirty && (
-                <span className="text-[11px]" style={{ color: 'var(--success-700)' }}>
-                  {t('saved')}
-                </span>
-              )}
               {mutation.isError && (
                 <span className="text-[11px]" role="alert" style={{ color: 'var(--danger-700)' }}>
                   {t('saveError')}

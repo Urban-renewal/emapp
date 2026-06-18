@@ -4,6 +4,7 @@ import type { PermissionCatalogEntry, RoleSummary } from '@emapp/shared-types';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
+import { useToast } from '@/components/ui/action-toast';
 import { Button } from '@/components/ui/button';
 import { useCreateRole, useUpdateRole } from '@/hooks/use-roles';
 import { ApiClientError } from '@/lib/api/errors';
@@ -35,6 +36,7 @@ export function RoleEditor({
   const t = useTranslations('roles');
   const create = useCreateRole();
   const update = useUpdateRole();
+  const toast = useToast();
   const isEdit = role !== undefined;
 
   const [name, setName] = useState(role?.name ?? '');
@@ -76,6 +78,8 @@ export function RoleEditor({
           permissions,
         });
       }
+      // M0+G6 — narrate the result through the app-root toast, then close.
+      toast.show({ message: isEdit ? t('saved') : t('created') });
       onClose();
     } catch (err) {
       setError(translateError(err, t));

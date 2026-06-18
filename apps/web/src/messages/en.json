@@ -1210,7 +1210,9 @@
       "assignmentNotFound": "That member doesn't hold this role.",
       "pickMember": "Select a member first.",
       "generic": "Something went wrong. Please try again."
-    }
+    },
+    "saved": "Role saved",
+    "created": "Role created"
   },
   "members": {
     "capabilities": {
@@ -1241,7 +1243,10 @@
       "save": "Save permissions",
       "saving": "Saving…",
       "savedOk": "Permissions saved.",
-      "saveFailed": "Failed to save permissions. Try again."
+      "saveFailed": "Failed to save permissions. Try again.",
+      "undo": "Undo",
+      "undone": "Change undone",
+      "presetApplied": "Preset applied"
     },
     "overrides": {
       "title": "Custom permissions",
@@ -1268,7 +1273,9 @@
         "self": "You cannot change your own permissions.",
         "forbidden": "You do not have permission to do this.",
         "saveFailed": "Failed to save the override. Try again."
-      }
+      },
+      "added": "Override added",
+      "cleared": "Override cleared"
     },
     "listTitle": "Organization members",
     "invite": "Invite member",
@@ -1809,5 +1816,9 @@
     "doneTitle": "Invitation accepted ✓",
     "doneBody": "Redirecting you to the login page...",
     "invalidInvite": "This invitation link is no longer valid. It may have expired, been used, or been revoked. Contact your organization admin for a new link."
+  },
+  "toast": {
+    "dismiss": "Dismiss",
+    "undo": "Undo"
   }
 }

@@ -448,6 +448,84 @@
     height: 72px;
     font-size: 22px;
   }
+
+  /* E2 Wave-0 M0+G6 — the app-root action-toast / live-region primitive.
+     Colors come ONLY from tokens (the .tsx carries no inline color literal,
+     so the inline-color ratchet stays green). Logical props keep it RTL-aware:
+     `inset-inline-start` pins it to the start corner under RTL and LTR alike. */
+  .toast-region {
+    position: fixed;
+    inset-block-end: 16px;
+    inset-inline-start: 16px;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+    max-width: min(420px, calc(100vw - 32px));
+  }
+  .toast-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .toast {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--bg-surface);
+    color: var(--text);
+    border: 1px solid hsl(var(--border));
+    border-inline-start: 3px solid var(--success-600);
+    border-radius: var(--r-md);
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.12);
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .toast-message {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .toast-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+  }
+  .toast-undo {
+    padding: 4px 10px;
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--primary-partner);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+  }
+  .toast-undo:hover {
+    background: var(--bg-app);
+  }
+  .toast-dismiss {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--r-sm);
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+  }
+  .toast-dismiss:hover {
+    background: var(--bg-app);
+    color: var(--text);
+  }
 }
 
 @layer utilities {

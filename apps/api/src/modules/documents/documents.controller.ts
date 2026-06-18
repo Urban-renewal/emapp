@@ -112,11 +112,18 @@ export class DocumentsController {
     const disp =
       `${result.disposition}; filename="${safeDownloadFilename(result.name)}"` +
       `; filename*=UTF-8''${encodeURIComponent(result.name)}`;
-    return reply
-      .header('content-type', result.mimeType)
-      .header('content-disposition', disp)
-      .header('content-length', String(result.sizeBytes))
-      .send(result.stream);
+    return (
+      reply
+        .header('content-type', result.mimeType)
+        .header('content-disposition', disp)
+        .header('content-length', String(result.sizeBytes))
+        // SECURITY-UPLOAD-AUDIT.md (secondary) — stop the browser MIME-sniffing
+        // the body away from the declared content-type. Defense-in-depth
+        // alongside the magic-byte gate: even a spoofed object is served only as
+        // its declared type, never re-interpreted as active content.
+        .header('x-content-type-options', 'nosniff')
+        .send(result.stream)
+    );
   }
 
   // 7d — SENSITIVE content upload: raw bytes through the API (the sensitive

@@ -88,6 +88,19 @@ export const DOCUMENT_UPLOAD_INCOMPLETE_CODE = 'document_upload_incomplete' as c
  */
 export const DOCUMENT_SCAN_REJECTED_CODE = 'document_scan_rejected' as const;
 
+/**
+ * Error-envelope `code` (D.16) for a document whose REAL leading bytes do not
+ * match its declared `mimeType` — type spoofing (or an honest accident, e.g. a
+ * `.docx` uploaded as `application/pdf`). Defense-in-depth alongside the AV
+ * scan (SECURITY-UPLOAD-AUDIT.md threat #3): the server sniffs the magic bytes
+ * it already holds (the scan gate / sensitive content path) and FAIL-CLOSED
+ * rejects a mismatch with the same archive+purge posture as an infected file —
+ * the object is never stored/served. 409 (the object exists but is in a state
+ * that conflicts with serving it), only ever reachable AFTER the per-record
+ * visibility check, so it is never an existence oracle.
+ */
+export const DOCUMENT_TYPE_MISMATCH_CODE = 'document_type_mismatch' as const;
+
 /** Wire representation — NEVER includes r2Key. */
 export const DocumentSchema = z.object({
   id: z.string().uuid(),

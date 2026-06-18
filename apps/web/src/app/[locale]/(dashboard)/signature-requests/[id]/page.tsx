@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useHasPermission } from '@/hooks/use-permissions';
@@ -27,6 +28,7 @@ export default function SignatureRequestDetailPage() {
   const { data, isLoading, isError, error } = useSignatureRequest(id);
   const cancel = useCancelSignatureRequest();
   const retrieveLink = useRetrieveSignatureLink();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   // The signed certificate carries decrypted owner PII (signer name + the
   // signature), so the download button is gated on the SAME signal as the
   // owner-detail PII reveal: `/me.view_owner_pii` (manager always · agent iff
@@ -111,7 +113,7 @@ export default function SignatureRequestDetailPage() {
   async function onCancel() {
     if (!id) return;
     setActionError(null);
-    if (!window.confirm(t('cancelConfirm'))) return;
+    if (!(await confirm({ message: t('cancelConfirm'), destructive: true }))) return;
     try {
       await cancel.mutateAsync(id);
     } catch (e) {
@@ -210,6 +212,7 @@ export default function SignatureRequestDetailPage() {
           </dd>
         </div>
       </dl>
+      {confirmDialog}
     </div>
   );
 }

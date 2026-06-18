@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import type { AssignmentMemberLookup } from '@/adapters/project-assignment';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
@@ -56,6 +57,7 @@ export default function NoteDetailPage() {
   const archiveMutation = useArchiveNote();
   const canEdit = useHasPermission('notes.update');
   const canArchive = useHasPermission('notes.archive');
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const [bodyDraft, setBodyDraft] = useState<string | null>(null);
   const [pinnedDraft, setPinnedDraft] = useState<boolean | null>(null);
@@ -117,7 +119,7 @@ export default function NoteDetailPage() {
 
   async function onArchive() {
     if (!id) return;
-    if (!window.confirm(t('archiveConfirm'))) return;
+    if (!(await confirm({ message: t('archiveConfirm'), destructive: true }))) return;
     archiveError.reset();
     try {
       await archiveMutation.mutateAsync(id);
@@ -243,6 +245,7 @@ export default function NoteDetailPage() {
           </Button>
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }

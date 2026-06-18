@@ -8,6 +8,7 @@ import { useState } from 'react';
 
 import { OwnerPiiReveal } from '@/components/owners/owner-pii-reveal';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -39,7 +40,7 @@ import { ApiClientError } from '@/lib/api/errors';
  *  - Notes section preserved (the only piece of writable per-owner
  *    metadata the wire exposes today).
  *  - Archive action preserved verbatim — `useArchiveOwner` flow,
- *    window.confirm, router.push back to /owners on success.
+ *    styled `useConfirm()` dialog, router.push back to /owners on success.
  *
  * PII discipline preserved: `nationalIdMasked` + `phoneMasked` rendered
  * as the wire ships them (never cleartext); `<NameDisplay>` wraps every
@@ -57,6 +58,7 @@ export function OwnerDetailClient() {
   // org/agent-scopes the list; the response carries projects only, no PII.
   const { data: projects } = useOwnerProjects(id);
   const archive = useArchiveOwner();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [actionError, setActionError] = useState<string | null>(null);
   // PII reveal authority. The BE reveal endpoint (`resolveOwnerPiiFidelity`)
   // gates on the LEGACY capability model — manager always · agent iff its
@@ -93,7 +95,7 @@ export function OwnerDetailClient() {
   async function onArchive() {
     if (!id) return;
     setActionError(null);
-    if (!window.confirm(t('archiveConfirm'))) return;
+    if (!(await confirm({ message: t('archiveConfirm'), destructive: true }))) return;
     try {
       await archive.mutateAsync(id);
       router.push('/owners');
@@ -297,6 +299,7 @@ export function OwnerDetailClient() {
           {actionError}
         </p>
       )}
+      {confirmDialog}
     </div>
   );
 }

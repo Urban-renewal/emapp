@@ -131,9 +131,10 @@ test.describe('§E-J16 — provider suspend / reactivate (D.49)', () => {
       timeout: 10_000,
     });
 
-    // Accept the window.confirm dialog the reactivate flow raises.
-    page.on('dialog', (d) => d.accept());
+    // F-1: reactivate now raises the styled in-DOM ConfirmDialog (not a native
+    // window.confirm) — click the dialog's confirm button to release the POST.
     await page.getByRole('button', { name: 'החזר לפעולה' }).click();
+    await page.getByRole('button', { name: 'אישור' }).click();
 
     // §AXIS-V — badge clears; the Suspend action returns.
     await expect(page.getByRole('button', { name: 'השעה לקוח' })).toBeVisible({ timeout: 10_000 });

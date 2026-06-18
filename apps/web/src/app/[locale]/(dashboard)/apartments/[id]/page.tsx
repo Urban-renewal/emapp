@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 
 import { APARTMENT_STATUS_LABELS_EN, APARTMENT_STATUS_LABELS_HE } from '@/adapters/apartment';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -35,6 +36,7 @@ export default function ApartmentDetailPage() {
   const { data: coOwners } = useApartmentCoOwnerShares(id);
   const archive = useArchiveApartment();
   const updateStatus = useUpdateApartmentStatus();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const canUpdate = useHasPermission('apartments.update');
   const canArchive = useHasPermission('apartments.archive');
   const locale = useDisplayLocale();
@@ -83,7 +85,7 @@ export default function ApartmentDetailPage() {
   async function onArchive() {
     if (!id) return;
     setActionError(null);
-    if (!window.confirm(t('archiveConfirm'))) return;
+    if (!(await confirm({ message: t('archiveConfirm'), destructive: true }))) return;
     try {
       await archive.mutateAsync(id);
       router.push(`/buildings/${buildingId}/apartments`);
@@ -200,6 +202,7 @@ export default function ApartmentDetailPage() {
       {canUpdate && !data.isArchived && <TabuReviewSection apartmentId={data.id} />}
 
       {actionError && <p className="text-sm text-destructive">{actionError}</p>}
+      {confirmDialog}
     </div>
   );
 }

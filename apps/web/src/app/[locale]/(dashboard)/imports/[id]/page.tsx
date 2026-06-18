@@ -7,6 +7,7 @@ import { useState } from 'react';
 
 import { computeImportProgressPct } from '@/adapters/import';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -30,6 +31,9 @@ export default function ImportDetailPage() {
   const sse = useImportProgress(id && isLiveCandidate ? id : undefined);
   const cancel = useCancelImport();
   const confirm = useConfirmImport();
+  // `useConfirm()` exposes a `confirm()` opener — alias it to `askConfirm` to
+  // avoid shadowing the `useConfirmImport` mutation bound to `confirm` above.
+  const { confirm: askConfirm, dialog: confirmDialog } = useConfirm();
   const [actionError, setActionError] = useState<string | null>(null);
 
   if (isLoading) return <ListSkeleton withRows={false} />;
@@ -72,7 +76,7 @@ export default function ImportDetailPage() {
   async function onCancel() {
     if (!id) return;
     setActionError(null);
-    if (!window.confirm(t('cancelConfirm'))) return;
+    if (!(await askConfirm({ message: t('cancelConfirm'), destructive: true }))) return;
     try {
       await cancel.mutateAsync(id);
     } catch (e) {
@@ -250,6 +254,7 @@ export default function ImportDetailPage() {
       )}
 
       {actionError && <p className="text-sm text-destructive">{actionError}</p>}
+      {confirmDialog}
     </div>
   );
 }

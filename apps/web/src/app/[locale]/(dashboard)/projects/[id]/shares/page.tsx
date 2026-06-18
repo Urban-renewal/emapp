@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ListPageShell } from '@/components/ui/list-page-shell';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
@@ -54,6 +55,7 @@ export default function ProjectSharesPage() {
   const createMutation = useCreateProjectShare(projectId);
   const revokeMutation = useRevokeShare(projectId);
   const mintMutation = useMintShareLink();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   // The minted link (token + built URL) for ONE share, shown once for the
   // manager to copy. Held in component state only — it is a credential and
   // is never written to the TanStack cache.
@@ -96,7 +98,7 @@ export default function ProjectSharesPage() {
   }
 
   async function onRevoke(id: string) {
-    if (!window.confirm(t('revokeConfirm'))) return;
+    if (!(await confirm({ message: t('revokeConfirm'), destructive: true }))) return;
     try {
       await revokeMutation.mutateAsync(id);
     } catch (e) {
@@ -291,6 +293,7 @@ export default function ProjectSharesPage() {
           {linkError && <p className="text-sm text-destructive">{linkError}</p>}
         </ul>
       </ListPageShell>
+      {confirmDialog}
     </div>
   );
 }

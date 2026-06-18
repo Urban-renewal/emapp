@@ -59,6 +59,7 @@ interface R2Deps {
     Bucket: string;
     Key: string;
     ResponseContentDisposition?: string;
+    ResponseContentType?: string;
   }) => unknown;
   DeleteObjectCommand: new (opts: { Bucket: string; Key: string }) => unknown;
   HeadObjectCommand: new (opts: { Bucket: string; Key: string }) => unknown;
@@ -123,6 +124,10 @@ export class R2StorageProvider implements IStorageProvider {
         Bucket: this.bucket,
         Key: key,
         ResponseContentDisposition: disp,
+        // Pin the response content-type to the declared (allow-listed +
+        // magic-byte-verified) MIME so the R2 origin can't echo an
+        // attacker-influenced stored type and the browser doesn't sniff.
+        ...(opts.responseContentType ? { ResponseContentType: opts.responseContentType } : {}),
       });
       return this.deps.getSignedUrl(this.deps.client, cmd, { expiresIn: opts.ttlSeconds });
     });

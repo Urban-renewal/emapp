@@ -1029,7 +1029,7 @@ _(no body)_
 { "data": { "uploaded": true } }
 ```
 
-**Errors:** `invalid_content_body`, `document_not_sensitive`, `document_already_uploaded`, `document_integrity_mismatch`, `document_scan_rejected`, `forbidden`, `not_found`, `storage_unavailable`, `missing_token`, `invalid_token`, `token_expired`
+**Errors:** `invalid_content_body`, `document_not_sensitive`, `document_already_uploaded`, `document_integrity_mismatch`, `document_type_mismatch`, `document_scan_rejected`, `forbidden`, `not_found`, `storage_unavailable`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/documents/:id/download
 
@@ -1070,7 +1070,7 @@ _(no body)_
 { "data": { ...Document } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `document_conflict`, `document_integrity_mismatch`, `storage_unavailable`, `missing_token`, `invalid_token`, `token_expired`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `document_conflict`, `document_integrity_mismatch`, `document_type_mismatch`, `document_scan_rejected`, `storage_unavailable`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/imports
 

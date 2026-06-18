@@ -32,6 +32,16 @@ export interface DownloadUrlOptions {
    *    inline can never serve active content. The filename slots still
    *    apply (the browser uses them if the user saves the rendered file). */
   disposition?: 'attachment' | 'inline';
+  /** Force the response `Content-Type` of the presigned GET (S3/R2
+   *  `response-content-type` override). SECURITY (SECURITY-UPLOAD-AUDIT.md
+   *  secondary): the object is served from a SEPARATE R2 origin, so our
+   *  API's helmet `X-Content-Type-Options: nosniff` cannot reach it. Pinning
+   *  the response content-type to the (allow-listed, magic-byte-verified)
+   *  declared MIME stops the R2 origin from echoing an attacker-influenced
+   *  stored content-type and narrows browser MIME-sniffing — defense-in-depth
+   *  alongside the magic-byte gate. Omitted ⇒ R2 serves the object's stored
+   *  content-type (today's behaviour). */
+  responseContentType?: string;
 }
 
 /** Object metadata returned by IStorageProvider.head().

@@ -19,6 +19,7 @@ import {
 import {
   DOCUMENT_MAX_SIZE_BYTES,
   DOCUMENT_SCAN_REJECTED_CODE,
+  DOCUMENT_TYPE_MISMATCH_CODE,
   DOCUMENT_UPLOAD_INCOMPLETE_CODE,
   type CreateDocument,
   type Document,
@@ -53,6 +54,7 @@ import { notificationLink } from '../notifications/notification-links';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
+import { verifyMagicBytes } from './magic-bytes';
 import { FILE_SCAN_PROVIDER } from './scan-provider.factory';
 import {
   DOWNLOAD_URL_TTL_SECONDS,
@@ -73,6 +75,19 @@ const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
  */
 const SCAN_REJECTED = new ConflictException({
   error: { code: DOCUMENT_SCAN_REJECTED_CODE },
+});
+
+/**
+ * SECURITY-UPLOAD-AUDIT.md threat #3 — the uploaded object's REAL leading
+ * bytes do not match its declared `mimeType` (type spoofing, or an accident
+ * like a `.docx` declared as `application/pdf`). FAIL-CLOSED, same posture as
+ * SCAN_REJECTED: the object is archived + purged and never servable. 409 (the
+ * object exists but is in a state that conflicts with serving it); only ever
+ * reachable AFTER the per-record visibility check (see loadVisible), so it is
+ * never an existence oracle. The file bytes are NEVER logged.
+ */
+const TYPE_MISMATCH = new ConflictException({
+  error: { code: DOCUMENT_TYPE_MISMATCH_CODE },
 });
 
 /**
@@ -649,14 +664,59 @@ export class DocumentsService {
    * label are recorded.
    */
   private async scanGate(user: AccessTokenPayload, row: DocumentRow): Promise<Document> {
+    // SECURITY-UPLOAD-AUDIT.md threat #3 — magic-byte (real-content-type)
+    // verification before the AV scan. A MEMOIZED loader reads the object
+    // bytes AT MOST ONCE and serves them to BOTH the type check below AND the
+    // scanner's lazy `bytes()` callback — zero extra I/O versus the prior
+    // inline-scan read (a provider that fetches out-of-band, e.g. an R2-event
+    // scanner, never triggers the read at all).
+    let cachedBytes: Buffer | null = null;
+    const loadBytes = async (): Promise<Buffer> => {
+      if (cachedBytes === null) {
+        cachedBytes = await readObjectBytes(this.storage, row.r2Key, DOCUMENT_MAX_SIZE_BYTES);
+      }
+      return cachedBytes;
+    };
+
+    // Type-spoof gate (defense-in-depth; NOT the boundary). A declared MIME
+    // whose real bytes don't match is rejected with the SAME fail-closed
+    // archive+purge posture as an infected file — never stored/served.
+    //
+    // BEST-EFFORT on the READ itself: if the object can't be read here, we do
+    // NOT manufacture a type-mismatch (no bytes ⇒ no spoof evidence) — we let
+    // the scanner own its own fail-closed read posture. This is a layer, not
+    // the boundary; a read failure must not change the existing scan outcome.
+    try {
+      const bytes = await loadBytes();
+      if (!verifyMagicBytes(bytes, row.mimeType).ok) {
+        await this.recordScanReject(user, row, 'error', 'type_mismatch');
+        await this.storage.delete(row.r2Key).catch((e: unknown) => {
+          this.logger.error(
+            `purge after type-mismatch failed (doc=${row.id}): ${
+              e instanceof Error ? e.message : 'unknown'
+            }`,
+          );
+        });
+        throw TYPE_MISMATCH;
+      }
+    } catch (e) {
+      // Re-throw OUR rejection; swallow only a read failure (logged, then the
+      // scanner runs and applies its own fail-closed verdict on the same read).
+      if (e === TYPE_MISMATCH) throw e;
+      this.logger.error(
+        `magic-byte read skipped (doc=${row.id}): ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+    }
+
     let verdict: 'clean' | 'infected' | 'error' = 'error';
     let signature: string | undefined;
     try {
       const result = await this.scanner.scan({
         key: row.r2Key,
-        // Lazy: a provider that fetches out-of-band (R2-event scanner) never
-        // triggers this read; the ClamAV provider pulls the bytes here.
-        bytes: () => readObjectBytes(this.storage, row.r2Key, DOCUMENT_MAX_SIZE_BYTES),
+        // Reuse the memoized buffer (read above for the type check) — the
+        // ClamAV provider consumes it without a second R2 round-trip; a lazy
+        // out-of-band provider that never calls this triggers no read.
+        bytes: loadBytes,
       });
       verdict = result.verdict;
       signature = result.signature;
@@ -760,7 +820,7 @@ export class DocumentsService {
     id: string,
     disposition: 'attachment' | 'inline' = 'attachment',
   ): Promise<DocumentDownloadResponse> {
-    const { r2Key, name } = await withTenant(
+    const { r2Key, name, mimeType } = await withTenant(
       user.orgId,
       async (tx) => {
         // 0049 — require finalised: a ghost's presigned URL would 404 (NoSuchKey).
@@ -782,7 +842,7 @@ export class DocumentsService {
           targetId: row.id,
           sessionId: user.sid,
         });
-        return { r2Key: row.r2Key, name: row.name };
+        return { r2Key: row.r2Key, name: row.name, mimeType: row.mimeType };
       },
       { userId: user.sub },
     );
@@ -805,6 +865,12 @@ export class DocumentsService {
         // the safe ASCII slug.
         responseFilename: safeDownloadFilename(name),
         responseFilenameUtf8: name,
+        // SECURITY-UPLOAD-AUDIT.md (secondary) — pin the R2 response
+        // content-type to the declared (allow-listed) MIME. The object is
+        // served from a separate R2 origin our helmet `nosniff` can't reach;
+        // forcing the content-type narrows browser MIME-sniffing of a spoofed
+        // object, defense-in-depth alongside the magic-byte gate.
+        responseContentType: mimeType,
         // S2 #1 — inline view (PDF preview in a tab) vs the default
         // attachment (save dialog). The AV-scan gate above (loadVisible +
         // scan_status='clean') is UNCHANGED and applies to both: only a
@@ -908,6 +974,16 @@ export class DocumentsService {
     // Thrown OUTSIDE the tx so the integrity_reject audit row commits.
     if (check.mismatchField !== null) throw integrityMismatch(check.mismatchField);
     const { row } = check;
+
+    // SECURITY-UPLOAD-AUDIT.md threat #3 — magic-byte (real-content-type)
+    // verification on the PLAINTEXT before the scan and before anything is
+    // stored. The server already holds `body` (zero extra I/O). A declared
+    // MIME whose real bytes don't match is rejected fail-closed with the same
+    // archive posture as a non-clean scan; NO purge — nothing was ever stored.
+    if (!verifyMagicBytes(body, row.mimeType).ok) {
+      await this.recordScanReject(user, row, 'error', 'type_mismatch');
+      throw TYPE_MISMATCH;
+    }
 
     // P0.B1 — scan the PLAINTEXT before anything is stored. Fail-closed at
     // every branch, mirroring scanGate (a thrown scanner = 'error').

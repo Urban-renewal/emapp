@@ -123,8 +123,8 @@
     --brand-fg: #ffffff; /* AA on navy-900 (#0b2545) — very high contrast */
     --focus-ring: var(--navy-500);
 
-    /* surfaces & text — formalize the existing --bg-*/--text* as Tier 2.
-     * --card is the surface a card/section sits on (fixes the dead
+    /* surfaces & text — formalize the existing --bg-* and --text- tokens as
+     * Tier 2. --card is the surface a card/section sits on (fixes the dead
      * `bg-card`: 64 sites referenced a token that never existed). */
     --surface: var(--bg-surface);
     --surface-raised: var(--bg-surface);

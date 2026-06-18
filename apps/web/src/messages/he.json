@@ -29,6 +29,49 @@
       "empty": "אין שיחות לתצוגה",
       "comingHint": "צ'אט יתווסף בהמשך"
     },
+    "manager": {
+      "loading": "טוען את התמונה…",
+      "loadFailed": "לא הצלחנו לטעון את הפרויקטים כרגע. נסה לרענן בעוד רגע.",
+      "greeting": {
+        "morning": "בוקר טוב",
+        "afternoon": "צהריים טובים",
+        "evening": "ערב טוב",
+        "morningNoName": "בוקר טוב",
+        "afternoonNoName": "צהריים טובים",
+        "eveningNoName": "ערב טוב",
+        "summaryWithExceptions": "{n, plural, one {דבר אחד דורש אותך היום} two {שני דברים דורשים אותך היום} other {# דברים דורשים אותך היום}}. שאר הפרויקטים מתקדמים יפה.",
+        "summaryCalm": "הכול תחת שליטה. כל הפרויקטים מתקדמים יפה."
+      },
+      "pulse": {
+        "ariaLabel": "סיכום מצב הפרויקטים",
+        "active": "פעילים",
+        "pastThreshold": "עברו את הסף",
+        "notStarted": "טרם התחילו",
+        "gathering": "באיסוף חתימות"
+      },
+      "needs": {
+        "title": "צריך אותך עכשיו",
+        "nearSentence": "{remaining, plural, one {חסרה חתימה אחת לסף} two {חסרות שתי חתימות לסף} other {חסרות # חתימות לסף}}",
+        "nearAction": "השלם",
+        "notStartedSentence": "באיסוף חתימות, אך עוד לא נאספה אף חתימה",
+        "notStartedAction": "התחל",
+        "emptyTitle": "הכול תחת שליטה",
+        "emptyBody": "אין כרגע פרויקטים שדורשים טיפול דחוף."
+      },
+      "triage": {
+        "title": "דורשים מבט · {shown} מתוך {total}",
+        "allProjects": "כל הפרויקטים ({total})",
+        "empty": "אין עדיין פרויקטים להצגה.",
+        "counts": "{signed} מתוך {total}",
+        "pastThreshold": "עבר את הסף · זז יפה",
+        "nearThreshold": "{remaining, plural, one {כמעט שם · חסרה חתימה אחת} two {כמעט שם · חסרות שתי חתימות} other {כמעט שם · חסרות # חתימות}}",
+        "notStarted": "טרם התחיל · עוד לא נאספה אף חתימה",
+        "inProgress": "בתנועה",
+        "completed": "הושלם · כולם חתמו",
+        "preCollection": "טרם נפתח איסוף חתימות",
+        "cancelled": "בוטל"
+      }
+    },
     "agent": {
       "pageTitle": "המשימות שלי",
       "pageSubtitle": "הפרויקטים, המשימות וההתראות שמשויכים אליך",

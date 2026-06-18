@@ -29,6 +29,49 @@
       "empty": "No conversations to show",
       "comingHint": "Chat coming in a future update"
     },
+    "manager": {
+      "loading": "Loading your overview…",
+      "loadFailed": "We couldn't load your projects right now. Try refreshing in a moment.",
+      "greeting": {
+        "morning": "Good morning",
+        "afternoon": "Good afternoon",
+        "evening": "Good evening",
+        "morningNoName": "Good morning",
+        "afternoonNoName": "Good afternoon",
+        "eveningNoName": "Good evening",
+        "summaryWithExceptions": "{n, plural, one {One thing needs you today} other {# things need you today}}. The rest are progressing nicely.",
+        "summaryCalm": "Everything's under control. All projects are progressing nicely."
+      },
+      "pulse": {
+        "ariaLabel": "Projects status summary",
+        "active": "active",
+        "pastThreshold": "past threshold",
+        "notStarted": "not started",
+        "gathering": "collecting signatures"
+      },
+      "needs": {
+        "title": "Needs you now",
+        "nearSentence": "{remaining, plural, one {One signature short of the threshold} other {# signatures short of the threshold}}",
+        "nearAction": "Finish",
+        "notStartedSentence": "Collecting signatures, but none received yet",
+        "notStartedAction": "Start",
+        "emptyTitle": "Everything's under control",
+        "emptyBody": "Nothing needs urgent attention right now."
+      },
+      "triage": {
+        "title": "Worth a look · {shown} of {total}",
+        "allProjects": "All projects ({total})",
+        "empty": "No projects to show yet.",
+        "counts": "{signed} of {total}",
+        "pastThreshold": "Past threshold · moving nicely",
+        "nearThreshold": "{remaining, plural, one {Almost there · one signature short} other {Almost there · # signatures short}}",
+        "notStarted": "Not started · no signatures yet",
+        "inProgress": "In motion",
+        "completed": "Completed · everyone signed",
+        "preCollection": "Signature collection not open yet",
+        "cancelled": "Cancelled"
+      }
+    },
     "agent": {
       "pageTitle": "My work",
       "pageSubtitle": "The projects, tasks and notifications assigned to you",

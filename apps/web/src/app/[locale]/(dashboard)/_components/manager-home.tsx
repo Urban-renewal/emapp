@@ -1,160 +1,67 @@
-import type { OrgStats } from '@emapp/shared-types';
-import { CalendarDays, MessageSquare } from 'lucide-react';
-import { cookies } from 'next/headers';
-import { getTranslations } from 'next-intl/server';
+import { HydrationBoundary } from '@tanstack/react-query';
+import { getLocale } from 'next-intl/server';
 
-import { HomeActions } from './home-actions';
-import { HomeConversations } from './home-conversations';
+import { projectsListQueryKey } from '@/hooks/use-projects.keys';
+import { serverListProjects } from '@/lib/api/projects.server';
+import { getMe } from '@/lib/auth';
+import { prefetchToDehydratedState } from '@/lib/query/prefetch';
+
+import { ManagerMissionControl } from './manager/manager-mission-control';
 
 /**
- * ManagerHome — the V11 A.S3 manager-oriented dashboard home, extracted
- * verbatim from the former `page.tsx` body so the role-aware split
- * (#14 agent-home) can branch `ManagerHome` vs `AgentHome` without
- * touching the manager design / tests.
+ * ManagerHome — E2.1 signature mission-control (docs/DESIGN-NORTH-STAR.md).
  *
- * Reskinned per `MEAPP_design/design_handoff/source/screens-manager.jsx`
- * ManagerHome:
- *   - Page header (title + subtitle).
- *   - 4-card KPI grid wired to `GET /api/v1/org/stats` (org-wide
- *     aggregates — manager/viewer scoped; agents lack org-wide read,
- *     which is why an agent gets `AgentHome` instead). Falls back to
- *     "—" if the request fails so the page never crashes the dashboard.
- *   - Action button "פרויקט חדש" → /projects/new (live, permission-gated
- *     in the `HomeActions` client island).
- *   - Two-column section: WeekCalendar empty state + Conversations empty
- *     state (both Phase-2 deferred surfaces).
+ * Replaces the former cold 4-KPI grid + "coming soon" calendar/conversation
+ * stubs with a calm, scale-aware triage home: a warm greeting, a compact org
+ * pulse, the FEW exception items that need the manager now, and an
+ * urgency-ranked "needs a look" project list. The full searchable/filterable
+ * power lives one tap away at /projects.
  *
- * Server Component — fetches stats server-side with the request's own
- * cookies forwarded so RLS / authz applies. Uses cache: no-store to
- * avoid stale numbers between visits.
+ * Server Component (RSC-prefetch pattern, mirrors projects/page.tsx):
+ *   - Resolves the actor server-side via `getMe()` (same /me the layout reads)
+ *     so the greeting renders the real name on first paint — no client /me hop.
+ *   - Server-prefetches `GET /projects?limit=100` into a throwaway QueryClient
+ *     and dehydrates it through `<HydrationBoundary>`, so the island's
+ *     `useProjectList({ limit: 100 })` resolves SYNCHRONOUSLY on first render
+ *     (no fetch-after-hydration waterfall). Query-key parity with the hook is
+ *     load-bearing: same `projectsListQueryKey({ limit: 100 }, locale)` builder.
+ *
+ * ALL triage (pulse, exceptions, "needs a look") is derived CLIENT-SIDE from
+ * that one list inside the island — no new endpoint, no widened scope. The home
+ * is honest about gaps: the human "why" layer (owner objection reasons) and the
+ * "no movement for X days" duration are OMITTED because the wire doesn't carry
+ * them (E2 backend follow-up; see DESIGN-NORTH-STAR.md). The role-branch in
+ * page.tsx is unchanged — an Agent still gets AgentHome.
+ *
+ * Failure posture: a failed prefetch leaves an empty dehydrated cache → the
+ * island transparently runs its own fetch + loading/error UI. `getMe()` null
+ * (unresolvable session — already gated by the layout AuthGuard) degrades the
+ * greeting to a neutral fallback name; the page never throws.
  */
-async function fetchOrgStats(): Promise<OrgStats | null> {
-  const cookieHeader = (await cookies()).toString();
-  const base = process.env['NEXT_INTERNAL_API_URL'] ?? 'http://localhost:3001';
-  try {
-    const res = await fetch(`${base}/api/v1/org/stats`, {
-      headers: { cookie: cookieHeader },
-      cache: 'no-store',
-    });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { data: OrgStats };
-    return json.data;
-  } catch {
-    return null;
-  }
-}
+const HOME_PROJECT_LIMIT = 100;
 
 export async function ManagerHome() {
-  const t = await getTranslations('home');
-  const stats = await fetchOrgStats();
+  const rawLocale = await getLocale();
+  const locale: 'he' | 'en' = rawLocale === 'en' ? 'en' : 'he';
 
-  const placeholder = t('kpi.placeholder');
-  const fmt = (n: number | undefined): string => (typeof n === 'number' ? String(n) : placeholder);
+  const [me, dehydratedState] = await Promise.all([
+    getMe(),
+    prefetchToDehydratedState([
+      (qc) =>
+        qc.prefetchQuery({
+          queryKey: projectsListQueryKey({ limit: HOME_PROJECT_LIMIT }, locale),
+          queryFn: () => serverListProjects({ limit: HOME_PROJECT_LIMIT }),
+        }),
+    ]),
+  ]);
 
-  const kpis: ReadonlyArray<{
-    key: string;
-    label: string;
-    value: string;
-  }> = [
-    {
-      key: 'activeProjects',
-      label: t('kpi.activeProjects'),
-      value: fmt(stats?.activeProjects),
-    },
-    {
-      key: 'residents',
-      label: t('kpi.residents'),
-      value: fmt(stats?.residents),
-    },
-    {
-      key: 'signaturesReceived',
-      label: t('kpi.signaturesReceived'),
-      value: fmt(stats?.signaturesReceived),
-    },
-    {
-      key: 'pending',
-      label: t('kpi.pending'),
-      value: fmt(stats?.signaturesPending),
-    },
-  ];
+  // The greeting name: the actor's display name when resolvable, else a neutral
+  // fallback (the layout AuthGuard has already gated unauthenticated access).
+  const name = me?.name ?? '';
 
   return (
-    <div className="flex flex-col gap-5">
-      {/* Page header */}
-      <div>
-        <h1 className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
-          {t('pageTitle')}
-        </h1>
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          {t('pageSubtitle')}
-        </p>
-      </div>
-
-      {/* KPI grid — 4 cards, equal width */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {kpis.map((kpi) => (
-          <div key={kpi.key} className="card card-pad">
-            <div className="mb-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
-              {kpi.label}
-            </div>
-            <div className="text-2xl font-bold tabular" style={{ color: 'var(--text)' }}>
-              {kpi.value}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Action buttons — IAM slice 5b: permission-gated New Project CTA in a
-       *  client island; the disabled "Field Task" placeholder was removed
-       *  (ship-or-hide). See `_components/home-actions.tsx`. */}
-      <HomeActions />
-
-      {/* Two-column section: WeekCalendar + Conversations (both empty states) */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
-        {/* WeekCalendar empty state */}
-        <section className="card" aria-labelledby="home-calendar-heading">
-          <div className="card-hd">
-            <div className="flex items-center gap-2.5">
-              <CalendarDays
-                className="h-[18px] w-[18px]"
-                style={{ color: 'var(--navy-700)' }}
-                aria-hidden="true"
-              />
-              <h3 id="home-calendar-heading">{t('calendar.title')}</h3>
-            </div>
-          </div>
-          <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
-            <CalendarDays
-              className="h-10 w-10"
-              style={{ color: 'var(--text-soft)' }}
-              aria-hidden="true"
-            />
-            <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
-              {t('calendar.empty')}
-            </p>
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              {t('calendar.comingHint')}
-            </p>
-          </div>
-        </section>
-
-        {/* Conversations empty state */}
-        <section className="card" aria-labelledby="home-conversations-heading">
-          <div className="card-hd">
-            <div className="flex items-center gap-2">
-              <MessageSquare
-                className="h-[18px] w-[18px]"
-                style={{ color: 'var(--navy-700)' }}
-                aria-hidden="true"
-              />
-              <h3 id="home-conversations-heading">{t('conversations.title')}</h3>
-            </div>
-          </div>
-          {/* Slice 3 — live recent threads (client island) replaces the former
-           *  "chat coming later" stub now that team messaging is real. */}
-          <HomeConversations />
-        </section>
-      </div>
-    </div>
+    <HydrationBoundary state={dehydratedState}>
+      <ManagerMissionControl name={name} />
+    </HydrationBoundary>
   );
 }

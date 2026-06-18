@@ -119,7 +119,11 @@ export default function NewTaskPage() {
           {errors.priority && <p className="text-xs text-destructive">{errors.priority.message}</p>}
         </div>
 
-        {serverError && <p className="text-sm text-destructive">{serverError}</p>}
+        {serverError && (
+          <p className="text-sm text-destructive" role="alert" aria-live="assertive">
+            {serverError}
+          </p>
+        )}
 
         <div className="flex items-center justify-end gap-2">
           <Button type="button" variant="ghost" onClick={() => router.back()}>

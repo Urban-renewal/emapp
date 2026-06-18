@@ -129,7 +129,11 @@ export default function NewBuildingPage() {
           />
         </div>
 
-        {serverError && <p className="text-sm text-destructive">{serverError}</p>}
+        {serverError && (
+          <p className="text-sm text-destructive" role="alert" aria-live="assertive">
+            {serverError}
+          </p>
+        )}
 
         <div className="flex items-center justify-end gap-2">
           <Button type="button" variant="ghost" onClick={() => router.back()}>

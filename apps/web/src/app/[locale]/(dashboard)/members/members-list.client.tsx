@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { isPermissionDenied } from '@/components/ui/list-page-shell';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -84,7 +85,7 @@ export function MembersListClient() {
   // IAM slice 5b — the "Invite" CTA gates on `members.invite` (read-only
   // members viewers, if any, see the list but not the invite button).
   const canInvite = useHasPermission('members.invite');
-  const { data, isLoading, isError, refetch } = useMemberList({ limit: 25, cursor });
+  const { data, isLoading, isError, error, refetch } = useMemberList({ limit: 25, cursor });
 
   const items = useMemo(() => data?.items ?? [], [data?.items]);
   const page = data?.page;
@@ -103,6 +104,25 @@ export function MembersListClient() {
   if (isLoading) return <ListSkeleton rows={6} />;
 
   if (isError) {
+    // A 403 (`ApiClientError` code:'forbidden') is TERMINAL — members is
+    // Manager/Admin/Owner-only (D.17), so a non-Manager who direct-navigates
+    // here gets the SAME access-denied state as `/settings/roles` and the
+    // `ListPageShell` lists, with NO retry affordance (a retry can't grant
+    // permission). Everything else (network / 5xx / parse) keeps the
+    // retryable load-failure banner. Shared 403 discriminator + copy as the
+    // audit / projects / owners lists.
+    if (isPermissionDenied(error)) {
+      return (
+        <div className="space-y-1" role="status">
+          <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+            {tp('accessDeniedTitle')}
+          </p>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            {tp('accessDeniedBody')}
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="space-y-3">
         <p className="text-sm" style={{ color: 'var(--danger-700)' }}>

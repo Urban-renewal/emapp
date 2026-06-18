@@ -702,6 +702,15 @@ export class SignatureRequestsService {
         // write endpoint.
         await requireAgentCapability(tx, user, 'manage_signatures');
 
+        // (1c) Global campaign-send kill-switch (E2 Wave-0 N15). Authorization
+        // resolves FIRST (above) so an unauthorized caller still gets 403 and
+        // never learns the switch state. OPT-OUT: enabled unless explicitly
+        // '0'/'false'. This is the LAST gate before the actual fan-out send.
+        const sendFlag = serverEnv.CAMPAIGN_SEND_ENABLED;
+        if (sendFlag === '0' || sendFlag === 'false') {
+          throw new ServiceUnavailableException({ error: { code: 'campaign_send_disabled' } });
+        }
+
         // (2) Document-belongs-to-project gate. loadVisibleDocument 404s a
         // foreign/archived/non-finalised doc (RLS-scoped). Then the doc's scope
         // MUST resolve to THIS project: a project-scoped doc must carry this

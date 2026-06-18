@@ -31,8 +31,9 @@
  */
 import { randomUUID } from 'node:crypto';
 
+import { serverEnv } from '@emapp/config';
 import { encryptOwnerPii, owners, withTenant } from '@emapp/db';
-import { HttpException, NotFoundException } from '@nestjs/common';
+import { HttpException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { providerPool } from '../../../../../packages/db/src/client';
@@ -106,6 +107,31 @@ async function runCampaign(
       i: { documentId: string; expiresInDays?: number },
     ) => Promise<{ created: number; skipped: number; total: number }>
   ).call(svc, user, projectId, input);
+}
+
+/** Save/restore-mutate the live `serverEnv.CAMPAIGN_SEND_ENABLED` flag (mirrors
+ *  signup-flag.controller.spec.ts withFlag). Under the API vitest config
+ *  (SKIP_ENV_VALIDATION=true) `serverEnv` is the live process.env object;
+ *  mutating the property directly works in both validated + skipped modes. */
+const SEND_FLAG = 'CAMPAIGN_SEND_ENABLED' as const;
+async function withSendFlag<T>(value: string | undefined, fn: () => Promise<T>): Promise<T> {
+  const env = serverEnv as unknown as Record<string, string | undefined>;
+  const had = Object.prototype.hasOwnProperty.call(env, SEND_FLAG);
+  const prev = env[SEND_FLAG];
+  if (value === undefined) {
+    delete env[SEND_FLAG];
+  } else {
+    env[SEND_FLAG] = value;
+  }
+  try {
+    return await fn();
+  } finally {
+    if (had) {
+      env[SEND_FLAG] = prev;
+    } else {
+      delete env[SEND_FLAG];
+    }
+  }
 }
 
 let nidCounter = 700000001;
@@ -501,5 +527,49 @@ describe('signature-campaign — only ACTIVE owners IN THIS PROJECT are fanned o
     expect(await countRows(doc, activeOwner)).toBe(1);
     expect(await countRows(doc, endedOwner)).toBe(0);
     expect(await countRows(doc, otherProjectOwner)).toBe(0);
+  }, 60_000);
+});
+
+describe('signature-campaign — CAMPAIGN_SEND_ENABLED kill-switch (E2 Wave-0 N15)', () => {
+  it('CAMP-6) default/unset env → campaign proceeds (happy path unaffected by the switch)', async () => {
+    const projectId = await seedProject(org.id, managerId);
+    const buildingId = await seedBuilding(projectId);
+    const apt = await seedApartment(buildingId);
+    const owner1 = await seedOwner(org.id);
+    await seedSoleOwnership(apt, owner1);
+    const doc = await seedProjectDoc(org.id, projectId);
+
+    const res = await withSendFlag(undefined, () =>
+      runCampaign(manager(), projectId, { documentId: doc }),
+    );
+
+    expect(res.total).toBe(1);
+    expect(res.created).toBe(1);
+    expect(await countRows(doc, owner1)).toBe(1);
+  }, 60_000);
+
+  it("CAMP-7) env CAMPAIGN_SEND_ENABLED='0' → 503 campaign_send_disabled, NO fan-out (no requests created)", async () => {
+    const projectId = await seedProject(org.id, managerId);
+    const buildingId = await seedBuilding(projectId);
+    const apt = await seedApartment(buildingId);
+    const owner1 = await seedOwner(org.id);
+    await seedSoleOwnership(apt, owner1);
+    const doc = await seedProjectDoc(org.id, projectId);
+
+    let caught: unknown;
+    await withSendFlag('0', async () => {
+      try {
+        await runCampaign(manager(), projectId, { documentId: doc });
+      } catch (e) {
+        caught = e;
+      }
+    });
+
+    expect(caught).toBeInstanceOf(ServiceUnavailableException);
+    expect((caught as ServiceUnavailableException).getResponse()).toEqual({
+      error: { code: 'campaign_send_disabled' },
+    });
+    // No fan-out: the kill-switch gates BEFORE createBulk, so zero rows exist.
+    expect(await countRowsForDoc(doc)).toBe(0);
   }, 60_000);
 });

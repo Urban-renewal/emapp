@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react';
 
 import type { AssignmentMemberLookup } from '@/adapters/project-assignment';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ListPageShell } from '@/components/ui/list-page-shell';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
@@ -93,6 +94,7 @@ export default function ProjectAssignmentsPage() {
   const [assignRole, setAssignRole] = useState<string>('agent');
   const createMutation = useCreateProjectAssignment(projectId);
   const unassignMutation = useUnassignProjectAssignment(projectId);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const {
     serverError: assignError,
@@ -144,7 +146,7 @@ export default function ProjectAssignmentsPage() {
 
   async function onUnassign(id: string) {
     resetUnassignError();
-    if (!window.confirm(t('unassignConfirm'))) return;
+    if (!(await confirm({ message: t('unassignConfirm'), destructive: true }))) return;
     try {
       await unassignMutation.mutateAsync(id);
     } catch (err) {
@@ -293,6 +295,7 @@ export default function ProjectAssignmentsPage() {
         membersQuery.error.code !== 'forbidden' && (
           <p className="text-xs text-muted-foreground">{t('lookupFailedHint')}</p>
         )}
+      {confirmDialog}
     </div>
   );
 }

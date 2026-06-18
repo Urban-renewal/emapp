@@ -8,6 +8,7 @@ import { useState } from 'react';
 
 import { isStepUpCancelled, useStepUpUnlock } from '@/components/step-up-unlock';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useArchiveDocument, useDocument, useDownloadDocument } from '@/hooks/use-documents';
@@ -29,6 +30,7 @@ export default function DocumentDetailPage() {
   // session holds a fresh PII unlock; the hook opens the OTP dialog and
   // retries the download (replacing the bare "ההורדה נכשלה." for that code).
   const stepUp = useStepUpUnlock();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [actionError, setActionError] = useState<string | null>(null);
   // Which disposition is currently in flight, so only the clicked button
   // shows its pending label (both share the one download mutation).
@@ -116,7 +118,7 @@ export default function DocumentDetailPage() {
   async function onArchive() {
     if (!id) return;
     setActionError(null);
-    if (!window.confirm(t('archiveConfirm'))) return;
+    if (!(await confirm({ message: t('archiveConfirm'), destructive: true }))) return;
     try {
       await archive.mutateAsync(id);
       router.push('/documents');
@@ -179,6 +181,7 @@ export default function DocumentDetailPage() {
 
       {/* 7c F1 — the step-up unlock modal (renders null while closed). */}
       {stepUp.dialog}
+      {confirmDialog}
     </div>
   );
 }

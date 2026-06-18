@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 
+import { ToastProvider } from '@/components/ui/action-toast';
 import { getCurrentSessionUser } from '@/lib/session';
 
 import { AuthGuard } from './_components/auth-guard';
@@ -43,22 +44,27 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <QueryProvider initialSession={session.tier === 'org' ? session.profile : undefined}>
-      <div className="flex h-screen" style={{ background: 'var(--bg-app)' }}>
-        {isProvider ? (
-          <PCSidebar userName={session.profile.name} userRole={session.profile.role} />
-        ) : (
-          <Sidebar
-            userName={session.profile.name}
-            userRole={session.profile.role}
-            tier={session.tier}
-          />
-        )}
-        <main className="flex min-w-0 flex-1 flex-col">
-          <Topbar user={session} />
-          <div className="flex-1 overflow-auto p-6">{children}</div>
-        </main>
-        <AuthGuard />
-      </div>
+      {/* M0+G6 — the ONE app-root action-toast / aria-live region, mounted
+          once here so any client component in the dashboard tree can fire a
+          toast (or announce) via useToast() without rendering its own region. */}
+      <ToastProvider>
+        <div className="flex h-screen" style={{ background: 'var(--bg-app)' }}>
+          {isProvider ? (
+            <PCSidebar userName={session.profile.name} userRole={session.profile.role} />
+          ) : (
+            <Sidebar
+              userName={session.profile.name}
+              userRole={session.profile.role}
+              tier={session.tier}
+            />
+          )}
+          <main className="flex min-w-0 flex-1 flex-col">
+            <Topbar user={session} />
+            <div className="flex-1 overflow-auto p-6">{children}</div>
+          </main>
+          <AuthGuard />
+        </div>
+      </ToastProvider>
     </QueryProvider>
   );
 }

@@ -4,6 +4,7 @@ import type { MemberPermissionOverride, OverrideEffect } from '@emapp/shared-typ
 import { useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 
+import { useToast } from '@/components/ui/action-toast';
 import { Button } from '@/components/ui/button';
 import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
 import {
@@ -45,6 +46,7 @@ export function MemberOverridesPanel({ member, visible }: Props) {
   const { data: overrides, isLoading } = useMemberOverrides(member.userId, visible);
   const setMutation = useSetMemberOverride(member.userId);
   const clearMutation = useClearMemberOverride(member.userId);
+  const toast = useToast();
 
   const [permission, setPermission] = useState('');
   const [effect, setEffect] = useState<OverrideEffect>('grant');
@@ -71,9 +73,24 @@ export function MemberOverridesPanel({ member, visible }: Props) {
   async function onSet() {
     if (!permission) return;
     reset();
+    const applied = { permission, effect };
     try {
       await setMutation.mutateAsync({ permission, effect, scopeType: 'org' });
       setPermission('');
+      // M0+G6 — instant + undo (the inverse is a single clear of what we set).
+      toast.show({
+        message: t('added'),
+        undo: {
+          label: t('undo'),
+          onUndo: async () => {
+            try {
+              await clearMutation.mutateAsync({ permission: applied.permission, scopeType: 'org' });
+            } catch {
+              // Undo is best-effort; the override list reflects the real state.
+            }
+          },
+        },
+      });
     } catch (e) {
       handle(e);
     }
@@ -86,6 +103,27 @@ export function MemberOverridesPanel({ member, visible }: Props) {
         permission: o.permission,
         scopeType: o.scopeType,
         ...(o.scopeType === 'project' ? { scopeId: o.scopeId } : {}),
+      });
+      // Undo re-applies the cleared override (org-scope inverse).
+      toast.show({
+        message: t('cleared'),
+        undo:
+          o.scopeType === 'org'
+            ? {
+                label: t('undo'),
+                onUndo: async () => {
+                  try {
+                    await setMutation.mutateAsync({
+                      permission: o.permission,
+                      effect: o.effect,
+                      scopeType: 'org',
+                    });
+                  } catch {
+                    // Best-effort undo; the override list reflects real state.
+                  }
+                },
+              }
+            : undefined,
       });
     } catch (e) {
       handle(e);

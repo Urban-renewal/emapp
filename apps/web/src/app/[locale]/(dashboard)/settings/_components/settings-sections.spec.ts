@@ -191,15 +191,20 @@ function limitsLabel(key: string): string {
 }
 
 // Import AFTER the mocks (vi.mock is hoisted; explicit ordering for clarity).
+import { ToastProvider } from '@/components/ui/action-toast';
+
 import { BrandingConfig } from './branding-config';
 import { LimitsConfig } from './limits-config';
 import { LocalizationConfig } from './localization-config';
 
 type Section = () => ReactNode;
 
+// M0+G6 — the configs now fire their "saved" feedback through useToast(), which
+// requires a <ToastProvider> ancestor (mounted once at the dashboard layout in
+// the real app). Wrap each isolated render so the hook resolves its context.
 function render(Section: Section, perms: string[]): string {
   currentPerms = new Set(perms);
-  return renderToStaticMarkup(createElement(Section));
+  return renderToStaticMarkup(createElement(ToastProvider, null, createElement(Section)));
 }
 
 /** Extract the full opening `<input …>` / `<select …>` tag carrying

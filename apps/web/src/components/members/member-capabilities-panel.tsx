@@ -8,6 +8,7 @@ import {
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
+import { useToast } from '@/components/ui/action-toast';
 import { Button } from '@/components/ui/button';
 import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
 import {
@@ -56,8 +57,8 @@ export function MemberCapabilitiesPanel({ member }: Props) {
   const mutation = useUpdateMemberCapabilities();
   const presetsQuery = useCapabilityPresets();
   const applyPresetMutation = useApplyCapabilityPreset();
+  const toast = useToast();
   const [caps, setCaps] = useState<AgentCapabilities>(member.capabilities);
-  const [saved, setSaved] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState('');
 
   // Re-seed only when we navigate to a DIFFERENT member (keyed on userId),
@@ -65,7 +66,6 @@ export function MemberCapabilitiesPanel({ member }: Props) {
   // refetch (staleTime/focus) would clobber the manager's in-progress edits.
   useEffect(() => {
     setCaps(member.capabilities);
-    setSaved(false);
     setSelectedPreset('');
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once per member; capabilities intentionally read at seed time only
   }, [member.userId]);
@@ -91,7 +91,6 @@ export function MemberCapabilitiesPanel({ member }: Props) {
   }
 
   function setFlag(key: AgentCapabilityKey, value: boolean) {
-    setSaved(false);
     setCaps((prev) => {
       const next = { ...prev, [key]: value };
       // Invariant: pii ⇒ view_owners. Turning view_owners off clears pii.
@@ -106,17 +105,29 @@ export function MemberCapabilitiesPanel({ member }: Props) {
 
   async function onSave() {
     reset();
-    setSaved(false);
+    // Snapshot the pre-save flags so the undo-toast can restore them — a
+    // capability change is a REVERSIBLE (two-track) action (§2.3), so it gets
+    // instant + undo, not a confirm.
+    const previous = member.capabilities;
     try {
       await mutation.mutateAsync({ userId: member.userId, body: caps });
-      setSaved(true);
+      toast.show({
+        message: t('savedOk'),
+        undo: {
+          label: t('undo'),
+          onUndo: async () => {
+            setCaps(previous);
+            await mutation.mutateAsync({ userId: member.userId, body: previous });
+            toast.show({ message: t('undone') });
+          },
+        },
+      });
     } catch (e) {
       handle(e);
     }
   }
 
   function onResetPreset() {
-    setSaved(false);
     reset();
     // Agent preset = the locked least-privilege floor (D.54).
     setCaps(DEFAULT_AGENT_CAPABILITIES);
@@ -132,14 +143,24 @@ export function MemberCapabilitiesPanel({ member }: Props) {
   async function onApplyPreset() {
     if (!activePreset) return;
     reset();
-    setSaved(false);
+    const previous = member.capabilities;
     try {
       await applyPresetMutation.mutateAsync({
         userId: member.userId,
         body: { presetKey: activePreset.key },
       });
       setCaps(activePreset.capabilities);
-      setSaved(true);
+      toast.show({
+        message: t('presetApplied'),
+        undo: {
+          label: t('undo'),
+          onUndo: async () => {
+            setCaps(previous);
+            await mutation.mutateAsync({ userId: member.userId, body: previous });
+            toast.show({ message: t('undone') });
+          },
+        },
+      });
     } catch (e) {
       handle(e);
     }
@@ -254,9 +275,6 @@ export function MemberCapabilitiesPanel({ member }: Props) {
         </fieldset>
 
         {serverError && <p className="text-sm text-destructive">{serverError}</p>}
-        {/* `saved` is cleared by any subsequent toggle (setFlag), so this
-            shows only between a successful save and the next edit. */}
-        {saved && <p className="text-sm text-emerald-700">{t('savedOk')}</p>}
 
         <div className="flex items-center justify-end">
           <Button type="submit" disabled={!canSave}>

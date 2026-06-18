@@ -15,6 +15,7 @@ import { useForm } from 'react-hook-form';
 import { MemberCapabilitiesPanel } from '@/components/members/member-capabilities-panel';
 import { MemberOverridesPanel } from '@/components/members/member-overrides-panel';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
@@ -76,6 +77,8 @@ export default function MemberDetailPage({ params }: PageProps) {
   const [linkCopied, setLinkCopied] = useState(false);
   // P2 Phase 2 — the per-user override panel is Owner/Admin only (roles.manage).
   const canManageRoles = useHasPermission('roles.manage');
+  // M0b — the in-app styled confirm (replaces the native window.confirm()).
+  const { confirm, dialog } = useConfirm();
 
   const {
     register,
@@ -122,7 +125,7 @@ export default function MemberDetailPage({ params }: PageProps) {
 
   async function onRevoke() {
     if (!userId) return;
-    if (!confirm(t('revokeConfirm'))) return;
+    if (!(await confirm({ message: t('revokeConfirm'), destructive: true }))) return;
     revokeError.reset();
     try {
       await revokeMutation.mutateAsync(userId);
@@ -303,6 +306,7 @@ export default function MemberDetailPage({ params }: PageProps) {
           {revokeMutation.isPending ? t('revoking') : t('revoke')}
         </Button>
       </div>
+      {dialog}
     </div>
   );
 }

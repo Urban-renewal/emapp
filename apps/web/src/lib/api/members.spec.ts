@@ -18,6 +18,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { isPermissionDenied } from '@/components/ui/list-page-shell';
+
 import { ApiClientError } from './errors';
 import {
   acceptInvite,
@@ -114,6 +116,41 @@ describe('listMembers', () => {
       },
     })) as unknown as typeof fetch;
     await expect(listMembers()).rejects.toThrow();
+  });
+
+  // The members list is Manager/Admin/Owner-only (D.17). A non-Manager who
+  // direct-navigates to /members hits a 403 `{ error: { code: 'forbidden' } }`.
+  // The list client's error branch keys off `isPermissionDenied(error)` to show
+  // the ACCESS-DENIED state (no retry) instead of the generic load-failure
+  // banner. These two assertions pin the exact wire→branch contract: the 403
+  // becomes an `ApiClientError` whose `code` the shared discriminator accepts.
+  it('T-4c-S1-API.4b) 403 forbidden → ApiClientError.code = "forbidden"', async () => {
+    globalThis.fetch = stubFetch(() => ({
+      status: 403,
+      body: { error: { code: 'forbidden' } },
+    })) as unknown as typeof fetch;
+    await expect(listMembers()).rejects.toMatchObject({
+      name: 'ApiClientError',
+      code: 'forbidden',
+    });
+  });
+
+  it('T-4c-S1-API.4c) the thrown 403 is classified as a permission denial (access-denied branch)', async () => {
+    globalThis.fetch = stubFetch(() => ({
+      status: 403,
+      body: { error: { code: 'forbidden' } },
+    })) as unknown as typeof fetch;
+    const err = await listMembers().then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(ApiClientError);
+    // The members client renders access-denied (not the retry banner) iff this
+    // is true — the same discriminator the audit/projects/owners lists use.
+    expect(isPermissionDenied(err)).toBe(true);
+    // A genuine load failure (e.g. a 500) must NOT take the access-denied
+    // branch — it stays retryable.
+    expect(isPermissionDenied(new ApiClientError({ code: 'internal' }))).toBe(false);
   });
 });
 

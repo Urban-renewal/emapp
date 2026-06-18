@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
-import { ListPageShell } from '@/components/ui/list-page-shell';
+import { ListPageShell, isPermissionDenied } from '@/components/ui/list-page-shell';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useAuditList } from '@/hooks/use-audit';
 
@@ -28,14 +28,25 @@ export function AuditListClient() {
   const { data, isLoading, isError, error, refetch } = useAuditList({ limit: 25, cursor });
   const items = data?.items ?? [];
 
+  // A 403 is TERMINAL — audit is Manager/Admin/Owner-only (D.17): Agent/Viewer
+  // direct-navigating here get `forbidden`, not a real (empty) log. Suppress
+  // the page header/description in that case so the denied state reads as a
+  // clean access-denied message (matching `/settings/roles` + the members
+  // list) instead of a loaded-but-empty audit log shell. The `ListPageShell`
+  // renders the access-denied body; everything else (incl. a genuinely empty
+  // log) keeps the header.
+  const accessDenied = isError && isPermissionDenied(error);
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t('hint')}</p>
+      {!accessDenied && (
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">{t('hint')}</p>
+          </div>
         </div>
-      </div>
+      )}
 
       <ListPageShell
         isLoading={isLoading}

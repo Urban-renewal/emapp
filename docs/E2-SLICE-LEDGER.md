@@ -115,4 +115,5 @@ C12b/C16 go-live subset · N11 tabu honesty · C10/C11 scope · Wave-5 external 
     `main` tree finds exactly ONE (revoke). A prior slice migrated the other. The one that exists is migrated.
   - **Green-gate:** typecheck 0 · lint clean · 911/911 tests · all guards (i18n-coverage, inline-color ratchet,
     forms-no-get-fallback) green.
-  - **PR:** <PR_URL_PLACEHOLDER> — DO NOT merge; human-lead real-Chrome 4-axis toast verify pending.
+  - **PR:** https://github.com/Urban-renewal/emapp/pull/417 — DO NOT merge; human-lead real-Chrome 4-axis
+    toast verify pending. Security-review PASS (0 CRITICAL/0 HIGH).

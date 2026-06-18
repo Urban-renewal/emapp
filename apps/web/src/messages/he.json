@@ -1568,6 +1568,11 @@
       "3": "דחופה"
     }
   },
+  "confirm": {
+    "title": "אישור פעולה",
+    "confirm": "אישור",
+    "cancel": "ביטול"
+  },
   "contractors": {
     "listTitle": "קבלנים",
     "create": "הוספת קבלן",

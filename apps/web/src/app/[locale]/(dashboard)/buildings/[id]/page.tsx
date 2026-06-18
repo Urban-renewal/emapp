@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useArchiveBuilding, useBuilding } from '@/hooks/use-buildings';
@@ -19,6 +20,7 @@ export default function BuildingDetailPage() {
   const id = params?.id;
   const { data, isLoading, isError, error } = useBuilding(id);
   const archive = useArchiveBuilding();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [actionError, setActionError] = useState<string | null>(null);
 
   if (isLoading) return <ListSkeleton withRows={false} />;
@@ -39,7 +41,7 @@ export default function BuildingDetailPage() {
   async function onArchive() {
     if (!id) return;
     setActionError(null);
-    if (!window.confirm(t('archiveConfirm'))) return;
+    if (!(await confirm({ message: t('archiveConfirm'), destructive: true }))) return;
     try {
       await archive.mutateAsync(id);
       router.push(`/projects/${projectId}/buildings`);
@@ -99,6 +101,7 @@ export default function BuildingDetailPage() {
       </div>
 
       {actionError && <p className="text-sm text-destructive">{actionError}</p>}
+      {confirmDialog}
     </div>
   );
 }

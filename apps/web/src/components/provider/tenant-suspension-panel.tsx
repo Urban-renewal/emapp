@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useReactivateTenant, useSuspendTenant } from '@/hooks/use-provider';
 import { ApiClientError } from '@/lib/api/errors';
 import { ProviderReasonRequiredError } from '@/lib/api/provider';
@@ -24,10 +25,10 @@ import type { ProviderTenantDetailVM } from '@/models/provider-tenant.vm';
  *  - Suspend is a freeze (reversible), NOT a destructive purge (out of
  *    scope per D.49). The confirm copy says so.
  *
- * UX: matches the app convention — `window.confirm` for the irreversible-
- * feeling action + inline error state (no toast lib in this app). Suspend
- * reveals an inline optional-note field before confirming; reactivate is a
- * single confirm.
+ * UX: matches the app convention — the styled `useConfirm()` dialog for the
+ * irreversible-feeling action + inline error state (no toast lib in this app).
+ * Suspend reveals an inline optional-note field before confirming; reactivate
+ * is a single styled confirm.
  */
 interface Props {
   tenant: ProviderTenantDetailVM;
@@ -37,6 +38,7 @@ export function TenantSuspensionPanel({ tenant }: Props) {
   const t = useTranslations('provider.tenantDetail.suspension');
   const suspend = useSuspendTenant(tenant.id);
   const reactivate = useReactivateTenant(tenant.id);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState('');
@@ -69,7 +71,7 @@ export function TenantSuspensionPanel({ tenant }: Props) {
 
   async function onReactivate() {
     setActionError(null);
-    if (!window.confirm(t('reactivateConfirm'))) return;
+    if (!(await confirm({ message: t('reactivateConfirm'), destructive: true }))) return;
     try {
       await reactivate.mutateAsync();
     } catch (e) {
@@ -161,6 +163,7 @@ export function TenantSuspensionPanel({ tenant }: Props) {
       )}
 
       {actionError && <p className="text-sm text-destructive">{actionError}</p>}
+      {confirmDialog}
     </section>
   );
 }

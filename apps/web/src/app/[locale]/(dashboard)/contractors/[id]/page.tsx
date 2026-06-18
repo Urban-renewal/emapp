@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useApiErrorHandler } from '@/hooks/use-api-error-handler';
@@ -25,6 +26,7 @@ export default function ContractorDetailPage() {
   const { data: c, isLoading, isError, error } = useContractor(id);
   const archive = useArchiveContractor();
   const canArchive = useHasPermission('contractors.archive');
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const archiveError = useApiErrorHandler({
     codeOverrides: { forbidden: () => t('forbiddenArchive') },
@@ -46,7 +48,7 @@ export default function ContractorDetailPage() {
 
   async function onArchive() {
     if (!id) return;
-    if (!window.confirm(t('archiveConfirm'))) return;
+    if (!(await confirm({ message: t('archiveConfirm'), destructive: true }))) return;
     archiveError.reset();
     try {
       await archive.mutateAsync(id);
@@ -131,6 +133,7 @@ export default function ContractorDetailPage() {
           </Button>
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -57,7 +58,7 @@ type TabId = 'tenants' | 'docs' | 'tasks' | 'dashboard';
  *
  * Routing / interactions preserved:
  *  - Buildings / Assignments / Shares links unchanged.
- *  - Archive flow unchanged (window.confirm + mutateAsync + router push).
+ *  - Archive flow unchanged (styled useConfirm dialog + mutateAsync + router push).
  *  - StatusBadge / NameDisplay / Button components untouched.
  */
 export function ProjectDetailClient() {
@@ -73,6 +74,7 @@ export function ProjectDetailClient() {
   // P3c — the parcel-setup confirm materializes buildings + apartments, so
   // the affordance gates on buildings.create (UX; BE is authoritative).
   const canCreateBuildings = useHasPermission('buildings.create');
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [actionError, setActionError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>('tenants');
 
@@ -97,7 +99,7 @@ export function ProjectDetailClient() {
   async function onArchive() {
     if (!id) return;
     setActionError(null);
-    if (!window.confirm(t('archiveConfirm'))) return;
+    if (!(await confirm({ message: t('archiveConfirm'), destructive: true }))) return;
     try {
       await archive.mutateAsync(id);
       router.push('/projects');
@@ -426,6 +428,7 @@ export function ProjectDetailClient() {
           )}
         </div>
       </div>
+      {confirmDialog}
     </div>
   );
 }

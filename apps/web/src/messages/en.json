@@ -1568,6 +1568,11 @@
       "3": "High"
     }
   },
+  "confirm": {
+    "title": "Confirm action",
+    "confirm": "Confirm",
+    "cancel": "Cancel"
+  },
   "contractors": {
     "listTitle": "Contractors",
     "create": "Add contractor",

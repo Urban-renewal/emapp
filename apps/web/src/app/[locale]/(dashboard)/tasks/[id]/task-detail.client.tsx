@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react';
 
 import type { AssignmentMemberLookup } from '@/adapters/project-assignment';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -79,6 +80,7 @@ export function TaskDetailClient() {
   const archiveMutation = useArchiveTask();
   const addAssigneeMutation = useAddTaskAssignee(id);
   const removeAssigneeMutation = useRemoveTaskAssignee(id);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const [statusDraft, setStatusDraft] = useState<TaskStatus | null>(null);
   const [descDraft, setDescDraft] = useState<string | null>(null);
@@ -147,7 +149,7 @@ export function TaskDetailClient() {
 
   async function onArchive() {
     if (!id) return;
-    if (!window.confirm(t('archiveConfirm'))) return;
+    if (!(await confirm({ message: t('archiveConfirm'), destructive: true }))) return;
     try {
       await archiveMutation.mutateAsync(id);
       router.push('/tasks');
@@ -169,7 +171,7 @@ export function TaskDetailClient() {
   }
 
   async function onRemoveAssignee(userId: string) {
-    if (!window.confirm(t('removeAssigneeConfirm'))) return;
+    if (!(await confirm({ message: t('removeAssigneeConfirm'), destructive: true }))) return;
     try {
       await removeAssigneeMutation.mutateAsync(userId);
     } catch (err) {
@@ -398,6 +400,7 @@ export function TaskDetailClient() {
           </Button>
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }

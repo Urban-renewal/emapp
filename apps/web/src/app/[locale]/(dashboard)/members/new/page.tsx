@@ -55,14 +55,13 @@ export default function NewMemberPage() {
     defaultValues: { role: 'agent' },
   });
 
+  // §D.14 anti-enumeration — a duplicate-email invite (BE `member_exists`,
+  // 409) must NOT reveal "this exact email already exists" on the email field:
+  // that is an account-enumeration oracle. Fall through to the GENERIC
+  // top-level error (same message for duplicate / RBAC / network).
   const { serverError, handle, reset } = useApiErrorHandler<CreateMember>({
     setError,
-    codeOverrides: {
-      member_exists: (set) => {
-        set?.('email', { type: 'server', message: t('emailExists') });
-      },
-    },
-    fallback: () => t('inviteFailed'),
+    fallback: () => t('inviteGenericError'),
   });
 
   async function onSubmit(values: CreateMember) {
@@ -187,7 +186,11 @@ export default function NewMemberPage() {
           {errors.role && <p className="text-xs text-destructive">{errors.role.message}</p>}
         </div>
 
-        {serverError && <p className="text-sm text-destructive">{serverError}</p>}
+        {serverError && (
+          <p className="text-sm text-destructive" role="alert" aria-live="assertive">
+            {serverError}
+          </p>
+        )}
 
         <div className="flex items-center justify-end gap-2">
           <Button type="button" variant="ghost" onClick={() => router.back()}>

@@ -1,6 +1,7 @@
 'use client';
 
 import { CreateOwnerInput, type CreateOwner } from '@emapp/shared-types';
+import { isValidIsraeliId } from '@emapp/validators';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -26,20 +27,30 @@ export default function NewOwnerPage() {
     resolver: zodResolver(CreateOwnerInput),
   });
 
-  // §SOLID-M7 — owner_exists override sets the field-level error on
-  // national_id (BE returns 409 on (org_id, national_id_hash) collide).
+  // §D.14 anti-enumeration — a duplicate national_id (BE `owner_exists`, 409)
+  // must NOT be surfaced as a per-field "this exact ID already exists" oracle:
+  // national_id is PII (D.19) and that message would let an authenticated
+  // insider probe which IDs are on file. Show a GENERIC top-level error
+  // instead — the same message whether the create failed on duplicate, RBAC,
+  // or anything else. (Removing the codeOverride lets `owner_exists` fall
+  // through to `fallback`, which is exactly this generic message.)
   const { serverError, handle, reset } = useApiErrorHandler<CreateOwner>({
     setError,
-    codeOverrides: {
-      owner_exists: (set) => {
-        set?.('national_id', { type: 'server', message: t('field.idExists') });
-      },
-    },
-    fallback: () => t('createFailed'),
+    fallback: () => t('addGenericError'),
   });
 
   async function onSubmit(values: CreateOwner) {
     reset();
+    // FINDING-3b — client-side national_id MOD-10 (Luhn) check-digit guard,
+    // reusing the canonical @emapp/validators implementation (BE enforces the
+    // same in its DTO refine). The zod resolver only checks the 9-digit SHAPE,
+    // so an invalid-checksum ID like 123456789 would otherwise be POSTed.
+    // S3a — national_id is OPTIONAL (owner shells), so only validate when one
+    // was actually entered.
+    if (values.national_id && !isValidIsraeliId(values.national_id)) {
+      setError('national_id', { type: 'validate', message: t('field.invalidId') });
+      return;
+    }
     try {
       const owner = await mutation.mutateAsync(values);
       router.push(`/owners/${owner.id}`);
@@ -87,10 +98,11 @@ export default function NewOwnerPage() {
             autoComplete="off"
             className="w-full rounded-md border px-3 py-2 font-mono text-sm"
             dir="ltr"
+            aria-invalid={errors.national_id ? true : undefined}
             {...register('national_id')}
           />
           {errors.national_id && (
-            <p className="text-xs text-destructive">
+            <p className="text-xs text-destructive" role="alert">
               {errors.national_id.message ?? tp('field.required')}
             </p>
           )}
@@ -138,7 +150,11 @@ export default function NewOwnerPage() {
           />
         </div>
 
-        {serverError && <p className="text-sm text-destructive">{serverError}</p>}
+        {serverError && (
+          <p className="text-sm text-destructive" role="alert" aria-live="assertive">
+            {serverError}
+          </p>
+        )}
 
         <div className="flex items-center justify-end gap-2">
           <Button type="button" variant="ghost" onClick={() => router.back()}>

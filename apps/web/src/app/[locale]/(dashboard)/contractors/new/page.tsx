@@ -22,15 +22,16 @@ export default function NewContractorPage() {
     formState: { errors, isSubmitting },
   } = useForm<CreateContractor>({ resolver: zodResolver(CreateContractorInput) });
 
+  // §D.14 anti-enumeration — `contractor_email_exists` (409) must NOT reveal
+  // "this email is already a contractor" on the field (enumeration oracle); it
+  // falls through to the GENERIC top-level error. `forbidden` (RBAC) is not
+  // PII-sensitive, so it keeps its specific, actionable message.
   const { serverError, handle, reset } = useApiErrorHandler<CreateContractor>({
     setError,
     codeOverrides: {
       forbidden: () => t('forbiddenCreate'),
-      contractor_email_exists: (set) => {
-        set?.('contactEmail', { type: 'server', message: t('emailExists') });
-      },
     },
-    fallback: () => t('createFailed'),
+    fallback: () => t('addGenericError'),
   });
 
   async function onSubmit(values: CreateContractor) {
@@ -128,7 +129,11 @@ export default function NewContractorPage() {
           />
         </div>
 
-        {serverError && <p className="text-sm text-destructive">{serverError}</p>}
+        {serverError && (
+          <p className="text-sm text-destructive" role="alert" aria-live="assertive">
+            {serverError}
+          </p>
+        )}
 
         <div className="flex items-center justify-end gap-2">
           <Button type="button" variant="ghost" onClick={() => router.back()}>

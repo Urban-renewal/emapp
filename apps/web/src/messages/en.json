@@ -622,8 +622,10 @@
       "phone": "Phone",
       "email": "Email",
       "notes": "Notes",
-      "idExists": "This national ID is already registered in the organization"
+      "idExists": "This national ID is already registered in the organization",
+      "invalidId": "Invalid national ID — check the digits and try again."
     },
+    "addGenericError": "Could not add the owner — check the details and try again.",
     "view": "View",
     "col": {
       "name": "Owner",
@@ -1283,6 +1285,7 @@
     "cancel": "Cancel",
     "backToList": "Back to list",
     "emailExists": "This email is already registered in the organization",
+    "inviteGenericError": "Could not send the invitation — check the details and try again.",
     "createdTitle": "Invite sent",
     "createdHint": "An email with the join link has been sent. In dev the token is shown below (single-use, 7 days). In production the token is delivered via email only.",
     "createdMember": "Member created",
@@ -1568,6 +1571,11 @@
       "3": "High"
     }
   },
+  "confirm": {
+    "title": "Confirm action",
+    "confirm": "Confirm",
+    "cancel": "Cancel"
+  },
   "contractors": {
     "listTitle": "Contractors",
     "create": "Add contractor",
@@ -1575,6 +1583,7 @@
     "createFailed": "Failed to create contractor",
     "forbiddenCreate": "You are not allowed to create contractors (Manager only).",
     "emailExists": "This email is already registered as a contractor in this organization.",
+    "addGenericError": "Could not add the contractor — check the details and try again.",
     "loading": "Loading...",
     "empty": "No contractors yet. Click \"Add contractor\".",
     "loadFailed": "Failed to load contractors",

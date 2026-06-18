@@ -20,3 +20,14 @@ export const TASKS_KEY = ['tasks'] as const;
 export function tasksListQueryKey(query: { limit?: number; cursor?: string }, locale: 'he' | 'en') {
   return [...TASKS_KEY, 'list', query, locale] as const;
 }
+
+/**
+ * Shape is `['tasks', 'one', id, locale]` — the SINGLE-record detail key
+ * `useTask(id)` reads. Same byte-for-byte parity discipline as the list
+ * builder: the server RSC prefetch (`tasks/[id]/page.tsx`) and the client hook
+ * MUST hash identically or the prefetch is a silent cache miss and the
+ * fetch-after-hydration waterfall returns.
+ */
+export function taskQueryKey(id: string, locale: 'he' | 'en') {
+  return [...TASKS_KEY, 'one', id, locale] as const;
+}

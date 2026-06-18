@@ -14,7 +14,7 @@
  *
  * PLAIN server module — NO `'use server'` directive (Turbopack §4.7).
  */
-import { ProjectListItemSchema } from '@emapp/shared-types';
+import { ProjectListItemSchema, type ProjectListItem } from '@emapp/shared-types';
 import { z } from 'zod';
 
 import { serverApiGet } from '../server-api';
@@ -51,4 +51,23 @@ export async function serverListProjects(query: {
   // SAME parse as the client `listProjects` — the wire is the source of truth.
   const items = z.array(ProjectListItemSchema).parse(data);
   return { items, page: PageSchema.parse(page) };
+}
+
+/**
+ * Server-side `GET /api/v1/projects/:id` for the DETAIL page prefetch. Runs the
+ * IDENTICAL parse as the client `getProject` — the single-record GET carries
+ * the aggregate stats, so it parses against `ProjectListItemSchema` (NOT the
+ * bare `ProjectSchema`, which would strip the stats fields). Throws an
+ * `ApiClientError` on ANY failure; the throw is caught inside `prefetchQuery` /
+ * `prefetchToDehydratedState`, so a failure degrades to an empty dehydrated
+ * cache → the client `useProject` hook transparently refetches. NEVER throws
+ * out of the Server Component render.
+ */
+export async function serverGetProject(id: string): Promise<ProjectListItem> {
+  const body = await serverApiGet(`/projects/${id}`);
+  if (!body || typeof body !== 'object' || !('data' in body)) {
+    throw new ApiClientError({ code: 'invalid_response', message: 'server prefetch failed' });
+  }
+  const { data } = body as { data: unknown };
+  return ProjectListItemSchema.parse(data);
 }

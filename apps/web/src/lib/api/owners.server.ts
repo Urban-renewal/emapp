@@ -14,7 +14,13 @@
  *
  * PLAIN server module — NO `'use server'` directive (Turbopack §4.7).
  */
-import { OwnerListItemSchema } from '@emapp/shared-types';
+import {
+  OwnerListItemSchema,
+  OwnerProjectSummarySchema,
+  OwnerSchema,
+  type Owner,
+  type OwnerProjectSummary,
+} from '@emapp/shared-types';
 import { z } from 'zod';
 
 import { serverApiGet } from '../server-api';
@@ -53,4 +59,44 @@ export async function serverListOwners(query: {
   // SAME parse as the client `listOwners` — the wire is the source of truth.
   const items = z.array(OwnerListItemSchema).parse(data);
   return { items, page: PageSchema.parse(page) };
+}
+
+/**
+ * Server-side `GET /api/v1/owners/:id` for the DETAIL page prefetch. Runs the
+ * IDENTICAL `OwnerSchema` parse as the client `getOwner`.
+ *
+ * PII: the detail endpoint returns the SAME MASKED projection as the list
+ * (`nationalIdMasked` / `phoneMasked`) — NEVER cleartext. The cleartext reveal
+ * (`POST /owners/:id/reveal-pii`) is a SEPARATE D.54 step-up endpoint that is
+ * never prefetched and never enters the TanStack cache. This prefetch only ever
+ * sees masked PII, so it's safe to dehydrate into the (inspectable) cache.
+ *
+ * Throws an `ApiClientError` on ANY failure; caught inside `prefetchQuery` /
+ * `prefetchToDehydratedState` → empty cache → client `useOwner` refetches.
+ * NEVER throws out of the Server Component render.
+ */
+export async function serverGetOwner(id: string): Promise<Owner> {
+  const body = await serverApiGet(`/owners/${id}`);
+  if (!body || typeof body !== 'object' || !('data' in body)) {
+    throw new ApiClientError({ code: 'invalid_response', message: 'server prefetch failed' });
+  }
+  const { data } = body as { data: unknown };
+  return OwnerSchema.parse(data);
+}
+
+/**
+ * Server-side `GET /api/v1/owners/:id/projects` for the DETAIL page prefetch
+ * (the DISTINCT projects an owner is tied to via active ownerships). Runs the
+ * IDENTICAL `z.array(OwnerProjectSummarySchema)` parse as the client
+ * `getOwnerProjects`. The response carries PROJECTS only — no owner PII. The BE
+ * org/agent-scopes the list. Throws on ANY failure (caught upstream → empty
+ * cache → client `useOwnerProjects` refetches). NEVER throws out of the render.
+ */
+export async function serverGetOwnerProjects(id: string): Promise<OwnerProjectSummary[]> {
+  const body = await serverApiGet(`/owners/${id}/projects`);
+  if (!body || typeof body !== 'object' || !('data' in body)) {
+    throw new ApiClientError({ code: 'invalid_response', message: 'server prefetch failed' });
+  }
+  const { data } = body as { data: unknown };
+  return z.array(OwnerProjectSummarySchema).parse(data);
 }

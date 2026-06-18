@@ -13,7 +13,7 @@
  *
  * PLAIN server module — NO `'use server'` directive (Turbopack §4.7).
  */
-import { TaskSchema } from '@emapp/shared-types';
+import { TaskSchema, type Task } from '@emapp/shared-types';
 import { z } from 'zod';
 
 import { serverApiGet } from '../server-api';
@@ -47,4 +47,23 @@ export async function serverListTasks(query: {
   // SAME parse as the client `listTasks` — the wire is the source of truth.
   const items = z.array(TaskSchema).parse(data);
   return { items, page: PageSchema.parse(page) };
+}
+
+/**
+ * Server-side `GET /api/v1/tasks/:id` for the DETAIL page prefetch. Runs the
+ * IDENTICAL `TaskSchema` parse as the client `getTask`. Throws an
+ * `ApiClientError` on ANY failure; the throw is caught inside `prefetchQuery` /
+ * `prefetchToDehydratedState`, so a failure degrades to an empty dehydrated
+ * cache → the client `useTask` hook transparently refetches. NEVER throws out
+ * of the Server Component render. NOTE: the BE service-layer-scopes an Agent to
+ * their OWN assigned tasks — a non-assigned task 404s server-side, the prefetch
+ * yields an empty cache, and the client renders the existing not-found UI.
+ */
+export async function serverGetTask(id: string): Promise<Task> {
+  const body = await serverApiGet(`/tasks/${id}`);
+  if (!body || typeof body !== 'object' || !('data' in body)) {
+    throw new ApiClientError({ code: 'invalid_response', message: 'server prefetch failed' });
+  }
+  const { data } = body as { data: unknown };
+  return TaskSchema.parse(data);
 }

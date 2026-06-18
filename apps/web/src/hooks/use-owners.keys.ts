@@ -29,3 +29,25 @@ export function ownersListQueryKey(
 ) {
   return [...OWNERS_KEY, 'list', query, locale] as const;
 }
+
+/**
+ * Shape is `['owners', 'one', id, locale]` — the SINGLE-record detail key
+ * `useOwner(id)` reads. The detail endpoint returns the SAME masked PII
+ * projection as the list (`nationalIdMasked` / `phoneMasked`); the cleartext
+ * reveal is a SEPARATE step-up endpoint and is NEVER prefetched. Byte-for-byte
+ * key parity with the client hook is load-bearing (a mismatch = silent cache
+ * miss = waterfall returns).
+ */
+export function ownerQueryKey(id: string, locale: 'he' | 'en') {
+  return [...OWNERS_KEY, 'one', id, locale] as const;
+}
+
+/**
+ * Shape is `['owners', 'projects', id]` — the key `useOwnerProjects(id)` reads
+ * (the DISTINCT projects an owner is tied to via active ownerships). NOTE: this
+ * key has NO `locale` segment — the hook's adapter is locale-independent, so
+ * the hook omits it. The server prefetch MUST match that exactly (no locale).
+ */
+export function ownerProjectsQueryKey(id: string) {
+  return [...OWNERS_KEY, 'projects', id] as const;
+}

@@ -20,9 +20,9 @@ import {
 import { useDisplayLocale } from '@/lib/locale';
 import type { TaskAssigneeViewModel, TaskViewModel } from '@/models/task.vm';
 
-import { TASKS_KEY, tasksListQueryKey } from './use-tasks.keys';
+import { TASKS_KEY, taskQueryKey, tasksListQueryKey } from './use-tasks.keys';
 
-export { tasksListQueryKey };
+export { taskQueryKey, tasksListQueryKey };
 
 /**
  * Tasks data hooks. Same shape as use-members / use-projects:
@@ -58,7 +58,9 @@ export function useTask(id: string | undefined) {
     [locale],
   );
   return useQuery({
-    queryKey: [...TASKS_KEY, 'one', id, locale],
+    // See `useProject` — `id` may be undefined before the `enabled` gate; '' is
+    // a placeholder for the key shape only (the query is disabled meanwhile).
+    queryKey: taskQueryKey(id ?? '', locale),
     queryFn: () => {
       if (!id) throw new Error('useTask requires an id');
       return getTask(id);

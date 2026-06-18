@@ -23,6 +23,7 @@ import {
   Inject,
   Injectable,
   Logger,
+  Optional,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -37,6 +38,7 @@ import {
 import { EMAIL_PROVIDER } from '../members/invite-email';
 import { notificationLink } from '../notifications/notification-links';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
+import { StatsCacheService } from '../projects/stats-cache.service';
 
 import { notifyAfterSign } from './signature-link-delivery';
 import { SignatureTokenService } from './signature-token.service';
@@ -80,6 +82,11 @@ export class PublicSignService {
     @Inject(STORAGE_PROVIDER) private readonly storage: IStorageProvider,
     @Inject(EMAIL_PROVIDER) private readonly email: IEmailProvider,
     private readonly notifications: NotificationsProducerService,
+    // E2 Wave-0 PERF — OPTIONAL stats cache. A resident sign flips a request to
+    // 'signed' and may flip an apartment to consented, so it invalidates the
+    // org's stats. Optional so signing specs that `new PublicSignService(...)`
+    // without it still work (no-op invalidation).
+    @Optional() private readonly statsCache?: StatsCacheService,
   ) {}
 
   /** GET /sign/:token — preview. Loads document + owner names + mints a
@@ -493,6 +500,21 @@ export class PublicSignService {
           },
         };
       });
+
+      // E2 Wave-0 PERF — the sign just changed consent (a request flipped to
+      // 'signed', possibly tipping an apartment to consented). Invalidate the
+      // org's stats epoch so the board/KPIs recompute. Best-effort: a cache
+      // blip must never fail the resident's committed sign.
+      if (this.statsCache) {
+        try {
+          await this.statsCache.invalidateOrg(result.orgId);
+        } catch (e: unknown) {
+          this.logger.warn(
+            `[sign] stats-cache invalidate failed (org=${result.orgId}): ` +
+              `${e instanceof Error ? e.message : 'unknown'}`,
+          );
+        }
+      }
 
       // T5.7 — post-sign notifications. NEVER fails the resident's
       // sign call; individual failures are logged + swallowed.

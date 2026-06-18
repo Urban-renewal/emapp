@@ -14,6 +14,16 @@ export class FakeCacheProvider implements ICacheProvider {
     return entry.value as T;
   }
 
+  async getMany<T>(keys: string[]): Promise<Map<string, T>> {
+    const out = new Map<string, T>();
+    const now = Date.now();
+    for (const key of keys) {
+      const entry = this.store.get(key);
+      if (entry && entry.expiresAt >= now) out.set(key, entry.value as T);
+    }
+    return out;
+  }
+
   async set<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
     this.store.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000 });
   }

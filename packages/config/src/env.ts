@@ -44,6 +44,10 @@ export const serverEnv = createEnv({
      *  service + DTO + D.21 `withBootstrap` are all RETAINED, just unreachable
      *  while this is off. See docs/decision-records/disable-public-signup.md. */
     PUBLIC_SIGNUP_ENABLED: z.string().default('0'),
+    /** Global campaign-send kill-switch (E2 Wave-0 N15). OPT-OUT: campaign
+     *  fan-out is ENABLED by default; set to '0' or 'false' to disable the
+     *  project-wide signature-campaign send (operational lever, no redeploy). */
+    CAMPAIGN_SEND_ENABLED: z.string().default('1'),
     PORT_API: z.coerce.number().default(3000),
     PORT_WEB: z.coerce.number().default(3001),
   },

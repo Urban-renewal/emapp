@@ -13,6 +13,7 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
+import { NoValidation } from '../../common/pipes/zod-validation.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 
 import { AuthService } from './auth.service';
@@ -105,6 +106,8 @@ export class AuthController {
   // per ~15 min) but blocks runaway loops at the route level. Stricter
   // than `login`'s 10/min — refresh is invoked transparently on every
   // page load + xhr.
+  // S0-SEC opt-out: no client body — reads only the httpOnly refresh cookie.
+  @NoValidation()
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Public()
   @Post('refresh')
@@ -157,6 +160,8 @@ export class AuthController {
     return { data: { ok: true } };
   }
 
+  // S0-SEC opt-out: no client body — acts on the authenticated session only.
+  @NoValidation()
   @UseGuards(AuthGuard)
   @Post('logout')
   @HttpCode(200)

@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 
 import { HealthController } from './app.controller';
 import { ConfigurableThrottlerGuard } from './common/guards/throttler.guard';
 import { IdempotencyInterceptor } from './common/idempotency/idempotency.interceptor';
+import { GlobalZodValidationPipe } from './common/pipes/global-zod-validation.pipe';
 import { LOG_REDACT } from './logging/log-redact';
 import { ApartmentsModule } from './modules/apartments/apartments.module';
 import { AuditModule } from './modules/audit/audit.module';
@@ -132,6 +133,12 @@ import { QueueModule } from './queue/queue.module';
   // Rate limiting ENFORCED globally; the configurable guard adds a
   // prod-safe, env-gated per-request bypass for the conformance suite.
   providers: [
+    // S0-SEC — global input-validation backstop. Fail-closed NUL/invalid-UTF-8
+    // reject on EVERY body/query/param at one choke-point (previously opt-in
+    // only). Schema validation stays per-route (ZodValidationPipe / @ZodBody /
+    // @ZodQuery); enforcement that every body/query is guarded is the static
+    // CI guard `input-validation-coverage.spec.ts`.
+    { provide: APP_PIPE, useClass: GlobalZodValidationPipe },
     { provide: APP_GUARD, useClass: ConfigurableThrottlerGuard },
     // Optional-but-honoured Idempotency-Key on mutating POSTs (D.16-safe
     // replay, concurrency-correct). Global; no-ops unless the header is

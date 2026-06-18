@@ -38,6 +38,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { and, eq, gt, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
@@ -53,6 +54,7 @@ import { getOrgSettings } from '../../common/org-settings.resolver';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { SMS_PROVIDER } from '../auth/tenant/otp.service';
 import { EMAIL_PROVIDER } from '../members/invite-email';
+import { StatsCacheService } from '../projects/stats-cache.service';
 
 import { deliverSignatureLink } from './signature-link-delivery';
 import { SignatureTokenService } from './signature-token.service';
@@ -89,7 +91,26 @@ export class SignatureRequestsService {
     private readonly tokenService: SignatureTokenService,
     @Inject(EMAIL_PROVIDER) private readonly email: IEmailProvider,
     @Inject(SMS_PROVIDER) private readonly sms: ISMSProvider,
+    // E2 Wave-0 PERF — OPTIONAL stats cache. Creating/cancelling/bulk-sending
+    // signature requests changes pending/signed counts that feed orgStats +
+    // signatureProgress, so these writes invalidate the org's stats epoch.
+    // Optional so specs that `new SignatureRequestsService(...)` without it
+    // still construct (no-op invalidation).
+    @Optional() private readonly statsCache?: StatsCacheService,
   ) {}
+
+  /** Best-effort org-stats invalidation after a request write. Never throws
+   *  into the write path; no-op when the cache isn't wired. */
+  private async invalidateStats(orgId: string): Promise<void> {
+    if (!this.statsCache) return;
+    try {
+      await this.statsCache.invalidateOrg(orgId);
+    } catch (e: unknown) {
+      this.logger.warn(
+        `stats-cache invalidate failed (org=${orgId}): ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+    }
+  }
 
   /** Validate the document is visible in the manager's org and not
    *  archived. Returns the row or throws no-oracle 404. */
@@ -365,6 +386,10 @@ export class SignatureRequestsService {
       { userId: user.sub },
     );
 
+    // A new pending request bumps signaturesPending (orgStats +
+    // signatureProgress). Invalidate after the insert committed.
+    await this.invalidateStats(user.orgId);
+
     const signUrl = `${PUBLIC_APP_URL}/sign/${token}`;
 
     // S6 delivery — fires AFTER the tx commits so a slow Resend call
@@ -539,6 +564,12 @@ export class SignatureRequestsService {
       },
       { userId: user.sub },
     );
+
+    // Any 'created' bundle inserted a pending request → bump the org's stats.
+    // (createCampaign fans out through here, so campaigns are covered too.)
+    if (prepared.bundles.some((b) => b.outcome === 'created')) {
+      await this.invalidateStats(user.orgId);
+    }
 
     // Deliver OUTSIDE the gate/insert tx, bounded-concurrency. Each created
     // owner's PII is decrypted in its OWN short withTenant tx, so a corrupt-
@@ -1277,6 +1308,9 @@ export class SignatureRequestsService {
       },
       { userId: user.sub },
     );
+    // A cancel drops a pending request from the counts (idempotent re-cancel is
+    // a harmless extra bump). Invalidate the org's stats.
+    await this.invalidateStats(user.orgId);
     return this.toWire(row);
   }
 

@@ -6,6 +6,7 @@ import { AuthModule } from '../auth/auth.module';
 import { STORAGE_PROVIDER, storageProviderFactory } from '../documents/storage';
 import { EMAIL_PROVIDER, emailProviderFactory } from '../members/invite-email';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ProjectsModule } from '../projects/projects.module';
 
 import { PdfSignedDocumentRenderer } from './pdf-signed-document.renderer';
 import { PublicSignController } from './public-sign.controller';
@@ -33,6 +34,9 @@ import { SIGNED_DOCUMENT_RENDERER } from './signed-document.types';
   imports: [
     AuthModule, // brings AuthGuard, TenantGuard, JwtService(JWT_SECRET) for Manager auth
     NotificationsModule, // exports NotificationsProducerService (post-sign in-app notify)
+    // E2 Wave-0 PERF — exports StatsCacheService so a sign/create/cancel
+    // (which change consent counts) invalidates the org's stats epoch.
+    ProjectsModule,
     JwtModule.register({
       // Module-level secret is unused for SignatureTokenService (it
       // passes the secret in each call's options) but JwtModule requires

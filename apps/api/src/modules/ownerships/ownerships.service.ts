@@ -23,6 +23,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { and, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 
@@ -34,6 +35,7 @@ import {
   keysetOrderBy,
 } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { StatsCacheService } from '../projects/stats-cache.service';
 
 export interface OwnershipListPage {
   data: Ownership[];
@@ -149,8 +151,23 @@ const PHONE_MASK = sql<
  */
 @Injectable()
 export class OwnershipsService {
+  // E2 Wave-0 PERF — OPTIONAL stats cache (the many `new OwnershipsService()`
+  // specs pass nothing → no-op invalidation; the wired app injects it).
+  constructor(@Optional() private readonly statsCache?: StatsCacheService) {}
+
   private requireManager(user: AccessTokenPayload): void {
     if (user.role !== 'manager') throw FORBIDDEN;
+  }
+
+  /** Best-effort org-stats invalidation after a consent-affecting write.
+   *  Never throws into the write path; no-op when the cache isn't wired. */
+  private async invalidateStats(orgId: string): Promise<void> {
+    if (!this.statsCache) return;
+    try {
+      await this.statsCache.invalidateOrg(orgId);
+    } catch {
+      /* cache hint only — a missed bump self-heals at the TTL ceiling */
+    }
   }
 
   private async assertApartmentVisible(
@@ -324,7 +341,7 @@ export class OwnershipsService {
   ): Promise<Ownership[]> {
     this.requireManager(user);
     try {
-      return await withTenant(
+      const result = await withTenant(
         user.orgId,
         async (tx) => {
           await this.assertApartmentVisible(tx, user, apartmentId);
@@ -391,6 +408,10 @@ export class OwnershipsService {
         },
         { userId: user.sub },
       );
+      // The ownership set just changed this apartment's consent denominator/
+      // numerator → invalidate the org's stats (board + KPIs).
+      await this.invalidateStats(user.orgId);
+      return result;
     } catch (e) {
       // Deferred trigger backstop: its COMMIT-time RAISE must surface as a
       // clean 400, never a 500 (it should not fire — we pre-validate).

@@ -28,6 +28,7 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 
@@ -38,6 +39,8 @@ import {
   keysetOrderBy,
 } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
+
+import { StatsCacheService } from './stats-cache.service';
 
 export interface ProjectListPage {
   data: ProjectListItem[];
@@ -179,8 +182,34 @@ function collectDuplicateNumbers(nums: readonly string[]): string[] {
  */
 @Injectable()
 export class ProjectsService {
+  /**
+   * E2 Wave-0 PERF — the read-through stats cache is OPTIONAL by construction.
+   * When DI provides it (the wired app path), `orgStats`/`signatureProgress`
+   * are cache-read-through and writes invalidate the org's epoch. When it is
+   * ABSENT (`new ProjectsService()` in the many unit specs), the service
+   * computes fresh every call — identical to the pre-cache behaviour, so no
+   * spec needs the cache stood up. `@Optional()` makes Nest inject `undefined`
+   * rather than fail when no provider is registered.
+   */
+  constructor(@Optional() private readonly statsCache?: StatsCacheService) {}
+
   private requireManager(user: AccessTokenPayload): void {
     if (user.role !== 'manager') throw FORBIDDEN;
+  }
+
+  /**
+   * Best-effort org-wide stats invalidation after a consent-affecting write.
+   * Never throws into the write path — a cache blip must not fail the actual
+   * mutation (which already committed). No-op when the cache isn't wired.
+   */
+  private async invalidateStats(orgId: string): Promise<void> {
+    if (!this.statsCache) return;
+    try {
+      await this.statsCache.invalidateOrg(orgId);
+    } catch {
+      // Swallow: the bump is a cache hint, not a correctness gate for the
+      // write. A missed bump self-heals at the STATS_TTL_SECONDS ceiling.
+    }
   }
 
   async list(
@@ -353,11 +382,38 @@ export class ProjectsService {
    * project's own target/derived percentages leave this method.
    */
   async signatureProgress(user: AccessTokenPayload, projectId: string): Promise<SignatureProgress> {
+    // E2 Wave-0 PERF — read-through cache (tenant-scoped key: org_id + epoch +
+    // projectId). The board VALUE is per-project, identical for every caller
+    // who is allowed to see it (it's counts, not caller-specific), so it is
+    // safe to share across callers — BUT visibility is per-caller. We therefore
+    // ALWAYS run the no-oracle visibility gate first (a cache HIT must NEVER
+    // bypass authz: an unassigned agent who guessed a projectId must still get
+    // 404, not a leaked board), then cache ONLY the heavy aggregate compute.
+    if (this.statsCache) {
+      await withTenant(user.orgId, (tx) => this.assertProjectVisible(tx, user, projectId), {
+        userId: user.sub,
+      });
+      return this.statsCache.readThrough(
+        user.orgId,
+        this.statsCache.signatureProgressKey(projectId),
+        () => this.computeSignatureProgress(user, projectId),
+      );
+    }
+    return this.computeSignatureProgress(user, projectId);
+  }
+
+  private async computeSignatureProgress(
+    user: AccessTokenPayload,
+    projectId: string,
+  ): Promise<SignatureProgress> {
     return withTenant(
       user.orgId,
       async (tx) => {
         // No-oracle visibility gate, INSIDE this tx (was a separate get() tx
         // + 5 thrown-away stats subqueries). Throws NOT_FOUND when invisible.
+        // (On the cached path the wrapper above already ran this; keeping it
+        // here means the uncached path and the cache-MISS compute are identical
+        // — the gate is cheap and idempotent.)
         await this.assertProjectVisible(tx, user, projectId);
 
         const result = await tx.execute(sql`
@@ -535,6 +591,24 @@ export class ProjectsService {
    * definition of "a project's signature docs", not a copy. Still one round-trip.
    */
   async orgStats(user: AccessTokenPayload): Promise<OrgStats> {
+    // E2 Wave-0 PERF — read-through cache. The KEY embeds the scope that varies
+    // the OUTPUT: an agent's counts are scoped to their assigned projects
+    // (key `agent:<userId>`); manager/viewer share the org-wide result (`all`).
+    // So an agent never reads another agent's scoped numbers, and never reads
+    // the org-wide ones — the value under each key was computed for exactly that
+    // scope. No per-caller authz gate is needed here: orgStats has no
+    // project-id input to guess (every org member may read THEIR OWN org-scoped
+    // KPI), and RLS still scopes the MISS-path compute to the caller's org.
+    if (this.statsCache) {
+      const scope = user.role === 'agent' ? { agentId: user.sub } : ('all' as const);
+      return this.statsCache.readThrough(user.orgId, this.statsCache.orgStatsKey(scope), () =>
+        this.computeOrgStats(user),
+      );
+    }
+    return this.computeOrgStats(user);
+  }
+
+  private async computeOrgStats(user: AccessTokenPayload): Promise<OrgStats> {
     return withTenant(
       user.orgId,
       async (tx) => {
@@ -582,7 +656,7 @@ export class ProjectsService {
 
   async create(user: AccessTokenPayload, input: CreateProject): Promise<Project> {
     this.requireManager(user);
-    return withTenant(
+    const created = await withTenant(
       user.orgId,
       async (tx) => {
         const [row] = await tx
@@ -757,11 +831,15 @@ export class ProjectsService {
       },
       { userId: user.sub },
     );
+    // A new project (and any wizard-created buildings/apartments) changes
+    // orgStats.activeProjects + the project's own signatureProgress denominator.
+    await this.invalidateStats(user.orgId);
+    return created;
   }
 
   async update(user: AccessTokenPayload, id: string, input: UpdateProject): Promise<Project> {
     this.requireManager(user);
-    return withTenant(
+    const updated = await withTenant(
       user.orgId,
       async (tx) => {
         const [before] = await tx.select().from(projects).where(eq(projects.id, id)).limit(1);
@@ -817,6 +895,10 @@ export class ProjectsService {
       },
       { userId: user.sub },
     );
+    // An update can change target_signature_pct (→ signatureProgress.metThreshold)
+    // or status; invalidate the org's stats so the board reflects it.
+    await this.invalidateStats(user.orgId);
+    return updated;
   }
 
   // Soft delete = archivedAt (CLAUDE.md hard rule; UI verb "ארכוב").
@@ -845,5 +927,7 @@ export class ProjectsService {
       },
       { userId: user.sub },
     );
+    // Archiving drops the project from orgStats.activeProjects.
+    await this.invalidateStats(user.orgId);
   }
 }

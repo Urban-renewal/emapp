@@ -103,12 +103,94 @@
     --r-xl: 16px;
     --r-2xl: 20px;
     --row-h: 44px;
-    --pad: 16px;
 
     /* Partner primary. Decoupled from shadcn --primary on purpose —
      * shadcn keeps its teal (HSL 172 83% 26%); partner reskins use
      * navy-900. Layers don't fight. */
     --primary-partner: var(--navy-900);
+
+    /* ════════════════════════════════════════════════════════════════
+     * TIER 2 — SEMANTIC ALIASES (E2.0, plan §4 Wave-0 + visual-system §3.2)
+     * The stable contract components consume. Each = var(<Tier-1 token>):
+     * meaning lives here, raw values live in the Tier-1 ramps above. A
+     * re-skin (or per-org branding / dark mode) re-points these, never
+     * the component. Mapped onto the EXISTING palette — no new colors.
+     * ════════════════════════════════════════════════════════════════ */
+
+    /* brand — D.5 resolves the navy/teal fork to navy-900 (one source). */
+    --brand: var(--navy-900);
+    --brand-hover: var(--navy-800);
+    --brand-fg: #ffffff; /* AA on navy-900 (#0b2545) — very high contrast */
+    --focus-ring: var(--navy-500);
+
+    /* surfaces & text — formalize the existing --bg-* and --text- tokens as
+     * Tier 2. --card is the surface a card/section sits on (fixes the dead
+     * `bg-card`: 64 sites referenced a token that never existed). */
+    --surface: var(--bg-surface);
+    --surface-raised: var(--bg-surface);
+    --surface-subtle: var(--bg-subtle);
+    --surface-app: var(--bg-app);
+    --surface-hover: var(--bg-hover);
+    --card: var(--bg-surface);
+    --card-fg: var(--text);
+    /* --text / --text-muted / --text-soft already declared above — Tier 2. */
+
+    /* status — the ONE place status color is defined (the redesign routes
+     * every status pill through here; kills the default-palette leak). */
+    --success: var(--success-600);
+    --warning: var(--warning-600);
+    --danger: var(--danger-600);
+    --info: var(--navy-700);
+    --neutral: var(--ink-500);
+    --status-success-bg: var(--success-50);
+    --status-success-fg: var(--success-700);
+    --status-warning-bg: var(--warning-50);
+    --status-warning-fg: var(--warning-700);
+    --status-danger-bg: var(--danger-50);
+    --status-danger-fg: var(--danger-700);
+    --status-info-bg: var(--navy-50);
+    --status-info-fg: var(--navy-800);
+    --status-neutral-bg: var(--ink-100);
+    --status-neutral-fg: var(--ink-700);
+
+    /* spacing — NEW scale (visual-system §2.4). 4px base. `--pad` keeps
+     * its 16px value as a back-compat alias onto --space-4. */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-10: 40px;
+    --space-12: 48px;
+    --space-card: var(--space-5);
+    --pad: var(--space-4);
+
+    /* type — NEW size/line tokens (visual-system §2.2), Hebrew-first on
+     * Heebo @ 400/500/700 (loaded via next/font; do not add weights). */
+    --text-display-size: 28px;
+    --text-display-lh: 36px;
+    --text-h1-size: 20px;
+    --text-h1-lh: 28px;
+    --text-h2-size: 16px;
+    --text-h2-lh: 24px;
+    --text-h3-size: 15px;
+    --text-h3-lh: 22px;
+    --text-body-size: 14px;
+    --text-body-lh: 22px;
+    --text-label-size: 13px;
+    --text-label-lh: 18px;
+    --text-caption-size: 12px;
+    --text-caption-lh: 16px;
+    --weight-regular: 400;
+    --weight-medium: 500;
+    --weight-bold: 700;
+
+    /* radius — semantic aliases onto the --r-* ramp. Cards = --r-lg (12). */
+    --radius-card: var(--r-lg);
+    --radius-control: var(--r-md);
+    --radius-pill: 999px;
   }
 
   .dark {

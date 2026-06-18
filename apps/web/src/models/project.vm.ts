@@ -24,8 +24,8 @@ export interface ProjectViewModel {
   type: ProjectType;
   /** Hebrew display label for `Project.status` (D.18 LAW). */
   statusLabel: string;
-  /** Locked color palette per status — neutral / informational / positive / negative. */
-  statusColor: 'gray' | 'amber' | 'emerald' | 'red';
+  /** Locked semantic intent per status — neutral / informational / positive / negative. */
+  intent: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
   /** Raw status kept on the VM for branching in components / filters. */
   status: ProjectStatus;
   /** Required owner-CONSENT threshold (%) for this project — defaulted from the

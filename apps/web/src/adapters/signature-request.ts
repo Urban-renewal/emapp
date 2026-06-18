@@ -27,11 +27,11 @@ const STATUS_LABELS_EN: Record<SignatureRequestStatus, string> = {
   expired: 'Expired',
 };
 
-const STATUS_COLORS: Record<SignatureRequestStatus, SignatureRequestViewModel['statusColor']> = {
-  pending: 'amber',
-  signed: 'emerald',
-  cancelled: 'gray',
-  expired: 'red',
+const STATUS_INTENTS: Record<SignatureRequestStatus, SignatureRequestViewModel['intent']> = {
+  pending: 'warning',
+  signed: 'success',
+  cancelled: 'neutral',
+  expired: 'danger',
 };
 
 const TERMINAL_STATES = new Set<SignatureRequestStatus>(['signed', 'cancelled']);
@@ -53,7 +53,7 @@ export function toSignatureRequestViewModel(
     ownerId: r.ownerId,
     status: r.status,
     statusLabel: labels[r.status],
-    statusColor: STATUS_COLORS[r.status],
+    intent: STATUS_INTENTS[r.status],
     isCancellable: CANCELLABLE_STATES.has(r.status) && !isExpired,
     isTerminal: TERMINAL_STATES.has(r.status),
     isExpired,
@@ -75,6 +75,6 @@ export function toSignatureRequestViewModels(
 
 export const SIGNATURE_REQUEST_STATUS_LABELS_HE = STATUS_LABELS_HE;
 export const SIGNATURE_REQUEST_STATUS_LABELS_EN = STATUS_LABELS_EN;
-export const SIGNATURE_REQUEST_STATUS_COLORS = STATUS_COLORS;
+export const SIGNATURE_REQUEST_STATUS_INTENTS = STATUS_INTENTS;
 export const SIGNATURE_REQUEST_TERMINAL_STATES = TERMINAL_STATES;
 export const SIGNATURE_REQUEST_CANCELLABLE_STATES = CANCELLABLE_STATES;

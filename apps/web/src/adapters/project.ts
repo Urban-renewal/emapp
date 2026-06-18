@@ -45,13 +45,13 @@ const STATUS_LABELS: Record<ProjectStatus, string> = {
   cancelled: 'בוטל',
 };
 
-const STATUS_COLORS: Record<ProjectStatus, ProjectViewModel['statusColor']> = {
-  planning: 'gray',
-  gathering_signatures: 'amber',
-  approved: 'emerald',
-  in_construction: 'emerald',
-  completed: 'gray',
-  cancelled: 'red',
+const STATUS_INTENTS: Record<ProjectStatus, ProjectViewModel['intent']> = {
+  planning: 'neutral',
+  gathering_signatures: 'warning',
+  approved: 'success',
+  in_construction: 'success',
+  completed: 'neutral',
+  cancelled: 'danger',
 };
 
 export function toProjectViewModel(
@@ -72,7 +72,7 @@ export function toProjectViewModel(
       p.type === 'other' && p.typeLabel ? stripBidiOverrides(p.typeLabel) : TYPE_LABELS[p.type],
     status: p.status,
     statusLabel: STATUS_LABELS[p.status],
-    statusColor: STATUS_COLORS[p.status],
+    intent: STATUS_INTENTS[p.status],
     targetConsentPct: p.targetSignaturePct ?? null,
     // Owner-approved staged overlay (Gate-6). Already shape-validated by the
     // wire Zod parse; null → empty array so components iterate uniformly. The
@@ -144,18 +144,18 @@ export function toSignatureProgressViewModel(p: SignatureProgress): SignaturePro
  * Phase-6 "תמונת מצב" — per-apartment drill-down adapter (S5d, read-only). Pure
  * function. Counts pass through verbatim; the human designation ("דירה {number} ·
  * קומה {floor}" when a floor is present, else "דירה {number}") and the status
- * chip color (green=consented / amber=partial / gray=none) are derived ONCE here
+ * chip intent (success=consented / warning=partial / neutral=none) are derived ONCE here
  * so the list component stays presentational. The wire carries NO PII — only the
  * apartment designation + counts + status. `number` is system-controlled (not
  * user free text) but bidi-stripped defensively, mirroring the rest of this file.
  */
-const APARTMENT_STATUS_COLORS: Record<
+const APARTMENT_STATUS_INTENTS: Record<
   ApartmentSignatureProgress['status'],
-  ApartmentSignatureProgressViewModel['statusColor']
+  ApartmentSignatureProgressViewModel['intent']
 > = {
-  consented: 'green',
-  partial: 'amber',
-  none: 'gray',
+  consented: 'success',
+  partial: 'warning',
+  none: 'neutral',
 };
 
 export function toApartmentSignatureProgressViewModel(
@@ -174,7 +174,7 @@ export function toApartmentSignatureProgressViewModel(
     signedOwners: a.signedOwners,
     status: a.status,
     designation,
-    statusColor: APARTMENT_STATUS_COLORS[a.status],
+    intent: APARTMENT_STATUS_INTENTS[a.status],
   };
 }
 
@@ -187,4 +187,4 @@ export function toApartmentSignatureProgressViewModels(
 /** Exported for adapter tests + future Storybook stories. */
 export const PROJECT_TYPE_LABELS = TYPE_LABELS;
 export const PROJECT_STATUS_LABELS = STATUS_LABELS;
-export const PROJECT_STATUS_COLORS = STATUS_COLORS;
+export const PROJECT_STATUS_INTENTS = STATUS_INTENTS;

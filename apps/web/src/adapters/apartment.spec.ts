@@ -8,7 +8,7 @@ import { ApartmentSchema, ApartmentStatusEnum } from '@emapp/shared-types';
 import { describe, expect, it } from 'vitest';
 
 import {
-  APARTMENT_STATUS_COLORS,
+  APARTMENT_STATUS_INTENTS,
   APARTMENT_STATUS_LABELS_EN,
   APARTMENT_STATUS_LABELS_HE,
   toApartmentViewModel,
@@ -51,11 +51,13 @@ describe('toApartmentViewModel', () => {
     expect(k).toEqual([...ApartmentStatusEnum.options].sort());
   });
 
-  it('3) colors cover every status; only the locked 4 palette tokens', () => {
-    const k = Object.keys(APARTMENT_STATUS_COLORS).sort();
+  it('3) intents cover every status; only the locked semantic intent set', () => {
+    const k = Object.keys(APARTMENT_STATUS_INTENTS).sort();
     expect(k).toEqual([...ApartmentStatusEnum.options].sort());
     for (const status of ApartmentStatusEnum.options) {
-      expect(['gray', 'amber', 'emerald', 'red']).toContain(APARTMENT_STATUS_COLORS[status]);
+      expect(['success', 'warning', 'danger', 'info', 'neutral']).toContain(
+        APARTMENT_STATUS_INTENTS[status],
+      );
     }
   });
 
@@ -82,15 +84,15 @@ describe('toApartmentViewModel', () => {
     ).toBe(true);
   });
 
-  it('8) status pass-through + label/color from the active locale', () => {
+  it('8) status pass-through + label/intent from the active locale', () => {
     const signedHe = toApartmentViewModel(baseApt({ status: 'signed' }));
     expect(signedHe.status).toBe('signed');
     expect(signedHe.statusLabel).toBe('חתום');
-    expect(signedHe.statusColor).toBe('emerald');
+    expect(signedHe.intent).toBe('success');
 
     const refusedEn = toApartmentViewModel(baseApt({ status: 'refused' }), 'en');
     expect(refusedEn.statusLabel).toBe('Refused');
-    expect(refusedEn.statusColor).toBe('red');
+    expect(refusedEn.intent).toBe('danger');
   });
 
   it('9) toApartmentViewModels preserves order', () => {

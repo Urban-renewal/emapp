@@ -29,7 +29,7 @@ export interface PortalProgressViewModel {
   projectId: string;
   projectName: string;
   statusLabel: string;
-  statusColor: 'gray' | 'amber' | 'emerald' | 'red';
+  intent: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
   signaturesSigned: number;
   signaturesPending: number;
   signaturesTotal: number;
@@ -41,8 +41,8 @@ export interface PortalApartmentRowViewModel {
   apartmentId: string;
   /** Display label like "דירה 4 · קומה 2" / "Apt 4 · Floor 2". */
   apartmentDesignation: string;
-  /** Status badge color picked from the locked palette. */
-  statusColor: 'gray' | 'amber' | 'emerald' | 'red';
+  /** Status badge intent picked from the locked semantic set. */
+  intent: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
   statusLabel: string;
   unitTypeLabel: string;
   entranceLabel: string | null;
@@ -58,7 +58,7 @@ export interface PortalApartmentRowViewModel {
     name: string;
     typeLabel: string;
     statusLabel: string;
-    statusColor: 'gray' | 'amber' | 'emerald' | 'red';
+    intent: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
   };
   ownershipPctLabel: string;
   ownershipRoleLabel: string | null;
@@ -80,7 +80,7 @@ export interface PortalSignatureViewModel {
   documentName: string;
   status: 'pending' | 'signed' | 'cancelled' | 'expired';
   statusLabel: string;
-  statusColor: 'amber' | 'emerald' | 'gray' | 'red';
+  intent: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
   expiresRelative: string;
   /** True when status==='pending' AND expiresAt < now. UI shows a
    *  warning chip in that case. */

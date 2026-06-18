@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   SIGNATURE_REQUEST_CANCELLABLE_STATES,
-  SIGNATURE_REQUEST_STATUS_COLORS,
+  SIGNATURE_REQUEST_STATUS_INTENTS,
   SIGNATURE_REQUEST_STATUS_LABELS_EN,
   SIGNATURE_REQUEST_STATUS_LABELS_HE,
   SIGNATURE_REQUEST_TERMINAL_STATES,
@@ -54,8 +54,8 @@ describe('toSignatureRequestViewModel — D.12 3-state machine', () => {
     expect(k).toEqual([...SignatureRequestStatusEnum.options].sort());
   });
 
-  it('3) STATUS_COLORS covers every option', () => {
-    const k = Object.keys(SIGNATURE_REQUEST_STATUS_COLORS).sort();
+  it('3) STATUS_INTENTS covers every option', () => {
+    const k = Object.keys(SIGNATURE_REQUEST_STATUS_INTENTS).sort();
     expect(k).toEqual([...SignatureRequestStatusEnum.options].sort());
   });
 

@@ -203,7 +203,7 @@ export default function MemberDetailPage({ params }: PageProps) {
             <NameDisplay name={member.email} />
           </p>
           <div className="flex items-center gap-2">
-            <StatusBadge color={member.stateColor}>{member.stateLabel}</StatusBadge>
+            <StatusBadge intent={member.stateColor}>{member.stateLabel}</StatusBadge>
             {member.isPrimary && (
               <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
                 {t('primary')}

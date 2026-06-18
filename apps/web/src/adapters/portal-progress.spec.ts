@@ -68,9 +68,9 @@ describe('toPortalProgressViewModel — aggregate %', () => {
     expect(vm.signedPct).toBe(0);
   });
 
-  it('maps status → label + color (he)', () => {
+  it('maps status → label + intent (he)', () => {
     const vm = toPortalProgressViewModel(progress({ status: 'gathering_signatures' }), 'he');
     expect(vm.statusLabel).toBe('איסוף חתימות');
-    expect(vm.statusColor).toBe('amber');
+    expect(vm.intent).toBe('warning');
   });
 });

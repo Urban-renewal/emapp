@@ -30,9 +30,11 @@
  * 12, `tenants/[id]/users` 10, …), every entity "new" page (`members/new` 3),
  * and the settings/member + suspension panels (`member-overrides-panel` 4,
  * `tenant-suspension-panel` 5) ALL included, so the floor is the TRUE count,
- * not a partial-tree under-measure. True count: **149 occurrences across 34
- * files** — status-badge (8) + button.tsx (2) being the two `components/ui/*`
- * leaks E2.0b will retire; the bulk is in `app/**` pages. Ratchets DOWN only.
+ * not a partial-tree under-measure. Original count was 149 across 34 files;
+ * E2.0b re-homed `status-badge.tsx` (-8) + `button.tsx` destructive (-2)
+ * onto the EMAPP semantic tokens, lowering the floor to **139 occurrences
+ * across 32 files** (both `components/ui/*` leaks fully retired). The bulk
+ * of the remaining debt is in `app/**` pages. Ratchets DOWN only.
  *
  * HOW TO LOWER THE BASELINE (do this whenever you re-home a component onto the
  * EMAPP semantic classes): run
@@ -51,8 +53,8 @@ import { describe, expect, it } from 'vitest';
 
 const SRC = join(__dirname);
 
-const BASELINE_OCCURRENCES = 149;
-const BASELINE_FILES = 34;
+const BASELINE_OCCURRENCES = 139;
+const BASELINE_FILES = 32;
 
 /**
  * Default Tailwind palette class: a color-bearing utility prefix

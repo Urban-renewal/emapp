@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import {
-  PROJECT_STATUS_COLORS,
+  PROJECT_STATUS_INTENTS,
   PROJECT_STATUS_LABELS,
   PROJECT_TYPE_LABELS,
 } from '@/adapters/project';
@@ -99,7 +99,7 @@ export default function ContractorSharePage() {
             primary question; the BE already returns it, the FE just dropped it. */}
         {project.data && (
           <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge color={PROJECT_STATUS_COLORS[project.data.project.status]}>
+            <StatusBadge intent={PROJECT_STATUS_INTENTS[project.data.project.status]}>
               {PROJECT_STATUS_LABELS[project.data.project.status]}
             </StatusBadge>
             <span className="text-sm text-muted-foreground">

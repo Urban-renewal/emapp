@@ -126,7 +126,7 @@ function vm(overrides: Partial<Record<string, unknown>> = {}): Record<string, un
     id: '11111111-1111-4111-8111-111111111111',
     status: 'pending',
     statusLabel: 'ממתין',
-    statusColor: 'amber',
+    intent: 'warning',
     isExpired: false,
     isCancellable: true,
     createdRelative: 'לפני שעה',

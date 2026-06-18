@@ -141,7 +141,7 @@ export default function SignatureRequestDetailPage() {
         <div className="space-y-2">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold">{t('detailTitle')}</h1>
-            <StatusBadge color={data.statusColor}>{data.statusLabel}</StatusBadge>
+            <StatusBadge intent={data.intent}>{data.statusLabel}</StatusBadge>
             {data.isExpired && (
               <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
                 {t('expired')}

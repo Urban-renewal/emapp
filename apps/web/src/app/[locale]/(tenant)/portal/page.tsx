@@ -274,7 +274,7 @@ export default function TenantPortalPage() {
                   <h3 className="text-base font-semibold" style={{ color: 'var(--text)' }}>
                     <NameDisplay name={row.apartmentDesignation} />
                   </h3>
-                  <StatusBadge color={row.statusColor}>{row.statusLabel}</StatusBadge>
+                  <StatusBadge intent={row.intent}>{row.statusLabel}</StatusBadge>
                 </div>
 
                 <div
@@ -329,9 +329,7 @@ export default function TenantPortalPage() {
                   className="flex"
                   style={{ paddingTop: 8, borderTop: '1px solid var(--border)' }}
                 >
-                  <StatusBadge color={row.project.statusColor}>
-                    {row.project.statusLabel}
-                  </StatusBadge>
+                  <StatusBadge intent={row.project.intent}>{row.project.statusLabel}</StatusBadge>
                 </div>
               </div>
             ))}
@@ -418,7 +416,7 @@ export default function TenantPortalPage() {
                   <h3 className="text-base font-semibold" style={{ color: 'var(--text)' }}>
                     <NameDisplay name={p.projectName} />
                   </h3>
-                  <StatusBadge color={p.statusColor}>{p.statusLabel}</StatusBadge>
+                  <StatusBadge intent={p.intent}>{p.statusLabel}</StatusBadge>
                 </div>
                 {/* Aggregate progress bar — counts only, no resident identities. */}
                 <div
@@ -546,7 +544,7 @@ export default function TenantPortalPage() {
                       <NameDisplay name={s.documentName} />
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <StatusBadge color={s.statusColor}>{s.statusLabel}</StatusBadge>
+                      <StatusBadge intent={s.intent}>{s.statusLabel}</StatusBadge>
                       {s.isExpired && (
                         <span className="badge badge-danger">{t('signatures.expired')}</span>
                       )}

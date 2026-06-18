@@ -223,7 +223,7 @@ export function MembersListClient() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <StatusBadge color={m.stateColor}>{m.stateLabel}</StatusBadge>
+                  <StatusBadge intent={m.stateColor}>{m.stateLabel}</StatusBadge>
                   {m.isPrimary && <span className="badge badge-info">{t('primary')}</span>}
                 </div>
 

@@ -52,15 +52,14 @@ const APARTMENT_STATUS_EN: Record<ApartmentStatus, string> = {
   unreachable: 'Unreachable',
 };
 
-const APARTMENT_STATUS_COLORS: Record<ApartmentStatus, PortalApartmentRowViewModel['statusColor']> =
-  {
-    pending: 'gray',
-    contacted: 'amber',
-    meeting: 'amber',
-    signed: 'emerald',
-    refused: 'red',
-    unreachable: 'red',
-  };
+const APARTMENT_STATUS_INTENTS: Record<ApartmentStatus, PortalApartmentRowViewModel['intent']> = {
+  pending: 'neutral',
+  contacted: 'warning',
+  meeting: 'warning',
+  signed: 'success',
+  refused: 'danger',
+  unreachable: 'danger',
+};
 
 const PROJECT_TYPE_HE: Record<ProjectType, string> = {
   tama38_1: 'תמ"א 38/1',
@@ -95,16 +94,16 @@ const PROJECT_STATUS_EN: Record<ProjectStatus, string> = {
   cancelled: 'Cancelled',
 };
 
-const PROJECT_STATUS_COLORS: Record<
+const PROJECT_STATUS_INTENTS: Record<
   ProjectStatus,
-  PortalApartmentRowViewModel['project']['statusColor']
+  PortalApartmentRowViewModel['project']['intent']
 > = {
-  planning: 'gray',
-  gathering_signatures: 'amber',
-  approved: 'emerald',
-  in_construction: 'emerald',
-  completed: 'gray',
-  cancelled: 'red',
+  planning: 'neutral',
+  gathering_signatures: 'warning',
+  approved: 'success',
+  in_construction: 'success',
+  completed: 'neutral',
+  cancelled: 'danger',
 };
 
 const UNIT_TYPE_HE: Record<string, string> = {
@@ -139,14 +138,14 @@ const SIG_STATUS_EN: Record<PortalSignatureViewModel['status'], string> = {
   expired: 'Expired',
 };
 
-const SIG_STATUS_COLORS: Record<
+const SIG_STATUS_INTENTS: Record<
   PortalSignatureViewModel['status'],
-  PortalSignatureViewModel['statusColor']
+  PortalSignatureViewModel['intent']
 > = {
-  pending: 'amber',
-  signed: 'emerald',
-  cancelled: 'gray',
-  expired: 'red',
+  pending: 'warning',
+  signed: 'success',
+  cancelled: 'neutral',
+  expired: 'danger',
 };
 
 // Same document-type label set as adapters/document.ts but standalone —
@@ -236,7 +235,7 @@ export function toPortalApartmentRowViewModel(
   return {
     apartmentId: row.apartment.id,
     apartmentDesignation,
-    statusColor: APARTMENT_STATUS_COLORS[row.apartment.status],
+    intent: APARTMENT_STATUS_INTENTS[row.apartment.status],
     statusLabel: aStatusLabels[row.apartment.status],
     unitTypeLabel,
     entranceLabel: row.apartment.entrance,
@@ -251,7 +250,7 @@ export function toPortalApartmentRowViewModel(
       name: stripBidiOverrides(row.project.name),
       typeLabel: pTypeLabels[row.project.type],
       statusLabel: pStatusLabels[row.project.status],
-      statusColor: PROJECT_STATUS_COLORS[row.project.status],
+      intent: PROJECT_STATUS_INTENTS[row.project.status],
     },
     ownershipPctLabel: `${row.ownership.pct}%`,
     ownershipRoleLabel,
@@ -289,7 +288,7 @@ export function toPortalSignatureViewModel(
     documentName: stripBidiOverrides(s.documentName),
     status: s.status,
     statusLabel: labels[s.status],
-    statusColor: SIG_STATUS_COLORS[s.status],
+    intent: SIG_STATUS_INTENTS[s.status],
     expiresRelative: formatRelative(s.expiresAt, locale),
     isExpired,
     createdRelative: formatRelative(s.createdAt, locale),
@@ -330,7 +329,7 @@ export function toPortalProgressViewModel(
     projectId: row.projectId,
     projectName: stripBidiOverrides(row.projectName),
     statusLabel: labels[row.status],
-    statusColor: PROJECT_STATUS_COLORS[row.status],
+    intent: PROJECT_STATUS_INTENTS[row.status],
     signaturesSigned: row.signaturesSigned,
     signaturesPending: row.signaturesPending,
     signaturesTotal: row.signaturesTotal,

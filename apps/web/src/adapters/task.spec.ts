@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 import {
   TASK_PRIORITY_LABELS_EN,
   TASK_PRIORITY_LABELS_HE,
-  TASK_STATUS_COLORS,
+  TASK_STATUS_INTENTS,
   TASK_STATUS_LABELS_EN,
   TASK_STATUS_LABELS_HE,
   toTaskAssigneeViewModel,
@@ -64,9 +64,9 @@ describe('toTaskViewModel — status enum coverage', () => {
     expect(Object.keys(TASK_STATUS_LABELS_EN).sort()).toEqual(enumKeys);
   });
 
-  it('T-4d-VM.2) status colors are confined to the locked palette', () => {
-    const allowed = ['gray', 'amber', 'emerald', 'red'];
-    for (const c of Object.values(TASK_STATUS_COLORS)) expect(allowed).toContain(c);
+  it('T-4d-VM.2) status intents are confined to the locked semantic set', () => {
+    const allowed = ['success', 'warning', 'danger', 'info', 'neutral'];
+    for (const c of Object.values(TASK_STATUS_INTENTS)) expect(allowed).toContain(c);
   });
 
   it('T-4d-VM.2b) every status renders a non-empty label in HE + EN', () => {
@@ -90,10 +90,10 @@ describe('toTaskViewModel — priority', () => {
     expect(TASK_PRIORITY_LABELS_EN[3]).toBe('High');
   });
 
-  it('T-4d-VM.3c) priority badge: only 3 → red, 1/2 → gray', () => {
-    expect(toTaskViewModel(baseTask({ priority: 1 })).priorityBadge).toBe('gray');
-    expect(toTaskViewModel(baseTask({ priority: 2 })).priorityBadge).toBe('gray');
-    expect(toTaskViewModel(baseTask({ priority: 3 })).priorityBadge).toBe('red');
+  it('T-4d-VM.3c) priority badge: only 3 → danger, 1/2 → neutral', () => {
+    expect(toTaskViewModel(baseTask({ priority: 1 })).priorityBadge).toBe('neutral');
+    expect(toTaskViewModel(baseTask({ priority: 2 })).priorityBadge).toBe('neutral');
+    expect(toTaskViewModel(baseTask({ priority: 3 })).priorityBadge).toBe('danger');
   });
 });
 

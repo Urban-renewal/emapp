@@ -24,7 +24,7 @@ export interface SignatureRequestViewModel {
   ownerId: string;
   status: SignatureRequestStatus;
   statusLabel: string;
-  statusColor: 'gray' | 'amber' | 'emerald' | 'red';
+  intent: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
   isCancellable: boolean;
   isTerminal: boolean;
   isExpired: boolean;

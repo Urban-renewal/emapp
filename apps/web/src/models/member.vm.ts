@@ -32,7 +32,7 @@ export interface MemberViewModel {
   roleLabel: string;
   state: MemberState;
   stateLabel: string;
-  stateColor: 'gray' | 'amber' | 'emerald' | 'red';
+  stateColor: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
   isPrimary: boolean;
   isPending: boolean;
   isActive: boolean;

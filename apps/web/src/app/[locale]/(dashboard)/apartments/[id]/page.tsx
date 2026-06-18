@@ -110,7 +110,7 @@ export default function ApartmentDetailPage() {
             {formatApartmentLabel(data.number, locale === 'he' ? 'דירה' : 'Apartment')}
           </h1>
           <div className="flex items-center gap-2">
-            <StatusBadge color={data.statusColor}>{data.statusLabel}</StatusBadge>
+            <StatusBadge intent={data.intent}>{data.statusLabel}</StatusBadge>
             <span className="text-xs text-muted-foreground">
               {t('statusChangedLabel', { rel: data.statusChangedRelative })}
             </span>

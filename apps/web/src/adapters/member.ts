@@ -45,9 +45,9 @@ const STATE_LABELS_EN: Record<MemberState, string> = {
 };
 
 const STATE_COLORS: Record<MemberState, MemberViewModel['stateColor']> = {
-  pending: 'amber',
-  active: 'emerald',
-  revoked: 'red',
+  pending: 'warning',
+  active: 'success',
+  revoked: 'danger',
 };
 
 function deriveState(m: Member): MemberState {

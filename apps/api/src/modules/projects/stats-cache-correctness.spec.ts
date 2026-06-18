@@ -7,7 +7,7 @@
  *   C1 — cache-HIT === fresh-compute for `signatureProgress` (a cached
  *        ProjectsService and an uncached one return deep-equal boards).
  *   C2 — cache-HIT === fresh-compute for `orgStats`.
- *   C3 — COLD read populates the cache (the epoch-folded key exists after).
+ *   C3 — COLD read populates the cache (the epoch-stamped envelope exists after).
  *   C4 — a consent-affecting WRITE invalidates: after a sign, the cached read
  *        returns the NEW value, never the stale one (no wrong consent %).
  *   C5 — TENANT ISOLATION: org A's signed signature never appears in org B's

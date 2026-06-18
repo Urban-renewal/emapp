@@ -18,11 +18,12 @@
  *
  * So the GATE (`P_BUDGET`) measures the cache-hit path against a FAST provider
  * (in-memory `FakeCacheProvider`, standing in for a co-located cache_kv) — it
- * isolates the variable the slice owns. Separately, `P_REAL` measures the
- * SAME warm read against the REAL PostgresCacheProvider→Neon and REPORTS the
- * number without gating on it, so the true environmental cost is visible and
- * never faked. `P_HIT` proves a hit actually avoids the heavy compute (warm is
- * materially faster than a cold uncached compute, both on the fast provider).
+ * isolates the variable the slice owns. Separately, `P_GATE_NOTE` measures the
+ * SAME warm read end-to-end against the REAL PostgresCacheProvider→Neon and
+ * REPORTS the numbers without gating, isolating the constant authz-gate
+ * round-trip so the true environmental cost is visible and never faked.
+ * `P_HIT` proves a hit actually avoids the heavy aggregate (warm orgStats is
+ * materially faster than a cold uncached compute).
  *
  * If the cache-hit logic itself ever regresses past 200ms, P_BUDGET fails.
  */

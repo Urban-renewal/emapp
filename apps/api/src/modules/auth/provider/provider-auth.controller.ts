@@ -3,6 +3,7 @@ import { Body, Controller, HttpCode, Post, Req, Res, UseGuards, UsePipes } from 
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
+import { NoValidation } from '../../../common/pipes/zod-validation.decorators';
 import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
 
 import { ProviderAuthGuard } from './provider-auth.guard';
@@ -45,6 +46,8 @@ export class ProviderAuthController {
     return { data: { ok: true } };
   }
 
+  // S0-SEC opt-out: no client body — reads only the httpOnly refresh cookie.
+  @NoValidation()
   @Throttle({ default: { limit: 20, ttl: 60000 } })
   @Post('refresh')
   @HttpCode(200)
@@ -59,6 +62,8 @@ export class ProviderAuthController {
     return { data: { ok: true } };
   }
 
+  // S0-SEC opt-out: no client body — acts on the authenticated session only.
+  @NoValidation()
   @UseGuards(ProviderAuthGuard)
   @Post('logout')
   @HttpCode(200)

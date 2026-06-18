@@ -30,6 +30,7 @@ import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
 import { RequirePermission } from '../../common/authz/authz.decorators';
+import { RawBody } from '../../common/pipes/zod-validation.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -132,6 +133,11 @@ export class DocumentsController {
   // main.ts with the dedicated CONTENT_UPLOAD_BODY_LIMIT_BYTES (52_428_800)
   // bodyLimit. Raw bytes are inherently un-Zod-able — the integrity gate
   // (size+sha256 vs the create-declared values) is the validation.
+  // S0-SEC opt-out: raw `application/octet-stream` bytes are inherently
+  // un-Zod-able. The integrity gate (size + sha256 vs the create-declared
+  // values, in the service) IS the validation; the global pipe's NUL/UTF-8
+  // guard still runs on the Buffer.
+  @RawBody()
   @Post(':id/content')
   @HttpCode(200)
   @Throttle({ default: { limit: 30, ttl: 60_000 } })

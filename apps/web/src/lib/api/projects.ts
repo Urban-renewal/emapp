@@ -18,6 +18,7 @@ import {
   type Project,
   type ProjectListItem,
   type SignatureProgress,
+  type UpdateProject,
 } from '@emapp/shared-types';
 import { z } from 'zod';
 
@@ -97,6 +98,31 @@ export async function createProject(body: CreateProject): Promise<Project> {
   // §v9-P0-3 — create POSTs carry an Idempotency-Key so a
   // double-clicked Submit creates ONE project, not two.
   const res = await apiClient.postIdempotent<unknown>(`/projects`, body);
+  const data = unwrap(res);
+  return ProjectDataSchema.parse({ data }).data;
+}
+
+// E2 Wave-1 B5 — the project status state-machine + optimistic-concurrency
+// codes the BE may now return on PATCH. Exported so the edit form maps them to
+// clear Hebrew messages (i18n) instead of a generic failure toast. `unwrap`
+// already throws an `ApiClientError` carrying the D.16 `code`, so callers
+// switch on `error.code` against these constants.
+export const PROJECT_UPDATE_ERROR_CODES = {
+  invalidStatusTransition: 'invalid_status_transition',
+  thresholdNotMet: 'threshold_not_met',
+  staleWrite: 'stale_write',
+} as const;
+
+/**
+ * E2 Wave-1 B5 — PATCH a project. The `body.expectedUpdatedAt` (the `updated_at`
+ * the caller last read) drives the BE optimistic-concurrency check; a stale
+ * value throws `ApiClientError` with code `stale_write`. An illegal status
+ * change throws `invalid_status_transition`; a `→approved` below the consent
+ * target throws `threshold_not_met`. The response carries the NEW `updatedAt`
+ * so the caller can chain a follow-up edit.
+ */
+export async function updateProject(id: string, body: UpdateProject): Promise<Project> {
+  const res = await apiClient.patch<unknown>(`/projects/${id}`, body);
   const data = unwrap(res);
   return ProjectDataSchema.parse({ data }).data;
 }

@@ -22,15 +22,23 @@ NOT survive a crash — git + GitHub + this file + the memories do, so they are 
   consent-CTE refactor #432.
 - **MERGED — Wave 2 BE:** **B1 signature-pulse #435** (security PASS — pulse feed + rankAttention scorer,
   agent-scoped, no-PII) · **B4 holdouts #436** (security PASS — view_owner_pii-gated, audited, name-only).
-- **⏸ QA-STAGED FE QUEUE** (CI-green + agent-headless + code/security-reviewed; awaiting the real-Chrome
-  batch-walk on owner's return — DO NOT merge un-QA'd):
-  1. **#437 — E2.1 mission-control HOME (the CENTERPIECE)** — greeting + pulse sentence + ≤5 ranked ActionCards
-     (consumes B1) + explain-chip + calm empty-state + basis label; Viewer read-only; 959 tests + critical-path green.
-  2. **#438 — E2.2-S3 board** — ThresholdProgress (a11y aria-valuetext + basis label) + on-demand gated holdout
-     names (B4; 403→"דירה N · חלקי") + never-null DataState; 955 tests green.
-  3. **#433 — E2.2-S1** project-detail signatures-first tab default + empty-CTA.
-  4. **#439 — C5** projects/new re-skin (+ removed silently-dropped areaSqm; inline ratchet 58/9→57/8).
-  - **building:** C14 tenant-portal re-skin (→ will join the queue).
+- **⏸ QA-STAGED FE QUEUE — 8 PRs** (all CI-green + agent-headless + code/security-reviewed; awaiting the
+  real-Chrome batch-walk on owner's return — DO NOT merge un-QA'd). **QA + merge ORDER on reconnect:**
+  - **CENTERPIECE first (validate the new components):** **#437 E2.1 mission-control HOME** (greeting + pulse
+    sentence + ≤5 ranked ActionCards consuming B1 + explain-chip + calm empty-state + basis label; Viewer
+    read-only; 959 tests) → **#438 E2.2-S3 board** (ThresholdProgress a11y + basis label + on-demand gated
+    holdout names B4, 403→"דירה N · חלקי"; never-null) → **#433 E2.2-S1** (signatures-first tab default + empty-CTA).
+    Walk as MANAGER (session: manager@alpha.dev/DevPassword123!, login via form_input + form.requestSubmit).
+  - **RESKINS (quick visual QA — token swaps, verify colors render + no invisible text):** **#439 C5** projects/new
+    (removed dropped areaSqm) · **#441** imports/owners/notes/tasks · **#442 C14** tenant portal (needs a TENANT
+    OTP session) · **#443** members/sig-requests/contractors/docs/buildings · **#444** provider subtree (needs a
+    PROVIDER-ADMIN session). ⚠️ **Reskin baseline reconciliation:** #441/#442/#443/#444 each set
+    `app-no-default-palette-class.spec.ts` BASELINE from the 139/32 base (108/27, 139/32, 99/15, 73/23) — when they
+    stack the ACTUAL leak count is far lower (~near-zero, disjoint files). Merge them SEQUENTIALLY; on each
+    update-branch the guard will fail "DECREASED" → RE-RUN the guard, read the true count, set the baseline to it,
+    then merge. Expect ~4 reconciliations.
+  - **Also OPEN:** **#411** "home as signature mission-control (E2.1)" — a STALE pre-session PR SUPERSEDED by #437
+    → **close it** (don't merge; it's the old home attempt).
 - **⚠️ CHROME-DOWN POSTURE (current):** the Claude-in-Chrome extension is disconnected (owner's machine/Chrome
   likely restarted while away). The real-Chrome QA gate (`docs/E2-MERGE-GATE.md`) requires it for UI slices.
   RULE while down: **BE slices merge freely; FE slices build to CI-green + agent-headless + code-review and

@@ -1,4 +1,4 @@
-import type { ICacheProvider } from '@emapp/db';
+import { bumpStatsEpoch, statsEpochKey, type ICacheProvider } from '@emapp/db';
 import { Inject, Injectable } from '@nestjs/common';
 
 /**
@@ -53,10 +53,10 @@ export const STATS_CACHE_PROVIDER = 'STATS_CACHE_PROVIDER';
  *  flaky. */
 const STATS_TTL_SECONDS = 60;
 
-/** TTL for the per-org epoch counter. Long — losing the epoch only means the
- *  counter restarts at 1 (which abandons the old keys, i.e. invalidates), so
- *  the worst case of expiry is a one-time cold recompute, never a stale read. */
-const EPOCH_TTL_SECONDS = 7 * 24 * 60 * 60;
+/** The per-org epoch counter's TTL + key now live in @emapp/db
+ *  (`STATS_EPOCH_TTL_SECONDS` / `statsEpochKey`) so the worker's import
+ *  materialiser and this service share ONE definition (no drift). They are
+ *  consumed via `bumpStatsEpoch` in `invalidateOrg` below. */
 
 /** The stored envelope — value `v` plus the epoch `e` it was computed at. A
  *  read accepts `v` only when `e` matches the org's current epoch. */
@@ -70,7 +70,9 @@ export class StatsCacheService {
   constructor(@Inject(STATS_CACHE_PROVIDER) private readonly cache: ICacheProvider) {}
 
   private epochKey(orgId: string): string {
-    return `stats:epoch:org:${orgId}`;
+    // Single source of truth in @emapp/db — byte-identical to the key the
+    // worker bumps after an import materialises (shared `statsEpochKey`).
+    return statsEpochKey(orgId);
   }
 
   /** The epoch-INDEPENDENT value key (the epoch lives inside the envelope). */
@@ -120,6 +122,9 @@ export class StatsCacheService {
    * callers wrap this best-effort (see ProjectsService / the write sites).
    */
   async invalidateOrg(orgId: string): Promise<void> {
-    await this.cache.incrementCounter(this.epochKey(orgId), EPOCH_TTL_SECONDS);
+    // Delegates to the shared @emapp/db helper: identical key (statsEpochKey)
+    // + TTL (STATS_EPOCH_TTL_SECONDS) ⇒ zero behaviour change vs the previous
+    // inline `incrementCounter(this.epochKey(orgId), EPOCH_TTL_SECONDS)`.
+    await bumpStatsEpoch(this.cache, orgId);
   }
 }

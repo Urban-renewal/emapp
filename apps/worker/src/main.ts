@@ -28,7 +28,7 @@
 // handler runs and before crash handlers register their capture.
 import './instrument';
 
-import { env, pool, reloadEnv, resolveDbTarget } from '@emapp/db';
+import { env, pool, PostgresCacheProvider, reloadEnv, resolveDbTarget } from '@emapp/db';
 import {
   AUDIT_RETENTION_CRON_DAILY,
   AUDIT_RETENTION_JOB_NAME,
@@ -169,7 +169,14 @@ async function main(): Promise<void> {
     new TemplateResolver(),
     new LegacyAliasResolver(),
   ]);
-  const importHandler = new ImportJobHandler(storage, mappingResolver);
+  // E2 Wave-0 PERF freshness — the shared cache_kv provider lets the handler
+  // bump the org's stats epoch after an import materialises, so the home KPIs
+  // + project board recompute the new resident/denominator counts instead of
+  // serving the read-through cache's stale envelope. Same shared pool the api
+  // StatsCacheService writes through; identical epoch key (single source of
+  // truth in @emapp/db). Best-effort — a cache blip never fails an import.
+  const statsCache = new PostgresCacheProvider();
+  const importHandler = new ImportJobHandler(storage, mappingResolver, statsCache);
   try {
     // v8 Perf-4: worker concurrency from env. Default 2 (calibrated:
     //   - Excel parse RAM ≈ 150MB worst-case per concurrent import

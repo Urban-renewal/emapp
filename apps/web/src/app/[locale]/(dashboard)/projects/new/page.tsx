@@ -28,7 +28,9 @@ import { ApiClientError } from '@/lib/api/errors';
  *   (residential | office | retail | mixed) that drives progressive
  *   disclosure of the section's fields (Phase 1, owner point 2):
  *     - residential → rooms/floors-oriented;
- *     - office/retail → AREA-oriented (שטח, not rooms);
+ *     - office/retail → AREA-oriented (שטח, not rooms) — conveyed via the
+ *       per-kind hint copy only; the area INPUT was removed (e2 wave-4 c5 /
+ *       N16) because the wire shape has no area column to persist it;
  *     - retail → single-floor-friendly (floors de-emphasised).
  *   Multi-section per building (D.39 / B.S2 accepts up to 20) is now
  *   supported so a real mixed-use building (retail ground floor +
@@ -100,12 +102,6 @@ const SECTION_KIND_DEFAULT_UNIT_TYPE: Record<SectionKind, ApartmentUnitType> = {
   mixed: 'mixed',
 };
 
-/** Whether a kind is measured by AREA (שטח) rather than rooms. Drives the
- *  section-level progressive disclosure (office/retail → area-oriented). */
-function isAreaOriented(kind: SectionKind): boolean {
-  return kind === 'office' || kind === 'retail';
-}
-
 interface WizardMilestone {
   // Local-only id for React keys; not sent to BE.
   mid: string;
@@ -128,11 +124,13 @@ interface WizardSection {
   entrance: string;
   floors: string;
   unitCount: string;
-  // Area (sqm) — relevant for office/retail/mixed (area-oriented kinds).
-  // Captured per-section but, lacking a section-level area column on the
-  // wire, it is surfaced on the first expanded apartment via the BE; for
-  // now it is a UI affordance only (see TODO(gate-6)).
-  areaSqm: string;
+  // N16 (e2 wave-4 c5): a per-section `areaSqm` input was removed here. The
+  // wire shape `CreateProjectSectionInput` has NO area column (it is `.strict()`
+  // — see packages/shared-types/src/project.ts), so anything typed was silently
+  // dropped in toCreateInput. Collecting data we discard is a data-integrity +
+  // honesty problem; persisting it needs a schema change (out of scope, no
+  // migration). When a section-level area column lands (Gate-6), re-add the
+  // input AND wire it through toCreateInput in the same slice.
 }
 
 interface WizardBuilding {
@@ -181,7 +179,6 @@ function newSection(kind: SectionKind = 'residential'): WizardSection {
     entrance: '',
     floors: '',
     unitCount: '',
-    areaSqm: '',
   };
 }
 
@@ -272,10 +269,11 @@ function toCreateInput(s: WizardState): CreateProject {
         unitCount: sec.unitCount ? Number(sec.unitCount) : undefined,
         // TODO(gate-6): SECTION_KIND_DEFAULT_UNIT_TYPE[sec.kind] is the
         // intended per-section apartment unit_type for the BE empty-apartment
-        // expansion, and `areaSqm` is the area-oriented sections' measure.
-        // Neither has a column on `CreateProjectSectionInput` today — adding
-        // them is a contract/schema change (Gate-6), so we drop them on the
-        // wire and only drive the UI/labels from the kind for now.
+        // expansion. It has no column on `CreateProjectSectionInput` today —
+        // adding it is a contract/schema change (Gate-6), so we drop it on the
+        // wire and only drive the UI/labels from the kind for now. (A
+        // sibling per-section `areaSqm` input was REMOVED in e2 wave-4 c5 / N16
+        // rather than collected-then-dropped — re-add it WITH its wire column.)
       })),
     }));
   return buildings.length ? { ...base, buildings } : base;
@@ -601,42 +599,30 @@ export default function NewProjectPage() {
     >
       {/* Stepper indicator */}
       <div className="flex flex-col gap-2">
-        <h1 className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
-          {t('create')}
-        </h1>
+        <h1 className="text-foreground text-lg font-semibold">{t('create')}</h1>
         <ol className="flex items-center gap-2" aria-label={t('create')}>
           {[1, 2, 3].map((n) => {
             const active = state.step === n;
             const done = state.step > n;
+            const filled = active || done;
             return (
               <li key={n} className="flex items-center gap-2">
                 <div
-                  className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold"
-                  style={{
-                    background: active || done ? 'var(--navy-900)' : 'var(--bg-subtle)',
-                    color: active || done ? '#fff' : 'var(--text-muted)',
-                    border: `1px solid ${active || done ? 'var(--navy-900)' : 'var(--border-strong)'}`,
-                  }}
+                  className={`flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold ${
+                    filled
+                      ? 'border-navy-900 bg-navy-900 text-white'
+                      : 'bg-surface-subtle text-muted border-border'
+                  }`}
                   aria-current={active ? 'step' : undefined}
                 >
                   {n}
                 </div>
                 <span
-                  className="text-xs"
-                  style={{
-                    color: active ? 'var(--text)' : 'var(--text-muted)',
-                    fontWeight: active ? 600 : 400,
-                  }}
+                  className={`text-xs ${active ? 'text-foreground font-semibold' : 'text-muted'}`}
                 >
                   {n === 1 ? tw('step1') : n === 2 ? tw('step2') : tw('step3')}
                 </span>
-                {n < 3 && (
-                  <span
-                    aria-hidden="true"
-                    className="block"
-                    style={{ width: 24, height: 1, background: 'var(--border)' }}
-                  />
-                )}
+                {n < 3 && <span aria-hidden="true" className="block h-px w-6 bg-border" />}
               </li>
             );
           })}
@@ -682,10 +668,7 @@ export default function NewProjectPage() {
 
             {/* Minimal-create affordance: name + type is enough; the rest is
                 optional. Makes "create empty, enrich later" explicit. */}
-            <p
-              className="rounded-md p-2 text-xs"
-              style={{ color: 'var(--text-muted)', background: 'var(--bg-subtle)' }}
-            >
+            <p className="text-muted bg-surface-subtle rounded-md p-2 text-xs">
               {tw('minimalCreateHint')}
             </p>
 
@@ -706,9 +689,7 @@ export default function NewProjectPage() {
                   setState((s) => ({ ...s, consentPct: e.target.value, consentTouched: true }))
                 }
               />
-              <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-                {tw('consentTargetHint')}
-              </p>
+              <p className="text-muted mt-1 text-xs">{tw('consentTargetHint')}</p>
             </div>
 
             {/* Owner-approved staged overlay (Gate-6, Option A): optional
@@ -724,13 +705,9 @@ export default function NewProjectPage() {
                   {tw('milestones.suggest')}
                 </button>
               </div>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                {tw('milestones.hint')}
-              </p>
+              <p className="text-muted text-xs">{tw('milestones.hint')}</p>
               {state.milestones.length === 0 && (
-                <p className="text-xs" style={{ color: 'var(--text-soft)' }}>
-                  {tw('milestones.empty')}
-                </p>
+                <p className="text-soft text-xs">{tw('milestones.empty')}</p>
               )}
               {state.milestones.map((m, idx) => (
                 <div key={m.mid} className="flex items-end gap-2">
@@ -767,8 +744,7 @@ export default function NewProjectPage() {
                   <button
                     type="button"
                     onClick={() => removeMilestone(m.mid)}
-                    className="btn btn-ghost btn-sm"
-                    style={{ color: 'var(--danger-700)' }}
+                    className="btn btn-ghost btn-sm text-status-danger-fg"
                     aria-label={tw('milestones.remove', { n: idx + 1 })}
                   >
                     <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -804,16 +780,9 @@ export default function NewProjectPage() {
                 demolish-rebuild only) and parcel provenance (גוש-חלקה). All
                 additive + optional; collapsed into one labelled section so the
                 minimal name+type create stays unchanged. */}
-            <fieldset
-              className="flex flex-col gap-3 rounded-md border p-3"
-              style={{ borderColor: 'var(--border)' }}
-            >
-              <legend className="px-1 text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
-                {tr('sectionTitle')}
-              </legend>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                {tr('sectionHint')}
-              </p>
+            <fieldset className="border-border flex flex-col gap-3 rounded-md border p-3">
+              <legend className="text-muted px-1 text-xs font-medium">{tr('sectionTitle')}</legend>
+              <p className="text-muted text-xs">{tr('sectionHint')}</p>
 
               {/* Future-track free-text label — only for the 'other' type. */}
               {state.type === 'other' && (
@@ -829,9 +798,7 @@ export default function NewProjectPage() {
                     value={state.typeLabel}
                     onChange={(e) => setState((s) => ({ ...s, typeLabel: e.target.value }))}
                   />
-                  <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {tr('typeLabelHint')}
-                  </p>
+                  <p className="text-muted mt-1 text-xs">{tr('typeLabelHint')}</p>
                 </div>
               )}
 
@@ -918,9 +885,7 @@ export default function NewProjectPage() {
                   />
                 </div>
               </div>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                {tr('tmuraHint')}
-              </p>
+              <p className="text-muted text-xs">{tr('tmuraHint')}</p>
 
               {/* Relocation (פינוי) — demolish-rebuild tracks only. */}
               {isRelocationRelevant(state.type) && (
@@ -1009,9 +974,7 @@ export default function NewProjectPage() {
                   />
                 </div>
               </div>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                {tr('parcelHint')}
-              </p>
+              <p className="text-muted text-xs">{tr('parcelHint')}</p>
             </fieldset>
           </>
         )}
@@ -1022,32 +985,22 @@ export default function NewProjectPage() {
                 tama38_2 = up to two; pinui_binui = a multi-building complex
                 with a live count. */}
             {state.type === 'tama38_1' && (
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                {tw('singleBuildingHint')}
-              </p>
+              <p className="text-muted text-sm">{tw('singleBuildingHint')}</p>
             )}
             {state.type === 'tama38_2' && (
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                {tw('twoBuildingHint')}
-              </p>
+              <p className="text-muted text-sm">{tw('twoBuildingHint')}</p>
             )}
             {state.type === 'pinui_binui' && (
-              <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+              <p className="text-foreground text-sm font-medium">
                 {tw('complexBuildingCount', { n: state.buildings.length })}
               </p>
             )}
             {state.buildings.length === 0 && state.type !== 'tama38_1' && (
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                {tw('noBuildings')}
-              </p>
+              <p className="text-muted text-sm">{tw('noBuildings')}</p>
             )}
             {state.buildings.map((b, idx) => (
-              <fieldset
-                key={b.rid}
-                className="rounded-md border p-3"
-                style={{ borderColor: 'var(--border)' }}
-              >
-                <legend className="px-1 text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+              <fieldset key={b.rid} className="border-border rounded-md border p-3">
+                <legend className="text-muted px-1 text-xs font-medium">
                   {tw('buildingNumberLabel', { n: idx + 1 })}
                 </legend>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1111,22 +1064,15 @@ export default function NewProjectPage() {
                     A real mixed-use building = ≥2 sections of different kinds. */}
                 <div className="mt-3 flex flex-col gap-3">
                   {b.sections.some((sec) => sec.kind === 'mixed') && (
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                      {tk('mixedMultiSectionHint')}
-                    </p>
+                    <p className="text-muted text-xs">{tk('mixedMultiSectionHint')}</p>
                   )}
                   {b.sections.map((sec, sIdx) => {
-                    const areaOriented = isAreaOriented(sec.kind);
                     return (
                       <fieldset
                         key={sec.sid}
-                        className="rounded-md border p-3"
-                        style={{ borderColor: 'var(--border)', background: 'var(--bg-subtle)' }}
+                        className="border-border bg-surface-subtle rounded-md border p-3"
                       >
-                        <legend
-                          className="px-1 text-xs font-medium"
-                          style={{ color: 'var(--text-muted)' }}
-                        >
+                        <legend className="text-muted px-1 text-xs font-medium">
                           {tk('sectionNumberLabel', { n: sIdx + 1 })}
                         </legend>
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1204,31 +1150,15 @@ export default function NewProjectPage() {
                               }
                             />
                           </div>
-                          {/* AREA — surfaced only for area-oriented kinds
-                              (office/retail/mixed). Drives the שטח framing.
-                              TODO(gate-6): no section-level area column on the
-                              wire yet, so this is UI-only for now. */}
-                          {(areaOriented || sec.kind === 'mixed') && (
-                            <div>
-                              <label className="label" htmlFor={`s-${sec.sid}-area`}>
-                                {tk('area')}
-                              </label>
-                              <input
-                                id={`s-${sec.sid}-area`}
-                                type="number"
-                                min={0}
-                                max={10000}
-                                className="input tabular"
-                                dir="ltr"
-                                value={sec.areaSqm}
-                                onChange={(e) =>
-                                  patchSection(b.rid, sec.sid, { areaSqm: e.target.value })
-                                }
-                              />
-                            </div>
-                          )}
+                          {/* N16 (e2 wave-4 c5): the per-section AREA (שטח) input
+                              was removed. CreateProjectSectionInput has no area
+                              column, so the value was collected then silently
+                              dropped on the wire — a data-integrity/honesty issue.
+                              The kind-hint below still names the area framing for
+                              office/retail; re-add the input WITH a wire column
+                              (Gate-6, schema change) when it can actually persist. */}
                         </div>
-                        <p className="mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+                        <p className="text-muted mt-2 text-xs">
                           {kindHint(sec.kind)}{' '}
                           <span style={{ fontWeight: 500 }}>
                             ({tu(SECTION_KIND_DEFAULT_UNIT_TYPE[sec.kind])})
@@ -1239,8 +1169,7 @@ export default function NewProjectPage() {
                             <button
                               type="button"
                               onClick={() => removeSection(b.rid, sec.sid)}
-                              className="btn btn-ghost btn-sm"
-                              style={{ color: 'var(--danger-700)' }}
+                              className="btn btn-ghost btn-sm text-status-danger-fg"
                             >
                               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                               <span>{tk('removeSection')}</span>
@@ -1270,8 +1199,7 @@ export default function NewProjectPage() {
                     <button
                       type="button"
                       onClick={() => removeBuilding(b.rid)}
-                      className="btn btn-ghost btn-sm"
-                      style={{ color: 'var(--danger-700)' }}
+                      className="btn btn-ghost btn-sm text-status-danger-fg"
                     >
                       <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                       <span>{tw('removeBuilding')}</span>
@@ -1300,13 +1228,13 @@ export default function NewProjectPage() {
                 {tw('review.projectHeading')}
               </h2>
               <dl className="mt-2 grid grid-cols-[120px_1fr] gap-y-1 text-sm">
-                <dt style={{ color: 'var(--text-muted)' }}>{t('field.name')}</dt>
+                <dt className="text-muted">{t('field.name')}</dt>
                 <dd>{state.name}</dd>
-                <dt style={{ color: 'var(--text-muted)' }}>{t('field.type')}</dt>
+                <dt className="text-muted">{t('field.type')}</dt>
                 <dd>{tt(state.type)}</dd>
                 {state.consentPct.trim() !== '' && (
                   <>
-                    <dt style={{ color: 'var(--text-muted)' }}>{tw('consentTarget')}</dt>
+                    <dt className="text-muted">{tw('consentTarget')}</dt>
                     <dd className="tabular" dir="ltr">
                       {state.consentPct}%
                     </dd>
@@ -1314,13 +1242,13 @@ export default function NewProjectPage() {
                 )}
                 {state.type === 'other' && state.typeLabel.trim() && (
                   <>
-                    <dt style={{ color: 'var(--text-muted)' }}>{tr('typeLabel')}</dt>
+                    <dt className="text-muted">{tr('typeLabel')}</dt>
                     <dd>{state.typeLabel.trim()}</dd>
                   </>
                 )}
                 {state.developerName.trim() && (
                   <>
-                    <dt style={{ color: 'var(--text-muted)' }}>{tr('developerName')}</dt>
+                    <dt className="text-muted">{tr('developerName')}</dt>
                     <dd>
                       {state.developerName.trim()}
                       {state.developerCompanyId.trim() && (
@@ -1333,7 +1261,7 @@ export default function NewProjectPage() {
                 )}
                 {(state.existingUnits.trim() || state.plannedUnits.trim()) && (
                   <>
-                    <dt style={{ color: 'var(--text-muted)' }}>{tr('existingUnits')}</dt>
+                    <dt className="text-muted">{tr('existingUnits')}</dt>
                     <dd className="tabular" dir="ltr">
                       {state.existingUnits.trim() || '—'} → {state.plannedUnits.trim() || '—'}
                     </dd>
@@ -1341,13 +1269,13 @@ export default function NewProjectPage() {
                 )}
                 {isRelocationRelevant(state.type) && state.relocationType !== '' && (
                   <>
-                    <dt style={{ color: 'var(--text-muted)' }}>{tr('relocationType')}</dt>
+                    <dt className="text-muted">{tr('relocationType')}</dt>
                     <dd>{trel(state.relocationType)}</dd>
                   </>
                 )}
                 {(state.block.trim() || state.parcel.trim() || state.subparcel.trim()) && (
                   <>
-                    <dt style={{ color: 'var(--text-muted)' }}>{tw('field.block')}</dt>
+                    <dt className="text-muted">{tw('field.block')}</dt>
                     <dd className="tabular" dir="ltr">
                       {state.block.trim() || '—'} / {state.parcel.trim() || '—'}
                       {state.subparcel.trim() && ` / ${state.subparcel.trim()}`}
@@ -1356,48 +1284,34 @@ export default function NewProjectPage() {
                 )}
                 {state.description && (
                   <>
-                    <dt style={{ color: 'var(--text-muted)' }}>{t('field.description')}</dt>
+                    <dt className="text-muted">{t('field.description')}</dt>
                     <dd className="whitespace-pre-wrap">{state.description}</dd>
                   </>
                 )}
               </dl>
             </section>
 
-            <section
-              aria-labelledby="rev-bld-h"
-              className="border-t pt-3"
-              style={{ borderColor: 'var(--border)' }}
-            >
+            <section aria-labelledby="rev-bld-h" className="border-border border-t pt-3">
               <h2 id="rev-bld-h" className="text-sm font-semibold">
                 {tw('review.buildingsHeading', { n: state.buildings.length })}
               </h2>
               {state.buildings.length === 0 ? (
-                <p className="mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-                  {tw('review.noBuildings')}
-                </p>
+                <p className="text-muted mt-2 text-xs">{tw('review.noBuildings')}</p>
               ) : (
                 <ul className="mt-2 flex flex-col gap-2">
                   {state.buildings.map((b, idx) => (
-                    <li
-                      key={b.rid}
-                      className="rounded-md border p-3 text-sm"
-                      style={{ borderColor: 'var(--border)' }}
-                    >
+                    <li key={b.rid} className="border-border rounded-md border p-3 text-sm">
                       <div className="flex items-center gap-2 font-medium">
-                        <Building2
-                          className="h-4 w-4"
-                          style={{ color: 'var(--navy-700)' }}
-                          aria-hidden="true"
-                        />
+                        <Building2 className="text-navy-700 h-4 w-4" aria-hidden="true" />
                         <span>{tw('buildingNumberLabel', { n: idx + 1 })}</span>
                       </div>
-                      <div className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                      <div className="text-muted mt-1 text-xs">
                         {[b.address, b.city].filter(Boolean).join(', ')}
                         {b.block || b.parcel
                           ? ` · ${tw('field.block')} ${b.block || '—'} / ${tw('field.parcel')} ${b.parcel || '—'}`
                           : ''}
                       </div>
-                      <div className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                      <div className="text-muted mt-1 text-xs">
                         {tw('review.sectionsLabel')}:{' '}
                         {b.sections
                           .map((sec) => {
@@ -1406,8 +1320,6 @@ export default function NewProjectPage() {
                             if (sec.floors) parts.push(`${tw('field.floors')} ${sec.floors}`);
                             if (sec.unitCount)
                               parts.push(`${tw('field.unitCount')} ${sec.unitCount}`);
-                            if (sec.areaSqm && (isAreaOriented(sec.kind) || sec.kind === 'mixed'))
-                              parts.push(`${tk('area')} ${sec.areaSqm}`);
                             return parts.join(' / ');
                           })
                           .join(' · ')}
@@ -1421,12 +1333,12 @@ export default function NewProjectPage() {
         )}
 
         {stepError && (
-          <p className="text-sm" style={{ color: 'var(--danger-700)' }} role="alert">
+          <p className="text-status-danger-fg text-sm" role="alert">
             {stepError}
           </p>
         )}
         {serverError && (
-          <p className="text-sm" style={{ color: 'var(--danger-700)' }} role="alert">
+          <p className="text-status-danger-fg text-sm" role="alert">
             {serverError}
           </p>
         )}

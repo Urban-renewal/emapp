@@ -250,6 +250,16 @@
       "signedCount": "{signed, plural, =0 {לא התקבלו חתימות} one {חתימה אחת התקבלה} two {שתי חתימות התקבלו} other {# חתימות התקבלו}} · {pending, plural, =0 {אין ממתינות} one {אחת ממתינה} two {שתיים ממתינות} other {# ממתינות}}",
       "empty": "אין עדיין נתוני הסכמות לפרויקט הזה."
     },
+    "threshold": {
+      "pct": "{pct}%",
+      "target": "יעד {pct}%",
+      "ariaLabel": "התקדמות ההסכמות לעבר היעד",
+      "stateMet": "היעד הושג",
+      "stateBelow": "טרם הושג היעד",
+      "valueTextMet": "{pct}% מתוך יעד {target}% — היעד הושג",
+      "valueTextBelow": "{pct}% מתוך יעד {target}%",
+      "valueTextNoTarget": "{pct}% — לא הוגדר יעד"
+    },
     "boardApartments": {
       "toggleShow": "פירוט לפי דירה",
       "toggleHide": "הסתר פירוט לפי דירה",
@@ -258,7 +268,16 @@
       "row": "{designation} · {signed}/{total} חתמו",
       "statusConsented": "הוסכם",
       "statusPartial": "חלקי",
-      "statusNone": "אין"
+      "statusNone": "אין",
+      "holdoutsToggleShow": "מי תקוע",
+      "holdoutsToggleHide": "הסתר מי תקוע",
+      "holdoutsLoading": "טוען שמות…",
+      "holdoutsLoadFailed": "טעינת השמות נכשלה.",
+      "holdoutsRetry": "נסה שוב",
+      "holdoutsForbidden": "אין לך הרשאה לצפות בשמות הבעלים.",
+      "holdoutsEmpty": "כל הבעלים בדירה זו חתמו.",
+      "holdoutFallback": "דירה {number} · חלקי",
+      "holdoutNoName": "בעל דירה ללא שם רשום"
     },
     "campaign": {
       "cta": "שלח בקשת חתימה לכל הבעלים",

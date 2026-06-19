@@ -224,6 +224,21 @@ async function installStubs(
     },
   );
 
+  // E2.2-S3 — per-apartment HOLDOUTS ("מי תקוע"), on-demand + gated. Apartments
+  // list is stubbed empty above so this never fires here, but stub it to keep the
+  // §P0-3 dev-console guardrail green. Registered AFTER `/apartments` so
+  // Playwright's last-wins ordering routes the more-specific holdouts URL here.
+  await page.route(
+    `**/api/v1/projects/${PROJECT_ID}/signature-progress/apartments/*/holdouts`,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { holdouts: [] } }),
+      });
+    },
+  );
+
   // The buildings LIST — the query the confirm must invalidate+refetch.
   // (`*` suffix covers ?limit=… — a `*` never crosses `/`.)
   await page.route(`**/api/v1/projects/${PROJECT_ID}/buildings*`, async (route) => {

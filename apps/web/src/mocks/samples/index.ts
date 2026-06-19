@@ -18,3 +18,4 @@ export * from './ownerships';
 export * from './documents';
 export * from './imports';
 export * from './signature-requests';
+export * from './signature-progress';

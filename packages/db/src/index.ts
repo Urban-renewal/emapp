@@ -68,6 +68,7 @@ export * from './schema/index';
 export { sql } from 'drizzle-orm';
 export { AuditService } from './audit/audit.service';
 export type { AuditEntry } from './audit/audit.service';
+export { STATS_EPOCH_TTL_SECONDS, statsEpochKey, bumpStatsEpoch } from './helpers/stats-epoch';
 export * from './helpers/share-defaults';
 export * from './helpers/apply-share-permissions';
 export * from './helpers/resolve-share';

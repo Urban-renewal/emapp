@@ -243,7 +243,7 @@
       "pct": "{pct}%",
       "target": "Target {pct}%",
       "noTarget": "No target set",
-      "signedCount": "{signed} signatures received · {pending} pending"
+      "signedCount": "{signed, plural, =0 {No signatures received} one {1 signature received} other {# signatures received}} · {pending, plural, =0 {none pending} one {1 pending} other {# pending}}"
     },
     "boardApartments": {
       "toggleShow": "Per-apartment breakdown",

@@ -243,7 +243,8 @@
       "pct": "{pct}%",
       "target": "Target {pct}%",
       "noTarget": "No target set",
-      "signedCount": "{signed, plural, =0 {No signatures received} one {1 signature received} other {# signatures received}} · {pending, plural, =0 {none pending} one {1 pending} other {# pending}}"
+      "signedCount": "{signed, plural, =0 {No signatures received} one {1 signature received} other {# signatures received}} · {pending, plural, =0 {none pending} one {1 pending} other {# pending}}",
+      "empty": "No consent data for this project yet."
     },
     "boardApartments": {
       "toggleShow": "Per-apartment breakdown",
@@ -639,6 +640,15 @@
       "archived": "Archived"
     },
     "emptyArchived": "No archived owners."
+  },
+  "dataState": {
+    "loading": "Loading...",
+    "errorTitle": "We couldn't load the data",
+    "errorBody": "A temporary problem occurred. You can try again.",
+    "retry": "Try again",
+    "forbiddenTitle": "No access",
+    "forbiddenBody": "You don't have permission to view this content.",
+    "emptyDefault": "Nothing here yet."
   },
   "documents": {
     "listTitle": "Documents",

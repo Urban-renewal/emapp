@@ -219,6 +219,21 @@ const config: Config = {
         control: 'var(--radius-control)',
         pill: 'var(--radius-pill)',
       },
+      // Motion — NEW (E2 Wave-0 M1, visual-system §2.7). Maps the Tier-1
+      // --motion-* tokens so components can author `duration-base
+      // ease-out` instead of literal ms / cubic-bezier. ADDITIVE under
+      // extend (Tailwind's numeric `duration-200` defaults stay intact).
+      // The `prefers-reduced-motion` guard in globals.css zeroes the
+      // duration tokens, so `duration-base` snaps under reduce for free.
+      transitionDuration: {
+        fast: 'var(--motion-duration-fast)',
+        base: 'var(--motion-duration-base)',
+        slow: 'var(--motion-duration-slow)',
+      },
+      transitionTimingFunction: {
+        out: 'var(--motion-ease-out)',
+        spring: 'var(--motion-ease-spring)',
+      },
       boxShadow: {
         xs: '0 1px 2px rgba(15,23,42,.04)',
         sm: '0 1px 2px rgba(15,23,42,.04), 0 1px 3px rgba(15,23,42,.06)',

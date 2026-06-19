@@ -191,6 +191,39 @@
     --radius-card: var(--r-lg);
     --radius-control: var(--r-md);
     --radius-pill: 999px;
+
+    /* ════════════════════════════════════════════════════════════════
+     * MOTION — Tier-1 duration + easing tokens (E2 Wave-0 M1,
+     * visual-system §2.7 + v2 06-interaction-motion §3.6). Values pinned
+     * by the motion doc: 120/200/360ms, ease-out cubic-bezier(0.2,0,0,1),
+     * spring cubic-bezier(0.2,0.8,0.2,1) — calm, short, ease-out (no
+     * bouncy/attention-grabbing motion). This slice DEFINES the contract
+     * only; consumers (bar-fill, count-up, toast, settle) arrive in M3+
+     * and author against these tokens, NEVER literal 0.12s. A re-skin /
+     * per-org branding re-tunes the whole app's feel from here.
+     *
+     * The `@media (prefers-reduced-motion: reduce)` block below zeroes
+     * all three durations at :root, so every token consumer becomes
+     * instant automatically without touching a component — the
+     * accessibility guarantee (do NOT also `* { transition: none }`;
+     * zero durations IS the mechanism, and it stays re-skin-friendly).
+     * ════════════════════════════════════════════════════════════════ */
+    --motion-duration-fast: 120ms; /* matches the existing button 0.12s */
+    --motion-duration-base: 200ms;
+    --motion-duration-slow: 360ms; /* bar-fill, count-up */
+    --motion-ease-out: cubic-bezier(0.2, 0, 0, 1);
+    --motion-ease-spring: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* Accessibility guarantee (G6-adjacent): under reduced-motion, zero the
+   * duration tokens so any consumer of --motion-duration-* animates
+   * instantly. Token-scoped on purpose — no global `* { transition:none }`. */
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --motion-duration-fast: 0ms;
+      --motion-duration-base: 0ms;
+      --motion-duration-slow: 0ms;
+    }
   }
 
   .dark {

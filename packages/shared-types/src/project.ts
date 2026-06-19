@@ -343,6 +343,32 @@ export const ApartmentSignatureProgressSchema = z.object({
 export type ApartmentSignatureProgress = z.infer<typeof ApartmentSignatureProgressSchema>;
 
 /**
+ * E2 Wave-2 B4 — apartment HOLDOUT row ("מי תקוע / who's stuck"). One ACTIVE
+ * owner of the apartment who has NOT signed (no `signature_requests.status='signed'`
+ * on a project document). Returned (as a list under `data.holdouts`) by
+ * `GET /api/v1/projects/:id/signature-progress/apartments/:apartmentId/holdouts`.
+ *
+ * NAMED PII — this is the ONLY signature-progress surface that returns owner
+ * NAMES (for the board's "who's stuck" list). It is therefore `view_owner_pii`-
+ * GATED + AUDITED, mirroring the owners reveal-pii endpoint (the FE wraps `name`
+ * in `<NameDisplay>` for bidi). It carries EXACTLY these 3 fields and NEVER any
+ * other PII — `national_id` and `phone` are NEVER returned (only ownerId + name
+ * + apartmentNumber).
+ */
+export const ApartmentHoldoutSchema = z.object({
+  ownerId: z.string().uuid(),
+  name: z.string().nullable(),
+  apartmentNumber: z.string(),
+});
+export type ApartmentHoldout = z.infer<typeof ApartmentHoldoutSchema>;
+
+/** E2 Wave-2 B4 — the holdouts response body under `data`. */
+export const ApartmentHoldoutsResponseSchema = z.object({
+  holdouts: z.array(ApartmentHoldoutSchema),
+});
+export type ApartmentHoldoutsResponse = z.infer<typeof ApartmentHoldoutsResponseSchema>;
+
+/**
  * Org-wide aggregates for the home dashboard KPI cards. Returned by
  * `GET /api/v1/org/stats`. Distinct from project-level stats above.
  *

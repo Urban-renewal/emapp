@@ -1409,6 +1409,15 @@ const ENDPOINTS: Endpoint[] = [
     errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
+    method: 'GET',
+    path: '/api/v1/projects/:id/signature-progress/apartments/:apartmentId/holdouts',
+    auth: 'AuthGuard + TenantGuard (projects.read; FINE view_owner_pii capability gate in service)',
+    summary:
+      'E2 Wave-2 B4 — apartment HOLDOUTS ("מי תקוע / who\'s stuck"): the NAMED list of the apartment\'s active owners who have NOT signed. The ONLY signature-progress surface returning owner NAMES → view_owner_pii-gated + audited per access (ISO A.12.4), mirroring owners reveal-pii. No-oracle 404 for cross-org / unassigned-agent / apartment-not-in-project. Returns ownerId + name + apartmentNumber ONLY; NEVER national_id/phone.',
+    response: '{ "data": { "holdouts": [ {ApartmentHoldout: ownerId, name, apartmentNumber} ] } }',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
     method: 'POST',
     path: '/api/v1/projects/:id/signature-campaign',
     auth: 'AuthGuard + TenantGuard (signature_requests.send)',

@@ -12,6 +12,7 @@ import {
 } from '@emapp/db';
 import { PROJECT_TYPE_DEFAULT_CONSENT_PCT, isAllowedStatusTransition } from '@emapp/shared-types';
 import type {
+  ApartmentHoldout,
   ApartmentSignatureProgress,
   CreateProject,
   OrgStats,
@@ -32,6 +33,7 @@ import {
 } from '@nestjs/common';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 
+import { resolveOwnerPiiFidelity } from '../../common/authz/agent-capabilities';
 import {
   decodeCursor,
   encodeCursor,
@@ -688,6 +690,124 @@ export class ProjectsService {
             status,
           };
         });
+      },
+      { userId: user.sub },
+    );
+  }
+
+  /**
+   * E2 Wave-2 B4 — apartment HOLDOUTS ("מי תקוע / who's stuck"). The NAMED list of
+   * the ACTIVE owners of ONE apartment who have NOT signed — the per-apartment
+   * drill-down's human counterpart for the board (E2.2-S3 consumes it later).
+   *
+   * This is the ONLY signature-progress surface that returns owner NAMES, so it
+   * is a PII reveal and is gated + audited EXACTLY like the owners reveal-pii
+   * endpoint (`OwnersService.revealPii`, POST /owners/:id/reveal-pii):
+   *   - `view_owner_pii` capability REQUIRED (manager always · agent iff the flag ·
+   *     viewer never, via `resolveOwnerPiiFidelity === 'unmasked'`) — else 403.
+   *   - a per-access audit row (`apartment.holdouts_revealed`, ISO A.12.4) records
+   *     WHO revealed WHICH apartment's holdouts, WHEN — NEVER any cleartext value.
+   *
+   * Gate order (no-oracle, mirrors the rest of signature-progress):
+   *   `assertProjectVisible` 404 (cross-org / unassigned-agent is indistinguishable
+   *   from absent) → apartment-in-project 404 (an apartment of another project is
+   *   the same no-oracle 404) → `view_owner_pii` 403. Visibility/scope is proven
+   *   BEFORE the pii capability so an out-of-scope apartment never becomes an oracle.
+   *
+   * "Holdout" = an ACTIVE owner ownership (`ended_at IS NULL AND relationship='owner'`)
+   * of the apartment who DOES NOT hold a SIGNED signature_request on a project
+   * document — the EXACT negation of the consent join the drill-down/board use
+   * (`signature_requests sr JOIN documents d ON d.id = sr.document_id WHERE
+   * sr.owner_id = o.owner_id AND sr.status='signed' AND d.project_id = <projectId>`).
+   *
+   * STRICT PII boundary: the projection returns ONLY `owner_id`, the in-SQL
+   * decrypted `name`, and the apartment `number`. national_id / phone are NEVER
+   * selected (never leave Postgres), NEVER returned, NEVER logged.
+   */
+  async signatureProgressHoldouts(
+    user: AccessTokenPayload,
+    projectId: string,
+    apartmentId: string,
+  ): Promise<ApartmentHoldout[]> {
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        // No-oracle visibility gate FIRST (org-isolation via RLS + agent →
+        // assigned-project scope). Throws NOT_FOUND when invisible.
+        await this.assertProjectVisible(tx, user, projectId);
+
+        // The apartment must belong to THIS visible project; an apartment of
+        // another project (or org) is the SAME no-oracle 404. Checked BEFORE the
+        // pii capability so an out-of-scope apartment is never a capability oracle.
+        const [apt] = await tx
+          .select({ id: apartments.id, number: apartments.number })
+          .from(apartments)
+          .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
+          .where(
+            and(
+              eq(apartments.id, apartmentId),
+              eq(buildings.projectId, projectId),
+              isNull(apartments.archivedAt),
+            ),
+          )
+          .limit(1);
+        if (!apt) throw NOT_FOUND;
+
+        // view_owner_pii gate: manager always · agent iff the flag · viewer never.
+        // Anything but `unmasked` → 403 (this surface returns owner NAMES).
+        const fidelity = await resolveOwnerPiiFidelity(tx, user);
+        if (fidelity !== 'unmasked') throw FORBIDDEN;
+
+        // Active owners of the apartment who have NOT signed (negation of the
+        // consent join). name decrypted IN-SQL (app.encryption_key set by
+        // withTenant) so the ciphertext never crosses the wire; national_id /
+        // phone are NEVER selected. Ordered by name (Hebrew COLLATE) so the list
+        // is stable; a shell owner (null name) sorts last.
+        const result = await tx.execute(sql`
+          SELECT
+            o.owner_id AS owner_id,
+            pgp_sym_decrypt(ow.name_encrypted, current_setting('app.encryption_key'))::text AS name
+          FROM ownerships o
+          INNER JOIN owners ow ON ow.id = o.owner_id
+          WHERE o.apartment_id = ${apartmentId}
+            AND o.ended_at IS NULL
+            AND o.relationship = 'owner'
+            AND ow.erased_at IS NULL
+            AND NOT EXISTS (
+              SELECT 1
+              FROM signature_requests sr
+              INNER JOIN documents d ON d.id = sr.document_id
+              WHERE sr.owner_id = o.owner_id
+                AND sr.status = 'signed'
+                AND d.project_id = ${projectId}
+            )
+          ORDER BY pgp_sym_decrypt(ow.name_encrypted, current_setting('app.encryption_key'))::text
+                     COLLATE he_il_icu ASC NULLS LAST,
+                   o.owner_id ASC
+        `);
+        const rows = (result as unknown as { rows: Array<Record<string, unknown>> }).rows;
+
+        const apartmentNumber = String(apt.number);
+        const holdouts: ApartmentHoldout[] = rows.map((r) => ({
+          ownerId: String(r['owner_id']),
+          name: r['name'] === null || r['name'] === undefined ? null : String(r['name']),
+          apartmentNumber,
+        }));
+
+        // ISO A.12.4 — per-access audit (a NAMED PII reveal). Record WHO revealed
+        // WHICH apartment's holdouts + HOW MANY; NEVER any name/national_id/phone.
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'apartment.holdouts_revealed',
+          targetTable: 'apartments',
+          targetId: apartmentId,
+          afterState: { projectId, holdoutCount: holdouts.length },
+          sessionId: user.sid,
+        });
+
+        return holdouts;
       },
       { userId: user.sub },
     );

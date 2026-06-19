@@ -77,7 +77,8 @@
     "provider": "מטה Provider",
     "providerConsole": "מסוף Provider EMAPP",
     "tagline": "התחדשות עירונית",
-    "navLandmark": "ניווט ראשי"
+    "navLandmark": "ניווט ראשי",
+    "sectionTools": "ניהול וכלים"
   },
   "errorBoundary": {
     "title": "משהו השתבש",

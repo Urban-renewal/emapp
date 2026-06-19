@@ -46,6 +46,7 @@ const NAV_LABEL: Record<string, string> = {
   settings: 'הגדרות',
   tagline: 'התחדשות עירונית',
   navLandmark: 'ניווט ראשי',
+  sectionTools: 'ניהול וכלים',
   'role.manager': 'מנהל',
   'role.agent': 'אגנט',
   'role.viewer': 'צופה',
@@ -77,10 +78,16 @@ vi.mock('next/link', () => ({
     createElement('a', { href, ...rest }, children),
 }));
 
-// usePathname → a path with no active nav match (keeps markup simple; the gate
-// under test is independent of active-state).
+// usePathname → a SECONDARY route (`/he/imports`). E2 IA-S2 moved the
+// management/tools items (imports/contractors/notes/messages/tasks/
+// notifications/members/audit/settings) into a collapsible group that is
+// COLLAPSED by default and auto-expands only when the active page lives
+// inside it. Pointing the active path at a secondary route opens the group so
+// the gated rows (members/audit/settings) actually render, which is what these
+// gate assertions probe. Owners (the P4 #11 subject) is PRIMARY, so its gate is
+// exercised regardless of the group's open/closed state.
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/he/projects',
+  usePathname: () => '/he/imports',
 }));
 
 // LogoutButton pulls in Server-Action / cookie machinery we don't exercise

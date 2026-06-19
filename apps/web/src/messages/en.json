@@ -77,7 +77,8 @@
     "provider": "Provider",
     "providerConsole": "EMAPP Provider Console",
     "tagline": "Urban Renewal",
-    "navLandmark": "Primary navigation"
+    "navLandmark": "Primary navigation",
+    "sectionTools": "Management & Tools"
   },
   "errorBoundary": {
     "title": "Something went wrong",

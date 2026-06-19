@@ -7,7 +7,6 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 
-import { Button } from '@/components/ui/button';
 import { apiClient, isOk } from '@/lib/api-client';
 import { applyValidationErrors } from '@/lib/errors';
 
@@ -101,11 +100,11 @@ export default function ProviderLoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <div className="w-full max-w-sm space-y-6">
+    <div className="flex min-h-screen items-center justify-center bg-surface-app p-4">
+      <div className="card card-pad w-full max-w-sm space-y-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold">{t('providerLoginTitle')}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t('providerLoginSubtitle')}</p>
+          <h1 className="text-2xl font-bold text-text">{t('providerLoginTitle')}</h1>
+          <p className="mt-1 text-sm text-muted">{t('providerLoginSubtitle')}</p>
         </div>
 
         {/* §S1-SEC1 — method="post" defense in depth. */}
@@ -117,41 +116,45 @@ export default function ProviderLoginPage() {
           dir="rtl"
         >
           <div className="space-y-1">
-            <label className="text-sm font-medium" htmlFor="email">
+            <label className="label" htmlFor="email">
               {t('email')}
             </label>
             <input
               id="email"
               type="email"
               autoComplete="email"
-              className="w-full rounded-md border px-3 py-2 text-sm"
+              className="input"
+              dir="ltr"
               {...register('email')}
             />
             {errors.email && (
-              <p className="text-xs text-destructive">
+              <p className="mt-1 text-xs text-danger-700">
                 {errors.email.message ?? t('emailInvalid')}
               </p>
             )}
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-medium" htmlFor="password">
+            <label className="label" htmlFor="password">
               {t('password')}
             </label>
             <input
               id="password"
               type="password"
               autoComplete="current-password"
-              className="w-full rounded-md border px-3 py-2 text-sm"
+              className="input"
+              dir="ltr"
               {...register('password')}
             />
             {errors.password && (
-              <p className="text-xs text-destructive">{errors.password.message ?? t('required')}</p>
+              <p className="mt-1 text-xs text-danger-700">
+                {errors.password.message ?? t('required')}
+              </p>
             )}
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-medium" htmlFor="mfa_code">
+            <label className="label" htmlFor="mfa_code">
               {t('mfaCode')}
             </label>
             {/* `dir="ltr"` so the 6-digit TOTP renders left-to-right
@@ -168,23 +171,27 @@ export default function ProviderLoginPage() {
               inputMode="numeric"
               autoComplete="one-time-code"
               maxLength={64}
-              className="w-full rounded-md border px-3 py-2 font-mono text-sm"
+              className="input font-mono"
               dir="ltr"
               {...register('mfa_code')}
             />
             {errors.mfa_code && (
-              <p className="text-xs text-destructive">
+              <p className="mt-1 text-xs text-danger-700">
                 {errors.mfa_code.message ?? t('mfaCodeInvalid')}
               </p>
             )}
-            <p className="text-xs text-muted-foreground">{t('mfaCodeHint')}</p>
+            <p className="mt-1 text-xs text-muted">{t('mfaCodeHint')}</p>
           </div>
 
-          {serverError && <p className="text-sm text-destructive">{serverError}</p>}
+          {serverError && <p className="text-sm text-danger-700">{serverError}</p>}
 
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="btn btn-primary btn-lg w-full disabled:cursor-not-allowed disabled:opacity-50"
+          >
             {isSubmitting ? t('loggingIn') : t('login')}
-          </Button>
+          </button>
         </form>
       </div>
     </div>

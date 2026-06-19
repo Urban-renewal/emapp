@@ -38,6 +38,7 @@ import {
   AuditService,
   apartments,
   buildings,
+  bumpStatsEpoch,
   encryptOwnerPiiBatch,
   hashField,
   env,
@@ -47,6 +48,7 @@ import {
   owners,
   ownerships,
   withTenant,
+  type ICacheProvider,
   type IStorageProvider,
   type TenantTx,
 } from '@emapp/db';
@@ -728,11 +730,43 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
    *    (the deterministic Layer-1 alias registry). Production
    *    main.ts MAY compose additional layers (Layer-2 saved
    *    templates, Layer-3 agent) — but ONLY once the wizard /
-   *    agent endpoints land. */
+   *    agent endpoints land.
+   *
+   *  - `cache` (E2 Wave-0 PERF freshness): the shared `cache_kv`-backed
+   *    provider used to bump the org's stats epoch after a materialise
+   *    commits, so the home KPIs + project board recompute the new
+   *    resident/denominator counts instead of serving the read-through
+   *    cache's stale envelope for up to STATS_TTL_SECONDS. Optional
+   *    (mirrors `storage`): test paths that `new ImportJobHandler()`
+   *    without it simply no-op the invalidation. */
   constructor(
     private readonly storage?: IStorageProvider,
     private readonly mappingResolver: IMappingResolver = new LegacyAliasResolver(),
+    private readonly cache?: ICacheProvider,
   ) {}
+
+  /**
+   * Best-effort stats-cache invalidation after a successful, row-producing
+   * materialise. Bumps the org's stats epoch (shared `@emapp/db` helper —
+   * byte-identical key to the api `StatsCacheService`) so a subsequent
+   * `readThrough` MISSes its now-stale envelope and recomputes the fresh
+   * post-import counts.
+   *
+   * NEVER throws into the import path: a cache failure must not fail or retry
+   * an import whose domain rows already committed. No-ops when the cache isn't
+   * wired (test paths). PII-free log (orgId + message only).
+   */
+  private async invalidateStats(orgId: string, ctx: JobContext): Promise<void> {
+    if (!this.cache) return;
+    try {
+      await bumpStatsEpoch(this.cache, orgId);
+    } catch (e: unknown) {
+      ctx.log.warn('stats-cache invalidate failed after import materialise', {
+        orgId,
+        err: e instanceof Error ? e.message : 'unknown',
+      });
+    }
+  }
 
   async handle(payload: ImportJobPayload, ctx: JobContext): Promise<void> {
     ctx.log.info('import job picked up', { jobId: payload.jobId });
@@ -1965,6 +1999,17 @@ export class ImportJobHandler implements IJobHandler<ImportJobPayload> {
     // forward path's persisting→done transition checks this flag to
     // avoid running persistStage twice in one handle().
     cache.persisted = true;
+
+    // E2 Wave-0 PERF freshness — the materialise just inserted apartments +
+    // owners + ownerships, which change orgStats.residents +
+    // signatureProgress denominators. Bump the org's stats epoch so the home
+    // KPIs + project board recompute the new counts instead of serving the
+    // read-through cache's stale envelope for up to STATS_TTL_SECONDS. We are
+    // PAST both early-exits (dry-run and okRows.length === 0 both `return`
+    // above), so this only fires when counts ACTUALLY changed — never on a
+    // dry-run or a zero-row import (a needless cache bust). Best-effort: a
+    // cache failure must never fail an import whose rows already committed.
+    await this.invalidateStats(payload.orgId, ctx);
 
     // v6 audit fix (§6 — P0 perf, cross-confirmed by perf agent):
     // null the parse+mapping cache so V8 can reclaim the workbook +

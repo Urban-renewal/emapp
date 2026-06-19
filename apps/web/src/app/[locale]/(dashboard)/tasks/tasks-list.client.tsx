@@ -75,12 +75,12 @@ export function TasksListClient() {
                       </h2>
                       <StatusBadge intent={task.intent}>{task.statusLabel}</StatusBadge>
                       {task.priority === 3 && (
-                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
+                        <span className="rounded-full bg-status-danger-bg px-2 py-0.5 text-xs font-medium text-status-danger-fg">
                           {task.priorityLabel}
                         </span>
                       )}
                       {task.isOverdue && (
-                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
+                        <span className="rounded-full bg-status-danger-bg px-2 py-0.5 text-xs font-medium text-status-danger-fg">
                           {t('overdue')}
                         </span>
                       )}

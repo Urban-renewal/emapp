@@ -121,7 +121,7 @@ export default function ImportDetailPage() {
             <span className="text-xs text-muted-foreground">{data.fileSizeLabel}</span>
             <span className="text-xs text-muted-foreground">· {data.createdRelative}</span>
             {data.dryRun && (
-              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+              <span className="rounded-full bg-status-info-bg px-2 py-0.5 text-xs font-medium text-status-info-fg">
                 {t('dryRun')}
               </span>
             )}
@@ -147,13 +147,13 @@ export default function ImportDetailPage() {
           The manager reviews the inventory and confirms (→ real load) or
           cancels (→ discard). Protects the org from a bad Excel. */}
       {status === 'awaiting_confirm' && (
-        <div className="space-y-3 rounded-md border border-amber-300 bg-amber-50 p-4">
-          <h2 className="text-sm font-semibold text-amber-900">{t('previewTitle')}</h2>
-          <p className="text-sm text-amber-800">{t('previewHint')}</p>
+        <div className="space-y-3 rounded-lg border border-status-warning-fg/30 bg-status-warning-bg p-4">
+          <h2 className="text-sm font-semibold text-status-warning-fg">{t('previewTitle')}</h2>
+          <p className="text-sm text-status-warning-fg/90">{t('previewHint')}</p>
           {/* #6 — real per-entity change-summary (count-only dry-run) so the
               manager sees what the import WOULD do, instead of "0 changes". */}
           {data.changeSummary && (
-            <p className="text-sm font-medium text-amber-900">
+            <p className="text-sm font-medium text-status-warning-fg">
               {t('previewChanges', {
                 owners: data.changeSummary.ownersCreated,
                 apartments: data.changeSummary.apartmentsCreated,
@@ -161,7 +161,7 @@ export default function ImportDetailPage() {
               })}
             </p>
           )}
-          <p className="text-sm text-amber-900">
+          <p className="text-sm text-status-warning-fg">
             {t('previewSummary', { ok: counters.okRows, failed: counters.failedRows })}
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -212,7 +212,7 @@ export default function ImportDetailPage() {
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">{t('okLabel')}</dt>
-          <dd className="text-base font-semibold text-emerald-700">{counters.okRows}</dd>
+          <dd className="text-base font-semibold text-status-success-fg">{counters.okRows}</dd>
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">{t('failedLabel')}</dt>
@@ -228,9 +228,11 @@ export default function ImportDetailPage() {
       </dl>
 
       {data.isAwaitingMapping && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-4">
-          <h2 className="text-sm font-semibold text-amber-900">{t('mappingNeededTitle')}</h2>
-          <p className="mt-1 text-sm text-amber-800">{t('mappingNeededHint')}</p>
+        <div className="rounded-lg border border-status-warning-fg/30 bg-status-warning-bg p-4">
+          <h2 className="text-sm font-semibold text-status-warning-fg">
+            {t('mappingNeededTitle')}
+          </h2>
+          <p className="mt-1 text-sm text-status-warning-fg/90">{t('mappingNeededHint')}</p>
           <div className="mt-3">
             <Button asChild size="sm">
               <Link href={`/imports/${data.id}/mapping`}>{t('openMappingWizard')}</Link>

@@ -10,7 +10,12 @@ import {
   type Project as ProjectRow,
   type TenantTx,
 } from '@emapp/db';
-import { PROJECT_TYPE_DEFAULT_CONSENT_PCT, isAllowedStatusTransition } from '@emapp/shared-types';
+import {
+  PROJECT_TYPE_DEFAULT_CONSENT_PCT,
+  PULSE_EXPIRING_SOON_DAYS,
+  PULSE_STALLED_DAYS,
+  isAllowedStatusTransition,
+} from '@emapp/shared-types';
 import type {
   ApartmentHoldout,
   ApartmentSignatureProgress,
@@ -18,7 +23,10 @@ import type {
   OrgStats,
   Project,
   ProjectListItem,
+  ProjectPulseRow,
   ProjectStats,
+  PulseNeedsHumanRow,
+  SignaturePulse,
   SignatureProgress,
   UpdateProject,
 } from '@emapp/shared-types';
@@ -42,6 +50,7 @@ import {
 } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
+import { rankAttention } from './rank-attention';
 import { StatsCacheService } from './stats-cache.service';
 
 export interface ProjectListPage {
@@ -884,6 +893,212 @@ export class ProjectsService {
       },
       { userId: user.sub },
     );
+  }
+
+  /**
+   * E2 Wave-2 B1 — the org-wide "signature pulse" feed backing the board-first
+   * home (E2.1). Returns one {@link ProjectPulseRow} PER project the caller may
+   * see — an AGENT sees ONLY their assigned projects, a manager/viewer the whole
+   * org — plus the A8 `needsHuman` bucket and the header `buckets` counts.
+   *
+   * ── AGENT-SCOPE (the load-bearing visibility invariant) ────────────────────
+   * The set of projects is resolved by the SAME rule as everywhere else: agents
+   * inner-join their ACTIVE project_assignments (unassigned_at IS NULL), so an
+   * unassigned project never enters the feed. Org isolation is RLS (withTenant);
+   * a cross-tenant org therefore yields ZERO visible projects → an empty feed,
+   * never another org's rows.
+   *
+   * ── CONSENT IS SINGLE-SOURCE ───────────────────────────────────────────────
+   * The consent fields (`consentedPct`/`metThreshold`/`basis`) come from
+   * `computeConsentAggregates` — the IDENTICAL share-weighted CTE the per-project
+   * board uses — run per visible project under THIS withTenant's tx. We do NOT
+   * recompute consent by-heads, so the home feed and the board agree exactly.
+   * The per-project consent compute is read-through cached under the SAME
+   * tenant-scoped key the board uses (`sigProgress:p:<projectId>`), so a warm
+   * board read warms the pulse and vice-versa — never a cross-tenant key.
+   *
+   * ── NO PII ─────────────────────────────────────────────────────────────────
+   * Every projected field is a count, a derived %, a timestamp, or the project's
+   * own id/name. The signature-activity query touches signature_requests +
+   * documents but selects only aggregates; no owner id/name/national_id/phone is
+   * ever read. `needsHuman` carries projectId + counts, never PII.
+   */
+  async signaturePulse(user: AccessTokenPayload): Promise<SignaturePulse> {
+    // 1) Resolve the visible projects + their PII-free signature-activity facts
+    //    in ONE round-trip, scoped by RLS (org) AND the agent assignment join.
+    const facts = await withTenant(
+      user.orgId,
+      async (tx) => {
+        // The agent-visibility predicate, applied as a project_assignments
+        // inner-join filter. Manager/viewer: no extra filter (whole org).
+        const visibleProjects =
+          user.role === 'agent'
+            ? sql`
+                SELECT p.id, p.name
+                FROM projects p
+                INNER JOIN project_assignments pa
+                  ON pa.project_id = p.id
+                  AND pa.user_id = ${user.sub}
+                  AND pa.unassigned_at IS NULL
+                WHERE p.archived_at IS NULL`
+            : sql`
+                SELECT p.id, p.name
+                FROM projects p
+                WHERE p.archived_at IS NULL`;
+
+        const result = await tx.execute(sql`
+          WITH visible AS (${visibleProjects}),
+          proj_docs AS (
+            -- The project's signature-bearing docs (project-level ∪
+            -- apartment-level, archived excluded) — one doc-resolution
+            -- definition reused from the board's signatureProgress path.
+            SELECT v.id AS project_id, d.id AS document_id
+            FROM visible v
+            INNER JOIN documents d ON d.project_id = v.id AND d.archived_at IS NULL
+            UNION
+            SELECT v.id AS project_id, d.id AS document_id
+            FROM visible v
+            INNER JOIN buildings b ON b.project_id = v.id
+            INNER JOIN apartments a ON a.building_id = b.id
+            INNER JOIN documents d ON d.apartment_id = a.id AND d.archived_at IS NULL
+          )
+          SELECT
+            v.id AS project_id,
+            v.name AS project_name,
+            -- most-recent SIGNED request's signed_at (fallback created_at if a
+            -- legacy signed row predates signed_at) on a project doc.
+            (SELECT MAX(COALESCE(sr.signed_at, sr.created_at))
+               FROM signature_requests sr
+               WHERE sr.status = 'signed'
+                 AND sr.document_id IN (SELECT document_id FROM proj_docs WHERE project_id = v.id)
+            ) AS last_signature_at,
+            -- requests that flipped to signed in the trailing 7 days.
+            (SELECT COUNT(*)::int
+               FROM signature_requests sr
+               WHERE sr.status = 'signed'
+                 AND COALESCE(sr.signed_at, sr.created_at) >= now() - interval '7 days'
+                 AND sr.document_id IN (SELECT document_id FROM proj_docs WHERE project_id = v.id)
+            ) AS signed_this_week,
+            -- soonest-expiring PENDING request on a project doc.
+            (SELECT MIN(sr.expires_at)
+               FROM signature_requests sr
+               WHERE sr.status = 'pending'
+                 AND sr.document_id IN (SELECT document_id FROM proj_docs WHERE project_id = v.id)
+            ) AS next_expiry_at
+          FROM visible v
+          ORDER BY v.id
+        `);
+        return (result as unknown as { rows: Array<Record<string, unknown>> }).rows;
+      },
+      { userId: user.sub },
+    );
+
+    // 2) For each visible project, fetch the SINGLE-SOURCE share-weighted
+    //    consent (cached, tenant-scoped key — same as the board). Sequential
+    //    cache reads keep the warm path one-round-trip-per-project; at MVP
+    //    project counts this is well within the sub-second budget the cache
+    //    layer guards. We compute consent ONLY for projects already proven
+    //    visible by step 1, so there is no extra visibility surface here.
+    const now = Date.now();
+    const expiringSoonMs = PULSE_EXPIRING_SOON_DAYS * 24 * 60 * 60 * 1000;
+
+    const rows: ProjectPulseRow[] = [];
+    for (const f of facts) {
+      const projectId = String(f['project_id']);
+      const projectName = String(f['project_name']);
+      const lastSig = f['last_signature_at'];
+      const lastSignatureAt =
+        lastSig === null || lastSig === undefined
+          ? null
+          : new Date(lastSig as string).toISOString();
+      const nextExp = f['next_expiry_at'];
+      const nextExpiryAt =
+        nextExp === null || nextExp === undefined
+          ? null
+          : new Date(nextExp as string).toISOString();
+      const signedThisWeek = Number(f['signed_this_week'] ?? 0);
+
+      const stalledDays =
+        lastSignatureAt === null
+          ? null
+          : Math.max(0, Math.floor((now - new Date(lastSignatureAt).getTime()) / 86_400_000));
+
+      const expiringSoon =
+        nextExpiryAt !== null && new Date(nextExpiryAt).getTime() - now <= expiringSoonMs;
+
+      // SINGLE-SOURCE consent — the IDENTICAL share-weighted CTE the board uses,
+      // read-through cached under a pulse-specific, tenant-scoped key. The board
+      // caches the ASSEMBLED SignatureProgress under sigProgress:p:<id>; we cache
+      // the raw aggregates under pulseConsent:p:<id> to avoid an envelope-shape
+      // clash. The SAME per-org epoch invalidates both on any consent write.
+      const agg = this.statsCache
+        ? await this.statsCache.readThrough(
+            user.orgId,
+            this.statsCache.pulseConsentKey(projectId),
+            () =>
+              withTenant(user.orgId, (tx) => this.computeConsentAggregates(tx, projectId), {
+                userId: user.sub,
+              }),
+          )
+        : await withTenant(user.orgId, (tx) => this.computeConsentAggregates(tx, projectId), {
+            userId: user.sub,
+          });
+      const metThreshold =
+        agg.targetSignaturePct !== null && agg.consentedPct >= agg.targetSignaturePct;
+
+      rows.push({
+        projectId,
+        projectName,
+        lastSignatureAt,
+        signedThisWeek,
+        stalledDays,
+        nextExpiryAt,
+        expiringSoon,
+        consentedPct: agg.consentedPct,
+        metThreshold,
+        basis: 'share' as const,
+      });
+    }
+
+    // 3) Order most-urgent-first via the pure A2 scorer.
+    const attention = rankAttention(rows);
+
+    // 4) A8 needsHuman + header buckets, derived from the SAME rows (no new
+    //    query). Each project is classified into exactly one of
+    //    stalled/expiringSoon/onTrack (stalled wins, then expiringSoon);
+    //    needsHuman is a separate overlay.
+    let stalled = 0;
+    let expiringSoonCount = 0;
+    let onTrack = 0;
+    const needsHuman: PulseNeedsHumanRow[] = [];
+
+    for (const r of attention) {
+      const isStalled = r.stalledDays !== null && r.stalledDays >= PULSE_STALLED_DAYS;
+      if (isStalled) stalled += 1;
+      else if (r.expiringSoon) expiringSoonCount += 1;
+      else onTrack += 1;
+
+      const reasons: PulseNeedsHumanRow['reasons'] = [];
+      if (isStalled) reasons.push('stalled');
+      if (r.expiringSoon) reasons.push('expiring');
+      if (reasons.length > 0) {
+        needsHuman.push({
+          projectId: r.projectId,
+          projectName: r.projectName,
+          reasons,
+          // Worst-case headcount behind the signals available without new
+          // schema: the pending-expiring requests. `signedThisWeek` is activity,
+          // not a backlog, so it is NOT counted here.
+          count: r.expiringSoon ? 1 : 0,
+        });
+      }
+    }
+
+    return {
+      buckets: { stalled, expiringSoon: expiringSoonCount, needsHuman: needsHuman.length, onTrack },
+      attention,
+      needsHuman,
+    };
   }
 
   async create(user: AccessTokenPayload, input: CreateProject): Promise<Project> {

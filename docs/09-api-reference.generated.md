@@ -1704,6 +1704,23 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `org_settings_floor_violation`, `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/org/signature-pulse
+
+- **Auth:** AuthGuard + TenantGuard (projects.read)
+- **Summary:** E2 Wave-2 B1 — org-wide signature-pulse feed for the board-first home: per-project attention rows (rankAttention-ordered), needsHuman bucket, header buckets. Agent → assigned projects only; manager/viewer → whole org. Single-source share-weighted consent (matches the board). No PII (counts/%/timestamps only).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...SignaturePulse } }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `token_expired`
+
 ### GET /api/v1/org/stats
 
 - **Auth:** AuthGuard + TenantGuard (projects.read)

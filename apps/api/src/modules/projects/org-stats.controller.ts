@@ -33,4 +33,17 @@ export class OrgStatsController {
   async stats(@CurrentUser() user: AccessTokenPayload) {
     return { data: await this.projects.orgStats(user) };
   }
+
+  /**
+   * E2 Wave-2 B1 — the org-wide "signature pulse" feed for the board-first home
+   * (E2.1): per-project attention rows (ordered by urgency), the `needsHuman`
+   * bucket, and header `buckets` counts. Same `projects.read` gate as `stats`
+   * (all org roles); agent-scope (assigned projects only) + RLS org-isolation
+   * are enforced INSIDE the service. No PII — counts/percentages/timestamps only.
+   */
+  @Get('signature-pulse')
+  @RequirePermission('projects.read')
+  async signaturePulse(@CurrentUser() user: AccessTokenPayload) {
+    return { data: await this.projects.signaturePulse(user) };
+  }
 }

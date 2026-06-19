@@ -2,6 +2,8 @@
 
 import { useTranslations } from 'next-intl';
 
+import { DataState } from '@/components/ui/data-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useSignatureProgress } from '@/hooks/use-projects';
 
 /**
@@ -16,80 +18,91 @@ import { useSignatureProgress } from '@/hooks/use-projects';
  *
  * RTL note: the bar fills from the inline-start via the logical
  * `inset-inline-start` offset so it reads correctly in both directions.
+ *
+ * E2 Wave-0 C2 — the board USED to `return null` on error (a silent blank:
+ * the "situation picture" vanished with no signal the user could act on). It
+ * now routes the four non-happy states through the shared `<DataState>`
+ * wrapper: a token-driven skeleton while loading and a CALM retry on error
+ * (a 403 falls through to the muted access-denied treatment automatically).
  */
 export function SignatureProgressBoard({ projectId }: { projectId: string }) {
   const t = useTranslations('projects.board');
-  const { data, isLoading, isError } = useSignatureProgress(projectId);
+  const { data, isLoading, isError, error, refetch } = useSignatureProgress(projectId);
 
-  if (isLoading) {
-    return (
-      <div
-        className="h-20 w-full animate-pulse rounded-md"
-        style={{ background: 'var(--bg-subtle)' }}
-        aria-hidden="true"
-      />
-    );
-  }
-
-  // Silent on error/empty — the board is a supplementary "situation picture",
-  // never a blocker for the rest of the project detail page.
-  if (isError || !data) return null;
-
-  const barFill = data.barColor === 'green' ? 'var(--success-600)' : 'var(--warning-600)';
+  const barFill = data?.barColor === 'green' ? 'var(--success-600)' : 'var(--warning-600)';
 
   return (
-    <section aria-labelledby="proj-board-h" className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <h2 id="proj-board-h" className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
-          {t('title')}
-        </h2>
-      </div>
+    <DataState
+      isLoading={isLoading}
+      isError={isError}
+      error={error}
+      isEmpty={!isLoading && !isError && !data}
+      onRetry={() => void refetch()}
+      skeleton={<Skeleton className="h-20 w-full" />}
+      emptyTitle={t('empty')}
+    >
+      {data && (
+        <section aria-labelledby="proj-board-h" className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <h2
+              id="proj-board-h"
+              className="text-sm font-semibold"
+              style={{ color: 'var(--text)' }}
+            >
+              {t('title')}
+            </h2>
+          </div>
 
-      <p className="text-sm" style={{ color: 'var(--text)' }}>
-        <span className="font-medium">
-          {t('summary', {
-            consented: data.apartmentsConsented,
-            total: data.totalApartments,
-          })}
-        </span>
-        <span className="tabular ms-1" dir="ltr" style={{ color: 'var(--text-muted)' }}>
-          · {t('pct', { pct: data.consentedPct })}
-        </span>
-        <span className="ms-1" style={{ color: 'var(--text-muted)' }}>
-          ·{' '}
-          {data.hasTarget && data.targetSignaturePct !== null
-            ? t('target', { pct: data.targetSignaturePct })
-            : t('noTarget')}
-        </span>
-      </p>
+          <p className="text-sm" style={{ color: 'var(--text)' }}>
+            <span className="font-medium">
+              {t('summary', {
+                consented: data.apartmentsConsented,
+                total: data.totalApartments,
+              })}
+            </span>
+            <span className="tabular ms-1" dir="ltr" style={{ color: 'var(--text-muted)' }}>
+              · {t('pct', { pct: data.consentedPct })}
+            </span>
+            <span className="ms-1" style={{ color: 'var(--text-muted)' }}>
+              ·{' '}
+              {data.hasTarget && data.targetSignaturePct !== null
+                ? t('target', { pct: data.targetSignaturePct })
+                : t('noTarget')}
+            </span>
+          </p>
 
-      <div
-        className="relative w-full overflow-hidden rounded-full"
-        style={{ height: 10, background: 'var(--bg-subtle)' }}
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={data.consentedPct}
-        aria-label={t('title')}
-      >
-        <div
-          className="absolute inset-y-0"
-          style={{
-            insetInlineStart: 0,
-            width: `${data.consentedPct}%`,
-            background: barFill,
-          }}
-        />
-      </div>
+          <div
+            className="relative w-full overflow-hidden rounded-full"
+            style={{ height: 10, background: 'var(--bg-subtle)' }}
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={data.consentedPct}
+            aria-label={t('title')}
+          >
+            <div
+              className="absolute inset-y-0"
+              style={{
+                insetInlineStart: 0,
+                width: `${data.consentedPct}%`,
+                background: barFill,
+              }}
+            />
+          </div>
 
-      <div className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-        <span className="tabular" dir="ltr">
-          {t('signedCount', {
-            signed: data.signaturesSigned,
-            pending: data.signaturesPending,
-          })}
-        </span>
-      </div>
-    </section>
+          <div
+            className="flex items-center gap-3 text-[11px]"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            <span className="tabular" dir="ltr">
+              {t('signedCount', {
+                signed: data.signaturesSigned,
+                pending: data.signaturesPending,
+              })}
+            </span>
+          </div>
+        </section>
+      )}
+    </DataState>
   );
 }

@@ -137,6 +137,9 @@ export function toSignatureProgressViewModel(p: SignatureProgress): SignaturePro
     metThreshold: p.metThreshold,
     hasTarget: p.targetSignaturePct !== null,
     barColor: p.metThreshold ? 'green' : 'amber',
+    // E2 Wave-1 B0 — pass the consent basis through so the board renders the
+    // mandatory "by ownership share" label next to the %.
+    basis: p.basis,
   };
 }
 

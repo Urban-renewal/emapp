@@ -81,6 +81,8 @@ interface SignatureProgressBoard {
   targetSignaturePct: number | null;
   consentedPct: number;
   metThreshold: boolean;
+  /** E2 Wave-1 B0 — the consent-% computation basis (always 'share' today). */
+  basis: 'share';
 }
 
 /**
@@ -347,25 +349,32 @@ describe('signature-progress board — shape', () => {
     );
     expect(typeof board.consentedPct).toBe('number');
     expect(typeof board.metThreshold).toBe('boolean');
+    expect(board.basis).toBe('share'); // E2 Wave-1 B0 — basis label source
   }, 30_000);
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-// #2 — apartmentsConsented correctness (binary per apartment, every owner signed)
+// #2 — SHARE-WEIGHTED consent with PARTIAL-SHARE counting (E2 Wave-1 B0)
 // ───────────────────────────────────────────────────────────────────────────
-describe('signature-progress board — apartmentsConsented (binary per apartment)', () => {
-  it('apt A(1 owner signed)=consented; apt B(2 owners,1 signed)=not; apt C(1 owner pending)=not → consented=1, total=3, pct=33', async () => {
+// The genuinely-consequential change: a 50/50 apartment with ONE signer
+// contributes EXACTLY 0.5 (the signed owner's exact share), NOT 0 (old binary
+// "not all signed") and NOT 1. apartmentsConsented is now a SEPARATE display
+// count meaning FULLY-consented (contribution == 1); the headline consentedPct
+// is share-weighted: round(Σ contributions / totalApartments * 100).
+describe('signature-progress board — share-weighted partial-share consent (E2 Wave-1 B0)', () => {
+  it('apt A(1 owner, fully signed)=1.0; apt B(2 owners 50/50, ONE signed)=0.5; apt C(1 owner pending)=0 → weight 1.5/3 → pct=50; apartmentsConsented (fully) = 1', async () => {
     const projectId = org.projects[1]!.id;
     const building = await seedBuilding(projectId);
     const doc = await seedProjectDoc(org.id, projectId);
 
-    // apt A — 1 owner, SIGNED → consented.
+    // apt A — 1 owner (100% share), SIGNED → contribution 1.0 (fully consented).
     const aptA = await seedApartment(building);
     const aOwner = await seedOwner(org.id);
     await seedOwnership(aptA, aOwner);
     await seedRequest(org.id, doc, aOwner, 'signed');
 
-    // apt B — 2 owners (50/50), only ONE signed → NOT consented.
+    // apt B — 2 owners (50/50), only ONE signed → contribution 0.5 (the exact
+    // signed fraction; the OLD binary calc counted this 0). NOT fully-consented.
     const aptB = await seedApartment(building);
     const bOwner1 = await seedOwner(org.id);
     const bOwner2 = await seedOwner(org.id);
@@ -373,7 +382,7 @@ describe('signature-progress board — apartmentsConsented (binary per apartment
     await seedRequest(org.id, doc, bOwner1, 'signed'); // only owner1 signed
     await seedRequest(org.id, doc, bOwner2, 'pending'); // owner2 still pending
 
-    // apt C — 1 owner, PENDING only → NOT consented.
+    // apt C — 1 owner, PENDING only → contribution 0.
     const aptC = await seedApartment(building);
     const cOwner = await seedOwner(org.id);
     await seedOwnership(aptC, cOwner);
@@ -382,8 +391,116 @@ describe('signature-progress board — apartmentsConsented (binary per apartment
     const board = await callBoard(svc, manager(), projectId);
 
     expect(board.totalApartments).toBe(3);
-    expect(board.apartmentsConsented).toBe(1); // ONLY apt A
-    expect(board.consentedPct).toBe(33); // round(1/3*100)
+    // FULLY-consented (contribution == 1) — ONLY apt A. apt B (0.5) is NOT full.
+    expect(board.apartmentsConsented).toBe(1);
+    // Share-weighted: (1.0 + 0.5 + 0) / 3 = 0.5 → 50%. This DIFFERS from the old
+    // binary count, which yielded 33 (1 of 3 apartments) — the core fix.
+    expect(board.consentedPct).toBe(50);
+    // Basis is exposed so the FE renders the mandatory label.
+    expect(board.basis).toBe('share');
+  }, 60_000);
+
+  it('a 2-owner 50/50 apartment with ONE signer contributes EXACTLY 0.5 (its own project → pct=50)', async () => {
+    // The headline regression guard, in isolation: a SINGLE 50/50 apartment with
+    // one signer → consentedPct 50 (NOT 0 binary, NOT 100). One apartment, so
+    // the equal-apartment denominator is 1 and the % == the contribution.
+    const projectId = await withTenant(org.id, async (tx) => {
+      const { projects } = await import('@emapp/db');
+      const [p] = await tx
+        .insert(projects)
+        .values({
+          orgId: org.id,
+          name: `half-${randomUUID().slice(0, 6)}`,
+          type: 'tama38_1',
+          createdBy: managerId,
+        })
+        .returning({ id: projects.id });
+      return p!.id;
+    });
+    const building = await seedBuilding(projectId);
+    const doc = await seedProjectDoc(org.id, projectId);
+    const apt = await seedApartment(building);
+    const o1 = await seedOwner(org.id);
+    const o2 = await seedOwner(org.id);
+    await seedEqualOwnerships(apt, [o1, o2]);
+    await seedRequest(org.id, doc, o1, 'signed'); // 50% signed
+    await seedRequest(org.id, doc, o2, 'pending');
+
+    const board = await callBoard(svc, manager(), projectId);
+    expect(board.totalApartments).toBe(1);
+    expect(board.apartmentsConsented).toBe(0); // not FULLY consented (0.5)
+    expect(board.consentedPct).toBe(50); // the exact signed half — never 0, never 100
+    expect(board.basis).toBe('share');
+  }, 60_000);
+
+  it('a fully-signed apartment → contribution 1; an unsigned apartment → 0 (boundary clamp)', async () => {
+    const projectId = await withTenant(org.id, async (tx) => {
+      const { projects } = await import('@emapp/db');
+      const [p] = await tx
+        .insert(projects)
+        .values({
+          orgId: org.id,
+          name: `bounds-${randomUUID().slice(0, 6)}`,
+          type: 'tama38_1',
+          createdBy: managerId,
+        })
+        .returning({ id: projects.id });
+      return p!.id;
+    });
+    const building = await seedBuilding(projectId);
+    const doc = await seedProjectDoc(org.id, projectId);
+
+    // Fully-signed: 2 owners (50/50), BOTH signed → contribution 1.0.
+    const full = await seedApartment(building);
+    const f1 = await seedOwner(org.id);
+    const f2 = await seedOwner(org.id);
+    await seedEqualOwnerships(full, [f1, f2]);
+    await seedRequest(org.id, doc, f1, 'signed');
+    await seedRequest(org.id, doc, f2, 'signed');
+
+    // Unsigned: 1 owner, no signed request → contribution 0.
+    const none = await seedApartment(building);
+    const n1 = await seedOwner(org.id);
+    await seedOwnership(none, n1);
+    await seedRequest(org.id, doc, n1, 'pending');
+
+    const board = await callBoard(svc, manager(), projectId);
+    expect(board.totalApartments).toBe(2);
+    expect(board.apartmentsConsented).toBe(1); // only the fully-signed one
+    expect(board.consentedPct).toBe(50); // (1 + 0) / 2
+  }, 60_000);
+
+  it('zero-owner apartment is in the DENOMINATOR (contributes 0): one signed + one zero-owner apt → pct=50', async () => {
+    const projectId = await withTenant(org.id, async (tx) => {
+      const { projects } = await import('@emapp/db');
+      const [p] = await tx
+        .insert(projects)
+        .values({
+          orgId: org.id,
+          name: `zero-${randomUUID().slice(0, 6)}`,
+          type: 'tama38_1',
+          createdBy: managerId,
+        })
+        .returning({ id: projects.id });
+      return p!.id;
+    });
+    const building = await seedBuilding(projectId);
+    const doc = await seedProjectDoc(org.id, projectId);
+
+    // apt 1 — 1 owner, signed → contribution 1.0.
+    const signed = await seedApartment(building);
+    const so = await seedOwner(org.id);
+    await seedOwnership(signed, so);
+    await seedRequest(org.id, doc, so, 'signed');
+
+    // apt 2 — ZERO owners (no ownerships row at all) → contribution 0, but it
+    // STILL counts in totalApartments (the denominator), so pct = 1/2 = 50.
+    await seedApartment(building);
+
+    const board = await callBoard(svc, manager(), projectId);
+    expect(board.totalApartments).toBe(2); // includes the zero-owner apartment
+    expect(board.apartmentsConsented).toBe(1);
+    expect(board.consentedPct).toBe(50); // round(1 / 2 * 100), NOT 100
   }, 60_000);
 });
 

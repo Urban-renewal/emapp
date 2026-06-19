@@ -1337,6 +1337,9 @@
       "role": "Role"
     }
   },
+  "consent": {
+    "basisShare": "by ownership share"
+  },
   "portal": {
     "hero": {
       "statusChip": "Your project is active",

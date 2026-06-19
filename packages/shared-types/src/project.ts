@@ -229,17 +229,42 @@ export const ProjectListItemSchema = ProjectSchema.merge(ProjectStatsSchema);
 export type ProjectListItem = z.infer<typeof ProjectListItemSchema>;
 
 /**
+ * Consent BASIS — how a consent percentage is computed. The FE renders this as
+ * a mandatory LABEL next to every consent % ("by ownership share" / "לפי שיעור
+ * הבעלות") so the number is NEVER a bare, unqualified percent.
+ *
+ * Today the only basis is `'share'` (share-weighted with partial-share counting,
+ * E2 Wave-1 B0). The enum is deliberately a single literal so future bases (e.g.
+ * a head-count fallback) can be added without a breaking shape change; consumers
+ * switch on the value, never assume it.
+ *
+ * LEGAL GATE (OD-1 / OD-3): this label states the COMPUTATION basis, NOT a legal
+ * claim. The exact statutory consent %, the shell-owner denominator, and the
+ * rounding rule are still legally gated and refined later — the engine ships
+ * BEHIND this basis label, not as a statutory assertion.
+ */
+export const ConsentBasisEnum = z.enum(['share']);
+export type ConsentBasis = z.infer<typeof ConsentBasisEnum>;
+
+/**
  * Phase-6 "תמונת מצב" — project signature-progress BOARD (S5a, read-only).
  * Returned by `GET /api/v1/projects/:id/signature-progress`. NO PII: only
  * aggregate counts + the project's own target/derived percentages.
  *
- * `apartmentsConsented` is a BINARY per-apartment measure (NOT share-weighted):
- * an apartment is consented iff it has >=1 active owner ownership AND EVERY
- * active owner (ownerships.ended_at IS NULL, relationship='owner') has a SIGNED
- * signature_request on one of the project's documents. A 0-owner apartment is
- * never consented. `consentedPct = round(apartmentsConsented/total*100)` (0 when
- * total is 0). `metThreshold = targetSignaturePct != null && consentedPct >=
- * targetSignaturePct`.
+ * E2 Wave-1 B0 — the headline `consentedPct` is now SHARE-WEIGHTED with
+ * PARTIAL-SHARE counting (owner-confirmed; supersedes the old binary count):
+ * each apartment contributes `Σ(signed owners' share) / Σ(all active owners'
+ * share)` clamped to [0,1] (a 50/50 apartment with ONE signer = 0.5; a 0-owner
+ * or 0-active-share apartment contributes 0). Apartments are EQUAL-weighted:
+ * `consentedPct = round(Σ contributions / totalApartments * 100)` where
+ * `totalApartments` is every non-archived apartment (INCLUDING zero-owner ones
+ * in the denominator). `metThreshold = targetSignaturePct != null &&
+ * consentedPct >= targetSignaturePct`.
+ *
+ * `apartmentsConsented` is RETAINED as a separate display count meaning
+ * FULLY-consented apartments (contribution == 1): >=1 active owner AND EVERY
+ * active owner signed. It is NO LONGER the basis of `consentedPct` (which is
+ * share-weighted). `basis` is always `'share'` today and labels the headline %.
  */
 export const SignatureProgressSchema = z.object({
   totalApartments: z.number().int().nonnegative(),
@@ -249,6 +274,8 @@ export const SignatureProgressSchema = z.object({
   targetSignaturePct: z.number().min(0).max(100).nullable(),
   consentedPct: z.number().int().min(0).max(100),
   metThreshold: z.boolean(),
+  /** The computation basis for `consentedPct` — drives the mandatory FE label. */
+  basis: ConsentBasisEnum,
 });
 export type SignatureProgress = z.infer<typeof SignatureProgressSchema>;
 
@@ -278,6 +305,16 @@ export type ApartmentSignatureProgress = z.infer<typeof ApartmentSignatureProgre
 /**
  * Org-wide aggregates for the home dashboard KPI cards. Returned by
  * `GET /api/v1/org/stats`. Distinct from project-level stats above.
+ *
+ * E2 Wave-1 B0 note — there is DELIBERATELY no org-wide consent % here. The home
+ * KPI cards render RAW COUNTS only (active projects, residents, signatures
+ * received, pending); the manager-home UI shows no consent percentage. The ONLY
+ * surface that renders a consent % is the per-project board (SignatureProgress
+ * above), which is now share-weighted and basis-labelled. So no consent calc on
+ * this shape was ever on the old binary basis — there is nothing here to migrate
+ * and nothing left stale. If an org-wide consent KPI is added later it MUST use
+ * the same share basis and carry the same `basis` label (OD-1/OD-3 still gate
+ * the exact statutory %).
  */
 export const OrgStatsSchema = z.object({
   activeProjects: z.number().int().nonnegative(),

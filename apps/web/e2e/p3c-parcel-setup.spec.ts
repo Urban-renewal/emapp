@@ -88,6 +88,9 @@ const SIGNATURE_PROGRESS = {
   targetSignaturePct: 66,
   consentedPct: 0,
   metThreshold: false,
+  // E2 Wave-1 B0 — share-weighted consent basis (required by the wire
+  // SignatureProgressSchema parse).
+  basis: 'share' as const,
 };
 
 /** GET /me — manager with the catalog permissions the page gates on. */

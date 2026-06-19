@@ -1337,6 +1337,9 @@
       "role": "תפקיד"
     }
   },
+  "consent": {
+    "basisShare": "לפי שיעור הבעלות"
+  },
   "portal": {
     "hero": {
       "statusChip": "הפרויקט שלך פעיל",

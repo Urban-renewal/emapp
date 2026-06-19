@@ -3,6 +3,7 @@
 import {
   Bell,
   CheckSquare,
+  ChevronDown,
   FileSignature,
   FileSpreadsheet,
   FileText,
@@ -19,6 +20,7 @@ import {
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
+import { useState } from 'react';
 
 import { NameDisplay } from '@/components/ui/name-display';
 import { useHasPermission } from '@/hooks/use-permissions';
@@ -44,7 +46,8 @@ interface NavItem {
     | 'messages'
     | 'audit'
     | 'settings'
-    | 'provider';
+    | 'provider'
+    | 'sectionTools';
   icon: typeof Home;
   enabled: boolean;
 }
@@ -69,6 +72,20 @@ interface Props {
  *   - Nav: vertical list of route links with active-state visualisation
  *     (right-edge bar + bg highlight, per handoff `right: -10`).
  *   - Footer: avatar + name + role + LogoutButton.
+ *
+ * E2 Wave-1 IA-S2 — calm the nav from 14 flat items to 5 PRIMARY
+ * (always visible: ראשי · פרויקטים · בעלי דירות · בקשות חתימה · מסמכים —
+ * the daily signature-collection workflow) plus a collapsible SECONDARY
+ * group ("ניהול וכלים") holding the remaining management/tools routes
+ * (ייבוא · קבלנים · הערות · הודעות · משימות · התראות · חברי ארגון ·
+ * יומן ביקורת · הגדרות). NOTHING is removed — every route stays
+ * reachable; the secondary group is collapsed-but-present. The grouping
+ * is presentation ONLY: permission gating (Owners/Members/Audit/Settings)
+ * is unchanged, so this never widens WHO sees WHAT. The disclosure is an
+ * accessible button (`aria-expanded` + keyboard) and auto-expands when a
+ * secondary route is the active page so its highlight is never hidden.
+ * Animation rides `--motion-duration-fast`, which the globals.css
+ * `prefers-reduced-motion` guard zeroes — instant for reduced-motion.
  *
  * Closures preserved from prior versions:
  *  - §v9-H-4 (sidebar bare-`<a>` → `<Link>` so SPA navigation stays).
@@ -110,38 +127,52 @@ export function Sidebar({ userName, userRole, tier }: Props) {
     ? rawPath.slice(localePrefix.length) || '/'
     : rawPath;
 
-  const items: NavItem[] = [
+  // PRIMARY (5, always visible) — the daily signature-collection workflow.
+  // Owners is gated on `owners.read` (see canReadOwners above); an agent
+  // without view_owners never holds it, so the link is hidden rather than
+  // rendering a 403/404 dead-link. Gating is unchanged from the flat nav —
+  // only the grouping moved.
+  const primaryItems: NavItem[] = [
     { href: '/', labelKey: 'home', icon: Home, enabled: true },
     { href: '/projects', labelKey: 'projects', icon: FileText, enabled: true },
-    // Owners — gated on `owners.read` (see canReadOwners above). Inserted in
-    // its nav slot (between Projects and Imports) iff the actor holds the read,
-    // so an agent without view_owners never sees a link that would 403.
     ...(canReadOwners
       ? [{ href: '/owners', labelKey: 'owners', icon: Users, enabled: true } as NavItem]
       : []),
-    { href: '/imports', labelKey: 'imports', icon: FileSpreadsheet, enabled: true },
-    { href: '/documents', labelKey: 'documents', icon: FileText, enabled: true },
     {
       href: '/signature-requests',
       labelKey: 'signatureRequests',
       icon: FileSignature,
       enabled: true,
     },
-    { href: '/notifications', labelKey: 'notifications', icon: Bell, enabled: true },
-    { href: '/tasks', labelKey: 'tasks', icon: CheckSquare, enabled: true },
+    { href: '/documents', labelKey: 'documents', icon: FileText, enabled: true },
+  ];
+
+  // SECONDARY (collapsible "ניהול וכלים") — management + tools. Every route
+  // here stays reachable; the group is collapsed-but-present, not deleted.
+  // Members/Audit/Settings keep their effective-permission gate (unchanged),
+  // so the grouping never widens visibility.
+  const secondaryItems: NavItem[] = [
+    { href: '/imports', labelKey: 'imports', icon: FileSpreadsheet, enabled: true },
     { href: '/contractors', labelKey: 'contractors', icon: HardHat, enabled: true },
     { href: '/notes', labelKey: 'notes', icon: StickyNote, enabled: true },
     { href: '/messages', labelKey: 'messages', icon: MessageSquare, enabled: true },
+    { href: '/tasks', labelKey: 'tasks', icon: CheckSquare, enabled: true },
+    { href: '/notifications', labelKey: 'notifications', icon: Bell, enabled: true },
   ];
 
   if (canReadMembers) {
-    items.push({ href: '/members', labelKey: 'members', icon: UserPlus, enabled: true });
+    secondaryItems.push({ href: '/members', labelKey: 'members', icon: UserPlus, enabled: true });
   }
   if (canReadAudit) {
-    items.push({ href: '/audit', labelKey: 'audit', icon: History, enabled: true });
+    secondaryItems.push({ href: '/audit', labelKey: 'audit', icon: History, enabled: true });
   }
   if (canReadSettings) {
-    items.push({ href: '/settings', labelKey: 'settings', icon: Settings, enabled: true });
+    secondaryItems.push({
+      href: '/settings',
+      labelKey: 'settings',
+      icon: Settings,
+      enabled: true,
+    });
   }
   // V11 A.S13: provider_admin no longer mounted on the org Sidebar — the
   // dashboard layout now branches to the dedicated PCSidebar for the
@@ -152,6 +183,66 @@ export function Sidebar({ userName, userRole, tier }: Props) {
     if (href === '/') return path === '/' || path === '';
     return path === href || path.startsWith(`${href}/`);
   }
+
+  /** Render a single nav row (Link, or a disabled `<span>` for locked items).
+   *  Shared by the primary list and the collapsible secondary group so the
+   *  active-state visualisation, a11y, and styling stay identical. */
+  function renderRow(item: NavItem) {
+    const Icon = item.icon;
+    const active = isActive(item.href);
+    const rowStyle = active
+      ? { background: 'rgba(255,255,255,.08)', color: '#fff', fontWeight: 500 }
+      : { background: 'transparent', color: 'rgba(255,255,255,.85)' };
+    const rowClass = cn(
+      'relative flex items-center gap-[11px] rounded-lg px-3 py-2.5 text-sm transition-colors',
+      !active && 'hover:bg-white/[.04]',
+      !item.enabled && 'cursor-not-allowed opacity-50',
+    );
+
+    if (!item.enabled) {
+      return (
+        <span
+          key={item.href}
+          aria-disabled
+          className={rowClass}
+          style={{ ...rowStyle, color: 'rgba(255,255,255,.4)' }}
+        >
+          <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
+          <span>{t(item.labelKey)}</span>
+          <Lock className="ms-auto h-3 w-3" aria-hidden="true" />
+        </span>
+      );
+    }
+
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={rowClass}
+        style={rowStyle}
+        aria-current={active ? 'page' : undefined}
+      >
+        {/* Active edge bar — handoff places it `right: -10` (logical start
+         *  under RTL). Use inset-inline-start so it flips correctly under LTR. */}
+        {active && (
+          <span
+            aria-hidden="true"
+            className="absolute top-1.5 bottom-1.5 w-[3px] rounded-full bg-white"
+            style={{ insetInlineStart: -10 }}
+          />
+        )}
+        <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
+        <span>{t(item.labelKey)}</span>
+      </Link>
+    );
+  }
+
+  // Auto-expand the secondary group when the active page lives inside it, so
+  // the highlight is never hidden behind a collapsed disclosure. Default
+  // collapsed otherwise (the calm primary-5 surface). State is initialised
+  // once from the path; the user can then toggle it freely.
+  const secondaryHasActive = secondaryItems.some((item) => isActive(item.href));
+  const [toolsOpen, setToolsOpen] = useState(secondaryHasActive);
 
   return (
     <aside
@@ -182,58 +273,44 @@ export function Sidebar({ userName, userRole, tier }: Props) {
         </div>
       </div>
 
-      {/* Nav list */}
+      {/* Nav list — 5 primary rows + a collapsible "ניהול וכלים" group. */}
       <nav className="flex-1 overflow-auto p-2.5" aria-label={t('navLandmark')}>
-        {items.map((item) => {
-          const Icon = item.icon;
-          const active = isActive(item.href);
-          const rowStyle = active
-            ? { background: 'rgba(255,255,255,.08)', color: '#fff', fontWeight: 500 }
-            : { background: 'transparent', color: 'rgba(255,255,255,.85)' };
-          const rowClass = cn(
-            'relative flex items-center gap-[11px] rounded-lg px-3 py-2.5 text-sm transition-colors',
-            !active && 'hover:bg-white/[.04]',
-            !item.enabled && 'cursor-not-allowed opacity-50',
-          );
+        {primaryItems.map((item) => renderRow(item))}
 
-          if (!item.enabled) {
-            return (
-              <span
-                key={item.href}
-                aria-disabled
-                className={rowClass}
-                style={{ ...rowStyle, color: 'rgba(255,255,255,.4)' }}
-              >
-                <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
-                <span>{t(item.labelKey)}</span>
-                <Lock className="ms-auto h-3 w-3" aria-hidden="true" />
-              </span>
-            );
-          }
-
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={rowClass}
-              style={rowStyle}
-              aria-current={active ? 'page' : undefined}
-            >
-              {/* Active edge bar — handoff places it `right: -10` (logical
-               *  start under RTL). Use inset-inline-start so it flips
-               *  correctly under LTR. */}
-              {active && (
-                <span
-                  aria-hidden="true"
-                  className="absolute top-1.5 bottom-1.5 w-[3px] rounded-full bg-white"
-                  style={{ insetInlineStart: -10 }}
-                />
+        {/* Secondary group — accessible disclosure. The button toggles a
+         *  region holding every management/tools route. All routes stay
+         *  reachable; collapsed is the default calm state (auto-open when a
+         *  child is the active page). */}
+        <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--sidebar-border)' }}>
+          <button
+            type="button"
+            onClick={() => setToolsOpen((v) => !v)}
+            aria-expanded={toolsOpen}
+            aria-controls="nav-tools-group"
+            className={cn(
+              'flex w-full items-center gap-[11px] rounded-lg px-3 py-2.5 text-sm transition-colors',
+              'hover:bg-white/[.04]',
+            )}
+            style={{ background: 'transparent', color: 'var(--sidebar-muted)' }}
+          >
+            <span className="text-[11px] font-semibold uppercase tracking-wider">
+              {t('sectionTools')}
+            </span>
+            <ChevronDown
+              className={cn(
+                'ms-auto h-4 w-4 transition-transform motion-reduce:transition-none',
+                toolsOpen && 'rotate-180',
               )}
-              <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
-              <span>{t(item.labelKey)}</span>
-            </Link>
-          );
-        })}
+              style={{ transitionDuration: 'var(--motion-duration-fast)' }}
+              aria-hidden="true"
+            />
+          </button>
+          {toolsOpen && (
+            <div id="nav-tools-group" role="group" aria-label={t('sectionTools')}>
+              {secondaryItems.map((item) => renderRow(item))}
+            </div>
+          )}
+        </div>
       </nav>
 
       {/* Footer: avatar + name + role + logout */}

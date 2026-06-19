@@ -8,7 +8,6 @@ import { use, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
-import { Button } from '@/components/ui/button';
 import { ApiClientError } from '@/lib/api/errors';
 import { acceptInvite } from '@/lib/api/members';
 
@@ -85,21 +84,21 @@ export default function AcceptInvitePage({ params }: PageProps) {
 
   if (done) {
     return (
-      <div className="flex min-h-screen items-center justify-center p-4">
-        <div className="w-full max-w-sm space-y-4 text-center">
-          <h1 className="text-2xl font-bold">{t('doneTitle')}</h1>
-          <p className="text-sm text-muted-foreground">{t('doneBody')}</p>
+      <div className="flex min-h-screen items-center justify-center bg-surface-app p-4">
+        <div className="card card-pad w-full max-w-sm space-y-4 text-center">
+          <h1 className="text-2xl font-bold text-text">{t('doneTitle')}</h1>
+          <p className="text-sm text-muted">{t('doneBody')}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <div className="w-full max-w-sm space-y-6">
+    <div className="flex min-h-screen items-center justify-center bg-surface-app p-4">
+      <div className="card card-pad w-full max-w-sm space-y-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold">{t('title')}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
+          <h1 className="text-2xl font-bold text-text">{t('title')}</h1>
+          <p className="mt-1 text-sm text-muted">{t('subtitle')}</p>
         </div>
 
         {/* §S1-SEC1 — method="post" defense in depth (login/signup pattern). */}
@@ -111,44 +110,50 @@ export default function AcceptInvitePage({ params }: PageProps) {
           dir="rtl"
         >
           <div className="space-y-1">
-            <label className="text-sm font-medium" htmlFor="password">
+            <label className="label" htmlFor="password">
               {t('password')}
             </label>
             <input
               id="password"
               type="password"
               autoComplete="new-password"
-              className="w-full rounded-md border px-3 py-2 text-sm"
+              className="input"
+              dir="ltr"
               {...register('password')}
             />
             {errors.password && (
-              <p className="text-xs text-destructive">
+              <p className="mt-1 text-xs text-danger-700">
                 {errors.password.message ?? t('passwordRequirements')}
               </p>
             )}
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-medium" htmlFor="confirmPassword">
+            <label className="label" htmlFor="confirmPassword">
               {t('confirmPassword')}
             </label>
             <input
               id="confirmPassword"
               type="password"
               autoComplete="new-password"
-              className="w-full rounded-md border px-3 py-2 text-sm"
+              className="input"
+              dir="ltr"
               {...register('confirmPassword')}
             />
             {errors.confirmPassword && (
-              <p className="text-xs text-destructive">{t('passwordsMismatch')}</p>
+              <p className="mt-1 text-xs text-danger-700">{t('passwordsMismatch')}</p>
             )}
           </div>
 
-          {serverError && <p className="text-sm text-destructive">{serverError}</p>}
+          {serverError && <p className="text-sm text-danger-700">{serverError}</p>}
 
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="btn btn-primary btn-lg w-full disabled:cursor-not-allowed disabled:opacity-50"
+          >
             {isSubmitting ? t('submitting') : t('submit')}
-          </Button>
+          </button>
         </form>
       </div>
     </div>

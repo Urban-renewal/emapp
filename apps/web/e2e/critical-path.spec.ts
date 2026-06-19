@@ -634,6 +634,10 @@ test.describe('§E-CP — critical-path chain (Phase-9 launch gate)', () => {
     expect(wire.projectPostIdemKey()).toMatch(UUID_V4_RE);
 
     // ── 3a) ADD A BUILDING (tenants-tab CTA → buildings list → form) ─
+    // E2 Wave-1 E2.2-S1 — the project-detail default tab is now the board
+    // ("לוח בקרה"), so the buildings CTA on the "דיירים ונכסים" tab is not on
+    // first paint; switch to that tab before reaching its CTA.
+    await page.getByRole('tab', { name: 'דיירים ונכסים' }).click();
     await page.getByRole('link', { name: 'פתיחת רשימת הבניינים' }).click();
     await page.waitForURL(new RegExp(`/he/projects/${PROJECT_ID}/buildings$`), {
       timeout: 60_000,

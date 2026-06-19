@@ -76,7 +76,11 @@ export function ProjectDetailClient() {
   const canCreateBuildings = useHasPermission('buildings.create');
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [actionError, setActionError] = useState<string | null>(null);
-  const [tab, setTab] = useState<TabId>('tenants');
+  // E2 Wave-1 E2.2-S1 — the board/signatures view ("לוח בקרה") is the
+  // manager's primary surface, so it leads + is the default landing tab
+  // (was 'tenants'). The board carries the B0 consent basis label from its
+  // first paint, so the default must land on it.
+  const [tab, setTab] = useState<TabId>('dashboard');
 
   if (isLoading) return <ListSkeleton withRows={false} />;
 
@@ -114,11 +118,13 @@ export function ProjectDetailClient() {
     }
   }
 
+  // E2 Wave-1 E2.2-S1 — signatures-first ordering: the board/signatures tab
+  // ("לוח בקרה") leads; the remaining tabs keep their prior relative order.
   const tabs: ReadonlyArray<{ id: TabId; label: string }> = [
+    { id: 'dashboard', label: t('tab.dashboard') },
     { id: 'tenants', label: t('tab.tenants') },
     { id: 'docs', label: t('tab.docs') },
     { id: 'tasks', label: t('tab.tasks') },
-    { id: 'dashboard', label: t('tab.dashboard') },
   ];
 
   return (
@@ -299,6 +305,36 @@ export function ProjectDetailClient() {
 
           {tab === 'dashboard' && (
             <div className="flex flex-col gap-4">
+              {/* E2 Wave-1 E2.2-S1 — signatures-first inline empty-CTA. The
+               *  board below self-renders a calm DataState empty when its own
+               *  query returns no rows, but before any apartments exist there
+               *  is no signature surface to act on at all. When the project has
+               *  no signature data yet (no signed + no pending), surface a short
+               *  inline call-to-action that routes to the prerequisite — adding
+               *  the buildings/apartments — instead of leaving the new default
+               *  tab feeling empty. Reuses the C2 guided empty shape. */}
+              {(data.signaturesSignedCount ?? 0) + (data.signaturesPendingCount ?? 0) === 0 && (
+                <section
+                  className="flex flex-col items-center gap-2 rounded-md border bg-card px-4 py-8 text-center"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+                    {t('signaturesEmpty.title')}
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    {t('signaturesEmpty.hint')}
+                  </p>
+                  <div className="mt-2">
+                    <Button asChild variant="default" size="sm">
+                      <Link href={`/projects/${data.id}/buildings`}>
+                        {t('signaturesEmpty.cta')}
+                      </Link>
+                    </Button>
+                  </div>
+                </section>
+              )}
+
               {/* Phase-6 "תמונת מצב" (S5a) — read-only signature-progress board:
                *  "X מתוך Y דירות הסכימו · Z% · יעד W%" + a threshold-colored bar.
                *  Self-fetches via useSignatureProgress (own query key); silent on

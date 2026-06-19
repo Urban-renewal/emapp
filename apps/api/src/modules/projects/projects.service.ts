@@ -402,165 +402,59 @@ export class ProjectsService {
     return this.computeSignatureProgress(user, projectId);
   }
 
-  private async computeSignatureProgress(
-    user: AccessTokenPayload,
-    projectId: string,
-  ): Promise<SignatureProgress> {
-    return withTenant(
-      user.orgId,
-      async (tx) => {
-        // No-oracle visibility gate, INSIDE this tx (was a separate get() tx
-        // + 5 thrown-away stats subqueries). Throws NOT_FOUND when invisible.
-        // (On the cached path the wrapper above already ran this; keeping it
-        // here means the uncached path and the cache-MISS compute are identical
-        // — the gate is cheap and idempotent.)
-        await this.assertProjectVisible(tx, user, projectId);
-
-        // E2 Wave-1 B0 — SHARE-WEIGHTED consent with PARTIAL-SHARE counting.
-        // ───────────────────────────────────────────────────────────────────
-        // Per apartment, the consent CONTRIBUTION is the signed owners' total
-        // share divided by ALL active owners' total share, clamped to [0,1]:
-        //   contribution = Σ(signed owners' share) / Σ(active owners' share)
-        // "signed" = the owner holds a signature_requests.status='signed' on a
-        // document of THIS project (the IDENTICAL signed-detection join the old
-        // binary board used — unchanged). The canonical exact share is the
-        // rational `share_numerator/share_denominator` (default 0/10000); we
-        // normalise by the apartment's OWN total active-owner share rather than
-        // assuming shares sum to 1 — the ROBUST form (an apartment whose owner
-        // shares are mid-edit or default-0 still yields a sane [0,1] value, and
-        // a zero-active-share apartment contributes 0, never NaN).
-        //
-        // The headline `consentedPct` is EQUAL apartment weight:
-        //   consentedPct = round(Σ contributions / total_apartments * 100)
-        // total_apartments = every non-archived apartment INCLUDING zero-owner
-        // ones (a zero-owner apartment contributes 0 but still counts in the
-        // denominator — it is "not consented", not "excluded").
-        //
-        // `apartments_consented` is RETAINED as a separate display count meaning
-        // FULLY-consented (contribution == 1: active_share > 0 AND signed_share
-        // == active_share). It NO LONGER drives consentedPct.
-        //
-        // OWNER-CONFIRMED interpretation (E2 Wave-1 B0). LEGAL GATE (OD-1/OD-3):
-        // the EXACT statutory %, the shell-owner denominator, and the rounding
-        // rule are legally gated and refined later — this ships the engine
-        // BEHIND the `basis: 'share'` label, NOT as a statutory claim.
-        //
-        // NO PII leaves this query: only summed shares + counts are projected;
-        // the per-owner shares live entirely inside aggregate subqueries.
-        const result = await tx.execute(sql`
-          WITH proj_apartments AS (
-            SELECT a.id
-            FROM apartments a
-            INNER JOIN buildings b ON b.id = a.building_id
-            WHERE b.project_id = ${projectId}
-              AND a.archived_at IS NULL
-          ),
-          apt_consent AS (
-            SELECT
-              pa.id,
-              -- Σ of ALL active owners' exact share (numerator/denominator) as a
-              -- float ratio; 0 when the apartment has no active owners.
-              COALESCE((SELECT SUM(o.share_numerator::numeric / o.share_denominator)
-                 FROM ownerships o
-                 WHERE o.apartment_id = pa.id
-                   AND o.ended_at IS NULL
-                   AND o.relationship = 'owner'), 0) AS active_share,
-              -- Σ of the SIGNED active owners' exact share (same signed-detection
-              -- join as before): an owner with a 'signed' request on a project doc.
-              COALESCE((SELECT SUM(o.share_numerator::numeric / o.share_denominator)
-                 FROM ownerships o
-                 WHERE o.apartment_id = pa.id
-                   AND o.ended_at IS NULL
-                   AND o.relationship = 'owner'
-                   AND EXISTS (
-                     SELECT 1
-                     FROM signature_requests sr
-                     INNER JOIN documents d ON d.id = sr.document_id
-                     WHERE sr.owner_id = o.owner_id
-                       AND sr.status = 'signed'
-                       AND d.project_id = ${projectId}
-                   )), 0) AS signed_share
-            FROM proj_apartments pa
-          ),
-          apt_contrib AS (
-            SELECT
-              id,
-              active_share,
-              signed_share,
-              -- contribution = signed_share / active_share, clamped to [0,1];
-              -- 0 when active_share = 0 (zero-owner / zero-active-share apt).
-              CASE WHEN active_share > 0
-                   THEN LEAST(1, GREATEST(0, signed_share / active_share))
-                   ELSE 0 END AS contribution
-            FROM apt_consent
-          )
-          SELECT
-            (SELECT COUNT(*)::int FROM proj_apartments) AS total_apartments,
-            -- FULLY-consented apartments (contribution == 1): active share > 0
-            -- AND the full active share signed. Retained for display only.
-            (SELECT COUNT(*)::int FROM apt_contrib
-               WHERE active_share > 0 AND signed_share >= active_share) AS apartments_consented,
-            -- Σ of per-apartment contributions (the share-weighted numerator).
-            COALESCE((SELECT SUM(contribution) FROM apt_contrib), 0) AS consented_weight,
-            (SELECT COUNT(*)::int FROM signature_requests sr
-               INNER JOIN documents d ON d.id = sr.document_id
-               WHERE d.project_id = ${projectId} AND sr.status = 'signed') AS signatures_signed,
-            (SELECT COUNT(*)::int FROM signature_requests sr
-               INNER JOIN documents d ON d.id = sr.document_id
-               WHERE d.project_id = ${projectId} AND sr.status = 'pending') AS signatures_pending,
-            (SELECT target_signature_pct FROM projects WHERE id = ${projectId}) AS target_signature_pct
-        `);
-        const r = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
-
-        const totalApartments = Number(r['total_apartments'] ?? 0);
-        const apartmentsConsented = Number(r['apartments_consented'] ?? 0);
-        // pg `numeric`/SUM arrives as a string (or null) — normalise to number.
-        const consentedWeight = Number(r['consented_weight'] ?? 0);
-        const signaturesSigned = Number(r['signatures_signed'] ?? 0);
-        const signaturesPending = Number(r['signatures_pending'] ?? 0);
-        // pg `numeric` arrives as a string (or null) — normalise to number|null.
-        const rawTarget = r['target_signature_pct'];
-        const targetSignaturePct =
-          rawTarget === null || rawTarget === undefined ? null : Number(rawTarget);
-
-        const consentedPct =
-          totalApartments > 0 ? Math.round((consentedWeight / totalApartments) * 100) : 0;
-        const metThreshold = targetSignaturePct !== null && consentedPct >= targetSignaturePct;
-
-        return {
-          totalApartments,
-          apartmentsConsented,
-          signaturesSigned,
-          signaturesPending,
-          targetSignaturePct,
-          consentedPct,
-          metThreshold,
-          // E2 Wave-1 B0 — always 'share' today (share-weighted). Drives the
-          // mandatory FE basis label; never a bare %.
-          basis: 'share' as const,
-        };
-      },
-      { userId: user.sub },
-    );
-  }
-
   /**
-   * E2 Wave-1 B5 — the `metThreshold` LEGAL GATE for the `→ approved` status
-   * transition, computed on an ALREADY-OPEN tenant tx (so it runs inside the
-   * update()'s withTenant + RLS context, NOT a nested withTenant).
+   * E2 Wave-1 B0/B5 — SINGLE SOURCE OF TRUTH for the SHARE-WEIGHTED consent
+   * aggregates. Runs on the PASSED tenant tx (NO nested withTenant) so both
+   * callers share ONE query under their own RLS context:
+   *  - `computeSignatureProgress` (B0 board) passes its own withTenant's tx,
+   *    then assembles the 7 board fields + `basis: 'share'` from this result.
+   *  - the `→ approved` status gate (B5) passes the already-open update() tx
+   *    and derives JUST the `metThreshold` boolean.
+   * Previously this CTE was duplicated byte-for-byte in both places; the B5
+   * copy projected only a subset. This method returns the SUPERSET so each
+   * caller takes exactly what it needs from ONE round-trip.
+   * ───────────────────────────────────────────────────────────────────────────
+   * Per apartment, the consent CONTRIBUTION is the signed owners' total share
+   * divided by ALL active owners' total share, clamped to [0,1]:
+   *   contribution = Σ(signed owners' share) / Σ(active owners' share)
+   * "signed" = the owner holds a signature_requests.status='signed' on a
+   * document of THIS project (the IDENTICAL signed-detection join the old binary
+   * board used — unchanged). The canonical exact share is the rational
+   * `share_numerator/share_denominator` (default 0/10000); we normalise by the
+   * apartment's OWN total active-owner share rather than assuming shares sum to 1
+   * — the ROBUST form (an apartment whose owner shares are mid-edit or default-0
+   * still yields a sane [0,1] value, and a zero-active-share apartment
+   * contributes 0, never NaN).
    *
-   * Reuses the IDENTICAL share-weighted consent definition as
-   * `computeSignatureProgress` (B0): per apartment the contribution is the
-   * signed owners' exact share over all active owners' exact share, clamped to
-   * [0,1]; consentedPct = round(Σ contributions / total_apartments * 100); and
-   * `metThreshold = target != null && consentedPct >= target`. This is the same
-   * by-share rule the board surfaces — we do NOT recompute by-heads. NO PII
-   * leaves the query (summed shares + counts only).
+   * The headline `consentedPct` is EQUAL apartment weight:
+   *   consentedPct = round(Σ contributions / total_apartments * 100)
+   * total_apartments = every non-archived apartment INCLUDING zero-owner ones
+   * (a zero-owner apartment contributes 0 but still counts in the denominator —
+   * it is "not consented", not "excluded").
    *
-   * Returns `metThreshold` only; the caller has already proven the project
-   * visible (it read the `before` row under the same RLS context).
+   * `apartmentsConsented` is a SEPARATE display count meaning FULLY-consented
+   * (contribution == 1: active_share > 0 AND signed_share == active_share). It
+   * does NOT drive consentedPct.
+   *
+   * OWNER-CONFIRMED interpretation (E2 Wave-1 B0). LEGAL GATE (OD-1/OD-3): the
+   * EXACT statutory %, the shell-owner denominator, and the rounding rule are
+   * legally gated and refined later — this ships the engine BEHIND the
+   * `basis: 'share'` label, NOT as a statutory claim.
+   *
+   * NO PII leaves this query: only summed shares + counts are projected; the
+   * per-owner shares live entirely inside aggregate subqueries.
    */
-  private async computeMetThresholdOnTx(tx: TenantTx, projectId: string): Promise<boolean> {
+  private async computeConsentAggregates(
+    tx: TenantTx,
+    projectId: string,
+  ): Promise<{
+    totalApartments: number;
+    apartmentsConsented: number;
+    consentedPct: number;
+    targetSignaturePct: number | null;
+    signaturesSigned: number;
+    signaturesPending: number;
+  }> {
     const result = await tx.execute(sql`
       WITH proj_apartments AS (
         SELECT a.id
@@ -572,11 +466,15 @@ export class ProjectsService {
       apt_consent AS (
         SELECT
           pa.id,
+          -- Σ of ALL active owners' exact share (numerator/denominator) as a
+          -- float ratio; 0 when the apartment has no active owners.
           COALESCE((SELECT SUM(o.share_numerator::numeric / o.share_denominator)
              FROM ownerships o
              WHERE o.apartment_id = pa.id
                AND o.ended_at IS NULL
                AND o.relationship = 'owner'), 0) AS active_share,
+          -- Σ of the SIGNED active owners' exact share (same signed-detection
+          -- join as before): an owner with a 'signed' request on a project doc.
           COALESCE((SELECT SUM(o.share_numerator::numeric / o.share_denominator)
              FROM ownerships o
              WHERE o.apartment_id = pa.id
@@ -594,6 +492,11 @@ export class ProjectsService {
       ),
       apt_contrib AS (
         SELECT
+          id,
+          active_share,
+          signed_share,
+          -- contribution = signed_share / active_share, clamped to [0,1];
+          -- 0 when active_share = 0 (zero-owner / zero-active-share apt).
           CASE WHEN active_share > 0
                THEN LEAST(1, GREATEST(0, signed_share / active_share))
                ELSE 0 END AS contribution
@@ -601,18 +504,102 @@ export class ProjectsService {
       )
       SELECT
         (SELECT COUNT(*)::int FROM proj_apartments) AS total_apartments,
+        -- FULLY-consented apartments (contribution == 1): active share > 0
+        -- AND the full active share signed. Retained for display only.
+        (SELECT COUNT(*)::int FROM apt_contrib
+           WHERE active_share > 0 AND signed_share >= active_share) AS apartments_consented,
+        -- Σ of per-apartment contributions (the share-weighted numerator).
         COALESCE((SELECT SUM(contribution) FROM apt_contrib), 0) AS consented_weight,
+        (SELECT COUNT(*)::int FROM signature_requests sr
+           INNER JOIN documents d ON d.id = sr.document_id
+           WHERE d.project_id = ${projectId} AND sr.status = 'signed') AS signatures_signed,
+        (SELECT COUNT(*)::int FROM signature_requests sr
+           INNER JOIN documents d ON d.id = sr.document_id
+           WHERE d.project_id = ${projectId} AND sr.status = 'pending') AS signatures_pending,
         (SELECT target_signature_pct FROM projects WHERE id = ${projectId}) AS target_signature_pct
     `);
     const r = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
+
     const totalApartments = Number(r['total_apartments'] ?? 0);
+    const apartmentsConsented = Number(r['apartments_consented'] ?? 0);
+    // pg `numeric`/SUM arrives as a string (or null) — normalise to number.
     const consentedWeight = Number(r['consented_weight'] ?? 0);
+    const signaturesSigned = Number(r['signatures_signed'] ?? 0);
+    const signaturesPending = Number(r['signatures_pending'] ?? 0);
+    // pg `numeric` arrives as a string (or null) — normalise to number|null.
     const rawTarget = r['target_signature_pct'];
     const targetSignaturePct =
       rawTarget === null || rawTarget === undefined ? null : Number(rawTarget);
+
     const consentedPct =
       totalApartments > 0 ? Math.round((consentedWeight / totalApartments) * 100) : 0;
-    return targetSignaturePct !== null && consentedPct >= targetSignaturePct;
+
+    return {
+      totalApartments,
+      apartmentsConsented,
+      consentedPct,
+      targetSignaturePct,
+      signaturesSigned,
+      signaturesPending,
+    };
+  }
+
+  private async computeSignatureProgress(
+    user: AccessTokenPayload,
+    projectId: string,
+  ): Promise<SignatureProgress> {
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        // No-oracle visibility gate, INSIDE this tx (was a separate get() tx
+        // + 5 thrown-away stats subqueries). Throws NOT_FOUND when invisible.
+        // (On the cached path the wrapper above already ran this; keeping it
+        // here means the uncached path and the cache-MISS compute are identical
+        // — the gate is cheap and idempotent.)
+        await this.assertProjectVisible(tx, user, projectId);
+
+        // E2 Wave-1 B0 — SHARE-WEIGHTED consent. The aggregate query is the
+        // single-source `computeConsentAggregates` (shared with the B5 →approved
+        // gate), run on THIS withTenant's tx. The board assembles all 7 fields
+        // from it; the derived `metThreshold` matches the gate's rule exactly.
+        const agg = await this.computeConsentAggregates(tx, projectId);
+        const metThreshold =
+          agg.targetSignaturePct !== null && agg.consentedPct >= agg.targetSignaturePct;
+
+        return {
+          totalApartments: agg.totalApartments,
+          apartmentsConsented: agg.apartmentsConsented,
+          signaturesSigned: agg.signaturesSigned,
+          signaturesPending: agg.signaturesPending,
+          targetSignaturePct: agg.targetSignaturePct,
+          consentedPct: agg.consentedPct,
+          metThreshold,
+          // E2 Wave-1 B0 — always 'share' today (share-weighted). Drives the
+          // mandatory FE basis label; never a bare %.
+          basis: 'share' as const,
+        };
+      },
+      { userId: user.sub },
+    );
+  }
+
+  /**
+   * E2 Wave-1 B5 — the `metThreshold` LEGAL GATE for the `→ approved` status
+   * transition, computed on an ALREADY-OPEN tenant tx (so it runs inside the
+   * update()'s withTenant + RLS context, NOT a nested withTenant).
+   *
+   * Delegates to the single-source `computeConsentAggregates` (the SAME query
+   * the B0 board uses) and derives JUST the boolean: `metThreshold = target !=
+   * null && consentedPct >= target`. This is the same by-share rule the board
+   * surfaces — we do NOT recompute by-heads. NO PII leaves the query (summed
+   * shares + counts only).
+   *
+   * Returns `metThreshold` only; the caller has already proven the project
+   * visible (it read the `before` row under the same RLS context).
+   */
+  private async computeMetThresholdOnTx(tx: TenantTx, projectId: string): Promise<boolean> {
+    const agg = await this.computeConsentAggregates(tx, projectId);
+    return agg.targetSignaturePct !== null && agg.consentedPct >= agg.targetSignaturePct;
   }
 
   /**

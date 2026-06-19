@@ -14,26 +14,35 @@ not this file); (4) for each open PR, `gh pr view <n>` + check the branch worktr
 the merge-gate (`docs/E2-MERGE-GATE.md`) govern HOW to proceed. Background agents + the in-session task list do
 NOT survive a crash — git + GitHub + this file + the memories do, so they are the source of truth.
 
-**As of 2026-06-19 (Wave 1 done, Wave 2 starting):**
+**As of 2026-06-19 (Wave 2: BE done + centerpiece FE BUILT & QA-staged; Chrome down):**
 
 - **MERGED — Wave 0 (10):** S0-SEC #415 · PERF #416 · M0+G6 #417 · N15 #418 · E2.0 #419 · E2.0b #420 · M1 #421 ·
-  P-TZ-1 #422 · C2 #423 · ConfirmDialog #413(pre). Ledger #424 · merge-gate doc #429 · resume-point #431.
-- **MERGED — Wave 1 + follow-ups:** B0 consent #426 · B5 state-machine+concurrency #428 · C13 auth re-skin #427
-  (QA PASS) · import-stats #425 · **sidebar 14→5 #430** (real-Chrome QA PASS + fixed a real e2e regression: j9
-  manager nav assertion had to expand the new collapsed group; j11 provider was a flake) · **consent-CTE
-  single-source refactor #432** (de-duped B0/B5; specs 11/11 + 31/31).
-- **IN FLIGHT:** **B1 `GET /org/signature-pulse` #?** (BE, agent building — the board-first home's data feed +
-  rankAttention scorer; security-review pending). · **#433 E2.2-S1** (project-detail signatures-first tab
-  default + empty-CTA) — CI green, **QA-STAGED: awaiting real-Chrome walk (Chrome extension disconnected; owner
-  away)**.
+  P-TZ-1 #422 · C2 #423 · ConfirmDialog #413(pre). Ledger #424 · merge-gate #429 · resume #431 · #434.
+- **MERGED — Wave 1:** B0 #426 · B5 #428 · C13 #427 · import-stats #425 · sidebar 14→5 #430 (QA PASS) ·
+  consent-CTE refactor #432.
+- **MERGED — Wave 2 BE:** **B1 signature-pulse #435** (security PASS — pulse feed + rankAttention scorer,
+  agent-scoped, no-PII) · **B4 holdouts #436** (security PASS — view_owner_pii-gated, audited, name-only).
+- **⏸ QA-STAGED FE QUEUE** (CI-green + agent-headless + code/security-reviewed; awaiting the real-Chrome
+  batch-walk on owner's return — DO NOT merge un-QA'd):
+  1. **#437 — E2.1 mission-control HOME (the CENTERPIECE)** — greeting + pulse sentence + ≤5 ranked ActionCards
+     (consumes B1) + explain-chip + calm empty-state + basis label; Viewer read-only; 959 tests + critical-path green.
+  2. **#438 — E2.2-S3 board** — ThresholdProgress (a11y aria-valuetext + basis label) + on-demand gated holdout
+     names (B4; 403→"דירה N · חלקי") + never-null DataState; 955 tests green.
+  3. **#433 — E2.2-S1** project-detail signatures-first tab default + empty-CTA.
+  4. **#439 — C5** projects/new re-skin (+ removed silently-dropped areaSqm; inline ratchet 58/9→57/8).
+  - **building:** C14 tenant-portal re-skin (→ will join the queue).
 - **⚠️ CHROME-DOWN POSTURE (current):** the Claude-in-Chrome extension is disconnected (owner's machine/Chrome
   likely restarted while away). The real-Chrome QA gate (`docs/E2-MERGE-GATE.md`) requires it for UI slices.
   RULE while down: **BE slices merge freely; FE slices build to CI-green + agent-headless + code-review and
   QUEUE as "QA-staged" — do NOT merge a UI slice un-QA'd.** Batch-walk all QA-staged FE the moment Chrome
   reconnects, then merge. Retry Chrome when an FE slice is ready, not every turn. #433 is first in the QA queue.
-- **NEXT:** B1 merges → **B4 holdouts** (BE; overlaps B1 on gen-api-docs registry/shared-types → sequence after
-  B1) → then **E2.1 board-first home + E2.2-S3 board = the centerpiece** (FE — will build + QA-stage). Plus S4
-  search, C5 projects/new (FE, QA-stage).
+- **NEXT (capped staged queue ~5; pivot to safe/mergeable + periodic Chrome retry):** ON CHROME RECONNECT →
+  batch real-Chrome-walk the QA queue (CENTERPIECE #437 FIRST to validate the home pattern, then #438/#433/#439/C14),
+  fix-forward any finding, MANUAL-merge each (no --auto; update-branch ping-pong is expected). THEN resume:
+  **M2 chase + M3 wow** (build ON the merged home/board — were blocked while those were staged) · S4 search ·
+  remaining re-skins. **DEFERRED (owner-oversight):** A1 reminder-memory + needsHuman columns (migrations — risky
+  while away) · B2 Gate-6 migration · B3 worker · C1 print · C16/C12b · the statutory % (OD-1). Don't pile more
+  un-QA'd FE past ~5 staged — the merge-on-return ping-pong grows; prefer documentation/BE while Chrome is down.
 - **Dev QA session:** `manager@alpha.dev` / dev fixture `DevPassword123!` on `:3001`. Login button-click has a
   React/Server-Action fidelity gap → set fields via `form_input`, submit via `form.requestSubmit()`, then walk
   for real. Disclosure/click handlers: read aria-expanded AFTER the React re-render (a later tool call), not

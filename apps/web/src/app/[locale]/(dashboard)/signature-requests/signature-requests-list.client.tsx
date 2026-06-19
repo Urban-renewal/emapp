@@ -92,7 +92,7 @@ export function SignatureRequestsListClient() {
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-3">
-                      <StatusBadge color={r.statusColor}>{r.statusLabel}</StatusBadge>
+                      <StatusBadge intent={r.intent}>{r.statusLabel}</StatusBadge>
                       {r.isExpired && (
                         <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
                           {t('expired')}

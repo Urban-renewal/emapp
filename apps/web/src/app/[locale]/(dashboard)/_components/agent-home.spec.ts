@@ -103,13 +103,13 @@ let projectsState: HookState<{
   id: string;
   name: string;
   statusLabel: string;
-  statusColor: string;
+  intent: string;
 }>;
 let tasksState: HookState<{
   id: string;
   title: string;
   statusLabel: string;
-  statusColor: string;
+  intent: string;
   dueRelative: string | null;
   isOverdue: boolean;
 }>;
@@ -153,9 +153,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 function seedDefaults(): void {
   projectsState = {
     data: {
-      items: [
-        { id: 'p1', name: 'מגדל הרצל 14', statusLabel: 'באיסוף חתימות', statusColor: 'amber' },
-      ],
+      items: [{ id: 'p1', name: 'מגדל הרצל 14', statusLabel: 'באיסוף חתימות', intent: 'warning' }],
     },
     isLoading: false,
     isError: false,
@@ -167,7 +165,7 @@ function seedDefaults(): void {
           id: 't1',
           title: 'לאסוף חתימה מדירה 3',
           statusLabel: 'בתהליך',
-          statusColor: 'amber',
+          intent: 'warning',
           dueRelative: 'מחר',
           isOverdue: false,
         },
@@ -335,7 +333,7 @@ describe('AgentHome (P4 #14)', () => {
     // convention as `lib/bidi.ts`.
     const RLO = '\u202E';
     projectsState = {
-      data: { items: [{ id: 'p1', name: `דירה${RLO}3`, statusLabel: 'x', statusColor: 'gray' }] },
+      data: { items: [{ id: 'p1', name: `דירה${RLO}3`, statusLabel: 'x', intent: 'neutral' }] },
       isLoading: false,
       isError: false,
     };
@@ -346,7 +344,7 @@ describe('AgentHome (P4 #14)', () => {
             id: 't1',
             title: `משימה${RLO}x`,
             statusLabel: 'x',
-            statusColor: 'gray',
+            intent: 'neutral',
             dueRelative: null,
             isOverdue: false,
           },

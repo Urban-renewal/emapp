@@ -58,7 +58,7 @@ export default function ImportsPage() {
                       <h2 className="truncate text-base font-semibold">
                         <NameDisplay name={imp.fileName} />
                       </h2>
-                      <StatusBadge color={imp.statusColor}>{imp.statusLabel}</StatusBadge>
+                      <StatusBadge intent={imp.intent}>{imp.statusLabel}</StatusBadge>
                       {imp.dryRun && (
                         <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
                           {t('dryRun')}

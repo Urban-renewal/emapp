@@ -73,7 +73,7 @@ export function TasksListClient() {
                       <h2 className="truncate text-base font-semibold">
                         <NameDisplay name={task.title} />
                       </h2>
-                      <StatusBadge color={task.statusColor}>{task.statusLabel}</StatusBadge>
+                      <StatusBadge intent={task.intent}>{task.statusLabel}</StatusBadge>
                       {task.priority === 3 && (
                         <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
                           {task.priorityLabel}

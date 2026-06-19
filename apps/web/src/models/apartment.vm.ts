@@ -3,8 +3,8 @@ import type { ApartmentStatus } from '@emapp/shared-types';
 /**
  * Apartment ViewModel. The apartment_status enum drives the Manager
  * UX (pending → contacted → meeting → signed / refused / unreachable);
- * the adapter encodes Hebrew labels + a color bucket aligned with the
- * project status palette (gray/amber/emerald/red).
+ * the adapter encodes Hebrew labels + a semantic intent aligned with the
+ * project status palette (neutral/warning/success/danger).
  */
 export interface ApartmentViewModel {
   id: string;
@@ -16,7 +16,7 @@ export interface ApartmentViewModel {
   rooms: number | null;
   status: ApartmentStatus;
   statusLabel: string;
-  statusColor: 'gray' | 'amber' | 'emerald' | 'red';
+  intent: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
   /** "קומה 2 · 3.5 חדרים · 85 מ\"ר" — composed, with present-only fields. */
   factsLine: string;
   notes: string | null;

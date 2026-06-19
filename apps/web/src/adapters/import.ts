@@ -32,16 +32,16 @@ const STATUS_LABELS_EN: Record<ImportStatus, string> = {
   cancelled: 'Cancelled',
 };
 
-const STATUS_COLORS: Record<ImportStatus, ImportViewModel['statusColor']> = {
-  queued: 'gray',
-  parsing: 'amber',
-  validating: 'amber',
-  persisting: 'amber',
-  awaiting_mapping: 'amber',
-  awaiting_confirm: 'amber',
-  done: 'emerald',
-  failed: 'red',
-  cancelled: 'gray',
+const STATUS_INTENTS: Record<ImportStatus, ImportViewModel['intent']> = {
+  queued: 'neutral',
+  parsing: 'warning',
+  validating: 'warning',
+  persisting: 'warning',
+  awaiting_mapping: 'warning',
+  awaiting_confirm: 'warning',
+  done: 'success',
+  failed: 'danger',
+  cancelled: 'neutral',
 };
 
 const TERMINAL_STATES = new Set<ImportStatus>(['done', 'failed', 'cancelled']);
@@ -95,7 +95,7 @@ export function toImportViewModel(i: ImportJob, locale: 'he' | 'en' = 'he'): Imp
     fileSizeLabel: formatBytes(i.fileSizeBytes),
     status: i.status,
     statusLabel: labels[i.status],
-    statusColor: STATUS_COLORS[i.status],
+    intent: STATUS_INTENTS[i.status],
     isTerminal: TERMINAL_STATES.has(i.status),
     isCancellable: CANCELLABLE_STATES.has(i.status),
     isAwaitingMapping: i.status === 'awaiting_mapping',
@@ -121,6 +121,6 @@ export function toImportViewModels(
 
 export const IMPORT_STATUS_LABELS_HE = STATUS_LABELS_HE;
 export const IMPORT_STATUS_LABELS_EN = STATUS_LABELS_EN;
-export const IMPORT_STATUS_COLORS = STATUS_COLORS;
+export const IMPORT_STATUS_INTENTS = STATUS_INTENTS;
 export const IMPORT_TERMINAL_STATES = TERMINAL_STATES;
 export const IMPORT_CANCELLABLE_STATES = CANCELLABLE_STATES;

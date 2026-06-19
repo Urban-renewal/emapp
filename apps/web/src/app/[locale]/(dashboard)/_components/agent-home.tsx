@@ -114,7 +114,7 @@ export function AgentHome() {
                         >
                           <NameDisplay name={p.name} />
                         </span>
-                        <StatusBadge color={p.statusColor}>{p.statusLabel}</StatusBadge>
+                        <StatusBadge intent={p.intent}>{p.statusLabel}</StatusBadge>
                       </Link>
                     </li>
                   ))}
@@ -178,7 +178,7 @@ export function AgentHome() {
                             </span>
                           )}
                         </span>
-                        <StatusBadge color={task.statusColor}>{task.statusLabel}</StatusBadge>
+                        <StatusBadge intent={task.intent}>{task.statusLabel}</StatusBadge>
                       </Link>
                     </li>
                   ))}

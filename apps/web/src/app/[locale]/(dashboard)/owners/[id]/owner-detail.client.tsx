@@ -261,7 +261,7 @@ export function OwnerDetailClient() {
                       {p.typeLabel}
                     </span>
                   </span>
-                  <StatusBadge color={p.statusColor}>{p.statusLabel}</StatusBadge>
+                  <StatusBadge intent={p.intent}>{p.statusLabel}</StatusBadge>
                 </Link>
               </li>
             ))}

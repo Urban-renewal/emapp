@@ -112,7 +112,7 @@ export default function ImportDetailPage() {
             <NameDisplay name={data.fileName} />
           </h1>
           <div className="flex items-center gap-2">
-            <StatusBadge color={data.statusColor}>
+            <StatusBadge intent={data.intent}>
               {data.statusLabel}
               {live && live.event !== 'gone' && status !== data.status && (
                 <span className="opacity-75"> → {status}</span>

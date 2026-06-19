@@ -16,7 +16,7 @@ import { ProjectSchema, ProjectStatusEnum, ProjectTypeEnum } from '@emapp/shared
 import { describe, expect, it } from 'vitest';
 
 import {
-  PROJECT_STATUS_COLORS,
+  PROJECT_STATUS_INTENTS,
   PROJECT_STATUS_LABELS,
   PROJECT_TYPE_LABELS,
   toProjectViewModel,
@@ -48,10 +48,10 @@ describe('toProjectViewModel — D.18 enum coverage', () => {
     expect(labelKeys).toEqual(enumKeys);
   });
 
-  it('2) colors cover every status enum member', () => {
-    const colorKeys = Object.keys(PROJECT_STATUS_COLORS).sort();
+  it('2) intents cover every status enum member', () => {
+    const intentKeys = Object.keys(PROJECT_STATUS_INTENTS).sort();
     const enumKeys = [...ProjectStatusEnum.options].sort();
-    expect(colorKeys).toEqual(enumKeys);
+    expect(intentKeys).toEqual(enumKeys);
   });
 
   it('3) type labels cover every type enum member', () => {
@@ -60,13 +60,13 @@ describe('toProjectViewModel — D.18 enum coverage', () => {
     expect(typeKeys).toEqual(enumKeys);
   });
 
-  it('4) every (status × type) combination yields a non-empty Hebrew label + valid color', () => {
+  it('4) every (status × type) combination yields a non-empty Hebrew label + valid intent', () => {
     for (const status of ProjectStatusEnum.options) {
       for (const type of ProjectTypeEnum.options) {
         const vm = toProjectViewModel(baseProject({ status, type }));
         expect(vm.statusLabel.length).toBeGreaterThan(0);
         expect(vm.typeLabel.length).toBeGreaterThan(0);
-        expect(['gray', 'amber', 'emerald', 'red']).toContain(vm.statusColor);
+        expect(['success', 'warning', 'danger', 'info', 'neutral']).toContain(vm.intent);
       }
     }
   });

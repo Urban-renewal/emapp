@@ -92,11 +92,11 @@ describe('toMemberViewModel — D.27 lifecycle state machine', () => {
     expect(vm.state).toBe('revoked');
   });
 
-  it('T-4c-S1-VM.5) state colors are confined to the locked palette', () => {
-    expect(MEMBER_STATE_COLORS.pending).toBe('amber');
-    expect(MEMBER_STATE_COLORS.active).toBe('emerald');
-    expect(MEMBER_STATE_COLORS.revoked).toBe('red');
-    const allowed = ['gray', 'amber', 'emerald', 'red'];
+  it('T-4c-S1-VM.5) state intents are confined to the locked semantic set', () => {
+    expect(MEMBER_STATE_COLORS.pending).toBe('warning');
+    expect(MEMBER_STATE_COLORS.active).toBe('success');
+    expect(MEMBER_STATE_COLORS.revoked).toBe('danger');
+    const allowed = ['success', 'warning', 'danger', 'info', 'neutral'];
     for (const c of Object.values(MEMBER_STATE_COLORS)) expect(allowed).toContain(c);
   });
 });

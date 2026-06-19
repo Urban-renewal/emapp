@@ -4,7 +4,7 @@
  *
  * Status + priority labels owned HERE (HE/EN) — they map a LOCKED enum
  * (TaskStatusEnum + 1..3 priority) to product-specific HE terminology
- * and a 4-color status palette. The exhaustive `Object.keys(LABELS) ===
+ * and a semantic status intent. The exhaustive `Object.keys(LABELS) ===
  * EnumOptions` test catches enum drift on the BE without an explicit
  * update here.
  */
@@ -31,11 +31,11 @@ const STATUS_LABELS_EN: Record<TaskStatus, string> = {
   cancelled: 'Cancelled',
 };
 
-const STATUS_COLORS: Record<TaskStatus, TaskViewModel['statusColor']> = {
-  pending: 'gray',
-  in_progress: 'amber',
-  completed: 'emerald',
-  cancelled: 'red',
+const STATUS_INTENTS: Record<TaskStatus, TaskViewModel['intent']> = {
+  pending: 'neutral',
+  in_progress: 'warning',
+  completed: 'success',
+  cancelled: 'danger',
 };
 
 const PRIORITY_LABELS_HE: Record<TaskPriorityLevel, string> = {
@@ -51,9 +51,9 @@ const PRIORITY_LABELS_EN: Record<TaskPriorityLevel, string> = {
 };
 
 const PRIORITY_BADGES: Record<TaskPriorityLevel, TaskViewModel['priorityBadge']> = {
-  1: 'gray',
-  2: 'gray',
-  3: 'red',
+  1: 'neutral',
+  2: 'neutral',
+  3: 'danger',
 };
 
 const TERMINAL_STATUSES = new Set<TaskStatus>(['completed', 'cancelled']);
@@ -76,7 +76,7 @@ export function toTaskViewModel(t: Task, locale: DisplayLocale = 'he'): TaskView
     type: t.type,
     status: t.status,
     statusLabel: statusLabels[t.status],
-    statusColor: STATUS_COLORS[t.status],
+    intent: STATUS_INTENTS[t.status],
     priority,
     priorityLabel: priorityLabels[priority],
     priorityBadge: PRIORITY_BADGES[priority],
@@ -127,7 +127,7 @@ export function toTaskAssigneeViewModels(
 
 export const TASK_STATUS_LABELS_HE = STATUS_LABELS_HE;
 export const TASK_STATUS_LABELS_EN = STATUS_LABELS_EN;
-export const TASK_STATUS_COLORS = STATUS_COLORS;
+export const TASK_STATUS_INTENTS = STATUS_INTENTS;
 export const TASK_PRIORITY_LABELS_HE = PRIORITY_LABELS_HE;
 export const TASK_PRIORITY_LABELS_EN = PRIORITY_LABELS_EN;
 export const TASK_PRIORITY_BADGES = PRIORITY_BADGES;

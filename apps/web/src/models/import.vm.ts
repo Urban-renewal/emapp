@@ -4,7 +4,7 @@ import type { ImportStatus } from '@emapp/shared-types';
  * Import ViewModel — the 8-state machine (D.34) folded into the UI
  * surface a Manager interacts with.
  *
- * - `statusLabel` / `statusColor` come from the adapter; locked enum
+ * - `statusLabel` / `intent` come from the adapter; locked enum
  *   (matches `ImportStatusEnum` in shared-types).
  * - `isTerminal` collapses done/failed/cancelled into "you can no
  *   longer act here" — drives Cancel-button visibility.
@@ -22,7 +22,7 @@ export interface ImportViewModel {
   fileSizeLabel: string;
   status: ImportStatus;
   statusLabel: string;
-  statusColor: 'gray' | 'amber' | 'emerald' | 'red';
+  intent: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
   isTerminal: boolean;
   isCancellable: boolean;
   isAwaitingMapping: boolean;

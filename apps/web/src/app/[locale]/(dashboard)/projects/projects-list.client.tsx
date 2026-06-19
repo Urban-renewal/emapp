@@ -226,7 +226,7 @@ export function ProjectsListClient() {
                     <NameDisplay name={p.name} />
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    <StatusBadge color={p.statusColor}>{p.statusLabel}</StatusBadge>
+                    <StatusBadge intent={p.intent}>{p.statusLabel}</StatusBadge>
                     {p.isArchived && (
                       <span className="badge badge-neutral">
                         <span className="badge-dot" aria-hidden="true" />
@@ -327,7 +327,7 @@ export function ProjectsListClient() {
                   </td>
                   <td className="muted">{p.typeLabel}</td>
                   <td>
-                    <StatusBadge color={p.statusColor}>{p.statusLabel}</StatusBadge>
+                    <StatusBadge intent={p.intent}>{p.statusLabel}</StatusBadge>
                   </td>
                   <td className="muted text-[12px]">{p.createdRelative}</td>
                 </tr>

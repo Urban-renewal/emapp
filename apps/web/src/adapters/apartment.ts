@@ -29,13 +29,13 @@ const STATUS_LABELS_EN: Record<ApartmentStatus, string> = {
   unreachable: 'Unreachable',
 };
 
-const STATUS_COLORS: Record<ApartmentStatus, ApartmentViewModel['statusColor']> = {
-  pending: 'gray',
-  contacted: 'amber',
-  meeting: 'amber',
-  signed: 'emerald',
-  refused: 'red',
-  unreachable: 'red',
+const STATUS_INTENTS: Record<ApartmentStatus, ApartmentViewModel['intent']> = {
+  pending: 'neutral',
+  contacted: 'warning',
+  meeting: 'warning',
+  signed: 'success',
+  refused: 'danger',
+  unreachable: 'danger',
 };
 
 export function toApartmentViewModel(a: Apartment, locale: 'he' | 'en' = 'he'): ApartmentViewModel {
@@ -49,7 +49,7 @@ export function toApartmentViewModel(a: Apartment, locale: 'he' | 'en' = 'he'): 
     rooms: a.rooms,
     status: a.status,
     statusLabel: labels[a.status],
-    statusColor: STATUS_COLORS[a.status],
+    intent: STATUS_INTENTS[a.status],
     factsLine: composeFacts(a.floor, a.rooms, a.sizeSqm, locale),
     notes: a.notes ?? null,
     isArchived: a.archivedAt !== null,
@@ -86,4 +86,4 @@ function composeFacts(
 
 export const APARTMENT_STATUS_LABELS_HE = STATUS_LABELS_HE;
 export const APARTMENT_STATUS_LABELS_EN = STATUS_LABELS_EN;
-export const APARTMENT_STATUS_COLORS = STATUS_COLORS;
+export const APARTMENT_STATUS_INTENTS = STATUS_INTENTS;

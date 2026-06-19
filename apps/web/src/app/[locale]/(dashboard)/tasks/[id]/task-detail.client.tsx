@@ -187,7 +187,7 @@ export function TaskDetailClient() {
             <NameDisplay name={task.title} />
           </h1>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <StatusBadge color={task.statusColor}>{task.statusLabel}</StatusBadge>
+            <StatusBadge intent={task.intent}>{task.statusLabel}</StatusBadge>
             <span>·</span>
             <span>{tt(String(task.priority))}</span>
             {task.dueRelative && (

@@ -6,8 +6,8 @@
  * toApartmentSignatureProgressViewModels) folds each wire
  * `ApartmentSignatureProgress` row into this shape: counts pass through; the
  * human designation ("דירה {number} · קומה {floor}" when a floor is present,
- * else "דירה {number}") and the status chip color (green=consented /
- * amber=partial / gray=none) are computed ONCE here so the component stays
+ * else "דירה {number}") and the status chip intent (success=consented /
+ * warning=partial / neutral=none) are computed ONCE here so the component stays
  * presentational. No PII is ever present (the wire carries only the apartment
  * designation + counts + status).
  */
@@ -26,6 +26,6 @@ export interface ApartmentSignatureProgressViewModel {
   status: 'consented' | 'partial' | 'none';
   /** "דירה {number} · קומה {floor}" or "דירה {number}" when floor is null. */
   designation: string;
-  /** Status chip color token — green=consented, amber=partial, gray=none. */
-  statusColor: 'green' | 'amber' | 'gray';
+  /** Status chip intent — success=consented, warning=partial, neutral=none. */
+  intent: 'success' | 'warning' | 'neutral';
 }

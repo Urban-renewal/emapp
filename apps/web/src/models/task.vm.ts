@@ -13,7 +13,7 @@
  * Priority (locked 1..3): 1=low / 2=normal / 3=high.
  *
  * The VM derives:
- *  - `statusLabel` / `statusColor` — HE/EN exhaustive over enum
+ *  - `statusLabel` / `intent` — HE/EN exhaustive over enum
  *  - `priorityLabel` / `priorityBadge` — 1..3 → low/normal/high
  *  - `isOverdue`     — dueAt < now AND status NOT terminal
  *  - `isTerminal`    — status ∈ {completed, cancelled}
@@ -35,10 +35,10 @@ export interface TaskViewModel {
   type: string;
   status: TaskStatus;
   statusLabel: string;
-  statusColor: 'gray' | 'amber' | 'emerald' | 'red';
+  intent: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
   priority: TaskPriorityLevel;
   priorityLabel: string;
-  priorityBadge: 'gray' | 'amber' | 'red';
+  priorityBadge: 'neutral' | 'warning' | 'danger';
   dueAtIso: string | null;
   dueRelative: string | null;
   durationMinutes: number | null;

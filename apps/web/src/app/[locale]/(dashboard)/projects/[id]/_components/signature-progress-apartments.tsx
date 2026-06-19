@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
-import { StatusBadge, type StatusColor } from '@/components/ui/status-badge';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { useSignatureProgressApartments } from '@/hooks/use-projects';
 import type { ApartmentSignatureProgressViewModel } from '@/models/apartment-signature-progress.vm';
 
@@ -12,20 +12,12 @@ import type { ApartmentSignatureProgressViewModel } from '@/models/apartment-sig
  * section under the S5a board: collapsed by default, fetches lazily on first open
  * (the hook is gated on `open`), then lists each apartment as
  * "דירה {number} · קומה {floor} · {signedOwners}/{totalOwners} חתמו" + a status
- * chip (green=consented / amber=partial / gray=none).
+ * chip (success=consented / warning=partial / neutral=none).
  *
  * Pure READ over `GET /api/v1/projects/:id/signature-progress/apartments`; the
  * wire carries only the apartment designation + counts + status — NO PII reaches
  * this component.
  */
-
-// VM chip color → StatusBadge palette. The VM speaks green/amber/gray; the badge
-// realises 'green' as 'emerald' (its success token).
-const CHIP_TO_BADGE: Record<ApartmentSignatureProgressViewModel['statusColor'], StatusColor> = {
-  green: 'emerald',
-  amber: 'amber',
-  gray: 'gray',
-};
 
 export function SignatureProgressApartments({ projectId }: { projectId: string }) {
   const t = useTranslations('projects.boardApartments');
@@ -97,9 +89,7 @@ export function SignatureProgressApartments({ projectId }: { projectId: string }
                       total: row.totalOwners,
                     })}
                   </span>
-                  <StatusBadge color={CHIP_TO_BADGE[row.statusColor]}>
-                    {statusLabel(row)}
-                  </StatusBadge>
+                  <StatusBadge intent={row.intent}>{statusLabel(row)}</StatusBadge>
                 </li>
               ))}
             </ul>

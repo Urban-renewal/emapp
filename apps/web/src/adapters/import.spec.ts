@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   IMPORT_CANCELLABLE_STATES,
-  IMPORT_STATUS_COLORS,
+  IMPORT_STATUS_INTENTS,
   IMPORT_STATUS_LABELS_EN,
   IMPORT_STATUS_LABELS_HE,
   IMPORT_TERMINAL_STATES,
@@ -62,8 +62,8 @@ describe('toImportViewModel — D.34 8-state machine', () => {
     expect(k).toEqual([...ImportStatusEnum.options].sort());
   });
 
-  it('3) STATUS_COLORS covers every ImportStatusEnum option', () => {
-    const k = Object.keys(IMPORT_STATUS_COLORS).sort();
+  it('3) STATUS_INTENTS covers every ImportStatusEnum option', () => {
+    const k = Object.keys(IMPORT_STATUS_INTENTS).sort();
     expect(k).toEqual([...ImportStatusEnum.options].sort());
   });
 

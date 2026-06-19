@@ -74,7 +74,7 @@ export default function ApartmentsPage() {
                       <h2 className="truncate text-base font-semibold">
                         {formatApartmentLabel(a.number, locale === 'he' ? 'דירה' : 'Apartment')}
                       </h2>
-                      <StatusBadge color={a.statusColor}>{a.statusLabel}</StatusBadge>
+                      <StatusBadge intent={a.intent}>{a.statusLabel}</StatusBadge>
                       {a.isArchived && (
                         <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
                           {tp('archived')}

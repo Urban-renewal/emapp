@@ -143,7 +143,7 @@ export function ProjectDetailClient() {
               >
                 <NameDisplay name={data.name} />
               </h1>
-              <StatusBadge color={data.statusColor}>{data.statusLabel}</StatusBadge>
+              <StatusBadge intent={data.intent}>{data.statusLabel}</StatusBadge>
               {data.isArchived && (
                 <span className="badge badge-neutral">
                   <span className="badge-dot" aria-hidden="true" />

@@ -243,7 +243,7 @@
       "pct": "{pct}%",
       "target": "יעד {pct}%",
       "noTarget": "לא הוגדר יעד",
-      "signedCount": "{signed} חתימות התקבלו · {pending} ממתינות"
+      "signedCount": "{signed, plural, =0 {לא התקבלו חתימות} one {חתימה אחת התקבלה} two {שתי חתימות התקבלו} other {# חתימות התקבלו}} · {pending, plural, =0 {אין ממתינות} one {אחת ממתינה} two {שתיים ממתינות} other {# ממתינות}}"
     },
     "boardApartments": {
       "toggleShow": "פירוט לפי דירה",

@@ -29,7 +29,7 @@
  *   6. the S5a board reflects: the campaign success invalidates
  *      ['projects'] → GET /projects/:id/signature-progress REFETCHES and
  *      the stub now reports signaturesPending:1 → the board text flips to
- *      "0 חתימות התקבלו · 1 ממתינות" (wiring proof: mutation→invalidate→
+ *      "לא התקבלו חתימות · אחת ממתינה" (wiring proof: mutation→invalidate→
  *      refetch→render).
  *   7. the header "ייצוא לאקסל" button (A.S15) →
  *      GET /projects/:id/export?format=xlsx → success toast
@@ -710,7 +710,7 @@ test.describe('§E-CP — critical-path chain (Phase-9 launch gate)', () => {
 
     // S5a board baseline — pre-campaign progress (0 pending on the wire).
     await expect(page.getByText('0 מתוך 1 דירות הסכימו')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('0 חתימות התקבלו · 0 ממתינות')).toBeVisible();
+    await expect(page.getByText('לא התקבלו חתימות · אין ממתינות')).toBeVisible();
 
     await page.getByTestId('signature-campaign-toggle').click();
     const docSelect = page.getByTestId('signature-campaign-doc-select');
@@ -742,7 +742,7 @@ test.describe('§E-CP — critical-path chain (Phase-9 launch gate)', () => {
     // The campaign hook invalidates ['projects'] → useSignatureProgress
     // refetches → the stub now reports signaturesPending:1 → the board
     // signedCount line flips. All three hops asserted.
-    await expect(page.getByText('0 חתימות התקבלו · 1 ממתינות')).toBeVisible({
+    await expect(page.getByText('לא התקבלו חתימות · אחת ממתינה')).toBeVisible({
       timeout: 15_000,
     });
     expect(

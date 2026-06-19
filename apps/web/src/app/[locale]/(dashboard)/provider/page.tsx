@@ -21,9 +21,9 @@ import type { ProviderHealthSeverity } from '@/models/provider-health.vm';
  * matches the rest of the FE: gray / amber / red.
  */
 const SEVERITY_CLASS: Record<ProviderHealthSeverity, string> = {
-  ok: 'bg-emerald-100 text-emerald-800',
-  warn: 'bg-amber-100 text-amber-800',
-  crit: 'bg-red-100 text-red-800',
+  ok: 'bg-status-success-bg text-status-success-fg',
+  warn: 'bg-status-warning-bg text-status-warning-fg',
+  crit: 'bg-status-danger-bg text-status-danger-fg',
 };
 
 export default function ProviderDashboardPage() {

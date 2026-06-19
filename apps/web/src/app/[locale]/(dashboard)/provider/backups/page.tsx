@@ -64,10 +64,13 @@ export default function ProviderBackupsPage() {
       {/* Managed-by posture — explicitly "managed", no fabricated run times. */}
       <section className="space-y-3">
         <div className="flex items-center gap-2">
-          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
+          <span
+            className="inline-block h-2 w-2 rounded-full bg-status-success-fg"
+            aria-hidden="true"
+          />
           <h2 className="text-base font-semibold">{t('managed.title')}</h2>
         </div>
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">
+        <div className="rounded-md border border-border bg-status-success-bg p-3 text-sm text-status-success-fg">
           {t('managed.body', { days: NEON_RETENTION_DAYS })}
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -90,7 +93,7 @@ export default function ProviderBackupsPage() {
       {/* Critical PII-key recovery dependency — the keystone callout. */}
       <section className="space-y-3">
         <h2 className="text-base font-semibold">{t('piiKey.title')}</h2>
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+        <div className="rounded-md border border-border bg-status-warning-bg p-3 text-sm text-status-warning-fg">
           <p className="font-medium">{t('piiKey.warning')}</p>
           <p className="mt-1">{t('piiKey.body')}</p>
         </div>

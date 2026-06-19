@@ -124,16 +124,16 @@ export default function ProviderTenantsPage() {
                       <h2 className="truncate text-base font-semibold">
                         <NameDisplay name={tenant.name} />
                       </h2>
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                      <span className="rounded-full bg-status-neutral-bg px-2 py-0.5 text-xs font-medium text-status-neutral-fg">
                         {tenant.slug}
                       </span>
                       {tenant.isArchived && (
-                        <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
+                        <span className="rounded-full bg-status-neutral-bg px-2 py-0.5 text-xs font-medium text-status-neutral-fg">
                           {tp('archived')}
                         </span>
                       )}
                       {tenant.isSuspended && (
-                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                        <span className="rounded-full bg-status-danger-bg px-2 py-0.5 text-xs font-medium text-status-danger-fg">
                           {t('suspended')}
                         </span>
                       )}

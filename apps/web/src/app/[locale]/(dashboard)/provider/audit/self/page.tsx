@@ -227,7 +227,7 @@ export default function ProviderSelfAuditPage() {
                   className={
                     row.result === 'completed'
                       ? 'rounded bg-muted/50 px-1.5 py-0.5'
-                      : 'rounded bg-amber-100 px-1.5 py-0.5 text-amber-800 dark:bg-amber-950 dark:text-amber-200'
+                      : 'rounded bg-status-warning-bg px-1.5 py-0.5 text-status-warning-fg'
                   }
                 >
                   {t(`result.${row.result}`)}

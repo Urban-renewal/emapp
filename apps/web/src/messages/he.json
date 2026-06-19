@@ -243,7 +243,8 @@
       "pct": "{pct}%",
       "target": "יעד {pct}%",
       "noTarget": "לא הוגדר יעד",
-      "signedCount": "{signed} חתימות התקבלו · {pending} ממתינות"
+      "signedCount": "{signed, plural, =0 {לא התקבלו חתימות} one {חתימה אחת התקבלה} two {שתי חתימות התקבלו} other {# חתימות התקבלו}} · {pending, plural, =0 {אין ממתינות} one {אחת ממתינה} two {שתיים ממתינות} other {# ממתינות}}",
+      "empty": "אין עדיין נתוני הסכמות לפרויקט הזה."
     },
     "boardApartments": {
       "toggleShow": "פירוט לפי דירה",
@@ -639,6 +640,15 @@
       "archived": "בארכיון"
     },
     "emptyArchived": "אין בעלי דירות בארכיון."
+  },
+  "dataState": {
+    "loading": "טוען...",
+    "errorTitle": "לא הצלחנו לטעון את הנתונים",
+    "errorBody": "אירעה תקלה זמנית. אפשר לנסות שוב.",
+    "retry": "נסה שוב",
+    "forbiddenTitle": "אין לך גישה",
+    "forbiddenBody": "אין לך הרשאה לצפות בתוכן הזה.",
+    "emptyDefault": "אין כאן עדיין נתונים."
   },
   "documents": {
     "listTitle": "מסמכים",

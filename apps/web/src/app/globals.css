@@ -641,6 +641,41 @@
     background: var(--bg-app);
     color: var(--text);
   }
+
+  /* E2 Wave-0 C2 — DataState skeleton shimmer. A single token-driven
+     placeholder block (the `<Skeleton>`/`<ListSkeleton>` primitives apply
+     `.skeleton`). Color comes ONLY from tokens (surface-subtle → hover →
+     subtle), so the inline-color ratchet stays green and a re-skin re-tunes
+     the shimmer from globals.css. Duration is `--motion-duration-slow` so
+     the `prefers-reduced-motion` guard (which zeroes that token at :root)
+     turns the animation OFF automatically — no per-component media query. */
+  .skeleton {
+    border-radius: var(--r-md);
+    background: linear-gradient(
+      100deg,
+      var(--bg-subtle) 40%,
+      var(--bg-hover) 50%,
+      var(--bg-subtle) 60%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer var(--motion-duration-slow) ease-in-out infinite;
+  }
+  @keyframes skeleton-shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+  /* Defense in depth: even though --motion-duration-slow is zeroed under
+     reduce (which already halts the animation via 0ms duration), pin the
+     animation off explicitly so the shimmer is a flat token-colored block. */
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton {
+      animation: none;
+    }
+  }
 }
 
 @layer utilities {

@@ -4,6 +4,32 @@
 > DoD gate is ✅ with evidence. Plan of record: `docs/design-research/v8-final-verification/03-consolidated-master-plan.md`.
 > Owner greenlit the autonomous run 2026-06-18 ("flawless · security · with documentation").
 
+## ▶ RESUME POINT (read FIRST after any crash/restart — updated each turn)
+
+**How to recover exactly where it stopped:** (1) read THIS block; (2) `git -C C:/emapp log --oneline -25`
+= what's MERGED on `main`; (3) `gh pr list --state open` = open PRs (their CI/merge state is the live truth,
+not this file); (4) for each open PR, `gh pr view <n>` + check the branch worktree under
+`C:/emapp/.claude/worktrees/`; (5) the process memories (never-ask · real-Chrome-QA merge-gate · CSS→`next build`
+& copy→`e2e` lessons) + the plan (`docs/design-research/v8-final-verification/03-consolidated-master-plan.md`) +
+the merge-gate (`docs/E2-MERGE-GATE.md`) govern HOW to proceed. Background agents + the in-session task list do
+NOT survive a crash — git + GitHub + this file + the memories do, so they are the source of truth.
+
+**As of 2026-06-19 (Wave 1 in progress):**
+
+- **MERGED — Wave 0 (10):** S0-SEC #415 · PERF #416 · M0+G6 #417 · N15 #418 · E2.0 #419 · E2.0b #420 · M1 #421 ·
+  P-TZ-1 #422 · C2 #423 · ConfirmDialog #413(pre). Ledger #424 · merge-gate doc #429.
+- **MERGED — Wave 1 + follow-ups:** B0 share-weighted consent #426 · B5 state-machine+concurrency #428 ·
+  C13 auth re-skin #427 (real-Chrome QA PASS) · import-stats #425.
+- **IN FLIGHT:** sidebar 14→5 **#430** — real-Chrome QA PASS (manager walk: 5-primary + disclosure→9 secondary,
+  all 14 routes reachable, console clean); CI re-running after update-branch → **MANUAL merge on green (no --auto,
+  per the gate)**. · consent-CTE single-source refactor — branch `refactor/consent-cte-single-source`, agent
+  building (de-dupe B0/B5 CTE; no behavior change; verify the 2 real-DB projects specs).
+- **NEXT (Wave 1→2, after #430 + the refactor land):** B1 `GET /org/signature-pulse` (BE) + B4 holdouts (BE) →
+  then **E2.1 board-first home + E2.2-S3 board = the centerpiece**. Plus S4 search, E2.2-S1 tab default/order, C5 projects/new.
+- **Dev QA session:** logged in as `manager@alpha.dev` (dev fixture `DevPassword123!`) on the real `:3001` app;
+  session persists for dashboard QA walks. Login button-click has a React/Server-Action fidelity gap → use
+  `form.requestSubmit()` to submit, then walk for real.
+
 ## Binding rules (every slice) — see plan §2
 
 - Interim consent-basis-label rule · DO-NOT-FABRICATE register · two-track action rule · 6 AI-safety rules.

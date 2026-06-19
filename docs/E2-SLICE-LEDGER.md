@@ -48,7 +48,11 @@ C12b/C16 go-live subset · N11 tabu honesty · C10/C11 scope · Wave-5 external 
   API suite 1714 passed; the 1 `provider-self-audit` failure = the known keyset flake (reproduces with slice
   stashed; CI green in isolated env).
 
-### PERF ⭐ — read-through cache + seeded-50 perf gate · status: PR OPEN (branch `perf/stats-cache-layer`)
+### PERF ⭐ — read-through cache + seeded-50 perf gate · status: ✅ MERGED 2026-06-19 (#416)
+
+> CI flake noted: the merge run's e2e tripped on `sign-flow.spec.ts:249` (the §P0-3 console-error guardrail
+> firing on a _deliberate_ 401 resource-load — a timing race, not PERF; PERF is BE-only + critical-path passed).
+> GREEN on re-run. **Known flake → re-run, don't debug, when a diff doesn't touch the sign-flow.**
 
 - **Spec (plan §4 + N9):** wire the EXISTING `PostgresCacheProvider`/`cache_kv` read-through over `orgStats`
   (`projects.service.ts`) + `signatureProgress`; tenant-scoped keys + write-invalidation;
@@ -78,7 +82,7 @@ C12b/C16 go-live subset · N11 tabu honesty · C10/C11 scope · Wave-5 external 
   - **Non-breaking:** cache via `@Optional()` DI → every `new ProjectsService()`/sig/ownership unit spec keeps
     pre-cache compute-fresh behaviour (existing suites green).
 
-### M0+G6 — app-root action-toast / aria-live live-region primitive · status: PR OPEN (branch `feat/e2-wave0-m0g6-action-toast`)
+### M0+G6 — app-root action-toast / aria-live live-region primitive · status: ✅ MERGED 2026-06-19 (#417)
 
 - **Spec (plan §4 "M0+G6" row + §2.3 two-track rule):** ONE app-root `role="status" aria-live="polite"`
   (+ an `assertive` `role="alert"` sibling) live-region that is BOTH (a) the ActionToast — auto-dismiss
@@ -115,5 +119,167 @@ C12b/C16 go-live subset · N11 tabu honesty · C10/C11 scope · Wave-5 external 
     `main` tree finds exactly ONE (revoke). A prior slice migrated the other. The one that exists is migrated.
   - **Green-gate:** typecheck 0 · lint clean · 911/911 tests · all guards (i18n-coverage, inline-color ratchet,
     forms-no-get-fallback) green.
-  - **PR:** https://github.com/Urban-renewal/emapp/pull/417 — DO NOT merge; human-lead real-Chrome 4-axis
-    toast verify pending. Security-review PASS (0 CRITICAL/0 HIGH).
+  - **PR:** https://github.com/Urban-renewal/emapp/pull/417 — ✅ MERGED (`8a8096f`). Security-review PASS
+    (0 CRITICAL/0 HIGH). Full CI green at merge (e2e·test·typecheck·build·conformance·lint·audit·secrets), CLEAN.
+  - **Real-Chrome 4-axis verify (human-lead, pre-merge):** on the live `/he/settings` dev app —
+    (1) **DOM/render:** full-DOM read confirmed BOTH live-regions mounted at app root —
+    `role=status`/`aria-live=polite` + `role=alert`/`aria-live=assertive` siblings, OUTSIDE `<main>` (portal).
+    (2) **Network:** changed the limits config (200→201) + שמירה → `PATCH /api/v1/org/settings → 200` then
+    `GET /api/v1/org/settings → 200` refetch — the migrated toast site fires end-to-end.
+    (3) **Toast lifecycle:** success-transition toast displayed then self-cleared (status region empty post-read =
+    the 6s auto-dismiss the 13 unit cases assert; too fast for a static snapshot, proven by network-200 + mounted
+    region + unit suite). (4) **No-freeze/console:** every config's שמירה click executed cleanly, zero console
+    errors. CDP `Page.captureScreenshot` was unstable under dev-server load (renderer healthy — get_page_text/
+    read_page/clicks/network all worked); the toast was EXONERATED as any freeze cause. Verdict: PASS.
+
+### N15 — env-gated `CAMPAIGN_SEND_ENABLED` kill-switch · status: PR OPEN (#418, green-gating)
+
+- **Spec (plan §4 Wave-0 item 11):** a cheap-insurance global operational lever to halt project-wide
+  signature-campaign sends without a redeploy.
+- **Scouting correction (recorded so it can't re-enter):** the plan said "1 line below the org-suspend check
+  in the campaign service." There IS no org-suspend check in the send path — org suspension is enforced at the
+  AUTH boundary (D.49: `auth.service` throws `401 org_suspended` post-password + session revocation), so a
+  suspended org never reaches `createCampaign`. The first scouting agent correctly STOPPED rather than fabricate
+  an anchor; I decided placement: authz-first, then the switch as the last gate before fan-out (no info leak).
+- **Evidence:** `signature-requests.service.ts:711` — inside `createCampaign`'s `withTenant` callback, immediately
+  after `requireAgentCapability('manage_signatures')` (line 703) and before the `createBulk` fan-out:
+  `if (sendFlag === '0' || sendFlag === 'false') throw new ServiceUnavailableException({ error: { code: 'campaign_send_disabled' } })`.
+  Env `CAMPAIGN_SEND_ENABLED: z.string().default('1')` added to `packages/config/src/env.ts` (opt-OUT idiom,
+  mirrors `PUBLIC_SIGNUP_ENABLED`) + `.env.example` placeholder. Tests `signature-campaign.spec.ts` CAMP-6
+  (default → proceeds) + CAMP-7 (`'0'` → 503, **zero fan-out** rows) — 8/8 green. typecheck 0 · lint clean.
+- **Review (direct, inline):** correct/minimal/root-cause; authz resolves first so an unauthorized caller gets
+  403 and never learns the switch state; D.16 envelope; no PII logged; no RLS/auth-semantics change; no new
+  external surface (env lever only). BE-only → no browser walk required. PR #418.
+
+### E2.0 + E2.0-GUARD — semantic design-token tier + palette-leak ratchet · status: ✅ MERGED 2026-06-18 (#419)
+
+- **Spec (plan §4 Wave-0 lines 185-186):** Tier-2 semantic token block + `--space-1..12` &
+  `--text-display..caption` (Heebo 400/500/700) + fix 3 bugs (dead `bg-card`, `--r-lg` 12-vs-8,
+  `borderRadius.lg`) + brand→navy-900 (D.5); PLUS a default-palette-class leak guard with a re-measured
+  FULL-TREE baseline (A8·A9 false-floor risk).
+- **Evidence (3 files: `globals.css`, `tailwind.config.ts`, new `app-no-default-palette-class.spec.ts`):**
+  - **3 bugs were all REAL:** (a) `--r-lg`: globals 12px vs tailwind `borderRadius.lg→var(--radius)` (8px) —
+    reconciled `lg→var(--r-lg)` (12px). (b) `bg-card`: 64 sites/41 files referenced a `card` color + `--card`
+    var that NEVER EXISTED → silently transparent (masked by the white app shell); now `card→--card→
+--bg-surface→#fff`. (c) `borderRadius.lg` aligned to the reconciled `--r-lg`.
+  - **Tier-2 tokens:** brand/card/surface/text/status color mappings + spacing scale (`--space-1..12` = EXACT
+    Tailwind default px 4/8/12/16/20/24/32/40/48 → existing `p-4`/`gap-6` pixel-identical, zero regression) +
+    type scale (display 28/36 … caption 12/16) + weights 400/500/700. All map onto existing Tier-1 palette.
+  - **Guard:** bidirectional ratchet (fails on INCREASE = new leak, and on DECREASE = lower the baseline);
+    precise regex (22 default families × numeric shade × `\b` boundaries; semantic classes pass). Baseline
+    **149 occurrences / 34 files** re-measured across the FULL tree (Provider subtree + `*/new` + panels) —
+    false floor closed; existing leaks FROZEN (not fixed — that's E2.0b+).
+  - **Green:** typecheck 0 · lint clean · **912 web tests** · new guard green · inline-color ratchet unchanged
+    (58/9; globals.css is `.css`, not scanned) · `app-forms-no-get-fallback` green.
+- **⚠️ BUILD-BREAK CAUGHT + FIXED (the slice's key lesson):** first CI run FAILED `build` (57s) + `e2e`
+  (cascade). Root cause: a globals.css comment `/* … --bg-*/--text* … */` had an embedded literal `*/` that
+  closed the comment early → PostCSS "Unknown word" at `globals.css:126`. **vitest never runs the PostCSS
+  production build, so 912 green + typecheck 0 + lint clean ALL passed while `next build` broke.** Fixed by
+  rewording the comment (commit `b8ec190`); local `next build` then green (`✓ static pages 3/3`). LESSON now
+  durable in memory [[project_fe_css_slices_need_next_build_dod]]: every CSS/token slice DoD MUST include
+  `next build`, not just `test`. Re-ran CI → all green; `update-branch` (was BEHIND after N15) → auto-merge.
+- **Real-app verify (token-level, screenshots blocked by CDP instability + session expired):** live
+  computed-style inspection on the running `:3001` app proved Turbopack picked up the merged config —
+  `--r-lg`=12px, `--card`→`rgb(255,255,255)`, `--brand`→`rgb(11,37,69)` (navy-900), `--space-4/6`=16/24px,
+  `--status-warning-bg`→`rgb(255,251,235)`, `--text-display-size`=28px, `--weight-bold`=700. Login page renders
+  cleanly with the new tokens. `bg-card`→white is proven at the token level + is a by-construction no-op on the
+  white app shell (`--background:0 0% 100%`). Verdict PASS. PR #419 (squash `1e601c3`).
+
+### E2.0b — `statusColor`→`intent` rename + status-badge/Button token re-home · status: ✅ MERGED 2026-06-18 (#420)
+
+- **Spec (plan §4 line 187):** re-home `status-badge.tsx` + `Button.destructive` → token `.badge-*`; rename
+  `statusColor`→`intent` (success|warning|danger|info|neutral) across VM + adapters + specs.
+- **Scoping correction:** plan said "VM + 6 adapters + 3 specs"; the true surface was **65 occurrences / 35
+  files** (9 VMs, 9 adapter maps, 13 consumers, 4 specs) — typecheck was the completeness gate and also
+  surfaced 2 ripple feeders (`member.vm.stateColor`, `task.vm.priorityBadge`) remapped in the same change
+  (46 files total). A field rename MUST be atomic; this is why typecheck (not a count estimate) is the proof.
+- **1:1 faithful translation (verified against the OLD map — ZERO behavior change):** old `STATUS_COLORS`
+  (gray|amber|emerald|red) → new intents 1:1: gray→neutral, amber→warning, emerald→success, red→danger.
+  Spot-checked the one borderline (`project.completed`): was `gray` before → `neutral` now (SAME family) —
+  no regression. Every status enum maps identically; badges are provably pixel-identical.
+- **Badge re-home:** `status-badge.tsx` now renders `<span class="badge badge-{intent}">` consuming the
+  token-backed component classes already in `globals.css` (`.badge-success/.../.badge-info` →
+  `--status-{intent}-bg/-fg` → the success/warning/danger/navy/ink palette); prop `color`→`intent`; dropped the
+  `CHIP_TO_BADGE` indirection. `Button` destructive → danger token (`bg-danger-600 / hover:bg-danger-600/90`).
+  No default-palette classes remain in `components/ui/*`.
+- **Palette-leak ratchet LOWERED 149/34 → 139/32** (status-badge −8, button −2; 2 `components/ui` files fully
+  retired) — the bidirectional guard's "decrease" path exercised correctly (baseline + doc comment updated).
+- **DoD (all green locally + CI):** typecheck **0** (rename-completeness proof) · lint clean · **912 web tests**
+  (88 files) · **`next build` GREEN** (the E2.0 lesson applied — no CSS break) · guard green at 139/32 ·
+  inline-color ratchet still 58/9 · forms-no-get-fallback green. CI CLEAN, squash-merged `3a81faf`.
+- **Verify:** review-level (the decisive surface for a value rename) — confirmed the 1:1 faithful color→intent
+  mapping against the removed code (zero visual change by construction) + `.badge-{intent}` classes exist and
+  are token-backed + green build/tests. Authenticated badge pixel-walk deferred (session expired + no-credentials
+  rule); unnecessary given the badges are provably identical to pre-rename. No PII/auth/RLS → no security review.
+
+### M1 — motion duration/easing tokens + reduced-motion guarantee · status: ✅ MERGED 2026-06-18 (#421)
+
+- **Spec (plan §4 line 188):** `--motion-duration-{fast,base,slow}` + `--motion-ease-*` + `prefers-reduced-motion`
+  (zero durations under reduce). Definition-only.
+- **Evidence (2 files: globals.css + tailwind.config.ts, +48 lines, additive):** values doc-PINNED (v2
+  `06-interaction-motion §3.6`): fast 120ms (matches existing button .12s) / base 200ms / slow 360ms (bar-fill,
+  count-up); `--motion-ease-out: cubic-bezier(0.2,0,0,1)`, `--motion-ease-spring: cubic-bezier(0.2,0.8,0.2,1)`.
+  Agent used the doc's canonical names (`out`/`spring`) over the prompt's suggested names to stay lock-step
+  with future consumers (M3+) — sound autonomous call. `@media (prefers-reduced-motion: reduce)` zeroes all
+  three duration tokens at `:root` (token-scoped — NO global `*{transition:none}`; re-skin-friendly). Additive
+  tailwind `transitionDuration`/`transitionTimingFunction` mappings.
+- **DoD:** typecheck 0 · lint clean · 912 tests · **next build GREEN** · inline ratchet 58/9 · palette guard 139/32.
+- **Verify:** definition-only (no consumer yet → no behavior change to eyeball); green build/tests + additive diff
+  are the verification. Squash `ff20e93`.
+
+### P-TZ-1 — `formatRelative` pinned to Asia/Jerusalem + ICU-plural Hebrew dual · status: ✅ MERGED 2026-06-18 (#422)
+
+- **Spec (plan §4 line 189):** pin `now`+target to Asia/Jerusalem before day-diffing + UTC-boundary test +
+  ICU-plural native-Hebrew copy. Absorbs B12.
+- **Bug was REAL:** `lib/format.ts:formatRelative` bucketed the day-level result off a raw elapsed-ms diff
+  (`Math.round((t-now)/86_400_000)`), never projecting either instant onto Israel civil days → off-by-a-day near
+  midnight and on a UTC runtime (CI). Violated the "store UTC, display Asia/Jerusalem" hard rule.
+- **Fix:** `civilDayUtcMs(at)` projects an instant to its Israel civil day via `Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem'})`
+  re-anchored at `Date.UTC(y,m-1,d)` (DST-safe whole-day deltas); both sides go through it before the day delta;
+  sub-day buckets keep the elapsed-instant delta. No new dep; signature stable (optional defaulted `now` 3rd param
+  for deterministic tests → zero of the ~18 adapter call-sites changed).
+- **Tests:** `format.spec.ts` T-TZ-1.A/.B (same-Israel-day instant the naive logic called אתמול) + `format.utc-boundary.spec.ts`
+  re-runs under `process.env.TZ='UTC'` (the CI condition) — both FAIL under old logic.
+- **ICU dual:** `projects.board.signedCount` (he+en) → next-intl `plural` one/two/other so 2 → "שתי חתימות התקבלו",
+  1 → "חתימה אחת התקבלה" (+ symmetric pending half). Relative-time dual already native via `Intl.RelativeTimeFormat('he')`.
+- **DoD:** typecheck 0 · lint · **921 tests** · **next build GREEN** (ICU parsed at build) · i18n-coverage green.
+- **Verify:** UTC-boundary tests (failing-under-old) are stronger proof than a browser eyeball could be for a
+  midnight-boundary case; logic reviewed (civil-day projection is the correct DST-safe approach). No PII/auth/RLS.
+- **⚠️ e2e REGRESSION caught + fixed post-open (the slice's lesson):** the agent ran vitest (921 green) but NOT
+  the Playwright `e2e` suite (a separate CI job). The ICU rewrite added nicer `=0` copy
+  ("לא התקבלו חתימות · אין ממתינות") which broke `critical-path.spec.ts`'s exact-string assertions
+  (it still expected the old "0 חתימות התקבלו · 0 ממתינות"). NOT the known sign-flow flake — a real regression
+  (build was GREEN, only e2e red). Fixed 3 assertions (0/0 + 0/1 + a doc comment) on the branch, verified against
+  the ICU template, re-ran CI → e2e green → merged. Lesson durable in memory
+  [[project_fe_css_slices_need_next_build_dod]]: a user-facing copy/i18n change needs an `apps/web/e2e/` grep for
+  the old literal IN THE SAME SLICE — vitest is blind to Playwright.
+
+### C2 — DataState wrapper (loading/error/403/empty) + kill silent-null · status: ✅ MERGED 2026-06-18 (#423)
+
+- **Spec (plan §4 line 190):** ONE wrapper — loading skeleton / calm error+retry / 403 access-denied / guided
+  empty. Kill silent-null. v5 primitive #5 (Failure-Grace). Absorbs C-j.
+- **Evidence:** `components/ui/data-state.tsx` — props `{isLoading,isError,error?,isForbidden?,isEmpty?,onRetry?,
+skeleton?:'list'|'block'|node,emptyTitle,emptyHint?,emptyAction?,children}`; render precedence
+  **forbidden→error→loading→empty→children**. Reuses the shared `isPermissionDenied` (D.16 `code:'forbidden'`)
+  from `list-page-shell.tsx` — DataState is the non-list COMPLEMENT to the existing `ListPageShell` (formalizes
+  the 4-state shape, does NOT fork it). 403 → muted access-denied, no retry (D.31 precedent).
+- **Silent-null triage (honest, per-file):** 6/7 LEGIT (manager-home KPI "—" degrade; tabu/projects-new/export-btn/
+  provider-audit×2 are pure helpers already routing via ListPageShell; auth-guard pure listener). **1 REAL BUG
+  FIXED:** `signature-progress-board.tsx` had `if (isError || !data) return null` → the situation-picture vanished
+  on error with no signal; now routes loading/error/empty through `<DataState onRetry={refetch}>`. (The plan's
+  named `signature-progress-apartments` was stale — it already handled its states; the BOARD was the real swallow.)
+- **Skeleton shimmer:** new base `<Skeleton>` + `.skeleton` in globals.css — token-only `linear-gradient`
+  (`--bg-subtle`/`--bg-hover`) over `@keyframes skeleton-shimmer` at **`--motion-duration-slow` (consumes M1)**;
+  reduced-motion zeroes the token + explicit `animation:none`. `<ListSkeleton>` re-homed onto it.
+- **DoD:** typecheck 0 · lint · **922 tests** (`data-state.spec.ts` 8 cases: 4 states + retry-fires + derived-403 +
+  precedence; `.spec.ts` not `.spec.tsx` per the vitest include + `renderToStaticMarkup` repo convention) ·
+  **`next build` GREEN — and it CAUGHT a `@keyframes` brace slip the unit tests missed** (the next-build DoD
+  earned its keep a 2nd time) · inline ratchet 58/9 · palette guard 139/32 · i18n-coverage green.
+- **i18n:** `dataState.{loading,errorTitle,errorBody,retry,forbiddenTitle,forbiddenBody,emptyDefault}` + `projects.board.empty`.
+- **Verify:** review PASS (board silent-null→DataState fix correct; API sound). The 4 non-happy branches need
+  seeded-auth + forced error/403/empty the preview harness can't deterministically produce → coverage is the
+  8-case unit spec + mandatory green build. No PII/auth/RLS (presentation only).
+- **Merge coordination (recorded):** C2 + P-TZ-1 both added keys to `projects.board` (C2 `empty` vs P-TZ-1
+  `signedCount`) → `gh pr update-branch` reported a conflict in `he.json` + `en.json`. Resolved by hand in
+  C2's worktree — kept BOTH P-TZ-1's ICU `signedCount` and C2's `empty` (JSON re-validated, no markers); the
+  board e2e merged clean (C2 didn't touch it). Squash-merged `5649182`; CI green incl. e2e + build.

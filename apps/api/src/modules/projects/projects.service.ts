@@ -10,7 +10,7 @@ import {
   type Project as ProjectRow,
   type TenantTx,
 } from '@emapp/db';
-import { PROJECT_TYPE_DEFAULT_CONSENT_PCT } from '@emapp/shared-types';
+import { PROJECT_TYPE_DEFAULT_CONSENT_PCT, isAllowedStatusTransition } from '@emapp/shared-types';
 import type {
   ApartmentSignatureProgress,
   CreateProject,
@@ -545,6 +545,77 @@ export class ProjectsService {
   }
 
   /**
+   * E2 Wave-1 B5 — the `metThreshold` LEGAL GATE for the `→ approved` status
+   * transition, computed on an ALREADY-OPEN tenant tx (so it runs inside the
+   * update()'s withTenant + RLS context, NOT a nested withTenant).
+   *
+   * Reuses the IDENTICAL share-weighted consent definition as
+   * `computeSignatureProgress` (B0): per apartment the contribution is the
+   * signed owners' exact share over all active owners' exact share, clamped to
+   * [0,1]; consentedPct = round(Σ contributions / total_apartments * 100); and
+   * `metThreshold = target != null && consentedPct >= target`. This is the same
+   * by-share rule the board surfaces — we do NOT recompute by-heads. NO PII
+   * leaves the query (summed shares + counts only).
+   *
+   * Returns `metThreshold` only; the caller has already proven the project
+   * visible (it read the `before` row under the same RLS context).
+   */
+  private async computeMetThresholdOnTx(tx: TenantTx, projectId: string): Promise<boolean> {
+    const result = await tx.execute(sql`
+      WITH proj_apartments AS (
+        SELECT a.id
+        FROM apartments a
+        INNER JOIN buildings b ON b.id = a.building_id
+        WHERE b.project_id = ${projectId}
+          AND a.archived_at IS NULL
+      ),
+      apt_consent AS (
+        SELECT
+          pa.id,
+          COALESCE((SELECT SUM(o.share_numerator::numeric / o.share_denominator)
+             FROM ownerships o
+             WHERE o.apartment_id = pa.id
+               AND o.ended_at IS NULL
+               AND o.relationship = 'owner'), 0) AS active_share,
+          COALESCE((SELECT SUM(o.share_numerator::numeric / o.share_denominator)
+             FROM ownerships o
+             WHERE o.apartment_id = pa.id
+               AND o.ended_at IS NULL
+               AND o.relationship = 'owner'
+               AND EXISTS (
+                 SELECT 1
+                 FROM signature_requests sr
+                 INNER JOIN documents d ON d.id = sr.document_id
+                 WHERE sr.owner_id = o.owner_id
+                   AND sr.status = 'signed'
+                   AND d.project_id = ${projectId}
+               )), 0) AS signed_share
+        FROM proj_apartments pa
+      ),
+      apt_contrib AS (
+        SELECT
+          CASE WHEN active_share > 0
+               THEN LEAST(1, GREATEST(0, signed_share / active_share))
+               ELSE 0 END AS contribution
+        FROM apt_consent
+      )
+      SELECT
+        (SELECT COUNT(*)::int FROM proj_apartments) AS total_apartments,
+        COALESCE((SELECT SUM(contribution) FROM apt_contrib), 0) AS consented_weight,
+        (SELECT target_signature_pct FROM projects WHERE id = ${projectId}) AS target_signature_pct
+    `);
+    const r = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
+    const totalApartments = Number(r['total_apartments'] ?? 0);
+    const consentedWeight = Number(r['consented_weight'] ?? 0);
+    const rawTarget = r['target_signature_pct'];
+    const targetSignaturePct =
+      rawTarget === null || rawTarget === undefined ? null : Number(rawTarget);
+    const consentedPct =
+      totalApartments > 0 ? Math.round((consentedWeight / totalApartments) * 100) : 0;
+    return targetSignaturePct !== null && consentedPct >= targetSignaturePct;
+  }
+
+  /**
    * Phase-6 "תמונת מצב" — per-apartment DRILL-DOWN (S5d, read-only).
    *
    * Same visibility gate as the 5a aggregate: `assertProjectVisible` so a
@@ -899,6 +970,40 @@ export class ProjectsService {
         const [before] = await tx.select().from(projects).where(eq(projects.id, id)).limit(1);
         if (!before) throw NOT_FOUND;
 
+        // E2 Wave-1 B5 — STATUS STATE MACHINE (D.18 enum). Gate ONLY when a
+        // status is supplied AND actually DIFFERS from current (same→same is a
+        // no-op; a non-status update is untouched). Before B5 this assignment
+        // was unconditional any→any, which silently allowed e.g. `completed`→
+        // `planning` — legal/business corruption. Now an edge not in the map
+        // throws `invalid_status_transition` (409), and the `→ approved` edge
+        // additionally requires the share-weighted consent to have met target.
+        if (input.status !== undefined && input.status !== before.status) {
+          if (!isAllowedStatusTransition(before.status, input.status)) {
+            throw new ConflictException({
+              error: {
+                code: 'invalid_status_transition',
+                message: 'project status transition not allowed',
+                details: { from: before.status, to: input.status },
+              },
+            });
+          }
+          // LEGAL GATE (OD-1/OD-3): a project may be marked `approved` ONLY once
+          // its share-weighted consent has crossed the project's target. Reuse
+          // B0's exact metThreshold definition, computed on THIS tx/RLS context.
+          if (input.status === 'approved') {
+            const metThreshold = await this.computeMetThresholdOnTx(tx, id);
+            if (!metThreshold) {
+              throw new ConflictException({
+                error: {
+                  code: 'threshold_not_met',
+                  message: 'consent threshold not met for approval',
+                  details: { from: before.status, to: input.status },
+                },
+              });
+            }
+          }
+        }
+
         const patch: Partial<typeof projects.$inferInsert> = { updatedAt: new Date() };
         if (input.name !== undefined) patch.name = input.name;
         if (input.type !== undefined) patch.type = input.type;
@@ -932,8 +1037,40 @@ export class ProjectsService {
         if (input.subparcel !== undefined) patch.subparcel = input.subparcel;
         if (input.startedAt !== undefined) patch.startedAt = input.startedAt;
 
-        const [row] = await tx.update(projects).set(patch).where(eq(projects.id, id)).returning();
-        if (!row) throw NOT_FOUND;
+        // E2 Wave-1 B5 — OPTIMISTIC CONCURRENCY. When the client supplies the
+        // `updated_at` it last read, gate the UPDATE on it: a concurrent edit
+        // since that read advanced `updated_at`, so the predicate matches 0
+        // rows even though the row exists (we proved it via `before`) → reject
+        // `stale_write` (409) so the stale edit can't silently clobber.
+        //
+        // Precision: node-postgres returns `timestamptz` as a JS Date at
+        // MILLISECOND precision, but the column can hold MICROSECONDS (a project
+        // created via `defaultNow()`/pg now() and never updated). Comparing the
+        // ms-truncated client value against a micros column would FALSELY report
+        // stale on a never-updated row. So both sides are `date_trunc(
+        // 'milliseconds', …)` — the SAME D.58 fix the keyset cursor uses. The
+        // id tie-breaker is the PK equality already in the WHERE.
+        const whereClause =
+          input.expectedUpdatedAt !== undefined
+            ? and(
+                eq(projects.id, id),
+                sql`date_trunc('milliseconds', ${projects.updatedAt}) = date_trunc('milliseconds', ${input.expectedUpdatedAt.toISOString()}::timestamptz)`,
+              )
+            : eq(projects.id, id);
+        const [row] = await tx.update(projects).set(patch).where(whereClause).returning();
+        if (!row) {
+          // The row DOES exist (proven by `before`); 0 rows affected means the
+          // concurrency predicate failed → a stale write, not a missing row.
+          if (input.expectedUpdatedAt !== undefined) {
+            throw new ConflictException({
+              error: {
+                code: 'stale_write',
+                message: 'project was modified by someone else; reload and retry',
+              },
+            });
+          }
+          throw NOT_FOUND;
+        }
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,

@@ -86,6 +86,45 @@ export const handlers = [
     const p = SAMPLE_PROJECTS.find((x) => x.id === params['id']);
     return p ? HttpResponse.json(dataEnvelope(p)) : errorEnvelope('not_found', 404);
   }),
+  // E2 Wave-1 B5 — project PATCH with the status state-machine + optimistic-
+  // concurrency error surface. The handler is BEHAVIOUR-DRIVEN so the e2e can
+  // deterministically exercise each error path the BE may emit:
+  //   - status 'completed'  → invalid_status_transition (illegal edge from a
+  //                           `planning` sample project)
+  //   - status 'approved'   → threshold_not_met (consent target not crossed)
+  //   - expectedUpdatedAt
+  //     === STALE sentinel   → stale_write (someone else edited in between)
+  // Anything else echoes the patched project with a FRESH `updatedAt` so the
+  // happy path (and version chaining) is exercised too.
+  http.patch(`${API}/projects/:id`, async ({ request, params }) => {
+    const p = SAMPLE_PROJECTS.find((x) => x.id === params['id']);
+    if (!p) return errorEnvelope('not_found', 404);
+    const body = (await request.json()) as {
+      status?: string;
+      expectedUpdatedAt?: string;
+      name?: string;
+    };
+    if (body.status === 'completed') {
+      return errorEnvelope('invalid_status_transition', 409, {
+        from: p.status,
+        to: 'completed',
+      });
+    }
+    if (body.status === 'approved') {
+      return errorEnvelope('threshold_not_met', 409, { from: p.status, to: 'approved' });
+    }
+    // The fixed STALE sentinel the e2e sends to force a concurrency conflict.
+    if (body.expectedUpdatedAt === '2000-01-01T00:00:00.000Z') {
+      return errorEnvelope('stale_write', 409);
+    }
+    const project = ProjectSchema.parse({
+      ...p,
+      ...(body.name ? { name: body.name } : {}),
+      ...(body.status ? { status: body.status } : {}),
+      updatedAt: new Date(),
+    });
+    return HttpResponse.json(dataEnvelope(project));
+  }),
   http.delete(`${API}/projects/:id`, () => new HttpResponse(null, { status: 204 })),
 
   // V11 A.S15 — export endpoint stub (B.S10 contract). Returns a tiny

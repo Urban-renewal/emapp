@@ -19,6 +19,7 @@ import {
   createProject,
   getProject,
   listProjects,
+  updateProject,
 } from './projects';
 
 interface StubResponse {
@@ -170,6 +171,71 @@ describe('createProject', () => {
       expect(err.code).toBe('validation_error');
       expect(err.details).toEqual({ name: ['too short'] });
     }
+  });
+});
+
+describe('updateProject — E2 Wave-1 B5 state-machine + concurrency surface', () => {
+  it('11) PATCHes /projects/:id with the body (incl. expectedUpdatedAt) JSON-serialised', async () => {
+    const fetchSpy = stubFetch(() => ({ status: 200, body: { data: SAMPLE_PROJECT } }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    await updateProject(SAMPLE_PROJECT.id, {
+      status: 'gathering_signatures',
+      expectedUpdatedAt: new Date('2026-05-20T10:00:00.000Z'),
+    });
+    const call = fetchSpy.mock.calls[0];
+    expect(String(call?.[0])).toContain(`/api/v1/projects/${SAMPLE_PROJECT.id}`);
+    const init = call?.[1];
+    expect(init?.method).toBe('PATCH');
+    expect(String(init?.body)).toContain('"status":"gathering_signatures"');
+    expect(String(init?.body)).toContain('expectedUpdatedAt');
+  });
+
+  it('12) returns the parsed Project (with the NEW updatedAt) on 200', async () => {
+    globalThis.fetch = stubFetch(() => ({
+      status: 200,
+      body: { data: { ...SAMPLE_PROJECT, updatedAt: '2026-06-01T12:00:00.000Z' } },
+    })) as unknown as typeof fetch;
+    const p = await updateProject(SAMPLE_PROJECT.id, { name: 'renamed' });
+    expect(p.updatedAt.toISOString()).toBe('2026-06-01T12:00:00.000Z');
+  });
+
+  it('13) surfaces invalid_status_transition (409) as ApiClientError.code', async () => {
+    globalThis.fetch = stubFetch(() => ({
+      status: 409,
+      body: {
+        error: {
+          code: 'invalid_status_transition',
+          details: { from: 'completed', to: 'planning' },
+        },
+      },
+    })) as unknown as typeof fetch;
+    await expect(updateProject(SAMPLE_PROJECT.id, { status: 'planning' })).rejects.toMatchObject({
+      name: 'ApiClientError',
+      code: 'invalid_status_transition',
+    });
+  });
+
+  it('14) surfaces threshold_not_met (409) as ApiClientError.code', async () => {
+    globalThis.fetch = stubFetch(() => ({
+      status: 409,
+      body: { error: { code: 'threshold_not_met' } },
+    })) as unknown as typeof fetch;
+    await expect(updateProject(SAMPLE_PROJECT.id, { status: 'approved' })).rejects.toMatchObject({
+      code: 'threshold_not_met',
+    });
+  });
+
+  it('15) surfaces stale_write (409) as ApiClientError.code', async () => {
+    globalThis.fetch = stubFetch(() => ({
+      status: 409,
+      body: { error: { code: 'stale_write' } },
+    })) as unknown as typeof fetch;
+    await expect(
+      updateProject(SAMPLE_PROJECT.id, {
+        name: 'x',
+        expectedUpdatedAt: new Date('2000-01-01T00:00:00.000Z'),
+      }),
+    ).rejects.toMatchObject({ code: 'stale_write' });
   });
 });
 

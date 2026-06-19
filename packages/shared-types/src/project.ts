@@ -131,6 +131,46 @@ export const ProjectStatusEnum = z.enum([
 ]);
 export type ProjectStatus = z.infer<typeof ProjectStatusEnum>;
 
+/**
+ * E2 Wave-1 B5 — project status STATE MACHINE over the D.18 enum.
+ *
+ * The legal/business lifecycle is a DAG: status moves FORWARD through the
+ * renewal stages, may be `cancelled` from any non-terminal stage, and the two
+ * terminal states (`completed`, `cancelled`) never transition out. A same→same
+ * write is a no-op (allowed, see `isAllowedStatusTransition`). Anything not in
+ * the edge set is rejected `invalid_status_transition` — this prevents silent
+ * legal/business corruption (e.g. flipping a `completed` project back to
+ * `planning`, or skipping `gathering_signatures` straight to `approved`).
+ *
+ * Shared (single source of truth) so the BE gate and the per-edge tests read
+ * the IDENTICAL map; FE may also consult it to disable impossible options.
+ *
+ * NOTE: the `planning → approved` edge does NOT exist here — approval is only
+ * reachable from `gathering_signatures`, AND it carries the additional
+ * `metThreshold` precondition enforced server-side (consent must cross target).
+ */
+export const PROJECT_STATUS_TRANSITIONS: Readonly<Record<ProjectStatus, readonly ProjectStatus[]>> =
+  {
+    planning: ['gathering_signatures', 'cancelled'],
+    gathering_signatures: ['approved', 'cancelled'],
+    approved: ['in_construction', 'cancelled'],
+    in_construction: ['completed', 'cancelled'],
+    completed: [],
+    cancelled: [],
+  } as const;
+
+/**
+ * True iff `next` is reachable from `current` per the state machine. A same→same
+ * write is always allowed (no-op). Used by the BE update() gate and the FE to
+ * disable impossible status options. Does NOT enforce the `approved`
+ * `metThreshold` precondition — that legal guard lives server-side (it needs the
+ * live consent computation, which the FE/contract layer cannot see).
+ */
+export function isAllowedStatusTransition(current: ProjectStatus, next: ProjectStatus): boolean {
+  if (current === next) return true;
+  return PROJECT_STATUS_TRANSITIONS[current].includes(next);
+}
+
 /** Full project resource — exactly what the API returns on read (D.16 `data`). */
 export const ProjectSchema = z.object({
   id: z.string().uuid(),
@@ -465,7 +505,18 @@ export type CreateProject = z.infer<typeof CreateProjectInput>;
  *  endpoints); excluding it keeps PATCH bounded and avoids ambiguous semantics
  *  (replace vs merge of nested arrays). */
 export const UpdateProjectInput = z
-  .object(projectWriteShape)
+  .object({
+    ...projectWriteShape,
+    // E2 Wave-1 B5 — OPTIMISTIC CONCURRENCY token. The `updated_at` the client
+    // last read for this project (the wire ISO string round-trips back as-is).
+    // The BE adds `AND updated_at = <expected>` to the UPDATE; a stale value
+    // (someone else edited in between) matches 0 rows → `stale_write` 409. No
+    // ETag/If-Match infra exists in this API, so a Zod-validated body field is
+    // the cleaner fit. OPTIONAL for backward-compat: omitting it skips the
+    // concurrency check (a non-status field update from an old client still
+    // works); the FE edit form always sends it.
+    expectedUpdatedAt: z.coerce.date().optional(),
+  })
   .partial()
   .strict()
   .superRefine(refineMilestonesVsTarget);

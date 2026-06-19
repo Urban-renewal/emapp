@@ -488,6 +488,9 @@ async function installStubs(page: import('@playwright/test').Page): Promise<Chai
           targetSignaturePct: 66,
           consentedPct: 0,
           metThreshold: false,
+          // E2 Wave-1 B0 — share-weighted consent basis (required by the wire
+          // SignatureProgressSchema parse). 0% here (no signatures yet).
+          basis: 'share',
         },
       }),
     });

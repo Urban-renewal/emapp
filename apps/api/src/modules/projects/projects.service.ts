@@ -416,6 +416,37 @@ export class ProjectsService {
         // — the gate is cheap and idempotent.)
         await this.assertProjectVisible(tx, user, projectId);
 
+        // E2 Wave-1 B0 — SHARE-WEIGHTED consent with PARTIAL-SHARE counting.
+        // ───────────────────────────────────────────────────────────────────
+        // Per apartment, the consent CONTRIBUTION is the signed owners' total
+        // share divided by ALL active owners' total share, clamped to [0,1]:
+        //   contribution = Σ(signed owners' share) / Σ(active owners' share)
+        // "signed" = the owner holds a signature_requests.status='signed' on a
+        // document of THIS project (the IDENTICAL signed-detection join the old
+        // binary board used — unchanged). The canonical exact share is the
+        // rational `share_numerator/share_denominator` (default 0/10000); we
+        // normalise by the apartment's OWN total active-owner share rather than
+        // assuming shares sum to 1 — the ROBUST form (an apartment whose owner
+        // shares are mid-edit or default-0 still yields a sane [0,1] value, and
+        // a zero-active-share apartment contributes 0, never NaN).
+        //
+        // The headline `consentedPct` is EQUAL apartment weight:
+        //   consentedPct = round(Σ contributions / total_apartments * 100)
+        // total_apartments = every non-archived apartment INCLUDING zero-owner
+        // ones (a zero-owner apartment contributes 0 but still counts in the
+        // denominator — it is "not consented", not "excluded").
+        //
+        // `apartments_consented` is RETAINED as a separate display count meaning
+        // FULLY-consented (contribution == 1: active_share > 0 AND signed_share
+        // == active_share). It NO LONGER drives consentedPct.
+        //
+        // OWNER-CONFIRMED interpretation (E2 Wave-1 B0). LEGAL GATE (OD-1/OD-3):
+        // the EXACT statutory %, the shell-owner denominator, and the rounding
+        // rule are legally gated and refined later — this ships the engine
+        // BEHIND the `basis: 'share'` label, NOT as a statutory claim.
+        //
+        // NO PII leaves this query: only summed shares + counts are projected;
+        // the per-owner shares live entirely inside aggregate subqueries.
         const result = await tx.execute(sql`
           WITH proj_apartments AS (
             SELECT a.id
@@ -427,14 +458,16 @@ export class ProjectsService {
           apt_consent AS (
             SELECT
               pa.id,
-              -- active owner ownerships on this apartment
-              (SELECT COUNT(*)::int
+              -- Σ of ALL active owners' exact share (numerator/denominator) as a
+              -- float ratio; 0 when the apartment has no active owners.
+              COALESCE((SELECT SUM(o.share_numerator::numeric / o.share_denominator)
                  FROM ownerships o
                  WHERE o.apartment_id = pa.id
                    AND o.ended_at IS NULL
-                   AND o.relationship = 'owner') AS active_owners,
-              -- of those, the ones with a signed request on a project document
-              (SELECT COUNT(*)::int
+                   AND o.relationship = 'owner'), 0) AS active_share,
+              -- Σ of the SIGNED active owners' exact share (same signed-detection
+              -- join as before): an owner with a 'signed' request on a project doc.
+              COALESCE((SELECT SUM(o.share_numerator::numeric / o.share_denominator)
                  FROM ownerships o
                  WHERE o.apartment_id = pa.id
                    AND o.ended_at IS NULL
@@ -446,13 +479,29 @@ export class ProjectsService {
                      WHERE sr.owner_id = o.owner_id
                        AND sr.status = 'signed'
                        AND d.project_id = ${projectId}
-                   )) AS signed_owners
+                   )), 0) AS signed_share
             FROM proj_apartments pa
+          ),
+          apt_contrib AS (
+            SELECT
+              id,
+              active_share,
+              signed_share,
+              -- contribution = signed_share / active_share, clamped to [0,1];
+              -- 0 when active_share = 0 (zero-owner / zero-active-share apt).
+              CASE WHEN active_share > 0
+                   THEN LEAST(1, GREATEST(0, signed_share / active_share))
+                   ELSE 0 END AS contribution
+            FROM apt_consent
           )
           SELECT
             (SELECT COUNT(*)::int FROM proj_apartments) AS total_apartments,
-            (SELECT COUNT(*)::int FROM apt_consent
-               WHERE active_owners > 0 AND active_owners = signed_owners) AS apartments_consented,
+            -- FULLY-consented apartments (contribution == 1): active share > 0
+            -- AND the full active share signed. Retained for display only.
+            (SELECT COUNT(*)::int FROM apt_contrib
+               WHERE active_share > 0 AND signed_share >= active_share) AS apartments_consented,
+            -- Σ of per-apartment contributions (the share-weighted numerator).
+            COALESCE((SELECT SUM(contribution) FROM apt_contrib), 0) AS consented_weight,
             (SELECT COUNT(*)::int FROM signature_requests sr
                INNER JOIN documents d ON d.id = sr.document_id
                WHERE d.project_id = ${projectId} AND sr.status = 'signed') AS signatures_signed,
@@ -465,6 +514,8 @@ export class ProjectsService {
 
         const totalApartments = Number(r['total_apartments'] ?? 0);
         const apartmentsConsented = Number(r['apartments_consented'] ?? 0);
+        // pg `numeric`/SUM arrives as a string (or null) — normalise to number.
+        const consentedWeight = Number(r['consented_weight'] ?? 0);
         const signaturesSigned = Number(r['signatures_signed'] ?? 0);
         const signaturesPending = Number(r['signatures_pending'] ?? 0);
         // pg `numeric` arrives as a string (or null) — normalise to number|null.
@@ -473,7 +524,7 @@ export class ProjectsService {
           rawTarget === null || rawTarget === undefined ? null : Number(rawTarget);
 
         const consentedPct =
-          totalApartments > 0 ? Math.round((apartmentsConsented / totalApartments) * 100) : 0;
+          totalApartments > 0 ? Math.round((consentedWeight / totalApartments) * 100) : 0;
         const metThreshold = targetSignaturePct !== null && consentedPct >= targetSignaturePct;
 
         return {
@@ -484,6 +535,9 @@ export class ProjectsService {
           targetSignaturePct,
           consentedPct,
           metThreshold,
+          // E2 Wave-1 B0 — always 'share' today (share-weighted). Drives the
+          // mandatory FE basis label; never a bare %.
+          basis: 'share' as const,
         };
       },
       { userId: user.sub },

@@ -27,6 +27,9 @@ import { useSignatureProgress } from '@/hooks/use-projects';
  */
 export function SignatureProgressBoard({ projectId }: { projectId: string }) {
   const t = useTranslations('projects.board');
+  // E2 Wave-1 B0 — the consent % is share-weighted; §2.1 requires a basis label
+  // ("לפי שיעור הבעלות") next to it so the number is never a bare percent.
+  const tConsent = useTranslations('consent');
   const { data, isLoading, isError, error, refetch } = useSignatureProgress(projectId);
 
   const barFill = data?.barColor === 'green' ? 'var(--success-600)' : 'var(--warning-600)';
@@ -63,6 +66,14 @@ export function SignatureProgressBoard({ projectId }: { projectId: string }) {
             <span className="tabular ms-1" dir="ltr" style={{ color: 'var(--text-muted)' }}>
               · {t('pct', { pct: data.consentedPct })}
             </span>
+            {/* §2.1 basis label — mandatory next to the consent %. The basis is
+                always 'share' today; the key is selected by basis for forward-
+                compat (a future basis would add its own caption key). */}
+            {data.basis === 'share' && (
+              <span className="ms-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                · {tConsent('basisShare')}
+              </span>
+            )}
             <span className="ms-1" style={{ color: 'var(--text-muted)' }}>
               ·{' '}
               {data.hasTarget && data.targetSignaturePct !== null

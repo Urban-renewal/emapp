@@ -34,6 +34,7 @@ import { SAMPLE_IMPORT_ERRORS, SAMPLE_IMPORTS } from '../samples/imports';
 import { SAMPLE_OWNERS } from '../samples/owners';
 import { SAMPLE_APARTMENT_OWNERS } from '../samples/ownerships';
 import { SAMPLE_PROJECTS } from '../samples/projects';
+import { SAMPLE_SIGNATURE_PULSE } from '../samples/signature-pulse';
 import {
   SAMPLE_SIGNATURE_DELIVERY,
   SAMPLE_SIGNATURE_REQUESTS,
@@ -61,6 +62,14 @@ export const handlers = [
   http.get(`${API}/me`, () => HttpResponse.json(dataEnvelope(SAMPLE_ME))),
   http.post(`${API}/auth/logout`, () => HttpResponse.json(dataEnvelope({ ok: true }))),
   http.post(`${API}/auth/refresh`, () => HttpResponse.json(dataEnvelope({ ok: true }))),
+
+  // E2 Wave-2 B1 — org signature pulse (the board-first home's data feed).
+  // The home (mission-control island) fetches this on mount; without a handler
+  // the offline home + the §P0-3 console guard would 404. Returns the ranked
+  // SAMPLE fixture (attention already most-urgent-first, mirroring rankAttention).
+  http.get(`${API}/org/signature-pulse`, () =>
+    HttpResponse.json(dataEnvelope(SAMPLE_SIGNATURE_PULSE)),
+  ),
 
   // projects
   http.get(`${API}/projects`, () => HttpResponse.json(listEnvelope(SAMPLE_PROJECTS))),

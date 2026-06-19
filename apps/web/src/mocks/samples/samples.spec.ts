@@ -19,6 +19,7 @@ import {
   OwnerSchema,
   ProjectSchema,
   SignatureDeliveryReportSchema,
+  SignaturePulseSchema,
   SignatureRequestSchema,
   UserProfileSchema,
 } from '@emapp/shared-types';
@@ -31,6 +32,7 @@ import { SAMPLE_IMPORT_ERRORS, SAMPLE_IMPORTS } from './imports';
 import { SAMPLE_OWNERS } from './owners';
 import { SAMPLE_APARTMENT_OWNERS } from './ownerships';
 import { SAMPLE_PROJECTS } from './projects';
+import { SAMPLE_SIGNATURE_PULSE, SAMPLE_SIGNATURE_PULSE_ALL_CLEAR } from './signature-pulse';
 import { SAMPLE_SIGNATURE_DELIVERY, SAMPLE_SIGNATURE_REQUESTS } from './signature-requests';
 import { SAMPLE_ME, SAMPLE_USERS } from './users';
 
@@ -93,6 +95,16 @@ describe('SAMPLE_* — schema-parse gate (drift detector)', () => {
       expect(r).not.toHaveProperty('jti');
       expect(r).not.toHaveProperty('token');
     });
+  });
+
+  it('14) SAMPLE_SIGNATURE_PULSE (+ all-clear) parse against SignaturePulseSchema (E2.1)', () => {
+    expect(() => SignaturePulseSchema.parse(SAMPLE_SIGNATURE_PULSE)).not.toThrow();
+    expect(() => SignaturePulseSchema.parse(SAMPLE_SIGNATURE_PULSE_ALL_CLEAR)).not.toThrow();
+    // The attention feed must be NON-empty in the default fixture so the
+    // offline home renders ActionCards (not the empty-state).
+    expect(SAMPLE_SIGNATURE_PULSE.attention.length).toBeGreaterThan(0);
+    // All-clear fixture must be empty so it drives the reward empty-state.
+    expect(SAMPLE_SIGNATURE_PULSE_ALL_CLEAR.attention).toHaveLength(0);
   });
 
   it('13) SAMPLE_OWNERS pass the new MaskedPii regex (closes §v9-M-4 + §v9-P0-1)', () => {

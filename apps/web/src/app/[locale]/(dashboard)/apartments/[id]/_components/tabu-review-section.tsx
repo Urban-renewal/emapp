@@ -323,9 +323,7 @@ export function TabuReviewSection({ apartmentId }: { apartmentId: string }) {
       {!listLoading && draft && (
         <div className="mt-3 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-              {t('draftBadge')}
-            </span>
+            <span className="badge badge-warning">{t('draftBadge')}</span>
             <Button
               variant="outline"
               size="sm"

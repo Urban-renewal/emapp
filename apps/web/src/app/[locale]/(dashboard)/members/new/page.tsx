@@ -93,7 +93,7 @@ export default function NewMemberPage() {
         <h1 className="text-2xl font-bold">{t('createdTitle')}</h1>
         <p className="text-sm text-muted-foreground">{t('createdHint')}</p>
 
-        <div className="rounded-md border bg-emerald-50 p-4 text-emerald-900">
+        <div className="rounded-md border bg-status-success-bg p-4 text-status-success-fg">
           <p className="text-sm font-medium">{t('createdMember')}:</p>
           <p className="mt-1 text-sm">
             {created.member.name} · {created.member.email} · {trl(created.member.role)}
@@ -117,7 +117,7 @@ export default function NewMemberPage() {
               <Button type="button" variant="outline" size="sm" onClick={copyToken}>
                 {copied ? t('copied') : t('copy')}
               </Button>
-              <p className="text-xs text-amber-700">{t('inviteTokenWarning')}</p>
+              <p className="text-xs text-status-warning-fg">{t('inviteTokenWarning')}</p>
             </div>
           </div>
         ) : (

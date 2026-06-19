@@ -66,11 +66,7 @@ export default function ContractorDetailPage() {
             <NameDisplay name={c.name} />
           </h1>
           <p className="text-xs text-muted-foreground">{c.createdRelative}</p>
-          {c.isArchived && (
-            <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
-              {tp('archived')}
-            </span>
-          )}
+          {c.isArchived && <span className="badge badge-neutral">{tp('archived')}</span>}
         </div>
         <Button variant="ghost" size="sm" onClick={() => router.push('/contractors')}>
           {t('backToList')}

@@ -112,7 +112,7 @@ export function OwnerPiiReveal({
               <span>{t('hide')}</span>
             </Button>
           )}
-          {revealed && <span className="text-xs text-amber-700">{t('revealedHint')}</span>}
+          {revealed && <span className="text-xs text-status-warning-fg">{t('revealedHint')}</span>}
         </div>
       )}
 

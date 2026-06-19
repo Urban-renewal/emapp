@@ -72,9 +72,7 @@ export function ContractorsListClient() {
                     )}
                   </div>
                   {c.isArchived && (
-                    <span className="shrink-0 rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
-                      {tp('archived')}
-                    </span>
+                    <span className="badge badge-neutral shrink-0">{tp('archived')}</span>
                   )}
                 </div>
               </Link>

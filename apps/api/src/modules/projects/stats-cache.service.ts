@@ -116,6 +116,19 @@ export class StatsCacheService {
   }
 
   /**
+   * E2 Wave-2 B1 — the signature-pulse per-project CONSENT-AGGREGATES key suffix.
+   * Distinct from `signatureProgressKey` ON PURPOSE: the board caches the
+   * ASSEMBLED `SignatureProgress` object under `sigProgress:p:<id>`, whereas the
+   * pulse caches the RAW `computeConsentAggregates` shape — sharing one key
+   * would store two different value shapes under it (an envelope clash). Same
+   * per-org epoch invalidates BOTH (any consent-affecting write bumps the epoch),
+   * so they stay coherent without sharing the value slot.
+   */
+  pulseConsentKey(projectId: string): string {
+    return `pulseConsent:p:${projectId}`;
+  }
+
+  /**
    * Invalidate ALL cached orgStats + signatureProgress entries for one org by
    * bumping its epoch counter. One atomic UPSERT; never throws into the write
    * path's hot path — a cache failure must not fail the underlying write, so

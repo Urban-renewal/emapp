@@ -2206,7 +2206,7 @@ _(no body)_
 ### PATCH /api/v1/projects/:id
 
 - **Auth:** AuthGuard + TenantGuard (Manager)
-- **Summary:** Partial update. Manager only. Every field optional.
+- **Summary:** Partial update. Manager only. Every field optional. E2 Wave-1 B5: `status` changes are gated by a state machine (planning→{gathering_signatures,cancelled}; gathering_signatures→{approved,cancelled}; approved→{in_construction,cancelled}; in_construction→{completed,cancelled}; completed/cancelled terminal); a `→approved` transition additionally requires the share-weighted consent `metThreshold`. Optional `expectedUpdatedAt` (the last-read `updated_at`) enables optimistic concurrency — a stale value → `stale_write` 409. The response carries the new `updated_at` for chaining.
 
 **Request body**
 
@@ -2217,6 +2217,7 @@ _(no body)_
 | `developerCompanyId` | unknown | no | — |
 | `developerName` | unknown | no | — |
 | `existingUnits` | unknown | no | — |
+| `expectedUpdatedAt` | string | no | format="date-time" |
 | `extraAreaSqm` | unknown | no | — |
 | `name` | string | no | minLength=1, maxLength=200 |
 | `parcel` | unknown | no | — |
@@ -2238,7 +2239,7 @@ _(no body)_
 { "data": { ...Project } }
 ```
 
-**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+**Errors:** `validation_error`, `forbidden`, `not_found`, `invalid_status_transition`, `threshold_not_met`, `stale_write`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/projects/:id/export
 

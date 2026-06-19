@@ -278,13 +278,17 @@ const ENDPOINTS: Endpoint[] = [
     method: 'PATCH',
     path: '/api/v1/projects/:id',
     auth: 'AuthGuard + TenantGuard (Manager)',
-    summary: 'Partial update. Manager only. Every field optional.',
+    summary:
+      'Partial update. Manager only. Every field optional. E2 Wave-1 B5: `status` changes are gated by a state machine (planning→{gathering_signatures,cancelled}; gathering_signatures→{approved,cancelled}; approved→{in_construction,cancelled}; in_construction→{completed,cancelled}; completed/cancelled terminal); a `→approved` transition additionally requires the share-weighted consent `metThreshold`. Optional `expectedUpdatedAt` (the last-read `updated_at`) enables optimistic concurrency — a stale value → `stale_write` 409. The response carries the new `updated_at` for chaining.',
     request: UpdateProjectInput,
     response: '{ "data": { ...Project } }',
     errors: [
       'validation_error',
       'forbidden',
       'not_found',
+      'invalid_status_transition',
+      'threshold_not_met',
+      'stale_write',
       'missing_token',
       'invalid_token',
       'token_expired',

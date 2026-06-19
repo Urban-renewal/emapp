@@ -250,18 +250,14 @@ export default function TenantPortalPage() {
       {/* ── Apartment section ─────────────────────────────────────── */}
       <Section
         title={t('apartment.section')}
-        icon={<Home className="h-4 w-4" aria-hidden="true" style={{ color: 'var(--navy-700)' }} />}
+        icon={<Home className="h-4 w-4 text-navy-700" aria-hidden="true" />}
       >
         {aptsState === 'loading' ? (
           <SectionSkeleton lines={3} />
         ) : aptsState === 'error' ? (
-          <p className="text-sm" style={{ color: 'var(--danger-700)' }}>
-            {t('apartment.loadFailed')}
-          </p>
+          <p className="text-sm text-danger-700">{t('apartment.loadFailed')}</p>
         ) : !apts.data || apts.data.length === 0 ? (
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            {t('apartment.empty')}
-          </p>
+          <p className="text-sm text-text-muted">{t('apartment.empty')}</p>
         ) : (
           <div className="flex flex-col gap-3">
             {apts.data.map((row) => (
@@ -271,64 +267,56 @@ export default function TenantPortalPage() {
                 style={{ borderInlineStart: '3px solid var(--navy-700)' }}
               >
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-base font-semibold" style={{ color: 'var(--text)' }}>
+                  <h3 className="text-base font-semibold text-text">
                     <NameDisplay name={row.apartmentDesignation} />
                   </h3>
                   <StatusBadge intent={row.intent}>{row.statusLabel}</StatusBadge>
                 </div>
 
-                <div
-                  className="flex flex-wrap gap-x-6 gap-y-1.5 text-sm"
-                  style={{ color: 'var(--text)' }}
-                >
+                <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-sm text-text">
                   <Fact icon={<MapPin className="h-3.5 w-3.5" aria-hidden="true" />}>
                     <NameDisplay name={row.building.addressLine} />
                   </Fact>
                   <Fact>
-                    <span style={{ color: 'var(--text-muted)' }}>{t('apartment.project')}: </span>
+                    <span className="text-text-muted">{t('apartment.project')}: </span>
                     <NameDisplay name={row.project.name} />
-                    <span style={{ color: 'var(--text-muted)' }}> · {row.project.typeLabel}</span>
+                    <span className="text-text-muted"> · {row.project.typeLabel}</span>
                   </Fact>
                   <Fact>
-                    <span style={{ color: 'var(--text-muted)' }}>{t('apartment.unitType')}: </span>
+                    <span className="text-text-muted">{t('apartment.unitType')}: </span>
                     {row.unitTypeLabel}
                   </Fact>
                   {row.sizeLabel && (
                     <Fact>
-                      <span style={{ color: 'var(--text-muted)' }}>{t('apartment.size')}: </span>
+                      <span className="text-text-muted">{t('apartment.size')}: </span>
                       {row.sizeLabel}
                     </Fact>
                   )}
                   {row.roomsLabel && (
                     <Fact>
-                      <span style={{ color: 'var(--text-muted)' }}>{t('apartment.rooms')}: </span>
+                      <span className="text-text-muted">{t('apartment.rooms')}: </span>
                       {row.roomsLabel}
                     </Fact>
                   )}
                   {row.entranceLabel && (
                     <Fact>
-                      <span style={{ color: 'var(--text-muted)' }}>
-                        {t('apartment.entrance')}:{' '}
-                      </span>
+                      <span className="text-text-muted">{t('apartment.entrance')}: </span>
                       <NameDisplay name={row.entranceLabel} />
                     </Fact>
                   )}
                   <Fact icon={<User className="h-3.5 w-3.5" aria-hidden="true" />}>
-                    <span style={{ color: 'var(--text-muted)' }}>{t('apartment.ownership')}: </span>
+                    <span className="text-text-muted">{t('apartment.ownership')}: </span>
                     {row.ownershipPctLabel}
                     {row.ownershipRoleLabel && (
                       <>
-                        <span style={{ color: 'var(--text-muted)' }}> · </span>
+                        <span className="text-text-muted"> · </span>
                         <NameDisplay name={row.ownershipRoleLabel} />
                       </>
                     )}
                   </Fact>
                 </div>
 
-                <div
-                  className="flex"
-                  style={{ paddingTop: 8, borderTop: '1px solid var(--border)' }}
-                >
+                <div className="flex border-t border-border pt-2">
                   <StatusBadge intent={row.project.intent}>{row.project.statusLabel}</StatusBadge>
                 </div>
               </div>
@@ -340,24 +328,22 @@ export default function TenantPortalPage() {
       {/* ── My details (D.47 — own PII shown MASKED) ─────────────── */}
       <Section
         title={t('identity.section')}
-        icon={<User className="h-4 w-4" aria-hidden="true" style={{ color: 'var(--navy-700)' }} />}
+        icon={<User className="h-4 w-4 text-navy-700" aria-hidden="true" />}
       >
         {meState === 'loading' ? (
           <SectionSkeleton lines={2} />
         ) : meState === 'error' || !me.data ? (
-          <p className="text-sm" style={{ color: 'var(--danger-700)' }}>
-            {t('identity.loadFailed')}
-          </p>
+          <p className="text-sm text-danger-700">{t('identity.loadFailed')}</p>
         ) : (
           <dl
-            className="grid items-center gap-x-6 gap-y-2.5 text-sm"
-            style={{ gridTemplateColumns: '120px 1fr', color: 'var(--text)' }}
+            className="grid items-center gap-x-6 gap-y-2.5 text-sm text-text"
+            style={{ gridTemplateColumns: '120px 1fr' }}
           >
-            <dt style={{ color: 'var(--text-muted)' }}>{t('identity.name')}</dt>
+            <dt className="text-text-muted">{t('identity.name')}</dt>
             <dd>
               <NameDisplay name={me.data.name} />
             </dd>
-            <dt style={{ color: 'var(--text-muted)' }}>{t('identity.nationalId')}</dt>
+            <dt className="text-text-muted">{t('identity.nationalId')}</dt>
             {/* Already masked at the wire (D.47); LTR for digit alignment. */}
             <dd className="tabular" dir="ltr">
               {me.data.nationalIdMasked}
@@ -367,19 +353,19 @@ export default function TenantPortalPage() {
                 (deferred Gate-6 slice). Show the masked phone + a note. */}
             {me.data.phoneMasked && (
               <>
-                <dt style={{ color: 'var(--text-muted)' }}>{t('identity.phone')}</dt>
+                <dt className="text-text-muted">{t('identity.phone')}</dt>
                 <dd className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                   <span className="tabular" dir="ltr">
                     {me.data.phoneMasked}
                   </span>
-                  <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  <span className="text-[11px] text-text-muted">
                     {t('identity.phoneReadOnlyNote')}
                   </span>
                 </dd>
               </>
             )}
             {/* Email — the ONLY self-editable contact field this slice. */}
-            <dt style={{ color: 'var(--text-muted)' }}>{t('identity.email')}</dt>
+            <dt className="text-text-muted">{t('identity.email')}</dt>
             <dd>
               <EmailRow email={me.data.email} />
             </dd>
@@ -390,49 +376,38 @@ export default function TenantPortalPage() {
       {/* ── Project progress (AGGREGATE only — never other residents) ── */}
       <Section
         title={t('progress.section')}
-        icon={
-          <CheckCircle2
-            className="h-4 w-4"
-            aria-hidden="true"
-            style={{ color: 'var(--navy-700)' }}
-          />
-        }
+        icon={<CheckCircle2 className="h-4 w-4 text-navy-700" aria-hidden="true" />}
       >
         {progressState === 'loading' ? (
           <SectionSkeleton lines={2} />
         ) : progressState === 'error' ? (
-          <p className="text-sm" style={{ color: 'var(--danger-700)' }}>
-            {t('progress.loadFailed')}
-          </p>
+          <p className="text-sm text-danger-700">{t('progress.loadFailed')}</p>
         ) : !progress.data || progress.data.length === 0 ? (
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            {t('progress.empty')}
-          </p>
+          <p className="text-sm text-text-muted">{t('progress.empty')}</p>
         ) : (
           <div className="flex flex-col gap-3">
             {progress.data.map((p) => (
               <div key={p.projectId} className="card card-pad flex flex-col gap-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-base font-semibold" style={{ color: 'var(--text)' }}>
+                  <h3 className="text-base font-semibold text-text">
                     <NameDisplay name={p.projectName} />
                   </h3>
                   <StatusBadge intent={p.intent}>{p.statusLabel}</StatusBadge>
                 </div>
                 {/* Aggregate progress bar — counts only, no resident identities. */}
                 <div
-                  className="relative h-2 w-full overflow-hidden rounded-full"
-                  style={{ background: 'var(--navy-100)' }}
+                  className="relative h-2 w-full overflow-hidden rounded-full bg-navy-100"
                   role="progressbar"
                   aria-valuenow={p.signedPct}
                   aria-valuemin={0}
                   aria-valuemax={100}
                 >
                   <div
-                    className="absolute inset-y-0 start-0 rounded-full"
-                    style={{ width: `${p.signedPct}%`, background: 'var(--navy-700)' }}
+                    className="absolute inset-y-0 start-0 rounded-full bg-navy-700"
+                    style={{ width: `${p.signedPct}%` }}
                   />
                 </div>
-                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-sm text-text-muted">
                   {t('progress.summary', {
                     signed: p.signaturesSigned,
                     total: p.signaturesTotal,
@@ -453,20 +428,14 @@ export default function TenantPortalPage() {
         {/* Documents */}
         <Section
           title={t('documents.section')}
-          icon={
-            <FileText className="h-4 w-4" aria-hidden="true" style={{ color: 'var(--navy-700)' }} />
-          }
+          icon={<FileText className="h-4 w-4 text-navy-700" aria-hidden="true" />}
         >
           {docsState === 'loading' ? (
             <SectionSkeleton lines={3} />
           ) : docsState === 'error' ? (
-            <p className="text-sm" style={{ color: 'var(--danger-700)' }}>
-              {t('documents.loadFailed')}
-            </p>
+            <p className="text-sm text-danger-700">{t('documents.loadFailed')}</p>
           ) : !docs.data || docs.data.length === 0 ? (
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-              {t('documents.empty')}
-            </p>
+            <p className="text-sm text-text-muted">{t('documents.empty')}</p>
           ) : (
             <ul className="flex flex-col gap-2">
               {docs.data.map((d) => (
@@ -481,10 +450,10 @@ export default function TenantPortalPage() {
                     style={{ color: 'var(--text-soft)' }}
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium" style={{ color: 'var(--text)' }}>
+                    <div className="truncate text-sm font-medium text-text">
                       <NameDisplay name={d.name} />
                     </div>
-                    <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    <div className="mt-0.5 text-[11px] text-text-muted">
                       {d.typeLabel} · {d.sizeLabel} · {d.createdRelative}
                     </div>
                   </div>
@@ -492,32 +461,20 @@ export default function TenantPortalPage() {
               ))}
             </ul>
           )}
-          <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-            {t('documents.downloadHint')}
-          </p>
+          <p className="text-[11px] text-text-muted">{t('documents.downloadHint')}</p>
         </Section>
 
         {/* Signatures */}
         <Section
           title={t('signatures.section')}
-          icon={
-            <FileSignature
-              className="h-4 w-4"
-              aria-hidden="true"
-              style={{ color: 'var(--navy-700)' }}
-            />
-          }
+          icon={<FileSignature className="h-4 w-4 text-navy-700" aria-hidden="true" />}
         >
           {sigsState === 'loading' ? (
             <SectionSkeleton lines={3} />
           ) : sigsState === 'error' ? (
-            <p className="text-sm" style={{ color: 'var(--danger-700)' }}>
-              {t('signatures.loadFailed')}
-            </p>
+            <p className="text-sm text-danger-700">{t('signatures.loadFailed')}</p>
           ) : !sigs.data || sigs.data.length === 0 ? (
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-              {t('signatures.empty')}
-            </p>
+            <p className="text-sm text-text-muted">{t('signatures.empty')}</p>
           ) : (
             <ul className="flex flex-col gap-2">
               {sigs.data.map((s) => (
@@ -528,9 +485,8 @@ export default function TenantPortalPage() {
                 >
                   {s.status === 'signed' ? (
                     <CheckCircle2
-                      className="mt-0.5 h-4 w-4 shrink-0"
+                      className="mt-0.5 h-4 w-4 shrink-0 text-success-700"
                       aria-hidden="true"
-                      style={{ color: 'var(--success-700)' }}
                     />
                   ) : (
                     <CalendarClock
@@ -540,7 +496,7 @@ export default function TenantPortalPage() {
                     />
                   )}
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium" style={{ color: 'var(--text)' }}>
+                    <div className="truncate text-sm font-medium text-text">
                       <NameDisplay name={s.documentName} />
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -549,7 +505,7 @@ export default function TenantPortalPage() {
                         <span className="badge badge-danger">{t('signatures.expired')}</span>
                       )}
                     </div>
-                    <div className="mt-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    <div className="mt-1 text-[11px] text-text-muted">
                       {s.status === 'signed' && s.signedRelative
                         ? t('signatures.signedAt', { rel: s.signedRelative })
                         : s.status === 'pending'
@@ -559,7 +515,7 @@ export default function TenantPortalPage() {
                     {s.status === 'pending' && (
                       <div className="mt-2">
                         {resentIds.has(s.id) ? (
-                          <span className="text-[11px]" style={{ color: 'var(--success-700)' }}>
+                          <span className="text-[11px] text-success-700">
                             {t('signatures.resentHint')}
                           </span>
                         ) : (
@@ -575,7 +531,7 @@ export default function TenantPortalPage() {
                           </Button>
                         )}
                         {resend.isError && resend.variables === s.id && (
-                          <span className="ms-2 text-[11px]" style={{ color: 'var(--danger-700)' }}>
+                          <span className="ms-2 text-[11px] text-danger-700">
                             {t('signatures.resendError')}
                           </span>
                         )}
@@ -586,9 +542,7 @@ export default function TenantPortalPage() {
               ))}
             </ul>
           )}
-          <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-            {t('signatures.smsHint')}
-          </p>
+          <p className="text-[11px] text-text-muted">{t('signatures.smsHint')}</p>
         </Section>
       </div>
     </div>
@@ -609,10 +563,7 @@ interface SectionProps {
 function Section({ title, icon, children }: SectionProps) {
   return (
     <section className="flex flex-col gap-3" aria-label={title}>
-      <h2
-        className="flex items-center gap-2 text-sm font-semibold"
-        style={{ color: 'var(--text)' }}
-      >
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-text">
         {icon}
         <span>{title}</span>
       </h2>
@@ -698,7 +649,7 @@ function EmailRow({ email }: { email: string | null }) {
             <NameDisplay name={email} />
           </span>
         ) : (
-          <span style={{ color: 'var(--text-muted)' }}>{t('identity.emailEmpty')}</span>
+          <span className="text-text-muted">{t('identity.emailEmpty')}</span>
         )}
         <Button variant="outline" size="sm" onClick={startEdit}>
           {email ? t('identity.emailEdit') : t('identity.emailAdd')}
@@ -744,9 +695,7 @@ function EmailRow({ email }: { email: string | null }) {
         {t('identity.emailCancel')}
       </Button>
       {update.isError && (
-        <span className="text-[11px]" style={{ color: 'var(--danger-700)' }}>
-          {t('identity.emailError')}
-        </span>
+        <span className="text-[11px] text-danger-700">{t('identity.emailError')}</span>
       )}
     </form>
   );
@@ -758,8 +707,8 @@ function SectionSkeleton({ lines }: { lines: number }) {
       {Array.from({ length: lines }).map((_, i) => (
         <div
           key={i}
-          className="card card-pad"
-          style={{ padding: 12, height: 56, opacity: 0.4, background: 'var(--bg-subtle)' }}
+          className="card card-pad bg-surface-subtle"
+          style={{ padding: 12, height: 56, opacity: 0.4 }}
         />
       ))}
     </div>

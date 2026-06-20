@@ -197,14 +197,14 @@ export function TaskDetailClient() {
               </>
             )}
             {task.isOverdue && (
-              <span className="rounded-full bg-red-100 px-2 py-0.5 font-medium text-red-800">
+              <span className="rounded-full bg-status-danger-bg px-2 py-0.5 font-medium text-status-danger-fg">
                 {t('overdue')}
               </span>
             )}
             <span>·</span>
             <span>{task.createdRelative}</span>
             {task.isArchived && (
-              <span className="rounded-full bg-gray-200 px-2 py-0.5 font-medium text-gray-700">
+              <span className="rounded-full bg-status-neutral-bg px-2 py-0.5 font-medium text-status-neutral-fg">
                 {tp('archived')}
               </span>
             )}

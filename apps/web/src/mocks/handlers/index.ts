@@ -35,6 +35,12 @@ import { SAMPLE_OWNERS } from '../samples/owners';
 import { SAMPLE_APARTMENT_OWNERS } from '../samples/ownerships';
 import { SAMPLE_PROJECTS } from '../samples/projects';
 import {
+  SAMPLE_APARTMENT_HOLDOUTS,
+  SAMPLE_APARTMENT_SIGNATURE_PROGRESS,
+  SAMPLE_SIGNATURE_PROGRESS,
+} from '../samples/signature-progress';
+import { SAMPLE_SIGNATURE_PULSE } from '../samples/signature-pulse';
+import {
   SAMPLE_SIGNATURE_DELIVERY,
   SAMPLE_SIGNATURE_REQUESTS,
 } from '../samples/signature-requests';
@@ -61,6 +67,14 @@ export const handlers = [
   http.get(`${API}/me`, () => HttpResponse.json(dataEnvelope(SAMPLE_ME))),
   http.post(`${API}/auth/logout`, () => HttpResponse.json(dataEnvelope({ ok: true }))),
   http.post(`${API}/auth/refresh`, () => HttpResponse.json(dataEnvelope({ ok: true }))),
+
+  // E2 Wave-2 B1 — org signature pulse (the board-first home's data feed).
+  // The home (mission-control island) fetches this on mount; without a handler
+  // the offline home + the §P0-3 console guard would 404. Returns the ranked
+  // SAMPLE fixture (attention already most-urgent-first, mirroring rankAttention).
+  http.get(`${API}/org/signature-pulse`, () =>
+    HttpResponse.json(dataEnvelope(SAMPLE_SIGNATURE_PULSE)),
+  ),
 
   // projects
   http.get(`${API}/projects`, () => HttpResponse.json(listEnvelope(SAMPLE_PROJECTS))),
@@ -152,6 +166,29 @@ export const handlers = [
       },
     });
   }),
+
+  // E2 Wave-2 E2.2-S3 — "תמונת מצב" board reads. NO PII on the board/apartments
+  // wire; only the HOLDOUTS surface carries owner NAMES (gated + audited on the
+  // BE). Registered MORE-SPECIFIC path FIRST so `/holdouts` wins over `/apartments`.
+  http.get(
+    `${API}/projects/:id/signature-progress/apartments/:apartmentId/holdouts`,
+    ({ params }) => {
+      // Offline default: return the named holdouts for the partial apartment;
+      // any other apartment id yields an empty list (everyone signed). This
+      // mirrors the live `data.holdouts` envelope. The view_owner_pii gate +
+      // audit are BE concerns; offline always "has" the capability.
+      const aptId = String(params['apartmentId']);
+      const holdouts =
+        aptId === 'cccccccc-cccc-cccc-cccc-ccccccccccc2' ? SAMPLE_APARTMENT_HOLDOUTS : [];
+      return HttpResponse.json(dataEnvelope({ holdouts }));
+    },
+  ),
+  http.get(`${API}/projects/:id/signature-progress/apartments`, () =>
+    HttpResponse.json(dataEnvelope(SAMPLE_APARTMENT_SIGNATURE_PROGRESS)),
+  ),
+  http.get(`${API}/projects/:id/signature-progress`, () =>
+    HttpResponse.json(dataEnvelope(SAMPLE_SIGNATURE_PROGRESS)),
+  ),
 
   // buildings (nested under project)
   http.get(`${API}/projects/:projectId/buildings`, ({ params }) => {

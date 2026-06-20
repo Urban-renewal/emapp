@@ -14,6 +14,59 @@
       "placeholder": "—",
       "comingSoon": "Summary figures will appear here soon"
     },
+    "pulse": {
+      "subtitleLoading": "Checking what needs your attention…",
+      "attentionHeading": "Needs your attention",
+      "greeting": {
+        "morning": "Good morning",
+        "afternoon": "Good afternoon",
+        "evening": "Good evening"
+      },
+      "clause": {
+        "stalled": "{count, plural, one {1 stalled project} other {# stalled projects}}",
+        "expiring": "{count, plural, one {1 signature expiring this week} other {# signatures expiring this week}}",
+        "needsHuman": "{count, plural, one {1 project needs a personal touch} other {# projects need a personal touch}}",
+        "allOnTrack": "{count, plural, one {1 project moving along nicely} other {# projects moving along nicely}} — nothing to handle right now",
+        "nothingYet": "No active projects to track yet"
+      },
+      "reason": {
+        "stalled": {
+          "tag": "Stalled",
+          "why": "{days, plural, one {No movement for 1 day} other {No movement for # days}} — a reminder may be due"
+        },
+        "expiring": {
+          "tag": "Expiring soon",
+          "why": "A signature request is about to lapse — remind before you have to re-send"
+        },
+        "consentGap": {
+          "tag": "Signatures missing",
+          "why": "Not yet at the consent target — signatures still to collect"
+        },
+        "notStarted": {
+          "tag": "Not started",
+          "why": "No signatures yet — you can kick off the round"
+        }
+      },
+      "consentPct": "{pct}% consent",
+      "action": {
+        "open": "Open project",
+        "openAria": "Open the project {name}",
+        "remind": "Send reminder"
+      },
+      "explain": {
+        "trigger": "Why am I seeing this?",
+        "body": "Ranked by urgency: stalled projects first, then signatures about to expire, then consent gaps. It's automatic and consistent — the same calculation every time."
+      },
+      "allClear": {
+        "title": "All under control",
+        "hint": "Nothing needs your attention right now. We keep watching in the background and will let you know when something comes up.",
+        "badge": "Checked — everything's in place"
+      },
+      "empty": {
+        "noProjectsTitle": "No projects yet",
+        "noProjectsHint": "Once the first project exists, we'll summarise here what needs your attention."
+      }
+    },
     "action": {
       "newProject": "New project",
       "fieldTask": "Field task",
@@ -250,6 +303,16 @@
       "signedCount": "{signed, plural, =0 {No signatures received} one {1 signature received} other {# signatures received}} · {pending, plural, =0 {none pending} one {1 pending} other {# pending}}",
       "empty": "No consent data for this project yet."
     },
+    "threshold": {
+      "pct": "{pct}%",
+      "target": "Target {pct}%",
+      "ariaLabel": "Consent progress toward the target",
+      "stateMet": "Target met",
+      "stateBelow": "Target not yet met",
+      "valueTextMet": "{pct}% of the {target}% target — target met",
+      "valueTextBelow": "{pct}% of the {target}% target",
+      "valueTextNoTarget": "{pct}% — no target set"
+    },
     "boardApartments": {
       "toggleShow": "Per-apartment breakdown",
       "toggleHide": "Hide per-apartment breakdown",
@@ -258,7 +321,16 @@
       "row": "{designation} · {signed}/{total} signed",
       "statusConsented": "Consented",
       "statusPartial": "Partial",
-      "statusNone": "None"
+      "statusNone": "None",
+      "holdoutsToggleShow": "Who's stuck",
+      "holdoutsToggleHide": "Hide who's stuck",
+      "holdoutsLoading": "Loading names…",
+      "holdoutsLoadFailed": "Failed to load names.",
+      "holdoutsRetry": "Try again",
+      "holdoutsForbidden": "You don't have permission to view owner names.",
+      "holdoutsEmpty": "All owners in this apartment have signed.",
+      "holdoutFallback": "Apartment {number} · partial",
+      "holdoutNoName": "Owner with no name on record"
     },
     "campaign": {
       "cta": "Send signature request to all owners",
@@ -332,6 +404,11 @@
       "title": "Manage buildings and residents",
       "hint": "Resident management is handled via the project's buildings.",
       "cta": "Open buildings list"
+    },
+    "signaturesEmpty": {
+      "title": "No consent data for this project yet",
+      "hint": "To start collecting signatures, add the project's buildings and apartments.",
+      "cta": "Add buildings and apartments"
     },
     "docsTab": {
       "title": "Documents, messages and signatures",

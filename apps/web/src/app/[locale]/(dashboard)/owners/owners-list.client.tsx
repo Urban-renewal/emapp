@@ -129,7 +129,7 @@ export function OwnersListClient() {
                         <NameDisplay name={o.name} />
                       </Link>
                       {o.isArchived && (
-                        <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
+                        <span className="rounded-full bg-status-neutral-bg px-2 py-0.5 text-xs font-medium text-status-neutral-fg">
                           {tp('archived')}
                         </span>
                       )}
@@ -150,7 +150,7 @@ export function OwnersListClient() {
                   </td>
                   <td className="px-4 py-3 text-center">
                     {o.pendingSignatureCount > 0 ? (
-                      <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 tabular-nums dark:bg-amber-950 dark:text-amber-200">
+                      <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-status-warning-bg px-2 py-0.5 text-xs font-semibold text-status-warning-fg tabular-nums">
                         {o.pendingSignatureCount}
                       </span>
                     ) : (

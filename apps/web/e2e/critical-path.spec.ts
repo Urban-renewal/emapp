@@ -274,6 +274,31 @@ async function installStubs(page: import('@playwright/test').Page): Promise<Chai
     });
   });
 
+  // E2 Wave-2 B1 — the board-first home (the landing surface after login) is a
+  // client island that fetches /org/signature-pulse on mount. The benign
+  // catch-all above answers every GET with `{ data: [] }`, which FAILS the
+  // home's SignaturePulseSchema parse (it expects { buckets, attention,
+  // needsHuman }) → the home would render its DataState error panel. Stub a
+  // valid (all-clear) pulse so the home renders its calm content cleanly and
+  // the §P0-3 console guard stays green. attention:[] → the reward empty-state.
+  await page.route('**/api/v1/org/signature-pulse', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          buckets: { stalled: 0, expiringSoon: 0, needsHuman: 0, onTrack: 0 },
+          attention: [],
+          needsHuman: [],
+        },
+      }),
+    });
+  });
+
   // Browser-side /me — permission gates (the SSR /me is served by the
   // Node-side mock backend, out of page.route reach).
   await page.route('**/api/v1/me', async (route) => {
@@ -508,6 +533,25 @@ async function installStubs(page: import('@playwright/test').Page): Promise<Chai
     },
   );
 
+  // E2.2-S3 — the per-apartment HOLDOUTS read ("מי תקוע"). PII-bearing + gated
+  // on the BE; loaded ON DEMAND when an apartment is expanded. The drill-down
+  // mounts collapsed and the apartments list is stubbed empty above, so this
+  // route is not exercised on the happy path — but it MUST be stubbed (§P0-3
+  // new-fetch-breaks-e2e trap: an unstubbed `/holdouts` would 404 and trip the
+  // dev-console guardrail the moment anyone expands a row). Registered AFTER the
+  // `/apartments` route so Playwright's last-wins ordering routes the
+  // more-specific `…/apartments/:id/holdouts` URL here, not to the list stub.
+  await page.route(
+    `**/api/v1/projects/${PROJECT_ID}/signature-progress/apartments/*/holdouts`,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { holdouts: [] } }),
+      });
+    },
+  );
+
   // 7) GET /projects/:id/export?format=xlsx — streamed xlsx (stub bytes).
   await page.route(`**/api/v1/projects/${PROJECT_ID}/export*`, async (route) => {
     if (route.request().method() !== 'GET') {
@@ -634,6 +678,10 @@ test.describe('§E-CP — critical-path chain (Phase-9 launch gate)', () => {
     expect(wire.projectPostIdemKey()).toMatch(UUID_V4_RE);
 
     // ── 3a) ADD A BUILDING (tenants-tab CTA → buildings list → form) ─
+    // E2 Wave-1 E2.2-S1 — the project-detail default tab is now the board
+    // ("לוח בקרה"), so the buildings CTA on the "דיירים ונכסים" tab is not on
+    // first paint; switch to that tab before reaching its CTA.
+    await page.getByRole('tab', { name: 'דיירים ונכסים' }).click();
     await page.getByRole('link', { name: 'פתיחת רשימת הבניינים' }).click();
     await page.waitForURL(new RegExp(`/he/projects/${PROJECT_ID}/buildings$`), {
       timeout: 60_000,

@@ -362,6 +362,22 @@ function installDefaultHandlers(): void {
     },
   }));
 
+  // E2 Wave-2 B1 — the board-first home (the post-login landing) reads
+  // /api/v1/org/signature-pulse. The home is a CLIENT island so browser-side
+  // page.route() normally answers it; this default handler covers any SERVER-
+  // side path (or a test that lands on /he/ without its own stub) so the proxy
+  // never 404s the home. Empty all-clear pulse → the calm reward state.
+  setMockHandler('GET', '/api/v1/org/signature-pulse', () => ({
+    status: 200,
+    body: {
+      data: {
+        buckets: { stalled: 0, expiringSoon: 0, needsHuman: 0, onTrack: 0 },
+        attention: [],
+        needsHuman: [],
+      },
+    },
+  }));
+
   // §J14 — refresh: succeeds by default (covers silent-refresh test
   // by per-test override that returns 401 first then OK).
   setMockHandler('POST', '/api/v1/auth/refresh', () => ({

@@ -30,6 +30,7 @@ merge; pure-BE slices skip it). The plan budgets ~a dozen serial walks.
 ## Locked waves (dependency-ordered)
 
 ### Wave A — security floor + zero-/cheap-QA merges (FIRST; spend the cheapest walks early) ∥
+
 - **FL-1** `SHARE_TOKEN_SECRET` dedicated secret (replace JWT_SECRET reuse in share-token.service) + dual-verify grace. [BE 0.5d]
 - **FL-2** audience split `emapp-share` vs `emapp-exchange` (additive; verify-side pinning; the exchange seam for Wave-5 without building it). [BE 0.5d]
 - **FL-3** `DOC_ENCRYPTION_KEY` keyId→key registry (rotation-ready; backward-compatible single-key decrypt; ships code, prod values owner-deploy-gated). [BE 1d]
@@ -40,6 +41,7 @@ merge; pure-BE slices skip it). The plan budgets ~a dozen serial walks.
 - **FL-9** F-b apartment designation — extend `formatApartmentLabel` with building/floor qualifier + e2e literal updates. [FE 1d]
 
 ### Wave B — pure-BE substrate (MAX parallel fan-out, ZERO serial-QA cost) ∥
+
 - **NS1** server-side search endpoints: `GET /projects?q=&status=&segment=`, `/owners/search`, `/documents/search` (keyset, RLS, trgm+btree indexes). [BE 2d]
 - **NS2** PII-gated cross-project national_id lookup branch on `/owners/search` (view_owner_pii, hashed-match, audited, @security-reviewed). [BE 1d] ←NS1
 - **NS3** `saved_view` model + endpoints + system segments (Zod-validated query_json on save AND replay). [BE 1d] ←NS1
@@ -55,6 +57,7 @@ merge; pure-BE slices skip it). The plan budgets ~a dozen serial walks.
 - **BM-1-be** leverage scorer: `GET /projects/:id/leverage` — marginal-delta-to-headline one-SQL-pass (NOT share-sum). [BE part of BM-1]
 
 ### Wave C — value-now browser-observable FE (serial QA, leverage-ordered) →
+
 - **BM-1** leverage card FE — "מפת קרב" entry: "המנוף שלך: דנה כהן, 28% בדירה 4 — 61%→71%, מעל הסף" + one-tap remind. [FE 2d] ←BM-1-be
 - **HB-1** home card chase — inline "שלח תזכורת לכולם" resend (kill-switch + Idempotency-Key + recipient-scope + optimistic undo); act WITHOUT leaving home. [FE 2d] ←#437,#417,#418,B1
 - **HB-3** inline "מי תקוע?" gated holdout-name expander on each card (B4 names, NameDisplay) + per-name single-remind. [FE 2d] ←HB-1,#438
@@ -62,6 +65,7 @@ merge; pure-BE slices skip it). The plan budgets ~a dozen serial walks.
 - **NS6** projects-list server-search swap — kill the client-side-only filter in projects/page.tsx, wire to NS1. [FE 1d] ←NS1,NS3
 
 ### Wave D — external-share FE + scale FE (serial QA, only what FULLY finishes; NOT promised) →
+
 - **X-S6** share sheet FE (party-chip → preset auto-fill, can-only-narrow, StepUp for sensitive, one-tap create+send). [FE 2d] — pull-in if budget
 - **X-S7** share-activity / revoke panel FE (countdown, last-accessed, extend/resend/revoke via ConfirmDialog). [FE 1d] — pull-in if budget
 - Natural cut line under time pressure: NS6 → X-S7 → X-S6 (each cut item stays complete-or-untouched).

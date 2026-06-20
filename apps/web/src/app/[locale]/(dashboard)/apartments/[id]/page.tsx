@@ -114,11 +114,7 @@ export default function ApartmentDetailPage() {
             <span className="text-xs text-muted-foreground">
               {t('statusChangedLabel', { rel: data.statusChangedRelative })}
             </span>
-            {data.isArchived && (
-              <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
-                {tp('archived')}
-              </span>
-            )}
+            {data.isArchived && <span className="badge badge-neutral">{tp('archived')}</span>}
           </div>
           {data.factsLine && <p className="text-xs text-muted-foreground">{data.factsLine}</p>}
         </div>

@@ -285,7 +285,7 @@ export default function ProjectSharesPage() {
                     dir="ltr"
                     className="w-full rounded-md border bg-muted px-2 py-1 font-mono text-xs"
                   />
-                  <p className="text-xs text-amber-700">{t('shareLinkWarning')}</p>
+                  <p className="text-xs text-status-warning-fg">{t('shareLinkWarning')}</p>
                 </div>
               )}
             </li>

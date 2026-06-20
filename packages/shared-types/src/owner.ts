@@ -163,3 +163,23 @@ export const ListOwnersQuery = z.object({
     .transform((v) => v === 'true'),
 });
 export type ListOwnersQueryDto = z.infer<typeof ListOwnersQuery>;
+
+/**
+ * NS1 (server-side search, MASTER-PLAN-V13 Wave B) — owner NAME search query
+ * for GET /owners/search. This is DISTINCT from `OwnerSearchInput` (the POST
+ * by-PII HMAC lookup): this is a substring search over the owner NAME, keyset-
+ * paginated, returning the SAME masked-PII projection as the list endpoint
+ * (never national_id/phone cleartext). `q` is required (an empty search has no
+ * meaning here); it is trimmed + bounded. Cursor pagination only (D.16).
+ *
+ * SECURITY: the owner name is PII stored ENCRYPTED at rest; the BE decrypts it
+ * IN-SQL under the withTenant key and ILIKEs the plaintext — the clear name
+ * never crosses the wire except inside the masked owner projection's `name`
+ * field (which list/get already return). national_id/phone stay masked.
+ */
+export const OwnerNameSearchQuery = z.object({
+  q: z.string().trim().min(1).max(100),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  cursor: z.string().min(1).optional(),
+});
+export type OwnerNameSearchQueryDto = z.infer<typeof OwnerNameSearchQuery>;

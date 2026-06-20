@@ -20,6 +20,8 @@ export * from './parcel-setup';
 export * from './data-subject';
 export * from './contractor';
 export * from './share';
+// X-S2/X-S3 (V13) — generalized party-typed external_share grant.
+export * from './external-share';
 // D2-DEF-1 / D.46 — Contractor read-tier (share-token scoped, owners-PII
 // OFF, aggregate signatures). Tier-isolated read shapes for
 // /api/v1/contractor/* under the `emapp-share` JWT audience.

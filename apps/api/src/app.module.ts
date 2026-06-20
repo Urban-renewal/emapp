@@ -19,6 +19,7 @@ import { ContractorsModule } from './modules/contractors/contractors.module';
 import { DiscoveryModule } from './modules/discovery/discovery.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { ExportModule } from './modules/export/export.module';
+import { ExternalSharesModule } from './modules/external-shares/external-shares.module';
 import { ImportsModule } from './modules/imports/imports.module';
 import { MembersModule } from './modules/members/members.module';
 import { MessagingModule } from './modules/messaging/messaging.module';
@@ -83,6 +84,11 @@ import { QueueModule } from './queue/queue.module';
     ContractorsModule,
     DocumentsModule,
     SharesModule,
+    // X-S2/X-S3 (V13) — generalized party-typed external_share grants
+    // (developer/lawyer/bank/...). ADDITIVE; the contractor tier stays on
+    // SharesModule until a deliberate migration (X-S8). Manager-only writes,
+    // server-side preset-ceiling enforcement (narrows-only), RLS org isolation.
+    ExternalSharesModule,
     TasksModule,
     NotificationsModule,
     NotesModule,

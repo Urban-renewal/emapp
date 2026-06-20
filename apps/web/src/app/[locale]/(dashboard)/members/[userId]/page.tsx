@@ -204,11 +204,7 @@ export default function MemberDetailPage({ params }: PageProps) {
           </p>
           <div className="flex items-center gap-2">
             <StatusBadge intent={member.stateColor}>{member.stateLabel}</StatusBadge>
-            {member.isPrimary && (
-              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
-                {t('primary')}
-              </span>
-            )}
+            {member.isPrimary && <span className="badge badge-info">{t('primary')}</span>}
           </div>
         </div>
         <Button variant="ghost" onClick={() => router.push('/members')}>
@@ -220,9 +216,11 @@ export default function MemberDetailPage({ params }: PageProps) {
           email and (in dev, when the token comes back) copy the
           accept-invite link. members.invite gates both actions. */}
       {member.isPending && canInvite && (
-        <div className="rounded-md border bg-amber-50 p-4">
-          <h2 className="mb-1 text-base font-semibold text-amber-900">{t('inviteRecovery')}</h2>
-          <p className="mb-3 text-xs text-amber-800">{t('inviteRecoveryHint')}</p>
+        <div className="rounded-md border bg-status-warning-bg p-4">
+          <h2 className="mb-1 text-base font-semibold text-status-warning-fg">
+            {t('inviteRecovery')}
+          </h2>
+          <p className="mb-3 text-xs text-status-warning-fg">{t('inviteRecoveryHint')}</p>
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
@@ -242,13 +240,15 @@ export default function MemberDetailPage({ params }: PageProps) {
           {resendMsg && (
             <p
               className={`mt-2 text-sm ${
-                resendMsg.kind === 'ok' ? 'text-emerald-700' : 'text-destructive'
+                resendMsg.kind === 'ok' ? 'text-status-success-fg' : 'text-destructive'
               }`}
             >
               {resendMsg.text}
             </p>
           )}
-          {inviteToken && <p className="mt-2 text-xs text-amber-700">{t('inviteTokenWarning')}</p>}
+          {inviteToken && (
+            <p className="mt-2 text-xs text-status-warning-fg">{t('inviteTokenWarning')}</p>
+          )}
         </div>
       )}
 

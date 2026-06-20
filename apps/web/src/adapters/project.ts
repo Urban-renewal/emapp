@@ -1,4 +1,5 @@
 import type {
+  ApartmentHoldout,
   ApartmentSignatureProgress,
   Project,
   ProjectListItem,
@@ -10,7 +11,10 @@ import type {
 import { formatApartmentLabel } from '@/lib/apartment-label';
 import { stripBidiOverrides } from '@/lib/bidi';
 import { formatRelative } from '@/lib/format';
-import type { ApartmentSignatureProgressViewModel } from '@/models/apartment-signature-progress.vm';
+import type {
+  ApartmentHoldoutViewModel,
+  ApartmentSignatureProgressViewModel,
+} from '@/models/apartment-signature-progress.vm';
 import type { ProjectViewModel } from '@/models/project.vm';
 import type { SignatureProgressViewModel } from '@/models/signature-progress.vm';
 
@@ -185,6 +189,29 @@ export function toApartmentSignatureProgressViewModels(
   rows: ApartmentSignatureProgress[],
 ): ApartmentSignatureProgressViewModel[] {
   return rows.map(toApartmentSignatureProgressViewModel);
+}
+
+/**
+ * E2 Wave-2 E2.2-S3 / B4 — apartment HOLDOUT adapter ("מי תקוע"). Pure function.
+ * Unlike the rest of this file the holdout NAME is real owner PII (user/Excel
+ * authored), so it is bidi-stripped here AND re-wrapped in `<NameDisplay>` at
+ * render (defense in depth, §v9-H-3). A null name (a shell owner with no name on
+ * record) is normalised to null so the component can fall back to an anonymous
+ * "owner without a name" label rather than rendering an empty `<bdi>`.
+ */
+export function toApartmentHoldoutViewModel(h: ApartmentHoldout): ApartmentHoldoutViewModel {
+  const trimmed = h.name?.trim() ? stripBidiOverrides(h.name.trim()) : null;
+  return {
+    ownerId: h.ownerId,
+    name: trimmed,
+    apartmentNumber: stripBidiOverrides(h.apartmentNumber),
+  };
+}
+
+export function toApartmentHoldoutViewModels(
+  rows: ApartmentHoldout[],
+): ApartmentHoldoutViewModel[] {
+  return rows.map(toApartmentHoldoutViewModel);
 }
 
 /** Exported for adapter tests + future Storybook stories. */

@@ -32,9 +32,16 @@
  * `tenant-suspension-panel` 5) ALL included, so the floor is the TRUE count,
  * not a partial-tree under-measure. Original count was 149 across 34 files;
  * E2.0b re-homed `status-badge.tsx` (-8) + `button.tsx` destructive (-2)
- * onto the EMAPP semantic tokens, lowering the floor to **139 occurrences
- * across 32 files** (both `components/ui/*` leaks fully retired). The bulk
- * of the remaining debt is in `app/**` pages. Ratchets DOWN only.
+ * onto the EMAPP semantic tokens, lowering the floor to 139 occurrences
+ * across 32 files (both `components/ui/*` leaks fully retired). Two E2 reskins
+ * then re-homed further pages onto the semantic tokens: the dashboard-lists
+ * slice (#441 — `imports/[id]`, `owners-list`, `notes-list`, `tasks-list`,
+ * `tasks/[id]`) AND the ORG-pages slice (#443 — members detail, sig-requests
+ * list+detail, contractors, documents/notes/apartments/buildings detail,
+ * projects sub-pages, member-overrides + owner-pii-reveal panels). With both
+ * merged the disjoint reductions STACK, lowering the floor further — see the
+ * reconciled BASELINE below (re-measured on the merged tree). The bulk of the
+ * remaining debt is the Provider subtree. Ratchets DOWN only.
  *
  * HOW TO LOWER THE BASELINE (do this whenever you re-home a component onto the
  * EMAPP semantic classes): run
@@ -53,8 +60,8 @@ import { describe, expect, it } from 'vitest';
 
 const SRC = join(__dirname);
 
-const BASELINE_OCCURRENCES = 139;
-const BASELINE_FILES = 32;
+const BASELINE_OCCURRENCES = 68;
+const BASELINE_FILES = 10;
 
 /**
  * Default Tailwind palette class: a color-bearing utility prefix

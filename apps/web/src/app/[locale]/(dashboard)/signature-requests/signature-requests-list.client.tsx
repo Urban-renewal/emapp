@@ -93,11 +93,7 @@ export function SignatureRequestsListClient() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-3">
                       <StatusBadge intent={r.intent}>{r.statusLabel}</StatusBadge>
-                      {r.isExpired && (
-                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
-                          {t('expired')}
-                        </span>
-                      )}
+                      {r.isExpired && <span className="badge badge-danger">{t('expired')}</span>}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {t('createdAt', { rel: r.createdRelative })}

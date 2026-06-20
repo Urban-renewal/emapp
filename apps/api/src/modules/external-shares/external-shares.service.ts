@@ -168,12 +168,12 @@ export class ExternalSharesService {
       found = await tx
         .select({ id: buildings.id })
         .from(buildings)
-        .where(inArray(buildings.id, unique));
+        .where(and(inArray(buildings.id, unique), isNull(buildings.archivedAt)));
     } else {
       found = await tx
         .select({ id: apartments.id })
         .from(apartments)
-        .where(inArray(apartments.id, unique));
+        .where(and(inArray(apartments.id, unique), isNull(apartments.archivedAt)));
     }
     if (found.length !== unique.length) {
       throw new BadRequestException({ error: { code: 'invalid_scope' } });
@@ -267,6 +267,17 @@ export class ExternalSharesService {
         // scope_ids change → re-validate they resolve in-org for the (next) kind.
         if (input.scopeIds || input.scopeType) {
           await this.assertScopeIdsValid(tx, nextScopeType, nextScopeIds);
+        }
+        // scope_ids NARROWS-ONLY (security HIGH fix): when the scope_type is
+        // unchanged, the id set may only SHRINK — adding a building/apartment/
+        // project id would WIDEN the footprint the grant covers without tripping
+        // the rank/perms checks above. (A scope_type change already lowers the
+        // rank via assertNarrowsOnly + re-validates the ids in-org.)
+        if (nextScopeType === before.scopeType) {
+          const beforeIds = new Set(before.scopeIds);
+          if (nextScopeIds.some((sid) => !beforeIds.has(sid))) {
+            throw new BadRequestException({ error: { code: 'cannot_widen' } });
+          }
         }
 
         const [row] = await tx

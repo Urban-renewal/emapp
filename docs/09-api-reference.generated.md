@@ -1072,6 +1072,31 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `document_conflict`, `document_integrity_mismatch`, `document_type_mismatch`, `document_scan_rejected`, `storage_unavailable`, `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/documents/search
+
+- **Auth:** AuthGuard + TenantGuard (documents.read)
+- **Summary:** NS1 — document NAME substring search (trigram ILIKE) + optional `type` (DocumentTypeEnum) and `scope` (project|apartment|org) filters, cursor-paginated. SAME visibility as list (agent record-scoping, archived excluded by default) — search never widens what a caller can see; r2Key never returned.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `archived` | string | no | enum=["true","false"] |
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+| `q` | string | yes | minLength=1, maxLength=255 |
+| `scope` | string | no | enum=["project","apartment","org"] |
+| `type` | string | no | enum=["agreement","land_registry","blueprint","regulation","contract","permit","id_document","floor_plan","financial","other"] |
+
+
+**Response**
+
+```json
+{ "data": [ {Document} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`, `token_expired`
+
 ### GET /api/v1/external-shares
 
 - **Auth:** AuthGuard + TenantGuard
@@ -2041,6 +2066,28 @@ _(no body)_
 
 **Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/owners/search
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** NS1 — owner NAME substring search (case-insensitive), cursor-paginated. `q` is a NAME (not PII) so it is safe in the query string. The encrypted name is decrypted IN-SQL and ILIKE-matched; national_id/phone ALWAYS returned MASKED (D.47). Agent record-scoped (view_owners + assigned-project owners only).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+| `q` | string | yes | minLength=1, maxLength=100 |
+
+
+**Response**
+
+```json
+{ "data": [ {OwnerListItem — masked + apartmentCount,pendingSignatureCount} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `forbidden`, `missing_token`, `invalid_token`, `token_expired`
+
 ### POST /api/v1/owners/search
 
 - **Auth:** AuthGuard + TenantGuard
@@ -2258,7 +2305,7 @@ _(no body)_
 ### GET /api/v1/projects
 
 - **Auth:** AuthGuard + TenantGuard
-- **Summary:** List org projects, cursor-paginated (keyset). Agent sees only assigned projects (D.17).
+- **Summary:** List org projects, cursor-paginated (keyset). Agent sees only assigned projects (D.17). NS1 server-side search/filter (all optional, absent ⇒ unchanged): `q` name substring (trigram ILIKE), `status` (D.18 enum), `segment` system segment (stalled|expiring|mine, computed from signature-pulse facts).
 
 **Request body**
 
@@ -2266,6 +2313,9 @@ _(no body)_
 |---|---|---|---|
 | `cursor` | string | no | minLength=1 |
 | `limit` | integer | no | minimum=1, maximum=100 |
+| `q` | string | no | minLength=1, maxLength=120 |
+| `segment` | string | no | enum=["stalled","expiring","mine"] |
+| `status` | string | no | enum=["planning","gathering_signatures","approved","in_construction","completed","cancelled"] |
 
 
 **Response**

@@ -47,6 +47,9 @@ import {
   OtpVerifySchema,
   StepUpVerifySchema,
   OwnerSearchInput,
+  // NS1 — server-side search query schemas.
+  OwnerNameSearchQuery,
+  DocumentSearchQuery,
   OwnerEraseInput,
   SetOwnershipsInput,
   UpdateApartmentInput,
@@ -249,7 +252,7 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/projects',
     auth: 'AuthGuard + TenantGuard',
     summary:
-      'List org projects, cursor-paginated (keyset). Agent sees only assigned projects (D.17).',
+      'List org projects, cursor-paginated (keyset). Agent sees only assigned projects (D.17). NS1 server-side search/filter (all optional, absent ⇒ unchanged): `q` name substring (trigram ILIKE), `status` (D.18 enum), `segment` system segment (stalled|expiring|mine, computed from signature-pulse facts).',
     request: ListProjectsQuery,
     response:
       '{ "data": [ {Project} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
@@ -464,6 +467,24 @@ const ENDPOINTS: Endpoint[] = [
     request: OwnerSearchInput,
     response: '{ "data": [ {Owner — masked} ] }',
     errors: ['validation_error', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/owners/search',
+    auth: 'AuthGuard + TenantGuard',
+    summary:
+      'NS1 — owner NAME substring search (case-insensitive), cursor-paginated. `q` is a NAME (not PII) so it is safe in the query string. The encrypted name is decrypted IN-SQL and ILIKE-matched; national_id/phone ALWAYS returned MASKED (D.47). Agent record-scoped (view_owners + assigned-project owners only).',
+    request: OwnerNameSearchQuery,
+    response:
+      '{ "data": [ {OwnerListItem — masked + apartmentCount,pendingSignatureCount} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'forbidden',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
   },
   {
     method: 'POST',
@@ -1828,6 +1849,23 @@ const ENDPOINTS: Endpoint[] = [
     summary:
       'List org documents, cursor-paginated. Doc/project visibility scoping in the service; r2Key never returned.',
     request: ListDocumentsQuery,
+    response:
+      '{ "data": [ {Document} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/documents/search',
+    auth: 'AuthGuard + TenantGuard (documents.read)',
+    summary:
+      'NS1 — document NAME substring search (trigram ILIKE) + optional `type` (DocumentTypeEnum) and `scope` (project|apartment|org) filters, cursor-paginated. SAME visibility as list (agent record-scoping, archived excluded by default) — search never widens what a caller can see; r2Key never returned.',
+    request: DocumentSearchQuery,
     response:
       '{ "data": [ {Document} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
     errors: [

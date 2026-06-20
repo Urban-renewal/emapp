@@ -1,4 +1,4 @@
--- 0077: external_share — X-S2 (V13) generalized, party-TYPED external-sharing
+-- 0079: external_share — X-S2 (V13) generalized, party-TYPED external-sharing
 -- grant. Supersedes the contractor-only `shares` table by adding a party_type
 -- taxonomy + scope_type/scope_ids addressing, so a grant can target a developer
 -- / lawyer / bank / supervisor / appraiser / surveyor / committee / special

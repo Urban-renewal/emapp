@@ -16,6 +16,7 @@ import {
   unique,
 } from 'drizzle-orm/pg-core';
 
+import { docScopeEnum } from './_enums';
 import { bytea, inet } from './_types';
 import { apartments, owners, projects } from './projects';
 import { organizations, users } from './tenancy';
@@ -67,6 +68,24 @@ export const documents = pgTable(
      *  path (POST /documents/:id/content). The download path decrypt-streams
      *  when true; plain (false) docs keep the presigned-GET path unchanged. */
     bytesEncrypted: boolean('bytes_encrypted').notNull().default(false),
+    /** 0077 (DH1) — the closed taxonomy SCOPE the doc hangs off:
+     *  org | project | apartment | owner. NOT NULL DEFAULT 'org'. Supersedes
+     *  the ad-hoc project_id/apartment_id columns as the canonical scope
+     *  concept (those are kept for back-compat). Backfilled from the legacy
+     *  parent columns at migration time. */
+    docScope: docScopeEnum('doc_scope').notNull().default('org'),
+    /** 0077 (DH1) — the typed scope TARGET id (the project / apartment / owner
+     *  id this doc is scoped to). NULL iff doc_scope = 'org'. Enforced by the
+     *  documents_doc_scope_id_consistent CHECK. NOT a FK (the referent table
+     *  varies by scope); per-scope referential integrity lives at the service
+     *  boundary, with owner_id below carrying the only hard FK. */
+    docScopeId: uuid('doc_scope_id'),
+    /** 0077 (DH1) — explicit owner link (a doc ABOUT a specific owner, e.g.
+     *  their נסח/ID extract). FK → owners ON DELETE SET NULL: erasing/removing
+     *  an owner must neither block the delete nor destroy the document — the
+     *  doc survives, de-linked. Distinct from doc_scope_id: a doc may be
+     *  apartment-scoped yet still owner-attributed. */
+    ownerId: uuid('owner_id').references(() => owners.id, { onDelete: 'set null' }),
   },
   (table) => ({
     r2KeyUnique: uniqueIndex('documents_r2_key_unique').on(table.r2Key),
@@ -77,6 +96,19 @@ export const documents = pgTable(
       .on(table.apartmentId)
       .where(sql`apartment_id IS NOT NULL AND archived_at IS NULL`),
     contentHashIdx: index('idx_documents_content_hash').on(table.contentHash),
+    // 0077 (DH1) — partial indexes mirroring the migration's.
+    ownerIdx: index('idx_documents_owner')
+      .on(table.ownerId)
+      .where(sql`owner_id IS NOT NULL AND archived_at IS NULL`),
+    scopeIdx: index('idx_documents_scope')
+      .on(table.docScope, table.docScopeId)
+      .where(sql`doc_scope_id IS NOT NULL AND archived_at IS NULL`),
+    // 0077 (DH1) — scope/scope_id consistency: org ⇒ no target id; any non-org
+    // scope ⇒ a target id is required.
+    docScopeIdConsistent: check(
+      'documents_doc_scope_id_consistent',
+      sql`(${table.docScope} = 'org' AND ${table.docScopeId} IS NULL) OR (${table.docScope} <> 'org' AND ${table.docScopeId} IS NOT NULL)`,
+    ),
   }),
 );
 

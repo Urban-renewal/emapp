@@ -25,6 +25,23 @@ export const serverEnv = createEnv({
      *  still boot; the SignatureTokenService throws at construction if
      *  unset — same governed pattern as RESEND_API_KEY. */
     SIGNATURE_TOKEN_SECRET: z.string().min(44).optional(),
+    /** FL-1 / X-S1 (V13) — a JWT secret SEPARATE from JWT_SECRET, used ONLY
+     *  for external-share access tokens (the contractor / external-party read
+     *  credential, audience `emapp-share`). The council split this off so a
+     *  leak of the org-session secret (`JWT_SECRET`) does NOT compromise the
+     *  long-lived share credentials (30-day TTL, cross-party access), and vice
+     *  versa — different threat models, different blast radii.
+     *
+     *  Optional in schema with a DEV FALLBACK in `ShareTokenService` (it falls
+     *  back to JWT_SECRET when unset) so CI / non-configured envs still boot and
+     *  stay green. The PRODUCTION value is an OWNER-DEPLOY step (Infisical
+     *  staging+prod) — until set, share tokens are signed with JWT_SECRET via
+     *  the fallback, acceptable ONLY as a pre-deploy bridge; the dual-verify
+     *  grace window then accepts both. Generate with:
+     *    node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+     *  Tracked in docs/MASTER-PLAN-V13.md → "prod ... SHARE_TOKEN_SECRET deploy
+     *  values" (owner-deploy-gated). */
+    SHARE_TOKEN_SECRET: z.string().min(44).optional(),
     PII_ENCRYPTION_KEY: z.string().min(32).optional(),
     PII_HASH_KEY: z.string().min(32).optional(),
     /** DEV-ONLY auth bypass opt-in. When '1' AND NODE_ENV==='development',

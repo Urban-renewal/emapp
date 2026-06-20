@@ -17,15 +17,34 @@ import { JwtService, TokenExpiredError, type JwtSignOptions } from '@nestjs/jwt'
  *     immediate via `shares.revoked_at` (checked in the guard on every
  *     request), so a long TTL does not widen the live blast radius.
  *
- * SECRET (flagged for PL hardening): this reuses `JWT_SECRET` (audience
- * isolation is the primary defence). The signature-token tier uses a
- * SEPARATE secret for extra blast-radius isolation; a dedicated
- * `SHARE_TOKEN_SECRET` is the same PL hardening step here (kept out now to
- * avoid a new boot-blocking env dependency before the tier ships). Tracked
- * as a flag — NOT a silent gap.
+ * SECRET (FL-1 / X-S1 hardening, V13): share tokens are now signed with a
+ * DEDICATED `SHARE_TOKEN_SECRET`, NOT `JWT_SECRET`. The council split this so a
+ * leak of the org-session secret does not compromise the long-lived share
+ * credentials (and vice-versa) — audience isolation was the only previous
+ * defence; this adds key isolation.
+ *
+ * DEV FALLBACK: when `SHARE_TOKEN_SECRET` is unset (CI / not-yet-deployed
+ * envs), we fall back to `JWT_SECRET` so the process still boots and CI stays
+ * green. The prod value is an OWNER-DEPLOY step (Infisical staging+prod).
+ *
+ * DUAL-VERIFY GRACE WINDOW: `verify()` accepts a token signed with EITHER the
+ * new `SHARE_TOKEN_SECRET` OR the legacy `JWT_SECRET` for a deprecation window,
+ * so 30-day-TTL tokens minted before the cutover keep working after it.
+ * `sign()` always uses the new (preferred) secret. When the fallback is active
+ * (SHARE_TOKEN_SECRET unset) both secrets are identical and the dual path
+ * collapses to a single verify — still correct.
  */
 export const SHARE_TOKEN_ISS = 'emapp';
 export const SHARE_TOKEN_AUD = 'emapp-share';
+/**
+ * FL-2 / additive seam (V13): the audience a future token-EXCHANGE tier would
+ * carry (`emapp-exchange`), distinct from the read-credential audience
+ * (`emapp-share`). Declared now so the exchange tier (Wave-5) is a pure
+ * additive verify-side pin, not a token-confusion retrofit. The exchange tier
+ * itself is NOT built here — this is the named seam only. A token carrying this
+ * audience does NOT pass `verify()` below (which pins `SHARE_TOKEN_AUD`).
+ */
+export const SHARE_TOKEN_AUD_EXCHANGE = 'emapp-exchange';
 export const SHARE_TOKEN_ALGORITHM = 'HS256' as const;
 /** 30 days. Revocation is immediate via shares.revoked_at (guard-checked). */
 export const SHARE_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -62,14 +81,32 @@ export class ShareTokenVerifyError extends UnauthorizedException {
 
 @Injectable()
 export class ShareTokenService {
-  private readonly secret = serverEnv.JWT_SECRET;
+  /** Preferred signing secret: the dedicated SHARE_TOKEN_SECRET, falling back
+   *  to JWT_SECRET when unset (CI / pre-deploy bridge). New tokens are ALWAYS
+   *  signed with this. */
+  private readonly signingSecret = serverEnv.SHARE_TOKEN_SECRET ?? serverEnv.JWT_SECRET;
+  /** Legacy secret kept ONLY for the dual-verify grace window — tokens minted
+   *  before the split were signed with JWT_SECRET. When the dedicated secret is
+   *  unset the two are identical and the second verify attempt is a redundant
+   *  no-op (deduped below). */
+  private readonly legacySecret = serverEnv.JWT_SECRET;
+
+  /** Distinct verify secrets, in preference order, de-duplicated so the common
+   *  fallback case (SHARE_TOKEN_SECRET unset → both equal JWT_SECRET) does ONE
+   *  verify, not two. */
+  private get verifySecrets(): string[] {
+    return this.signingSecret === this.legacySecret
+      ? [this.signingSecret]
+      : [this.signingSecret, this.legacySecret];
+  }
 
   constructor(private readonly jwt: JwtService) {}
 
-  /** Sign a share-access token for a (manager-created) share row. */
+  /** Sign a share-access token for a (manager-created) share row. Always uses
+   *  the preferred (new) secret. */
   sign(payload: ShareTokenPayload): { token: string; expiresAt: Date } {
     const opts: JwtSignOptions = {
-      secret: this.secret,
+      secret: this.signingSecret,
       algorithm: SHARE_TOKEN_ALGORITHM,
       expiresIn: SHARE_TOKEN_TTL_SECONDS,
       issuer: SHARE_TOKEN_ISS,
@@ -80,25 +117,42 @@ export class ShareTokenService {
   }
 
   /** Verify a token presented to a /contractor/* endpoint. Throws
-   *  `ShareTokenVerifyError` (→ 401 invalid_token) on any failure. */
+   *  `ShareTokenVerifyError` (→ 401 invalid_token) on any failure.
+   *
+   *  DUAL-VERIFY GRACE: tries the new secret first, then the legacy JWT_SECRET.
+   *  Only a SIGNATURE mismatch (`invalid_signature`) is retried against the
+   *  legacy secret — `expired` / `invalid_audience` / `invalid_issuer` /
+   *  `malformed` are intrinsic to the token (secret-independent) and fail fast,
+   *  preserving the no-oracle, generic-401 posture. The deprecation window
+   *  closes by removing JWT_SECRET from `verifySecrets` once all pre-split
+   *  tokens (≤30-day TTL) have aged out. */
   verify(token: string): VerifiedShareToken {
-    let payload: Record<string, unknown>;
-    try {
-      payload = this.jwt.verify(token, {
-        secret: this.secret,
-        algorithms: [SHARE_TOKEN_ALGORITHM],
-        issuer: SHARE_TOKEN_ISS,
-        audience: SHARE_TOKEN_AUD,
-      });
-    } catch (e: unknown) {
-      if (e instanceof TokenExpiredError) throw new ShareTokenVerifyError('expired');
-      const msg = e instanceof Error ? e.message : '';
-      let fail: ShareTokenFailReason = 'invalid_signature';
-      if (/audience/i.test(msg)) fail = 'invalid_audience';
-      else if (/issuer/i.test(msg)) fail = 'invalid_issuer';
-      else if (/malformed/i.test(msg)) fail = 'malformed';
-      throw new ShareTokenVerifyError(fail);
+    let payload: Record<string, unknown> | undefined;
+    let lastFail: ShareTokenFailReason = 'invalid_signature';
+    const secrets = this.verifySecrets;
+    for (let i = 0; i < secrets.length; i++) {
+      try {
+        payload = this.jwt.verify<Record<string, unknown>>(token, {
+          secret: secrets[i],
+          algorithms: [SHARE_TOKEN_ALGORITHM],
+          issuer: SHARE_TOKEN_ISS,
+          audience: SHARE_TOKEN_AUD,
+        });
+        break;
+      } catch (e: unknown) {
+        if (e instanceof TokenExpiredError) throw new ShareTokenVerifyError('expired');
+        const msg = e instanceof Error ? e.message : '';
+        let fail: ShareTokenFailReason = 'invalid_signature';
+        if (/audience/i.test(msg)) fail = 'invalid_audience';
+        else if (/issuer/i.test(msg)) fail = 'invalid_issuer';
+        else if (/malformed/i.test(msg)) fail = 'malformed';
+        // Intrinsic (secret-independent) failures fail fast — no point retrying
+        // a different key. Only a signature mismatch warrants the legacy retry.
+        if (fail !== 'invalid_signature') throw new ShareTokenVerifyError(fail);
+        lastFail = fail;
+      }
     }
+    if (!payload) throw new ShareTokenVerifyError(lastFail);
     if (
       typeof payload['sub'] !== 'string' ||
       typeof payload['projectId'] !== 'string' ||

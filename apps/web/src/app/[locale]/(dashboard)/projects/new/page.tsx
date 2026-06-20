@@ -611,14 +611,14 @@ export default function NewProjectPage() {
                   className={`flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold ${
                     filled
                       ? 'border-navy-900 bg-navy-900 text-white'
-                      : 'bg-surface-subtle text-muted border-border'
+                      : 'bg-surface-subtle text-text-muted border-border'
                   }`}
                   aria-current={active ? 'step' : undefined}
                 >
                   {n}
                 </div>
                 <span
-                  className={`text-xs ${active ? 'text-foreground font-semibold' : 'text-muted'}`}
+                  className={`text-xs ${active ? 'text-foreground font-semibold' : 'text-text-muted'}`}
                 >
                   {n === 1 ? tw('step1') : n === 2 ? tw('step2') : tw('step3')}
                 </span>
@@ -668,7 +668,7 @@ export default function NewProjectPage() {
 
             {/* Minimal-create affordance: name + type is enough; the rest is
                 optional. Makes "create empty, enrich later" explicit. */}
-            <p className="text-muted bg-surface-subtle rounded-md p-2 text-xs">
+            <p className="text-text-muted bg-surface-subtle rounded-md p-2 text-xs">
               {tw('minimalCreateHint')}
             </p>
 
@@ -689,7 +689,7 @@ export default function NewProjectPage() {
                   setState((s) => ({ ...s, consentPct: e.target.value, consentTouched: true }))
                 }
               />
-              <p className="text-muted mt-1 text-xs">{tw('consentTargetHint')}</p>
+              <p className="text-text-muted mt-1 text-xs">{tw('consentTargetHint')}</p>
             </div>
 
             {/* Owner-approved staged overlay (Gate-6, Option A): optional
@@ -705,7 +705,7 @@ export default function NewProjectPage() {
                   {tw('milestones.suggest')}
                 </button>
               </div>
-              <p className="text-muted text-xs">{tw('milestones.hint')}</p>
+              <p className="text-text-muted text-xs">{tw('milestones.hint')}</p>
               {state.milestones.length === 0 && (
                 <p className="text-soft text-xs">{tw('milestones.empty')}</p>
               )}
@@ -781,8 +781,10 @@ export default function NewProjectPage() {
                 additive + optional; collapsed into one labelled section so the
                 minimal name+type create stays unchanged. */}
             <fieldset className="border-border flex flex-col gap-3 rounded-md border p-3">
-              <legend className="text-muted px-1 text-xs font-medium">{tr('sectionTitle')}</legend>
-              <p className="text-muted text-xs">{tr('sectionHint')}</p>
+              <legend className="text-text-muted px-1 text-xs font-medium">
+                {tr('sectionTitle')}
+              </legend>
+              <p className="text-text-muted text-xs">{tr('sectionHint')}</p>
 
               {/* Future-track free-text label — only for the 'other' type. */}
               {state.type === 'other' && (
@@ -798,7 +800,7 @@ export default function NewProjectPage() {
                     value={state.typeLabel}
                     onChange={(e) => setState((s) => ({ ...s, typeLabel: e.target.value }))}
                   />
-                  <p className="text-muted mt-1 text-xs">{tr('typeLabelHint')}</p>
+                  <p className="text-text-muted mt-1 text-xs">{tr('typeLabelHint')}</p>
                 </div>
               )}
 
@@ -885,7 +887,7 @@ export default function NewProjectPage() {
                   />
                 </div>
               </div>
-              <p className="text-muted text-xs">{tr('tmuraHint')}</p>
+              <p className="text-text-muted text-xs">{tr('tmuraHint')}</p>
 
               {/* Relocation (פינוי) — demolish-rebuild tracks only. */}
               {isRelocationRelevant(state.type) && (
@@ -974,7 +976,7 @@ export default function NewProjectPage() {
                   />
                 </div>
               </div>
-              <p className="text-muted text-xs">{tr('parcelHint')}</p>
+              <p className="text-text-muted text-xs">{tr('parcelHint')}</p>
             </fieldset>
           </>
         )}
@@ -985,10 +987,10 @@ export default function NewProjectPage() {
                 tama38_2 = up to two; pinui_binui = a multi-building complex
                 with a live count. */}
             {state.type === 'tama38_1' && (
-              <p className="text-muted text-sm">{tw('singleBuildingHint')}</p>
+              <p className="text-text-muted text-sm">{tw('singleBuildingHint')}</p>
             )}
             {state.type === 'tama38_2' && (
-              <p className="text-muted text-sm">{tw('twoBuildingHint')}</p>
+              <p className="text-text-muted text-sm">{tw('twoBuildingHint')}</p>
             )}
             {state.type === 'pinui_binui' && (
               <p className="text-foreground text-sm font-medium">
@@ -996,11 +998,11 @@ export default function NewProjectPage() {
               </p>
             )}
             {state.buildings.length === 0 && state.type !== 'tama38_1' && (
-              <p className="text-muted text-sm">{tw('noBuildings')}</p>
+              <p className="text-text-muted text-sm">{tw('noBuildings')}</p>
             )}
             {state.buildings.map((b, idx) => (
               <fieldset key={b.rid} className="border-border rounded-md border p-3">
-                <legend className="text-muted px-1 text-xs font-medium">
+                <legend className="text-text-muted px-1 text-xs font-medium">
                   {tw('buildingNumberLabel', { n: idx + 1 })}
                 </legend>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1064,7 +1066,7 @@ export default function NewProjectPage() {
                     A real mixed-use building = ≥2 sections of different kinds. */}
                 <div className="mt-3 flex flex-col gap-3">
                   {b.sections.some((sec) => sec.kind === 'mixed') && (
-                    <p className="text-muted text-xs">{tk('mixedMultiSectionHint')}</p>
+                    <p className="text-text-muted text-xs">{tk('mixedMultiSectionHint')}</p>
                   )}
                   {b.sections.map((sec, sIdx) => {
                     return (
@@ -1072,7 +1074,7 @@ export default function NewProjectPage() {
                         key={sec.sid}
                         className="border-border bg-surface-subtle rounded-md border p-3"
                       >
-                        <legend className="text-muted px-1 text-xs font-medium">
+                        <legend className="text-text-muted px-1 text-xs font-medium">
                           {tk('sectionNumberLabel', { n: sIdx + 1 })}
                         </legend>
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1158,7 +1160,7 @@ export default function NewProjectPage() {
                               office/retail; re-add the input WITH a wire column
                               (Gate-6, schema change) when it can actually persist. */}
                         </div>
-                        <p className="text-muted mt-2 text-xs">
+                        <p className="text-text-muted mt-2 text-xs">
                           {kindHint(sec.kind)}{' '}
                           <span style={{ fontWeight: 500 }}>
                             ({tu(SECTION_KIND_DEFAULT_UNIT_TYPE[sec.kind])})
@@ -1228,13 +1230,13 @@ export default function NewProjectPage() {
                 {tw('review.projectHeading')}
               </h2>
               <dl className="mt-2 grid grid-cols-[120px_1fr] gap-y-1 text-sm">
-                <dt className="text-muted">{t('field.name')}</dt>
+                <dt className="text-text-muted">{t('field.name')}</dt>
                 <dd>{state.name}</dd>
-                <dt className="text-muted">{t('field.type')}</dt>
+                <dt className="text-text-muted">{t('field.type')}</dt>
                 <dd>{tt(state.type)}</dd>
                 {state.consentPct.trim() !== '' && (
                   <>
-                    <dt className="text-muted">{tw('consentTarget')}</dt>
+                    <dt className="text-text-muted">{tw('consentTarget')}</dt>
                     <dd className="tabular" dir="ltr">
                       {state.consentPct}%
                     </dd>
@@ -1242,13 +1244,13 @@ export default function NewProjectPage() {
                 )}
                 {state.type === 'other' && state.typeLabel.trim() && (
                   <>
-                    <dt className="text-muted">{tr('typeLabel')}</dt>
+                    <dt className="text-text-muted">{tr('typeLabel')}</dt>
                     <dd>{state.typeLabel.trim()}</dd>
                   </>
                 )}
                 {state.developerName.trim() && (
                   <>
-                    <dt className="text-muted">{tr('developerName')}</dt>
+                    <dt className="text-text-muted">{tr('developerName')}</dt>
                     <dd>
                       {state.developerName.trim()}
                       {state.developerCompanyId.trim() && (
@@ -1261,7 +1263,7 @@ export default function NewProjectPage() {
                 )}
                 {(state.existingUnits.trim() || state.plannedUnits.trim()) && (
                   <>
-                    <dt className="text-muted">{tr('existingUnits')}</dt>
+                    <dt className="text-text-muted">{tr('existingUnits')}</dt>
                     <dd className="tabular" dir="ltr">
                       {state.existingUnits.trim() || '—'} → {state.plannedUnits.trim() || '—'}
                     </dd>
@@ -1269,13 +1271,13 @@ export default function NewProjectPage() {
                 )}
                 {isRelocationRelevant(state.type) && state.relocationType !== '' && (
                   <>
-                    <dt className="text-muted">{tr('relocationType')}</dt>
+                    <dt className="text-text-muted">{tr('relocationType')}</dt>
                     <dd>{trel(state.relocationType)}</dd>
                   </>
                 )}
                 {(state.block.trim() || state.parcel.trim() || state.subparcel.trim()) && (
                   <>
-                    <dt className="text-muted">{tw('field.block')}</dt>
+                    <dt className="text-text-muted">{tw('field.block')}</dt>
                     <dd className="tabular" dir="ltr">
                       {state.block.trim() || '—'} / {state.parcel.trim() || '—'}
                       {state.subparcel.trim() && ` / ${state.subparcel.trim()}`}
@@ -1284,7 +1286,7 @@ export default function NewProjectPage() {
                 )}
                 {state.description && (
                   <>
-                    <dt className="text-muted">{t('field.description')}</dt>
+                    <dt className="text-text-muted">{t('field.description')}</dt>
                     <dd className="whitespace-pre-wrap">{state.description}</dd>
                   </>
                 )}
@@ -1296,7 +1298,7 @@ export default function NewProjectPage() {
                 {tw('review.buildingsHeading', { n: state.buildings.length })}
               </h2>
               {state.buildings.length === 0 ? (
-                <p className="text-muted mt-2 text-xs">{tw('review.noBuildings')}</p>
+                <p className="text-text-muted mt-2 text-xs">{tw('review.noBuildings')}</p>
               ) : (
                 <ul className="mt-2 flex flex-col gap-2">
                   {state.buildings.map((b, idx) => (
@@ -1305,13 +1307,13 @@ export default function NewProjectPage() {
                         <Building2 className="text-navy-700 h-4 w-4" aria-hidden="true" />
                         <span>{tw('buildingNumberLabel', { n: idx + 1 })}</span>
                       </div>
-                      <div className="text-muted mt-1 text-xs">
+                      <div className="text-text-muted mt-1 text-xs">
                         {[b.address, b.city].filter(Boolean).join(', ')}
                         {b.block || b.parcel
                           ? ` · ${tw('field.block')} ${b.block || '—'} / ${tw('field.parcel')} ${b.parcel || '—'}`
                           : ''}
                       </div>
-                      <div className="text-muted mt-1 text-xs">
+                      <div className="text-text-muted mt-1 text-xs">
                         {tw('review.sectionsLabel')}:{' '}
                         {b.sections
                           .map((sec) => {

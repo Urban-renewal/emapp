@@ -102,6 +102,19 @@ export class ProjectsController {
     };
   }
 
+  // Battle-Map BM-1 — the LEVERAGE scorer: the single not-yet-fully-signed owner
+  // whose signature moves the project's headline share-weighted consent % the
+  // MOST toward target (ranked by marginal-delta-to-headline, NOT share-sum). The
+  // COARSE gate is `projects.read` (everyone who sees the board reaches here); the
+  // service owns visibility (no-oracle 404) and the FINE `view_owner_pii` name
+  // FIDELITY downgrade (name-or-no-name — never a 403). Returns the leverage owner
+  // (apartment + delta) under `data`; `data.leverage` is null when none movable.
+  @Get(':id/leverage')
+  @RequirePermission('projects.read')
+  async leverage(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
+    return { data: await this.projects.leverage(user, id) };
+  }
+
   @Post()
   @RequirePermission('projects.create')
   async create(

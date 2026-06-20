@@ -1546,6 +1546,16 @@ const ENDPOINTS: Endpoint[] = [
     errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
+    method: 'GET',
+    path: '/api/v1/projects/:id/leverage',
+    auth: 'AuthGuard + TenantGuard (projects.read; FINE view_owner_pii name-fidelity downgrade in service)',
+    summary:
+      'Battle-Map BM-1 — LEVERAGE scorer: the single not-yet-fully-signed active owner whose signature moves the project headline share-weighted consent % the MOST toward target. Ranked by MARGINAL-DELTA-TO-HEADLINE (the equal-apartment-weighted average), NOT raw share-sum. Single-source with the board consent CTE. No-oracle 404 for cross-org / unassigned-agent. ownerName is view_owner_pii-gated + audited (project.leverage_revealed) — when the cap is absent the leverage is still returned WITHOUT the name (apartment + delta only). NEVER national_id/phone. leverage is null when all signed or none movable.',
+    response:
+      '{ "data": { projectId, currentPct, basis:"share", leverage: { ownerId, ownerName|null, apartmentId, apartmentLabel, ownerSharePctInApartment, projectedPct, crossesThreshold } | null } }',
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
     method: 'POST',
     path: '/api/v1/projects/:id/signature-campaign',
     auth: 'AuthGuard + TenantGuard (signature_requests.send)',

@@ -545,7 +545,14 @@
 			"idx": 77,
 			"version": "7",
 			"when": 1783350000000,
-			"tag": "0077_search_indexes",
+			"tag": "0077_document_taxonomy_scope",
+			"breakpoints": true
+		},
+		{
+			"idx": 78,
+			"version": "7",
+			"when": 1783400000000,
+			"tag": "0078_search_indexes",
 			"breakpoints": true
 		}
 	]

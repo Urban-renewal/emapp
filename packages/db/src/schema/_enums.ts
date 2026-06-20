@@ -52,3 +52,11 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   // Team messaging (migration 0076) — a new message arrived in a conversation.
   'message_received',
 ]);
+
+// DH1 (migration 0077) — the closed document-taxonomy SCOPE enum. A document
+// hangs off exactly one scope: the org as a whole, a project, an apartment, or
+// (new) a single owner. Paired with `documents.doc_scope_id` (the typed target
+// id; NULL only for 'org') under a DB CHECK that keeps the two consistent. This
+// SUPERSEDES the ad-hoc project_id/apartment_id nullable columns as the
+// canonical scope concept; those columns are retained for back-compat.
+export const docScopeEnum = pgEnum('doc_scope', ['org', 'project', 'apartment', 'owner']);

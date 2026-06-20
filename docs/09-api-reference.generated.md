@@ -1704,6 +1704,23 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `org_settings_floor_violation`, `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/org/signature-pulse
+
+- **Auth:** AuthGuard + TenantGuard (projects.read)
+- **Summary:** E2 Wave-2 B1 — org-wide signature-pulse feed for the board-first home: per-project attention rows (rankAttention-ordered), needsHuman bucket, header buckets. Agent → assigned projects only; manager/viewer → whole org. Single-source share-weighted consent (matches the board). No PII (counts/%/timestamps only).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...SignaturePulse } }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `token_expired`
+
 ### GET /api/v1/org/stats
 
 - **Auth:** AuthGuard + TenantGuard (projects.read)
@@ -2312,6 +2329,23 @@ _(no body)_
 ```
 
 **Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/projects/:id/signature-progress/apartments/:apartmentId/holdouts
+
+- **Auth:** AuthGuard + TenantGuard (projects.read; FINE view_owner_pii capability gate in service)
+- **Summary:** E2 Wave-2 B4 — apartment HOLDOUTS ("מי תקוע / who's stuck"): the NAMED list of the apartment's active owners who have NOT signed. The ONLY signature-progress surface returning owner NAMES → view_owner_pii-gated + audited per access (ISO A.12.4), mirroring owners reveal-pii. No-oracle 404 for cross-org / unassigned-agent / apartment-not-in-project. Returns ownerId + name + apartmentNumber ONLY; NEVER national_id/phone.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { "holdouts": [ {ApartmentHoldout: ownerId, name, apartmentNumber} ] } }
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/projects/:projectId/assignments
 

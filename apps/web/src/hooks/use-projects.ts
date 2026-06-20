@@ -5,14 +5,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
 import {
+  toApartmentHoldoutViewModels,
   toApartmentSignatureProgressViewModels,
   toProjectViewModel,
   toProjectViewModels,
   toSignatureProgressViewModel,
 } from '@/adapters/project';
+import { isPermissionDenied } from '@/components/ui/list-page-shell';
 import {
   archiveProject,
   createProject,
+  getApartmentHoldouts,
   getProject,
   getSignatureProgress,
   getSignatureProgressApartments,
@@ -20,7 +23,10 @@ import {
   type ProjectListPage,
 } from '@/lib/api/projects';
 import { useDisplayLocale } from '@/lib/locale';
-import type { ApartmentSignatureProgressViewModel } from '@/models/apartment-signature-progress.vm';
+import type {
+  ApartmentHoldoutViewModel,
+  ApartmentSignatureProgressViewModel,
+} from '@/models/apartment-signature-progress.vm';
 import type { ProjectViewModel } from '@/models/project.vm';
 import type { SignatureProgressViewModel } from '@/models/signature-progress.vm';
 
@@ -135,6 +141,48 @@ export function useSignatureProgressApartments(id: string | undefined, enabled =
     select,
   });
 }
+
+/**
+ * E2 Wave-2 E2.2-S3 / B4 — apartment HOLDOUTS ("מי תקוע / who's stuck"). The
+ * NAMED list of an apartment's owners who have NOT signed.
+ *
+ * PII-bearing + ON DEMAND: this is the only signature-progress hook that pulls
+ * owner NAMES, so the underlying endpoint is `view_owner_pii`-gated + AUDITED on
+ * the BE. The hook is therefore lazily enabled (`enabled` gate) — the caller
+ * passes `true` only when an apartment row is EXPANDED, so the names + the audit
+ * fire on demand, never eagerly for the whole board.
+ *
+ * A 403 (caller lacks `view_owner_pii`) is NOT retried (the global query-provider
+ * never retries a definitive 4xx) and is surfaced via `isError` + the
+ * `ApiClientError` code so the component renders the NO-NAME fallback
+ * ("דירה N · partial") instead of a name. The query key includes the
+ * apartmentId so each expanded apartment caches independently.
+ */
+export function useApartmentHoldouts(
+  projectId: string,
+  apartmentId: string | undefined,
+  enabled = true,
+) {
+  const select = useCallback(
+    (data: import('@emapp/shared-types').ApartmentHoldout[]): ApartmentHoldoutViewModel[] =>
+      toApartmentHoldoutViewModels(data),
+    [],
+  );
+  return useQuery({
+    queryKey: [...PROJECTS_KEY, 'apartment-holdouts', projectId, apartmentId],
+    queryFn: () => {
+      if (!apartmentId) throw new Error('useApartmentHoldouts requires an apartmentId');
+      return getApartmentHoldouts(projectId, apartmentId);
+    },
+    enabled: Boolean(apartmentId) && enabled,
+    staleTime: 30_000,
+    select,
+  });
+}
+
+/** Re-export so the drill-down can classify a holdouts 403 (→ no-name fallback)
+ *  vs a generic load error (→ calm retry) without re-importing the predicate. */
+export { isPermissionDenied };
 
 export function useCreateProject() {
   const qc = useQueryClient();

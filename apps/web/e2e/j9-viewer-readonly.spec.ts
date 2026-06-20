@@ -181,6 +181,10 @@ test.describe('§E-J9 — Sidebar role gating (Members + Audit are Manager-only)
     // these assertions fail it means the role-gate flipped polarity
     // (a P0 — Manager couldn't access admin functions) AND every
     // other role test in this file is moot.
+    // E2 Wave-1 IA-S2: members + audit moved into the collapsible "ניהול
+    // וכלים" group — expand it, then assert the Manager CAN reach them
+    // (the role-gate-polarity control is intact, just one disclosure deeper).
+    await sidebar.getByRole('button', { name: 'ניהול וכלים' }).click();
     await expect(sidebar.getByRole('link', { name: 'חברי ארגון' })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: 'יומן ביקורת' })).toBeVisible();
 

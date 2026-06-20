@@ -10,14 +10,23 @@ import {
   type Project as ProjectRow,
   type TenantTx,
 } from '@emapp/db';
-import { PROJECT_TYPE_DEFAULT_CONSENT_PCT, isAllowedStatusTransition } from '@emapp/shared-types';
+import {
+  PROJECT_TYPE_DEFAULT_CONSENT_PCT,
+  PULSE_EXPIRING_SOON_DAYS,
+  PULSE_STALLED_DAYS,
+  isAllowedStatusTransition,
+} from '@emapp/shared-types';
 import type {
+  ApartmentHoldout,
   ApartmentSignatureProgress,
   CreateProject,
   OrgStats,
   Project,
   ProjectListItem,
+  ProjectPulseRow,
   ProjectStats,
+  PulseNeedsHumanRow,
+  SignaturePulse,
   SignatureProgress,
   UpdateProject,
 } from '@emapp/shared-types';
@@ -32,6 +41,7 @@ import {
 } from '@nestjs/common';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 
+import { resolveOwnerPiiFidelity } from '../../common/authz/agent-capabilities';
 import {
   decodeCursor,
   encodeCursor,
@@ -40,6 +50,7 @@ import {
 } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
+import { rankAttention } from './rank-attention';
 import { StatsCacheService } from './stats-cache.service';
 
 export interface ProjectListPage {
@@ -402,165 +413,59 @@ export class ProjectsService {
     return this.computeSignatureProgress(user, projectId);
   }
 
-  private async computeSignatureProgress(
-    user: AccessTokenPayload,
-    projectId: string,
-  ): Promise<SignatureProgress> {
-    return withTenant(
-      user.orgId,
-      async (tx) => {
-        // No-oracle visibility gate, INSIDE this tx (was a separate get() tx
-        // + 5 thrown-away stats subqueries). Throws NOT_FOUND when invisible.
-        // (On the cached path the wrapper above already ran this; keeping it
-        // here means the uncached path and the cache-MISS compute are identical
-        // — the gate is cheap and idempotent.)
-        await this.assertProjectVisible(tx, user, projectId);
-
-        // E2 Wave-1 B0 — SHARE-WEIGHTED consent with PARTIAL-SHARE counting.
-        // ───────────────────────────────────────────────────────────────────
-        // Per apartment, the consent CONTRIBUTION is the signed owners' total
-        // share divided by ALL active owners' total share, clamped to [0,1]:
-        //   contribution = Σ(signed owners' share) / Σ(active owners' share)
-        // "signed" = the owner holds a signature_requests.status='signed' on a
-        // document of THIS project (the IDENTICAL signed-detection join the old
-        // binary board used — unchanged). The canonical exact share is the
-        // rational `share_numerator/share_denominator` (default 0/10000); we
-        // normalise by the apartment's OWN total active-owner share rather than
-        // assuming shares sum to 1 — the ROBUST form (an apartment whose owner
-        // shares are mid-edit or default-0 still yields a sane [0,1] value, and
-        // a zero-active-share apartment contributes 0, never NaN).
-        //
-        // The headline `consentedPct` is EQUAL apartment weight:
-        //   consentedPct = round(Σ contributions / total_apartments * 100)
-        // total_apartments = every non-archived apartment INCLUDING zero-owner
-        // ones (a zero-owner apartment contributes 0 but still counts in the
-        // denominator — it is "not consented", not "excluded").
-        //
-        // `apartments_consented` is RETAINED as a separate display count meaning
-        // FULLY-consented (contribution == 1: active_share > 0 AND signed_share
-        // == active_share). It NO LONGER drives consentedPct.
-        //
-        // OWNER-CONFIRMED interpretation (E2 Wave-1 B0). LEGAL GATE (OD-1/OD-3):
-        // the EXACT statutory %, the shell-owner denominator, and the rounding
-        // rule are legally gated and refined later — this ships the engine
-        // BEHIND the `basis: 'share'` label, NOT as a statutory claim.
-        //
-        // NO PII leaves this query: only summed shares + counts are projected;
-        // the per-owner shares live entirely inside aggregate subqueries.
-        const result = await tx.execute(sql`
-          WITH proj_apartments AS (
-            SELECT a.id
-            FROM apartments a
-            INNER JOIN buildings b ON b.id = a.building_id
-            WHERE b.project_id = ${projectId}
-              AND a.archived_at IS NULL
-          ),
-          apt_consent AS (
-            SELECT
-              pa.id,
-              -- Σ of ALL active owners' exact share (numerator/denominator) as a
-              -- float ratio; 0 when the apartment has no active owners.
-              COALESCE((SELECT SUM(o.share_numerator::numeric / o.share_denominator)
-                 FROM ownerships o
-                 WHERE o.apartment_id = pa.id
-                   AND o.ended_at IS NULL
-                   AND o.relationship = 'owner'), 0) AS active_share,
-              -- Σ of the SIGNED active owners' exact share (same signed-detection
-              -- join as before): an owner with a 'signed' request on a project doc.
-              COALESCE((SELECT SUM(o.share_numerator::numeric / o.share_denominator)
-                 FROM ownerships o
-                 WHERE o.apartment_id = pa.id
-                   AND o.ended_at IS NULL
-                   AND o.relationship = 'owner'
-                   AND EXISTS (
-                     SELECT 1
-                     FROM signature_requests sr
-                     INNER JOIN documents d ON d.id = sr.document_id
-                     WHERE sr.owner_id = o.owner_id
-                       AND sr.status = 'signed'
-                       AND d.project_id = ${projectId}
-                   )), 0) AS signed_share
-            FROM proj_apartments pa
-          ),
-          apt_contrib AS (
-            SELECT
-              id,
-              active_share,
-              signed_share,
-              -- contribution = signed_share / active_share, clamped to [0,1];
-              -- 0 when active_share = 0 (zero-owner / zero-active-share apt).
-              CASE WHEN active_share > 0
-                   THEN LEAST(1, GREATEST(0, signed_share / active_share))
-                   ELSE 0 END AS contribution
-            FROM apt_consent
-          )
-          SELECT
-            (SELECT COUNT(*)::int FROM proj_apartments) AS total_apartments,
-            -- FULLY-consented apartments (contribution == 1): active share > 0
-            -- AND the full active share signed. Retained for display only.
-            (SELECT COUNT(*)::int FROM apt_contrib
-               WHERE active_share > 0 AND signed_share >= active_share) AS apartments_consented,
-            -- Σ of per-apartment contributions (the share-weighted numerator).
-            COALESCE((SELECT SUM(contribution) FROM apt_contrib), 0) AS consented_weight,
-            (SELECT COUNT(*)::int FROM signature_requests sr
-               INNER JOIN documents d ON d.id = sr.document_id
-               WHERE d.project_id = ${projectId} AND sr.status = 'signed') AS signatures_signed,
-            (SELECT COUNT(*)::int FROM signature_requests sr
-               INNER JOIN documents d ON d.id = sr.document_id
-               WHERE d.project_id = ${projectId} AND sr.status = 'pending') AS signatures_pending,
-            (SELECT target_signature_pct FROM projects WHERE id = ${projectId}) AS target_signature_pct
-        `);
-        const r = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
-
-        const totalApartments = Number(r['total_apartments'] ?? 0);
-        const apartmentsConsented = Number(r['apartments_consented'] ?? 0);
-        // pg `numeric`/SUM arrives as a string (or null) — normalise to number.
-        const consentedWeight = Number(r['consented_weight'] ?? 0);
-        const signaturesSigned = Number(r['signatures_signed'] ?? 0);
-        const signaturesPending = Number(r['signatures_pending'] ?? 0);
-        // pg `numeric` arrives as a string (or null) — normalise to number|null.
-        const rawTarget = r['target_signature_pct'];
-        const targetSignaturePct =
-          rawTarget === null || rawTarget === undefined ? null : Number(rawTarget);
-
-        const consentedPct =
-          totalApartments > 0 ? Math.round((consentedWeight / totalApartments) * 100) : 0;
-        const metThreshold = targetSignaturePct !== null && consentedPct >= targetSignaturePct;
-
-        return {
-          totalApartments,
-          apartmentsConsented,
-          signaturesSigned,
-          signaturesPending,
-          targetSignaturePct,
-          consentedPct,
-          metThreshold,
-          // E2 Wave-1 B0 — always 'share' today (share-weighted). Drives the
-          // mandatory FE basis label; never a bare %.
-          basis: 'share' as const,
-        };
-      },
-      { userId: user.sub },
-    );
-  }
-
   /**
-   * E2 Wave-1 B5 — the `metThreshold` LEGAL GATE for the `→ approved` status
-   * transition, computed on an ALREADY-OPEN tenant tx (so it runs inside the
-   * update()'s withTenant + RLS context, NOT a nested withTenant).
+   * E2 Wave-1 B0/B5 — SINGLE SOURCE OF TRUTH for the SHARE-WEIGHTED consent
+   * aggregates. Runs on the PASSED tenant tx (NO nested withTenant) so both
+   * callers share ONE query under their own RLS context:
+   *  - `computeSignatureProgress` (B0 board) passes its own withTenant's tx,
+   *    then assembles the 7 board fields + `basis: 'share'` from this result.
+   *  - the `→ approved` status gate (B5) passes the already-open update() tx
+   *    and derives JUST the `metThreshold` boolean.
+   * Previously this CTE was duplicated byte-for-byte in both places; the B5
+   * copy projected only a subset. This method returns the SUPERSET so each
+   * caller takes exactly what it needs from ONE round-trip.
+   * ───────────────────────────────────────────────────────────────────────────
+   * Per apartment, the consent CONTRIBUTION is the signed owners' total share
+   * divided by ALL active owners' total share, clamped to [0,1]:
+   *   contribution = Σ(signed owners' share) / Σ(active owners' share)
+   * "signed" = the owner holds a signature_requests.status='signed' on a
+   * document of THIS project (the IDENTICAL signed-detection join the old binary
+   * board used — unchanged). The canonical exact share is the rational
+   * `share_numerator/share_denominator` (default 0/10000); we normalise by the
+   * apartment's OWN total active-owner share rather than assuming shares sum to 1
+   * — the ROBUST form (an apartment whose owner shares are mid-edit or default-0
+   * still yields a sane [0,1] value, and a zero-active-share apartment
+   * contributes 0, never NaN).
    *
-   * Reuses the IDENTICAL share-weighted consent definition as
-   * `computeSignatureProgress` (B0): per apartment the contribution is the
-   * signed owners' exact share over all active owners' exact share, clamped to
-   * [0,1]; consentedPct = round(Σ contributions / total_apartments * 100); and
-   * `metThreshold = target != null && consentedPct >= target`. This is the same
-   * by-share rule the board surfaces — we do NOT recompute by-heads. NO PII
-   * leaves the query (summed shares + counts only).
+   * The headline `consentedPct` is EQUAL apartment weight:
+   *   consentedPct = round(Σ contributions / total_apartments * 100)
+   * total_apartments = every non-archived apartment INCLUDING zero-owner ones
+   * (a zero-owner apartment contributes 0 but still counts in the denominator —
+   * it is "not consented", not "excluded").
    *
-   * Returns `metThreshold` only; the caller has already proven the project
-   * visible (it read the `before` row under the same RLS context).
+   * `apartmentsConsented` is a SEPARATE display count meaning FULLY-consented
+   * (contribution == 1: active_share > 0 AND signed_share == active_share). It
+   * does NOT drive consentedPct.
+   *
+   * OWNER-CONFIRMED interpretation (E2 Wave-1 B0). LEGAL GATE (OD-1/OD-3): the
+   * EXACT statutory %, the shell-owner denominator, and the rounding rule are
+   * legally gated and refined later — this ships the engine BEHIND the
+   * `basis: 'share'` label, NOT as a statutory claim.
+   *
+   * NO PII leaves this query: only summed shares + counts are projected; the
+   * per-owner shares live entirely inside aggregate subqueries.
    */
-  private async computeMetThresholdOnTx(tx: TenantTx, projectId: string): Promise<boolean> {
+  private async computeConsentAggregates(
+    tx: TenantTx,
+    projectId: string,
+  ): Promise<{
+    totalApartments: number;
+    apartmentsConsented: number;
+    consentedPct: number;
+    targetSignaturePct: number | null;
+    signaturesSigned: number;
+    signaturesPending: number;
+  }> {
     const result = await tx.execute(sql`
       WITH proj_apartments AS (
         SELECT a.id
@@ -572,11 +477,15 @@ export class ProjectsService {
       apt_consent AS (
         SELECT
           pa.id,
+          -- Σ of ALL active owners' exact share (numerator/denominator) as a
+          -- float ratio; 0 when the apartment has no active owners.
           COALESCE((SELECT SUM(o.share_numerator::numeric / o.share_denominator)
              FROM ownerships o
              WHERE o.apartment_id = pa.id
                AND o.ended_at IS NULL
                AND o.relationship = 'owner'), 0) AS active_share,
+          -- Σ of the SIGNED active owners' exact share (same signed-detection
+          -- join as before): an owner with a 'signed' request on a project doc.
           COALESCE((SELECT SUM(o.share_numerator::numeric / o.share_denominator)
              FROM ownerships o
              WHERE o.apartment_id = pa.id
@@ -594,6 +503,11 @@ export class ProjectsService {
       ),
       apt_contrib AS (
         SELECT
+          id,
+          active_share,
+          signed_share,
+          -- contribution = signed_share / active_share, clamped to [0,1];
+          -- 0 when active_share = 0 (zero-owner / zero-active-share apt).
           CASE WHEN active_share > 0
                THEN LEAST(1, GREATEST(0, signed_share / active_share))
                ELSE 0 END AS contribution
@@ -601,18 +515,102 @@ export class ProjectsService {
       )
       SELECT
         (SELECT COUNT(*)::int FROM proj_apartments) AS total_apartments,
+        -- FULLY-consented apartments (contribution == 1): active share > 0
+        -- AND the full active share signed. Retained for display only.
+        (SELECT COUNT(*)::int FROM apt_contrib
+           WHERE active_share > 0 AND signed_share >= active_share) AS apartments_consented,
+        -- Σ of per-apartment contributions (the share-weighted numerator).
         COALESCE((SELECT SUM(contribution) FROM apt_contrib), 0) AS consented_weight,
+        (SELECT COUNT(*)::int FROM signature_requests sr
+           INNER JOIN documents d ON d.id = sr.document_id
+           WHERE d.project_id = ${projectId} AND sr.status = 'signed') AS signatures_signed,
+        (SELECT COUNT(*)::int FROM signature_requests sr
+           INNER JOIN documents d ON d.id = sr.document_id
+           WHERE d.project_id = ${projectId} AND sr.status = 'pending') AS signatures_pending,
         (SELECT target_signature_pct FROM projects WHERE id = ${projectId}) AS target_signature_pct
     `);
     const r = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
+
     const totalApartments = Number(r['total_apartments'] ?? 0);
+    const apartmentsConsented = Number(r['apartments_consented'] ?? 0);
+    // pg `numeric`/SUM arrives as a string (or null) — normalise to number.
     const consentedWeight = Number(r['consented_weight'] ?? 0);
+    const signaturesSigned = Number(r['signatures_signed'] ?? 0);
+    const signaturesPending = Number(r['signatures_pending'] ?? 0);
+    // pg `numeric` arrives as a string (or null) — normalise to number|null.
     const rawTarget = r['target_signature_pct'];
     const targetSignaturePct =
       rawTarget === null || rawTarget === undefined ? null : Number(rawTarget);
+
     const consentedPct =
       totalApartments > 0 ? Math.round((consentedWeight / totalApartments) * 100) : 0;
-    return targetSignaturePct !== null && consentedPct >= targetSignaturePct;
+
+    return {
+      totalApartments,
+      apartmentsConsented,
+      consentedPct,
+      targetSignaturePct,
+      signaturesSigned,
+      signaturesPending,
+    };
+  }
+
+  private async computeSignatureProgress(
+    user: AccessTokenPayload,
+    projectId: string,
+  ): Promise<SignatureProgress> {
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        // No-oracle visibility gate, INSIDE this tx (was a separate get() tx
+        // + 5 thrown-away stats subqueries). Throws NOT_FOUND when invisible.
+        // (On the cached path the wrapper above already ran this; keeping it
+        // here means the uncached path and the cache-MISS compute are identical
+        // — the gate is cheap and idempotent.)
+        await this.assertProjectVisible(tx, user, projectId);
+
+        // E2 Wave-1 B0 — SHARE-WEIGHTED consent. The aggregate query is the
+        // single-source `computeConsentAggregates` (shared with the B5 →approved
+        // gate), run on THIS withTenant's tx. The board assembles all 7 fields
+        // from it; the derived `metThreshold` matches the gate's rule exactly.
+        const agg = await this.computeConsentAggregates(tx, projectId);
+        const metThreshold =
+          agg.targetSignaturePct !== null && agg.consentedPct >= agg.targetSignaturePct;
+
+        return {
+          totalApartments: agg.totalApartments,
+          apartmentsConsented: agg.apartmentsConsented,
+          signaturesSigned: agg.signaturesSigned,
+          signaturesPending: agg.signaturesPending,
+          targetSignaturePct: agg.targetSignaturePct,
+          consentedPct: agg.consentedPct,
+          metThreshold,
+          // E2 Wave-1 B0 — always 'share' today (share-weighted). Drives the
+          // mandatory FE basis label; never a bare %.
+          basis: 'share' as const,
+        };
+      },
+      { userId: user.sub },
+    );
+  }
+
+  /**
+   * E2 Wave-1 B5 — the `metThreshold` LEGAL GATE for the `→ approved` status
+   * transition, computed on an ALREADY-OPEN tenant tx (so it runs inside the
+   * update()'s withTenant + RLS context, NOT a nested withTenant).
+   *
+   * Delegates to the single-source `computeConsentAggregates` (the SAME query
+   * the B0 board uses) and derives JUST the boolean: `metThreshold = target !=
+   * null && consentedPct >= target`. This is the same by-share rule the board
+   * surfaces — we do NOT recompute by-heads. NO PII leaves the query (summed
+   * shares + counts only).
+   *
+   * Returns `metThreshold` only; the caller has already proven the project
+   * visible (it read the `before` row under the same RLS context).
+   */
+  private async computeMetThresholdOnTx(tx: TenantTx, projectId: string): Promise<boolean> {
+    const agg = await this.computeConsentAggregates(tx, projectId);
+    return agg.targetSignaturePct !== null && agg.consentedPct >= agg.targetSignaturePct;
   }
 
   /**
@@ -707,6 +705,124 @@ export class ProjectsService {
   }
 
   /**
+   * E2 Wave-2 B4 — apartment HOLDOUTS ("מי תקוע / who's stuck"). The NAMED list of
+   * the ACTIVE owners of ONE apartment who have NOT signed — the per-apartment
+   * drill-down's human counterpart for the board (E2.2-S3 consumes it later).
+   *
+   * This is the ONLY signature-progress surface that returns owner NAMES, so it
+   * is a PII reveal and is gated + audited EXACTLY like the owners reveal-pii
+   * endpoint (`OwnersService.revealPii`, POST /owners/:id/reveal-pii):
+   *   - `view_owner_pii` capability REQUIRED (manager always · agent iff the flag ·
+   *     viewer never, via `resolveOwnerPiiFidelity === 'unmasked'`) — else 403.
+   *   - a per-access audit row (`apartment.holdouts_revealed`, ISO A.12.4) records
+   *     WHO revealed WHICH apartment's holdouts, WHEN — NEVER any cleartext value.
+   *
+   * Gate order (no-oracle, mirrors the rest of signature-progress):
+   *   `assertProjectVisible` 404 (cross-org / unassigned-agent is indistinguishable
+   *   from absent) → apartment-in-project 404 (an apartment of another project is
+   *   the same no-oracle 404) → `view_owner_pii` 403. Visibility/scope is proven
+   *   BEFORE the pii capability so an out-of-scope apartment never becomes an oracle.
+   *
+   * "Holdout" = an ACTIVE owner ownership (`ended_at IS NULL AND relationship='owner'`)
+   * of the apartment who DOES NOT hold a SIGNED signature_request on a project
+   * document — the EXACT negation of the consent join the drill-down/board use
+   * (`signature_requests sr JOIN documents d ON d.id = sr.document_id WHERE
+   * sr.owner_id = o.owner_id AND sr.status='signed' AND d.project_id = <projectId>`).
+   *
+   * STRICT PII boundary: the projection returns ONLY `owner_id`, the in-SQL
+   * decrypted `name`, and the apartment `number`. national_id / phone are NEVER
+   * selected (never leave Postgres), NEVER returned, NEVER logged.
+   */
+  async signatureProgressHoldouts(
+    user: AccessTokenPayload,
+    projectId: string,
+    apartmentId: string,
+  ): Promise<ApartmentHoldout[]> {
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        // No-oracle visibility gate FIRST (org-isolation via RLS + agent →
+        // assigned-project scope). Throws NOT_FOUND when invisible.
+        await this.assertProjectVisible(tx, user, projectId);
+
+        // The apartment must belong to THIS visible project; an apartment of
+        // another project (or org) is the SAME no-oracle 404. Checked BEFORE the
+        // pii capability so an out-of-scope apartment is never a capability oracle.
+        const [apt] = await tx
+          .select({ id: apartments.id, number: apartments.number })
+          .from(apartments)
+          .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
+          .where(
+            and(
+              eq(apartments.id, apartmentId),
+              eq(buildings.projectId, projectId),
+              isNull(apartments.archivedAt),
+            ),
+          )
+          .limit(1);
+        if (!apt) throw NOT_FOUND;
+
+        // view_owner_pii gate: manager always · agent iff the flag · viewer never.
+        // Anything but `unmasked` → 403 (this surface returns owner NAMES).
+        const fidelity = await resolveOwnerPiiFidelity(tx, user);
+        if (fidelity !== 'unmasked') throw FORBIDDEN;
+
+        // Active owners of the apartment who have NOT signed (negation of the
+        // consent join). name decrypted IN-SQL (app.encryption_key set by
+        // withTenant) so the ciphertext never crosses the wire; national_id /
+        // phone are NEVER selected. Ordered by name (Hebrew COLLATE) so the list
+        // is stable; a shell owner (null name) sorts last.
+        const result = await tx.execute(sql`
+          SELECT
+            o.owner_id AS owner_id,
+            pgp_sym_decrypt(ow.name_encrypted, current_setting('app.encryption_key'))::text AS name
+          FROM ownerships o
+          INNER JOIN owners ow ON ow.id = o.owner_id
+          WHERE o.apartment_id = ${apartmentId}
+            AND o.ended_at IS NULL
+            AND o.relationship = 'owner'
+            AND ow.erased_at IS NULL
+            AND NOT EXISTS (
+              SELECT 1
+              FROM signature_requests sr
+              INNER JOIN documents d ON d.id = sr.document_id
+              WHERE sr.owner_id = o.owner_id
+                AND sr.status = 'signed'
+                AND d.project_id = ${projectId}
+            )
+          ORDER BY pgp_sym_decrypt(ow.name_encrypted, current_setting('app.encryption_key'))::text
+                     COLLATE he_il_icu ASC NULLS LAST,
+                   o.owner_id ASC
+        `);
+        const rows = (result as unknown as { rows: Array<Record<string, unknown>> }).rows;
+
+        const apartmentNumber = String(apt.number);
+        const holdouts: ApartmentHoldout[] = rows.map((r) => ({
+          ownerId: String(r['owner_id']),
+          name: r['name'] === null || r['name'] === undefined ? null : String(r['name']),
+          apartmentNumber,
+        }));
+
+        // ISO A.12.4 — per-access audit (a NAMED PII reveal). Record WHO revealed
+        // WHICH apartment's holdouts + HOW MANY; NEVER any name/national_id/phone.
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'apartment.holdouts_revealed',
+          targetTable: 'apartments',
+          targetId: apartmentId,
+          afterState: { projectId, holdoutCount: holdouts.length },
+          sessionId: user.sid,
+        });
+
+        return holdouts;
+      },
+      { userId: user.sub },
+    );
+  }
+
+  /**
    * Home dashboard KPI cards. Single round-trip, four COUNTs against indexed
    * tables. Manager/viewer see ORG-WIDE counts; an AGENT sees counts scoped to
    * their ASSIGNED projects only — org-wide numbers would both mislead the agent
@@ -777,6 +893,212 @@ export class ProjectsService {
       },
       { userId: user.sub },
     );
+  }
+
+  /**
+   * E2 Wave-2 B1 — the org-wide "signature pulse" feed backing the board-first
+   * home (E2.1). Returns one {@link ProjectPulseRow} PER project the caller may
+   * see — an AGENT sees ONLY their assigned projects, a manager/viewer the whole
+   * org — plus the A8 `needsHuman` bucket and the header `buckets` counts.
+   *
+   * ── AGENT-SCOPE (the load-bearing visibility invariant) ────────────────────
+   * The set of projects is resolved by the SAME rule as everywhere else: agents
+   * inner-join their ACTIVE project_assignments (unassigned_at IS NULL), so an
+   * unassigned project never enters the feed. Org isolation is RLS (withTenant);
+   * a cross-tenant org therefore yields ZERO visible projects → an empty feed,
+   * never another org's rows.
+   *
+   * ── CONSENT IS SINGLE-SOURCE ───────────────────────────────────────────────
+   * The consent fields (`consentedPct`/`metThreshold`/`basis`) come from
+   * `computeConsentAggregates` — the IDENTICAL share-weighted CTE the per-project
+   * board uses — run per visible project under THIS withTenant's tx. We do NOT
+   * recompute consent by-heads, so the home feed and the board agree exactly.
+   * The per-project consent compute is read-through cached under the SAME
+   * tenant-scoped key the board uses (`sigProgress:p:<projectId>`), so a warm
+   * board read warms the pulse and vice-versa — never a cross-tenant key.
+   *
+   * ── NO PII ─────────────────────────────────────────────────────────────────
+   * Every projected field is a count, a derived %, a timestamp, or the project's
+   * own id/name. The signature-activity query touches signature_requests +
+   * documents but selects only aggregates; no owner id/name/national_id/phone is
+   * ever read. `needsHuman` carries projectId + counts, never PII.
+   */
+  async signaturePulse(user: AccessTokenPayload): Promise<SignaturePulse> {
+    // 1) Resolve the visible projects + their PII-free signature-activity facts
+    //    in ONE round-trip, scoped by RLS (org) AND the agent assignment join.
+    const facts = await withTenant(
+      user.orgId,
+      async (tx) => {
+        // The agent-visibility predicate, applied as a project_assignments
+        // inner-join filter. Manager/viewer: no extra filter (whole org).
+        const visibleProjects =
+          user.role === 'agent'
+            ? sql`
+                SELECT p.id, p.name
+                FROM projects p
+                INNER JOIN project_assignments pa
+                  ON pa.project_id = p.id
+                  AND pa.user_id = ${user.sub}
+                  AND pa.unassigned_at IS NULL
+                WHERE p.archived_at IS NULL`
+            : sql`
+                SELECT p.id, p.name
+                FROM projects p
+                WHERE p.archived_at IS NULL`;
+
+        const result = await tx.execute(sql`
+          WITH visible AS (${visibleProjects}),
+          proj_docs AS (
+            -- The project's signature-bearing docs (project-level ∪
+            -- apartment-level, archived excluded) — one doc-resolution
+            -- definition reused from the board's signatureProgress path.
+            SELECT v.id AS project_id, d.id AS document_id
+            FROM visible v
+            INNER JOIN documents d ON d.project_id = v.id AND d.archived_at IS NULL
+            UNION
+            SELECT v.id AS project_id, d.id AS document_id
+            FROM visible v
+            INNER JOIN buildings b ON b.project_id = v.id
+            INNER JOIN apartments a ON a.building_id = b.id
+            INNER JOIN documents d ON d.apartment_id = a.id AND d.archived_at IS NULL
+          )
+          SELECT
+            v.id AS project_id,
+            v.name AS project_name,
+            -- most-recent SIGNED request's signed_at (fallback created_at if a
+            -- legacy signed row predates signed_at) on a project doc.
+            (SELECT MAX(COALESCE(sr.signed_at, sr.created_at))
+               FROM signature_requests sr
+               WHERE sr.status = 'signed'
+                 AND sr.document_id IN (SELECT document_id FROM proj_docs WHERE project_id = v.id)
+            ) AS last_signature_at,
+            -- requests that flipped to signed in the trailing 7 days.
+            (SELECT COUNT(*)::int
+               FROM signature_requests sr
+               WHERE sr.status = 'signed'
+                 AND COALESCE(sr.signed_at, sr.created_at) >= now() - interval '7 days'
+                 AND sr.document_id IN (SELECT document_id FROM proj_docs WHERE project_id = v.id)
+            ) AS signed_this_week,
+            -- soonest-expiring PENDING request on a project doc.
+            (SELECT MIN(sr.expires_at)
+               FROM signature_requests sr
+               WHERE sr.status = 'pending'
+                 AND sr.document_id IN (SELECT document_id FROM proj_docs WHERE project_id = v.id)
+            ) AS next_expiry_at
+          FROM visible v
+          ORDER BY v.id
+        `);
+        return (result as unknown as { rows: Array<Record<string, unknown>> }).rows;
+      },
+      { userId: user.sub },
+    );
+
+    // 2) For each visible project, fetch the SINGLE-SOURCE share-weighted
+    //    consent (cached, tenant-scoped key — same as the board). Sequential
+    //    cache reads keep the warm path one-round-trip-per-project; at MVP
+    //    project counts this is well within the sub-second budget the cache
+    //    layer guards. We compute consent ONLY for projects already proven
+    //    visible by step 1, so there is no extra visibility surface here.
+    const now = Date.now();
+    const expiringSoonMs = PULSE_EXPIRING_SOON_DAYS * 24 * 60 * 60 * 1000;
+
+    const rows: ProjectPulseRow[] = [];
+    for (const f of facts) {
+      const projectId = String(f['project_id']);
+      const projectName = String(f['project_name']);
+      const lastSig = f['last_signature_at'];
+      const lastSignatureAt =
+        lastSig === null || lastSig === undefined
+          ? null
+          : new Date(lastSig as string).toISOString();
+      const nextExp = f['next_expiry_at'];
+      const nextExpiryAt =
+        nextExp === null || nextExp === undefined
+          ? null
+          : new Date(nextExp as string).toISOString();
+      const signedThisWeek = Number(f['signed_this_week'] ?? 0);
+
+      const stalledDays =
+        lastSignatureAt === null
+          ? null
+          : Math.max(0, Math.floor((now - new Date(lastSignatureAt).getTime()) / 86_400_000));
+
+      const expiringSoon =
+        nextExpiryAt !== null && new Date(nextExpiryAt).getTime() - now <= expiringSoonMs;
+
+      // SINGLE-SOURCE consent — the IDENTICAL share-weighted CTE the board uses,
+      // read-through cached under a pulse-specific, tenant-scoped key. The board
+      // caches the ASSEMBLED SignatureProgress under sigProgress:p:<id>; we cache
+      // the raw aggregates under pulseConsent:p:<id> to avoid an envelope-shape
+      // clash. The SAME per-org epoch invalidates both on any consent write.
+      const agg = this.statsCache
+        ? await this.statsCache.readThrough(
+            user.orgId,
+            this.statsCache.pulseConsentKey(projectId),
+            () =>
+              withTenant(user.orgId, (tx) => this.computeConsentAggregates(tx, projectId), {
+                userId: user.sub,
+              }),
+          )
+        : await withTenant(user.orgId, (tx) => this.computeConsentAggregates(tx, projectId), {
+            userId: user.sub,
+          });
+      const metThreshold =
+        agg.targetSignaturePct !== null && agg.consentedPct >= agg.targetSignaturePct;
+
+      rows.push({
+        projectId,
+        projectName,
+        lastSignatureAt,
+        signedThisWeek,
+        stalledDays,
+        nextExpiryAt,
+        expiringSoon,
+        consentedPct: agg.consentedPct,
+        metThreshold,
+        basis: 'share' as const,
+      });
+    }
+
+    // 3) Order most-urgent-first via the pure A2 scorer.
+    const attention = rankAttention(rows);
+
+    // 4) A8 needsHuman + header buckets, derived from the SAME rows (no new
+    //    query). Each project is classified into exactly one of
+    //    stalled/expiringSoon/onTrack (stalled wins, then expiringSoon);
+    //    needsHuman is a separate overlay.
+    let stalled = 0;
+    let expiringSoonCount = 0;
+    let onTrack = 0;
+    const needsHuman: PulseNeedsHumanRow[] = [];
+
+    for (const r of attention) {
+      const isStalled = r.stalledDays !== null && r.stalledDays >= PULSE_STALLED_DAYS;
+      if (isStalled) stalled += 1;
+      else if (r.expiringSoon) expiringSoonCount += 1;
+      else onTrack += 1;
+
+      const reasons: PulseNeedsHumanRow['reasons'] = [];
+      if (isStalled) reasons.push('stalled');
+      if (r.expiringSoon) reasons.push('expiring');
+      if (reasons.length > 0) {
+        needsHuman.push({
+          projectId: r.projectId,
+          projectName: r.projectName,
+          reasons,
+          // Worst-case headcount behind the signals available without new
+          // schema: the pending-expiring requests. `signedThisWeek` is activity,
+          // not a backlog, so it is NOT counted here.
+          count: r.expiringSoon ? 1 : 0,
+        });
+      }
+    }
+
+    return {
+      buckets: { stalled, expiringSoon: expiringSoonCount, needsHuman: needsHuman.length, onTrack },
+      attention,
+      needsHuman,
+    };
   }
 
   async create(user: AccessTokenPayload, input: CreateProject): Promise<Project> {

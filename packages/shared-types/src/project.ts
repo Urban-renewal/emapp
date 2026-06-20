@@ -343,6 +343,32 @@ export const ApartmentSignatureProgressSchema = z.object({
 export type ApartmentSignatureProgress = z.infer<typeof ApartmentSignatureProgressSchema>;
 
 /**
+ * E2 Wave-2 B4 — apartment HOLDOUT row ("מי תקוע / who's stuck"). One ACTIVE
+ * owner of the apartment who has NOT signed (no `signature_requests.status='signed'`
+ * on a project document). Returned (as a list under `data.holdouts`) by
+ * `GET /api/v1/projects/:id/signature-progress/apartments/:apartmentId/holdouts`.
+ *
+ * NAMED PII — this is the ONLY signature-progress surface that returns owner
+ * NAMES (for the board's "who's stuck" list). It is therefore `view_owner_pii`-
+ * GATED + AUDITED, mirroring the owners reveal-pii endpoint (the FE wraps `name`
+ * in `<NameDisplay>` for bidi). It carries EXACTLY these 3 fields and NEVER any
+ * other PII — `national_id` and `phone` are NEVER returned (only ownerId + name
+ * + apartmentNumber).
+ */
+export const ApartmentHoldoutSchema = z.object({
+  ownerId: z.string().uuid(),
+  name: z.string().nullable(),
+  apartmentNumber: z.string(),
+});
+export type ApartmentHoldout = z.infer<typeof ApartmentHoldoutSchema>;
+
+/** E2 Wave-2 B4 — the holdouts response body under `data`. */
+export const ApartmentHoldoutsResponseSchema = z.object({
+  holdouts: z.array(ApartmentHoldoutSchema),
+});
+export type ApartmentHoldoutsResponse = z.infer<typeof ApartmentHoldoutsResponseSchema>;
+
+/**
  * Org-wide aggregates for the home dashboard KPI cards. Returned by
  * `GET /api/v1/org/stats`. Distinct from project-level stats above.
  *
@@ -363,6 +389,106 @@ export const OrgStatsSchema = z.object({
   signaturesPending: z.number().int().nonnegative(),
 });
 export type OrgStats = z.infer<typeof OrgStatsSchema>;
+
+/**
+ * E2 Wave-2 B1 — the org-wide "signature pulse" feed backing the board-first
+ * home (E2.1). One row PER project the caller may see (agent → assigned only,
+ * manager/viewer → whole org). Returned (as a list under `attention`) by
+ * `GET /api/v1/org/signature-pulse`.
+ *
+ * Consent fields (`consentedPct` / `metThreshold` / `basis`) come from the SAME
+ * single-source share-weighted CTE as the per-project board (SignatureProgress
+ * above) — they are NOT recomputed by-heads, so the home feed and the board
+ * agree to the percentage point. `basis` is always `'share'` today and labels
+ * the headline % (OD-1/OD-3 still gate the statutory %).
+ *
+ * The signature-activity fields (`lastSignatureAt`, `signedThisWeek`,
+ * `stalledDays`, `nextExpiryAt`, `expiringSoon`) are derived from
+ * `signature_requests` joined to the project's signature documents.
+ *
+ * NO PII: every field is a count, a derived percentage, a timestamp, or the
+ * project's own id/name. No owner id/name/national_id/phone appears.
+ */
+export const ProjectPulseRowSchema = z.object({
+  projectId: z.string().uuid(),
+  projectName: z.string(),
+  /** ISO timestamp (UTC) of the most recent SIGNED request on a project doc;
+   *  null when the project has no signatures yet. */
+  lastSignatureAt: z.string().datetime({ offset: true }).nullable(),
+  /** Count of requests that flipped to 'signed' in the trailing 7 days. */
+  signedThisWeek: z.number().int().nonnegative(),
+  /** Whole days since `lastSignatureAt`; null when there has never been a
+   *  signature (no baseline to measure staleness from). */
+  stalledDays: z.number().int().nonnegative().nullable(),
+  /** ISO timestamp (UTC) of the SOONEST-expiring PENDING request; null when no
+   *  pending request exists. */
+  nextExpiryAt: z.string().datetime({ offset: true }).nullable(),
+  /** Derived: nextExpiryAt is non-null AND within EXPIRING_SOON_DAYS from now. */
+  expiringSoon: z.boolean(),
+  /** Share-weighted consent %, single-source with the per-project board. */
+  consentedPct: z.number().int().min(0).max(100),
+  /** `targetSignaturePct != null && consentedPct >= targetSignaturePct`. */
+  metThreshold: z.boolean(),
+  /** The computation basis for `consentedPct` — drives the mandatory FE label. */
+  basis: ConsentBasisEnum,
+});
+export type ProjectPulseRow = z.infer<typeof ProjectPulseRowSchema>;
+
+/**
+ * E2 Wave-2 A8 — a "needs human" bucket entry: a project that has signals a
+ * person should look at, with COUNTS only (never the offending owner's PII).
+ * `reasons` enumerates which signals fired; `count` is the worst-case headcount
+ * behind them (e.g. number of pending requests already past N reminders).
+ *
+ * MVP signals available WITHOUT new schema:
+ *  - 'stalled'  — has signed before but no signature in STALLED_DAYS+ days.
+ *  - 'expiring' — at least one pending request expiring within EXPIRING_SOON_DAYS.
+ * Signals deferred to a follow-up slice (need columns we don't have yet):
+ *  - 'no_phone' (owner contactability), 'objecting' (an objection flag),
+ *    'past_reminders' (a per-request reminder counter). See the B1 PR note.
+ */
+export const PulseNeedsHumanReasonEnum = z.enum(['stalled', 'expiring']);
+export type PulseNeedsHumanReason = z.infer<typeof PulseNeedsHumanReasonEnum>;
+
+export const PulseNeedsHumanRowSchema = z.object({
+  projectId: z.string().uuid(),
+  projectName: z.string(),
+  reasons: z.array(PulseNeedsHumanReasonEnum).min(1),
+  /** Worst-case count behind the reasons (pending-expiring requests). Counts
+   *  only — never PII. */
+  count: z.number().int().nonnegative(),
+});
+export type PulseNeedsHumanRow = z.infer<typeof PulseNeedsHumanRowSchema>;
+
+/** E2 Wave-2 B1 — summary bucket counts for the home header chips. Each project
+ *  is classified into exactly one of stalled / expiringSoon / onTrack for these
+ *  three (mutually exclusive, stalled wins over expiringSoon wins over onTrack);
+ *  `needsHuman` is a SEPARATE overlay count (a project may also be stalled). */
+export const PulseBucketsSchema = z.object({
+  stalled: z.number().int().nonnegative(),
+  expiringSoon: z.number().int().nonnegative(),
+  needsHuman: z.number().int().nonnegative(),
+  onTrack: z.number().int().nonnegative(),
+});
+export type PulseBuckets = z.infer<typeof PulseBucketsSchema>;
+
+/**
+ * E2 Wave-2 B1 — the full `GET /api/v1/org/signature-pulse` payload (under
+ * `data`). `attention` is the per-project feed ORDERED by `rankAttention`
+ * (most-urgent first). `needsHuman` is the A8 bucket. `buckets` are the header
+ * summary counts.
+ */
+export const SignaturePulseSchema = z.object({
+  buckets: PulseBucketsSchema,
+  attention: z.array(ProjectPulseRowSchema),
+  needsHuman: z.array(PulseNeedsHumanRowSchema),
+});
+export type SignaturePulse = z.infer<typeof SignaturePulseSchema>;
+
+/** E2 Wave-2 — tunables shared by the scorer + the derived fields, kept here so
+ *  the FE and the spec read the SAME thresholds (no drift). */
+export const PULSE_EXPIRING_SOON_DAYS = 7;
+export const PULSE_STALLED_DAYS = 14;
 
 // Write shape: only client-supplied columns. org/createdBy/timestamps are
 // injected server-side from the JWT, never from the body. `.strict()` is

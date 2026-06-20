@@ -14,6 +14,59 @@
       "placeholder": "—",
       "comingSoon": "ערכי הסיכום יתווספו בקרוב"
     },
+    "pulse": {
+      "subtitleLoading": "בודקים מה דורש את תשומת לבך…",
+      "attentionHeading": "דורש את תשומת לבך",
+      "greeting": {
+        "morning": "בוקר טוב",
+        "afternoon": "צהריים טובים",
+        "evening": "ערב טוב"
+      },
+      "clause": {
+        "stalled": "{count, plural, one {פרויקט אחד תקוע} two {שני פרויקטים תקועים} other {# פרויקטים תקועים}}",
+        "expiring": "{count, plural, one {חתימה אחת פגה השבוע} two {שתי חתימות פגות השבוע} other {# חתימות פגות השבוע}}",
+        "needsHuman": "{count, plural, one {פרויקט אחד מחכה לטיפול אישי} two {שני פרויקטים מחכים לטיפול אישי} other {# פרויקטים מחכים לטיפול אישי}}",
+        "allOnTrack": "{count, plural, one {פרויקט אחד מתקדם יפה} two {שני פרויקטים מתקדמים יפה} other {# פרויקטים מתקדמים יפה}} — אין מה לטפל כרגע",
+        "nothingYet": "עדיין אין פרויקטים פעילים לעקוב אחריהם"
+      },
+      "reason": {
+        "stalled": {
+          "tag": "תקוע",
+          "why": "{days, plural, one {אין תנועה כבר יום אחד} two {אין תנועה כבר יומיים} other {אין תנועה כבר # ימים}} — אולי הגיע הזמן לתזכורת"
+        },
+        "expiring": {
+          "tag": "פג בקרוב",
+          "why": "יש בקשת חתימה שעומדת לפוג — כדאי להזכיר לפני שתצטרך לשלוח מחדש"
+        },
+        "consentGap": {
+          "tag": "חסרות חתימות",
+          "why": "עוד לא הגיע ליעד ההסכמות — נשארו חתימות לאסוף"
+        },
+        "notStarted": {
+          "tag": "טרם התחיל",
+          "why": "עדיין לא התקבלו חתימות — אפשר להתחיל את הסבב"
+        }
+      },
+      "consentPct": "{pct}% הסכמה",
+      "action": {
+        "open": "פתח פרויקט",
+        "openAria": "פתח את הפרויקט {name}",
+        "remind": "שלח תזכורת"
+      },
+      "explain": {
+        "trigger": "למה אני רואה את זה?",
+        "body": "המיון לפי דחיפות: קודם פרויקטים תקועים, אחר כך חתימות שעומדות לפוג, ואז פערי הסכמה. הכול אוטומטי ועקבי — אותו חישוב בכל פעם."
+      },
+      "allClear": {
+        "title": "הכול תחת שליטה",
+        "hint": "אין כרגע פרויקט שדורש את תשומת לבך. אנחנו ממשיכים לעקוב ברקע ונודיע כשמשהו יצוץ.",
+        "badge": "סיימנו לבדוק — הכול במקום"
+      },
+      "empty": {
+        "noProjectsTitle": "אין עדיין פרויקטים",
+        "noProjectsHint": "כשייווצר הפרויקט הראשון, נסכם כאן מה דורש את תשומת לבך."
+      }
+    },
     "action": {
       "newProject": "פרויקט חדש",
       "fieldTask": "משימת שטח",
@@ -77,7 +130,8 @@
     "provider": "מטה Provider",
     "providerConsole": "מסוף Provider EMAPP",
     "tagline": "התחדשות עירונית",
-    "navLandmark": "ניווט ראשי"
+    "navLandmark": "ניווט ראשי",
+    "sectionTools": "ניהול וכלים"
   },
   "errorBoundary": {
     "title": "משהו השתבש",
@@ -249,6 +303,16 @@
       "signedCount": "{signed, plural, =0 {לא התקבלו חתימות} one {חתימה אחת התקבלה} two {שתי חתימות התקבלו} other {# חתימות התקבלו}} · {pending, plural, =0 {אין ממתינות} one {אחת ממתינה} two {שתיים ממתינות} other {# ממתינות}}",
       "empty": "אין עדיין נתוני הסכמות לפרויקט הזה."
     },
+    "threshold": {
+      "pct": "{pct}%",
+      "target": "יעד {pct}%",
+      "ariaLabel": "התקדמות ההסכמות לעבר היעד",
+      "stateMet": "היעד הושג",
+      "stateBelow": "טרם הושג היעד",
+      "valueTextMet": "{pct}% מתוך יעד {target}% — היעד הושג",
+      "valueTextBelow": "{pct}% מתוך יעד {target}%",
+      "valueTextNoTarget": "{pct}% — לא הוגדר יעד"
+    },
     "boardApartments": {
       "toggleShow": "פירוט לפי דירה",
       "toggleHide": "הסתר פירוט לפי דירה",
@@ -257,7 +321,16 @@
       "row": "{designation} · {signed}/{total} חתמו",
       "statusConsented": "הוסכם",
       "statusPartial": "חלקי",
-      "statusNone": "אין"
+      "statusNone": "אין",
+      "holdoutsToggleShow": "מי תקוע",
+      "holdoutsToggleHide": "הסתר מי תקוע",
+      "holdoutsLoading": "טוען שמות…",
+      "holdoutsLoadFailed": "טעינת השמות נכשלה.",
+      "holdoutsRetry": "נסה שוב",
+      "holdoutsForbidden": "אין לך הרשאה לצפות בשמות הבעלים.",
+      "holdoutsEmpty": "כל הבעלים בדירה זו חתמו.",
+      "holdoutFallback": "דירה {number} · חלקי",
+      "holdoutNoName": "בעל דירה ללא שם רשום"
     },
     "campaign": {
       "cta": "שלח בקשת חתימה לכל הבעלים",

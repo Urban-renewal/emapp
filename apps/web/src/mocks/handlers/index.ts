@@ -34,6 +34,11 @@ import { SAMPLE_IMPORT_ERRORS, SAMPLE_IMPORTS } from '../samples/imports';
 import { SAMPLE_OWNERS } from '../samples/owners';
 import { SAMPLE_APARTMENT_OWNERS } from '../samples/ownerships';
 import { SAMPLE_PROJECTS } from '../samples/projects';
+import {
+  SAMPLE_APARTMENT_HOLDOUTS,
+  SAMPLE_APARTMENT_SIGNATURE_PROGRESS,
+  SAMPLE_SIGNATURE_PROGRESS,
+} from '../samples/signature-progress';
 import { SAMPLE_SIGNATURE_PULSE } from '../samples/signature-pulse';
 import {
   SAMPLE_SIGNATURE_DELIVERY,
@@ -161,6 +166,29 @@ export const handlers = [
       },
     });
   }),
+
+  // E2 Wave-2 E2.2-S3 — "תמונת מצב" board reads. NO PII on the board/apartments
+  // wire; only the HOLDOUTS surface carries owner NAMES (gated + audited on the
+  // BE). Registered MORE-SPECIFIC path FIRST so `/holdouts` wins over `/apartments`.
+  http.get(
+    `${API}/projects/:id/signature-progress/apartments/:apartmentId/holdouts`,
+    ({ params }) => {
+      // Offline default: return the named holdouts for the partial apartment;
+      // any other apartment id yields an empty list (everyone signed). This
+      // mirrors the live `data.holdouts` envelope. The view_owner_pii gate +
+      // audit are BE concerns; offline always "has" the capability.
+      const aptId = String(params['apartmentId']);
+      const holdouts =
+        aptId === 'cccccccc-cccc-cccc-cccc-ccccccccccc2' ? SAMPLE_APARTMENT_HOLDOUTS : [];
+      return HttpResponse.json(dataEnvelope({ holdouts }));
+    },
+  ),
+  http.get(`${API}/projects/:id/signature-progress/apartments`, () =>
+    HttpResponse.json(dataEnvelope(SAMPLE_APARTMENT_SIGNATURE_PROGRESS)),
+  ),
+  http.get(`${API}/projects/:id/signature-progress`, () =>
+    HttpResponse.json(dataEnvelope(SAMPLE_SIGNATURE_PROGRESS)),
+  ),
 
   // buildings (nested under project)
   http.get(`${API}/projects/:projectId/buildings`, ({ params }) => {

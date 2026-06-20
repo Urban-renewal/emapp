@@ -303,6 +303,16 @@
       "signedCount": "{signed, plural, =0 {No signatures received} one {1 signature received} other {# signatures received}} · {pending, plural, =0 {none pending} one {1 pending} other {# pending}}",
       "empty": "No consent data for this project yet."
     },
+    "threshold": {
+      "pct": "{pct}%",
+      "target": "Target {pct}%",
+      "ariaLabel": "Consent progress toward the target",
+      "stateMet": "Target met",
+      "stateBelow": "Target not yet met",
+      "valueTextMet": "{pct}% of the {target}% target — target met",
+      "valueTextBelow": "{pct}% of the {target}% target",
+      "valueTextNoTarget": "{pct}% — no target set"
+    },
     "boardApartments": {
       "toggleShow": "Per-apartment breakdown",
       "toggleHide": "Hide per-apartment breakdown",
@@ -311,7 +321,16 @@
       "row": "{designation} · {signed}/{total} signed",
       "statusConsented": "Consented",
       "statusPartial": "Partial",
-      "statusNone": "None"
+      "statusNone": "None",
+      "holdoutsToggleShow": "Who's stuck",
+      "holdoutsToggleHide": "Hide who's stuck",
+      "holdoutsLoading": "Loading names…",
+      "holdoutsLoadFailed": "Failed to load names.",
+      "holdoutsRetry": "Try again",
+      "holdoutsForbidden": "You don't have permission to view owner names.",
+      "holdoutsEmpty": "All owners in this apartment have signed.",
+      "holdoutFallback": "Apartment {number} · partial",
+      "holdoutNoName": "Owner with no name on record"
     },
     "campaign": {
       "cta": "Send signature request to all owners",

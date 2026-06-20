@@ -533,6 +533,25 @@ async function installStubs(page: import('@playwright/test').Page): Promise<Chai
     },
   );
 
+  // E2.2-S3 — the per-apartment HOLDOUTS read ("מי תקוע"). PII-bearing + gated
+  // on the BE; loaded ON DEMAND when an apartment is expanded. The drill-down
+  // mounts collapsed and the apartments list is stubbed empty above, so this
+  // route is not exercised on the happy path — but it MUST be stubbed (§P0-3
+  // new-fetch-breaks-e2e trap: an unstubbed `/holdouts` would 404 and trip the
+  // dev-console guardrail the moment anyone expands a row). Registered AFTER the
+  // `/apartments` route so Playwright's last-wins ordering routes the
+  // more-specific `…/apartments/:id/holdouts` URL here, not to the list stub.
+  await page.route(
+    `**/api/v1/projects/${PROJECT_ID}/signature-progress/apartments/*/holdouts`,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { holdouts: [] } }),
+      });
+    },
+  );
+
   // 7) GET /projects/:id/export?format=xlsx — streamed xlsx (stub bytes).
   await page.route(`**/api/v1/projects/${PROJECT_ID}/export*`, async (route) => {
     if (route.request().method() !== 'GET') {

@@ -70,11 +70,11 @@ export function AgentHome() {
           </div>
           <div className="card-pad">
             {tasks.isLoading ? (
-              <p className="text-sm text-muted">{t('loading')}</p>
+              <p className="text-sm text-text-muted">{t('loading')}</p>
             ) : tasks.isError ? (
-              <p className="text-sm text-muted">{t('loadFailed')}</p>
+              <p className="text-sm text-text-muted">{t('loadFailed')}</p>
             ) : taskItems.length === 0 ? (
-              <p className="text-sm text-muted">{t('tasks.empty')}</p>
+              <p className="text-sm text-text-muted">{t('tasks.empty')}</p>
             ) : (
               <ul className="flex flex-col gap-2">
                 {taskItems.map((task) => (
@@ -88,7 +88,7 @@ export function AgentHome() {
                           <NameDisplay name={task.title} />
                         </span>
                         {(task.dueRelative || task.isOverdue) && (
-                          <span className="text-xs text-muted">
+                          <span className="text-xs text-text-muted">
                             {task.isOverdue
                               ? t('tasks.overdue')
                               : t('tasks.dueAt', { rel: task.dueRelative as string })}
@@ -117,11 +117,11 @@ export function AgentHome() {
           </div>
           <div className="card-pad">
             {notifications.isLoading ? (
-              <p className="text-sm text-muted">{t('loading')}</p>
+              <p className="text-sm text-text-muted">{t('loading')}</p>
             ) : notifications.isError ? (
-              <p className="text-sm text-muted">{t('loadFailed')}</p>
+              <p className="text-sm text-text-muted">{t('loadFailed')}</p>
             ) : notificationItems.length === 0 ? (
-              <p className="text-sm text-muted">{t('notifications.empty')}</p>
+              <p className="text-sm text-text-muted">{t('notifications.empty')}</p>
             ) : (
               <ul className="flex flex-col gap-2">
                 {notificationItems.map((n) => (
@@ -133,10 +133,10 @@ export function AgentHome() {
                       <span className="truncate text-sm font-medium text-foreground">
                         <NameDisplay name={n.title} />
                       </span>
-                      <span className="shrink-0 text-xs text-muted">{n.createdRelative}</span>
+                      <span className="shrink-0 text-xs text-text-muted">{n.createdRelative}</span>
                     </div>
                     {n.body && (
-                      <p className="mt-0.5 truncate text-xs text-muted">
+                      <p className="mt-0.5 truncate text-xs text-text-muted">
                         <NameDisplay name={n.body} />
                       </p>
                     )}

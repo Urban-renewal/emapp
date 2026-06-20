@@ -77,11 +77,11 @@ export function MissionControlHome() {
         </h1>
         {/* 2) The ONE pulse sentence — rendered once the feed resolves. */}
         {vm ? (
-          <p className="text-sm text-muted" role="status">
+          <p className="text-sm text-text" role="status">
             {buildPulseSentence(t, vm.buckets)}
           </p>
         ) : (
-          <p className="text-sm text-muted">{t('subtitleLoading')}</p>
+          <p className="text-sm text-text-muted">{t('subtitleLoading')}</p>
         )}
       </header>
 
@@ -94,7 +94,7 @@ export function MissionControlHome() {
           {/* 4) Explain-chip — honest, deterministic "why am I seeing this?". */}
           <button
             type="button"
-            className="inline-flex items-center gap-1 text-xs text-muted hover:text-foreground"
+            className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-foreground"
             aria-expanded={explainOpen}
             aria-controls={`${explainId}-explain`}
             onClick={() => setExplainOpen((o) => !o)}
@@ -105,7 +105,11 @@ export function MissionControlHome() {
         </div>
 
         {explainOpen && (
-          <p id={`${explainId}-explain`} className="card card-pad text-xs text-muted" role="note">
+          <p
+            id={`${explainId}-explain`}
+            className="card card-pad text-xs text-text-muted"
+            role="note"
+          >
             {t('explain.body')}
           </p>
         )}
@@ -168,9 +172,9 @@ function ActionCard({
           </span>
         </div>
         {/* The plain-Hebrew "why" — the system reporting what it found. */}
-        <p className="text-sm text-muted">{buildWhy(t, card)}</p>
+        <p className="text-sm text-text-muted">{buildWhy(t, card)}</p>
         {/* Consent % ALWAYS carries the basis label — never a bare legal %. */}
-        <p className="text-xs text-muted">
+        <p className="text-xs text-text-muted">
           <span className="tabular" dir="ltr">
             {t('consentPct', { pct: card.consentedPct })}
           </span>

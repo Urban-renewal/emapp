@@ -1,4 +1,9 @@
-import { ListOwnersQuery, type ListOwnersQueryDto } from '@emapp/shared-types';
+import {
+  ListOwnersQuery,
+  OwnerNameSearchQuery,
+  type ListOwnersQueryDto,
+  type OwnerNameSearchQueryDto,
+} from '@emapp/shared-types';
 import {
   Body,
   Controller,
@@ -77,6 +82,23 @@ export class OwnersController {
     @Body(new ZodValidationPipe(OwnerSearchDto)) body: OwnerSearch,
   ) {
     return { data: await this.owners.search(user, body) };
+  }
+
+  // NS1 (server-side search) — owner NAME substring search, keyset-paginated.
+  // GET (not the POST by-PII search above): `q` is a NAME (not PII national_id/
+  // phone), so it is safe in the query string — it never leaks a national_id or
+  // phone into access logs. Returns the SAME masked-PII projection as the list
+  // endpoint ({data, page}); national_id/phone ALWAYS masked. Same coarse
+  // `owners.read` gate; the FINE view_owners + agent scope live in the service.
+  // Throttled like the other owner-search surfaces (one click of legit UX).
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Get('search')
+  @RequirePermission('owners.read')
+  async searchByName(
+    @CurrentUser() user: AccessTokenPayload,
+    @Query(new ZodValidationPipe(OwnerNameSearchQuery)) query: OwnerNameSearchQueryDto,
+  ) {
+    return this.owners.searchByName(user, query);
   }
 
   @Post()

@@ -542,6 +542,76 @@ export class OwnersService {
     );
   }
 
+  /**
+   * NS1 (server-side search, MASTER-PLAN-V13 Wave B) — owner NAME search,
+   * keyset-paginated. DISTINCT from `search` (the POST by-PII HMAC lookup):
+   * this is a SUBSTRING match over the owner NAME, returning the SAME
+   * masked-PII projection as `list` (national_id/phone ALWAYS masked — D.47
+   * tripwire; cleartext is reveal-on-demand only).
+   *
+   * SECURITY: the owner name is PII stored ENCRYPTED at rest. We decrypt it
+   * IN-SQL (pgp_sym_decrypt under the withTenant app.encryption_key GUC) and
+   * ILIKE the plaintext — the ciphertext never crosses the wire, and the only
+   * cleartext that leaves is the `name` field the masked projection already
+   * returns. national_id/phone stay masked. The `q` value is bound as a
+   * PARAMETER (drizzle parameterises ${...}) with LIKE metacharacters escaped,
+   * so there is no injection surface and "50%" matches literal text.
+   *
+   * AUTHZ is identical to `list`/`search`: view_owners gate (agent off → 403),
+   * agent project-scope (only owners in assigned-project apartments), org
+   * isolation via RLS, erased owners excluded. Keyset order matches `list`
+   * (createdAt desc, id desc) so the cursor is interchangeable.
+   */
+  async searchByName(
+    user: AccessTokenPayload,
+    query: { q: string; limit: number; cursor?: string },
+  ): Promise<OwnerListPage> {
+    const { limit } = query;
+    const cur = query.cursor ? decodeCursor(query.cursor) : null;
+    if (query.cursor && !cur) {
+      throw new BadRequestException({ error: { code: 'invalid_cursor' } });
+    }
+    // Escape LIKE metacharacters → literal substring (no user-driven wildcards).
+    const escaped = query.q.replace(/[\\%_]/g, (c) => `\\${c}`);
+    const pattern = `%${escaped}%`;
+
+    const rows = await withTenant(
+      user.orgId,
+      async (tx) => {
+        // Same outermost gate + agent scope as list/search; masked for everyone.
+        await this.assertAgentCanViewOwners(tx, user);
+        const scope = this.agentOwnerScope(user);
+        const keyset: SQL | undefined = cur
+          ? keysetCondition(owners.createdAt, owners.id, cur)
+          : undefined;
+        // Decrypt the name IN-SQL and ILIKE the plaintext. A SHELL owner with a
+        // NULL name_encrypted decrypts to NULL → never matches (correct: a
+        // nameless shell is not a name hit).
+        const nameMatch = sql`pgp_sym_decrypt(${owners.nameEncrypted}, current_setting('app.encryption_key'))::text ILIKE ${pattern}`;
+        return tx
+          .select({ ...ownerCols, ...this.listAggregateCols(user) })
+          .from(owners)
+          .where(
+            and(isNull(owners.archivedAt), isNull(owners.erasedAt), nameMatch, scope, keyset),
+          )
+          .orderBy(...keysetOrderBy(owners.createdAt, owners.id))
+          .limit(limit + 1);
+      },
+      { userId: user.sub },
+    );
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+    const last = pageRows[pageRows.length - 1];
+    return {
+      data: pageRows.map((r) => ({
+        ...toOwner(r),
+        apartmentCount: r.apartmentCount,
+        pendingSignatureCount: r.pendingSignatureCount,
+      })),
+      page: { limit, cursor: hasMore && last ? encodeCursor(last) : null, has_more: hasMore },
+    };
+  }
+
   async create(user: AccessTokenPayload, input: CreateOwner): Promise<Owner> {
     this.requireManager(user);
     // Normalize phone to E.164 (canonical form stored + HMAC'd). Validity

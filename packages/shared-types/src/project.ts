@@ -369,6 +369,55 @@ export const ApartmentHoldoutsResponseSchema = z.object({
 export type ApartmentHoldoutsResponse = z.infer<typeof ApartmentHoldoutsResponseSchema>;
 
 /**
+ * Battle-Map BM-1 — the single LEVERAGE owner: the not-yet-fully-signed active
+ * owner whose signature, if flipped to signed, moves the project's headline
+ * share-weighted `consentedPct` the MOST toward target.
+ *
+ * CRITICAL (council + red-team): the headline is an EQUAL-APARTMENT-WEIGHTED
+ * average of per-apartment share contributions (see `computeConsentAggregates`).
+ * So the leverage owner is ranked by the MARGINAL DELTA to that headline, NOT by
+ * raw share-sum — a 100%-share owner in an already-fully-signed apartment moves
+ * the headline by 0, while a 28%-share owner who completes an apartment's last
+ * unsigned share can move it more.
+ *
+ * NAMED PII (name only) — `ownerName` is gated by `view_owner_pii` EXACTLY like
+ * the B4 holdouts surface. When the caller lacks the capability the leverage is
+ * still returned (apartment designation + delta) but `ownerName` is `null`.
+ * national_id / phone NEVER appear. The FE wraps `ownerName` in `<NameDisplay>`.
+ */
+export const ProjectLeverageOwnerSchema = z.object({
+  ownerId: z.string().uuid(),
+  /** view_owner_pii-gated; null when the caller lacks the capability (name only,
+   *  NEVER national_id/phone). */
+  ownerName: z.string().nullable(),
+  apartmentId: z.string().uuid(),
+  apartmentLabel: z.string(),
+  /** This owner's own share of the apartment, as a percent in [0,100]. */
+  ownerSharePctInApartment: z.number().min(0).max(100),
+  /** The headline `consentedPct` AFTER flipping this owner to signed (int %). */
+  projectedPct: z.number().int().min(0).max(100),
+  /** Does flipping this owner push the headline to/above the project target? */
+  crossesThreshold: z.boolean(),
+});
+export type ProjectLeverageOwner = z.infer<typeof ProjectLeverageOwnerSchema>;
+
+/**
+ * Battle-Map BM-1 — the `GET /api/v1/projects/:id/leverage` response under
+ * `data`. `leverage` is `null` when every active owner is already signed or no
+ * owner is movable (no positive marginal delta). `basis` is always `'share'`
+ * today and labels `currentPct` (OD-1/OD-3 still gate the statutory %).
+ */
+export const ProjectLeverageSchema = z.object({
+  projectId: z.string().uuid(),
+  /** The CURRENT headline share-weighted consent % (int), same source as the board. */
+  currentPct: z.number().int().min(0).max(100),
+  /** The computation basis for `currentPct` — drives the mandatory FE label. */
+  basis: ConsentBasisEnum,
+  leverage: ProjectLeverageOwnerSchema.nullable(),
+});
+export type ProjectLeverage = z.infer<typeof ProjectLeverageSchema>;
+
+/**
  * Org-wide aggregates for the home dashboard KPI cards. Returned by
  * `GET /api/v1/org/stats`. Distinct from project-level stats above.
  *
@@ -648,9 +697,33 @@ export const UpdateProjectInput = z
   .superRefine(refineMilestonesVsTarget);
 export type UpdateProject = z.infer<typeof UpdateProjectInput>;
 
-/** GET list query — cursor pagination only (D.16; never offset). */
+/**
+ * NS1 (server-side search, MASTER-PLAN-V13 Wave B) — the project-list segment
+ * filter. SYSTEM segments computed server-side from the signature-pulse facts
+ * (NOT a free-text label):
+ *   - `stalled`   — no signed signature in the last PULSE_STALLED_DAYS days.
+ *   - `expiring`  — a pending request expiring within PULSE_EXPIRING_SOON_DAYS.
+ *   - `mine`      — projects the CALLER is actively assigned to (agent scope;
+ *                   for a manager/viewer this still means "assigned to me").
+ */
+export const ProjectSegmentEnum = z.enum(['stalled', 'expiring', 'mine']);
+export type ProjectSegment = z.infer<typeof ProjectSegmentEnum>;
+
+/**
+ * GET list query — cursor pagination only (D.16; never offset).
+ *
+ * NS1 — additive server-side search/filter params. ALL optional; when ALL are
+ * absent the endpoint behaves EXACTLY as before (same rows, same order). `q` is
+ * a name substring (trigram ILIKE); `status` is the D.18 status enum; `segment`
+ * is a system segment (see ProjectSegmentEnum).
+ */
 export const ListProjectsQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   cursor: z.string().min(1).optional(),
+  /** Name substring search (case-insensitive). Trimmed, bounded; an
+   *  all-whitespace / empty value is treated as "no filter". */
+  q: z.string().trim().min(1).max(120).optional(),
+  status: ProjectStatusEnum.optional(),
+  segment: ProjectSegmentEnum.optional(),
 });
 export type ListProjectsQueryDto = z.infer<typeof ListProjectsQuery>;

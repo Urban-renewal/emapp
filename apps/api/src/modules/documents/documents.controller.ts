@@ -1,10 +1,12 @@
 import {
   CreateDocumentInput,
+  DocumentSearchQuery,
   DownloadDocumentQuery,
   FinalizeDocumentInput,
   ListDocumentsQuery,
   UpdateDocumentInput,
   type CreateDocument,
+  type DocumentSearchQueryDto,
   type DownloadDocumentQueryDto,
   type FinalizeDocument,
   type ListDocumentsQueryDto,
@@ -69,6 +71,21 @@ export class DocumentsController {
     @Query(new ZodValidationPipe(ListDocumentsQuery)) query: ListDocumentsQueryDto,
   ) {
     return this.documents.list(user, query);
+  }
+
+  // NS1 (server-side search) — document NAME substring search + type/scope
+  // filters, keyset-paginated. Declared BEFORE @Get(':id') so the literal
+  // "search" path is not captured as an :id param. Same coarse `documents.read`
+  // gate as list; the FINE agent record-scoping + visibility rules live in the
+  // service (search NEVER widens what a caller can see). Returns {data, page};
+  // metadata only (no r2Key).
+  @Get('search')
+  @RequirePermission('documents.read')
+  async search(
+    @CurrentUser() user: AccessTokenPayload,
+    @Query(new ZodValidationPipe(DocumentSearchQuery)) query: DocumentSearchQueryDto,
+  ) {
+    return this.documents.searchDocuments(user, query);
   }
 
   // Tighter per-route limits than the global 100/min (review item 8 —

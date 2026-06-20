@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EMAPP · החלטת המועצה — ניהול מסמכים, שיתוף ובהירות חתימות</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#0b2545; --navy-700:#13315c; --navy-300:#3a5a8c;
+    --ink:#0f172a; --muted:#5b6b82; --soft:#8294ab;
+    --bg:#eef2f7; --surface:#ffffff; --surface-2:#f6f9fc; --line:#e2e8f0;
+    --brand:#0b2545; --brand-fg:#ffffff;
+    --ok:#0f7b4f; --ok-bg:#e7f6ee; --ok-line:#bfe6cf;
+    --warn:#9a6700; --warn-bg:#fdf6e3; --warn-line:#f0e0a8;
+    --bad:#b42318; --bad-bg:#fdecea; --bad-line:#f6c8c2;
+    --info:#1d4ed8; --info-bg:#eaf0ff; --info-line:#c9d8ff;
+    --r:16px; --r-sm:10px; --shadow:0 1px 2px rgba(11,37,69,.06),0 8px 28px rgba(11,37,69,.07);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Heebo","Assistant",-apple-system,"Segoe UI",Arial,sans-serif;
+    font-size:16px;line-height:1.72;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:960px;margin:0 auto;padding:0 20px 80px}
+  a{color:var(--info);text-decoration:none}
+  /* hero */
+  .hero{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-700) 60%,#1c4173 100%);
+    color:#fff;border-radius:0 0 28px 28px;padding:48px 0 40px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .hero::after{content:"";position:absolute;inset:auto -80px -120px auto;width:340px;height:340px;
+    background:radial-gradient(circle,rgba(255,255,255,.10),transparent 70%);border-radius:50%}
+  .hero .wrap{padding-bottom:0}
+  .brand{display:flex;align-items:center;gap:12px;font-weight:800;letter-spacing:.5px;font-size:15px;opacity:.92}
+  .brand .logo{width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.14);
+    display:grid;place-items:center;font-size:13px;font-weight:800;border:1px solid rgba(255,255,255,.25)}
+  h1{font-size:30px;line-height:1.3;font-weight:800;margin:18px 0 8px}
+  .sub{color:#cfe0f5;font-size:17px;max-width:760px;margin:0}
+  .meta{margin-top:18px;display:flex;flex-wrap:wrap;gap:10px}
+  .pill{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#eaf2ff;
+    padding:5px 13px;border-radius:999px;font-size:13px;font-weight:500}
+  /* toc */
+  .toc{display:flex;flex-wrap:wrap;gap:8px;margin:26px 0 6px}
+  .toc a{background:var(--surface);border:1px solid var(--line);color:var(--navy-700);
+    padding:7px 13px;border-radius:999px;font-size:13.5px;font-weight:600;box-shadow:var(--shadow)}
+  .toc a:hover{border-color:var(--navy-300)}
+  /* sections */
+  section{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+    padding:28px 30px;margin-top:22px;box-shadow:var(--shadow)}
+  section.flat{background:transparent;border:0;box-shadow:none;padding:8px 4px;margin-top:34px}
+  h2{font-size:22px;font-weight:800;color:var(--navy);margin:0 0 6px;display:flex;align-items:center;gap:11px}
+  h2 .ic{width:34px;height:34px;border-radius:10px;background:var(--surface-2);border:1px solid var(--line);
+    display:grid;place-items:center;font-size:18px;flex:0 0 auto}
+  .lead{color:var(--muted);margin:2px 0 18px;font-size:15.5px}
+  h3{font-size:16.5px;font-weight:700;color:var(--navy-700);margin:22px 0 8px}
+  p{margin:0 0 12px}
+  ul{margin:6px 0 14px;padding-inline-start:22px}
+  li{margin:7px 0}
+  strong{color:var(--ink);font-weight:700}
+  .em{color:var(--navy-700);font-weight:600}
+  /* decision banner */
+  .verdict{background:linear-gradient(180deg,#fbfdff,#f3f8ff);border:1px solid var(--info-line);
+    border-radius:var(--r);padding:24px 26px;margin-top:24px;box-shadow:var(--shadow);position:relative}
+  .verdict .tag{display:inline-block;background:var(--navy);color:#fff;font-weight:700;font-size:12.5px;
+    letter-spacing:.4px;padding:4px 12px;border-radius:999px;margin-bottom:12px}
+  .verdict p{font-size:18px;line-height:1.65;color:var(--ink);margin:0;font-weight:500}
+  .verdict .big{font-size:19.5px;font-weight:700;color:var(--navy)}
+  /* callouts */
+  .note{border-radius:var(--r-sm);padding:14px 16px;margin:14px 0;border:1px solid;font-size:15px}
+  .note .h{font-weight:700;margin-bottom:3px;display:flex;align-items:center;gap:8px}
+  .note.bad{background:var(--bad-bg);border-color:var(--bad-line);color:#7a1c14}
+  .note.bad .h{color:var(--bad)}
+  .note.ok{background:var(--ok-bg);border-color:var(--ok-line);color:#0c5c3b}
+  .note.ok .h{color:var(--ok)}
+  .note.warn{background:var(--warn-bg);border-color:var(--warn-line);color:#6b4a00}
+  .note.warn .h{color:var(--warn)}
+  .note.info{background:var(--info-bg);border-color:var(--info-line);color:#1a368f}
+  /* tables */
+  .tbl{width:100%;border-collapse:separate;border-spacing:0;margin:14px 0 8px;font-size:14.5px;
+    border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .tbl th,.tbl td{padding:12px 14px;text-align:start;vertical-align:top;border-bottom:1px solid var(--line)}
+  .tbl thead th{background:var(--navy);color:#fff;font-weight:700;font-size:14px}
+  .tbl tbody tr:nth-child(even){background:var(--surface-2)}
+  .tbl tbody tr:last-child td{border-bottom:0}
+  .tbl td.dim{font-weight:700;color:var(--navy-700);white-space:nowrap}
+  .tbl .r2{color:#0c5c3b}
+  .tbl .sftp{color:#7a1c14}
+  .winner{display:inline-block;background:var(--ok-bg);border:1px solid var(--ok-line);color:var(--ok);
+    font-weight:700;font-size:12px;padding:2px 9px;border-radius:999px;margin-inline-start:6px}
+  /* parties */
+  .party{display:flex;gap:12px;padding:11px 0;border-bottom:1px dashed var(--line)}
+  .party:last-child{border-bottom:0}
+  .party .who{font-weight:700;color:var(--navy-700);flex:0 0 200px}
+  .party .what{color:var(--muted);font-size:14.5px}
+  .scope{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:6px;margin-inline-start:6px}
+  .s-sens{background:var(--bad-bg);color:var(--bad);border:1px solid var(--bad-line)}
+  .s-agg{background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok-line)}
+  .s-defer{background:var(--surface-2);color:var(--soft);border:1px solid var(--line)}
+  /* phases */
+  .phase{position:relative;padding:18px 20px 18px 20px;border:1px solid var(--line);border-radius:14px;
+    margin:12px 0;background:var(--surface-2)}
+  .phase .ph{font-weight:800;color:var(--navy);font-size:15.5px;margin-bottom:4px}
+  .phase .what{font-weight:600;color:var(--ink);margin-bottom:4px}
+  .phase .why{color:var(--muted);font-size:14.5px}
+  .ph-num{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:8px;background:var(--navy);
+    color:#fff;font-weight:800;font-size:13px;margin-inline-end:8px;vertical-align:-5px}
+  /* open decisions */
+  .q{border:1px solid var(--info-line);background:var(--info-bg);border-radius:14px;padding:16px 18px;margin:12px 0}
+  .q .qq{font-weight:700;color:#1a368f;margin-bottom:6px}
+  .q .rec{background:#fff;border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:14.5px}
+  .q .rec b{color:var(--ok)}
+  /* rejected */
+  .rej{padding:12px 14px;border-inline-start:3px solid var(--bad-line);background:#fefafa;border-radius:8px;margin:9px 0}
+  .rej .o{font-weight:700;color:#7a1c14}
+  .rej .w{color:var(--muted);font-size:14.5px;margin-top:2px}
+  /* experts grid */
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
+  .card{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--surface-2)}
+  .card .t{font-weight:700;color:var(--navy-700);font-size:14.5px;margin-bottom:4px}
+  .card .d{color:var(--muted);font-size:13.8px}
+  /* footer */
+  footer{margin-top:40px;color:var(--soft);font-size:13px;text-align:center;line-height:1.7}
+  .divider{height:1px;background:var(--line);margin:8px 0 0}
+  @media(max-width:680px){.grid{grid-template-columns:1fr}.party .who{flex-basis:130px}h1{font-size:24px}}
+  @media print{body{background:#fff}section,.verdict{box-shadow:none}.toc{display:none}.hero{border-radius:0}}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="brand"><span class="logo">EM</span><span>EMAPP · התחדשות עירונית</span></div>
+    <h1>החלטת המועצה: ריכוז מסמכים, שיתוף לגורמים, ובהירות "מי נגד מי"</h1>
+    <p class="sub">מחקר רב‑סוכני מעמיק (11 מומחים: עיגון בקוד → 6 דיסציפלינות → red‑team → סינתזה) מותאם לעולם האמיתי של תמ"א 38 ופינוי‑בינוי בישראל — כולל אבטחה, רגולציה ועלויות. מטרת המסמך: שתחליט אתה את הכיוון.</p>
+    <div class="meta">
+      <span class="pill">מועצת עיצוב EMAPP × Claude</span>
+      <span class="pill">20 ביוני 2026</span>
+      <span class="pill">דוקטרינה: המערכת עושה את העבודה — המשתמש רק מאשר</span>
+      <span class="pill">החלטה: GO מותנה</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <nav class="toc">
+    <a href="#decision">ההחלטה</a>
+    <a href="#docs">ניהול מסמכים</a>
+    <a href="#share">מודל השיתוף</a>
+    <a href="#storage">אחסון: SFTP מול R2</a>
+    <a href="#map">מפת החתימות</a>
+    <a href="#sec">אבטחה</a>
+    <a href="#reg">רגולציה</a>
+    <a href="#rejected">כיוונים שנדחו</a>
+    <a href="#phasing">שלביות</a>
+    <a href="#open">החלטות עבורך</a>
+    <a href="#experts">דעות המומחים</a>
+  </nav>
+
+  <!-- DECISION -->
+  <div class="verdict" id="decision">
+    <span class="tag">שורת המחץ</span>
+    <p><span class="big">שמרו על R2 — מעבר ל‑SFTP היה מייקר אתכם פי ~560 ובונה מחדש את האבטחה גרוע יותר.</span>
+    גם מרכז המסמכים וגם מפת ה"מי נגד מי" ניתנים לבנייה <em class="em">על מה שכבר קיים</em> במערכת.
+    אבל גילוי מהדהד: המסמך הכי רגיש — <strong>נסח טאבו</strong>, שנושא את תעודת‑הזהות של כל בעל דירה —
+    מסומן היום כ"לא‑רגיש" ולכן <strong>חשוף כבר עכשיו לכל קבלן</strong> בשיתוף. לפני שמרחיבים שיתוף:
+    מתקנים את זה, מפצלים את סוד‑השיתוף, מספקים את מפתח‑ההצפנה לפרודקשן, ומקימים את רצפת‑הציות של תיקון 13 —
+    <strong>קודם</strong>. ואז טקסונומיה, ואז מפת‑המנוף, ואז שיתוף — בסדר הזה, אף פעם לא במקביל.</p>
+  </div>
+
+  <section>
+    <h2><span class="ic">🎯</span>ההחלטה המאוחדת של המועצה</h2>
+    <p><strong>GO מותנה, ברצף מחמיר.</strong> מאמצים את ארכיטקטורת‑היעד (טקסונומיית סוגי‑מסמך + הכללה של מנגנון
+    השיתוף הקיים + "מפת המנוף" לחתימות) — אבל מגדרים כל מה שחיצוני מאחורי שלושה תיקוני‑תשתית ורצפת‑הציות המשפטית.</p>
+    <p>הבעיה אינה יכולת — הסאבסטרייט מצוין. הבעיה היא <strong>שלוש חשיפות חיות</strong> שהפיצ'רים החדשים רק יגבירו.
+    לכן סדר הבנייה הוא: <strong>(0)</strong> רצפת‑ציות במקביל לשלושת תיקוני‑התשתית · <strong>(1)</strong> מפת‑חתימות
+    (אפס שינוי‑סכמה, אפס הרחבת PII) + טקסונומיה כצ'ק‑ליסט מייעץ · <strong>(2)</strong> מחזור‑חיים של סטטוס מגובה
+    ביומן‑אירועי‑מסירה אמיתי + סיווג עם אישור‑אנושי חובה · <strong>(3)</strong> ורק אז — שיתוף חיצוני, מהצר ביותר והלאה.
+    <span class="em">האחסון סגור: נשארים על R2, לא בונים SFTP.</span></p>
+  </section>
+
+  <!-- DOCUMENTS -->
+  <section id="docs">
+    <h2><span class="ic">🗄️</span>ניהול מסמכים — איך עושים סדר בבלאגן</h2>
+    <p class="lead">מודל היברידי שמתלבש על צינור ה‑R2 הקיים: <strong>אין עץ‑תיקיות, אין תגיות חופשיות</strong>. במקום זה — אוצר‑מילים סגור של סוגי‑מסמך + קישור חכם לשדרה + צ'ק‑ליסט שמתמלא לבד.</p>
+
+    <h3>המודל</h3>
+    <ul>
+      <li><strong>enum סגור של סוגי‑מסמך</strong> (~16 סוגים אמיתיים: נסח טאבו · תעודת זהות · ייפוי כוח · הסכם התקשרות מול יזם · היתר בנייה · תכניות אדריכליות · אישור מודד · דו"ח שמאי · פרוטוקול אסיפת דיירים · כתב הסכמה/חתימה · ערבויות בנקאיות · היתרי רשות…).</li>
+      <li><strong>קישור מטיפוס (scope, scopeId)</strong> — כל מסמך נצמד ל<em>צומת הנכון</em> בשדרה: נסח ← דירה, ייפוי‑כוח ← בעלים, הסכם‑יזם ← פרויקט. (היום מסמך נצמד רק לפרויקט/דירה — לא לבעלים ולא לחתימה. זה הפער המרכזי.)</li>
+      <li><strong>צ'ק‑ליסט לפי סוג‑פרויקט</strong> (חיזוק תמ"א 38 / הריסה‑ובנייה / פינוי‑בינוי) שמסתמן אוטומטית כשמסמך מהסוג הנכון נוחת — הפאנל "מה חוסם אישור" שהמנהל באמת צריך.</li>
+      <li><strong>דה‑דופ לפי content‑hash</strong> — אותו נסח שמגיע 5 פעמים נשמר פעם אחת; גרסאות ב‑supersede‑by‑pointer (רק השורה הנוכחית נספרת).</li>
+      <li><strong>מסווג היוריסטי</strong> (regex על שם‑קובץ עברי + magic‑bytes + טקסט העמוד הראשון לפני ההצפנה) שמציע סוג+צומת אחד — רץ בצד‑שרת בלבד, לעולם לא נרשם בלוג.</li>
+    </ul>
+
+    <div class="note ok">
+      <div class="h">✦ פעולה אחת (הדוקטרינה)</div>
+      המנהל גורר קובץ ← השרת סורק, קורא עמוד ראשון, ומסווג ← מחזיר צ'יפ אחד: <em>"נראה כמו נסח טאבו עבור דירה 4 — מאשר?"</em> ← הקשה אחת מסווגת, מקשרת לצומת, מסמנת את שורת‑הצ'ק‑ליסט בירוק ומחשבת שלמות מחדש. מתחת לסף‑ביטחון (או כשיש כמה דירות מועמדות) הצ'יפ יורד ל"בחר סוג"/"בחר דירה" — בחירה מפורשת, לעולם לא סימון‑אוטומטי על פריט חוסם‑אישור.
+    </div>
+    <div class="note warn">
+      <div class="h">⚠ זהירות שהמועצה נעלה</div>
+      הצ'ק‑ליסט נשלח <strong>מייעץ</strong> ("חסר: ערבות בנקאית") ו<strong>אינו</strong> מחווט אל שער ה‑→approved הקשיח עד שעו"ד יחתום על תבניות‑הסף לכל מסלול. ייפוי‑כוח שסווג בטעות, או ערבות בטיוטה, יכולים אחרת "להעביר" פרויקט בשער בהקשה אחת — רעל משפטי.
+    </div>
+  </section>
+
+  <!-- SHARING -->
+  <section id="share">
+    <h2><span class="ic">🔗</span>מודל השיתוף — הגורם הנכון, המסמך הנכון, אפס חשבונות</h2>
+    <p class="lead">מכלילים את שורת ה‑<code>shares</code> של הקבלן הקיימת ל‑<strong>external_share</strong> מטיפוס‑גורם: scope, הרשאות, <code>allow_sensitive</code> (ברירת‑מחדל: כבוי), תפוגה, נושא‑סימן‑מים, ביטול. המנהל מקיש על גורם — המערכת ממלאת preset ויכולה <strong>רק לצמצם</strong>. לא חשבונות אמיתיים, לא מערכת מקבילה.</p>
+
+    <h3>הגורמים האמיתיים וה‑scope הברירתי</h3>
+    <div>
+      <div class="party"><div class="who">יזם / קבלן</div><div class="what">scope פרויקט, מבני בלבד, הסכמה מצרפית, ללא רגיש <span class="scope s-agg">קיים</span></div></div>
+      <div class="party"><div class="who">עו"ד הדיירים</div><div class="what">הסכמים חתומים + פנקס‑הסכמה <span class="scope s-sens">רגיש · DPA חובה</span></div></div>
+      <div class="party"><div class="who">עו"ד היזם</div><div class="what">נסחים + הסכמים + מסמכי פרויקט <span class="scope s-sens">רגיש · DPA חובה</span></div></div>
+      <div class="party"><div class="who">בנק מלווה</div><div class="what">נסחים + ערבויות + הוכחת הסכמה — scope ל<strong>בניין הממומן</strong>, לעולם לא כל הפרויקט <span class="scope s-sens">רגיש · DPA</span></div></div>
+      <div class="party"><div class="who">מפקח / מנהל פרויקט</div><div class="what">סקירת פרויקט + מסמכים טכניים, ללא PII של בעלים, ארוך‑טווח</div></div>
+      <div class="party"><div class="who">שמאי / מודד</div><div class="what">בניין אחד, תכניות/נתוני‑שומה, תפוגה 7 ימים, ללא חתימות <span class="scope s-agg">צר</span></div></div>
+      <div class="party"><div class="who">ועדה מקומית</div><div class="what">חבילת‑הגשה לקריאה‑בלבד, הסכמה מצרפית בלבד, לעולם לא PII פרטני</div></div>
+      <div class="party"><div class="who">מנהל מיוחד / בית משפט</div><div class="what">scope לפי צו — <strong>מחוץ</strong> ל‑presets בשירות‑עצמי, סיבה מתועדת + בקרה כפולה <span class="scope s-defer">לא‑עצמי</span></div></div>
+      <div class="party"><div class="who">בעל דירה בודד</div><div class="what">הדירה שלו בלבד — <strong>נדחה</strong> עד שיהיה קישור owner↔document מסדר ראשון <span class="scope s-defer">דחוי</span></div></div>
+    </div>
+
+    <h3>המנגנון</h3>
+    <p>טוקן ייעודי <code>emapp-doc-share</code> חתום ב‑<strong>SHARE_TOKEN_SECRET חדש</strong> (מפוצל מ‑JWT_SECRET — שער קשיח טרום‑פרודקשן); תפוגה מדורגת לפי גורם (בנק/עו"ד 30 יום, שמאי 7, חבילה 72 שעות); שיתוף רגיש דורש OTP במגע‑ראשון + אישור‑מנהל מפורש + סיבה מתועדת; בייטים רגישים נמסרים <strong>רק</strong> דרך decrypt‑stream של ה‑API עם <strong>סימן‑מים פר‑נמען</strong> (נמען + מזהה‑הרשאה + חותמת‑זמן); ביקורת פר‑הורדה + maxDownloads (גם אבטחה וגם בקרת‑עלות); ביטול מיידי. כל סוג‑גורם מגודר מאחורי "קיימת תבנית DPA לגורם הזה".</p>
+  </section>
+
+  <!-- STORAGE -->
+  <section id="storage">
+    <h2><span class="ic">💰</span>אחסון: SFTP מול R2 — שאלת העלויות שלך</h2>
+    <div class="note bad">
+      <div class="h">✗ ההנחה הופכת על פיה</div>
+      "SFTP כדי לחסוך בעלויות אחסון" — בקנה‑המידה הזה R2 עולה <strong>פחות מ‑1₪ לחודש</strong>, ו‑SFTP‑כאחסון‑ראשי היה עולה <strong>פי ~560</strong> תוך אילוץ לבנות מחדש (גרוע יותר) את סריקת‑הווירוסים, ההצפנה, ה‑URLs החתומים, ההרשאה‑פר‑אובייקט והביקורת שכבר קיימים.
+    </div>
+
+    <h3>ההמלצה</h3>
+    <p class="em">להשאיר את Cloudflare R2 כאחסון המסמכים היחיד. לא להגר ל‑SFTP, לא ל‑S3, לא לעצמי‑מאוחסן.</p>
+    <p>ל‑SFTP יש בדיוק <strong>תפקיד לגיטימי אחד — וזה לא עלות</strong>: "סף‑כניסה" (ingestion) לגורם מוסדי (בנק/עירייה) שמדבר רק SFTP, בשכבה <em>מעל</em> R2 — ייבנה רק אם וכאשר שותף אמיתי ידרוש זאת (לדחות כמו seam של חיפוש‑חלקה).</p>
+
+    <table class="tbl">
+      <thead><tr><th>מימד</th><th class="sftp">SFTP</th><th class="r2">R2 (קיים) <span class="winner">מנצח</span></th></tr></thead>
+      <tbody>
+        <tr><td class="dim">עלות / egress</td>
+          <td class="sftp">מנוהל (AWS Transfer Family) ~$216/חודש קבוע <em>לפני</em> בייט אחד + $0.04/GB, ועדיין צריך S3 מתחת. עצמי ~$40/חודש אבל עלות‑הבנייה‑מחדש שולטת.</td>
+          <td class="r2">~$0.39/חודש בנפח המודלי, ~$3.88 ב‑×10. <strong>אפס דמי‑egress</strong> — התאמה מושלמת למוצר עתיר‑הורדות/שיתוף.</td></tr>
+        <tr><td class="dim">אבטחה</td>
+          <td class="sftp">סיסמאות SSH משותפות ארוכות‑טווח, אין מושג של URL חתום, מארח חשוף‑אינטרנט נושא‑PII, עומס תיקונים/מפתחות — מטרת‑exfiltration קלאסית שמחזיקה ת"ז + הסכמים חתומים.</td>
+          <td class="r2">מפתחות בלתי‑ניתנים‑לניחוש שלא עוברים על‑החוט, URLs חתומים קצרי‑תוקף, מעטפת EMAPPENC AES‑256‑GCM, fail‑closed.</td></tr>
+        <tr><td class="dim">הרשאה פר‑אובייקט</td>
+          <td class="sftp">אין — הרשאות ברמת‑תיקייה/משתמש בלבד.</td>
+          <td class="r2">RLS + capability + scope‑שיתוף על כל הורדה.</td></tr>
+        <tr><td class="dim">תפקיד נכון</td>
+          <td class="sftp">סף‑כניסה (ingestion) משותפים בלבד — לא חנות.</td>
+          <td class="r2">חנות המסמכים הראשית.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>מודל עלות (הנחות מפורשות)</h3>
+    <p class="lead">50 פרויקטים × 30 דירות × 8 מסמכים × 2MB ≈ 12,000 מסמכים ≈ 23GB · ~3,000 העלאות/חודש · ~60,000 הורדות/חודש ≈ 117GB egress (עתיר‑שיתוף).</p>
+    <table class="tbl">
+      <thead><tr><th>אופציה</th><th>היום</th><th>×10 צמיחה</th></tr></thead>
+      <tbody>
+        <tr><td class="dim r2">R2 <span class="winner">בחירה</span></td><td>≈ $0.39/חודש</td><td>≈ $3.88/חודש</td></tr>
+        <tr><td class="dim">S3 Standard</td><td>≈ $11/חודש (רובו egress)</td><td>≈ $111/חודש (~$105 egress)</td></tr>
+        <tr><td class="dim sftp">SFTP מנוהל</td><td>≈ $221/חודש</td><td>≈ $221+/חודש</td></tr>
+      </tbody>
+    </table>
+    <div class="note info">
+      <div class="h">◆ היכן העלות באמת</div>
+      <strong>egress — לא ג'יגות אחסון — הוא המנוף היחיד המשמעותי, ו‑R2 מאפס אותו.</strong> הסיכון העצמי: להפוך את decrypt‑stream של ה‑API לברירת‑מחדל לכל ההורדות (egress בתשלום + buffering מלא בזיכרון + CPU של סימן‑מים). שומרים אותו ל<strong>רגיש בלבד</strong>; לא‑רגיש נשאר ב‑presigned‑GET מגודר. ההוצאה האמיתית היא <strong>זמן‑הנדסה</strong> על היכולות החסרות + רצפת‑הציות המשפטית — לא תשתית.
+    </div>
+  </section>
+
+  <!-- BATTLE MAP -->
+  <section id="map">
+    <h2><span class="ic">🗺️</span>מפת החתימות — "מי נגד מי"</h2>
+    <p class="lead"><strong>מפת חתימות (Battle Map):</strong> רשת של דירות צבועות לפי מצב‑ההסכמה הפר‑דירתי, עם <strong>כרטיס "המנוף שלך"</strong> שמחושב על‑ידי המערכת ושמ‑נקֵב את הבעלים <em>היחיד</em> שחתימתו מקרבת הכי הרבה את הכותרת לסף — ועם מחזור‑חיים מינימלי של סטטוס שה<strong>מנהל מצהיר</strong> (ממתין · נוצר‑קשר · מתלבט · מחויב · מתנגד · לא‑ניתן‑להשגה · בהעברה). הכל ברובד‑ארגון בלבד, מוחרג מבנית מכל טוקן קבלן/דייר.</p>
+
+    <div class="note bad">
+      <div class="h">✗ תפיסה קריטית שה‑red‑team תפס</div>
+      ה‑<code>consentedPct</code> הוא ממוצע <strong>שמשקלל כל דירה שווה</strong> — לכן דירוג לפי <em>סכום‑מניות</em> ינקֵב את הבעלים ה<strong>שגוי</strong> כנקודת‑המפנה. המנוף חייב להיות ה<strong>דלתא השולית לכותרת</strong>: מריצים מחדש את <code>computeConsentAggregates</code> עם אותו בעלים הפוך ל"חתם" ומחשבים את ההפרש בכותרת. לשלח את הכרטיס כהבטחה — או לא לשלח בכלל.
+    </div>
+
+    <h3>שלוש פרוסות</h3>
+    <ul>
+      <li><strong>פרוסה 1</strong> (אפס מיגרציה, אפס הרחבת‑PII): מנוף = הדלתא השולית לכותרת, בהקשה אחת "שלח תזכורת" שמפעילה את מסירת‑קישור‑החתימה הקיימת. <em>"המנוף שלך: דנה כהן, 28% בדירה 4 — חתימתה מעבירה 61%→71%, מעל הסף."</em></li>
+      <li><strong>פרוסה 2</strong> (מיגרציה אחת): מחזור‑חיים <code>signature_status</code> פר‑בעלים‑בפרויקט בטבלה ייעודית, מגובה ביומן‑אירועים <strong>append‑only</strong> ממקור callback‑של‑ספק (קישור‑נמסר + ערוץ + message‑id, נצפה, חתם/סירב) — השדרה הראייתית מול ה"לקוח שלי לא קיבל מסמכים" בפני המפקח. <strong>"מתנגד" הוא כתיבת‑מנהל מפורשת, מתועדת, מחייבת‑סיבה — לעולם לא מוסק.</strong> חתימה חסרה מוצגת ענבר/ממתין — <strong>לעולם לא אדום</strong>.</li>
+      <li><strong>פרוסה 3</strong>: ענף "בהעברה/נפטר" שמ<strong>דכא</strong> את כפתור‑התזכורת (לא שולחים SMS לנפטר) ומנתב לזרימת מסמכים‑משפטיים (צו ירושה). מצב‑דירה "במחלוקת/בהעברה" שפוטר מטריגר סכום‑מניות=1 ומסמן את תרומת‑ההסכמה כ<strong>בלתי‑מוגדרת</strong> (לא 0 — ספירה כ‑0 ממעיטה בהסכמה האמיתית ויכולה לתקוע פרויקט שעמד כדין בסף על הקבוצה הלא‑שנויה‑במחלוקת).</li>
+    </ul>
+  </section>
+
+  <!-- SECURITY -->
+  <section id="sec">
+    <h2><span class="ic">🔒</span>אבטחה</h2>
+    <div class="note bad">
+      <div class="h">✗ חוסם — חי היום, לא היפותטי</div>
+      <strong>נסח טאבו נושא את ת"ז של כל בעל דירה, אך מסומן <code>sensitive=false</code></strong> תחת הקבוצה הנוכחית {id_document, financial} — לכן הוא רוכב על נתיב‑הטקסט‑הגלוי <strong>וגם נגיש להורדה לכל קבלן</strong>. להוסיף tabu/land_registry לקבוצת‑הרגיש דרך ה‑enum, ולהוסיף contract‑test שמוודא שנסח <strong>מוחרג</strong> מקריאת‑קבלן — לפני שמרחיבים שיתוף.
+    </div>
+    <ul>
+      <li><strong>פיצול SHARE_TOKEN_SECRET</strong> (וaudience ייעודי) מ‑JWT_SECRET לפני שטוקני‑שיתוף מגיעים לעו"ד/בנקים. דליפת סוד‑משותף מזייפת טוקני‑API + provider‑admin; רוטציה כדי להכיל דליפת‑שיתוף הייתה מאפסת כל סשן — מה שהופך רוטציה לבלתי‑אפשרית מעשית.</li>
+      <li><strong>לספק DOC_ENCRYPTION_KEY + מפתחות‑PII נפרדים ל‑staging/prod, ולממש בפועל את רישום ה‑keyId→key.</strong> כיום ENVELOPE_KEY_ID מקודד‑קשיח ל‑0x0001 ו‑decryptEnvelope לא קורא אותו — ההצפנה‑במנוחה (הבקרה שמורידה חומרת‑פריצה מתחת לסף‑הדיווח) היא dev‑בלבד, ומחיקה ב‑crypto‑shred בלתי‑אפשרית בלעדיה. שער קשיח טרום‑פרודקשן לכל שיתוף‑רגיש.</li>
+      <li><strong>לא לנתב את כל ההורדות החיצוניות דרך decrypt‑stream כברירת‑מחדל</strong> — הוא מאגֵר את האובייקט כולו לזיכרון‑ה‑API + מפענח + מסמן‑מים פר‑הורדה (egress בתשלום, הרעבת‑workers, CPU בלתי‑חסום). לשמור ל‑רגיש בלבד; להגביל גודל; לאחסן חבילות‑חמות מסומנות מראש.</li>
+      <li><strong>המחיקה (erasure) "עיוורת‑מסמכים":</strong> erase() עושה crypto‑shred לעמודות‑בעלים + בלובי‑חתימה וכותב erasure_log שמעיד על <em>השלמה</em>, אך לעולם לא נוגע בטבלת‑המסמכים או ב‑R2 שבהם ת"ז יושב בבייטים של ה‑PDF. זה מייצר <strong>ראיית‑ציות שקרית</strong>. להפוך את המחיקה למודעת‑מסמכים, ולעולם לא להעיד על השלמה כשמסמך לא נפתר — להציג "נדרשת בדיקה ידנית".</li>
+      <li>לשמור את מפת‑החתימות ברובד‑ארגון בלבד; שיתוף‑רגיש רק לעו"ד/בנק עם OTP step‑up; סימן‑מים לכל PDF רגיש שמוגש החוצה; ביקורת פר‑הורדה + פאנל‑פעילות למנהל + ביטול מיידי. גישת בית‑משפט/מנהל‑מיוחד נשארת מחוץ ל‑presets (סיבה מתועדת + בקרה כפולה).</li>
+    </ul>
+  </section>
+
+  <!-- REGULATION -->
+  <section id="reg">
+    <h2><span class="ic">⚖️</span>רגולציה — חוק הגנת הפרטיות + תיקון 13</h2>
+    <div class="note warn">
+      <div class="h">⚠ חשיפה חיה היום — כמעט לא‑הנדסית</div>
+      <strong>תיקון 13 (בתוקף מ‑14.8.2025)</strong> הופך למחייבים: <strong>מינוי ממונה הגנת פרטיות (DPO)</strong>, נוהל דיווח‑הפרה לרשות להגנת הפרטיות, ורישום מאגר. <strong>הקנסות חלים על המחדל עצמו</strong> — בלי קשר לפריצה. לעשות קודם ובמקביל; לגדר כל פרוסת‑שיתוף חיצוני מאחורי "קיימת תבנית DPA לגורם".
+    </div>
+    <ul>
+      <li><strong>DPA מול Cloudflare R2</strong> (ה‑DPA הסטנדרטי שלהם מכסה) + תבנית‑DPA לקבלן/נמען, ו<strong>תיעוד בסיס ההעברה החוצה‑לארץ</strong> ברישום‑המאגר. R2 מאחסן ciphertext מחוץ לישראל — כיום העברה‑לחו"ל לא‑מתועדת תחת תקנות 2001.</li>
+      <li><strong>תקנות אבטחת מידע 2017:</strong> ת"ז + חתימות מציבים את EMAPP לכל‑הפחות ברמת‑אבטחה "בינונית", "גבוהה" אם מספר‑הנושאים/נפח‑הרגיש חוצה את הקווים. הבקרות בתוך‑האפליקציה לרוב מקדימות את הרף; הפערים תפעוליים/חוזיים (משמורת מפתח‑פרודקשן, runbook‑הפרה, DPAs).</li>
+      <li><strong>שימור/מחיקה עם carve‑out קשיח לרשומת‑ההסכמה:</strong> להפוך archivedAt משדה‑אירוע ל<strong>שעון‑שימור פר‑סוג‑מסמך</strong>. רשומות חתימה/הסכמה + חבילת‑הראיות לוועדה/רשם <strong>נשמרות</strong> (התדיינות + המפקח על רישום מקרקעין) ו<strong>אסור</strong> שיימחקו ב‑DSAR של בעלים — מחיקת זהות בעלים מסכים לעולם לא תשמיד את ההוכחה שההסכמה התקיימה.</li>
+      <li>להשיג <strong>אישור ראייתי מעו"ד</strong> שקבוצת‑ההסכמה ששרדה את המחיקה (document_hash + signed_at + authMethod + קישור‑בעלים, עם בלוב‑ביומטרי ו‑IP/UA מושחרים) מספיקה להוכחת הסכמה בהתדיינות — או לייצר חבילת‑ראיות נוטריונית לפני ההשחרה.</li>
+      <li>לשמר <code>basis:'share'</code> בכל מקום; לעולם לא להצהיר אחוז סטטוטורי חשוף. "מתנגד" שהמנהל הצהיר הוא <strong>מידע‑דעה רגיש</strong> — מדויק (מוצהר לא מוסק), מבוקר‑גישה, ניתן‑לחשיפה‑ב‑DSAR, ומחיק בנתיב מחיקת‑הבעלים.</li>
+    </ul>
+  </section>
+
+  <!-- REJECTED -->
+  <section id="rejected">
+    <h2><span class="ic">🧭</span>הכיוונים שנחקרו ונדחו</h2>
+    <p class="lead">מה שקלנו ברצינות — ולמה לא. (זה ה"directions researched" שביקשת.)</p>
+    <div class="rej"><div class="o">SFTP כאחסון מסמכים ראשי (הנחת‑העלות שלך)</div><div class="w">הופך את המטרה: SFTP מנוהל ≈ $221/חודש (פי 560 מ‑$0.39 של R2), ועצמי‑מאוחסן מאלץ לבנות מחדש — גרוע יותר — את הסריקה, ההצפנה, ה‑URLs החתומים, ההרשאה‑פר‑אובייקט והביקורת, על מארח חשוף‑אינטרנט נושא‑PII. לא חוסך, ומוסיף את משטח‑התקיפה הגדול ביותר.</div></div>
+    <div class="rej"><div class="o">מעבר ל‑AWS S3 Standard</div><div class="w">מס egress פר‑GB (~$0.09) בדיוק על שיתוף/הורדות — הפעולה שעליה המוצר בנוי. פי ~27 מ‑R2 היום, והפער <em>גדל</em> עם האימוץ, ללא שום רווח אבטחתי או פיצ'רי.</div></div>
+    <div class="rej"><div class="o">חשבונות חיצוניים אמיתיים (מוגבלים) לאנשי‑מקצוע חוזרים</div><div class="w">ריבוי‑חשבונות — בדיוק מה שאסרת — ומפר את מודל 6‑התפקידים הנעול (שינוי Gate‑2). השמאי שנוגע בפרויקט לשבועיים לעולם לא יסיים הרשמה. טוקנים מצומצמים, לא לוגינים.</div></div>
+    <div class="rej"><div class="o">עץ‑תיקיות (DMS קלאסי) כמודל‑המסמכים</div><div class="w">תיקייה היא מיקום יחיד, אבל למסמך התחדשות יש כמה בתים תקפים (ייפוי‑כוח שייך לבעלים <em>וגם</em> לפרויקט <em>וגם</em> לזרימת‑חתימה). עצים כופים בחירה יחידה שגויה, חסרי סמנטיקה לסימון‑צ'ק‑ליסט, ודורשים N פעולות‑תיוק ידניות — היפך הדוקטרינה.</div></div>
+    <div class="rej"><div class="o">תגיות/מטא חופשי כשדרת‑המודל</div><div class="w">בלי אוצר‑מילים סגור, "נסח"/"נסח טאבו"/"tabu" הופכים לארבע תגיות לסוג אחד; צ'ק‑ליסטים ושער ה‑→approved לא יכולים להסיק על מחרוזות חופשיות. מותר לכל‑היותר מערך‑תוויות משני <em>אחרי</em> שה‑doc_type הסגור עשה את העבודה המבנית.</div></div>
+    <div class="rej"><div class="o">decrypt‑stream כברירת‑מחדל לכל ההורדות החיצוניות</div><div class="w">מעביר בייטים מ‑egress החינמי של R2 ל‑egress בתשלום + buffering בזיכרון + CPU של סימן‑מים — פיצוץ ה‑FinOps שמועצת‑האחסון פספסה. לשמור ל‑רגיש בלבד.</div></div>
+    <div class="rej"><div class="o">חיווט הצ'ק‑ליסט האוטומטי לשער →approved הקשיח ב‑v1</div><div class="w">ייפוי‑כוח שסווג בטעות או ערבות בטיוטה יכולים לסמן שלמות ולקדם פרויקט מעבר לשער שעו"ד לא אישר — רעל משפטי בהקשה אחת. לשלוח מייעץ; לחווט רק אחרי חתימת עו"ד.</div></div>
+  </section>
+
+  <!-- PHASING -->
+  <section id="phasing">
+    <h2><span class="ic">📅</span>שלביות — בסדר הזה, אף פעם לא במקביל</h2>
+    <div class="phase"><div class="ph"><span class="ph-num">0</span>רצפת‑יסוד (במקביל — חוסם כל מה שחיצוני)</div>
+      <div class="what">רצפת‑ציות (מינוי DPO, נוהל‑הפרה, רישום‑מאגר, DPA ל‑R2 + תבנית‑DPA לקבלן, בסיס‑העברה‑חוצה‑לארץ) <strong>במקביל</strong> לשלושה תיקוני‑תשתית: סיווג נסח כרגיש; פיצול SHARE_TOKEN_SECRET; מפתח DOC_ENCRYPTION_KEY נפרד ל‑staging/prod + מימוש רישום keyId→key.</div>
+      <div class="why">קנסות תיקון 13 חיים היום (לא‑הנדסי, ראשון). שלושת התיקונים סוגרים את דליפת‑ה‑PII החיה הגדולה ואת רדיוס‑הפיצוץ של הסוד/מפתח — כל פיצ'ר חיצוני <em>מוסיף</em> חשיפה על היסוד הזה.</div></div>
+    <div class="phase"><div class="ph"><span class="ph-num">1</span>ערך‑עכשיו, אפס חשיפה חדשה</div>
+      <div class="what">מפת‑חתימות פרוסה‑1: מנוף כהבטחת דלתא‑שולית + תזכורת בהקשה (אפס סכמה, אפס PII). טקסונומיית doc_type + קישור‑scope + צ'ק‑ליסט לפי‑סוג‑פרויקט — <strong>מייעץ</strong>.</div>
+      <div class="why">עונה על תלונת ה"מי נגד מי" שלך כבר השבוע, על נתונים שקיימים, ונותן למנהל את פאנל "מה חוסם אישור" — בלי לגעת בסכמה ובלי להרחיב PII.</div></div>
+    <div class="phase"><div class="ph"><span class="ph-num">2</span>עמדה + סיווג, מאושר‑אנושית</div>
+      <div class="what">מחזור‑חיים signature_status מגובה ביומן‑אירועי‑מסירה append‑only; מצב‑דירה "בהעברה/מחלוקת" (פטור מטריגר, הסכמה בלתי‑מוגדרת); מסווג‑אוטו עם אישור‑אנושי חובה על כל סימון‑חוסם‑שער; מחיקה מודעת‑מסמכים + שעון‑שימור עם carve‑out לרשומת‑ההסכמה.</div>
+      <div class="why">הופך "מתנגד" לאמיתי ומגן מול המפקח, מתקן את חור‑המחיקה השקרי, ושומר כל פעולה נושאת‑משקל‑משפטי מאושרת‑אנושית. תלוי בטקסונומיה.</div></div>
+    <div class="phase"><div class="ph"><span class="ph-num">3</span>שיתוף חיצוני — מהצר ביותר והלאה</div>
+      <div class="what">הכללת shares → external_share עם presets לפי‑גורם; ברירת‑מחדל scope צר (בניין, לא פרויקט); allow_sensitive מגודר ב‑OTP + אישור + סיבה + תבנית‑DPA בתיק; decrypt‑stream + סימן‑מים ל‑רגיש בלבד; חבילת‑בעלים דחויה עד קישור owner↔document.</div>
+      <div class="why">שיתוף מוסיף את חשיפת‑ה‑PII הגדולה ביותר — לכן אחרון, רק אחרי שהיסוד, הטקסונומיה, המפתחות והמחיקה הוכחו.</div></div>
+  </section>
+
+  <!-- OPEN DECISIONS -->
+  <section id="open">
+    <h2><span class="ic">❓</span>החלטות פתוחות — דורשות אותך (עם המלצה לכל אחת)</h2>
+    <div class="q"><div class="qq">1. מהן תבניות הצ'ק‑ליסט המחייבות לכל מסלול, והאם לחווט אותן לשער →approved הקשיח?</div>
+      <div class="rec"><b>המלצה:</b> להשיג חתימת עו"ד על הסט‑הנדרש לכל מסלול (פינוי‑בינוי דורש הסכמי‑פינוי פר‑דירה + סף‑הסכמה גבוה יותר + ערבויות חוק‑המכר; חיזוק לא). לשלוח את הצ'ק‑ליסט <strong>מייעץ מיד</strong>; לחווט לשער <strong>רק</strong> אחרי חתימת עו"ד. הנדסה לא מנחשת את הסט המשפטי.</div></div>
+    <div class="q"><div class="qq">2. האם קבוצת‑ההסכמה ששרדה מחיקה מספיקה להוכחת הסכמה בהתדיינות בפני המפקח?</div>
+      <div class="rec"><b>המלצה:</b> אישור ראייתי מעו"ד. אם לא מספיק — לייצר חבילת‑ראיות נוטריונית/מיוצאת <em>לפני</em> ההשחרה הביומטרית. כך או כך, מחיקה לעולם לא תשמיד את ההוכחה שההסכמה התקיימה.</div></div>
+    <div class="q"><div class="qq">3. מי ה‑DPO (ממונה הגנת פרטיות), והאם DPO במיקור‑חוץ/חלקי מקובל לצוות של 2 מפתחים?</div>
+      <div class="rec"><b>המלצה:</b> למנות DPO במיקור‑חוץ <strong>עכשיו</strong> (תיקון 13 מתיר; המינוי עצמו הוא הפריט המחייב נושא‑הקנס). ה‑DPO מאשר את תבניות‑השימור וההודעה — כך הציות צף כאישורים בודדים, לא כפרויקט. זה שער ל"מה לשמר/למחוק".</div></div>
+    <div class="q"><div class="qq">4. האם שיתוף "סקירה" לא‑רגיש יישא OTP, ומה ה‑TTL הברירתי — בהינתן שגוש/חלקה הוא וקטור זיהוי‑מחדש דרך הטאבו?</div>
+      <div class="rec"><b>המלצה:</b> להתייחס ל"אין PII" כלא‑מדויק — לקצר TTL ברירתי ל‑14 יום (או פחות), להוסיף ביקורת פר‑הורדה + פאנל‑חריגות למנהל + ביטול בהקשה, ולהציע (או להחיל כברירת‑מחדל) OTP על כל שיתוף שחושף גוש/חלקה.</div></div>
+    <div class="q"><div class="qq">5. crypto‑shred (זריקת‑מפתח) או purge קשיח כמנגנון‑מחיקה, והאם נדרש קישור owner↔document ראשון?</div>
+      <div class="rec"><b>המלצה:</b> כן — לבנות קישור owner_id↔document מסדר‑ראשון כתנאי‑מקדים (הוא גם פותח את פורטל‑הבעלים ואת חבילות‑הבעלים). crypto‑shred דרך רישום‑ה‑keyId כמנגנון ראשי, purge כגיבוי; ה‑erasure_log חייב לרשום documentsShredded ולהציג "נדרשת בדיקה ידנית" במקום להעיד על השלמה כשמסמך נושא‑PII לא נפתר.</div></div>
+  </section>
+
+  <!-- EXPERTS -->
+  <section class="flat" id="experts">
+    <h2 style="padding:0 4px"><span class="ic">👥</span>דעות המומחים שהובילו לסינתזה</h2>
+  </section>
+  <section>
+    <p class="lead">6 דיסציפלינות במקביל, ואז 3 ביקורתיים אדברסריים. תמצית עמדות:</p>
+    <div class="grid">
+      <div class="card"><div class="t">ארכיטקטורת מסמכים</div><div class="d">enum סגור של סוגי‑מסמך + קישור‑scope מטיפוס + צ'ק‑ליסט לפי‑מסלול + מסווג היוריסטי בהקשה‑אחת. לא תיקיות, לא תגיות.</div></div>
+      <div class="card"><div class="t">שיתוף וגישה</div><div class="d">הכללת ה‑shares ל‑external_share לפי‑גורם, presets מהצר ביותר, טוקנים מצומצמים פגי‑תוקף + סימן‑מים — לא חשבונות.</div></div>
+      <div class="card"><div class="t">כלכלת אחסון</div><div class="d">R2 מנצח החלטית; egress הוא המנוף; SFTP רק כסף‑כניסה מוסדי, לעולם לא כחנות. מודל‑עלות מספרי מלא.</div></div>
+      <div class="card"><div class="t">אבטחה</div><div class="d">חוסם חי: נסח חשוף לקבלנים. + פיצול סוד‑שיתוף, מפתח‑פרודקשן אמיתי, מחיקה מודעת‑מסמכים, decrypt‑stream ל‑רגיש בלבד.</div></div>
+      <div class="card"><div class="t">רגולציה (ישראל)</div><div class="d">תיקון 13: DPO + רישום + נוהל‑הפרה — קנסות חיים. carve‑out שימור לרשומת‑הסכמה; DPA ל‑R2 + העברה‑חוצה‑לארץ.</div></div>
+      <div class="card"><div class="t">בהירות חתימות (UX)</div><div class="d">מפת‑חתימות + כרטיס‑מנוף (דלתא‑שולית, לא סכום‑מניות) + מחזור‑חיים מוצהר‑מנהל; "מתנגד" לעולם לא מוסק, חסר ≠ אדום.</div></div>
+    </div>
+    <h3>פסקי ה‑red‑team</h3>
+    <ul>
+      <li><strong>מנהל פרויקט מהשטח:</strong> ה"פעולה אחת" שורד מגע עם המציאות רק אם הסיווג האוטומטי מאשר‑אנושית על פריטים חוסמי‑שער, והשיתוף מצומצם פר‑דירה כדי לכבד את דרישת‑הבידוד של עו"ד.</li>
+      <li><strong>סקפטיקן אבטחה/עלות:</strong> ניתוח ה‑SFTP כן והגון; הפיצוץ האמיתי הוא decrypt‑stream כברירת‑מחדל; כל שיתוף‑רגיש חייב OTP + סימן‑מים + maxDownloads.</li>
+      <li><strong>צייד edge‑case רגולטורי:</strong> תיקון 13 והעברה‑חוצה‑לארץ תומחרו בחֶסר; שימור‑מול‑מחיקה הוא מוקש — carve‑out לרשומת‑הסכמה הוא חובה, לא nice‑to‑have.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <div class="divider"></div>
+    <p style="margin-top:18px">הופק על‑ידי מועצת העיצוב של EMAPP × Claude · מחקר רב‑סוכני (11 סוכנים, 4 שלבים) · 20 ביוני 2026<br>
+    מסמך החלטה — לא קוד. הצעדים הבונים מתוארים ב‑<code>docs/E2-SLICE-LEDGER.md</code> לאחר שתבחר כיוון.</p>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -82,6 +82,26 @@ export class ProjectsController {
     return { data: await this.projects.signatureProgressApartments(user, id) };
   }
 
+  // E2 Wave-2 B4 — apartment HOLDOUTS ("מי תקוע / who's stuck"): the NAMED list of
+  // the apartment's active owners who have NOT signed. The COARSE gate is
+  // `projects.read` (everyone who can see the board reaches here); the FINE
+  // `view_owner_pii` capability gate + project/apartment visibility (no-oracle
+  // 404) + the per-access AUDIT live in the service. This is the ONLY
+  // signature-progress surface that returns owner NAMES — it mirrors the owners
+  // reveal-pii pattern (capability-gated + audited). Returns ownerId + name +
+  // apartmentNumber ONLY under `data.holdouts`; NEVER national_id/phone.
+  @Get(':id/signature-progress/apartments/:apartmentId/holdouts')
+  @RequirePermission('projects.read')
+  async signatureProgressHoldouts(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', UuidParam) id: string,
+    @Param('apartmentId', UuidParam) apartmentId: string,
+  ) {
+    return {
+      data: { holdouts: await this.projects.signatureProgressHoldouts(user, id, apartmentId) },
+    };
+  }
+
   @Post()
   @RequirePermission('projects.create')
   async create(

@@ -191,6 +191,44 @@ export const ListDocumentsQuery = z
   .strict();
 export type ListDocumentsQueryDto = z.infer<typeof ListDocumentsQuery>;
 
+/**
+ * NS1 (server-side search, MASTER-PLAN-V13 Wave B) — the documents-search
+ * `scope` filter. Narrows by the document's PARENT linkage:
+ *   - `project`   — docs attached directly to a project (project_id NOT NULL).
+ *   - `apartment` — docs attached to an apartment (apartment_id NOT NULL).
+ *   - `org`       — org-level docs (neither parent set).
+ * Absent → no scope filter (all visible docs). This does NOT widen visibility:
+ * the agent record-scoping + archived/scan/sensitive rules still apply on top.
+ */
+export const DocumentScopeEnum = z.enum(['project', 'apartment', 'org']);
+export type DocumentScope = z.infer<typeof DocumentScopeEnum>;
+
+/**
+ * GET /documents/search — name substring search + type/scope filters, keyset-
+ * paginated (D.16; never offset). `q` is required (the search verb). `type`
+ * filters by the curated DocumentTypeEnum; `scope` by parent linkage. Respects
+ * the SAME visibility rules as the list endpoint (agent record-scoping,
+ * archived excluded by default, scan/sensitive gates on download unchanged) —
+ * it never widens what a caller can see.
+ */
+export const DocumentSearchQuery = z
+  .object({
+    q: z.string().trim().min(1).max(255),
+    limit: z.coerce.number().int().min(1).max(100).default(25),
+    cursor: z.string().min(1).optional(),
+    type: DocumentTypeEnum.optional(),
+    scope: DocumentScopeEnum.optional(),
+    /** `'true'` searches ARCHIVED docs too (default false — same posture as the
+     *  list endpoint). Explicit enum (NOT z.coerce.boolean). */
+    archived: z
+      .enum(['true', 'false'])
+      .optional()
+      .default('false')
+      .transform((v) => v === 'true'),
+  })
+  .strict();
+export type DocumentSearchQueryDto = z.infer<typeof DocumentSearchQuery>;
+
 /** POST /documents response — the document + a short-lived presigned PUT.
  * `uploadUrl` is a bearer credential: never logged, short TTL.
  *

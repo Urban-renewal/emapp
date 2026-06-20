@@ -697,9 +697,33 @@ export const UpdateProjectInput = z
   .superRefine(refineMilestonesVsTarget);
 export type UpdateProject = z.infer<typeof UpdateProjectInput>;
 
-/** GET list query — cursor pagination only (D.16; never offset). */
+/**
+ * NS1 (server-side search, MASTER-PLAN-V13 Wave B) — the project-list segment
+ * filter. SYSTEM segments computed server-side from the signature-pulse facts
+ * (NOT a free-text label):
+ *   - `stalled`   — no signed signature in the last PULSE_STALLED_DAYS days.
+ *   - `expiring`  — a pending request expiring within PULSE_EXPIRING_SOON_DAYS.
+ *   - `mine`      — projects the CALLER is actively assigned to (agent scope;
+ *                   for a manager/viewer this still means "assigned to me").
+ */
+export const ProjectSegmentEnum = z.enum(['stalled', 'expiring', 'mine']);
+export type ProjectSegment = z.infer<typeof ProjectSegmentEnum>;
+
+/**
+ * GET list query — cursor pagination only (D.16; never offset).
+ *
+ * NS1 — additive server-side search/filter params. ALL optional; when ALL are
+ * absent the endpoint behaves EXACTLY as before (same rows, same order). `q` is
+ * a name substring (trigram ILIKE); `status` is the D.18 status enum; `segment`
+ * is a system segment (see ProjectSegmentEnum).
+ */
 export const ListProjectsQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   cursor: z.string().min(1).optional(),
+  /** Name substring search (case-insensitive). Trimmed, bounded; an
+   *  all-whitespace / empty value is treated as "no filter". */
+  q: z.string().trim().min(1).max(120).optional(),
+  status: ProjectStatusEnum.optional(),
+  segment: ProjectSegmentEnum.optional(),
 });
 export type ListProjectsQueryDto = z.infer<typeof ListProjectsQuery>;

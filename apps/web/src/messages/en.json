@@ -405,6 +405,11 @@
       "hint": "Resident management is handled via the project's buildings.",
       "cta": "Open buildings list"
     },
+    "signaturesEmpty": {
+      "title": "No consent data for this project yet",
+      "hint": "To start collecting signatures, add the project's buildings and apartments.",
+      "cta": "Add buildings and apartments"
+    },
     "docsTab": {
       "title": "Documents, messages and signatures",
       "hint": "Documents and messages are org-wide. Signature requests are created per project.",

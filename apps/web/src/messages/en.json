@@ -434,7 +434,7 @@
       "removeBuilding": "Remove",
       "buildingNumberLabel": "Address {n}",
       "consentTarget": "Owner consent target (%)",
-      "consentTargetHint": "Defaulted from the project type (~66% per the 2023 reform). You can override it.",
+      "consentTargetHint": "We pre-filled a suggested target from the project type (~66% per the 2023 reform). Approve it or adjust as needed.",
       "milestones": {
         "title": "Intermediate targets",
         "hint": "Staged targets to track signature-collection progress (e.g. 25% → 50% → target). Each must be at or below the consent target.",

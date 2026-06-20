@@ -65,16 +65,19 @@ const SRC = join(__dirname);
  * Frozen baseline — re-measured 2026-06-07 after the P1-2 adversarial
  * probe pass added `rgb()`/`rgba()` to the scan (the original hex+hsl
  * count of 14/7 was blind to ~44 inline `rgba()` literals — 76% of the
- * real debt). True count: 58 inline-color occurrences across 9 files —
+ * real debt). True count was 58 inline-color occurrences across 9 files —
  * the two sidebars (pc-sidebar 20, sidebar 13) and tenant portal (13)
  * dominate, plus the login chrome (5), the sign signature-canvas SVG
  * strokes (3), the notifications bell shadow, and members /
- * notifications / projects-new (1 each). Ratchets DOWN only. If you
- * remove an inline color and this test fails with a smaller number,
- * lower these.
+ * notifications / projects-new (1 each). The e2 wave-4 c5 re-skin of
+ * `projects/new` retired its single inline `#fff` (the stepper bubble
+ * moved to the `text-white` class), dropping the floor to **57
+ * occurrences across 8 files** (projects/new left the list entirely).
+ * Ratchets DOWN only. If you remove an inline color and this test fails
+ * with a smaller number, lower these.
  */
-const BASELINE_OCCURRENCES = 58;
-const BASELINE_FILES = 9;
+const BASELINE_OCCURRENCES = 57;
+const BASELINE_FILES = 8;
 
 /** Hex color literal: #rgb, #rgba, #rrggbb, #rrggbbaa. */
 const HEX_COLOR = /#[0-9a-fA-F]{3,8}\b/g;

@@ -10,6 +10,7 @@ import type { DocumentViewModel } from '@/models/document.vm';
 const TYPE_LABELS_HE: Record<string, string> = {
   // real urban-renewal types (BE seeds/imports)
   agreement: 'הסכם',
+  land_registry: 'נסח טאבו',
   blueprint: 'תוכנית / שרטוט',
   regulation: 'תקנון / רגולציה',
   permit: 'אישור / היתר',
@@ -24,6 +25,7 @@ const FALLBACK_LABEL_HE = 'מסמך';
 
 const TYPE_LABELS_EN: Record<string, string> = {
   agreement: 'Agreement',
+  land_registry: 'Land registry extract',
   blueprint: 'Blueprint',
   regulation: 'Regulation',
   permit: 'Permit',

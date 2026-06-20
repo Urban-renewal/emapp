@@ -29,6 +29,7 @@ export const DocumentTypeEnum = z.enum([
   // REAL urban-renewal types the BE seeds/imports use (these were the
   // DV-MGR-DOCS gap — the FE enum didn't include them):
   'agreement', // הסכם — the core urban-renewal signed doc
+  'land_registry', // נסח טאבו — carries EVERY owner's national_id → ALWAYS sensitive
   'blueprint', // תוכנית / שרטוט
   'regulation', // תקנון / רגולציה
   // legacy generic types (kept for back-compat with existing data + uploads):

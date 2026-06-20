@@ -26,6 +26,10 @@ import {
   CreateProjectAssignmentInput,
   CreateProjectInput,
   CreateShareInput,
+  CreateExternalShareInput,
+  ExtendExternalShareInput,
+  ListExternalSharesQuery,
+  UpdateExternalShareInput,
   CreateTaskInput,
   ListApartmentsQuery,
   ListAuditQuery,
@@ -733,6 +737,100 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/shares/:id',
     auth: 'AuthGuard + TenantGuard (Manager)',
     summary: 'Revoke the share (revokedAt + revokedBy — lifecycle, not physical). Idempotent. 204.',
+    response: '(204 No Content)',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  // X-S2/X-S3 (V13) — generalized party-typed external_share grants.
+  {
+    method: 'GET',
+    path: '/api/v1/external-shares',
+    auth: 'AuthGuard + TenantGuard',
+    summary:
+      'List ACTIVE external_share grants for the org, cursor-paginated. Optional ?partyType filter. Suspended org → empty (inert). RLS org isolation.',
+    request: ListExternalSharesQuery,
+    response:
+      '{ "data": [ {ExternalShare} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/external-shares',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'Create a party-typed external grant. Server re-validates scope_type + permissions + allow_sensitive + TTL against the party preset CEILING (fail-closed, narrows-only). scope_ids must resolve in-org.',
+    request: CreateExternalShareInput,
+    response: '{ "data": { ...ExternalShare } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'exceeds_ceiling',
+      'invalid_scope',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/external-shares/:id',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'Update an active grant. NARROWS-ONLY: rejects any widening beyond the party ceiling OR the grant current footprint (scope/permissions/sensitive/otp).',
+    request: UpdateExternalShareInput,
+    response: '{ "data": { ...ExternalShare } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'exceeds_ceiling',
+      'cannot_widen',
+      'invalid_scope',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/external-shares/:id/extend',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'Push expires_at FORWARD only, capped at the party ceiling TTL from now. Refuses to shorten via extend.',
+    request: ExtendExternalShareInput,
+    response: '{ "data": { ...ExternalShare } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'not_forward',
+      'exceeds_ceiling',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/external-shares/:id/resend',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'Audited re-issue marker (bumps updated_at + logs). The OTP-access + delivery channel is X-S4. Suspended/missing/revoked → 404.',
+    response: '{ "data": { ...ExternalShare } }',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/external-shares/:id',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'Revoke the grant (revoked_at + revoked_by — immediate, no physical delete). Idempotent. 204.',
     response: '(204 No Content)',
     errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
@@ -1446,6 +1544,16 @@ const ENDPOINTS: Endpoint[] = [
       'E2 Wave-2 B4 — apartment HOLDOUTS ("מי תקוע / who\'s stuck"): the NAMED list of the apartment\'s active owners who have NOT signed. The ONLY signature-progress surface returning owner NAMES → view_owner_pii-gated + audited per access (ISO A.12.4), mirroring owners reveal-pii. No-oracle 404 for cross-org / unassigned-agent / apartment-not-in-project. Returns ownerId + name + apartmentNumber ONLY; NEVER national_id/phone.',
     response: '{ "data": { "holdouts": [ {ApartmentHoldout: ownerId, name, apartmentNumber} ] } }',
     errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/projects/:id/leverage',
+    auth: 'AuthGuard + TenantGuard (projects.read; FINE view_owner_pii name-fidelity downgrade in service)',
+    summary:
+      'Battle-Map BM-1 — LEVERAGE scorer: the single not-yet-fully-signed active owner whose signature moves the project headline share-weighted consent % the MOST toward target. Ranked by MARGINAL-DELTA-TO-HEADLINE (the equal-apartment-weighted average), NOT raw share-sum. Single-source with the board consent CTE. No-oracle 404 for cross-org / unassigned-agent. ownerName is view_owner_pii-gated + audited (project.leverage_revealed) — when the cap is absent the leverage is still returned WITHOUT the name (apartment + delta only). NEVER national_id/phone. leverage is null when all signed or none movable.',
+    response:
+      '{ "data": { projectId, currentPct, basis:"share", leverage: { ownerId, ownerName|null, apartmentId, apartmentLabel, ownerSharePctInApartment, projectedPct, crossesThreshold } | null } }',
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'POST',

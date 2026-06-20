@@ -274,6 +274,31 @@ async function installStubs(page: import('@playwright/test').Page): Promise<Chai
     });
   });
 
+  // E2 Wave-2 B1 — the board-first home (the landing surface after login) is a
+  // client island that fetches /org/signature-pulse on mount. The benign
+  // catch-all above answers every GET with `{ data: [] }`, which FAILS the
+  // home's SignaturePulseSchema parse (it expects { buckets, attention,
+  // needsHuman }) → the home would render its DataState error panel. Stub a
+  // valid (all-clear) pulse so the home renders its calm content cleanly and
+  // the §P0-3 console guard stays green. attention:[] → the reward empty-state.
+  await page.route('**/api/v1/org/signature-pulse', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          buckets: { stalled: 0, expiringSoon: 0, needsHuman: 0, onTrack: 0 },
+          attention: [],
+          needsHuman: [],
+        },
+      }),
+    });
+  });
+
   // Browser-side /me — permission gates (the SSR /me is served by the
   // Node-side mock backend, out of page.route reach).
   await page.route('**/api/v1/me', async (route) => {

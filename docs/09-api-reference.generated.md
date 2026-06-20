@@ -2325,6 +2325,23 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`, `http_429`
 
+### GET /api/v1/projects/:id/leverage
+
+- **Auth:** AuthGuard + TenantGuard (projects.read; FINE view_owner_pii name-fidelity downgrade in service)
+- **Summary:** Battle-Map BM-1 — LEVERAGE scorer: the single not-yet-fully-signed active owner whose signature moves the project headline share-weighted consent % the MOST toward target. Ranked by MARGINAL-DELTA-TO-HEADLINE (the equal-apartment-weighted average), NOT raw share-sum. Single-source with the board consent CTE. No-oracle 404 for cross-org / unassigned-agent. ownerName is view_owner_pii-gated + audited (project.leverage_revealed) — when the cap is absent the leverage is still returned WITHOUT the name (apartment + delta only). NEVER national_id/phone. leverage is null when all signed or none movable.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { projectId, currentPct, basis:"share", leverage: { ownerId, ownerName|null, apartmentId, apartmentLabel, ownerSharePctInApartment, projectedPct, crossesThreshold } | null } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
 ### POST /api/v1/projects/:id/signature-campaign
 
 - **Auth:** AuthGuard + TenantGuard (signature_requests.send)

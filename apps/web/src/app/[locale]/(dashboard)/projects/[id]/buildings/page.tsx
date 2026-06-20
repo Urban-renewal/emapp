@@ -71,7 +71,7 @@ export default function BuildingsPage() {
                       <> · {b.createdRelative}</>
                     </p>
                     {b.isArchived && (
-                      <span className="mt-1 inline-block rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
+                      <span className="badge badge-neutral mt-1 inline-block">
                         {tp('archived')}
                       </span>
                     )}

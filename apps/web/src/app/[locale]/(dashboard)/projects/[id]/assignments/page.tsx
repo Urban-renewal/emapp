@@ -261,9 +261,7 @@ export default function ProjectAssignmentsPage() {
                       </span>
                     )}
                   </h2>
-                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">
-                    {a.roleInProject}
-                  </span>
+                  <span className="badge badge-neutral">{a.roleInProject}</span>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {a.email && (

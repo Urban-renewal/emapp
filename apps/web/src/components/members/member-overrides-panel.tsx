@@ -152,11 +152,7 @@ export function MemberOverridesPanel({ member, visible }: Props) {
             >
               <span className="flex items-center gap-2">
                 <span
-                  className={
-                    o.effect === 'grant'
-                      ? 'rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800'
-                      : 'rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800'
-                  }
+                  className={o.effect === 'grant' ? 'badge badge-success' : 'badge badge-danger'}
                 >
                   {o.effect === 'grant' ? t('effect.grant') : t('effect.deny')}
                 </span>

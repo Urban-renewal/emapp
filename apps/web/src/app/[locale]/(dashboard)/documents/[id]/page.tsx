@@ -144,9 +144,7 @@ export default function DocumentDetailPage() {
             {data.typeLabel} · {data.sizeLabel} · {data.createdRelative}
           </p>
           {data.isArchived && (
-            <span className="inline-block rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
-              {tp('archived')}
-            </span>
+            <span className="badge badge-neutral inline-block">{tp('archived')}</span>
           )}
         </div>
         <div className="flex items-center gap-2">

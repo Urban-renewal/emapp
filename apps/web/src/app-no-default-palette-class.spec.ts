@@ -33,13 +33,23 @@
  * not a partial-tree under-measure. Original count was 149 across 34 files;
  * E2.0b re-homed `status-badge.tsx` (-8) + `button.tsx` destructive (-2)
  * onto the EMAPP semantic tokens, lowering the floor to 139 occurrences
- * across 32 files (both `components/ui/*` leaks fully retired). The E2
- * reskin then retired the entire **Provider subtree** (9 files, -66:
- * `provider/backups` 13, `system-health` 12, `tenants/[id]/users` 10,
- * `tenants/[id]` 7, `provider` home 6, `tenants` 6, `tenant-suspension-panel`
- * 5, `audit/self` 4, `onboard` 3) onto the EMAPP semantic status tokens,
- * lowering the floor to **73 occurrences across 23 files**. The remaining
- * debt is entirely in `app/**` (non-provider) pages. Ratchets DOWN only.
+ * across 32 files (both `components/ui/*` leaks fully retired). THREE E2
+ * reskins then re-homed further pages onto the semantic tokens, and their
+ * reductions are disjoint so they STACK:
+ *   • dashboard-lists slice (#441 — `imports/[id]`, `owners-list`,
+ *     `notes-list`, `tasks-list`, `tasks/[id]`),
+ *   • ORG-pages slice (#443 — members detail, sig-requests list+detail,
+ *     contractors, documents/notes/apartments/buildings detail, projects
+ *     sub-pages, member-overrides + owner-pii-reveal panels),
+ *   • PROVIDER subtree slice (this branch — 9 files, -66: `provider/backups`
+ *     13, `system-health` 12, `tenants/[id]/users` 10, `tenants/[id]` 7,
+ *     `provider` home 6, `tenants` 6, `tenant-suspension-panel` 5,
+ *     `audit/self` 4, `onboard` 3).
+ * With all three merged the baseline below is re-measured on the merged tree
+ * (the intersection of every side's still-allowed files). The only remaining
+ * default-palette debt is `imports/page.tsx` (the imports LIST page — the
+ * `imports/[id]` DETAIL page was retired by #441), so the reconciled floor is
+ * **2 occurrences across 1 file**. Ratchets DOWN only.
  *
  * HOW TO LOWER THE BASELINE (do this whenever you re-home a component onto the
  * EMAPP semantic classes): run
@@ -58,8 +68,8 @@ import { describe, expect, it } from 'vitest';
 
 const SRC = join(__dirname);
 
-const BASELINE_OCCURRENCES = 73;
-const BASELINE_FILES = 23;
+const BASELINE_OCCURRENCES = 2;
+const BASELINE_FILES = 1;
 
 /**
  * Default Tailwind palette class: a color-bearing utility prefix

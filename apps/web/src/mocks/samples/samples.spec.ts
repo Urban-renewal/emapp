@@ -9,8 +9,10 @@
  * Doc 05 §10 + Doc 11 §2.
  */
 import {
+  ApartmentHoldoutSchema,
   ApartmentOwnerSchema,
   ApartmentSchema,
+  ApartmentSignatureProgressSchema,
   BuildingSchema,
   DocumentSchema,
   ImportErrorSchema,
@@ -19,6 +21,8 @@ import {
   OwnerSchema,
   ProjectSchema,
   SignatureDeliveryReportSchema,
+  SignatureProgressSchema,
+  SignaturePulseSchema,
   SignatureRequestSchema,
   UserProfileSchema,
 } from '@emapp/shared-types';
@@ -31,6 +35,12 @@ import { SAMPLE_IMPORT_ERRORS, SAMPLE_IMPORTS } from './imports';
 import { SAMPLE_OWNERS } from './owners';
 import { SAMPLE_APARTMENT_OWNERS } from './ownerships';
 import { SAMPLE_PROJECTS } from './projects';
+import {
+  SAMPLE_APARTMENT_HOLDOUTS,
+  SAMPLE_APARTMENT_SIGNATURE_PROGRESS,
+  SAMPLE_SIGNATURE_PROGRESS,
+} from './signature-progress';
+import { SAMPLE_SIGNATURE_PULSE, SAMPLE_SIGNATURE_PULSE_ALL_CLEAR } from './signature-pulse';
 import { SAMPLE_SIGNATURE_DELIVERY, SAMPLE_SIGNATURE_REQUESTS } from './signature-requests';
 import { SAMPLE_ME, SAMPLE_USERS } from './users';
 
@@ -93,6 +103,36 @@ describe('SAMPLE_* — schema-parse gate (drift detector)', () => {
       expect(r).not.toHaveProperty('jti');
       expect(r).not.toHaveProperty('token');
     });
+  });
+
+  it('14) SAMPLE_SIGNATURE_PROGRESS parses against SignatureProgressSchema (E2.2-S3 board)', () => {
+    expect(() => SignatureProgressSchema.parse(SAMPLE_SIGNATURE_PROGRESS)).not.toThrow();
+  });
+  it('15) SAMPLE_APARTMENT_SIGNATURE_PROGRESS parse against ApartmentSignatureProgressSchema', () => {
+    SAMPLE_APARTMENT_SIGNATURE_PROGRESS.forEach((a) =>
+      expect(() => ApartmentSignatureProgressSchema.parse(a)).not.toThrow(),
+    );
+    // A `partial` row must exist so the offline "who's stuck" reveal has a target.
+    expect(SAMPLE_APARTMENT_SIGNATURE_PROGRESS.some((a) => a.status === 'partial')).toBe(true);
+  });
+  it('16) SAMPLE_APARTMENT_HOLDOUTS parse against ApartmentHoldoutSchema (B4 — name only, no national_id/phone)', () => {
+    SAMPLE_APARTMENT_HOLDOUTS.forEach((h) => {
+      expect(() => ApartmentHoldoutSchema.parse(h)).not.toThrow();
+      // B4 security invariant — the holdout shape carries the NAME only; the
+      // other PII fields must NEVER appear on this wire surface.
+      expect(h).not.toHaveProperty('national_id');
+      expect(h).not.toHaveProperty('nationalId');
+      expect(h).not.toHaveProperty('phone');
+    });
+  });
+  it('17) SAMPLE_SIGNATURE_PULSE (+ all-clear) parse against SignaturePulseSchema (E2.1)', () => {
+    expect(() => SignaturePulseSchema.parse(SAMPLE_SIGNATURE_PULSE)).not.toThrow();
+    expect(() => SignaturePulseSchema.parse(SAMPLE_SIGNATURE_PULSE_ALL_CLEAR)).not.toThrow();
+    // The attention feed must be NON-empty in the default fixture so the
+    // offline home renders ActionCards (not the empty-state).
+    expect(SAMPLE_SIGNATURE_PULSE.attention.length).toBeGreaterThan(0);
+    // All-clear fixture must be empty so it drives the reward empty-state.
+    expect(SAMPLE_SIGNATURE_PULSE_ALL_CLEAR.attention).toHaveLength(0);
   });
 
   it('13) SAMPLE_OWNERS pass the new MaskedPii regex (closes §v9-M-4 + §v9-P0-1)', () => {

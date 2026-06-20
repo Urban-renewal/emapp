@@ -152,11 +152,7 @@ export default function NoteDetailPage() {
                 <span>{t('updatedAt', { rel: note.updatedRelative })}</span>
               </>
             )}
-            {note.isArchived && (
-              <span className="rounded-full bg-gray-200 px-2 py-0.5 font-medium text-gray-700">
-                {t('archivedBadge')}
-              </span>
-            )}
+            {note.isArchived && <span className="badge badge-neutral">{t('archivedBadge')}</span>}
           </div>
         </div>
         <Button variant="ghost" size="sm" onClick={() => router.push('/notes')}>

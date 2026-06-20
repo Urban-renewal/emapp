@@ -83,14 +83,14 @@ export function NotesListClient() {
               key={n.id}
               className={
                 n.pinned
-                  ? 'rounded-md border border-amber-300 bg-amber-50 p-4'
-                  : 'rounded-md border bg-card p-4'
+                  ? 'rounded-lg border border-status-warning-fg/30 bg-status-warning-bg p-4'
+                  : 'rounded-lg border border-border bg-surface p-4'
               }
             >
               <Link href={`/notes/${n.id}`} className="block">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   {n.pinned && (
-                    <span className="rounded-full bg-amber-200 px-2 py-0.5 font-medium text-amber-900">
+                    <span className="rounded-full bg-status-warning-bg px-2 py-0.5 font-medium text-status-warning-fg">
                       {t('pinned')}
                     </span>
                   )}

@@ -540,6 +540,27 @@
 			"when": 1783263600000,
 			"tag": "0076_message_notification_type",
 			"breakpoints": true
+		},
+		{
+			"idx": 77,
+			"version": "7",
+			"when": 1783350000000,
+			"tag": "0077_document_taxonomy_scope",
+			"breakpoints": true
+		},
+		{
+			"idx": 78,
+			"version": "7",
+			"when": 1783400000000,
+			"tag": "0078_search_indexes",
+			"breakpoints": true
+		},
+		{
+			"idx": 79,
+			"version": "7",
+			"when": 1783500000000,
+			"tag": "0079_external_share",
+			"breakpoints": true
 		}
 	]
 }

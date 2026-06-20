@@ -9,10 +9,12 @@
  * switch without parsing strings.
  */
 import {
+  ApartmentHoldoutsResponseSchema,
   ApartmentSignatureProgressSchema,
   ProjectListItemSchema,
   ProjectSchema,
   SignatureProgressSchema,
+  type ApartmentHoldout,
   type ApartmentSignatureProgress,
   type CreateProject,
   type Project,
@@ -92,6 +94,28 @@ export async function getSignatureProgressApartments(
   const res = await apiClient.get<unknown>(`/projects/${id}/signature-progress/apartments`);
   const data = unwrap(res);
   return ApartmentSignatureProgressListSchema.parse({ data }).data;
+}
+
+// E2 Wave-2 E2.2-S3 / B4 — apartment HOLDOUTS ("מי תקוע / who's stuck"): the
+// NAMED list of an apartment's active owners who have NOT signed. This is the
+// ONLY signature-progress surface that returns owner NAMES, so it is
+// `view_owner_pii`-gated + AUDITED on the BE. The FE therefore loads it ON DEMAND
+// (when the caller expands an apartment), never eagerly for the whole board. A
+// caller lacking the capability gets a 403 → `ApiClientError` with
+// code 'forbidden', which the hook/component renders as the NO-NAME fallback
+// ("דירה N · partial"). Returns ownerId + name + apartmentNumber ONLY — never
+// national_id / phone.
+const ApartmentHoldoutsDataSchema = z.object({ data: ApartmentHoldoutsResponseSchema });
+
+export async function getApartmentHoldouts(
+  projectId: string,
+  apartmentId: string,
+): Promise<ApartmentHoldout[]> {
+  const res = await apiClient.get<unknown>(
+    `/projects/${projectId}/signature-progress/apartments/${apartmentId}/holdouts`,
+  );
+  const data = unwrap(res);
+  return ApartmentHoldoutsDataSchema.parse({ data }).data.holdouts;
 }
 
 export async function createProject(body: CreateProject): Promise<Project> {

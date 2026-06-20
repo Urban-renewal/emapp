@@ -22,9 +22,12 @@ import type {
   CreateProject,
   OrgStats,
   Project,
+  ProjectLeverage,
   ProjectListItem,
   ProjectPulseRow,
+  ProjectSegment,
   ProjectStats,
+  ProjectStatus,
   PulseNeedsHumanRow,
   SignaturePulse,
   SignatureProgress,
@@ -39,7 +42,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql, type SQL } from 'drizzle-orm';
 
 import { resolveOwnerPiiFidelity } from '../../common/authz/agent-capabilities';
 import {
@@ -223,9 +226,100 @@ export class ProjectsService {
     }
   }
 
+  /**
+   * NS1 (server-side search) — the optional project-list search/filter
+   * predicates, additive on top of the existing archived-exclusion + keyset.
+   *
+   *  - `q`      → name substring ILIKE (case-insensitive; trigram-index served).
+   *              The value is bound as a PARAMETER (never string-concatenated)
+   *              and the LIKE metacharacters %/_/\ are escaped so a user typing
+   *              "50%" searches the literal text, not a wildcard. No injection
+   *              surface (drizzle `sql` parameterises ${...}).
+   *  - `status` → exact D.18 status equality (Zod-validated enum at the edge).
+   *  - `segment`→ a SYSTEM segment computed from the SAME signature facts the
+   *              pulse uses, expressed as correlated (NOT) EXISTS subqueries so
+   *              the page stays ONE round-trip and the keyset order is untouched:
+   *                · stalled  — NOT EXISTS a signed request on a project doc in
+   *                             the last PULSE_STALLED_DAYS days.
+   *                · expiring — EXISTS a pending request on a project doc whose
+   *                             expires_at is within PULSE_EXPIRING_SOON_DAYS.
+   *                · mine     — the CALLER is actively assigned to the project.
+   *              The doc-resolution (project-level ∪ apartment-level, archived
+   *              excluded) mirrors signaturePulse's proj_docs CTE exactly.
+   *
+   * Returns the array of predicates (possibly empty); the caller ANDs them into
+   * the existing WHERE. When the query carries none of q/status/segment this is
+   * empty and behaviour is byte-identical to the pre-NS1 list.
+   */
+  private projectSearchFilters(
+    user: AccessTokenPayload,
+    query: { q?: string; status?: ProjectStatus; segment?: ProjectSegment },
+  ): SQL[] {
+    const filters: SQL[] = [];
+    if (query.q) {
+      // Escape LIKE metacharacters so the search is a literal substring.
+      const escaped = query.q.replace(/[\\%_]/g, (c) => `\\${c}`);
+      filters.push(sql`${projects.name} ILIKE ${'%' + escaped + '%'}`);
+    }
+    if (query.status) {
+      filters.push(eq(projects.status, query.status));
+    }
+    if (query.segment === 'mine') {
+      filters.push(sql`EXISTS (
+        SELECT 1 FROM project_assignments pa
+        WHERE pa.project_id = ${projects.id}
+          AND pa.user_id = ${user.sub}
+          AND pa.unassigned_at IS NULL
+      )`);
+    } else if (query.segment === 'stalled') {
+      // The project's signature-bearing docs (project-level ∪ apartment-level,
+      // archived excluded) — same resolution as the pulse. "Stalled" = no
+      // SIGNED request on those docs within the stalled window.
+      filters.push(sql`NOT EXISTS (
+        SELECT 1
+        FROM signature_requests sr
+        WHERE sr.status = 'signed'
+          AND COALESCE(sr.signed_at, sr.created_at) >= now() - (${PULSE_STALLED_DAYS} * interval '1 day')
+          AND sr.document_id IN (
+            SELECT d.id FROM documents d
+              WHERE d.project_id = ${projects.id} AND d.archived_at IS NULL
+            UNION
+            SELECT d.id FROM documents d
+              INNER JOIN apartments a ON a.id = d.apartment_id
+              INNER JOIN buildings b ON b.id = a.building_id
+              WHERE b.project_id = ${projects.id} AND d.archived_at IS NULL
+          )
+      )`);
+    } else if (query.segment === 'expiring') {
+      filters.push(sql`EXISTS (
+        SELECT 1
+        FROM signature_requests sr
+        WHERE sr.status = 'pending'
+          AND sr.expires_at IS NOT NULL
+          AND sr.expires_at <= now() + (${PULSE_EXPIRING_SOON_DAYS} * interval '1 day')
+          AND sr.document_id IN (
+            SELECT d.id FROM documents d
+              WHERE d.project_id = ${projects.id} AND d.archived_at IS NULL
+            UNION
+            SELECT d.id FROM documents d
+              INNER JOIN apartments a ON a.id = d.apartment_id
+              INNER JOIN buildings b ON b.id = a.building_id
+              WHERE b.project_id = ${projects.id} AND d.archived_at IS NULL
+          )
+      )`);
+    }
+    return filters;
+  }
+
   async list(
     user: AccessTokenPayload,
-    query: { limit: number; cursor?: string },
+    query: {
+      limit: number;
+      cursor?: string;
+      q?: string;
+      status?: ProjectStatus;
+      segment?: ProjectSegment;
+    },
   ): Promise<ProjectListPage> {
     const { limit } = query;
     const cur = query.cursor ? decodeCursor(query.cursor) : null;
@@ -238,6 +332,8 @@ export class ProjectsService {
       user.orgId,
       async (tx) => {
         const keyset = cur ? keysetCondition(projects.createdAt, projects.id, cur) : undefined;
+        // NS1 — additive search/filter predicates (empty ⇒ unchanged behaviour).
+        const search = this.projectSearchFilters(user, query);
 
         const stats = statsSubqueries(sql`${projects.id}`);
 
@@ -256,7 +352,7 @@ export class ProjectsService {
                 isNull(projectAssignments.unassignedAt),
               ),
             )
-            .where(and(isNull(projects.archivedAt), keyset))
+            .where(and(isNull(projects.archivedAt), keyset, ...search))
             .orderBy(...keysetOrderBy(projects.createdAt, projects.id))
             .limit(limit + 1);
         }
@@ -264,7 +360,7 @@ export class ProjectsService {
         return tx
           .select({ p: projects, ...stats })
           .from(projects)
-          .where(and(isNull(projects.archivedAt), keyset))
+          .where(and(isNull(projects.archivedAt), keyset, ...search))
           .orderBy(...keysetOrderBy(projects.createdAt, projects.id))
           .limit(limit + 1);
       },
@@ -817,6 +913,259 @@ export class ProjectsService {
         });
 
         return holdouts;
+      },
+      { userId: user.sub },
+    );
+  }
+
+  /**
+   * Battle-Map BM-1 — the LEVERAGE scorer: the single not-yet-fully-signed
+   * active owner whose signature, if flipped to signed, moves the project's
+   * headline share-weighted `consentedPct` the MOST toward target.
+   *
+   * ── WHY MARGINAL-DELTA, NOT SHARE-SUM (the council + red-team correctness
+   * rule) ─────────────────────────────────────────────────────────────────────
+   * The headline (`computeConsentAggregates`) is an EQUAL-APARTMENT-WEIGHTED
+   * average of per-apartment contributions, where apartment k contributes
+   * `clamp(Σ signed-owner share / Σ active-owner share, 0, 1)`. An owner signs
+   * ONCE for the whole project (the consent join is per OWNER across the
+   * project's docs), so flipping owner X to signed adds X's share to the signed
+   * sum of EVERY apartment X co-owns. The headline delta of flipping X is thus
+   *   Δ(X) = Σ_{apt k owned by X, X unsigned}
+   *            ( clamp((signed_k + own_{X,k}) / active_k)
+   *            − clamp( signed_k          / active_k) )  /  totalApartments.
+   * Ranking by raw SHARE-SUM (Σ of X's shares) is WRONG on two counts: (a) the
+   * equal-apartment weighting means an owner spread thinly across many apartments
+   * can out-rank a single large share; (b) the per-apartment clamp means share in
+   * an already-near-complete apartment is wasted. We rank by the EXACT (unrounded)
+   * per-OWNER Δ — summed over the owner's apartments — and only THEN round
+   * `projectedPct`. The reported `apartmentId/apartmentLabel` is the owner's
+   * SINGLE most-impactful apartment (largest per-apartment Δ contribution).
+   *
+   * Reuses the single-source consent machinery: the per-apartment active-share /
+   * signed-share / clamped-contribution definitions are IDENTICAL to
+   * `computeConsentAggregates` (same `relationship='owner' AND ended_at IS NULL`
+   * active set, same signed-detection EXISTS join). `currentPct` itself comes
+   * from `computeConsentAggregates` so the card and the board agree to the point.
+   *
+   * ── PII (mirrors B4 holdouts) ────────────────────────────────────────────────
+   * The winning owner's NAME is returned ONLY when the caller holds
+   * `view_owner_pii` (manager always · agent iff the flag · viewer never). When
+   * the cap is absent we still return the leverage (apartment + delta), with
+   * `ownerName: null`. national_id / phone are NEVER selected. No audit row is
+   * written when no name is revealed; when a name IS revealed it is the same
+   * NAMED-PII reveal as B4 and is audited (`project.leverage_revealed`).
+   *
+   * Gate order (no-oracle): `assertProjectVisible` 404 first; the `view_owner_pii`
+   * decision is a FIDELITY downgrade (name-or-no-name), never a 403 — leverage is
+   * a board-visible surface for everyone with `projects.read`.
+   *
+   * Returns `leverage: null` when there are no movable owners (every active owner
+   * already signed, or no candidate has a positive marginal delta).
+   */
+  async leverage(user: AccessTokenPayload, projectId: string): Promise<ProjectLeverage> {
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        // No-oracle visibility gate FIRST (org-isolation via RLS + agent →
+        // assigned-project scope). Throws NOT_FOUND when invisible.
+        await this.assertProjectVisible(tx, user, projectId);
+
+        // The CURRENT headline — single-source with the board (same CTE). The
+        // candidate scorer below recomputes the SAME contribution shape, so
+        // `currentPct` here and the per-candidate baseline agree.
+        const agg = await this.computeConsentAggregates(tx, projectId);
+        const currentPct = agg.consentedPct;
+        const targetSignaturePct = agg.targetSignaturePct;
+
+        // PII fidelity decision (mirrors B4). Manager always unmasked; agent iff
+        // view_owner_pii; viewer masked. Masked → return leverage WITHOUT name.
+        const fidelity = await resolveOwnerPiiFidelity(tx, user);
+        const reveal = fidelity === 'unmasked';
+
+        // ── Candidate scorer, ONE pass ──────────────────────────────────────
+        // `apt_shares` is the per-apartment active/signed share (identical to
+        // computeConsentAggregates). `owner_apt` is every (unsigned active owner,
+        // apartment) pair with that pair's marginal Δcontribution if the owner
+        // signs. `owner_delta` SUMS those per-apartment deltas PER OWNER (an owner
+        // signs once → flips in all their apartments) and picks the owner's
+        // single most-impactful apartment for display. We rank owners by the
+        // summed delta DESC and round `projectedPct` ONCE off the EXACT current
+        // headline weight. Name decrypted ONLY when `reveal`; never national_id/phone.
+        const result = await tx.execute(sql`
+          WITH proj_apartments AS (
+            SELECT a.id, a.number
+            FROM apartments a
+            INNER JOIN buildings b ON b.id = a.building_id
+            WHERE b.project_id = ${projectId}
+              AND a.archived_at IS NULL
+          ),
+          apt_shares AS (
+            SELECT
+              pa.id AS apartment_id,
+              pa.number AS apartment_number,
+              COALESCE((SELECT SUM(o.share_numerator::numeric / o.share_denominator)
+                 FROM ownerships o
+                 WHERE o.apartment_id = pa.id
+                   AND o.ended_at IS NULL
+                   AND o.relationship = 'owner'), 0) AS active_share,
+              COALESCE((SELECT SUM(o.share_numerator::numeric / o.share_denominator)
+                 FROM ownerships o
+                 WHERE o.apartment_id = pa.id
+                   AND o.ended_at IS NULL
+                   AND o.relationship = 'owner'
+                   AND EXISTS (
+                     SELECT 1
+                     FROM signature_requests sr
+                     INNER JOIN documents d ON d.id = sr.document_id
+                     WHERE sr.owner_id = o.owner_id
+                       AND sr.status = 'signed'
+                       AND d.project_id = ${projectId}
+                   )), 0) AS signed_share
+            FROM proj_apartments pa
+          ),
+          -- The EXACT current headline numerator: Σ over ALL apartments of the
+          -- clamped contribution (identical to computeConsentAggregates'
+          -- consented_weight). Equal-apartment-weighted denominator = COUNT(*).
+          headline AS (
+            SELECT
+              (SELECT COUNT(*)::int FROM proj_apartments) AS total_apartments,
+              COALESCE(SUM(
+                CASE WHEN active_share > 0
+                     THEN LEAST(1, GREATEST(0, signed_share / active_share))
+                     ELSE 0 END), 0) AS current_weight
+            FROM apt_shares
+          ),
+          owner_apt AS (
+            -- Every (UNSIGNED active owner, apartment) pair with that pair's
+            -- marginal Δcontribution if the owner flips to signed.
+            SELECT
+              o.owner_id,
+              s.apartment_id,
+              s.apartment_number,
+              s.active_share,
+              (o.share_numerator::numeric / o.share_denominator) AS own_share,
+              (CASE WHEN s.active_share > 0
+                    THEN LEAST(1, GREATEST(0, (s.signed_share + (o.share_numerator::numeric / o.share_denominator)) / s.active_share))
+                    ELSE 0 END)
+              - (CASE WHEN s.active_share > 0
+                    THEN LEAST(1, GREATEST(0, s.signed_share / s.active_share))
+                    ELSE 0 END) AS delta_contrib
+            FROM ownerships o
+            INNER JOIN apt_shares s ON s.apartment_id = o.apartment_id
+            WHERE o.ended_at IS NULL
+              AND o.relationship = 'owner'
+              AND NOT EXISTS (
+                SELECT 1
+                FROM signature_requests sr
+                INNER JOIN documents d ON d.id = sr.document_id
+                WHERE sr.owner_id = o.owner_id
+                  AND sr.status = 'signed'
+                  AND d.project_id = ${projectId}
+              )
+          ),
+          -- Per-OWNER total delta (signing flips them in ALL their apartments)
+          -- plus their single most-impactful apartment (largest per-apt delta;
+          -- apartment-number then id as deterministic tie-breaks).
+          owner_delta AS (
+            SELECT
+              owner_id,
+              SUM(delta_contrib) AS total_delta,
+              (ARRAY_AGG(apartment_id ORDER BY delta_contrib DESC, apartment_number ASC, apartment_id ASC))[1] AS top_apartment_id,
+              (ARRAY_AGG(apartment_number ORDER BY delta_contrib DESC, apartment_number ASC, apartment_id ASC))[1] AS top_apartment_number,
+              (ARRAY_AGG(own_share ORDER BY delta_contrib DESC, apartment_number ASC, apartment_id ASC))[1] AS top_own_share,
+              (ARRAY_AGG(active_share ORDER BY delta_contrib DESC, apartment_number ASC, apartment_id ASC))[1] AS top_active_share
+            FROM owner_apt
+            GROUP BY owner_id
+          )
+          SELECT
+            od.owner_id,
+            od.top_apartment_id AS apartment_id,
+            od.top_apartment_number AS apartment_number,
+            od.top_own_share AS own_share,
+            od.top_active_share AS active_share,
+            od.total_delta AS delta_contrib,
+            h.total_apartments,
+            h.current_weight,
+            ${
+              reveal
+                ? sql`pgp_sym_decrypt(ow.name_encrypted, current_setting('app.encryption_key'))::text`
+                : sql`NULL::text`
+            } AS owner_name
+          FROM owner_delta od
+          CROSS JOIN headline h
+          INNER JOIN owners ow ON ow.id = od.owner_id AND ow.erased_at IS NULL
+          WHERE od.total_delta > 0
+          ORDER BY od.total_delta DESC,
+                   od.top_apartment_number ASC,
+                   od.owner_id ASC
+          LIMIT 1
+        `);
+        const rows = (result as unknown as { rows: Array<Record<string, unknown>> }).rows;
+        const top = rows[0];
+
+        if (!top) {
+          // All signed, or no movable owner (no positive marginal delta).
+          return { projectId, currentPct, basis: 'share' as const, leverage: null };
+        }
+
+        const totalApartments = Number(top['total_apartments'] ?? 0);
+        const currentWeight = Number(top['current_weight'] ?? 0);
+        const deltaContrib = Number(top['delta_contrib'] ?? 0);
+        const activeShare = Number(top['active_share'] ?? 0);
+        const ownShare = Number(top['own_share'] ?? 0);
+
+        // This owner's own fraction of their (most-impactful) apartment, as a
+        // percent. That apartment has active_share > 0 (it hosted a positive
+        // delta), so this never divides by zero; clamp to [0,100] for safety.
+        const ownerSharePctInApartment =
+          activeShare > 0 ? Math.min(100, Math.max(0, (ownShare / activeShare) * 100)) : 0;
+
+        // projectedPct = round((Σ current contributions + Δowner) / N * 100),
+        // rounded ONCE off the EXACT current weight (never the rounded board %).
+        const projectedPct =
+          totalApartments > 0
+            ? Math.round(((currentWeight + deltaContrib) / totalApartments) * 100)
+            : currentPct;
+
+        const crossesThreshold = targetSignaturePct !== null && projectedPct >= targetSignaturePct;
+
+        const rawName = top['owner_name'];
+        const ownerName =
+          reveal && rawName !== null && rawName !== undefined ? String(rawName) : null;
+
+        // NAMED-PII reveal (only when a name actually left Postgres) — audit it
+        // like B4. Counts/ids only; NEVER the name/national_id/phone.
+        if (ownerName !== null) {
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+            orgId: user.orgId,
+            actorId: user.sub,
+            actorType: 'user',
+            action: 'project.leverage_revealed',
+            targetTable: 'projects',
+            targetId: projectId,
+            afterState: {
+              ownerId: String(top['owner_id']),
+              apartmentId: String(top['apartment_id']),
+            },
+            sessionId: user.sid,
+          });
+        }
+
+        return {
+          projectId,
+          currentPct,
+          basis: 'share' as const,
+          leverage: {
+            ownerId: String(top['owner_id']),
+            ownerName,
+            apartmentId: String(top['apartment_id']),
+            apartmentLabel: String(top['apartment_number']),
+            ownerSharePctInApartment,
+            projectedPct,
+            crossesThreshold,
+          },
+        };
       },
       { userId: user.sub },
     );

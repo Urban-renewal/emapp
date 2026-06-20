@@ -52,3 +52,37 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   // Team messaging (migration 0076) — a new message arrived in a conversation.
   'message_received',
 ]);
+
+// X-S2 (V13) — external-share party taxonomy (migration 0079). The KIND of
+// external party a share grants access to. Each value has a server-side preset
+// CEILING (the widest scope+perms it may ever receive) defined alongside the
+// schema in `external-share.ts`; the service can only NARROW from the ceiling,
+// never widen. ADDITIVE: new party types append here (+ a ceiling entry).
+export const externalSharePartyTypeEnum = pgEnum('external_share_party_type', [
+  'developer',
+  'tenant_lawyer',
+  'developer_lawyer',
+  'bank',
+  'supervisor',
+  'appraiser',
+  'surveyor',
+  'committee',
+  'special_admin',
+]);
+
+// X-S2 (V13) — external-share scope granularity (migration 0079). What the
+// `scope_ids` uuid[] points AT: whole projects, specific buildings, or specific
+// apartments. The preset ceiling per party_type also pins the WIDEST scope_type
+// allowed (e.g. an appraiser may be apartment-scoped only, never project-wide).
+export const externalShareScopeTypeEnum = pgEnum('external_share_scope_type', [
+  'project',
+  'building',
+  'apartment',
+]);
+// DH1 (migration 0077) — the closed document-taxonomy SCOPE enum. A document
+// hangs off exactly one scope: the org as a whole, a project, an apartment, or
+// (new) a single owner. Paired with `documents.doc_scope_id` (the typed target
+// id; NULL only for 'org') under a DB CHECK that keeps the two consistent. This
+// SUPERSEDES the ad-hoc project_id/apartment_id nullable columns as the
+// canonical scope concept; those columns are retained for back-compat.
+export const docScopeEnum = pgEnum('doc_scope', ['org', 'project', 'apartment', 'owner']);

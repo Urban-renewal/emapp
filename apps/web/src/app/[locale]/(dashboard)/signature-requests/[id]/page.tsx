@@ -142,11 +142,7 @@ export default function SignatureRequestDetailPage() {
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold">{t('detailTitle')}</h1>
             <StatusBadge intent={data.intent}>{data.statusLabel}</StatusBadge>
-            {data.isExpired && (
-              <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
-                {t('expired')}
-              </span>
-            )}
+            {data.isExpired && <span className="badge badge-danger">{t('expired')}</span>}
           </div>
           <p className="text-xs text-muted-foreground">
             {t('createdAt', { rel: data.createdRelative })}
@@ -178,7 +174,7 @@ export default function SignatureRequestDetailPage() {
       {canRetrieveLink && data.status === 'pending' && (
         <p className="text-xs text-muted-foreground">{t('copyLinkHint')}</p>
       )}
-      {linkCopied && <p className="text-xs text-emerald-700">{t('copyLinkConfirm')}</p>}
+      {linkCopied && <p className="text-xs text-status-success-fg">{t('copyLinkConfirm')}</p>}
 
       {actionError && <p className="text-sm text-destructive">{actionError}</p>}
 

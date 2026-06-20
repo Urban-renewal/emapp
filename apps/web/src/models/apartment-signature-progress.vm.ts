@@ -29,3 +29,22 @@ export interface ApartmentSignatureProgressViewModel {
   /** Status chip intent — success=consented, warning=partial, neutral=none. */
   intent: 'success' | 'warning' | 'neutral';
 }
+
+/**
+ * E2 Wave-2 E2.2-S3 / B4 — apartment HOLDOUT ViewModel ("מי תקוע / who's stuck").
+ *
+ * One active owner of an apartment who has NOT signed. This is the ONLY
+ * signature-progress shape that carries owner PII (the NAME), so it is loaded
+ * ON DEMAND from the `view_owner_pii`-gated + audited B4 endpoint — never eagerly
+ * for the whole board. The adapter bidi-strips the name; the component still
+ * wraps it in `<NameDisplay>` at render (§v9-H-3 defense in depth). `national_id`
+ * and `phone` are NEVER present.
+ */
+export interface ApartmentHoldoutViewModel {
+  /** owners.id — stable React key. */
+  ownerId: string;
+  /** Owner display name (bidi-stripped). Null for a named-less shell owner. */
+  name: string | null;
+  /** The apartment's number/label (system-controlled, bidi-stripped). */
+  apartmentNumber: string;
+}

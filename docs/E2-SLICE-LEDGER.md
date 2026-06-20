@@ -14,26 +14,62 @@ not this file); (4) for each open PR, `gh pr view <n>` + check the branch worktr
 the merge-gate (`docs/E2-MERGE-GATE.md`) govern HOW to proceed. Background agents + the in-session task list do
 NOT survive a crash — git + GitHub + this file + the memories do, so they are the source of truth.
 
-**As of 2026-06-19 (Wave 1 done, Wave 2 starting):**
+**As of 2026-06-20 (Chrome BACK; CENTERPIECE + 3 RESKINS real-Chrome-QA'd + MERGED; 2 reskins HELD on env):**
 
 - **MERGED — Wave 0 (10):** S0-SEC #415 · PERF #416 · M0+G6 #417 · N15 #418 · E2.0 #419 · E2.0b #420 · M1 #421 ·
-  P-TZ-1 #422 · C2 #423 · ConfirmDialog #413(pre). Ledger #424 · merge-gate doc #429 · resume-point #431.
-- **MERGED — Wave 1 + follow-ups:** B0 consent #426 · B5 state-machine+concurrency #428 · C13 auth re-skin #427
-  (QA PASS) · import-stats #425 · **sidebar 14→5 #430** (real-Chrome QA PASS + fixed a real e2e regression: j9
-  manager nav assertion had to expand the new collapsed group; j11 provider was a flake) · **consent-CTE
-  single-source refactor #432** (de-duped B0/B5; specs 11/11 + 31/31).
-- **IN FLIGHT:** **B1 `GET /org/signature-pulse` #?** (BE, agent building — the board-first home's data feed +
-  rankAttention scorer; security-review pending). · **#433 E2.2-S1** (project-detail signatures-first tab
-  default + empty-CTA) — CI green, **QA-STAGED: awaiting real-Chrome walk (Chrome extension disconnected; owner
-  away)**.
-- **⚠️ CHROME-DOWN POSTURE (current):** the Claude-in-Chrome extension is disconnected (owner's machine/Chrome
-  likely restarted while away). The real-Chrome QA gate (`docs/E2-MERGE-GATE.md`) requires it for UI slices.
-  RULE while down: **BE slices merge freely; FE slices build to CI-green + agent-headless + code-review and
-  QUEUE as "QA-staged" — do NOT merge a UI slice un-QA'd.** Batch-walk all QA-staged FE the moment Chrome
-  reconnects, then merge. Retry Chrome when an FE slice is ready, not every turn. #433 is first in the QA queue.
-- **NEXT:** B1 merges → **B4 holdouts** (BE; overlaps B1 on gen-api-docs registry/shared-types → sequence after
-  B1) → then **E2.1 board-first home + E2.2-S3 board = the centerpiece** (FE — will build + QA-stage). Plus S4
-  search, C5 projects/new (FE, QA-stage).
+  P-TZ-1 #422 · C2 #423 · ConfirmDialog #413(pre). Ledger #424 · merge-gate #429 · resume #431 · #434.
+- **MERGED — Wave 1:** B0 #426 · B5 #428 · C13 #427 · import-stats #425 · sidebar 14→5 #430 (QA PASS) ·
+  consent-CTE refactor #432.
+- **MERGED — Wave 2 BE:** **B1 signature-pulse #435** (security PASS) · **B4 holdouts #436** (security PASS).
+- **✅ MERGED — Wave 2 CENTERPIECE (real-Chrome QA in owner's Chrome, 2026-06-20):**
+  - **#437 E2.1 mission-control HOME** (e50ffe1) — QA PASS all axes (greeting + pulse sentence + 5 ranked
+    ActionCards from B1 + explain-chip w/ aria-controls + basis label on every card; B1 wire zero-PII; single
+    aggregate call, no N+1). **FOUND+FIXED a real bug in QA: the `text-muted` invisibility trap** — bare
+    `text-muted` resolves to shadcn `muted.DEFAULT` (#f5f5f4, ~1.0:1 contrast = invisible); fixed to
+    `text-text-muted` (#64748b, AA) + pulse promoted to `text-text` (commit on the branch pre-merge). Unit tests
+    passed BUT the text was visually invisible — exactly why real-Chrome QA is mandatory.
+  - **#438 E2.2-S3 board** (4d792ed) — QA PASS (ThresholdProgress "N מתוך M דירות · % · לפי שיעור הבעלות" + basis
+    label legible 4.8:1; never-null zero-state; per-apartment drill-down; **"מי תקוע" on-demand gated holdout
+    name reveal works — "מירי בר" rendered for manager**, name-only, NameDisplay-wrapped; B4 properly authed).
+  - **#433 E2.2-S1** (4149deb) — QA PASS (board/signatures tab now FIRST + default-selected; basis label present;
+    clean console; no redirect loop).
+  - **#411 CLOSED** (superseded by merged #437).
+- **🔎 FINDINGS carried (follow-ups, NOT blockers):**
+  - **(F-a) `text-muted` trap is SYSTEMIC RISK in the reskins.** The palette ratchet WHITELISTS `text-muted` as
+    "semantic" so it never flags the invisible-text bug. Before/while QA-ing each reskin, GREP the diff for added
+    bare `text-muted` (not `text-text-muted`) and fix → `text-text-muted`. Consider a follow-up guard that bans
+    bare `text-muted` as a FOREGROUND utility.
+  - **(F-b) apartment designation ambiguity (pre-existing, not #438).** The board per-apartment rows show "דירה N"
+    with no building/floor qualifier, so same-numbered apartments across buildings render identically (e.g. two
+    "דירה 1 · 0/1 חתמו"). The apartments ARE distinct (distinct ids, no key warning, count correct). Follow-up:
+    include floor/building in the `designation` (signature-progress adapter / `boardApartments.row` i18n).
+- **✅ MERGED — RESKINS (real-Chrome QA, 2026-06-20):**
+  - **#439 C5 projects/new** (bd751b9) — **FOUND+FIXED 29 instances of the F-a `text-muted` trap** (every hint +
+    inactive stepper label was invisible; CI was green!) → `text-text-muted`. Re-walked: all hints legible.
+  - **#441 dashboard-lists** (d795842) — QA PASS, full whole-page contrast audit across all 6 pages
+    (owners/notes/tasks list+detail/imports list+detail) = 0 low-contrast, 0 trap.
+  - **#443 org-pages** (254df7a) — QA PASS, contrast audit across sig-requests/members/owners list+detail = 0
+    low-contrast; **owner-pii-reveal masking intact** (•••• present, no raw national_id in DOM). Palette baseline
+    reconciled to **68/10** (the #441+#443 disjoint reductions STACKED below either's solo baseline).
+- **⏸ HELD — 2 RESKINS (gate-blocked on env, NOT merged):** **#444 provider subtree** + **#442 C14 tenant portal**.
+  Both: static-clean (0 `text-muted` trap), CI-green (build/test/e2e vs MOCKS), same proven token-swap pattern as
+  #441/#443. **BLOCKER:** the mandated live role-session real-Chrome walk can't run in local dev — provider has NO
+  seeded admin account (provider/login needs email+pw+TOTP; only manager@alpha.dev exists), and the tenant OTP
+  Server-Action submit via automation bounced to /login (though the OTP STEP was reached → **an owner with phone
+  `0501234567` DOES exist** in local-db; org slug `alpha-dev`; dev OTP code `000000`). Per the merge-gate + the
+  #439 lesson (CI-green ≠ visually-correct), NOT merged un-walked. **RECIPE to finish (seconds once a session
+  exists):** (1) start-dev-local.ps1; (2) tenant: /he/tenant/login → phone 0501234567 + org alpha-dev → OTP
+  000000 → walk /he/portal; provider: a real provider-admin email+pw+TOTP (000000) → walk /he/provider/*; (3) run
+  the whole-page contrast audit (see #441 method) on each reskinned page; (4) `gh pr update-branch` → reconcile the
+  palette baseline (guard reports the true stacked count) → merge. Branches: feat/e2-reskin-provider,
+  feat/e2-wave4-c14-tenant-reskin.
+- **CHROME-BACK POSTURE:** Claude-in-Chrome reconnected; real-Chrome QA gate OPERATIONAL. Dev stack:
+  `start-dev-local.ps1` runs API+web dev on local-DB (:3000/:3001); manager@alpha.dev / DevPassword123!. ⚠️ the
+  manager session expires on ~token-TTL during long branch-switch recompiles — re-login when a nav lands on /login.
+- **NEXT:** finish #442/#444 (above) when a provider/tenant session is available · **M2 chase + M3 wow** (build ON
+  the now-merged home/board) · S4 search · the F-a/F-b follow-ups (a guard banning bare `text-muted` as a
+  foreground utility; designation building/floor qualifier). **DEFERRED (owner-oversight):** A1 reminder-memory +
+  needsHuman columns (migrations — risky while away) · B2 Gate-6 migration · B3 worker · C1 print · C16/C12b · OD-1.
 - **Dev QA session:** `manager@alpha.dev` / dev fixture `DevPassword123!` on `:3001`. Login button-click has a
   React/Server-Action fidelity gap → set fields via `form_input`, submit via `form.requestSubmit()`, then walk
   for real. Disclosure/click handlers: read aria-expanded AFTER the React re-render (a later tool call), not

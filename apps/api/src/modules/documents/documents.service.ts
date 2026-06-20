@@ -102,7 +102,15 @@ const PII_STEP_UP_REQUIRED = new ForbiddenException({
 });
 
 /** PII-bearing document types — sensitive-by-type at create (D-P5.7). */
-const SENSITIVE_DOC_TYPES: ReadonlySet<string> = new Set(['id_document', 'financial']);
+const SENSITIVE_DOC_TYPES: ReadonlySet<string> = new Set([
+  'id_document',
+  'financial',
+  // נסח טאבו — a land-registry extract lists EVERY owner's national_id, so it
+  // is PII-dense by definition and must derive sensitive=true (turn-ON only):
+  // encrypted at rest, OTP step-up on download, and STRUCTURALLY EXCLUDED from
+  // the non-sensitive contractor share tier (contractor-read.service.ts).
+  'land_registry',
+]);
 
 // ── 7d (D-P5.4 second half) — app-envelope encryption for SENSITIVE bytes ───
 // At-rest layout (self-describing — no migration needed for the format):
@@ -1210,6 +1218,108 @@ export class DocumentsService {
     return { kind: 'stream', ...(await this.getDecryptedStream(user, id, disposition)) };
   }
 
+  /**
+   * Agent record-scoping predicate for the documents tables, shared by `list`
+   * and `searchDocuments`. Restricts to docs whose parent project is an ACTIVE
+   * assignment — directly (project_id) OR via apartment→building→project. Two
+   * correlated EXISTS (D.28 R5): constant memory, index-bounded, no IN-list.
+   * Returns `undefined` for non-agents (managers/viewers are RLS-org-bound). An
+   * org-level doc (no project, no apartment) matches NEITHER EXISTS, so it is
+   * invisible to agents — the same least-priv rule as assertDocVisibleForAgent.
+   */
+  private agentDocScope(user: AccessTokenPayload): SQL | undefined {
+    if (user.role !== 'agent') return undefined;
+    const directProjectAssigned = sql<boolean>`EXISTS (
+      SELECT 1 FROM project_assignments pa
+      WHERE pa.user_id = ${user.sub}::uuid
+        AND pa.unassigned_at IS NULL
+        AND pa.project_id = ${documents.projectId}
+    )`;
+    const viaApartment = sql<boolean>`EXISTS (
+      SELECT 1 FROM apartments a
+      JOIN buildings b ON b.id = a.building_id
+      JOIN project_assignments pa ON pa.project_id = b.project_id
+      WHERE pa.user_id = ${user.sub}::uuid
+        AND pa.unassigned_at IS NULL
+        AND a.id = ${documents.apartmentId}
+    )`;
+    return or(directProjectAssigned, viaApartment);
+  }
+
+  /**
+   * NS1 (server-side search, MASTER-PLAN-V13 Wave B) — document NAME substring
+   * search + type/scope filters, keyset-paginated. This is `list` with a
+   * required `q` (name ILIKE, trigram-index served) plus the optional `type`
+   * (exact) and `scope` (parent linkage) filters.
+   *
+   * VISIBILITY IS UNCHANGED (never widened): the SAME archived-exclusion (unless
+   * `archived:true`), the SAME agent record-scoping (agentDocScope) and the SAME
+   * org RLS apply. The download-time gates (uploaded/scan-clean/sensitive
+   * step-up) are unaffected — search returns METADATA only (toDocument never
+   * carries r2Key), so a row appearing here grants no extra content access. `q`
+   * is bound as a PARAMETER with LIKE metacharacters escaped (no injection,
+   * literal substring). The `scope` filter is pure SQL on project_id/
+   * apartment_id NULL-ness — it can only NARROW the result, never widen it.
+   */
+  async searchDocuments(
+    user: AccessTokenPayload,
+    query: {
+      q: string;
+      limit: number;
+      cursor?: string;
+      type?: string;
+      scope?: 'project' | 'apartment' | 'org';
+      archived?: boolean;
+    },
+  ): Promise<DocumentListPage> {
+    const { limit } = query;
+    const cur = query.cursor ? decodeCursor(query.cursor) : null;
+    if (query.cursor && !cur) {
+      throw new BadRequestException({ error: { code: 'invalid_cursor' } });
+    }
+    const escaped = query.q.replace(/[\\%_]/g, (c) => `\\${c}`);
+    const pattern = `%${escaped}%`;
+
+    const rows = await withTenant(
+      user.orgId,
+      async (tx) => {
+        const filters: (SQL | undefined)[] = [
+          query.archived ? isNotNull(documents.archivedAt) : isNull(documents.archivedAt),
+          sql`${documents.name} ILIKE ${pattern}`,
+        ];
+        if (query.type) filters.push(eq(documents.type, query.type));
+        // `scope` NARROWS by parent linkage (never widens — it only adds an AND).
+        if (query.scope === 'project') filters.push(isNotNull(documents.projectId));
+        else if (query.scope === 'apartment') filters.push(isNotNull(documents.apartmentId));
+        else if (query.scope === 'org')
+          filters.push(and(isNull(documents.projectId), isNull(documents.apartmentId)));
+
+        // SAME agent record-scoping as list (org-level docs invisible to agents).
+        filters.push(this.agentDocScope(user));
+
+        const keyset: SQL | undefined = cur
+          ? keysetCondition(documents.createdAt, documents.id, cur)
+          : undefined;
+
+        return tx
+          .select()
+          .from(documents)
+          .where(and(...filters, keyset))
+          .orderBy(...keysetOrderBy(documents.createdAt, documents.id))
+          .limit(limit + 1);
+      },
+      { userId: user.sub },
+    );
+
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+    const last = pageRows[pageRows.length - 1];
+    return {
+      data: pageRows.map(toDocument),
+      page: { limit, cursor: hasMore && last ? encodeCursor(last) : null, has_more: hasMore },
+    };
+  }
+
   async list(
     user: AccessTokenPayload,
     query: {
@@ -1241,35 +1351,11 @@ export class DocumentsService {
         if (query.apartmentId) filters.push(eq(documents.apartmentId, query.apartmentId));
 
         // Agent record-scoping: restrict to docs whose parent project is an
-        // active assignment (directly OR via apartment→building→project).
-        //
-        // D.28 R5 (audit-pass V #2 — 2026-05-20): refactored from
-        // app-side IN-list materialisation to two correlated EXISTS
-        // subqueries. The prior approach loaded EVERY apartment id under
-        // EVERY assigned project into memory and emitted `IN (...)`
-        // clauses with thousands of UUIDs — unbounded for large orgs and
-        // wasteful for small ones. EXISTS pushes the filtering to SQL
-        // where it is bounded by the indexes on (project_assignments,
-        // buildings.project_id, apartments.building_id) — constant
-        // memory, scales with org size, no IN-list overhead. Semantics
-        // are identical: `OR(direct-project-match, via-apartment-chain)`.
-        if (user.role === 'agent') {
-          const directProjectAssigned = sql<boolean>`EXISTS (
-            SELECT 1 FROM project_assignments pa
-            WHERE pa.user_id = ${user.sub}::uuid
-              AND pa.unassigned_at IS NULL
-              AND pa.project_id = ${documents.projectId}
-          )`;
-          const viaApartment = sql<boolean>`EXISTS (
-            SELECT 1 FROM apartments a
-            JOIN buildings b ON b.id = a.building_id
-            JOIN project_assignments pa ON pa.project_id = b.project_id
-            WHERE pa.user_id = ${user.sub}::uuid
-              AND pa.unassigned_at IS NULL
-              AND a.id = ${documents.apartmentId}
-          )`;
-          filters.push(or(directProjectAssigned, viaApartment));
-        }
+        // active assignment (directly OR via apartment→building→project). The
+        // two-EXISTS predicate (D.28 R5: constant memory, index-bounded, no
+        // IN-list) is the shared `agentDocScope` helper, reused by
+        // searchDocuments so the two surfaces can never drift.
+        filters.push(this.agentDocScope(user));
 
         const keyset: SQL | undefined = cur
           ? keysetCondition(documents.createdAt, documents.id, cur)

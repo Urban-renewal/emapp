@@ -102,7 +102,15 @@ const PII_STEP_UP_REQUIRED = new ForbiddenException({
 });
 
 /** PII-bearing document types — sensitive-by-type at create (D-P5.7). */
-const SENSITIVE_DOC_TYPES: ReadonlySet<string> = new Set(['id_document', 'financial']);
+const SENSITIVE_DOC_TYPES: ReadonlySet<string> = new Set([
+  'id_document',
+  'financial',
+  // נסח טאבו — a land-registry extract lists EVERY owner's national_id, so it
+  // is PII-dense by definition and must derive sensitive=true (turn-ON only):
+  // encrypted at rest, OTP step-up on download, and STRUCTURALLY EXCLUDED from
+  // the non-sensitive contractor share tier (contractor-read.service.ts).
+  'land_registry',
+]);
 
 // ── 7d (D-P5.4 second half) — app-envelope encryption for SENSITIVE bytes ───
 // At-rest layout (self-describing — no migration needed for the format):

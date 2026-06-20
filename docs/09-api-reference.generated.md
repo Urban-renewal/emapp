@@ -948,7 +948,7 @@ _(no body)_
 | `projectId` | unknown | no | — |
 | `sensitive` | boolean | no | — |
 | `sizeBytes` | integer | yes | minimum=1, maximum=52428800 |
-| `type` | string | yes | enum=["agreement","blueprint","regulation","contract","permit","id_document","floor_plan","financial","other"] |
+| `type` | string | yes | enum=["agreement","land_registry","blueprint","regulation","contract","permit","id_document","floor_plan","financial","other"] |
 
 
 **Response**
@@ -1003,7 +1003,7 @@ _(no body)_
 | field | type | required | constraints |
 |---|---|---|---|
 | `name` | string | no | minLength=1, maxLength=255 |
-| `type` | string | no | enum=["agreement","blueprint","regulation","contract","permit","id_document","floor_plan","financial","other"] |
+| `type` | string | no | enum=["agreement","land_registry","blueprint","regulation","contract","permit","id_document","floor_plan","financial","other"] |
 
 
 **Response**

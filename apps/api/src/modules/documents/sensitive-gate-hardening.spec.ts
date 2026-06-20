@@ -75,6 +75,17 @@ describe('S7b hardening — sensitive turn-ON via PATCH (HIGH-1)', () => {
     expect(rows[0]?.sensitive).toBe(true);
   });
 
+  it('PATCH type → land_registry (נסח טאבו) re-derives sensitive=true', async () => {
+    // A land-registry extract lists every owner's national_id, so the doc_type
+    // alone must turn sensitive ON (encrypt-at-rest + OTP + contractor-exclude),
+    // exactly like id_document/financial. Guards the #1 live PII leak.
+    const svc = new DocumentsService(undefined as never, undefined as never, undefined as never);
+    const docId = await seedDoc(org, { type: 'other', sensitive: false });
+    await svc.update(manager(org), docId, { type: 'land_registry' });
+    const { rows } = await pool().query(`SELECT sensitive FROM documents WHERE id = $1`, [docId]);
+    expect(rows[0]?.sensitive).toBe(true);
+  });
+
   it('PATCH name only does NOT flip sensitive (no accidental ON, never OFF)', async () => {
     const svc = new DocumentsService(undefined as never, undefined as never, undefined as never);
     const plain = await seedDoc(org, { type: 'other', sensitive: false });
@@ -136,5 +147,22 @@ describe('S7b hardening — contractor tier excludes sensitive docs (HIGH-2)', (
     });
     const ok = await svc.getDownloadUrl(ctx(org) as never, plainId);
     expect(ok.url).toBeTruthy();
+  });
+
+  it('a sensitive land_registry (נסח טאבו) project doc is NOT listed/served to a contractor', async () => {
+    // The council's named fix: a tabu extract — most PII-dense doc in the system —
+    // must be structurally excluded from the non-sensitive contractor share tier.
+    const { ContractorReadService } = await loadContractorService();
+    const tabuId = await seedDoc(org, { type: 'land_registry', sensitive: true });
+    const svc = new ContractorReadService({
+      getDownloadUrl: async () => 'https://r2.example/url',
+    } as never);
+
+    const list = await svc.getDocuments(ctx(org) as never);
+    expect(list.data.map((d: { id: string }) => d.id)).not.toContain(tabuId);
+
+    await expect(svc.getDownloadUrl(ctx(org) as never, tabuId)).rejects.toMatchObject({
+      response: { error: { code: 'not_found' } },
+    });
   });
 });

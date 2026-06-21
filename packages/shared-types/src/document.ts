@@ -283,3 +283,52 @@ export const DocumentDownloadResponseSchema = z.object({
   expiresInSeconds: z.number().int().positive(),
 });
 export type DocumentDownloadResponse = z.infer<typeof DocumentDownloadResponseSchema>;
+
+// ── DH2 (V13) — project document-CHECKLIST (ADVISORY only) ──────────────────
+// `GET /api/v1/projects/:id/document-checklist` reports, per the project's
+// renewal TRACK (derived from `projects.type`), the REQUIRED document types and
+// whether each is present — a doc of that `type` exists, scoped to the project
+// (doc_scope='project', doc_scope_id=project.id, non-archived), OR (back-compat)
+// the legacy `project_id` column points at the project. Auto-ticked, read-only.
+//
+// ADVISORY ONLY (V13 Open #2): this endpoint NEVER gates or mutates project
+// status — it only reports. No writes. The "→ approved" gate-wiring is a deferred
+// one-flag flip after counsel signs the templates.
+//
+// `track` is the human-facing track key the required-set was chosen FOR. It is
+// NOT the raw `project_type` enum 1:1 — `tama38_1`/`tama38_2` collapse to the one
+// 'tama38' checklist; `other` falls back to a sensible baseline (see the BE
+// REQUIRED_DOC_TYPES_BY_TRACK constant). `items[].type` values are drawn from the
+// curated `DocumentTypeEnum` above.
+
+/** The renewal-track key a checklist required-set is defined for. */
+export const DocumentChecklistTrackEnum = z.enum(['tama38', 'pinui_binui', 'default']);
+export type DocumentChecklistTrack = z.infer<typeof DocumentChecklistTrackEnum>;
+
+/** One required doc TYPE and whether a matching project-scoped doc exists. NO
+ *  PII, NO document ids/names — purely the type key + the present boolean. */
+export const DocumentChecklistItemSchema = z.object({
+  /** A curated document type key (label resolution is the FE's job). */
+  type: DocumentTypeEnum,
+  present: z.boolean(),
+});
+export type DocumentChecklistItem = z.infer<typeof DocumentChecklistItemSchema>;
+
+/** GET /api/v1/projects/:id/document-checklist response payload (under `data`).
+ *  `completionPct` = round(presentCount / totalCount * 100), 0 when the track
+ *  has no required types (defensive — every track today has >=1). ADVISORY:
+ *  carries no status field and never reflects a gate decision. */
+export const DocumentChecklistSchema = z.object({
+  projectId: z.string().uuid(),
+  /** The raw project type the track was derived from (audit/debug aid). */
+  projectType: z.string(),
+  track: DocumentChecklistTrackEnum,
+  items: z.array(DocumentChecklistItemSchema),
+  presentCount: z.number().int().nonnegative(),
+  totalCount: z.number().int().nonnegative(),
+  completionPct: z.number().int().min(0).max(100),
+  /** Always true — pins the ADVISORY contract so a future gating variant is a
+   *  DISTINCT shape, not a silent behavior change on this one. */
+  advisory: z.literal(true),
+});
+export type DocumentChecklist = z.infer<typeof DocumentChecklistSchema>;

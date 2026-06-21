@@ -3,6 +3,7 @@ import {
   apartments,
   buildingSections,
   buildings,
+  documents,
   projectAssignments,
   projectSetSignatureDocIdsSql,
   projects,
@@ -20,6 +21,8 @@ import type {
   ApartmentHoldout,
   ApartmentSignatureProgress,
   CreateProject,
+  DocumentChecklist,
+  DocumentType,
   OrgStats,
   Project,
   ProjectLeverage,
@@ -42,7 +45,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { and, eq, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 
 import { resolveOwnerPiiFidelity } from '../../common/authz/agent-capabilities';
 import {
@@ -53,6 +56,11 @@ import {
 } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
+import {
+  REQUIRED_DOC_TYPES_BY_TRACK,
+  checklistCompletionPct,
+  trackForProjectType,
+} from './document-checklist.config';
 import { rankAttention } from './rank-attention';
 import { StatsCacheService } from './stats-cache.service';
 
@@ -465,6 +473,101 @@ export class ProjectsService {
             .where(eq(projects.id, projectId))
             .limit(1);
     if (rows.length === 0) throw NOT_FOUND;
+  }
+
+  /**
+   * DH2 (V13) — project document-CHECKLIST (ADVISORY only, read-only).
+   *
+   * Reports, per the project's renewal TRACK (derived from `projects.type` via
+   * `trackForProjectType`), the REQUIRED document types and whether each is
+   * present, plus a completeness %. A type is `present` iff a NON-archived
+   * `documents` row of that `type` is scoped to THIS project — either the DH1
+   * canonical scope (`doc_scope='project'` AND `doc_scope_id=projectId`) OR the
+   * legacy `project_id` column (back-compat; pre-DH1 + the existing
+   * documents.create path still writes `project_id`). Both are tenant-isolated by
+   * RLS under the withTenant context, so no cross-project / cross-org leak.
+   *
+   * ADVISORY ONLY: this method NEVER reads or writes project status — it only
+   * reports. No writes of any kind. (The "→ approved" gate-wiring is deferred —
+   * V13 Open #2.)
+   *
+   * Visibility first (no-oracle 404): a cross-org id or an unassigned-agent id is
+   * indistinguishable from "never existed" — `assertProjectVisible` throws the
+   * same NOT_FOUND `get()` does. We also pull the project's `type` in the same
+   * round-trip to derive the track. NO PII and NO document ids/names leave this
+   * method — only the type keys + present booleans + counts.
+   */
+  async documentChecklist(user: AccessTokenPayload, projectId: string): Promise<DocumentChecklist> {
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        // Visibility + load the project type in one query (agent → assigned scope
+        // enforced exactly as get()/assertProjectVisible does).
+        const baseSelect = tx.select({ type: projects.type }).from(projects).$dynamic();
+        const projRows =
+          user.role === 'agent'
+            ? await baseSelect
+                .innerJoin(
+                  projectAssignments,
+                  and(
+                    eq(projectAssignments.projectId, projects.id),
+                    eq(projectAssignments.userId, user.sub),
+                    isNull(projectAssignments.unassignedAt),
+                  ),
+                )
+                .where(eq(projects.id, projectId))
+                .limit(1)
+            : await baseSelect.where(eq(projects.id, projectId)).limit(1);
+        const projRow = projRows[0];
+        if (!projRow) throw NOT_FOUND;
+
+        const projectType = projRow.type;
+        const track = trackForProjectType(projectType);
+        const requiredTypes: readonly DocumentType[] = REQUIRED_DOC_TYPES_BY_TRACK[track];
+
+        // Distinct doc TYPES present for this project, restricted to the required
+        // set (no point fetching the rest). Non-archived only. Scope = DH1
+        // canonical (doc_scope='project' AND doc_scope_id=projectId) OR legacy
+        // project_id. RLS scopes to the org; the project filter scopes to this
+        // project — no cross-project leak. Counts/types only — NO PII, NO ids.
+        const presentTypes = new Set<string>();
+        if (requiredTypes.length > 0) {
+          const docRows = await tx
+            .selectDistinct({ type: documents.type })
+            .from(documents)
+            .where(
+              and(
+                isNull(documents.archivedAt),
+                inArray(documents.type, requiredTypes as string[]),
+                or(
+                  and(eq(documents.docScope, 'project'), eq(documents.docScopeId, projectId)),
+                  eq(documents.projectId, projectId),
+                ),
+              ),
+            );
+          for (const r of docRows) presentTypes.add(r.type);
+        }
+
+        const items = requiredTypes.map((type) => ({
+          type,
+          present: presentTypes.has(type),
+        }));
+        const presentCount = items.reduce((n, it) => n + (it.present ? 1 : 0), 0);
+        const totalCount = items.length;
+
+        return {
+          projectId,
+          projectType,
+          track,
+          items,
+          presentCount,
+          totalCount,
+          completionPct: checklistCompletionPct(presentCount, totalCount),
+          advisory: true as const,
+        };
+      },
+      { userId: user.sub },
+    );
   }
 
   /**

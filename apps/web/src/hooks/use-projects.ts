@@ -7,6 +7,7 @@ import { useCallback } from 'react';
 import {
   toApartmentHoldoutViewModels,
   toApartmentSignatureProgressViewModels,
+  toProjectLeverageViewModel,
   toProjectViewModel,
   toProjectViewModels,
   toSignatureProgressViewModel,
@@ -17,6 +18,7 @@ import {
   createProject,
   getApartmentHoldouts,
   getProject,
+  getProjectLeverage,
   getSignatureProgress,
   getSignatureProgressApartments,
   listProjects,
@@ -27,6 +29,7 @@ import type {
   ApartmentHoldoutViewModel,
   ApartmentSignatureProgressViewModel,
 } from '@/models/apartment-signature-progress.vm';
+import type { ProjectLeverageViewModel } from '@/models/project-leverage.vm';
 import type { ProjectViewModel } from '@/models/project.vm';
 import type { SignatureProgressViewModel } from '@/models/signature-progress.vm';
 
@@ -109,6 +112,31 @@ export function useSignatureProgress(id: string | undefined) {
     queryFn: () => {
       if (!id) throw new Error('useSignatureProgress requires an id');
       return getSignatureProgress(id);
+    },
+    enabled: Boolean(id),
+    staleTime: 30_000,
+    select,
+  });
+}
+
+/**
+ * Battle-Map BM-1 — project LEVERAGE card ("מפת קרב" entry, read-only). Returns
+ * the adapted VM (the single top-leverage owner reshaped + bidi-stripped in the
+ * adapter). The ONLY PII is the owner name, `view_owner_pii`-gated on the BE
+ * (already `null` when masked); national_id / phone never appear. Own query key
+ * so it self-fetches inside the card, never as a first-mount page query.
+ */
+export function useProjectLeverage(id: string | undefined) {
+  const select = useCallback(
+    (data: import('@emapp/shared-types').ProjectLeverage): ProjectLeverageViewModel =>
+      toProjectLeverageViewModel(data),
+    [],
+  );
+  return useQuery({
+    queryKey: [...PROJECTS_KEY, 'leverage', id],
+    queryFn: () => {
+      if (!id) throw new Error('useProjectLeverage requires an id');
+      return getProjectLeverage(id);
     },
     enabled: Boolean(id),
     staleTime: 30_000,

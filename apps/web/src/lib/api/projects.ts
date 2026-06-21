@@ -11,6 +11,7 @@
 import {
   ApartmentHoldoutsResponseSchema,
   ApartmentSignatureProgressSchema,
+  ProjectLeverageSchema,
   ProjectListItemSchema,
   ProjectSchema,
   SignatureProgressSchema,
@@ -18,6 +19,7 @@ import {
   type ApartmentSignatureProgress,
   type CreateProject,
   type Project,
+  type ProjectLeverage,
   type ProjectListItem,
   type SignatureProgress,
   type UpdateProject,
@@ -116,6 +118,21 @@ export async function getApartmentHoldouts(
   );
   const data = unwrap(res);
   return ApartmentHoldoutsDataSchema.parse({ data }).data.holdouts;
+}
+
+// Battle-Map BM-1 — the LEVERAGE scorer (read-only "מפת קרב" entry). The single
+// not-yet-fully-signed owner whose signature moves the headline consent % MOST
+// toward target (marginal-delta-to-headline ranking). The ONLY PII on the wire
+// is `leverage.ownerName`, which is `view_owner_pii`-gated + audited on the BE
+// (already `null` when the caller lacks the capability — never a 403 here, a
+// FIDELITY downgrade). national_id / phone NEVER appear. `data.leverage` is
+// `null` when no owner is movable (all signed / no positive marginal delta).
+const ProjectLeverageDataSchema = z.object({ data: ProjectLeverageSchema });
+
+export async function getProjectLeverage(id: string): Promise<ProjectLeverage> {
+  const res = await apiClient.get<unknown>(`/projects/${id}/leverage`);
+  const data = unwrap(res);
+  return ProjectLeverageDataSchema.parse({ data }).data;
 }
 
 export async function createProject(body: CreateProject): Promise<Project> {

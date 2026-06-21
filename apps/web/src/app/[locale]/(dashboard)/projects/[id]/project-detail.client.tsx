@@ -17,6 +17,7 @@ import { ApiClientError } from '@/lib/api/errors';
 import type { ProjectViewModel } from '@/models/project.vm';
 
 import { ExportXlsxButton } from './_components/export-xlsx-button';
+import { LeverageCard } from './_components/leverage-card';
 import { ParcelSetupSection } from './_components/parcel-setup-section';
 import { ProjectDocumentUpload } from './_components/project-document-upload';
 import { SignatureCampaignAction } from './_components/signature-campaign-action';
@@ -339,6 +340,23 @@ export function ProjectDetailClient() {
                *  "X מתוך Y דירות הסכימו · Z% · יעד W%" + a threshold-colored bar.
                *  Self-fetches via useSignatureProgress (own query key); silent on
                *  error so it never blocks the rest of the detail page. */}
+              {/* Battle-Map BM-1 — the LEVERAGE card ("מפת קרב"), the north-star
+               *  situation-picture lead: the single highest-leverage move (the
+               *  owner whose signature moves the headline % most toward target).
+               *  READ-ONLY — a read-safe "focus" link only; the one-tap remind is
+               *  the separate HB-1 mutation. Rendered ABOVE the board so it reads
+               *  as "here's your move" first, then the full progress picture. It
+               *  self-renders its own calm all-clear / DataState states, so it's
+               *  shown whenever there is a signature surface (apartments exist).
+               *  Hidden alongside the board when there's no signature data yet —
+               *  there is nothing to leverage before apartments exist. */}
+              {id &&
+                (data.signaturesSignedCount ?? 0) + (data.signaturesPendingCount ?? 0) > 0 && (
+                  <section className="flex flex-col gap-3 rounded-md border bg-card p-4">
+                    <LeverageCard projectId={id} />
+                  </section>
+                )}
+
               {id && (
                 <section className="flex flex-col gap-3 rounded-md border bg-card p-4">
                   <SignatureProgressBoard projectId={id} />

@@ -521,6 +521,24 @@ async function installStubs(page: import('@playwright/test').Page): Promise<Chai
     });
   });
 
+  // BM-1 — the LEVERAGE card read ("מפת קרב"). The card only renders when the
+  // project has signature data (signed+pending > 0); the PROJECT detail fixture
+  // here keeps both at 0, so on the happy path it stays hidden. But it MUST be
+  // stubbed (§P0-3 new-fetch-breaks-e2e trap: an unstubbed `/leverage` would 404
+  // and trip the dev-console guardrail the moment the card mounts). Registered
+  // BEFORE the more-specific `/signature-progress…` routes; a `*` never crosses
+  // `/`, so `…/leverage` matches only this. All-clear (`leverage: null`) shape so
+  // the parse passes and the card reads its calm no-leverage state.
+  await page.route(`**/api/v1/projects/${PROJECT_ID}/leverage`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: { projectId: PROJECT_ID, currentPct: 0, basis: 'share', leverage: null },
+      }),
+    });
+  });
+
   // S5d drill-down under the board (mounts collapsed; stubbed empty).
   await page.route(
     `**/api/v1/projects/${PROJECT_ID}/signature-progress/apartments`,

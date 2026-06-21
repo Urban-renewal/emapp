@@ -2,6 +2,7 @@ import type {
   ApartmentHoldout,
   ApartmentSignatureProgress,
   Project,
+  ProjectLeverage,
   ProjectListItem,
   ProjectStatus,
   ProjectType,
@@ -15,6 +16,10 @@ import type {
   ApartmentHoldoutViewModel,
   ApartmentSignatureProgressViewModel,
 } from '@/models/apartment-signature-progress.vm';
+import type {
+  ProjectLeverageOwnerViewModel,
+  ProjectLeverageViewModel,
+} from '@/models/project-leverage.vm';
 import type { ProjectViewModel } from '@/models/project.vm';
 import type { SignatureProgressViewModel } from '@/models/signature-progress.vm';
 
@@ -212,6 +217,44 @@ export function toApartmentHoldoutViewModels(
   rows: ApartmentHoldout[],
 ): ApartmentHoldoutViewModel[] {
   return rows.map(toApartmentHoldoutViewModel);
+}
+
+/**
+ * Battle-Map BM-1 — leverage card adapter ("מפת קרב" entry, read-only). Pure
+ * function. Folds the wire `ProjectLeverage` into the card VM: the headline
+ * `currentPct` + basis pass through; the single top-leverage owner (when one is
+ * movable) is reshaped so the card stays presentational.
+ *
+ * PII posture, mirroring the B4 holdout adapter: `ownerName` is the only PII on
+ * this wire and it is `view_owner_pii`-gated on the BE (already `null` when
+ * masked). We bidi-strip it defensively HERE and re-wrap in `<NameDisplay>` at
+ * render (defense in depth, §v9-H-3). national_id / phone NEVER appear.
+ *
+ * `apartmentLabel` is the BE's apartment designation normalised through
+ * `formatApartmentLabel` (dedups an already-"דירה"-prefixed number — the 7c F2
+ * "דירה דירה 7" fix) so the card never double-prefixes. `ownerSharePct` is
+ * rounded to a whole percent for a calm single-line read.
+ */
+export function toProjectLeverageViewModel(p: ProjectLeverage): ProjectLeverageViewModel {
+  let leverage: ProjectLeverageOwnerViewModel | null = null;
+  if (p.leverage !== null) {
+    const l = p.leverage;
+    const ownerName = l.ownerName?.trim() ? stripBidiOverrides(l.ownerName.trim()) : null;
+    leverage = {
+      ownerId: l.ownerId,
+      apartmentId: l.apartmentId,
+      ownerName,
+      apartmentLabel: formatApartmentLabel(stripBidiOverrides(l.apartmentLabel)),
+      ownerSharePct: Math.round(l.ownerSharePctInApartment),
+      projectedPct: l.projectedPct,
+      crossesThreshold: l.crossesThreshold,
+    };
+  }
+  return {
+    currentPct: p.currentPct,
+    basis: p.basis,
+    leverage,
+  };
 }
 
 /** Exported for adapter tests + future Storybook stories. */

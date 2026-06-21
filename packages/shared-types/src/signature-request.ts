@@ -158,6 +158,24 @@ export const SignatureCampaignResponseSchema = z.object({
 });
 export type SignatureCampaignResponse = z.infer<typeof SignatureCampaignResponseSchema>;
 
+/** POST /projects/:id/signature-requests/remind response (HB-1) — the rolled-up
+ * "chase the stuck pending signers" tally. The server DERIVES every LIVE PENDING
+ * signature request of the project (status='pending' AND expires_at > now(),
+ * joined ownership → apartment → building → project = :id), re-mints a fresh
+ * token + 7-day expiry for each, and re-delivers it (REUSING the per-request
+ * resend path). The client supplies NO ownerIds and NO documentId.
+ *
+ * `total` = count of live-pending requests derived for the project; `reminded` =
+ * how many were successfully re-minted + re-delivered. reminded may be < total
+ * if a per-request delivery fails (the rest still process; the tally stays
+ * honest). Unlike a campaign this NEVER touches already-signed owners — it only
+ * re-chases the ones still pending. */
+export const RemindPendingResponseSchema = z.object({
+  reminded: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+});
+export type RemindPendingResponse = z.infer<typeof RemindPendingResponseSchema>;
+
 /** Per-owner outcome of a bulk send. `created` = a new pending request + a
  * delivery attempt; `skipped_existing` = that owner already had a pending
  * request for this document; `failed` = owner not visible/in-org or an

@@ -11,6 +11,7 @@ import { AppModule } from './app.module';
 import { assertDevBypassNotInProduction } from './common/dev-auth-bypass';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { CONTENT_UPLOAD_BODY_LIMIT_BYTES } from './modules/documents/documents.controller';
+import { assertDocEncryptionConfig } from './modules/documents/documents.service';
 import { resetStorageProvider } from './modules/documents/storage';
 import { installProcessGuards } from './process-guards';
 
@@ -225,6 +226,11 @@ async function bootstrap() {
   // BEFORE serving any request. Skipped only in the no-accounts local path.
   if (!process.env['SKIP_ENV_VALIDATION']) {
     await verifyEncryptionStartup();
+    // FL-3 — fail fast if the DOC_ENCRYPTION_KEY registry is malformed (bad
+    // rotation config / wrong key length / missing active key), BEFORE serving
+    // any document download. Throws a structural reason (NO key material) so a
+    // bad deploy crashes here instead of 503-ing on the first sensitive read.
+    assertDocEncryptionConfig();
     // Audit v1.1 SA-1 — also verify the Provider pool is connected as
     // a BYPASSRLS role (and that PROVIDER_DATABASE_URL is set in
     // production). Skipped automatically in test/test-DB scenarios.

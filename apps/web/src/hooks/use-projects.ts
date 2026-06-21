@@ -1,6 +1,6 @@
 'use client';
 
-import type { CreateProject } from '@emapp/shared-types';
+import type { CreateProject, ProjectSegment, ProjectStatus } from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
@@ -51,7 +51,23 @@ import { PROJECTS_KEY, projectQueryKey, projectsListQueryKey } from './use-proje
 
 export { projectQueryKey, projectsListQueryKey };
 
-export function useProjectList(query: { limit?: number; cursor?: string } = {}) {
+/**
+ * NS6 (MASTER-PLAN-V13 Wave C) — `query` now carries the optional NS1
+ * server-search params (`q` / `status` / `segment`). They flow into BOTH the
+ * `queryKey` (so each distinct search caches independently) and the
+ * `listProjects` queryFn (so the BE does the filtering, not a client-side
+ * `.filter()` over a single page). With all three absent the hook is
+ * byte-identical to the pre-NS6 call.
+ */
+export function useProjectList(
+  query: {
+    limit?: number;
+    cursor?: string;
+    q?: string;
+    status?: ProjectStatus;
+    segment?: ProjectSegment;
+  } = {},
+) {
   const locale = useDisplayLocale();
   const select = useCallback(
     (data: ProjectListPage) => ({

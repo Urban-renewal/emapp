@@ -260,8 +260,27 @@
     "sharesSection": "שיתופי קבלנים",
     "sharesHint": "מתן הרשאות גישה לקבלנים על פרויקט זה. כל הרשאה נשמרת בנפרד; ניתן לבטל בכל עת.",
     "sharesManage": "ניהול שיתופים",
-    "searchPlaceholder": "חיפוש פרויקט, סוג, סטטוס…",
+    "searchPlaceholder": "חיפוש פרויקט לפי שם…",
     "noResults": "אין תוצאות לחיפוש",
+    "filter": {
+      "statusLabel": "סינון לפי סטטוס",
+      "statusAll": "כל הסטטוסים",
+      "status": {
+        "planning": "בתכנון",
+        "gathering_signatures": "איסוף חתימות",
+        "approved": "מאושר",
+        "in_construction": "בבנייה",
+        "completed": "הושלם",
+        "cancelled": "בוטל"
+      },
+      "segmentLabel": "סינון לפי מקטע",
+      "segmentAll": "כל הפרויקטים",
+      "segment": {
+        "stalled": "תקועים",
+        "expiring": "מתקרבים לפקיעה",
+        "mine": "המשויכים אליי"
+      }
+    },
     "viewCards": "תצוגת כרטיסים",
     "viewTable": "תצוגת טבלה",
     "dataPendingHint": "ערכים מורחבים (גוש/חלקה/יח״ד/חתימות/סוכנים) יתווספו בהמשך",

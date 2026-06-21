@@ -10,17 +10,34 @@
  * discipline; perf-research/01-rsc-waterfall.md §2.2).
  */
 
+import type { ProjectSegment, ProjectStatus } from '@emapp/shared-types';
+
 export const PROJECTS_KEY = ['projects'] as const;
 
 /**
  * Shape is `['projects', 'list', query, locale]` — `query` is the LITERAL
- * object passed to the hook (`{ limit, cursor }`) and `locale` is the narrowed
- * `'he' | 'en'` from `useDisplayLocale()` (client) / `getLocale()`-narrowed
- * (server). A byte-for-byte match is load-bearing: a mismatch = a silent cache
- * miss = the prefetch is wasted and the waterfall silently returns.
+ * object passed to the hook (`{ limit, cursor, q?, status?, segment? }`) and
+ * `locale` is the narrowed `'he' | 'en'` from `useDisplayLocale()` (client) /
+ * `getLocale()`-narrowed (server). A byte-for-byte match is load-bearing: a
+ * mismatch = a silent cache miss = the prefetch is wasted and the waterfall
+ * silently returns.
+ *
+ * NS6 (MASTER-PLAN-V13 Wave C) — the optional NS1 server-search params
+ * (`q` / `status` / `segment`) join the key so each distinct query caches
+ * independently. They are ABSENT (never present with an `undefined` value) on
+ * the unfiltered first page, so the no-filter key `{ limit: 25 }` still hashes
+ * IDENTICALLY to the server RSC prefetch key — TanStack's `hashKey`
+ * JSON-serializes and `JSON.stringify` drops `undefined`, so an unset filter
+ * never breaks the cache-hit the `page.tsx` prefetch depends on.
  */
 export function projectsListQueryKey(
-  query: { limit?: number; cursor?: string },
+  query: {
+    limit?: number;
+    cursor?: string;
+    q?: string;
+    status?: ProjectStatus;
+    segment?: ProjectSegment;
+  },
   locale: 'he' | 'en',
 ) {
   return [...PROJECTS_KEY, 'list', query, locale] as const;

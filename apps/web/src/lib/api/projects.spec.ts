@@ -103,6 +103,36 @@ describe('listProjects', () => {
     expect(String(fetchSpy.mock.calls[0]?.[0])).toBe('/api/v1/projects');
   });
 
+  it('2b) NS6 — wires the NS1 q/status/segment params into the query string', async () => {
+    const fetchSpy = stubFetch(() => ({
+      status: 200,
+      body: { data: [], page: { limit: 25, cursor: null, has_more: false } },
+    }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    await listProjects({
+      limit: 25,
+      q: 'מגדל',
+      status: 'gathering_signatures',
+      segment: 'stalled',
+    });
+    const url = new URL(`http://x${String(fetchSpy.mock.calls[0]?.[0]).replace('/api/v1', '')}`);
+    expect(url.searchParams.get('limit')).toBe('25');
+    expect(url.searchParams.get('q')).toBe('מגדל');
+    expect(url.searchParams.get('status')).toBe('gathering_signatures');
+    expect(url.searchParams.get('segment')).toBe('stalled');
+  });
+
+  it('2c) NS6 — an all-whitespace q is omitted ("no filter"), status/segment too', async () => {
+    const fetchSpy = stubFetch(() => ({
+      status: 200,
+      body: { data: [], page: { limit: 25, cursor: null, has_more: false } },
+    }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    await listProjects({ q: '   ' });
+    // No q (trimmed-empty), no status, no segment → bare path, no query string.
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toBe('/api/v1/projects');
+  });
+
   it('3) throws ApiClientError on a 400 envelope with a specific code', async () => {
     globalThis.fetch = stubFetch(() => ({
       status: 400,

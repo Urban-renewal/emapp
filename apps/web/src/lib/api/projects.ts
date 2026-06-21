@@ -19,6 +19,8 @@ import {
   type CreateProject,
   type Project,
   type ProjectListItem,
+  type ProjectSegment,
+  type ProjectStatus,
   type SignatureProgress,
   type UpdateProject,
 } from '@emapp/shared-types';
@@ -51,13 +53,32 @@ function unwrap<T>(res: ApiResponse<T>): T {
   throw new ApiClientError(res.error);
 }
 
+/**
+ * NS6 (MASTER-PLAN-V13 Wave C) — wires the NS1 server-side search/filter
+ * params. ALL optional + additive: with none set the request is the exact
+ * pre-NS1 `GET /projects?limit=25` (same rows, same keyset order). `q` is a
+ * name substring (BE trigram ILIKE; trimmed + bounded server-side), `status`
+ * is the D.18 enum, `segment` is an NS1 SYSTEM segment (stalled/expiring/mine).
+ * None are PII — project names/status/segment are org-scoped, not owner PII —
+ * so they ride the query string (Doc 07 §7.10 bans PII in the URL, not these).
+ * Cursor pagination is preserved verbatim (NS1 stays keyset).
+ */
 export async function listProjects(query: {
   limit?: number;
   cursor?: string;
+  q?: string;
+  status?: ProjectStatus;
+  segment?: ProjectSegment;
 }): Promise<ProjectListPage> {
   const params = new URLSearchParams();
   if (query.limit !== undefined) params.set('limit', String(query.limit));
   if (query.cursor) params.set('cursor', query.cursor);
+  // Trim + omit empty so an all-whitespace box is "no filter" (BE treats it
+  // the same, but omitting keeps the URL + the cache key clean).
+  const q = query.q?.trim();
+  if (q) params.set('q', q);
+  if (query.status) params.set('status', query.status);
+  if (query.segment) params.set('segment', query.segment);
   const qs = params.toString();
   const res = await apiClient.getList<unknown>(`/projects${qs ? `?${qs}` : ''}`);
   if (!isList<unknown>(res)) throw new ApiClientError(res.error);

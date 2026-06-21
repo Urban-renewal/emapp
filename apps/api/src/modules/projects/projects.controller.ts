@@ -115,6 +115,21 @@ export class ProjectsController {
     return { data: await this.projects.leverage(user, id) };
   }
 
+  // DH2 (V13) — project document-CHECKLIST (ADVISORY only, read-only). Per the
+  // project's renewal track: the REQUIRED doc types + present/missing auto-tick +
+  // completeness %. Same coarse `projects.read` gate as the board (everyone who
+  // sees the project reaches here); the service owns visibility (no-oracle 404)
+  // and the read-only compute. NEVER gates/mutates project status; no writes.
+  // Returns the DocumentChecklist under `data`; NO PII, NO document ids/names.
+  @Get(':id/document-checklist')
+  @RequirePermission('projects.read')
+  async documentChecklist(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', UuidParam) id: string,
+  ) {
+    return { data: await this.projects.documentChecklist(user, id) };
+  }
+
   @Post()
   @RequirePermission('projects.create')
   async create(

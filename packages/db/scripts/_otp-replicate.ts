@@ -3,10 +3,19 @@
 import { and, eq, gt, sql } from 'drizzle-orm';
 
 import { closeAllPools, db, env, hashField, otpCodes, owners, organizations } from '@emapp/db';
-import { normalizeIsraeliPhone } from '@emapp/validators';
 
 const RL_WINDOW_MS = 15 * 60 * 1000;
 const RL_MAX = 3;
+
+// Inlined (NOT imported from @emapp/validators) — this dev-QA script lives in
+// packages/db whose tsconfig rootDir forbids cross-package source imports.
+function normalizeIsraeliPhone(input: string): string | null {
+  const cleaned = input.replace(/[\s\-().]/g, '');
+  const digits = cleaned.startsWith('+972') ? cleaned.slice(4)
+    : cleaned.startsWith('972') ? cleaned.slice(3)
+    : cleaned.startsWith('0') ? cleaned.slice(1) : null;
+  return digits && /^\d{9}$/.test(digits) ? `+972${digits}` : null;
+}
 
 async function main() {
   const phone = normalizeIsraeliPhone('0501234567');

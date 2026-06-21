@@ -510,33 +510,101 @@ export class OwnersService {
     );
   }
 
-  // HMAC lookup (T3.O.1). The clear value arrives in the request BODY and
-  // is HMAC'd here; it is never logged (also pino-redacted) nor persisted.
+  /**
+   * HMAC lookup (T3.O.1). The clear value arrives in the request BODY and is
+   * HMAC'd here; it is never logged (also pino-redacted) nor persisted.
+   *
+   * NS2 (MASTER-PLAN-V13 Wave B) — the `national_id` branch is a keyed-HMAC
+   * equality lookup on the indexed `national_id_hash` column (NOT
+   * decrypt-and-compare, NOT a ciphertext LIKE): the cleartext ID never leaves
+   * the request boundary, and the only thing compared in SQL is the keyed hash.
+   *
+   * SCOPE = THE BOUNDARY (no widening): the national_id match runs INSIDE the
+   * SAME scope-filtered query as every other owners read — RLS org-scope (cross-
+   * org isolation) + the agent assigned-project `scope` EXISTS-subquery. So the
+   * match is bounded by what the caller can ALREADY see: a manager/viewer matches
+   * across the org's projects (their normal scope); an AGENT matches only owners
+   * in their ASSIGNED projects. An agent CANNOT find an owner outside their
+   * assigned scope by national_id — RLS + `agentOwnerScope` already exclude that
+   * owner from the query, so there is no oracle beyond the caller's existing
+   * access. This is why a plain agent (view_owners, no view_owner_pii) can still
+   * find an ASSIGNED owner by national_id (D.54 DV-8) — it is safe.
+   *
+   * `view_owner_pii` is NOT consulted here: this slice adds NO cross-scope
+   * WIDENING branch (no "match owners beyond the caller's normal scope"), and
+   * with no widening, view_owner_pii has nothing extra to gate. The reveal path
+   * (cleartext national_id) remains the separate, view_owner_pii-gated, audited
+   * `revealPii` endpoint. The masked projection here is unchanged: finding an
+   * owner by ID does NOT reveal the cleartext ID — `nationalIdMasked` stays
+   * masked for everyone.
+   *
+   * AUDIT: every national_id lookup (any caller authorized to see owners) writes
+   * an `owner.pii_lookup` row (ISO A.12.4 — WHO searched by national_id, in WHICH
+   * org, WHEN) — a national_id search is audit-worthy PII-search activity. The
+   * lookup ITSELF is the audited event (written whether or not a row matched).
+   * NO `targetId` (a lookup spans 0..N owners; pinning it to one would itself be
+   * a soft oracle) and the national_id value is NEVER in the payload (only the
+   * field NAME + the result count).
+   *
+   * The phone branch is unchanged (governed by the existing owners.read +
+   * view_owners gates + the same scope filter).
+   */
   async search(user: AccessTokenPayload, input: OwnerSearch): Promise<Owner[]> {
     const hashKey = dbEnv.PII_HASH_KEY as string;
-    const conds: SQL[] = [];
-    if (input.national_id)
-      conds.push(eq(owners.nationalIdHash, hashField(input.national_id, hashKey)));
-    if (input.phone) {
-      const norm = normalizeIsraeliPhone(input.phone);
-      if (norm) conds.push(eq(owners.phoneHash, hashField(norm, hashKey)));
-    }
-    if (conds.length === 0) return [];
     return withTenant(
       user.orgId,
       async (tx) => {
         // D.54 — view_owners gate + agent project-scope. An agent can still MATCH
-        // by national_id/phone (HMAC), but only owners in their assigned projects;
-        // results are masked for everyone (reveal-on-demand for cleartext).
+        // by phone / national_id (HMAC), but ONLY owners in their assigned
+        // projects (the `scope` filter below); results are masked for everyone.
         await this.assertAgentCanViewOwners(tx, user);
+
+        const conds: SQL[] = [];
+
+        // NS2 — national_id HMAC match. Runs for ALL roles INSIDE the scope-
+        // filtered query (RLS org-scope + agentOwnerScope below) — the caller's
+        // EXISTING access IS the boundary, so an agent matches only owners in
+        // their assigned projects (DV-8) and never one outside that scope. No
+        // view_owner_pii gate: there is no cross-scope widening branch to gate.
+        const nationalIdLookup = Boolean(input.national_id);
+        if (input.national_id) {
+          conds.push(eq(owners.nationalIdHash, hashField(input.national_id, hashKey)));
+        }
+
+        if (input.phone) {
+          const norm = normalizeIsraeliPhone(input.phone);
+          if (norm) conds.push(eq(owners.phoneHash, hashField(norm, hashKey)));
+        }
+
+        // No effective match condition (neither field present / parseable) →
+        // empty result, no audit row (nothing was searched).
+        if (conds.length === 0) return [];
+
         const scope = this.agentOwnerScope(user);
-        return tx
+        const rows = await tx
           .select(ownerCols)
           .from(owners)
           .where(and(isNull(owners.archivedAt), isNull(owners.erasedAt), or(...conds), scope))
           .orderBy(desc(owners.createdAt), desc(owners.id))
-          .limit(50)
-          .then((rs) => rs.map(toOwner));
+          .limit(50);
+
+        // NS2 audit — record the national_id lookup itself (ISO A.12.4). Written
+        // whether or not it matched. NO targetId (spans 0..N owners — pinning one
+        // would be a soft oracle). NEVER the national_id value — only the field
+        // name searched + the (scope-bounded) result count.
+        if (nationalIdLookup) {
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+            orgId: user.orgId,
+            actorId: user.sub,
+            actorType: 'user',
+            action: 'owner.pii_lookup',
+            targetTable: 'owners',
+            afterState: { searched_by: 'national_id', result_count: rows.length },
+            sessionId: user.sid,
+          });
+        }
+
+        return rows.map(toOwner);
       },
       { userId: user.sub },
     );

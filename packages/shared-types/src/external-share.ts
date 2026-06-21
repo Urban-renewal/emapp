@@ -38,7 +38,15 @@ export const ExternalSharePermissionsSchema = z
       .strict(),
     signatures: z.object({ on: z.boolean() }).strict(),
   })
-  .strict();
+  .strict()
+  // Fail-closed coherence: a download capability with the documents resource
+  // OFF is a contradictory (and latently over-permissive) grant — the download
+  // flag is precisely the sensitive-byte vector that the X-S4 read enforcer will
+  // consume. Reject `download && !on` here so no such row is ever persisted.
+  .refine((p) => !p.documents.actions.download || p.documents.on, {
+    message: 'documents.actions.download requires documents.on',
+    path: ['documents', 'actions', 'download'],
+  });
 export type ExternalSharePermissions = z.infer<typeof ExternalSharePermissionsSchema>;
 
 export const ExternalShareSchema = z.object({
@@ -97,9 +105,7 @@ export type UpdateExternalShare = z.infer<typeof UpdateExternalShareInput>;
 /** PATCH body — extend the TTL (push expires_at forward). The server caps the
  *  new value at the party ceiling's maxTtlDays from now and refuses to move it
  *  backward. */
-export const ExtendExternalShareInput = z
-  .object({ expiresAt: z.coerce.date() })
-  .strict();
+export const ExtendExternalShareInput = z.object({ expiresAt: z.coerce.date() }).strict();
 export type ExtendExternalShare = z.infer<typeof ExtendExternalShareInput>;
 
 export const ListExternalSharesQuery = z.object({

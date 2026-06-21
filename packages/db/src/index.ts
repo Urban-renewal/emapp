@@ -156,6 +156,7 @@ export {
   STORAGE_NOT_CONFIGURED_MESSAGE,
   type FakeStorageProviderOptions,
 } from './providers/storage/fake.provider';
+export { MINIMAL_PDF, buildMinimalPdf } from './fixtures/minimal-pdf';
 export type { ICacheProvider } from './providers/cache/cache.interface';
 export { PostgresCacheProvider } from './providers/cache/postgres.provider';
 export { FakeCacheProvider } from './providers/cache/fake.provider';

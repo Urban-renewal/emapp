@@ -51,6 +51,8 @@ import {
 } from '../src/schema/index';
 import { withBootstrap } from '../src/wrappers/with-bootstrap';
 
+import { uploadSeedDocBytes } from './seed-storage';
+
 const ORG_SLUG = 'alpha-dev';
 const NOW = Date.now();
 const DAY = 86_400_000;
@@ -445,6 +447,9 @@ async function main(): Promise<number> {
 
     // ---- 3. Documents (project regulation + blueprint, + per-apt agreements) ----
     let docsCreated = 0;
+    // Collected for the post-commit renderable-byte upload (storage is not
+    // transactional). Uploaded to real R2 after the tx so demo previews open.
+    const docsForBytes: Array<{ r2Key: string; name: string }> = [];
     const projectRegulationDoc = new Map<string, { id: string; hash: string }>();
     const aptAgreementDoc = new Map<string, { id: string; hash: string }>(); // key = aptId
 
@@ -458,6 +463,7 @@ async function main(): Promise<number> {
     }): Promise<{ id: string; hash: string }> {
       const id = randomUUID();
       const r2Key = `documents/${orgId}/demo-${opts.key}.pdf`;
+      docsForBytes.push({ r2Key, name: opts.name });
       const contentHash = createHash('sha256').update(`seed-demo-${r2Key}`).digest('hex');
       await tx.insert(documents).values({
         id,
@@ -886,6 +892,7 @@ async function main(): Promise<number> {
     return {
       skipped: false as const,
       orgId,
+      docsForBytes,
       counts: {
         projects: createdProjectIds.length,
         buildings: buildingsCreated,
@@ -908,6 +915,18 @@ async function main(): Promise<number> {
   if (result.skipped) {
     console.log('[seed-demo] demo data already present (sentinel project found) — nothing to do.');
     return 0;
+  }
+
+  // Upload renderable PDF bytes AFTER the tx (storage is not transactional).
+  // Real R2 → demo previews open; no R2 → skipped (run the backfill instead).
+  const uploaded = await uploadSeedDocBytes(result.docsForBytes);
+  if (result.docsForBytes.length > 0) {
+    console.log(
+      uploaded
+        ? `[seed-demo] uploaded renderable PDF bytes for ${result.docsForBytes.length} document(s) to R2.`
+        : '[seed-demo] R2 not configured — document bytes NOT uploaded (metadata only). ' +
+            'Run `pnpm --filter @emapp/db backfill:doc-bytes` with Infisical to add renderable bytes.',
+    );
   }
 
   console.log('[seed-demo] created rich demo dataset on org alpha-dev:');

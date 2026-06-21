@@ -40,6 +40,14 @@ export interface PulseActionCardViewModel {
   basis: ConsentBasis;
   /** Has the project met its signature threshold? (a met project never cards). */
   metThreshold: boolean;
+  /** HB-5 (one-click holdout chase) — the project's CAMPAIGN document id (the doc
+   *  a holdout signature-request is CREATED against when the owner has no live
+   *  pending request). null when the project has no campaign at all. */
+  campaignDocumentId: string | null;
+  /** HB-5 — `campaignDocumentId !== null`. Drives the card's primary action:
+   *  when false the board offers "start signature collection" (a link to the
+   *  project) instead of a dead-end remind. */
+  hasCampaign: boolean;
 }
 
 /** The buckets summary, passed through verbatim for the pulse sentence. */

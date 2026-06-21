@@ -22,6 +22,7 @@ function holdout(over: Partial<import('@emapp/shared-types').ApartmentHoldout> =
     ownerId: '11111111-1111-1111-1111-111111111111',
     name: 'ישראל ישראלי',
     apartmentNumber: '7',
+    signableDocumentId: '99999999-9999-4999-8999-999999999999',
     ...over,
   });
 }
@@ -50,12 +51,26 @@ describe('toApartmentHoldoutViewModel — B4 holdout PII adapter', () => {
     expect(vm.name).toBeNull();
   });
 
-  it('5) never surfaces national_id / phone (B4 — name only)', () => {
+  it('5) never surfaces national_id / phone (B4 — name + signable doc only)', () => {
     const vm = toApartmentHoldoutViewModel(holdout());
     expect(vm).not.toHaveProperty('national_id');
     expect(vm).not.toHaveProperty('nationalId');
     expect(vm).not.toHaveProperty('phone');
-    expect(Object.keys(vm).sort()).toEqual(['apartmentNumber', 'name', 'ownerId']);
+    expect(Object.keys(vm).sort()).toEqual([
+      'apartmentNumber',
+      'name',
+      'ownerId',
+      'signableDocumentId',
+    ]);
+  });
+
+  it('7) passes through the per-apartment signableDocumentId verbatim (create target)', () => {
+    const vm = toApartmentHoldoutViewModel(
+      holdout({ signableDocumentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }),
+    );
+    expect(vm.signableDocumentId).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+    // null (no signable doc for this holdout) is preserved, not coerced.
+    expect(toApartmentHoldoutViewModel(holdout({ signableDocumentId: null })).signableDocumentId).toBeNull();
   });
 
   it('6) maps a list', () => {

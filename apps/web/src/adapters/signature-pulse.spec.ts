@@ -23,6 +23,8 @@ function row(over: Partial<ProjectPulseRow> & { projectId: string }): ProjectPul
     consentedPct: 50,
     metThreshold: false,
     basis: 'share',
+    campaignDocumentId: null,
+    hasCampaign: false,
     ...over,
   };
 }
@@ -127,5 +129,19 @@ describe('toSignaturePulseViewModel — reason derivation + order + all-clear', 
       pulse([row({ projectId: 'p1', projectName: 'Safe\u202EEvil' })]),
     );
     expect(vm.cards[0]?.projectName).not.toContain('\u202E');
+  });
+
+  it('12) HB-5: campaignDocumentId + hasCampaign carried through verbatim', () => {
+    const withCampaign = toSignaturePulseViewModel(
+      pulse([row({ projectId: 'p1', campaignDocumentId: 'doc-7', hasCampaign: true })]),
+    );
+    expect(withCampaign.cards[0]?.campaignDocumentId).toBe('doc-7');
+    expect(withCampaign.cards[0]?.hasCampaign).toBe(true);
+
+    const noCampaign = toSignaturePulseViewModel(
+      pulse([row({ projectId: 'p2', campaignDocumentId: null, hasCampaign: false })]),
+    );
+    expect(noCampaign.cards[0]?.campaignDocumentId).toBeNull();
+    expect(noCampaign.cards[0]?.hasCampaign).toBe(false);
   });
 });

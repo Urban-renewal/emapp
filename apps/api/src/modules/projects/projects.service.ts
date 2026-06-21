@@ -996,11 +996,64 @@ export class ProjectsService {
         `);
         const rows = (result as unknown as { rows: Array<Record<string, unknown>> }).rows;
 
+        // HB-5 fix — the per-APARTMENT signable document a one-click chase CREATES
+        // a request against. Signing is PER-APARTMENT (each apartment has its OWN
+        // agreement doc), so the create MUST target THIS apartment's doc — a single
+        // project-wide campaign doc resolves to ONE apartment's agreement and a
+        // create for a holdout in a DIFFERENT apartment 409s `recipient_not_
+        // associated`. Precedence (RLS-safe via withTenant — every read is
+        // org-scoped + the apartment is already proven in-project above):
+        //   (1) THIS apartment's most-recent FINALIZED (uploaded_at NOT NULL),
+        //       non-archived, AGREEMENT-type doc — matched by the canonical
+        //       doc_scope='apartment' + doc_scope_id=apartmentId OR the legacy
+        //       apartment_id=apartmentId column (freshly-seeded apartment docs
+        //       carry the legacy column but doc_scope='org', so BOTH are needed);
+        //   (2) ELSE the project's most-recent finalized PROJECT-scoped agreement
+        //       (doc_scope='project'+scope_id=projectId OR legacy project_id, and
+        //       NOT apartment-scoped) — the doc every owner may sign;
+        //   (3) ELSE NULL.
+        // Document ids only — never PII.
+        const signableResult = await tx.execute(sql`
+          SELECT COALESCE(
+            (SELECT d.id
+               FROM documents d
+               WHERE d.type = 'agreement'
+                 AND d.uploaded_at IS NOT NULL
+                 AND d.archived_at IS NULL
+                 AND (
+                   (d.doc_scope = 'apartment' AND d.doc_scope_id = ${apartmentId})
+                   OR d.apartment_id = ${apartmentId}
+                 )
+               ORDER BY d.uploaded_at DESC
+               LIMIT 1),
+            (SELECT d.id
+               FROM documents d
+               WHERE d.type = 'agreement'
+                 AND d.uploaded_at IS NOT NULL
+                 AND d.archived_at IS NULL
+                 AND d.apartment_id IS NULL
+                 AND d.doc_scope <> 'apartment'
+                 AND (
+                   (d.doc_scope = 'project' AND d.doc_scope_id = ${projectId})
+                   OR d.project_id = ${projectId}
+                 )
+               ORDER BY d.uploaded_at DESC
+               LIMIT 1)
+          ) AS signable_document_id
+        `);
+        const signableRows = (
+          signableResult as unknown as { rows: Array<Record<string, unknown>> }
+        ).rows;
+        const signableRaw = signableRows[0]?.['signable_document_id'];
+        const signableDocumentId =
+          signableRaw === null || signableRaw === undefined ? null : String(signableRaw);
+
         const apartmentNumber = String(apt.number);
         const holdouts: ApartmentHoldout[] = rows.map((r) => ({
           ownerId: String(r['owner_id']),
           name: r['name'] === null || r['name'] === undefined ? null : String(r['name']),
           apartmentNumber,
+          signableDocumentId,
         }));
 
         // ISO A.12.4 — per-access audit (a NAMED PII reveal). Record WHO revealed
@@ -1437,7 +1490,29 @@ export class ProjectsService {
                FROM signature_requests sr
                WHERE sr.status = 'pending'
                  AND sr.document_id IN (SELECT document_id FROM proj_docs WHERE project_id = v.id)
-            ) AS next_expiry_at
+            ) AS next_expiry_at,
+            -- HB-5 — the CAMPAIGN document a holdout request is CREATED against
+            -- when an owner has no live pending request. Precedence (RLS-safe,
+            -- single round-trip): (1) the document of the project's MOST-RECENT
+            -- signature_request of ANY status — whatever the project already
+            -- collects against; ELSE (2) the most-recent FINALIZED
+            -- (uploaded_at NOT NULL), non-archived, PROJECT-scoped 'agreement'
+            -- document; ELSE NULL. COALESCE preserves the precedence.
+            COALESCE(
+              (SELECT sr.document_id
+                 FROM signature_requests sr
+                 WHERE sr.document_id IN (SELECT document_id FROM proj_docs WHERE project_id = v.id)
+                 ORDER BY sr.created_at DESC
+                 LIMIT 1),
+              (SELECT d.id
+                 FROM documents d
+                 WHERE d.project_id = v.id
+                   AND d.type = 'agreement'
+                   AND d.uploaded_at IS NOT NULL
+                   AND d.archived_at IS NULL
+                 ORDER BY d.uploaded_at DESC
+                 LIMIT 1)
+            ) AS campaign_document_id
           FROM visible v
           ORDER BY v.id
         `);
@@ -1479,6 +1554,13 @@ export class ProjectsService {
       const expiringSoon =
         nextExpiryAt !== null && new Date(nextExpiryAt).getTime() - now <= expiringSoonMs;
 
+      // HB-5 — the project's campaign document (the doc a holdout request is
+      // CREATED against). null when the project has no campaign at all (no
+      // signature_request ever AND no finalized project-scoped 'agreement').
+      const campaignDoc = f['campaign_document_id'];
+      const campaignDocumentId =
+        campaignDoc === null || campaignDoc === undefined ? null : String(campaignDoc);
+
       // SINGLE-SOURCE consent — the IDENTICAL share-weighted CTE the board uses,
       // read-through cached under a pulse-specific, tenant-scoped key. The board
       // caches the ASSEMBLED SignatureProgress under sigProgress:p:<id>; we cache
@@ -1510,6 +1592,8 @@ export class ProjectsService {
         consentedPct: agg.consentedPct,
         metThreshold,
         basis: 'share' as const,
+        campaignDocumentId,
+        hasCampaign: campaignDocumentId !== null,
       });
     }
 

@@ -27,6 +27,8 @@ function row(over: Partial<ProjectPulseRow> & { projectId: string }): ProjectPul
     consentedPct: over.consentedPct ?? 0,
     metThreshold: over.metThreshold ?? false,
     basis: 'share',
+    campaignDocumentId: over.campaignDocumentId ?? null,
+    hasCampaign: over.hasCampaign ?? false,
   };
 }
 

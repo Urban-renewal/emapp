@@ -43,6 +43,16 @@ const T: Record<string, string> = {
   'allClear.badge': 'הכול במקום',
   'empty.noProjectsTitle': 'אין עדיין פרויקטים',
   'empty.noProjectsHint': 'כשייווצר הפרויקט הראשון',
+  // HB-3 holdout expander copy.
+  'holdouts.toggleShow': 'מי תקוע?',
+  'holdouts.toggleHide': 'הסתר מי תקוע',
+  'holdouts.loading': 'טוען שמות…',
+  'holdouts.loadFailed': 'טעינת השמות נכשלה.',
+  'holdouts.retry': 'נסה שוב',
+  'holdouts.none': 'אין חותמים תקועים',
+  'holdouts.noName': 'בעל דירה ללא שם רשום',
+  'holdouts.remindSent': 'התזכורת נשלחה',
+  'holdouts.remindNonePending': 'אין בקשת חתימה ממתינה לבעל דירה זה — ייתכן שהלוח אינו מעודכן.',
 };
 
 // DataState (rendered by the home for loading/error/empty) calls
@@ -70,6 +80,10 @@ vi.mock('next-intl', () => ({
     if (key === 'action.remindAria')
       return `שלח תזכורת לחותמים הממתינים בפרויקט ${String(vars?.['name'])}`;
     if (key === 'action.remindSent') return `נשלחו ${String(vars?.['count'])} תזכורות`;
+    // HB-3 parametrised holdout lines.
+    if (key === 'holdouts.fallback') return `דירה ${String(vars?.['number'])} · חלקי`;
+    if (key === 'holdouts.apartment') return `דירה ${String(vars?.['number'])}`;
+    if (key === 'holdouts.remindAria') return `שלח תזכורת ל${String(vars?.['name'])}`;
     if (key.startsWith('clause.')) return `clause:${key}`;
     return T[key] ?? `MISSING:${key}`;
   },
@@ -86,6 +100,7 @@ vi.mock('lucide-react', () => ({
   CheckCircle2: () => createElement('span', { 'data-icon': 'check' }),
   HelpCircle: () => createElement('span', { 'data-icon': 'help' }),
   Sparkles: () => createElement('span', { 'data-icon': 'sparkles' }),
+  Users: () => createElement('span', { 'data-icon': 'users' }),
 }));
 
 // TanStack mutation/queryClient — the remind action's plumbing. `useMutation`
@@ -134,14 +149,50 @@ vi.mock('@/hooks/use-session', () => ({
   useSessionProfile: () => ({ data: profileName ? { name: profileName } : undefined }),
 }));
 
+// HB-3 — the holdout data hooks. Seedable per test. `useSignatureProgressApartments`
+// returns the per-project apartment progress; `useApartmentHoldouts` returns the
+// per-apartment holdout NAMES (gated). `isPermissionDenied` mirrors the real
+// predicate (403 → no-name fallback). `useResendHoldoutReminder` is a useMutation
+// stub whose `mutate` records the ownerId it was called with.
+type ApartmentsState = {
+  data?: Array<{ apartmentId: string; number: string; status: 'consented' | 'partial' | 'none' }>;
+  isLoading: boolean;
+  isError: boolean;
+  refetch: () => void;
+};
+type HoldoutsState = {
+  data?: Array<{ ownerId: string; name: string | null; apartmentNumber: string }>;
+  isLoading: boolean;
+  isError: boolean;
+  error?: unknown;
+  refetch: () => void;
+};
+let apartmentsState: ApartmentsState;
+let holdoutsState: HoldoutsState;
+const resendMutate = vi.fn();
+
+vi.mock('@/hooks/use-projects', () => ({
+  useSignatureProgressApartments: () => apartmentsState,
+  useApartmentHoldouts: () => holdoutsState,
+  isPermissionDenied: (err: unknown) =>
+    Boolean(err && typeof err === 'object' && (err as { code?: unknown }).code === 'forbidden'),
+}));
+vi.mock('@/hooks/use-signature-requests', () => ({
+  HOLDOUT_NONE_PENDING_CODE: 'holdout_none_pending',
+  useResendHoldoutReminder: () => ({ mutate: resendMutate, isPending: false }),
+}));
+
 // StatusBadge passthrough so the tag text renders.
 vi.mock('@/components/ui/status-badge', () => ({
   StatusBadge: ({ children }: { children: ReactNode }) => createElement('span', null, children),
 }));
 
 import {
+  buildHoldoutRemindErrorMessage,
   buildRemindErrorMessage,
   buildRemindResultMessage,
+  HoldoutApartment,
+  HoldoutRow,
   MissionControlHome,
 } from './mission-control-home';
 
@@ -186,6 +237,13 @@ beforeEach(() => {
   pulseState = { data: vm(), isLoading: false, isError: false, refetch: vi.fn() };
   canRemind = true;
   profileName = 'מיכל מנהלת';
+  // HB-3 defaults: the expander is collapsed at first render, so these hooks
+  // are only consumed once a test opens it (the component gates the queries on
+  // `open`). Default to a calm resolved-empty so the render-only tests that
+  // DON'T open the expander never hit a holdout panel.
+  apartmentsState = { data: [], isLoading: false, isError: false, refetch: vi.fn() };
+  holdoutsState = { data: [], isLoading: false, isError: false, refetch: vi.fn() };
+  resendMutate.mockClear();
 });
 afterEach(() => vi.clearAllMocks());
 
@@ -342,6 +400,190 @@ describe('HB-1 remind result/error toast copy (pure helpers)', () => {
       'שליחת התזכורות נכשלה. אפשר לנסות שוב.',
     );
     expect(buildRemindErrorMessage(tDouble, { code: 'not_found' })).toBe(
+      'שליחת התזכורות נכשלה. אפשר לנסות שוב.',
+    );
+  });
+});
+
+// ── HB-3 — the inline "מי תקוע?" holdout-name expander ──────────────────────
+
+// A next-intl `t` double for the presentational holdout pieces, backed by the
+// same parametrised table the next-intl mock uses (so the components render the
+// REAL Hebrew copy under direct SSR).
+const tHoldout = ((key: string, vars?: Record<string, unknown>) => {
+  if (key === 'holdouts.fallback') return `דירה ${String(vars?.['number'])} · חלקי`;
+  if (key === 'holdouts.apartment') return `דירה ${String(vars?.['number'])}`;
+  if (key === 'holdouts.remindAria') return `שלח תזכורת ל${String(vars?.['name'])}`;
+  return T[key] ?? `MISSING:${key}`;
+}) as unknown as Parameters<typeof HoldoutRow>[0]['t'];
+
+function holdout(over: Partial<{ ownerId: string; name: string | null; apartmentNumber: string }> = {}) {
+  return { ownerId: 'o1', name: 'דנה כהן', apartmentNumber: '4', ...over };
+}
+
+describe('HB-3 board-card holdout expander (MissionControlHome)', () => {
+  it('16) each card carries a collapsed "מי תקוע?" expander (button, aria-expanded=false)', () => {
+    const html = render();
+    expect(html).toContain('מי תקוע?');
+    // The expander button is collapsed by default — no holdout panel content yet
+    // (the names load only ON expand → no PII in the first paint).
+    expect(html).toMatch(/aria-expanded="false"[^>]*aria-controls="holdouts-p1"/);
+    expect(html).not.toContain('דנה כהן');
+  });
+
+  it('17) the expander is keyboard-operable (a real <button>, not a div)', () => {
+    const html = render();
+    // The toggle that controls holdouts-p1 is a <button type="button">.
+    expect(html).toMatch(/<button[^>]*aria-controls="holdouts-p1"/);
+  });
+});
+
+describe('HB-3 HoldoutApartment — holdout NAMES + masking/403 (presentational)', () => {
+  function renderApartment(props?: Partial<Parameters<typeof HoldoutApartment>[0]>): string {
+    return renderToStaticMarkup(
+      createElement(HoldoutApartment, {
+        projectId: 'p1',
+        apartmentId: 'a1',
+        apartmentNumber: '4',
+        canRemind: true,
+        sendEnabled: true,
+        t: tHoldout,
+        ...props,
+      }),
+    );
+  }
+
+  it('18) renders each holdout name via NameDisplay (<bdi> isolation)', () => {
+    holdoutsState = {
+      data: [holdout(), holdout({ ownerId: 'o2', name: 'משה לוי', apartmentNumber: '4' })],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    };
+    const html = renderApartment();
+    expect(html).toContain('דנה כהן');
+    expect(html).toContain('משה לוי');
+    expect(html).toContain('<bdi>'); // NameDisplay bidi-spoof isolation
+    // apartment context line present
+    expect(html).toContain('דירה 4');
+  });
+
+  it('19) MASKED path: a 403 (no view_owner_pii) → the NO-NAME fallback, never a raw name', () => {
+    holdoutsState = {
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: { code: 'forbidden' },
+      refetch: vi.fn(),
+    };
+    const html = renderApartment();
+    // The fallback line: number + partial state, NO owner name revealed.
+    expect(html).toContain('דירה 4 · חלקי');
+    expect(html).not.toContain('דנה כהן');
+    // No remind button either (there is no resolvable name/request to chase).
+    expect(html).not.toContain('שלח תזכורת');
+  });
+
+  it('20) a name-less shell owner renders the anonymous label, never an empty <bdi>', () => {
+    holdoutsState = {
+      data: [holdout({ name: null })],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    };
+    const html = renderApartment();
+    expect(html).toContain('בעל דירה ללא שם רשום');
+  });
+});
+
+describe('HB-3 HoldoutRow — per-name remind gating + dispatch (presentational)', () => {
+  function renderRow(props?: Partial<Parameters<typeof HoldoutRow>[0]>): string {
+    return renderToStaticMarkup(
+      createElement(HoldoutRow, {
+        holdout: holdout(),
+        canRemind: true,
+        sendEnabled: true,
+        t: tHoldout,
+        ...props,
+      }),
+    );
+  }
+
+  it('21) WITH send permission → a per-name "שלח תזכורת" button with the owner-scoped aria', () => {
+    const html = renderRow();
+    expect(html).toContain('שלח תזכורת');
+    expect(html).toMatch(/<button[^>]*aria-label="שלח תזכורת לדנה כהן"/);
+  });
+
+  it('22) GATE: WITHOUT send permission (Viewer) → the per-name remind is HIDDEN', () => {
+    const html = renderRow({ canRemind: false });
+    expect(html).not.toContain('שלח תזכורת');
+    // The name still shows (read), only the mutating action is gated away.
+    expect(html).toContain('דנה כהן');
+  });
+
+  it('23) kill-switch OFF (sendEnabled=false) → the remind button is DISABLED + calm copy', () => {
+    const html = renderRow({ sendEnabled: false });
+    expect(html).toMatch(/<button[^>]*disabled/);
+    expect(html).toMatch(/<button[^>]*aria-disabled="true"/);
+    expect(html).toContain('שליחת תזכורות מושהית כרגע'); // title tooltip
+  });
+});
+
+// Recursively find the first element whose props carry an onClick handler.
+// `HoldoutRow`'s hooks (useToast / useResendHoldoutReminder) are module-mocked to
+// return plain objects, so the component can be invoked as a plain function to
+// obtain its element tree (the repo's node-env pattern — no real React runtime).
+type ReactNodeLike = { props?: { onClick?: () => void; children?: unknown } } | null | undefined;
+function findOnClick(node: unknown): (() => void) | undefined {
+  if (!node || typeof node !== 'object') return undefined;
+  const el = node as ReactNodeLike;
+  if (el?.props?.onClick) return el.props.onClick;
+  const children = el?.props?.children;
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      const found = findOnClick(child);
+      if (found) return found;
+    }
+  } else if (children) {
+    return findOnClick(children);
+  }
+  return undefined;
+}
+
+describe('HB-3 per-name remind dispatch (direct onClick)', () => {
+  it('24) clicking remind calls the resend mutation with THIS owner id', () => {
+    // Invoke the component as a plain function (mocked hooks return plain
+    // objects) to get its element tree, then call the button's onClick.
+    const tree = HoldoutRow({
+      holdout: holdout({ ownerId: 'owner-42' }),
+      canRemind: true,
+      sendEnabled: true,
+      t: tHoldout,
+    });
+    const onClick = findOnClick(tree);
+    expect(onClick).toBeTypeOf('function');
+    onClick?.();
+    expect(resendMutate).toHaveBeenCalledTimes(1);
+    expect(resendMutate.mock.calls[0]?.[0]).toBe('owner-42');
+  });
+});
+
+describe('HB-3 holdout remind error copy (pure helper)', () => {
+  it('25) the "no live pending request" resolve-miss → the honest stale-board copy', () => {
+    expect(buildHoldoutRemindErrorMessage(tHoldout, { code: 'holdout_none_pending' })).toBe(
+      'אין בקשת חתימה ממתינה לבעל דירה זה — ייתכן שהלוח אינו מעודכן.',
+    );
+  });
+
+  it('26) kill-switch 503 → the calm "paused" copy', () => {
+    expect(buildHoldoutRemindErrorMessage(tHoldout, { code: 'campaign_send_disabled' })).toBe(
+      'שליחת תזכורות מושהית כרגע',
+    );
+  });
+
+  it('27) any other error → the generic retry copy', () => {
+    expect(buildHoldoutRemindErrorMessage(tHoldout, new Error('boom'))).toBe(
       'שליחת התזכורות נכשלה. אפשר לנסות שוב.',
     );
   });

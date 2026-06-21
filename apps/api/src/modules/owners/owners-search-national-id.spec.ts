@@ -247,7 +247,10 @@ describe('NS2 — national_id lookup on owners search (scope-bounded, masked, au
     for (const piiFlag of [false, true]) {
       await setAgentCapability('view_owners', true);
       await setAgentCapability('view_owner_pii', piiFlag);
-      const nid = validNationalId(330 + (piiFlag ? 1 : 0));
+      // Seeds must differ in the FIRST 8 digits — validNationalId slices(0,8),
+      // so adjacent seeds (330/331) collapse to the same id and trip the
+      // owners_org_natid_unique_active constraint. Use a ≥10 gap.
+      const nid = validNationalId(piiFlag ? 360 : 350);
       const id = await seedOwner(orgA.id, nid);
       const unassignedProj = orgA.projects[1]!.id;
       await linkOwnerToProject(orgA.id, unassignedProj, id);

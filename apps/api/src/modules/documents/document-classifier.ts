@@ -27,6 +27,7 @@
  */
 import {
   CLASSIFY_SAMPLE_MAX_BYTES,
+  REMEDIATION_MIN_CONFIDENCE,
   type ClassifyResult,
   type ClassifySignal,
   type ClassifySuggestion,
@@ -312,4 +313,39 @@ export function classifyDocument(input: ClassifierInput): ClassifyResult {
   suggestions.sort((a, b) => b.confidence - a.confidence || a.docType.localeCompare(b.docType));
 
   return { suggestions, suggestOnly: true };
+}
+
+/**
+ * FL-5 — the נסח/tabu BACKFILL REMEDIATION predicate. Given the signals already
+ * STORED on a pre-existing document row (its filename + declared mime — NO
+ * content fetch, no PII read), decide whether it is an UNAMBIGUOUS land_registry
+ * (tabu/נסח) doc that the DH3 classifier would now type `land_registry`.
+ *
+ * Returns the matching `land_registry` suggestion (confidence + content-free
+ * reason key) ONLY when:
+ *   - the classifier's TOP suggestion is `land_registry`, AND
+ *   - its confidence is >= REMEDIATION_MIN_CONFIDENCE (the high-confidence
+ *     floor — an ambiguous filename must NEVER auto-retype a doc; this is a
+ *     security sweep, not a generic re-tagger).
+ * Otherwise returns `null` (no remediation). PURE — reuses `classifyDocument`,
+ * does no I/O, never logs the filename. The sweep service turns a non-null
+ * result into a `type → land_registry` + `sensitive → true` (turn-ON only)
+ * transition; a null result leaves the doc untouched (no false positive).
+ */
+export function remediationLandRegistryMatch(input: {
+  readonly filename: string;
+  readonly mimeType: string;
+}): { confidence: number; reason: string } | null {
+  // Classify from the stored metadata. No sample (the content bytes are not
+  // fetched — the sweep is metadata-only; the filename carries the נסח/tabu
+  // signal for a pre-DH3 upload, which is exactly the #450 population).
+  const result = classifyDocument({ filename: input.filename, mimeType: input.mimeType });
+  const top = result.suggestions[0];
+  // The TOP-ranked suggestion must be land_registry (so a stronger non-tabu
+  // signal — e.g. a filename that is mostly an agreement — never gets retyped),
+  // and it must clear the high-confidence floor.
+  if (!top || top.docType !== 'land_registry' || top.confidence < REMEDIATION_MIN_CONFIDENCE) {
+    return null;
+  }
+  return { confidence: top.confidence, reason: top.reason };
 }

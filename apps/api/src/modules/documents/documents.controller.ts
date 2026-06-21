@@ -6,6 +6,7 @@ import {
   DownloadDocumentQuery,
   FinalizeDocumentInput,
   ListDocumentsQuery,
+  RemediationSweepInput,
   UpdateDocumentInput,
   type ClassifyDocument,
   type CreateDocument,
@@ -14,6 +15,7 @@ import {
   type DownloadDocumentQueryDto,
   type FinalizeDocument,
   type ListDocumentsQueryDto,
+  type RemediationSweepInputDto,
   type UpdateDocument,
 } from '@emapp/shared-types';
 import {
@@ -144,6 +146,29 @@ export class DocumentsController {
     @Body(new ZodValidationPipe(ClassifyDocumentInput)) body: ClassifyDocument,
   ) {
     return { data: await this.documents.classify(user, body) };
+  }
+
+  // FL-5 (V13 Wave A) — נסח/tabu BACKFILL REMEDIATION SWEEP. Re-runs the DH3
+  // classifier over the org's PRE-EXISTING documents (from stored filename+mime;
+  // no content fetch) and re-types the unambiguous tabu/נסח docs to
+  // `land_registry`, deriving sensitive=true (TURN-ON ONLY) — closing the #450
+  // HIGH follow-up (pre-DH3 tabu-content docs that never became sensitive).
+  // DRY-RUN BY DEFAULT: the body's `dryRun` defaults TRUE (report-only, commits
+  // nothing); a commit requires an EXPLICIT `dryRun:false`. IDEMPOTENT (already-
+  // land_registry docs are skipped). `documents.update`-gated (re-typing IS a
+  // document update) + the same `manage_documents` agent fine-gate as PATCH;
+  // org-scoped via withTenant (NO new auth path, no cross-tenant reach). Declared
+  // BEFORE @Get(':id') so the literal path is not captured as an :id param.
+  // Tighter throttle than the global 100/min (a maintenance batch endpoint).
+  @Post('remediation-sweep')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @RequirePermission('documents.update')
+  async remediationSweep(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body(new ZodValidationPipe(RemediationSweepInput)) body: RemediationSweepInputDto,
+  ) {
+    return { data: await this.documents.remediationSweep(user, body) };
   }
 
   @Get(':id')

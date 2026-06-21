@@ -301,6 +301,34 @@ async function installStubs(page: import('@playwright/test').Page): Promise<Chai
     });
   });
 
+  // HB-3 — the board-card "מי תקוע?" holdout expander reuses the per-apartment
+  // signature-progress + holdouts reads and the PER-NAME resend. The home stub
+  // above renders `attention: []` (all-clear), so NO card — and therefore NO
+  // expander — mounts here, and none of these fire on this flow. We stub them
+  // PROACTIVELY anyway (the new-fetch-breaks-e2e trap): if a future board test
+  // seeds attention cards and expands a holdout, an unstubbed read/POST would
+  // 404 against the catch-all and trip the §P0-3 console guardrail. The
+  // signature-requests LIST resolves an owner's pending request id; the resend
+  // re-mints it. Both answer with a benign valid envelope.
+  await page.route('**/api/v1/signature-requests?*', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: [], page: { limit: 25, cursor: null, has_more: false } }),
+    });
+  });
+  await page.route('**/api/v1/signature-requests/*/resend', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: {} }) });
+  });
+
   // Browser-side /me — permission gates (the SSR /me is served by the
   // Node-side mock backend, out of page.route reach).
   await page.route('**/api/v1/me', async (route) => {

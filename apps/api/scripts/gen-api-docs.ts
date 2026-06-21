@@ -466,7 +466,7 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/owners/search',
     auth: 'AuthGuard + TenantGuard',
     summary:
-      'HMAC lookup by national_id/phone. PII in the BODY (never URL) so it cannot leak to access logs; matched by stored HMAC.',
+      'HMAC lookup by national_id/phone. PII in the BODY (never URL) so it cannot leak to access logs; matched by stored HMAC, results MASKED. NS2 — the national_id branch is PII-GATED: it only matches for a caller with view_owner_pii (manager always · agent per flag · viewer never); an unauthorized caller gets an INERT national_id branch (no match, no oracle — identical to a miss) and NO 403. Every authorized national_id lookup is audited (owner.pii_lookup, no national_id value). Cross-PROJECT within the org (RLS); never cross-org. The phone branch is unchanged.',
     request: OwnerSearchInput,
     response: '{ "data": [ {Owner — masked} ] }',
     errors: ['validation_error', 'missing_token', 'invalid_token', 'token_expired'],

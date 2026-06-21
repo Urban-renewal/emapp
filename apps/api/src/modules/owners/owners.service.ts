@@ -510,33 +510,100 @@ export class OwnersService {
     );
   }
 
-  // HMAC lookup (T3.O.1). The clear value arrives in the request BODY and
-  // is HMAC'd here; it is never logged (also pino-redacted) nor persisted.
+  /**
+   * HMAC lookup (T3.O.1). The clear value arrives in the request BODY and is
+   * HMAC'd here; it is never logged (also pino-redacted) nor persisted.
+   *
+   * NS2 (MASTER-PLAN-V13 Wave B) — the `national_id` branch is a PII-GATED
+   * cross-project lookup: it lets a `view_owner_pii`-authorized caller find an
+   * owner ANYWHERE in their org (across all the org's projects) by Israeli ID.
+   * The match is constant-time HMAC equality on the indexed `national_id_hash`
+   * column (NOT decrypt-and-compare, NOT a ciphertext LIKE) — the cleartext ID
+   * never leaves the request boundary, and the only thing compared in SQL is the
+   * keyed hash.
+   *
+   * GATING (no-oracle, non-negotiable): the national_id branch is added to the
+   * query ONLY when the caller resolves to `view_owner_pii` (manager always ·
+   * agent iff the flag · viewer never — the SAME single source of truth as the
+   * reveal path, `resolveOwnerPiiFidelity`). A caller WITHOUT it gets a
+   * completely inert national_id branch — no hash comparison runs, so there is
+   * no oracle that an ID exists; the response is byte-identical to a no-match.
+   * The masked projection is unchanged: finding an owner by ID does NOT reveal
+   * the cleartext ID — `nationalIdMasked` stays masked (the reveal path is
+   * separate + already audited).
+   *
+   * AUDIT: every national_id lookup an AUTHORIZED caller performs writes an
+   * `owner.pii_lookup` row (ISO A.12.4 — WHO searched by national_id, in WHICH
+   * org, WHEN). The lookup ITSELF is the audited event (written whether or not a
+   * row matched — a "no hit" search is still PII-search activity). The
+   * national_id value is NEVER in the audit payload (only the field NAME + the
+   * result count).
+   *
+   * The phone branch is unchanged (not PII-gated here): phone search predates
+   * NS2 and is governed by the existing owners.read + view_owners gates.
+   */
   async search(user: AccessTokenPayload, input: OwnerSearch): Promise<Owner[]> {
     const hashKey = dbEnv.PII_HASH_KEY as string;
-    const conds: SQL[] = [];
-    if (input.national_id)
-      conds.push(eq(owners.nationalIdHash, hashField(input.national_id, hashKey)));
-    if (input.phone) {
-      const norm = normalizeIsraeliPhone(input.phone);
-      if (norm) conds.push(eq(owners.phoneHash, hashField(norm, hashKey)));
-    }
-    if (conds.length === 0) return [];
     return withTenant(
       user.orgId,
       async (tx) => {
         // D.54 — view_owners gate + agent project-scope. An agent can still MATCH
-        // by national_id/phone (HMAC), but only owners in their assigned projects;
-        // results are masked for everyone (reveal-on-demand for cleartext).
+        // by phone (HMAC) / national_id (when PII-authorized), but only owners in
+        // their assigned projects; results are masked for everyone.
         await this.assertAgentCanViewOwners(tx, user);
+
+        const conds: SQL[] = [];
+
+        // NS2 — national_id is PII-gated. Resolve the caller's owner-PII fidelity
+        // (the SAME gate as reveal-on-demand). Only an `unmasked`-authorized
+        // caller gets the national_id HMAC match; for anyone else the branch is
+        // inert (never appended) → no oracle, identical shape to a miss.
+        let nationalIdLookupAuthorized = false;
+        if (input.national_id) {
+          const fidelity = await resolveOwnerPiiFidelity(tx, user);
+          if (fidelity === 'unmasked') {
+            nationalIdLookupAuthorized = true;
+            conds.push(eq(owners.nationalIdHash, hashField(input.national_id, hashKey)));
+          }
+        }
+
+        if (input.phone) {
+          const norm = normalizeIsraeliPhone(input.phone);
+          if (norm) conds.push(eq(owners.phoneHash, hashField(norm, hashKey)));
+        }
+
+        // No effective match condition (neither field, or national_id supplied
+        // but the caller is NOT PII-authorized) → empty result, no audit row for
+        // an inert branch (an unauthorized caller leaves no PII-lookup trace,
+        // matching the no-oracle posture: nothing happened).
+        if (conds.length === 0) return [];
+
         const scope = this.agentOwnerScope(user);
-        return tx
+        const rows = await tx
           .select(ownerCols)
           .from(owners)
           .where(and(isNull(owners.archivedAt), isNull(owners.erasedAt), or(...conds), scope))
           .orderBy(desc(owners.createdAt), desc(owners.id))
-          .limit(50)
-          .then((rs) => rs.map(toOwner));
+          .limit(50);
+
+        // NS2 audit — record the AUTHORIZED national_id lookup itself (ISO
+        // A.12.4). Written whether or not it matched. NEVER the national_id value
+        // — only the field name searched + the result count.
+        if (nationalIdLookupAuthorized) {
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+            orgId: user.orgId,
+            actorId: user.sub,
+            actorType: 'user',
+            action: 'owner.pii_lookup',
+            targetTable: 'owners',
+            // No targetId: a lookup spans the whole org (it may match 0..N owners)
+            // and we must not pin it to one — that would itself be a soft oracle.
+            afterState: { searched_by: 'national_id', result_count: rows.length },
+            sessionId: user.sid,
+          });
+        }
+
+        return rows.map(toOwner);
       },
       { userId: user.sub },
     );

@@ -1,9 +1,15 @@
 'use client';
 
+import {
+  ProjectSegmentEnum,
+  ProjectStatusEnum,
+  type ProjectSegment,
+  type ProjectStatus,
+} from '@emapp/shared-types';
 import { LayoutGrid, List as ListIcon, Plus, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { isPermissionDenied } from '@/components/ui/list-page-shell';
@@ -11,6 +17,12 @@ import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useHasPermission } from '@/hooks/use-permissions';
 import { useProjectList } from '@/hooks/use-projects';
+
+/** NS6 — debounce window (ms) for the search box → server query. Keeps a fast
+ *  typist from firing a `GET /projects?q=` per keystroke; the box stays a
+ *  controlled input (no native submit, so no GET-fallback credential-leak
+ *  class — per the DOD-BROWSER-SMOKE trigger). */
+const SEARCH_DEBOUNCE_MS = 300;
 
 /**
  * V11 A.S4 — ProjectsList reskin per
@@ -34,11 +46,14 @@ import { useProjectList } from '@/hooks/use-projects';
  *  - Table: `.tbl` (partner class from A.S1) with name / type /
  *    status / updated columns. Same data limits as cards.
  *
- * Search is CLIENT-SIDE filtering over the current page (the BE
- * cursor pagination is unchanged). A real `?q=` server-side search
- * needs a BE slice; the input filters the visible page on `name`,
- * `typeLabel`, and `statusLabel`. The `dataPendingHint` flags this
- * limitation in the UI.
+ * NS6 (MASTER-PLAN-V13 Wave C) — search is now SERVER-SIDE via the
+ * merged NS1 endpoint (`GET /projects?q=&status=&segment=`, keyset).
+ * The debounced search box + the status/segment `<select>` filters
+ * drive the `useProjectList` query params, so the BE returns only the
+ * matching page (scales 5→500 projects — no load-all-then-filter). The
+ * old client-only `.filter()` over the current page is GONE. Any filter
+ * change resets the keyset cursor to the first page (a cursor minted for
+ * one filter set is meaningless under another).
  *
  * Routing / interactions preserved: card / row click navigates to
  * `/projects/[id]`; "פרויקט חדש" goes to `/projects/new`; archive
@@ -57,26 +72,45 @@ export function ProjectsListClient() {
   const t = useTranslations('projects');
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [view, setView] = useState<'cards' | 'table'>('cards');
+  // `query` is the LIVE input value (controlled box); `debouncedQuery` is what
+  // drives the server fetch. They diverge only during the debounce window.
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [status, setStatus] = useState<ProjectStatus | ''>('');
+  const [segment, setSegment] = useState<ProjectSegment | ''>('');
+
+  // NS6 — debounce the search box → server query. The cursor reset lives here
+  // too: a new `q` invalidates any keyset cursor minted for the old `q`.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setDebouncedQuery(query.trim());
+      setCursor(undefined);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [query]);
+
+  // NS6 — the trimmed, bounded `q` actually sent (empty → omitted = "no
+  // filter"). `undefined` (not '') so it drops out of the URL + the query key.
+  const q = debouncedQuery.length > 0 ? debouncedQuery : undefined;
+
   // IAM slice 5b — the "פרויקט חדש" CTA renders only for actors holding
   // `projects.create` (agents/viewers never do → no dead create button).
   const canCreate = useHasPermission('projects.create');
-  const { data, isLoading, isError, error, refetch } = useProjectList({ limit: 25, cursor });
+  const { data, isLoading, isError, error, refetch } = useProjectList({
+    limit: 25,
+    cursor,
+    q,
+    status: status || undefined,
+    segment: segment || undefined,
+  });
 
   const items = useMemo(() => data?.items ?? [], [data?.items]);
   const page = data?.page;
 
-  const filteredItems = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((p) => {
-      return (
-        p.name.toLowerCase().includes(q) ||
-        p.typeLabel.toLowerCase().includes(q) ||
-        p.statusLabel.toLowerCase().includes(q)
-      );
-    });
-  }, [items, query]);
+  // NS6 — true when ANY server filter is active. Drives the "no results"
+  // vs "no projects yet" empty-state copy (a search that returns nothing is
+  // NOT an empty org).
+  const hasActiveFilter = Boolean(q) || status !== '' || segment !== '';
 
   if (isLoading) {
     return (
@@ -145,6 +179,46 @@ export function ProjectsListClient() {
           />
         </div>
 
+        {/* NS6 — status filter (D.18 enum). A controlled <select>: on change it
+            resets the keyset cursor + drives the server query. '' = no filter. */}
+        <select
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value as ProjectStatus | '');
+            setCursor(undefined);
+          }}
+          aria-label={t('filter.statusLabel')}
+          className="input"
+          style={{ width: 'auto', minWidth: 150 }}
+        >
+          <option value="">{t('filter.statusAll')}</option>
+          {ProjectStatusEnum.options.map((s) => (
+            <option key={s} value={s}>
+              {t(`filter.status.${s}`)}
+            </option>
+          ))}
+        </select>
+
+        {/* NS6 — system-segment filter (NS1: stalled/expiring/mine). Same
+            controlled-select + cursor-reset discipline. '' = no filter. */}
+        <select
+          value={segment}
+          onChange={(e) => {
+            setSegment(e.target.value as ProjectSegment | '');
+            setCursor(undefined);
+          }}
+          aria-label={t('filter.segmentLabel')}
+          className="input"
+          style={{ width: 'auto', minWidth: 150 }}
+        >
+          <option value="">{t('filter.segmentAll')}</option>
+          {ProjectSegmentEnum.options.map((s) => (
+            <option key={s} value={s}>
+              {t(`filter.segment.${s}`)}
+            </option>
+          ))}
+        </select>
+
         {/* Cards/table view toggle (partner ProjectsList lines 27-30) */}
         <div
           role="tablist"
@@ -200,17 +274,19 @@ export function ProjectsListClient() {
         {t('dataPendingHint')}
       </p>
 
-      {/* List */}
-      {filteredItems.length === 0 ? (
+      {/* List — items are now the SERVER-filtered page (NS6); no client
+          `.filter()`. A search that returns nothing shows the calm
+          `noResults` copy, an empty org the `empty` onboarding copy. */}
+      {items.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-          {items.length === 0 ? t('empty') : t('noResults')}
+          {hasActiveFilter ? t('noResults') : t('empty')}
         </p>
       ) : view === 'cards' ? (
         <div
           className="grid gap-3.5"
           style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}
         >
-          {filteredItems.map((p) => (
+          {items.map((p) => (
             <Link
               key={p.id}
               href={`/projects/${p.id}`}
@@ -302,7 +378,7 @@ export function ProjectsListClient() {
               </tr>
             </thead>
             <tbody>
-              {filteredItems.map((p) => (
+              {items.map((p) => (
                 <tr
                   key={p.id}
                   style={{ cursor: 'pointer' }}

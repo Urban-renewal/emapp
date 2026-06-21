@@ -70,19 +70,19 @@ export default function ProviderTenantDetailPage() {
           </h1>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span
-              className="rounded-full bg-gray-100 px-2 py-0.5 font-mono text-foreground"
+              className="rounded-full bg-surface-subtle px-2 py-0.5 font-mono text-foreground"
               dir="ltr"
             >
               {data.slug}
             </span>
             <span>{data.createdRelative}</span>
             {data.isArchived && (
-              <span className="rounded-full bg-gray-200 px-2 py-0.5 font-medium text-gray-700">
+              <span className="rounded-full bg-status-neutral-bg px-2 py-0.5 font-medium text-status-neutral-fg">
                 {tp('archived')}
               </span>
             )}
             {data.isSuspended && (
-              <span className="rounded-full bg-amber-200 px-2 py-0.5 font-medium text-amber-900">
+              <span className="rounded-full bg-status-warning-bg px-2 py-0.5 font-medium text-status-warning-fg">
                 {t('suspension.badge')}
               </span>
             )}
@@ -140,7 +140,7 @@ export default function ProviderTenantDetailPage() {
                     </p>
                   </div>
                   {o.isArchived && (
-                    <span className="shrink-0 rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
+                    <span className="shrink-0 rounded-full bg-status-neutral-bg px-2 py-0.5 text-xs font-medium text-status-neutral-fg">
                       {tp('archived')}
                     </span>
                   )}

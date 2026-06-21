@@ -25,9 +25,11 @@ export default defineConfig({
   outputDir: '../../docs/audit/artifacts/_pw',
   use: {
     baseURL: 'http://localhost:3001',
-    trace: 'on',
-    screenshot: 'on',
-    video: 'retain-on-failure',
+    // Low-footprint: the coverage specs take their own explicit screenshots;
+    // auto trace/video/screenshot filled the disk (ENOSPC) across re-runs.
+    trace: 'off',
+    screenshot: 'off',
+    video: 'off',
     actionTimeout: 5_000,
     navigationTimeout: 20_000,
   },

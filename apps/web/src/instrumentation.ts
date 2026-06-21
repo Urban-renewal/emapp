@@ -1,5 +1,15 @@
 export async function register() {
   if (process.env['NEXT_RUNTIME'] === 'nodejs') {
+    // PERF (2026-06-21): IPv4-first DNS (mirrors apps/api/src/instrument.ts).
+    // Node 18+ resolves `localhost` to IPv6 `[::1]` first; on the Windows dev
+    // host that loopback is slow (~0.2s/connection), and the authenticated SSR
+    // pays it on every hop — getMe self-fetch → same-origin reverse-proxy route
+    // handler (app/api/[...path]) → API — compounding into a ~1.6s home render
+    // (every click > 1s). Forcing ipv4first in-process fixes it where
+    // NODE_OPTIONS=--dns-result-order doesn't reach Next's render workers.
+    // Harmless in prod (all upstreams have IPv4; it's the pre-Node-18 default).
+    const dns = await import('node:dns');
+    dns.setDefaultResultOrder('ipv4first');
     const { init } = await import('@sentry/nextjs');
     init({
       dsn: process.env['NEXT_PUBLIC_SENTRY_DSN_WEB'],

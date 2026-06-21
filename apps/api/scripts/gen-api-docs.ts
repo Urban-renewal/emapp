@@ -1556,6 +1556,16 @@ const ENDPOINTS: Endpoint[] = [
     errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
+    method: 'GET',
+    path: '/api/v1/projects/:id/document-checklist',
+    auth: 'AuthGuard + TenantGuard (projects.read)',
+    summary:
+      'DH2 (V13) — ADVISORY project document-checklist (read-only). Per the project renewal TRACK (derived from project.type: tama38_1/2→tama38, pinui_binui, other→default) the REQUIRED doc types + present/missing AUTO-TICK (a non-archived project-scoped doc of that type exists — DH1 doc_scope=project/doc_scope_id OR legacy project_id) + completeness %. ADVISORY ONLY: NEVER gates or mutates project status; no writes. No-oracle 404 for cross-org / unassigned-agent. NO PII, NO document ids/names — type keys + present booleans + counts only.',
+    response:
+      '{ "data": { projectId, projectType, track, items:[{type,present}], presentCount, totalCount, completionPct, advisory:true } }',
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
     method: 'POST',
     path: '/api/v1/projects/:id/signature-campaign',
     auth: 'AuthGuard + TenantGuard (signature_requests.send)',

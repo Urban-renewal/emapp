@@ -2436,6 +2436,23 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `invalid_status_transition`, `threshold_not_met`, `stale_write`, `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/projects/:id/document-checklist
+
+- **Auth:** AuthGuard + TenantGuard (projects.read)
+- **Summary:** DH2 (V13) — ADVISORY project document-checklist (read-only). Per the project renewal TRACK (derived from project.type: tama38_1/2→tama38, pinui_binui, other→default) the REQUIRED doc types + present/missing AUTO-TICK (a non-archived project-scoped doc of that type exists — DH1 doc_scope=project/doc_scope_id OR legacy project_id) + completeness %. ADVISORY ONLY: NEVER gates or mutates project status; no writes. No-oracle 404 for cross-org / unassigned-agent. NO PII, NO document ids/names — type keys + present booleans + counts only.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { projectId, projectType, track, items:[{type,present}], presentCount, totalCount, completionPct, advisory:true } }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
 ### GET /api/v1/projects/:id/export
 
 - **Auth:** AuthGuard + TenantGuard

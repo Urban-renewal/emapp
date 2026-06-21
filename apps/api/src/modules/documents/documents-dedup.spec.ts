@@ -96,6 +96,12 @@ async function seedDoc(
   contentHash: string,
   opts: SeedDocOpts = {},
 ): Promise<string> {
+  // DH1 canonical scope — a real document carries doc_scope/doc_scope_id, not
+  // just the legacy project_id. Derive it so the seeded row matches production
+  // shape (and satisfies the documents_doc_scope_id_consistent CHECK: scope_id
+  // is NULL iff doc_scope='org'). This is what the dedup probe reports back.
+  const docScope = opts.apartmentId ? 'apartment' : opts.projectId ? 'project' : 'org';
+  const docScopeId = opts.apartmentId ?? opts.projectId ?? null;
   return withTenant(orgId, async (tx) => {
     const [row] = await tx
       .insert(documents)
@@ -103,6 +109,8 @@ async function seedDoc(
         orgId,
         projectId: opts.projectId ?? null,
         apartmentId: opts.apartmentId ?? null,
+        docScope,
+        docScopeId,
         name,
         type: opts.type ?? 'agreement',
         mimeType: 'application/pdf',

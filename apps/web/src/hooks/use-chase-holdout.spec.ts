@@ -8,17 +8,19 @@
  *      via `listSignatureRequests({ ownerId, status: 'pending', limit: 1 })`.
  *   2a. If one exists → RESEND it (`resendSignatureRequest(id)`; idempotent
  *       re-mint) → returns 'resent'.
- *   2b. ELSE, if the project has a campaign document → CREATE a request against
- *       it (`createSignatureRequest({ documentId, ownerId })`) → 'created'.
- *   2c. ELSE (no pending AND no campaign doc) → typed `holdout_none_pending`.
+ *   2b. ELSE, if the holdout has a per-apartment signable document → CREATE a
+ *       request against it (`createSignatureRequest({ documentId, ownerId })`)
+ *       → 'created'. The doc is THIS holdout's OWN apartment agreement (HB-5
+ *       fix) so an associated owner gets 201, not a 409.
+ *   2c. ELSE (no pending AND no signable doc) → typed `holdout_none_pending`.
  *
  * Pins:
  *   - the resolve query is scoped to the owner + pending-only,
  *   - RESEND targets the RESOLVED request id (not the ownerId), and we do NOT
  *     create when a pending request already exists,
- *   - CREATE posts `{ documentId: campaignDocumentId, ownerId }` when there is
- *     no pending request but a campaign doc, and we do NOT resend then,
- *   - no pending AND no campaign doc → a typed `holdout_none_pending`
+ *   - CREATE posts `{ documentId: signableDocumentId, ownerId }` when there is
+ *     no pending request but a per-apartment signable doc, and we do NOT resend then,
+ *   - no pending AND no signable doc → a typed `holdout_none_pending`
  *     ApiClientError (calm stale-board copy, NOT a wire error); neither
  *     resend nor create is attempted,
  *   - onSuccess invalidates BOTH `['signature-pulse']` (the board) AND the
@@ -60,16 +62,17 @@ vi.mock('@tanstack/react-query', () => ({
 vi.mock('@/lib/locale', () => ({ useDisplayLocale: () => 'he' }));
 
 interface ChaseHook {
-  mutationFn: (input: { ownerId: string; campaignDocumentId: string | null }) => Promise<unknown>;
+  mutationFn: (input: { ownerId: string; signableDocumentId: string | null }) => Promise<unknown>;
   onSuccess: () => void;
 }
 
-const CAMPAIGN_DOC = '33333333-3333-4333-8333-333333333333';
+// The per-apartment signable doc the create targets (this holdout's OWN apt doc).
+const APT_DOC = '33333333-3333-4333-8333-333333333333';
 
 const PENDING_ROW = {
   id: 'req-99',
   organizationId: '22222222-2222-4222-8222-222222222222',
-  documentId: CAMPAIGN_DOC,
+  documentId: APT_DOC,
   ownerId: 'owner-7',
   status: 'pending' as const,
   expiresAt: new Date('2026-06-30T10:00:00.000Z'),
@@ -106,7 +109,7 @@ describe('useChaseHoldout — state-aware chase', () => {
     resendSignatureRequest.mockResolvedValue(PENDING_ROW);
 
     const hook = await loadHook();
-    const action = await hook.mutationFn({ ownerId: 'owner-7', campaignDocumentId: CAMPAIGN_DOC });
+    const action = await hook.mutationFn({ ownerId: 'owner-7', signableDocumentId: APT_DOC });
 
     // Resolve: scoped to the owner + pending only (never widens to all rows).
     expect(listSignatureRequests).toHaveBeenCalledWith({
@@ -122,7 +125,7 @@ describe('useChaseHoldout — state-aware chase', () => {
     expect(action).toBe('resent');
   });
 
-  it('2) no pending BUT a campaign doc → creates {documentId, ownerId}, returns "created", never resends', async () => {
+  it('2) no pending BUT a per-apartment signable doc → creates {documentId, ownerId}, returns "created", never resends', async () => {
     listSignatureRequests.mockResolvedValue({
       items: [],
       page: { limit: 1, cursor: null, has_more: false },
@@ -130,11 +133,12 @@ describe('useChaseHoldout — state-aware chase', () => {
     createSignatureRequest.mockResolvedValue({ request: PENDING_ROW });
 
     const hook = await loadHook();
-    const action = await hook.mutationFn({ ownerId: 'owner-7', campaignDocumentId: CAMPAIGN_DOC });
+    const action = await hook.mutationFn({ ownerId: 'owner-7', signableDocumentId: APT_DOC });
 
-    // CREATE against the project's campaign document, keyed by the holdout owner.
+    // CREATE against THIS holdout's per-apartment signable doc, keyed by the owner
+    // (HB-5 fix — the apartment's own agreement, so an associated owner is 201).
     expect(createSignatureRequest).toHaveBeenCalledWith({
-      documentId: CAMPAIGN_DOC,
+      documentId: APT_DOC,
       ownerId: 'owner-7',
     });
     // No resend when there was nothing pending.
@@ -142,7 +146,7 @@ describe('useChaseHoldout — state-aware chase', () => {
     expect(action).toBe('created');
   });
 
-  it('3) no pending AND no campaign doc → typed holdout_none_pending; neither resend nor create', async () => {
+  it('3) no pending AND no signable doc → typed holdout_none_pending; neither resend nor create', async () => {
     listSignatureRequests.mockResolvedValue({
       items: [],
       page: { limit: 1, cursor: null, has_more: false },
@@ -150,10 +154,10 @@ describe('useChaseHoldout — state-aware chase', () => {
 
     const hook = await loadHook();
     await expect(
-      hook.mutationFn({ ownerId: 'owner-7', campaignDocumentId: null }),
+      hook.mutationFn({ ownerId: 'owner-7', signableDocumentId: null }),
     ).rejects.toMatchObject({ code: 'holdout_none_pending' });
     await expect(
-      hook.mutationFn({ ownerId: 'owner-7', campaignDocumentId: null }),
+      hook.mutationFn({ ownerId: 'owner-7', signableDocumentId: null }),
     ).rejects.toBeInstanceOf(ApiClientError);
     expect(resendSignatureRequest).not.toHaveBeenCalled();
     expect(createSignatureRequest).not.toHaveBeenCalled();

@@ -210,6 +210,9 @@ export function toApartmentHoldoutViewModel(h: ApartmentHoldout): ApartmentHoldo
     ownerId: h.ownerId,
     name: trimmed,
     apartmentNumber: stripBidiOverrides(h.apartmentNumber),
+    // HB-5 fix — a system-controlled document id (not free text / not PII), passed
+    // through verbatim so the one-click chase creates against THIS apartment's doc.
+    signableDocumentId: h.signableDocumentId,
   };
 }
 

@@ -996,11 +996,64 @@ export class ProjectsService {
         `);
         const rows = (result as unknown as { rows: Array<Record<string, unknown>> }).rows;
 
+        // HB-5 fix — the per-APARTMENT signable document a one-click chase CREATES
+        // a request against. Signing is PER-APARTMENT (each apartment has its OWN
+        // agreement doc), so the create MUST target THIS apartment's doc — a single
+        // project-wide campaign doc resolves to ONE apartment's agreement and a
+        // create for a holdout in a DIFFERENT apartment 409s `recipient_not_
+        // associated`. Precedence (RLS-safe via withTenant — every read is
+        // org-scoped + the apartment is already proven in-project above):
+        //   (1) THIS apartment's most-recent FINALIZED (uploaded_at NOT NULL),
+        //       non-archived, AGREEMENT-type doc — matched by the canonical
+        //       doc_scope='apartment' + doc_scope_id=apartmentId OR the legacy
+        //       apartment_id=apartmentId column (freshly-seeded apartment docs
+        //       carry the legacy column but doc_scope='org', so BOTH are needed);
+        //   (2) ELSE the project's most-recent finalized PROJECT-scoped agreement
+        //       (doc_scope='project'+scope_id=projectId OR legacy project_id, and
+        //       NOT apartment-scoped) — the doc every owner may sign;
+        //   (3) ELSE NULL.
+        // Document ids only — never PII.
+        const signableResult = await tx.execute(sql`
+          SELECT COALESCE(
+            (SELECT d.id
+               FROM documents d
+               WHERE d.type = 'agreement'
+                 AND d.uploaded_at IS NOT NULL
+                 AND d.archived_at IS NULL
+                 AND (
+                   (d.doc_scope = 'apartment' AND d.doc_scope_id = ${apartmentId})
+                   OR d.apartment_id = ${apartmentId}
+                 )
+               ORDER BY d.uploaded_at DESC
+               LIMIT 1),
+            (SELECT d.id
+               FROM documents d
+               WHERE d.type = 'agreement'
+                 AND d.uploaded_at IS NOT NULL
+                 AND d.archived_at IS NULL
+                 AND d.apartment_id IS NULL
+                 AND d.doc_scope <> 'apartment'
+                 AND (
+                   (d.doc_scope = 'project' AND d.doc_scope_id = ${projectId})
+                   OR d.project_id = ${projectId}
+                 )
+               ORDER BY d.uploaded_at DESC
+               LIMIT 1)
+          ) AS signable_document_id
+        `);
+        const signableRows = (
+          signableResult as unknown as { rows: Array<Record<string, unknown>> }
+        ).rows;
+        const signableRaw = signableRows[0]?.['signable_document_id'];
+        const signableDocumentId =
+          signableRaw === null || signableRaw === undefined ? null : String(signableRaw);
+
         const apartmentNumber = String(apt.number);
         const holdouts: ApartmentHoldout[] = rows.map((r) => ({
           ownerId: String(r['owner_id']),
           name: r['name'] === null || r['name'] === undefined ? null : String(r['name']),
           apartmentNumber,
+          signableDocumentId,
         }));
 
         // ISO A.12.4 — per-access audit (a NAMED PII reveal). Record WHO revealed

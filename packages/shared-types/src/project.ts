@@ -351,14 +351,27 @@ export type ApartmentSignatureProgress = z.infer<typeof ApartmentSignatureProgre
  * NAMED PII — this is the ONLY signature-progress surface that returns owner
  * NAMES (for the board's "who's stuck" list). It is therefore `view_owner_pii`-
  * GATED + AUDITED, mirroring the owners reveal-pii endpoint (the FE wraps `name`
- * in `<NameDisplay>` for bidi). It carries EXACTLY these 3 fields and NEVER any
- * other PII — `national_id` and `phone` are NEVER returned (only ownerId + name
- * + apartmentNumber).
+ * in `<NameDisplay>` for bidi). It carries the owner name + apartment context +
+ * the per-apartment `signableDocumentId`; NEVER any other PII — `national_id` and
+ * `phone` are NEVER returned (only ownerId + name + apartmentNumber +
+ * signableDocumentId).
+ *
+ * `signableDocumentId` (HB-5 fix) is the document a one-click holdout chase
+ * CREATES a signature request against. Signing is PER-APARTMENT — each apartment
+ * has its OWN agreement document — so this is resolved per-holdout to: THIS
+ * apartment's most-recent FINALIZED (uploaded_at NOT NULL), non-archived,
+ * AGREEMENT-type document; ELSE the project's most-recent finalized PROJECT-scoped
+ * agreement (the doc all owners may sign); ELSE null. Posting the create against
+ * THIS value (not a single project-wide campaign doc that resolves to ONE
+ * apartment's agreement) is what lets the create target the holdout's OWN
+ * apartment, so an associated owner gets 201 rather than a 409
+ * `recipient_not_associated`. It is a document id, not PII.
  */
 export const ApartmentHoldoutSchema = z.object({
   ownerId: z.string().uuid(),
   name: z.string().nullable(),
   apartmentNumber: z.string(),
+  signableDocumentId: z.string().uuid().nullable(),
 });
 export type ApartmentHoldout = z.infer<typeof ApartmentHoldoutSchema>;
 

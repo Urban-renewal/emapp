@@ -47,4 +47,9 @@ export interface ApartmentHoldoutViewModel {
   name: string | null;
   /** The apartment's number/label (system-controlled, bidi-stripped). */
   apartmentNumber: string;
+  /** HB-5 fix — the per-APARTMENT document a one-click chase CREATES a signature
+   *  request against (this apartment's own finalized agreement, else the project
+   *  fallback, else null). The create MUST use THIS (not a project-wide campaign
+   *  doc) so it targets the holdout's OWN apartment → 201 not a 409. Not PII. */
+  signableDocumentId: string | null;
 }

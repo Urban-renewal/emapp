@@ -267,14 +267,9 @@ function ActionCard({
           default; its NAMES (PII) load ON DEMAND from the gated + audited B4
           endpoint only when opened — the same gate/mask contract as the
           project-detail drill-down, never widened. The per-name action is
-          state-aware (resend/create vs start-campaign) and gated on `canRemind`. */}
-      <HoldoutExpander
-        projectId={card.projectId}
-        canRemind={canRemind}
-        sendEnabled={sendEnabled}
-        campaignDocumentId={card.campaignDocumentId}
-        hasCampaign={card.hasCampaign}
-      />
+          state-aware (resend/create-against-the-apartment-doc vs start-campaign)
+          and gated on `canRemind` + the holdout's own per-apartment signable doc. */}
+      <HoldoutExpander projectId={card.projectId} canRemind={canRemind} sendEnabled={sendEnabled} />
     </article>
   );
 }
@@ -302,17 +297,10 @@ function HoldoutExpander({
   projectId,
   canRemind,
   sendEnabled,
-  campaignDocumentId,
-  hasCampaign,
 }: {
   projectId: string;
   canRemind: boolean;
   sendEnabled: boolean;
-  /** HB-5 — the project's campaign doc (threaded to the per-name chase action). */
-  campaignDocumentId: string | null;
-  /** HB-5 — false ⇒ the per-name action routes to "start collection", never a
-   *  dead-end remind. */
-  hasCampaign: boolean;
 }) {
   const t = useTranslations('home.pulse');
   const [open, setOpen] = useState(false);
@@ -377,8 +365,6 @@ function HoldoutExpander({
                   apartmentNumber={apt.number}
                   canRemind={canRemind}
                   sendEnabled={sendEnabled}
-                  campaignDocumentId={campaignDocumentId}
-                  hasCampaign={hasCampaign}
                   t={t}
                 />
               ))}
@@ -407,8 +393,6 @@ export function HoldoutApartment({
   apartmentNumber,
   canRemind,
   sendEnabled,
-  campaignDocumentId,
-  hasCampaign,
   t,
 }: {
   projectId: string;
@@ -416,8 +400,6 @@ export function HoldoutApartment({
   apartmentNumber: string;
   canRemind: boolean;
   sendEnabled: boolean;
-  campaignDocumentId: string | null;
-  hasCampaign: boolean;
   t: ReturnType<typeof useTranslations>;
 }) {
   const { data, isLoading, isError, error, refetch } = useApartmentHoldouts(projectId, apartmentId);
@@ -462,8 +444,6 @@ export function HoldoutApartment({
           projectId={projectId}
           canRemind={canRemind}
           sendEnabled={sendEnabled}
-          campaignDocumentId={campaignDocumentId}
-          hasCampaign={hasCampaign}
           t={t}
         />
       ))}
@@ -490,16 +470,12 @@ export function HoldoutRow({
   projectId,
   canRemind,
   sendEnabled,
-  campaignDocumentId,
-  hasCampaign,
   t,
 }: {
   holdout: ApartmentHoldoutViewModel;
   projectId: string;
   canRemind: boolean;
   sendEnabled: boolean;
-  campaignDocumentId: string | null;
-  hasCampaign: boolean;
   t: ReturnType<typeof useTranslations>;
 }) {
   const toast = useToast();
@@ -507,6 +483,13 @@ export function HoldoutRow({
 
   const disabled = !sendEnabled || chase.isPending;
   const ownerLabel = holdout.name ?? t('holdouts.noName');
+  // HB-5 fix — gate the per-name chase on THIS holdout's OWN per-apartment
+  // signable doc (not the project-wide campaign doc). Signing is per-apartment,
+  // so the create targets the apartment the holdout actually owns → an associated
+  // owner gets 201 (vs the old project-wide doc that 409'd `recipient_not_
+  // associated` for holdouts in any other apartment). null ⇒ no apartment/project
+  // agreement to collect against → the calm "start collection" guidance Link.
+  const signableDocumentId = holdout.signableDocumentId;
 
   return (
     <li className="flex items-center justify-between gap-2 rounded-md bg-surface-subtle px-2.5 py-1.5">
@@ -523,7 +506,7 @@ export function HoldoutRow({
 
       {/* Per-name action — only for actors who may send (Viewer never sees it). */}
       {canRemind &&
-        (hasCampaign ? (
+        (signableDocumentId ? (
           <button
             type="button"
             className="btn btn-ghost btn-sm shrink-0"
@@ -535,7 +518,7 @@ export function HoldoutRow({
             onClick={() => {
               if (disabled) return;
               chase.mutate(
-                { ownerId: holdout.ownerId, campaignDocumentId },
+                { ownerId: holdout.ownerId, signableDocumentId },
                 {
                   onSuccess: (action: HoldoutChaseAction) => {
                     toast.show({
@@ -559,7 +542,8 @@ export function HoldoutRow({
             <span>{chase.isPending ? t('action.remindPending') : t('action.remind')}</span>
           </button>
         ) : (
-          // No campaign — route to where collection is started, never a dead-end.
+          // No signable doc for this apartment/project — route to where collection
+          // is started, never a dead-end (and never a 409).
           <Link
             href={`/projects/${projectId}`}
             className="btn btn-ghost btn-sm shrink-0"

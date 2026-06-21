@@ -518,9 +518,21 @@ const tHoldout = ((key: string, vars?: Record<string, unknown>) => {
 }) as unknown as Parameters<typeof HoldoutRow>[0]['t'];
 
 function holdout(
-  over: Partial<{ ownerId: string; name: string | null; apartmentNumber: string }> = {},
+  over: Partial<{
+    ownerId: string;
+    name: string | null;
+    apartmentNumber: string;
+    signableDocumentId: string | null;
+  }> = {},
 ) {
-  return { ownerId: 'o1', name: 'דנה כהן', apartmentNumber: '4', ...over };
+  // HB-5 — default to a per-apartment signable doc (the chase create target).
+  return {
+    ownerId: 'o1',
+    name: 'דנה כהן',
+    apartmentNumber: '4',
+    signableDocumentId: 'doc-apt-4',
+    ...over,
+  };
 }
 
 describe('HB-3 board-card holdout expander (MissionControlHome)', () => {
@@ -549,8 +561,6 @@ describe('HB-3 HoldoutApartment — holdout NAMES + masking/403 (presentational)
         apartmentNumber: '4',
         canRemind: true,
         sendEnabled: true,
-        campaignDocumentId: 'doc-1',
-        hasCampaign: true,
         t: tHoldout,
         ...props,
       }),
@@ -608,8 +618,6 @@ describe('HB-3 HoldoutRow — per-name remind gating + dispatch (presentational)
         projectId: 'p1',
         canRemind: true,
         sendEnabled: true,
-        campaignDocumentId: 'doc-1',
-        hasCampaign: true,
         t: tHoldout,
         ...props,
       }),
@@ -659,42 +667,40 @@ function findOnClick(node: unknown): (() => void) | undefined {
 }
 
 describe('HB-5 per-name chase dispatch (direct onClick)', () => {
-  it('24) clicking the action calls the chase mutation with {ownerId, campaignDocumentId}', () => {
+  it('24) clicking the action calls the chase mutation with {ownerId, signableDocumentId}', () => {
     // Invoke the component as a plain function (mocked hooks return plain
     // objects) to get its element tree, then call the button's onClick.
     const tree = HoldoutRow({
-      holdout: holdout({ ownerId: 'owner-42' }),
+      holdout: holdout({ ownerId: 'owner-42', signableDocumentId: 'doc-apt-9' }),
       projectId: 'p1',
       canRemind: true,
       sendEnabled: true,
-      campaignDocumentId: 'doc-9',
-      hasCampaign: true,
       t: tHoldout,
     });
     const onClick = findOnClick(tree);
     expect(onClick).toBeTypeOf('function');
     onClick?.();
     expect(chaseMutate).toHaveBeenCalledTimes(1);
-    // First positional arg is the chase input: this owner + the campaign doc.
+    // First positional arg is the chase input: this owner + THIS holdout's OWN
+    // per-apartment signable doc (HB-5 fix — not the project-wide campaign doc).
     expect(chaseMutate.mock.calls[0]?.[0]).toEqual({
       ownerId: 'owner-42',
-      campaignDocumentId: 'doc-9',
+      signableDocumentId: 'doc-apt-9',
     });
   });
 
-  it('24b) NO campaign (hasCampaign=false) → the per-name action is a START-campaign Link, NOT the chase button', () => {
+  it('24b) NO signable doc (signableDocumentId=null) → the per-name action is a START-campaign Link, NOT the chase button', () => {
     const html = renderToStaticMarkup(
       createElement(HoldoutRow, {
-        holdout: holdout({ ownerId: 'owner-42' }),
+        holdout: holdout({ ownerId: 'owner-42', signableDocumentId: null }),
         projectId: 'p7',
         canRemind: true,
         sendEnabled: true,
-        campaignDocumentId: null,
-        hasCampaign: false,
         t: tHoldout,
       }),
     );
-    // A Link to the project (start collection), never a dead-end remind button.
+    // A Link to the project (start collection), never a dead-end remind button
+    // (and never a create that would 409).
     expect(html).toMatch(/<a[^>]*href="\/projects\/p7"/);
     expect(html).toContain('התחל איסוף חתימות');
     expect(html).not.toContain('שלח תזכורת');

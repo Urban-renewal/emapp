@@ -143,15 +143,19 @@ export const HOLDOUT_NONE_PENDING_CODE = 'holdout_none_pending';
  *  read "reminder sent" vs "signature request sent". */
 export type HoldoutChaseAction = 'resent' | 'created';
 
-/** Input to {@link useChaseHoldout}: the holdout owner + the project's campaign
- *  document (null when the project has no campaign — then a no-pending owner is a
- *  dead-end and we throw `holdout_none_pending`). */
+/** Input to {@link useChaseHoldout}: the holdout owner + the document the create
+ *  targets (null when there is no signable doc for this holdout — then a
+ *  no-pending owner is a dead-end and we throw `holdout_none_pending`). */
 export interface ChaseHoldoutInput {
   ownerId: string;
-  /** HB-5 — the project's campaign document id (from the pulse card). When the
-   *  owner has no live pending request and this is set, we CREATE a request
-   *  against it; when it is null we have nothing to collect against. */
-  campaignDocumentId: string | null;
+  /** HB-5 fix — the PER-APARTMENT signable document id (from the B4 holdout row).
+   *  Signing is per-apartment, so this is THIS holdout's OWN apartment agreement
+   *  (else the project fallback). When the owner has no live pending request and
+   *  this is set, we CREATE a request against it; when it is null we have nothing
+   *  to collect against. Using the apartment's doc (not a single project-wide
+   *  campaign doc) is what makes the create target the holdout's OWN apartment so
+   *  an associated owner gets 201 rather than a 409 `recipient_not_associated`. */
+  signableDocumentId: string | null;
 }
 
 /**
@@ -183,7 +187,7 @@ export interface ChaseHoldoutInput {
 export function useChaseHoldout() {
   const qc = useQueryClient();
   return useMutation<HoldoutChaseAction, Error, ChaseHoldoutInput>({
-    mutationFn: async ({ ownerId, campaignDocumentId }): Promise<HoldoutChaseAction> => {
+    mutationFn: async ({ ownerId, signableDocumentId }): Promise<HoldoutChaseAction> => {
       // Resolve the owner's single live pending request. `status: 'pending'`
       // already excludes signed/cancelled/expired rows; we take the first
       // (an owner has at most one live pending request per project document,
@@ -194,10 +198,12 @@ export function useChaseHoldout() {
         await resendSignatureRequest(target.id);
         return 'resent';
       }
-      // No live pending request — CREATE one against the project's campaign doc
-      // if there is one (the BE enforces association/visibility/PII delivery).
-      if (campaignDocumentId) {
-        await createSignatureRequest({ documentId: campaignDocumentId, ownerId });
+      // No live pending request — CREATE one against THIS holdout's per-apartment
+      // signable doc (the BE enforces association/visibility/PII delivery +
+      // idempotency). Using the apartment's own agreement is what makes an
+      // associated owner 201 rather than 409 `recipient_not_associated`.
+      if (signableDocumentId) {
+        await createSignatureRequest({ documentId: signableDocumentId, ownerId });
         return 'created';
       }
       // Nothing to (re)chase and no campaign to create against — calm dead-end.

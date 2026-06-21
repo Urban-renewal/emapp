@@ -51,8 +51,17 @@ import { SIGNED_DOCUMENT_RENDERER } from './signed-document.types';
     SignatureTokenService,
     SignatureRequestsService,
     SignedDocumentService,
-    // SOLID seam — bind the renderer abstraction to the built-in pdf-lib impl.
-    // Swap this useClass for an external e-sign integration with no other change.
+    // SOLID seam — bind the signed-document PDF RENDERER abstraction
+    // (ISignedDocumentRenderer) to the built-in pdf-lib impl. Swapping this
+    // useClass swaps ONLY how the signed-certificate PDF is drawn — it does NOT
+    // swap the e-signature MECHANISM. There is no ISignatureProvider seam today:
+    // the actual e-sign flow (single-use JWT mint + consume, SVG signature
+    // capture, pgcrypto signature storage) is hardcoded across
+    // public-sign.service.ts, the token-mint sites in
+    // signature-requests.service.ts, public-sign.controller.ts, and the FE
+    // signature canvas. Moving to a third-party e-signature PROVIDER would
+    // require introducing a new ISignatureProvider abstraction over those —
+    // this binding alone would not suffice.
     { provide: SIGNED_DOCUMENT_RENDERER, useClass: PdfSignedDocumentRenderer },
     PublicSignService,
     {

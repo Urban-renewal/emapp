@@ -23,7 +23,7 @@ import {
 import { z } from 'zod';
 
 import { AuthorizationGuard } from '../../common/authz/authorization.guard';
-import { TenantScoped } from '../../common/authz/authz.decorators';
+import { RequirePermission, TenantScoped } from '../../common/authz/authz.decorators';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -35,11 +35,20 @@ import { ExternalSharesService } from './external-shares.service';
 const UuidParam = new ZodValidationPipe(z.string().uuid());
 
 // X-S3 (V13) — external_share grant management (manager-only WRITES, enforced
-// in the service via requireManager). Like the contractor `shares` controller,
-// the resource is NOT a separately-listed POLICY-matrix permission (an external
-// grant is a delivery channel, not a grantable read resource), so the coarse
-// gate is @TenantScoped (authenticated org member); the service's requireManager
-// is the real write gate. All ops are org-isolated by RLS + the service's
+// in the service via requireManager). Mirrors the contractor `shares` controller
+// convention: the permission catalog models shares as create + revoke ONLY
+// (`shares.create` / `shares.revoke`) — there is no `shares.read` /
+// `shares.update` / extend / resend permission (a share is a delivery channel,
+// not a separately-listed read resource, and there is no in-place edit — you
+// revoke + re-issue). So create + revoke carry the real coarse permission
+// (`@RequirePermission`), and list / update / extend / resend carry
+// @TenantScoped (NO_ENGINE_EQUIVALENT — authenticated org member). The service's
+// requireManager keeps EVERY write manager-only regardless of the coarse gate,
+// so the equivalence-map "Agent gains shares.create/revoke" coarse divergence is
+// NOT an effective widening here (an agent past the coarse gate still 403s at
+// the service). The decorators are defense-in-depth: no new method can ship
+// ungated by omission (AuthorizationGuard fails closed on a handler that
+// declares neither). All ops are org-isolated by RLS + the service's
 // suspended-org / no-oracle 404 posture.
 @Controller()
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
@@ -56,7 +65,7 @@ export class ExternalSharesController {
   }
 
   @Post('external-shares')
-  @TenantScoped()
+  @RequirePermission('shares.create')
   async create(
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(CreateExternalShareInput)) body: CreateExternalShare,
@@ -92,7 +101,7 @@ export class ExternalSharesController {
 
   @Delete('external-shares/:id')
   @HttpCode(204)
-  @TenantScoped()
+  @RequirePermission('shares.revoke')
   async revoke(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     await this.externalShares.revoke(user, id);
   }

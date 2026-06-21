@@ -32,6 +32,10 @@ const T: Record<string, string> = {
   'reason.notStarted.tag': 'טרם התחיל',
   'action.open': 'פתח פרויקט',
   'action.remind': 'שלח תזכורת',
+  'action.remindPending': 'שולח…',
+  'action.remindDisabled': 'שליחת תזכורות מושהית כרגע',
+  'action.remindNonePending': 'אין חתימות ממתינות בפרויקט',
+  'action.remindFailed': 'שליחת התזכורות נכשלה. אפשר לנסות שוב.',
   'explain.trigger': 'למה אני רואה את זה?',
   'explain.body': 'המיון לפי דחיפות',
   'allClear.title': 'הכול תחת שליטה',
@@ -63,6 +67,9 @@ vi.mock('next-intl', () => ({
     if (key === 'reason.notStarted.why') return 'עדיין לא התקבלו חתימות';
     if (key === 'consentPct') return `${String(vars?.['pct'])}% הסכמה`;
     if (key === 'action.openAria') return `פתח את הפרויקט ${String(vars?.['name'])}`;
+    if (key === 'action.remindAria')
+      return `שלח תזכורת לחותמים הממתינים בפרויקט ${String(vars?.['name'])}`;
+    if (key === 'action.remindSent') return `נשלחו ${String(vars?.['count'])} תזכורות`;
     if (key.startsWith('clause.')) return `clause:${key}`;
     return T[key] ?? `MISSING:${key}`;
   },
@@ -75,9 +82,34 @@ vi.mock('next/link', () => ({
 
 vi.mock('lucide-react', () => ({
   ArrowLeft: () => createElement('span', { 'data-icon': 'arrow' }),
+  BellRing: () => createElement('span', { 'data-icon': 'bell' }),
   CheckCircle2: () => createElement('span', { 'data-icon': 'check' }),
   HelpCircle: () => createElement('span', { 'data-icon': 'help' }),
   Sparkles: () => createElement('span', { 'data-icon': 'sparkles' }),
+}));
+
+// TanStack mutation/queryClient — the remind action's plumbing. `useMutation`
+// returns an idle, non-pending stub (the click path / invalidation is unit-
+// tested via the exported pure helpers below; here we only need the button to
+// RENDER its idle state so the SSR markup assertions hold). `mutate` records
+// nothing — `renderToStaticMarkup` never fires onClick.
+const invalidateSpy = vi.fn();
+vi.mock('@tanstack/react-query', () => ({
+  useMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useQueryClient: () => ({ invalidateQueries: invalidateSpy }),
+}));
+
+// Action-toast — the result/error feedback primitive. A no-op show() is enough
+// for the render-only SSR assertions.
+vi.mock('@/components/ui/action-toast', () => ({
+  useToast: () => ({ show: vi.fn(), dismiss: vi.fn() }),
+}));
+
+// api-client — the remind POST. Not invoked under renderToStaticMarkup; stubbed
+// so the module import resolves in the node env.
+vi.mock('@/lib/api-client', () => ({
+  apiClient: { postIdempotent: vi.fn() },
+  isOk: (r: unknown) => Boolean(r && typeof r === 'object' && 'data' in r),
 }));
 
 // The pulse hook + the session + permission hooks — seedable per test.
@@ -107,7 +139,19 @@ vi.mock('@/components/ui/status-badge', () => ({
   StatusBadge: ({ children }: { children: ReactNode }) => createElement('span', null, children),
 }));
 
-import { MissionControlHome } from './mission-control-home';
+import {
+  buildRemindErrorMessage,
+  buildRemindResultMessage,
+  MissionControlHome,
+} from './mission-control-home';
+
+// A next-intl `t` double matching the component's call shape, backed by the
+// same T/parametrised table the next-intl mock uses — so the pure-helper tests
+// assert the REAL Hebrew copy the component would render.
+const tDouble = ((key: string, vars?: Record<string, unknown>) => {
+  if (key === 'action.remindSent') return `נשלחו ${String(vars?.['count'])} תזכורות`;
+  return T[key] ?? `MISSING:${key}`;
+}) as unknown as Parameters<typeof buildRemindResultMessage>[0];
 
 function card(over: Partial<SignaturePulseViewModel['cards'][number]> = {}) {
   return {
@@ -185,10 +229,39 @@ describe('MissionControlHome (E2.1)', () => {
     expect(html).toContain('פתח פרויקט'); // but open still shows (read-only safe)
   });
 
-  it('5b) WITH send permission, the "remind" action shows', () => {
+  it('5b) WITH send permission, the "remind" action renders as a button (not a link)', () => {
     canRemind = true;
     const html = render();
     expect(html).toContain('שלח תזכורת');
+    // The remind action is now an inline <button> (the BE mutation), NOT a
+    // <Link> to the signatures tab — assert the button + its project-scoped aria.
+    expect(html).toMatch(/<button[^>]*aria-label="שלח תזכורת לחותמים הממתינים בפרויקט/);
+    // It must NOT navigate away (no anchor to ?tab=signatures any more).
+    expect(html).not.toContain('?tab=signatures');
+  });
+
+  it('5c) kill-switch OFF (sendEnabled=false) → the remind button is DISABLED + calm copy', () => {
+    canRemind = true;
+    pulseState = {
+      data: vm({ sendEnabled: false }),
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    };
+    const html = render();
+    // The button renders but is disabled (belt-and-suspenders with the BE 503).
+    expect(html).toMatch(/<button[^>]*disabled/);
+    expect(html).toMatch(/<button[^>]*aria-disabled="true"/);
+    // Calm explanatory copy via the native title tooltip — never a silent disable.
+    expect(html).toContain('שליחת תזכורות מושהית כרגע');
+  });
+
+  it('5d) kill-switch ON (sendEnabled=true) → the remind button is ENABLED', () => {
+    canRemind = true;
+    const html = render(); // default vm() has sendEnabled: true
+    // The enabled button carries no `disabled` attribute and no paused tooltip.
+    expect(html).not.toMatch(/<button[^>]*aria-label="שלח תזכורת[^"]*"[^>]*disabled/);
+    expect(html).not.toContain('שליחת תזכורות מושהית כרגע');
   });
 
   it('6) loading → DataState list skeleton (never a bare null)', () => {
@@ -239,5 +312,37 @@ describe('MissionControlHome (E2.1)', () => {
     const html = render();
     expect(html).toContain('למה אני רואה את זה?');
     expect(html).toMatch(/aria-expanded="false"/); // collapsed by default
+  });
+});
+
+describe('HB-1 remind result/error toast copy (pure helpers)', () => {
+  it('11) total === 0 → "no pending signatures" copy (NOT a "0 sent" line)', () => {
+    expect(buildRemindResultMessage(tDouble, { reminded: 0, total: 0 })).toBe(
+      'אין חתימות ממתינות בפרויקט',
+    );
+  });
+
+  it('12) total > 0 → the "{reminded} reminders sent" copy', () => {
+    expect(buildRemindResultMessage(tDouble, { reminded: 3, total: 5 })).toBe('נשלחו 3 תזכורות');
+  });
+
+  it('13) total > 0 but reminded === 0 → still the "sent" line (count 0), never the empty copy', () => {
+    // total>0 means there WERE pending signers; reminded counts deliveries.
+    expect(buildRemindResultMessage(tDouble, { reminded: 0, total: 2 })).toBe('נשלחו 0 תזכורות');
+  });
+
+  it('14) kill-switch 503 (campaign_send_disabled) → the calm "paused" copy', () => {
+    expect(buildRemindErrorMessage(tDouble, { code: 'campaign_send_disabled' })).toBe(
+      'שליחת תזכורות מושהית כרגע',
+    );
+  });
+
+  it('15) any other error → the generic retry copy', () => {
+    expect(buildRemindErrorMessage(tDouble, new Error('boom'))).toBe(
+      'שליחת התזכורות נכשלה. אפשר לנסות שוב.',
+    );
+    expect(buildRemindErrorMessage(tDouble, { code: 'not_found' })).toBe(
+      'שליחת התזכורות נכשלה. אפשר לנסות שוב.',
+    );
   });
 });

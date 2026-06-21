@@ -51,7 +51,13 @@
       "action": {
         "open": "Open project",
         "openAria": "Open the project {name}",
-        "remind": "Send reminder"
+        "remind": "Send reminder",
+        "remindPending": "Sending…",
+        "remindAria": "Send a reminder to the pending signers in {name}",
+        "remindDisabled": "Reminders are paused right now",
+        "remindNonePending": "No pending signatures in this project",
+        "remindSent": "{count, plural, one {1 reminder sent} other {# reminders sent}}",
+        "remindFailed": "Sending reminders failed. Please try again."
       },
       "explain": {
         "trigger": "Why am I seeing this?",

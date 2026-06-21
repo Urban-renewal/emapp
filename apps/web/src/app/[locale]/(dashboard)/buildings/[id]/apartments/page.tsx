@@ -70,9 +70,16 @@ export default function ApartmentsPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-3">
                       {/* 7c F2 — dedup "דירה דירה 7" (number may already
-                          carry the word; formatApartmentLabel decides). */}
+                          carry the word; formatApartmentLabel decides).
+                          FL-9 — append the floor qualifier so same-numbered
+                          apartments on different floors are scannable in the
+                          list heading ("דירה 1 · קומה 2"), not only buried in
+                          the muted facts line below. */}
                       <h2 className="truncate text-base font-semibold">
-                        {formatApartmentLabel(a.number, locale === 'he' ? 'דירה' : 'Apartment')}
+                        {formatApartmentLabel(a.number, locale === 'he' ? 'דירה' : 'Apartment', {
+                          floor: a.floor,
+                          floorWord: locale === 'he' ? 'קומה' : 'Floor',
+                        })}
                       </h2>
                       <StatusBadge intent={a.intent}>{a.statusLabel}</StatusBadge>
                       {a.isArchived && (

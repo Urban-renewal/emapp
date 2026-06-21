@@ -73,10 +73,13 @@ export class OwnersController {
   // masked owners. Not a direct PII leak (masked + hash-equality only
   // finds exact matches), but a meaningful db-load amplifier. 20/min
   // mirrors the documents-post bucket; legitimate UX is one click.
-  // NS2 — the national_id branch is PII-GATED in the service (view_owner_pii):
-  // an unauthorized caller's national_id lookup is INERT (no match, no oracle,
-  // identical to a miss — NOT a 403); an authorized one is audited
-  // (owner.pii_lookup, no national_id value). Cross-project within the org only.
+  // NS2 — the national_id branch is a scope-bounded HMAC match in the service:
+  // it runs INSIDE the existing RLS org-scope + agent assigned-project scope, so
+  // a caller only matches owners they can already see (an agent finds an ASSIGNED
+  // owner by national_id; never one outside scope — no oracle). Result stays
+  // MASKED (cleartext is the separate view_owner_pii-gated reveal path). Every
+  // national_id lookup is audited (owner.pii_lookup, no national_id value, no
+  // targetId — written even on a no-match).
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('search')
   @HttpCode(200)

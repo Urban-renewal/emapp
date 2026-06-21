@@ -1,28 +1,34 @@
 /**
- * NS2 (MASTER-PLAN-V13 Wave B) — PII-gated cross-project national_id lookup on
- * the owners HMAC search (`OwnersService.search`).
+ * NS2 (MASTER-PLAN-V13 Wave B) — national_id lookup on the owners HMAC search
+ * (`OwnersService.search`).
  *
  * Asserts against the REAL local DB — the lookup is a keyed HMAC equality on the
  * stored `national_id_hash` column (pgcrypto + the same hashField(value,
  * PII_HASH_KEY) the writers use), so mocking would defeat the test.
  *
- * THE CONTRACT under test (PII + security-sensitive):
- *  - AUTHORIZED cross-project lookup: a manager (always view_owner_pii) — and an
- *    agent WITH view_owner_pii — finds an owner by national_id across the org's
- *    projects (an owner the agent reaches via an assigned project).
- *  - NO-ORACLE gating: a caller WITHOUT view_owner_pii (an agent with the flag
- *    off) gets a national_id lookup that is completely INERT — empty result,
- *    byte-identical to a miss, NO 403, NO leak that the ID exists.
+ * THE MODEL (PII + security-sensitive): SCOPE is the boundary, not a separate
+ * view_owner_pii gate. The national_id HMAC match runs for ALL roles INSIDE the
+ * existing scope-filtered query (RLS org-scope + agent assigned-project scope).
+ * `view_owner_pii` gates only the SEPARATE reveal-cleartext path (revealPii),
+ * NOT this masked, scope-bounded match — so a plain agent finds an ASSIGNED
+ * owner by national_id, which is safe (RLS already limits them to owners they
+ * can see; no oracle beyond their existing access). national_id stays MASKED.
+ *
+ * THE CONTRACT under test:
+ *  - SCOPED MATCH (all roles): a manager finds an owner by national_id across the
+ *    org's projects; a PLAIN agent (view_owners, NOT view_owner_pii) finds an
+ *    owner by national_id in an ASSIGNED project — masked (D.54 DV-8).
+ *  - THE REAL BOUNDARY: an agent CANNOT find an owner that exists ONLY in an
+ *    UNASSIGNED project by national_id (RLS + agentOwnerScope exclude it). That
+ *    boundary holds regardless of the view_owner_pii flag.
  *  - CROSS-ORG no-leak: org-A never finds org-B's owner who shares the same
  *    national_id (RLS).
  *  - MASKING: the matched owner comes back with national_id MASKED — finding by
  *    ID does NOT dump the cleartext 9-digit ID back.
- *  - AUDIT: an authorized national_id lookup writes an `owner.pii_lookup` row;
- *    the row carries NO national_id value (only field name + result count). An
- *    UNAUTHORIZED lookup writes NO such row.
- *  - AGENT SCOPE: an agent with view_owner_pii still only matches owners in their
- *    assigned projects (an owner with the same ID only in an unassigned project
- *    is invisible).
+ *  - AUDIT: every national_id lookup (any in-scope caller, including a plain
+ *    agent) writes an `owner.pii_lookup` row — written even on a no-match — and
+ *    the row carries NO national_id value (only field name + result count) and
+ *    NO targetId (a lookup spans 0..N owners; pinning one would be a soft oracle).
  *
  * Run (real DB, like the other owners DB specs):
  *   DB_TARGET=local LOCAL_DATABASE_URL=postgresql://postgres:1234@localhost:5432/emapp?sslmode=disable \
@@ -168,10 +174,12 @@ async function linkOwnerToProject(orgId: string, projectId: string, ownerId: str
 }
 
 /** Count `owner.pii_lookup` audit rows for org-A by this actor. */
-async function piiLookupAuditRows(actorId: string): Promise<{ afterState: unknown }[]> {
+async function piiLookupAuditRows(
+  actorId: string,
+): Promise<{ afterState: unknown; targetId: string | null }[]> {
   return withTenant(orgA.id, (tx) =>
     tx
-      .select({ afterState: auditLog.afterState })
+      .select({ afterState: auditLog.afterState, targetId: auditLog.targetId })
       .from(auditLog)
       .where(
         and(
@@ -196,14 +204,14 @@ afterAll(async () => {
   /* harmless leftover rows; suites filter by their own tags */
 });
 
-describe('NS2 — PII-gated national_id lookup on owners search', () => {
-  it('manager (view_owner_pii) finds an owner by national_id across the org; result MASKED', async () => {
+describe('NS2 — national_id lookup on owners search (scope-bounded, masked, audited)', () => {
+  it('manager finds an owner by national_id across the org; result MASKED', async () => {
     const nid = validNationalId(11);
     const id = await seedOwner(orgA.id, nid);
 
     const res = await svc.search(managerA(), { national_id: nid });
     const hit = res.find((o) => o.id === id);
-    expect(hit, 'authorized national_id lookup must find the owner').toBeDefined();
+    expect(hit, 'national_id lookup must find the owner').toBeDefined();
     // Masked — finding by ID does NOT dump the cleartext ID back.
     expect(hit!.nationalIdMasked).toMatch(/^•+\d{2}$/);
     // No cleartext 9-digit national_id anywhere in the NS2 response.
@@ -211,9 +219,12 @@ describe('NS2 — PII-gated national_id lookup on owners search', () => {
     expect(JSON.stringify(res)).not.toMatch(/(?<!\d)\d{9}(?!\d)/);
   });
 
-  it('agent WITH view_owner_pii finds an owner by national_id in an ASSIGNED project; masked', async () => {
+  it('DV-8 parity: a PLAIN agent (view_owners, NOT view_owner_pii) finds an ASSIGNED owner by national_id; masked', async () => {
+    // The flag that gates the SEPARATE reveal-cleartext path is OFF; the masked,
+    // scope-bounded national_id match is still available (it is safe — RLS +
+    // agentOwnerScope already limit the agent to owners they can see).
     await setAgentCapability('view_owners', true);
-    await setAgentCapability('view_owner_pii', true);
+    await setAgentCapability('view_owner_pii', false);
     const nid = validNationalId(22);
     const id = await seedOwner(orgA.id, nid);
     const assignedProj = orgA.projects[0]!.id;
@@ -225,43 +236,40 @@ describe('NS2 — PII-gated national_id lookup on owners search', () => {
 
     const res = await svc.search(agentA(), { national_id: nid });
     const hit = res.find((o) => o.id === id);
-    expect(hit).toBeDefined();
+    expect(hit, 'a plain agent must find an assigned owner by national_id').toBeDefined();
     expect(hit!.nationalIdMasked).toMatch(/^•+\d{2}$/);
     expect(JSON.stringify(res)).not.toContain(nid);
   });
 
-  it('NO-ORACLE: agent WITHOUT view_owner_pii → national_id lookup is INERT (empty, no leak)', async () => {
-    await setAgentCapability('view_owners', true); // can see owners…
-    await setAgentCapability('view_owner_pii', false); // …but NOT by PII.
-    const nid = validNationalId(33);
-    const id = await seedOwner(orgA.id, nid);
-    const assignedProj = orgA.projects[0]!.id;
-    await linkOwnerToProject(orgA.id, assignedProj, id);
-    await db
-      .insert(projectAssignments)
-      .values({ projectId: assignedProj, userId: agentAId, assignedBy: mgrAId })
-      .onConflictDoNothing();
+  it('THE BOUNDARY: an agent CANNOT find an owner that exists only in an UNASSIGNED project by national_id', async () => {
+    // The real security boundary: an out-of-scope owner is invisible to the
+    // national_id match. Holds whether or not the agent has view_owner_pii.
+    for (const piiFlag of [false, true]) {
+      await setAgentCapability('view_owners', true);
+      await setAgentCapability('view_owner_pii', piiFlag);
+      const nid = validNationalId(330 + (piiFlag ? 1 : 0));
+      const id = await seedOwner(orgA.id, nid);
+      const unassignedProj = orgA.projects[1]!.id;
+      await linkOwnerToProject(orgA.id, unassignedProj, id);
 
-    // The owner EXISTS, is in an assigned project, and the ID is correct — yet
-    // the national_id branch is inert, so the result is empty (identical to a
-    // genuine miss). No 403 either — the branch silently does not match.
-    const res = await svc.search(agentA(), { national_id: nid });
-    expect(res.map((o) => o.id)).not.toContain(id);
-    expect(res).toEqual([]);
+      const res = await svc.search(agentA(), { national_id: nid });
+      expect(res.map((o) => o.id), `pii=${piiFlag}`).not.toContain(id);
+    }
   });
 
-  it('NO-ORACLE: unauthorized hit-shape === miss-shape (a real ID and a bogus ID both empty)', async () => {
+  it('BOUNDARY no-oracle: out-of-scope hit-shape === genuine-miss-shape (both empty)', async () => {
     await setAgentCapability('view_owners', true);
     await setAgentCapability('view_owner_pii', false);
-    const realNid = validNationalId(44);
-    await seedOwner(orgA.id, realNid);
+    const realButUnscopedNid = validNationalId(44);
+    const id = await seedOwner(orgA.id, realButUnscopedNid);
+    await linkOwnerToProject(orgA.id, orgA.projects[1]!.id, id); // UNASSIGNED project
 
-    const real = await svc.search(agentA(), { national_id: realNid });
-    const bogus = await svc.search(agentA(), { national_id: validNationalId(999) });
-    // An attacker cannot distinguish "ID exists" from "ID does not exist".
-    expect(real).toEqual([]);
-    expect(bogus).toEqual([]);
-    expect(JSON.stringify(real)).toBe(JSON.stringify(bogus));
+    const outOfScope = await svc.search(agentA(), { national_id: realButUnscopedNid });
+    const genuineMiss = await svc.search(agentA(), { national_id: validNationalId(999) });
+    // An attacker cannot distinguish "ID exists outside my scope" from "no such ID".
+    expect(outOfScope).toEqual([]);
+    expect(genuineMiss).toEqual([]);
+    expect(JSON.stringify(outOfScope)).toBe(JSON.stringify(genuineMiss));
   });
 
   it('CROSS-ORG no-leak: org-A never finds org-B owner sharing the same national_id', async () => {
@@ -272,19 +280,7 @@ describe('NS2 — PII-gated national_id lookup on owners search', () => {
     expect(fromA.map((o) => o.id)).not.toContain(bId);
   });
 
-  it('AGENT SCOPE: agent with view_owner_pii does NOT match an owner only in an UNASSIGNED project', async () => {
-    await setAgentCapability('view_owners', true);
-    await setAgentCapability('view_owner_pii', true);
-    const nid = validNationalId(66);
-    const id = await seedOwner(orgA.id, nid);
-    const unassignedProj = orgA.projects[1]!.id;
-    await linkOwnerToProject(orgA.id, unassignedProj, id);
-
-    const res = await svc.search(agentA(), { national_id: nid });
-    expect(res.map((o) => o.id)).not.toContain(id);
-  });
-
-  it('AUDIT: an authorized national_id lookup writes owner.pii_lookup with NO national_id value', async () => {
+  it('AUDIT: a national_id lookup writes owner.pii_lookup (NO national_id value, NO targetId)', async () => {
     const nid = validNationalId(77);
     await seedOwner(orgA.id, nid);
     const before = (await piiLookupAuditRows(mgrAId)).length;
@@ -301,14 +297,34 @@ describe('NS2 — PII-gated national_id lookup on owners search', () => {
     // It DOES record what was searched + a non-PII count.
     expect(newest.afterState).toMatchObject({ searched_by: 'national_id' });
     expect((newest.afterState as { result_count?: unknown }).result_count).toBeTypeOf('number');
+    // No targetId — a lookup spans 0..N owners; pinning one would be a soft oracle.
+    expect(newest.targetId).toBeNull();
   });
 
-  it('AUDIT no-oracle: an UNAUTHORIZED national_id lookup writes NO pii_lookup row', async () => {
+  it('AUDIT: a PLAIN agent in-scope lookup is also audited (any national_id search is audit-worthy)', async () => {
     await setAgentCapability('view_owners', true);
     await setAgentCapability('view_owner_pii', false);
+    const nid = validNationalId(88);
+    const id = await seedOwner(orgA.id, nid);
+    const assignedProj = orgA.projects[0]!.id;
+    await linkOwnerToProject(orgA.id, assignedProj, id);
+    await db
+      .insert(projectAssignments)
+      .values({ projectId: assignedProj, userId: agentAId, assignedBy: mgrAId })
+      .onConflictDoNothing();
+
     const before = (await piiLookupAuditRows(agentAId)).length;
-    await svc.search(agentA(), { national_id: validNationalId(88) });
+    await svc.search(agentA(), { national_id: nid });
     const after = (await piiLookupAuditRows(agentAId)).length;
-    expect(after).toBe(before);
+    expect(after).toBe(before + 1);
+  });
+
+  it('AUDIT on miss: a no-match national_id lookup is STILL audited (result_count 0, no value)', async () => {
+    const before = (await piiLookupAuditRows(mgrAId)).length;
+    await svc.search(managerA(), { national_id: validNationalId(910) }); // no such owner
+    const rows = await piiLookupAuditRows(mgrAId);
+    expect(rows.length).toBe(before + 1);
+    const newest = rows[rows.length - 1]!;
+    expect((newest.afterState as { result_count?: unknown }).result_count).toBe(0);
   });
 });

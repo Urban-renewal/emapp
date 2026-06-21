@@ -71,6 +71,20 @@
       "empty": {
         "noProjectsTitle": "אין עדיין פרויקטים",
         "noProjectsHint": "כשייווצר הפרויקט הראשון, נסכם כאן מה דורש את תשומת לבך."
+      },
+      "holdouts": {
+        "toggleShow": "מי תקוע?",
+        "toggleHide": "הסתר מי תקוע",
+        "loading": "טוען שמות…",
+        "loadFailed": "טעינת השמות נכשלה.",
+        "retry": "נסה שוב",
+        "none": "אין חותמים תקועים",
+        "fallback": "דירה {number} · חלקי",
+        "noName": "בעל דירה ללא שם רשום",
+        "apartment": "דירה {number}",
+        "remindAria": "שלח תזכורת ל{name}",
+        "remindSent": "התזכורת נשלחה",
+        "remindNonePending": "אין בקשת חתימה ממתינה לבעל דירה זה — ייתכן שהלוח אינו מעודכן."
       }
     },
     "action": {

@@ -16,12 +16,14 @@ import {
   toSignatureRequestViewModel,
   toSignatureRequestViewModels,
 } from '@/adapters/signature-request';
+import { ApiClientError } from '@/lib/api/errors';
 import {
   cancelSignatureRequest,
   createSignatureCampaign,
   createSignatureRequest,
   getSignatureRequest,
   listSignatureRequests,
+  resendSignatureRequest,
   retrieveSignatureLink,
   type SignatureRequestListPage,
 } from '@/lib/api/signature-requests';
@@ -125,6 +127,56 @@ export function useCancelSignatureRequest() {
   return useMutation({
     mutationFn: (id: string) => cancelSignatureRequest(id),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: SIGREQ_KEY });
+    },
+  });
+}
+
+/** The `error.code` the resolve step throws when an owner has no live PENDING
+ *  request to remind (already signed / cancelled / expired since the board last
+ *  loaded). Distinct from a wire failure so the UI can show the calm
+ *  "nothing-to-remind" copy rather than the generic retry line. */
+export const HOLDOUT_NONE_PENDING_CODE = 'holdout_none_pending';
+
+/**
+ * HB-3 — PER-NAME single remind for a board-card holdout.
+ *
+ * A holdout row carries only the `ownerId` (the B4 surface returns NAME +
+ * ownerId, never a signature-request id). The org-side resend endpoint is keyed
+ * by the REQUEST id, so this mutation does a two-step:
+ *   1. RESOLVE the owner's live pending request — `GET /signature-requests?
+ *      ownerId=&status=pending` (the BE already supports both filters). If there
+ *      is none the owner has nothing to re-chase → throw a typed
+ *      `holdout_none_pending` so the caller shows the calm copy (NOT an error).
+ *   2. RESEND it — `POST /signature-requests/:id/resend` (idempotent; re-mints +
+ *      re-delivers ONE link).
+ *
+ * On success we invalidate `['signature-pulse']` (the board re-derives its
+ * attention/stalled signals) AND the signature-requests queries (the resent
+ * row's expiry moved). 0 retries (mutation default) — re-firing a resend that
+ * may have landed would re-deliver; the Idempotency-Key in the api layer also
+ * guards the double-tap. Gating to actors holding `signature_requests.send` is
+ * the CALLER's job (the button is hidden for a Viewer); the BE enforces it too.
+ */
+export function useResendHoldoutReminder() {
+  const qc = useQueryClient();
+  return useMutation<SignatureRequest, Error, string>({
+    mutationFn: async (ownerId: string): Promise<SignatureRequest> => {
+      // Resolve the owner's single live pending request. `status: 'pending'`
+      // already excludes signed/cancelled/expired rows; we take the first
+      // (an owner has at most one live pending request per project document,
+      // and the board card is a single project's holdout).
+      const pending = await listSignatureRequests({ ownerId, status: 'pending', limit: 1 });
+      const target = pending.items[0];
+      if (!target) {
+        throw new ApiClientError({ code: HOLDOUT_NONE_PENDING_CODE });
+      }
+      return resendSignatureRequest(target.id);
+    },
+    onSuccess: () => {
+      // The board reads the pulse query; refresh it so the holdout's chase
+      // state reflects the re-delivered reminder. Also refresh the SR queries.
+      qc.invalidateQueries({ queryKey: ['signature-pulse'] });
       qc.invalidateQueries({ queryKey: SIGREQ_KEY });
     },
   });

@@ -1,6 +1,7 @@
 import {
   ClassifyDocumentInput,
   CreateDocumentInput,
+  DedupCheckInput,
   DocumentSearchQuery,
   DownloadDocumentQuery,
   FinalizeDocumentInput,
@@ -8,6 +9,7 @@ import {
   UpdateDocumentInput,
   type ClassifyDocument,
   type CreateDocument,
+  type DedupCheckInputDto,
   type DocumentSearchQueryDto,
   type DownloadDocumentQueryDto,
   type FinalizeDocument,
@@ -88,6 +90,27 @@ export class DocumentsController {
     @Query(new ZodValidationPipe(DocumentSearchQuery)) query: DocumentSearchQueryDto,
   ) {
     return this.documents.searchDocuments(user, query);
+  }
+
+  // DH4 (dedup probe) — "link to existing, not duplicate". The client posts the
+  // sha256 it computed of the file it is ABOUT to upload; the service returns
+  // any existing non-archived doc(s) in the caller's scope with the same
+  // contentHash so the FE can offer "קשר לקיים". SUGGEST/READ-ONLY (creates no
+  // link, mutates nothing) → gated on `documents.read` (advisory). RLS + the
+  // SAME agent record-scoping as list/search are the boundary (never a cross-
+  // tenant existence oracle). Throttled like the other doc write/read routes
+  // (bulk-probe defense; the contract suite's x-throttle-bypass skips it in CI).
+  // POST (a body-carrying probe) on a LITERAL path — declared before @Get(':id')
+  // is irrelevant (different verb), but it stays grouped with the read surface.
+  @Post('dedup-check')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @RequirePermission('documents.read')
+  async dedupCheck(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body(new ZodValidationPipe(DedupCheckInput)) body: DedupCheckInputDto,
+  ) {
+    return { data: await this.documents.dedupCheck(user, body) };
   }
 
   // Tighter per-route limits than the global 100/min (review item 8 —

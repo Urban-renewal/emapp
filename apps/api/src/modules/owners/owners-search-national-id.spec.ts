@@ -50,7 +50,7 @@ import {
   users,
   withTenant,
 } from '@emapp/db';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { providerPool } from '../../../../../packages/db/src/client';
@@ -137,6 +137,35 @@ async function seedAgent(orgId: string): Promise<string> {
   return u!.id;
 }
 
+/**
+ * Mint a FRESH manager membership in org-A and return a manager token bound to
+ * it. Used by the AUDIT tests so each assertion reads the `owner.pii_lookup`
+ * history of an actor that performed EXACTLY the one search under test — never
+ * a row a different (manager) test left behind. Without this, the shared
+ * `mgrAId` accumulates pii_lookup rows with mixed result_counts (a seeded-hit
+ * search writes result_count 1; the miss writes 0), and selecting "the newest
+ * row" out of that pooled, concurrently-written history is non-deterministic:
+ * the miss test would intermittently read a sibling test's result_count-1 row
+ * and fail `expected 1 to be +0`. A per-test actor makes the asserted row the
+ * provably-correct one regardless of suite ordering or parallel load.
+ */
+async function freshManagerA(): Promise<AccessTokenPayload> {
+  const [u] = await db
+    .insert(users)
+    .values({ email: `ns2-mgr-${randomUUID()}@test.local`, name: 'Mgr', passwordHash: '$2b$12$x' })
+    .returning({ id: users.id });
+  await db
+    .insert(memberships)
+    .values({ userId: u!.id, orgId: orgA.id, role: 'manager', acceptedAt: new Date() });
+  return {
+    sub: u!.id,
+    orgId: orgA.id,
+    role: 'manager',
+    sid: MGR_SID,
+    type: 'access',
+  } as unknown as AccessTokenPayload;
+}
+
 /** Toggle a single capability flag on the agent's active membership. */
 async function setAgentCapability(cap: 'view_owners' | 'view_owner_pii', on: boolean): Promise<void> {
   const c = await providerPool.connect();
@@ -173,7 +202,16 @@ async function linkOwnerToProject(orgId: string, projectId: string, ownerId: str
   });
 }
 
-/** Count `owner.pii_lookup` audit rows for org-A by this actor. */
+/**
+ * `owner.pii_lookup` audit rows for org-A by this actor, in DETERMINISTIC
+ * insertion order (createdAt ASC, id ASC). The ordering matters: the AUDIT
+ * tests read `rows[rows.length - 1]` as "the row the search under test just
+ * wrote", and an unordered scan returns heap/index order — under parallel load
+ * it can surface a sibling row last. Ordering by createdAt (with the random-
+ * UUID id as a stable tiebreaker) makes "last" well-defined; combined with the
+ * per-test `freshManagerA()` actor (whose history is a single row), the
+ * asserted row is provably the one this test produced.
+ */
 async function piiLookupAuditRows(
   actorId: string,
 ): Promise<{ afterState: unknown; targetId: string | null }[]> {
@@ -187,7 +225,8 @@ async function piiLookupAuditRows(
           eq(auditLog.action, 'owner.pii_lookup'),
           eq(auditLog.actorId, actorId),
         ),
-      ),
+      )
+      .orderBy(asc(auditLog.createdAt), asc(auditLog.id)),
   );
 }
 
@@ -284,13 +323,17 @@ describe('NS2 — national_id lookup on owners search (scope-bounded, masked, au
   });
 
   it('AUDIT: a national_id lookup writes owner.pii_lookup (NO national_id value, NO targetId)', async () => {
+    // Fresh actor → this manager's pii_lookup history is EXACTLY the one row this
+    // search writes, so `rows[last]` is provably the row under test (no pooling
+    // with sibling manager searches that wrote result_count 1).
+    const mgr = await freshManagerA();
     const nid = validNationalId(77);
     await seedOwner(orgA.id, nid);
-    const before = (await piiLookupAuditRows(mgrAId)).length;
+    const before = (await piiLookupAuditRows(mgr.sub)).length;
 
-    await svc.search(managerA(), { national_id: nid });
+    await svc.search(mgr, { national_id: nid });
 
-    const rows = await piiLookupAuditRows(mgrAId);
+    const rows = await piiLookupAuditRows(mgr.sub);
     expect(rows.length).toBe(before + 1);
     const newest = rows[rows.length - 1]!;
     const blob = JSON.stringify(newest.afterState);
@@ -323,11 +366,29 @@ describe('NS2 — national_id lookup on owners search (scope-bounded, masked, au
   });
 
   it('AUDIT on miss: a no-match national_id lookup is STILL audited (result_count 0, no value)', async () => {
-    const before = (await piiLookupAuditRows(mgrAId)).length;
-    await svc.search(managerA(), { national_id: validNationalId(910) }); // no such owner
-    const rows = await piiLookupAuditRows(mgrAId);
+    // Determinism: a FRESH manager (clean pii_lookup history) searches a
+    // national_id that is guaranteed-absent in org-A. Seeds 910-919 all collapse
+    // to 100000918 under validNationalId's slice(0,8); NO test seeds an owner in
+    // that key range (verified), and org-scope (withTenant orgA + RLS) means no
+    // OTHER spec's owner can ever surface here. So the search MUST return 0 rows.
+    // The per-test actor guarantees `rows[last]` is the row this miss wrote — the
+    // old shared mgrAId pooled this assertion with sibling searches that wrote
+    // result_count 1, and an unordered "newest row" pick flaked as 1, not 0.
+    const mgr = await freshManagerA();
+    const before = (await piiLookupAuditRows(mgr.sub)).length;
+    expect(before, 'a fresh manager has no prior pii_lookup rows').toBe(0);
+    await svc.search(mgr, { national_id: validNationalId(910) }); // no such owner
+    const rows = await piiLookupAuditRows(mgr.sub);
+    // (a) the miss IS audited — exactly one new row.
     expect(rows.length).toBe(before + 1);
     const newest = rows[rows.length - 1]!;
+    // (b) the audited row records a genuine no-match (result_count 0) and carries
+    //     NO national_id value (only the field name + count) and NO targetId.
     expect((newest.afterState as { result_count?: unknown }).result_count).toBe(0);
+    const blob = JSON.stringify(newest.afterState);
+    expect(blob).not.toContain(validNationalId(910));
+    expect(blob).not.toMatch(/(?<!\d)\d{9}(?!\d)/);
+    expect(newest.afterState).toMatchObject({ searched_by: 'national_id' });
+    expect(newest.targetId).toBeNull();
   });
 });

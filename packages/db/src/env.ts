@@ -50,7 +50,15 @@ const serverSchema = {
   // base64 of 32 random bytes (44 chars), delivered via Infisical, NEVER
   // logged. The key deliberately never reaches R2 — that is the whole
   // threat model (a bucket dump / R2-credential leak yields ciphertext).
-  DOC_ENCRYPTION_KEY: z.string().length(44),
+  // FL-3: two accepted shapes — (a) a single bare 44-char base64 key (today's
+  // legacy shape) OR (b) the rotation registry form "v2;active=<id>;<id>=<b64>;…"
+  // (variable length). This schema only gates the COARSE shape; the precise
+  // structural validation (key lengths, keyId range, active-key presence) lives
+  // in DocKeyRegistry.fromEnv (apps/api documents module) and is asserted
+  // fail-closed at API boot — keeping the env package free of the cipher logic.
+  DOC_ENCRYPTION_KEY: z.string().refine((v) => v.length === 44 || v.startsWith('v2;'), {
+    message: 'DOC_ENCRYPTION_KEY must be a 44-char base64 key or a "v2;…" key registry',
+  }),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   // Connection-layer scale knobs — ops-tunable per environment WITHOUT
   // a code change. client.ts applies these with the current production-

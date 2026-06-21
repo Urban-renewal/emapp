@@ -12,10 +12,8 @@
  *   - RLS isolation: org B cannot see / mutate org A's grant.
  *   - no-oracle: a missing / cross-org id → generic 404.
  */
-import {
-  PARTY_PRESET_CEILINGS,
-  type ExternalSharePermissions,
-} from '@emapp/db';
+import { PARTY_PRESET_CEILINGS, type ExternalSharePermissions } from '@emapp/db';
+import { ExternalSharePermissionsSchema } from '@emapp/shared-types';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -251,6 +249,26 @@ describe('ExternalSharesService — revoke / extend / resend', () => {
     expect(page.data.find((g) => g.id === created.id)).toBeUndefined();
   });
 
+  it('a revoked grant is inert: extend + resend both 404 after revoke', async () => {
+    const created = await svc.create(manager(orgA), {
+      partyType: 'developer',
+      scopeType: 'project',
+      scopeIds: [projectAId],
+      permissions: OVERVIEW_ONLY,
+      allowSensitive: false,
+      otpRequired: true,
+      expiresAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+    });
+    await svc.revoke(manager(orgA), created.id);
+    // A revoked share cannot be extended or resent (filtered by isNull(revokedAt)).
+    await expect(
+      svc.extend(manager(orgA), created.id, {
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.resend(manager(orgA), created.id)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
   it('extend pushes expires_at forward only; backward is rejected', async () => {
     const soon = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
     const created = await svc.create(manager(orgA), {
@@ -266,14 +284,14 @@ describe('ExternalSharesService — revoke / extend / resend', () => {
     const extended = await svc.extend(manager(orgA), created.id, { expiresAt: later });
     expect(extended.expiresAt!.getTime()).toBe(later.getTime());
     // backward
-    await expect(
-      svc.extend(manager(orgA), created.id, { expiresAt: soon }),
-    ).rejects.toMatchObject({ response: { error: { code: 'not_forward' } } });
+    await expect(svc.extend(manager(orgA), created.id, { expiresAt: soon })).rejects.toMatchObject({
+      response: { error: { code: 'not_forward' } },
+    });
   });
 });
 
 describe('ExternalSharesService — suspension + RLS isolation + no-oracle', () => {
-  it('suspended org: create / update / revoke / list all inert (404 / empty)', async () => {
+  it('suspended org: create / update / revoke / extend / resend / list all inert (404 / empty)', async () => {
     const created = await svc.create(manager(orgA), {
       partyType: 'developer',
       scopeType: 'project',
@@ -297,6 +315,13 @@ describe('ExternalSharesService — suspension + RLS isolation + no-oracle', () 
       await expect(
         svc.update(manager(orgA), created.id, { permissions: OVERVIEW_ONLY }),
       ).rejects.toBeInstanceOf(NotFoundException);
+      // extend + resend are MUTATING ops → also inert under suspension.
+      await expect(
+        svc.extend(manager(orgA), created.id, {
+          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(svc.resend(manager(orgA), created.id)).rejects.toBeInstanceOf(NotFoundException);
       await expect(svc.revoke(manager(orgA), created.id)).rejects.toBeInstanceOf(NotFoundException);
       const page = await svc.list(manager(orgA), { limit: 50 });
       expect(page.data).toEqual([]);
@@ -307,7 +332,9 @@ describe('ExternalSharesService — suspension + RLS isolation + no-oracle', () 
     // suspension flag, not some unrelated rule (D.51 plaster check).
     const page = await svc.list(manager(orgA), { limit: 100 });
     expect(page.data.find((g) => g.id === created.id)).toBeDefined();
-  });
+    // 7 sequential round-trips against (remote) Neon — give it headroom over the
+    // 5s default so the dev→DB distance doesn't flake the suspension assertions.
+  }, 20000);
 
   it('RLS isolation: org B cannot see or mutate org A grant (no-oracle 404)', async () => {
     const created = await svc.create(manager(orgA), {
@@ -332,6 +359,26 @@ describe('ExternalSharesService — suspension + RLS isolation + no-oracle', () 
     await expect(
       svc.revoke(manager(orgA), '00000000-0000-4000-8000-0000000000aa'),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('ExternalSharePermissionsSchema — coherence (download requires documents.on)', () => {
+  it('REJECTS download:true while documents.on:false at the contract boundary', () => {
+    const parsed = ExternalSharePermissionsSchema.safeParse({
+      overview: { on: true },
+      documents: { on: false, actions: { download: true } },
+      signatures: { on: false },
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it('ACCEPTS download:true while documents.on:true', () => {
+    const parsed = ExternalSharePermissionsSchema.safeParse({
+      overview: { on: true },
+      documents: { on: true, actions: { download: true } },
+      signatures: { on: false },
+    });
+    expect(parsed.success).toBe(true);
   });
 });
 

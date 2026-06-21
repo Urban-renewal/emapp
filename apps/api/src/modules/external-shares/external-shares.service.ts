@@ -310,8 +310,18 @@ export class ExternalSharesService {
    *  widening. OTP: true→false is widening (REMOVING the OTP gate weakens
    *  access; tightening it back ON is allowed). */
   private assertNarrowsOnly(
-    before: { scopeType: ExternalShareScopeType; permissions: ExternalSharePermissions; allowSensitive: boolean; otpRequired: boolean },
-    next: { scopeType: ExternalShareScopeType; permissions: ExternalSharePermissions; allowSensitive: boolean; otpRequired: boolean },
+    before: {
+      scopeType: ExternalShareScopeType;
+      permissions: ExternalSharePermissions;
+      allowSensitive: boolean;
+      otpRequired: boolean;
+    },
+    next: {
+      scopeType: ExternalShareScopeType;
+      permissions: ExternalSharePermissions;
+      allowSensitive: boolean;
+      otpRequired: boolean;
+    },
   ): void {
     const widen = (): never => {
       throw new BadRequestException({ error: { code: 'cannot_widen' } });
@@ -402,6 +412,10 @@ export class ExternalSharesService {
     return withTenant(
       user.orgId,
       async (tx) => {
+        // Suspended-org inert: resend is a MUTATING re-delivery op, so it MUST
+        // gate on suspension like create/update/revoke/extend (no re-issue for a
+        // frozen org). Previously missing — a suspended org could still trigger a
+        // resend marker. No-oracle: suspended → generic 404.
         if (await isOrgSuspended(tx, user.orgId)) throw NOT_FOUND;
         const [row] = await tx
           .update(externalShares)

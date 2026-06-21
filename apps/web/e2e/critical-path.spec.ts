@@ -294,6 +294,8 @@ async function installStubs(page: import('@playwright/test').Page): Promise<Chai
           buckets: { stalled: 0, expiringSoon: 0, needsHuman: 0, onTrack: 0 },
           attention: [],
           needsHuman: [],
+          // HB-1 — kill-switch state; required by SignaturePulseSchema as of #470.
+          sendEnabled: true,
         },
       }),
     });

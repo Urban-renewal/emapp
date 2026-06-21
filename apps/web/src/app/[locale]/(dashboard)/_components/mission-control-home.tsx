@@ -58,7 +58,7 @@ import type {
  * MUTATING affordance on its permission; the "open project" link is a pure
  * read-navigation that every role may follow (B11).
  *
- * Token-only styling: EMAPP semantic classes (`text-foreground`, `text-muted`,
+ * Token-only styling: EMAPP semantic classes (`text-foreground`, `text-text-muted`,
  * `.card`, `.badge`, `.btn`) — no inline color literal, no default palette, so
  * a re-skin flows through. RTL-first via logical props. All copy via next-intl.
  */
@@ -193,7 +193,11 @@ export function MissionControlHome() {
           Rendered only once the feed resolves with ≥1 project (the all-clear /
           no-projects states are owned by the attention section's DataState). */}
       {vm && vm.fleet.length > 0 && (
-        <FleetSection fleet={vm.fleet} fleetCapped={vm.fleetCapped} totalInScope={vm.totalInScope} />
+        <FleetSection
+          fleet={vm.fleet}
+          fleetCapped={vm.fleetCapped}
+          totalInScope={vm.totalInScope}
+        />
       )}
     </div>
   );

@@ -87,7 +87,7 @@ export default function AcceptInvitePage({ params }: PageProps) {
       <div className="flex min-h-screen items-center justify-center bg-surface-app p-4">
         <div className="card card-pad w-full max-w-sm space-y-4 text-center">
           <h1 className="text-2xl font-bold text-text">{t('doneTitle')}</h1>
-          <p className="text-sm text-muted">{t('doneBody')}</p>
+          <p className="text-sm text-text-muted">{t('doneBody')}</p>
         </div>
       </div>
     );
@@ -98,7 +98,7 @@ export default function AcceptInvitePage({ params }: PageProps) {
       <div className="card card-pad w-full max-w-sm space-y-6">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-text">{t('title')}</h1>
-          <p className="mt-1 text-sm text-muted">{t('subtitle')}</p>
+          <p className="mt-1 text-sm text-text-muted">{t('subtitle')}</p>
         </div>
 
         {/* §S1-SEC1 — method="post" defense in depth (login/signup pattern). */}

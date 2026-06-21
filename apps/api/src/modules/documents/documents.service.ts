@@ -63,6 +63,7 @@ import { notificationLink } from '../notifications/notification-links';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
+import { DocEncryptionConfigError, DocKeyRegistry } from './doc-encryption-registry';
 import { classifyDocument, remediationLandRegistryMatch } from './document-classifier';
 import { verifyMagicBytes } from './magic-bytes';
 import { FILE_SCAN_PROVIDER } from './scan-provider.factory';
@@ -139,12 +140,16 @@ const SENSITIVE_DOC_TYPES: ReadonlySet<string> = new Set([
 // AAD addition must update that spec first). iv is random PER OBJECT.
 const ENVELOPE_MAGIC = Buffer.from('EMAPPENC', 'ascii');
 const ENVELOPE_VERSION = 0x01;
-/** Key-slot id for future rotation. 0x0001 = the current DOC_ENCRYPTION_KEY. */
-const ENVELOPE_KEY_ID = Buffer.from([0x00, 0x01]);
+/** keyId is a uint16 BE in the header (2 bytes). FL-3: it now selects a key from
+ *  the DOC_ENCRYPTION_KEY registry (see doc-encryption-registry.ts). keyId 1 is
+ *  the reserved LEGACY default — what every pre-FL-3 envelope was stamped with
+ *  and what a single bare key still resolves to (byte-for-byte back-compat). */
+const ENVELOPE_KEY_ID_LEN = 2;
 const ENVELOPE_IV_LEN = 12;
 const ENVELOPE_TAG_LEN = 16;
 /** magic(8) + version(1) + keyId(2) + iv(12) + tag(16) */
-const ENVELOPE_HEADER_LEN = ENVELOPE_MAGIC.length + 1 + 2 + ENVELOPE_IV_LEN + ENVELOPE_TAG_LEN;
+const ENVELOPE_HEADER_LEN =
+  ENVELOPE_MAGIC.length + 1 + ENVELOPE_KEY_ID_LEN + ENVELOPE_IV_LEN + ENVELOPE_TAG_LEN;
 
 /**
  * 7d — the content-path integrity gate failed: the RAW bytes the client
@@ -160,16 +165,47 @@ function integrityMismatch(field: 'size' | 'hash'): BadRequestException {
   });
 }
 
-/** base64-decode the doc-envelope key, fail-closed on misconfig. The error
- *  carries NO key material — only the remedy. */
-function docEncryptionKey(): Buffer {
-  const b64 = env.DOC_ENCRYPTION_KEY;
-  const key = b64 ? Buffer.from(b64, 'base64') : Buffer.alloc(0);
-  if (key.length !== 32) {
-    // 503 (ops misconfig — not a client error). Never logs/echoes the value.
-    throw new ServiceUnavailableException({ error: { code: 'doc_encryption_unavailable' } });
+/** Memoized registry, keyed on the raw env value so a SIGHUP `reloadEnv()` key
+ *  rotation (or a test that mutates `process.env.DOC_ENCRYPTION_KEY` +
+ *  `reloadEnv()`) transparently rebuilds it on next access — WITHOUT re-parsing
+ *  on every encrypt/decrypt. Holds only the parsed registry, never the raw bytes
+ *  beyond the cache key (which is already in `env`). */
+let docKeyRegistryCache: { rawKey: string | undefined; registry: DocKeyRegistry } | undefined;
+
+/** Build (or reuse the memoized) keyId→key registry from env, fail-closed on
+ *  misconfig. A DocEncryptionConfigError (missing / malformed config, or an
+ *  unknown keyId at decrypt time) maps to the existing ops-facing 503. The error
+ *  carries NO key material — only the ops remedy. */
+function docKeyRegistry(): DocKeyRegistry {
+  const rawKey = env.DOC_ENCRYPTION_KEY;
+  if (docKeyRegistryCache && docKeyRegistryCache.rawKey === rawKey) {
+    return docKeyRegistryCache.registry;
   }
-  return key;
+  try {
+    const registry = DocKeyRegistry.fromEnv(rawKey);
+    docKeyRegistryCache = { rawKey, registry };
+    return registry;
+  } catch (e) {
+    // Do NOT cache a failure — a corrected env on the next reloadEnv must retry.
+    if (e instanceof DocEncryptionConfigError) {
+      // 503 (ops misconfig — not a client error). Never logs/echoes the value.
+      throw new ServiceUnavailableException({ error: { code: 'doc_encryption_unavailable' } });
+    }
+    throw e;
+  }
+}
+
+/**
+ * FL-3 boot-time fail-closed assertion. Call once at API bootstrap so a
+ * malformed DOC_ENCRYPTION_KEY (e.g. a bad rotation registry) crashes the
+ * process at DEPLOY rather than surfacing as a 503 on the first document
+ * download. Returns void; throws the raw DocEncryptionConfigError (NO key
+ * material — only the structural reason) so the boot log is actionable.
+ * Idempotent and side-effect-free beyond warming the memo.
+ */
+export function assertDocEncryptionConfig(): void {
+  // Builds + memoizes; rethrows the structural reason as-is for the boot log.
+  DocKeyRegistry.fromEnv(env.DOC_ENCRYPTION_KEY);
 }
 
 /** P0.B1 — read an object's bytes (bounded) for scanning. The scanner takes a
@@ -1298,14 +1334,20 @@ export class DocumentsService {
    *  iv is RANDOM PER OBJECT (GCM requirement — an iv reuse under the same
    *  key would be catastrophic); NO AAD (pinned, see constants above). */
   private encryptEnvelope(plain: Buffer): Buffer {
+    // FL-3: stamp the ACTIVE keyId into the header and encrypt with its key.
+    // With a single bare DOC_ENCRYPTION_KEY the active keyId is the reserved
+    // legacy default (1) — byte-identical to the pre-FL-3 0x0001 stamp.
+    const { keyId, key } = docKeyRegistry().forEncrypt();
+    const keyIdBytes = Buffer.alloc(ENVELOPE_KEY_ID_LEN);
+    keyIdBytes.writeUInt16BE(keyId, 0);
     const iv = randomBytes(ENVELOPE_IV_LEN);
-    const cipher = createCipheriv('aes-256-gcm', docEncryptionKey(), iv);
+    const cipher = createCipheriv('aes-256-gcm', key, iv);
     const ciphertext = Buffer.concat([cipher.update(plain), cipher.final()]);
     const tag = cipher.getAuthTag();
     return Buffer.concat([
       ENVELOPE_MAGIC,
       Buffer.from([ENVELOPE_VERSION]),
-      ENVELOPE_KEY_ID,
+      keyIdBytes,
       iv,
       tag,
       ciphertext,
@@ -1327,14 +1369,28 @@ export class DocumentsService {
     ) {
       return fail();
     }
-    const ivStart = ENVELOPE_MAGIC.length + 1 + 2; // magic | version | keyId
+    const keyIdStart = ENVELOPE_MAGIC.length + 1; // after magic | version
+    const keyId = envelope.readUInt16BE(keyIdStart);
+    const ivStart = keyIdStart + ENVELOPE_KEY_ID_LEN; // magic | version | keyId
     const iv = envelope.subarray(ivStart, ivStart + ENVELOPE_IV_LEN);
     const tag = envelope.subarray(ivStart + ENVELOPE_IV_LEN, ENVELOPE_HEADER_LEN);
     const ciphertext = envelope.subarray(ENVELOPE_HEADER_LEN);
-    // Key fetch OUTSIDE the try: a key MISCONFIG must surface as the ops 503
-    // (doc_encryption_unavailable), not be swallowed into the generic 500
-    // corruption code (review LOW-1).
-    const key = docEncryptionKey();
+    // Key fetch OUTSIDE the try: a key MISCONFIG — env unset/malformed OR the
+    // stamped keyId is not in the registry (rotation gap) — must FAIL CLOSED as
+    // the ops 503 (doc_encryption_unavailable), never be swallowed into the
+    // generic 500 corruption code and never fall back to another key. FL-3:
+    // keyId 1 (legacy / single bare key) resolves to the legacy default key, so
+    // every pre-FL-3 envelope still decrypts.
+    let key: Buffer;
+    try {
+      key = docKeyRegistry().forDecrypt(keyId);
+    } catch (e) {
+      if (e instanceof DocEncryptionConfigError) {
+        // Unknown keyId (no key for this rotation slot) — ops 503, not corruption.
+        throw new ServiceUnavailableException({ error: { code: 'doc_encryption_unavailable' } });
+      }
+      throw e;
+    }
     try {
       const decipher = createDecipheriv('aes-256-gcm', key, iv);
       decipher.setAuthTag(tag);

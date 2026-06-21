@@ -1,5 +1,17 @@
+// PERF (2026-06-21): prefer IPv4 for upstream/localhost resolution. Node 18+
+// defaults DNS result order to "verbatim" → it tries IPv6 `[::1]` FIRST for
+// `localhost`, which on hosts without an IPv6 loopback fast-path (notably the
+// Windows dev box) is slow / times out (~0.2s–2s per connection). That penalty
+// hit every server-side fetch — in dev it compounded across the getMe →
+// same-origin-proxy → API hops into a ~1.6s authenticated home render (every
+// click > 1s). `ipv4first` restores the pre-Node-18 default; all our upstreams
+// (Neon, R2, Resend, local PG) are reachable over IPv4, so it is safe in prod.
+import dns from 'node:dns';
+
 import { setPoolErrorObserver } from '@emapp/db';
 import * as Sentry from '@sentry/node';
+
+dns.setDefaultResultOrder('ipv4first');
 
 // Guard: only initialise Sentry (and its OpenTelemetry auto-instrumentation)
 // when a DSN is configured. Without a DSN, Sentry.init() still wires up the

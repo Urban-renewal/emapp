@@ -54,6 +54,11 @@ const T: Record<string, string> = {
   'holdouts.noName': 'בעל דירה ללא שם רשום',
   'holdouts.remindSent': 'התזכורת נשלחה',
   'holdouts.remindNonePending': 'אין בקשת חתימה ממתינה לבעל דירה זה — ייתכן שהלוח אינו מעודכן.',
+  // NS-Fleet copy.
+  'fleet.showAll': 'הצג הכל',
+  'fleet.onBoard': 'במעקב',
+  'fleet.state.met': 'ביעד',
+  'fleet.state.onTrack': 'מתקדם',
 };
 
 // DataState (rendered by the home for loading/error/empty) calls
@@ -79,6 +84,9 @@ vi.mock('next-intl', () => ({
     }
     // HB-4 queue-tail (and-N-more) line.
     if (key === 'queueTail') return `ועוד ${String(vars?.['count'])} פרויקטים במעקב`;
+    // NS-Fleet parametrised lines.
+    if (key === 'fleet.heading') return `כל הפרויקטים · ${String(vars?.['count'])}`;
+    if (key === 'fleet.openAria') return `פתח את הפרויקט ${String(vars?.['name'])}`;
     // parametrised lines we assert content of:
     if (key === 'reason.stalled.why') return `אין תנועה כבר ${String(vars?.['days'])} ימים`;
     if (key === 'reason.expiring.why') return 'יש בקשת חתימה שעומדת לפוג';
@@ -236,10 +244,27 @@ function card(over: Partial<SignaturePulseViewModel['cards'][number]> = {}) {
   };
 }
 
+function fleetTile(
+  over: Partial<SignaturePulseViewModel['fleet'][number]> = {},
+): SignaturePulseViewModel['fleet'][number] {
+  return {
+    projectId: 'p1',
+    projectName: 'Tama 38/2 — Pilot',
+    state: 'stalled' as const,
+    intent: 'danger' as const,
+    consentedPct: 64,
+    metThreshold: false,
+    isOnBoard: true,
+    ...over,
+  };
+}
+
 function vm(over: Partial<SignaturePulseViewModel> = {}): SignaturePulseViewModel {
   return {
     buckets: { stalled: 1, expiringSoon: 0, needsHuman: 0, onTrack: 2 },
     cards: [card()],
+    fleet: [fleetTile()],
+    fleetCapped: false,
     isAllClear: false,
     totalInScope: 3,
     sendEnabled: true,
@@ -389,7 +414,7 @@ describe('MissionControlHome (E2.1)', () => {
 
   it('8) all-clear → the calm reward empty-state (not a blank, not an alarm)', () => {
     pulseState = {
-      data: vm({ cards: [], isAllClear: true, totalInScope: 3 }),
+      data: vm({ cards: [], fleet: [], isAllClear: true, totalInScope: 3 }),
       isLoading: false,
       isError: false,
       refetch: vi.fn(),
@@ -401,7 +426,7 @@ describe('MissionControlHome (E2.1)', () => {
 
   it('9) no projects at all → the distinct "no projects yet" empty copy', () => {
     pulseState = {
-      data: vm({ cards: [], isAllClear: true, totalInScope: 0 }),
+      data: vm({ cards: [], fleet: [], isAllClear: true, totalInScope: 0 }),
       isLoading: false,
       isError: false,
       refetch: vi.fn(),
@@ -467,6 +492,127 @@ describe('HB-4 per-card consent sliver + queue-tail line', () => {
     const html = render();
     // DataState owns the empty-state; the tail never rides alongside it.
     expect(html).not.toContain('פרויקטים במעקב');
+  });
+});
+
+describe('NS-Fleet — the full-fleet situation picture grid', () => {
+  it('33) renders the "כל הפרויקטים · N" heading with the in-scope count', () => {
+    const html = render(); // default vm(): totalInScope 3
+    expect(html).toContain('כל הפרויקטים · 3');
+  });
+
+  it('34) renders a tile per in-scope project as a zoom-in Link to /projects/:id', () => {
+    pulseState = {
+      data: vm({
+        fleet: [
+          fleetTile({ projectId: 'pa', projectName: 'Alpha', isOnBoard: false }),
+          fleetTile({ projectId: 'pb', projectName: 'Beta', state: 'met', intent: 'success' }),
+        ],
+        totalInScope: 2,
+      }),
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    };
+    const html = render();
+    // Every project is a tile (the REST is visible, not hidden).
+    expect(html).toContain('Alpha');
+    expect(html).toContain('Beta');
+    // Each tile zooms into its own project.
+    expect(html).toMatch(/href="\/projects\/pa"/);
+    expect(html).toMatch(/href="\/projects\/pb"/);
+  });
+
+  it('35) each tile carries a status chip + a consent sliver (progressbar) + the % text', () => {
+    pulseState = {
+      data: vm({
+        fleet: [fleetTile({ projectId: 'pa', projectName: 'Alpha', consentedPct: 72 })],
+        totalInScope: 1,
+      }),
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    };
+    const html = render();
+    // The state chip text (default state 'stalled' → "תקוע").
+    expect(html).toContain('תקוע');
+    // A thin progressbar at the tile's consent %.
+    expect(html).toMatch(/role="progressbar"[^>]*aria-valuenow="72"/);
+    // The % text line.
+    expect(html).toContain('72% הסכמה');
+  });
+
+  it('36) a met project shows the calm "ביעד" chip; an on-track one shows "מתקדם"', () => {
+    pulseState = {
+      data: vm({
+        fleet: [
+          fleetTile({ projectId: 'pa', projectName: 'Alpha', state: 'met', intent: 'success' }),
+          fleetTile({ projectId: 'pb', projectName: 'Beta', state: 'onTrack', intent: 'info' }),
+        ],
+        totalInScope: 2,
+      }),
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    };
+    const html = render();
+    expect(html).toContain('ביעד');
+    expect(html).toContain('מתקדם');
+  });
+
+  it('37) a tile that ALSO cards above is quietly marked "במעקב" (never hidden)', () => {
+    pulseState = {
+      data: vm({
+        fleet: [fleetTile({ projectId: 'pa', projectName: 'Alpha', isOnBoard: true })],
+        totalInScope: 1,
+      }),
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    };
+    const html = render();
+    expect(html).toContain('Alpha'); // still visible
+    expect(html).toContain('במעקב'); // and marked
+  });
+
+  it('38) capped fleet → a "הצג הכל" link to the full /projects list', () => {
+    pulseState = {
+      data: vm({
+        fleet: [fleetTile({ projectId: 'pa', projectName: 'Alpha' })],
+        fleetCapped: true,
+        totalInScope: 120,
+      }),
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    };
+    const html = render();
+    expect(html).toContain('הצג הכל');
+    expect(html).toMatch(/href="\/projects"/);
+  });
+
+  it('39) NOT capped → no "הצג הכל" link', () => {
+    const html = render(); // default vm(): fleetCapped false
+    expect(html).not.toContain('הצג הכל');
+  });
+
+  it('40) empty fleet (all-clear / no projects) → the fleet section is suppressed', () => {
+    pulseState = {
+      data: vm({ cards: [], fleet: [], isAllClear: true, totalInScope: 0 }),
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    };
+    const html = render();
+    expect(html).not.toContain('כל הפרויקטים');
+  });
+
+  it('41) the existing attention board is untouched — cards still render alongside the fleet', () => {
+    // Default vm(): one attention card + one fleet tile. Both must appear.
+    const html = render();
+    // Attention card "why" (the board) AND the fleet heading (the new section).
+    expect(html).toContain('אין תנועה כבר 26 ימים'); // attention card why
+    expect(html).toContain('כל הפרויקטים · 3'); // fleet heading
   });
 });
 

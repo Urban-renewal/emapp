@@ -2,6 +2,8 @@ import { PULSE_STALLED_DAYS, type ProjectPulseRow, type SignaturePulse } from '@
 
 import { stripBidiOverrides } from '@/lib/bidi';
 import type {
+  FleetProjectViewModel,
+  FleetState,
   PulseActionCardViewModel,
   PulseReason,
   SignaturePulseViewModel,
@@ -31,6 +33,15 @@ import type {
 
 /** Default cap — the home shows the ~5 that need you now (North-Star triage). */
 export const PULSE_CARD_LIMIT = 5;
+
+/**
+ * NS-Fleet — the max number of full-fleet tiles the home renders inline. The
+ * fleet grid is the "complete situation picture" (ALL in-scope projects as calm
+ * tiles), but it must stay calm-at-a-glance and scalable 5→500: past this cap
+ * the grid shows the first N (still most-urgent-first) and a "show all" link to
+ * the full projects list rather than rendering hundreds of tiles into the home.
+ */
+export const FLEET_TILE_CAP = 60;
 
 /** Derive the single top-priority reason a project surfaced, mirroring the
  *  server scorer's precedence so the FE label matches WHY it ranked. */
@@ -73,6 +84,47 @@ function toCard(row: ProjectPulseRow): PulseActionCardViewModel {
   };
 }
 
+/**
+ * NS-Fleet — derive a project's calm signature STATE for the fleet tile. The
+ * attention reasons win first (a project that cards above shows the SAME state
+ * here), then the two calm non-attention states the cards never carry:
+ *   - met     — consent has crossed the legal threshold (calm success);
+ *   - onTrack — has consent, nothing flagged it (calm neutral / "moving along").
+ * A never-signed 0% project is 'notStarted' (mirrors `deriveReason`).
+ */
+function deriveFleetState(row: ProjectPulseRow): FleetState {
+  if (row.stalledDays !== null && row.stalledDays >= PULSE_STALLED_DAYS) return 'stalled';
+  if (row.expiringSoon) return 'expiring';
+  if (row.metThreshold) return 'met';
+  if (row.stalledDays === null && row.consentedPct === 0) return 'notStarted';
+  // Has some consent but no attention flag and not yet met → calm "on track".
+  if (row.consentedPct > 0) return 'onTrack';
+  // Short of target with no movement signal — the calm consent gap.
+  return 'consentGap';
+}
+
+const FLEET_INTENT: Record<FleetState, FleetProjectViewModel['intent']> = {
+  stalled: 'danger',
+  expiring: 'warning',
+  consentGap: 'warning',
+  notStarted: 'neutral',
+  met: 'success',
+  onTrack: 'info',
+};
+
+function toFleetTile(row: ProjectPulseRow, onBoardIds: ReadonlySet<string>): FleetProjectViewModel {
+  const state = deriveFleetState(row);
+  return {
+    projectId: row.projectId,
+    projectName: stripBidiOverrides(row.projectName),
+    state,
+    intent: FLEET_INTENT[state],
+    consentedPct: row.consentedPct,
+    metThreshold: row.metThreshold,
+    isOnBoard: onBoardIds.has(row.projectId),
+  };
+}
+
 export function toSignaturePulseViewModel(
   wire: SignaturePulse,
   limit: number = PULSE_CARD_LIMIT,
@@ -80,9 +132,20 @@ export function toSignaturePulseViewModel(
   const cards = wire.attention.slice(0, limit).map(toCard);
   const { stalled, expiringSoon, needsHuman, onTrack } = wire.buckets;
   const totalInScope = stalled + expiringSoon + needsHuman + onTrack;
+
+  // NS-Fleet — the FULL in-scope project list as calm tiles, server order
+  // preserved (most-urgent first). The cap keeps the home calm-at-a-glance and
+  // scalable: past it the grid shows the first N + a "show all" link. The tiles
+  // mark (never hide) projects that also card above.
+  const onBoardIds = new Set(cards.map((c) => c.projectId));
+  const fleet = wire.attention.slice(0, FLEET_TILE_CAP).map((row) => toFleetTile(row, onBoardIds));
+  const fleetCapped = wire.attention.length > FLEET_TILE_CAP;
+
   return {
     buckets: { stalled, expiringSoon, needsHuman, onTrack },
     cards,
+    fleet,
+    fleetCapped,
     // All-clear = nothing the server flagged for attention. We key off the
     // ranked feed (the source of the cards) rather than the buckets so the
     // reward state and the card list can never disagree.

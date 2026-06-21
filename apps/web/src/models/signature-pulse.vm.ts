@@ -50,6 +50,47 @@ export interface PulseActionCardViewModel {
   hasCampaign: boolean;
 }
 
+/**
+ * NS-Fleet — the calm at-a-glance state of ONE project in the full-fleet grid.
+ *
+ * The fleet tile is NOT the project LIFECYCLE status (planning / gathering /
+ * approved …) — the signature-pulse wire carries no status enum (it is a
+ * SIGNATURE mission-control feed, not the project list). The tile's chip is the
+ * project's SIGNATURE state, derived from the SAME signals the attention cards
+ * use, plus two calm non-attention states the cards never show (a met project
+ * and an on-track project never card, but they DO appear in the fleet):
+ *   - 'stalled' / 'expiring' / 'consentGap' / 'notStarted' — the attention
+ *     reasons (a project also surfaced as a card above is one of these);
+ *   - 'met'     — consent has crossed the legal threshold (calm success);
+ *   - 'onTrack' — has consent, short of target, but nothing flagged it for
+ *     attention (calm neutral — "moving along").
+ */
+export type FleetState =
+  | 'stalled'
+  | 'expiring'
+  | 'consentGap'
+  | 'notStarted'
+  | 'met'
+  | 'onTrack';
+
+/** One project in the full-fleet grid (ALL in-scope projects, calm tiles). */
+export interface FleetProjectViewModel {
+  projectId: string;
+  /** Bidi-stripped project name (RTL-spoof safe; wrap in <NameDisplay>). */
+  projectName: string;
+  /** The project's signature state → drives the tile's status chip + intent. */
+  state: FleetState;
+  /** Status-chip intent for the state (reuses the shared badge vocabulary). */
+  intent: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
+  /** Share-weighted consent %, 0–100 — the tile's thin sliver + % text. */
+  consentedPct: number;
+  /** Has the project met its signature threshold? (drives the sliver tone). */
+  metThreshold: boolean;
+  /** True when this project ALSO appears as a ranked attention card above — the
+   *  tile may subtly mark it, but it is NEVER hidden (the REST stays visible). */
+  isOnBoard: boolean;
+}
+
 /** The buckets summary, passed through verbatim for the pulse sentence. */
 export interface PulseBucketsViewModel {
   stalled: number;
@@ -62,6 +103,14 @@ export interface SignaturePulseViewModel {
   buckets: PulseBucketsViewModel;
   /** Up to N ranked ActionCards (server order preserved). */
   cards: PulseActionCardViewModel[];
+  /** NS-Fleet — the FULL in-scope project list as calm tiles (server order
+   *  preserved: most-urgent first). Capped at `FLEET_TILE_CAP`; when the org
+   *  has more, `fleetCapped` is true and the section offers a "show all" link
+   *  to /projects rather than rendering hundreds of tiles. */
+  fleet: FleetProjectViewModel[];
+  /** True when the in-scope project count exceeds the tile cap → the fleet grid
+   *  shows the first `FLEET_TILE_CAP` and a "הצג הכל" link to the projects list. */
+  fleetCapped: boolean;
   /** True when nothing needs attention → the calm reward empty-state. */
   isAllClear: boolean;
   /** Total projects in scope (sum of the mutually-exclusive buckets) — used by

@@ -26,7 +26,11 @@ import {
 } from '@/hooks/use-signature-requests';
 import { apiClient, isOk } from '@/lib/api-client';
 import type { ApartmentHoldoutViewModel } from '@/models/apartment-signature-progress.vm';
-import type { PulseActionCardViewModel } from '@/models/signature-pulse.vm';
+import type {
+  FleetProjectViewModel,
+  FleetState,
+  PulseActionCardViewModel,
+} from '@/models/signature-pulse.vm';
 
 /**
  * MissionControlHome — the board-first "signature mission-control" home
@@ -180,8 +184,134 @@ export function MissionControlHome() {
           )}
         </DataState>
       </section>
+
+      {/* 6) NS-Fleet — the COMPLETE situation picture. The attention cards above
+          are the EXCEPTIONS (the ~5 that need you now); this calm grid shows the
+          WHOLE fleet — every in-scope project as a compact tile (state chip +
+          consent sliver + zoom-in link). The board evolves from an attention-only
+          feed into the full fleet at a glance: the REST is VISIBLE, not hidden.
+          Rendered only once the feed resolves with ≥1 project (the all-clear /
+          no-projects states are owned by the attention section's DataState). */}
+      {vm && vm.fleet.length > 0 && (
+        <FleetSection fleet={vm.fleet} fleetCapped={vm.fleetCapped} totalInScope={vm.totalInScope} />
+      )}
     </div>
   );
+}
+
+/**
+ * NS-Fleet — the full-fleet "כל הפרויקטים" situation-picture section.
+ *
+ * A calm, responsive grid of compact tiles, one per in-scope project (server
+ * order preserved — most-urgent first). Each tile is a zoom-in <Link> to the
+ * project, carrying its signature-state chip + a thin consent sliver + the %
+ * text. Projects that also appear as attention cards above are subtly marked
+ * (a quiet "במעקב" note) but NEVER hidden — the whole fleet stays visible.
+ *
+ * Scale (5→500): the adapter caps the tiles at `FLEET_TILE_CAP`; when the org
+ * has more, `fleetCapped` is true and the heading offers a "הצג הכל" link to the
+ * full /projects list rather than rendering hundreds of tiles into the home.
+ */
+function FleetSection({
+  fleet,
+  fleetCapped,
+  totalInScope,
+}: {
+  fleet: FleetProjectViewModel[];
+  fleetCapped: boolean;
+  totalInScope: number;
+}) {
+  const t = useTranslations('home.pulse');
+  const headingId = 'mission-control-fleet';
+
+  return (
+    <section aria-labelledby={headingId} className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 id={headingId} className="text-sm font-semibold text-foreground">
+          {t('fleet.heading', { count: totalInScope })}
+        </h2>
+        {/* Scale escape-hatch — when the fleet is capped, the full list lives on
+            the projects page (this home stays calm-at-a-glance). */}
+        {fleetCapped && (
+          <Link
+            href="/projects"
+            className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-foreground"
+          >
+            <span>{t('fleet.showAll')}</span>
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+          </Link>
+        )}
+      </div>
+
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {fleet.map((p) => (
+          <li key={p.projectId}>
+            <FleetTile tile={p} t={t} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** One compact, calm fleet tile — a zoom-in link to the project carrying its
+ *  signature-state chip + consent sliver + % text. Presentational; the adapter
+ *  already derived the state/intent. */
+function FleetTile({
+  tile,
+  t,
+}: {
+  tile: FleetProjectViewModel;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  return (
+    <Link
+      href={`/projects/${tile.projectId}`}
+      className="card card-pad flex flex-col gap-2 transition-colors hover:bg-surface-subtle"
+      aria-label={t('fleet.openAria', { name: tile.projectName })}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-sm font-medium text-foreground">
+          <NameDisplay name={tile.projectName} />
+        </span>
+        <StatusBadge intent={tile.intent} className="shrink-0">
+          {buildFleetTag(t, tile.state)}
+        </StatusBadge>
+      </div>
+
+      {/* The thin consent sliver — at-a-glance progress, reusing HB-4's primitive. */}
+      <ThresholdSliver consentedPct={tile.consentedPct} metThreshold={tile.metThreshold} />
+
+      <div className="flex items-center justify-between gap-2">
+        <span className="tabular text-xs text-text-muted" dir="ltr">
+          {t('consentPct', { pct: tile.consentedPct })}
+        </span>
+        {/* A project also on the attention board above is quietly marked here —
+            never hidden (the whole fleet stays visible). */}
+        {tile.isOnBoard && <span className="text-xs text-text-muted">{t('fleet.onBoard')}</span>}
+      </div>
+    </Link>
+  );
+}
+
+/** The short signature-state TAG for a fleet tile's chip. Literal `t()` keys
+ *  (not a template) so the i18n-coverage guard can verify them. */
+function buildFleetTag(t: ReturnType<typeof useTranslations>, state: FleetState): string {
+  switch (state) {
+    case 'stalled':
+      return t('reason.stalled.tag');
+    case 'expiring':
+      return t('reason.expiring.tag');
+    case 'notStarted':
+      return t('reason.notStarted.tag');
+    case 'met':
+      return t('fleet.state.met');
+    case 'onTrack':
+      return t('fleet.state.onTrack');
+    case 'consentGap':
+    default:
+      return t('reason.consentGap.tag');
+  }
 }
 
 /** A single ranked attention card. Presentational — every derivation already

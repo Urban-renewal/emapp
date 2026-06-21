@@ -50,6 +50,8 @@ import {
   // NS1 — server-side search query schemas.
   OwnerNameSearchQuery,
   DocumentSearchQuery,
+  // DH4 — document dedup probe request.
+  DedupCheckInput,
   OwnerEraseInput,
   SetOwnershipsInput,
   UpdateApartmentInput,
@@ -1895,6 +1897,17 @@ const ENDPOINTS: Endpoint[] = [
       'invalid_token',
       'token_expired',
     ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/documents/dedup-check',
+    auth: 'AuthGuard + TenantGuard (documents.read)',
+    summary:
+      'DH4 — document DEDUP probe ("link to existing, not duplicate"). The client posts the sha256 (content_hash) of the file it is about to upload; returns any EXISTING, non-archived doc(s) in the caller\'s scope with the same hash as link candidates ({documentId,type,scope,scopeId,filename,createdAt}, newest-first) + a hasDuplicate flag. SUGGEST/READ-ONLY — creates no link, mutates nothing. RLS + the SAME agent record-scoping as list/search are the boundary (never a cross-tenant existence oracle: a hash only in another org returns empty). 30/min throttle. r2Key/PII never returned; contentHash never logged.',
+    request: DedupCheckInput,
+    response:
+      '{ "data": { "duplicates": [ { "documentId": "uuid", "type": "string", "scope": "org|project|apartment|owner", "scopeId": "uuid|null", "filename": "string", "createdAt": "iso" } ], "hasDuplicate": bool } }',
+    errors: ['validation_error', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'POST',

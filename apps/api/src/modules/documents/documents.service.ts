@@ -22,6 +22,8 @@ import {
   DOCUMENT_TYPE_MISMATCH_CODE,
   DOCUMENT_UPLOAD_INCOMPLETE_CODE,
   type CreateDocument,
+  type DedupCandidate,
+  type DedupCheckResponse,
   type Document,
   type DocumentDownloadResponse,
   type DocumentUploadResponse,
@@ -65,6 +67,14 @@ import {
 } from './storage';
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
+
+/**
+ * DH4 — hard cap on dedup link candidates returned. A genuine duplicate is one
+ * row; this only bounds a pathological hash collision / spam so the probe can't
+ * be turned into a large enumeration. Newest-first means the most recent
+ * identical doc is always the primary suggestion within the cap.
+ */
+const DEDUP_CANDIDATE_LIMIT = 20;
 
 /**
  * P0.B1 — the anti-malware scan did not return `clean` (infected, or the scan
@@ -201,6 +211,46 @@ const UPLOAD_INCOMPLETE = new ConflictException({
 export interface DocumentListPage {
   data: Document[];
   page: { limit: number; cursor: string | null; has_more: boolean };
+}
+
+/**
+ * DH4 — the columns a dedup candidate is shaped from (the SELECT projection in
+ * dedupCheck). PII-free + r2Key-free by construction: only the doc id, type,
+ * the DH1 canonical scope/scopeId, the filename (name) and createdAt.
+ */
+export interface DedupCandidateRow {
+  documentId: string;
+  type: string;
+  scope: DedupCandidate['scope'];
+  scopeId: string | null;
+  filename: string;
+  createdAt: Date;
+}
+
+/**
+ * DH4 — pure row→candidate mapper. Kept tiny + exported so the shaping is unit-
+ * testable without a DB (the SQL `ORDER BY createdAt DESC` does the ranking;
+ * this only projects the fields onto the wire shape). r2Key is structurally
+ * absent here (it is never selected), so it can never leak.
+ */
+export function toDedupCandidate(r: DedupCandidateRow): DedupCandidate {
+  return {
+    documentId: r.documentId,
+    type: r.type,
+    scope: r.scope,
+    scopeId: r.scopeId,
+    filename: r.filename,
+    createdAt: r.createdAt,
+  };
+}
+
+/**
+ * DH4 — pure response builder. `hasDuplicate` is derived strictly from the
+ * candidate count (no separate flag to drift). Exported for unit testing.
+ */
+export function buildDedupResponse(rows: DedupCandidateRow[]): DedupCheckResponse {
+  const duplicates = rows.map(toDedupCandidate);
+  return { duplicates, hasDuplicate: duplicates.length > 0 };
 }
 
 /** Map a row → wire shape. r2Key is DELIBERATELY omitted (never on the
@@ -1244,6 +1294,69 @@ export class DocumentsService {
         AND a.id = ${documents.apartmentId}
     )`;
     return or(directProjectAssigned, viaApartment);
+  }
+
+  /**
+   * DH4 (MASTER-PLAN-V13 Wave B) — document DEDUP probe ("link to existing, not
+   * duplicate"). The client hashes the file it is about to upload (the SAME
+   * sha256 hex `content_hash` everywhere else) and asks whether the caller's
+   * scope ALREADY holds an identical, non-archived document, so the FE can
+   * offer "קשר לקיים" instead of creating a duplicate.
+   *
+   * SUGGEST/READ-ONLY: a metadata-only SELECT — it creates NO link and mutates
+   * NOTHING (the actual link action is a separate, human-confirmed slice).
+   *
+   * ZERO-LEAK (the security crux — a content-hash probe must NOT become a
+   * cross-tenant existence oracle):
+   *   - withTenant → RLS tenant_isolation (org_id) FORCE: only the caller's
+   *     org rows are ever visible. A hash that exists ONLY in another org
+   *     returns the SAME empty result as a never-seen hash.
+   *   - the SAME agentDocScope record-scoping as list/search: an agent sees a
+   *     candidate only for a doc whose parent project is an ACTIVE assignment;
+   *     org-level docs are invisible to agents. So the probe never widens what
+   *     the caller can already see.
+   *   - archived docs are excluded (a duplicate of a deleted doc is not a live
+   *     link candidate).
+   *   - METADATA only (no r2Key, no presigned URL, no PII) — same posture as
+   *     toDocument. The contentHash is NEVER logged.
+   * Index-served by idx_documents_content_hash (no new migration). Newest-first
+   * so the most recent identical doc is the primary suggestion; a small hard cap
+   * bounds the response (a pathological hash-collision/spam can't return a huge
+   * list).
+   */
+  async dedupCheck(
+    user: AccessTokenPayload,
+    input: { contentHash: string },
+  ): Promise<DedupCheckResponse> {
+    const rows = await withTenant(
+      user.orgId,
+      async (tx) => {
+        const filters: (SQL | undefined)[] = [
+          eq(documents.contentHash, input.contentHash),
+          isNull(documents.archivedAt),
+          // SAME agent record-scoping as list/search — never widens visibility.
+          this.agentDocScope(user),
+        ];
+        return tx
+          .select({
+            documentId: documents.id,
+            type: documents.type,
+            scope: documents.docScope,
+            scopeId: documents.docScopeId,
+            filename: documents.name,
+            createdAt: documents.createdAt,
+          })
+          .from(documents)
+          .where(and(...filters))
+          .orderBy(sql`${documents.createdAt} DESC`, sql`${documents.id} DESC`)
+          .limit(DEDUP_CANDIDATE_LIMIT);
+      },
+      { userId: user.sub },
+    );
+
+    // Pure shaping (exported + unit-tested): r2Key is structurally absent (never
+    // selected); hasDuplicate is derived from the count (no drift).
+    return buildDedupResponse(rows);
   }
 
   /**

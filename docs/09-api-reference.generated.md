@@ -1072,6 +1072,26 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `document_conflict`, `document_integrity_mismatch`, `document_type_mismatch`, `document_scan_rejected`, `storage_unavailable`, `missing_token`, `invalid_token`, `token_expired`
 
+### POST /api/v1/documents/dedup-check
+
+- **Auth:** AuthGuard + TenantGuard (documents.read)
+- **Summary:** DH4 — document DEDUP probe ("link to existing, not duplicate"). The client posts the sha256 (content_hash) of the file it is about to upload; returns any EXISTING, non-archived doc(s) in the caller's scope with the same hash as link candidates ({documentId,type,scope,scopeId,filename,createdAt}, newest-first) + a hasDuplicate flag. SUGGEST/READ-ONLY — creates no link, mutates nothing. RLS + the SAME agent record-scoping as list/search are the boundary (never a cross-tenant existence oracle: a hash only in another org returns empty). 30/min throttle. r2Key/PII never returned; contentHash never logged.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `contentHash` | string | yes | minLength=1, maxLength=128 |
+
+
+**Response**
+
+```json
+{ "data": { "duplicates": [ { "documentId": "uuid", "type": "string", "scope": "org|project|apartment|owner", "scopeId": "uuid|null", "filename": "string", "createdAt": "iso" } ], "hasDuplicate": bool } }
+```
+
+**Errors:** `validation_error`, `missing_token`, `invalid_token`, `token_expired`
+
 ### GET /api/v1/documents/search
 
 - **Auth:** AuthGuard + TenantGuard (documents.read)

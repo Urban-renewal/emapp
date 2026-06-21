@@ -28,15 +28,15 @@ import type {
  */
 
 const SEVERITY_DOT: Record<ProviderHealthSeverity, string> = {
-  ok: 'bg-emerald-500',
-  warn: 'bg-amber-500',
-  crit: 'bg-red-500',
+  ok: 'bg-status-success-fg',
+  warn: 'bg-status-warning-fg',
+  crit: 'bg-status-danger-fg',
 };
 
 const SEVERITY_BG: Record<ProviderHealthSeverity, string> = {
-  ok: 'bg-emerald-50 text-emerald-900 border-emerald-200',
-  warn: 'bg-amber-50 text-amber-900 border-amber-200',
-  crit: 'bg-red-50 text-red-900 border-red-200',
+  ok: 'bg-status-success-bg text-status-success-fg border-border',
+  warn: 'bg-status-warning-bg text-status-warning-fg border-border',
+  crit: 'bg-status-danger-bg text-status-danger-fg border-border',
 };
 
 function GaugeDot({ severity, label }: { severity: ProviderHealthSeverity; label: string }) {

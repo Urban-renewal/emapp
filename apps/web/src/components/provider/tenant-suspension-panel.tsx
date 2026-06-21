@@ -80,12 +80,12 @@ export function TenantSuspensionPanel({ tenant }: Props) {
   }
 
   return (
-    <section className="space-y-3 rounded-md border border-amber-200 bg-amber-50/40 p-4">
+    <section className="space-y-3 rounded-md border border-border bg-status-warning-bg p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
           <h2 className="text-base font-semibold">{t('title')}</h2>
           {tenant.isSuspended ? (
-            <p className="text-sm text-amber-800">
+            <p className="text-sm text-status-warning-fg">
               {t('suspendedSince', { when: tenant.suspendedRelative ?? '' })}
               {tenant.suspendedReason ? ` — ${tenant.suspendedReason}` : ''}
             </p>
@@ -125,9 +125,9 @@ export function TenantSuspensionPanel({ tenant }: Props) {
             e.preventDefault();
             void onConfirmSuspend();
           }}
-          className="space-y-2 border-t border-amber-200 pt-3"
+          className="space-y-2 border-t border-border pt-3"
         >
-          <p className="text-sm text-amber-900">{t('suspendConfirm')}</p>
+          <p className="text-sm text-status-warning-fg">{t('suspendConfirm')}</p>
           <label htmlFor="suspend-note" className="text-sm font-medium">
             {t('noteLabel')}
           </label>

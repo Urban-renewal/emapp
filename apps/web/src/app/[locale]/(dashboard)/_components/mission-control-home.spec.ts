@@ -129,6 +129,7 @@ function vm(over: Partial<SignaturePulseViewModel> = {}): SignaturePulseViewMode
     cards: [card()],
     isAllClear: false,
     totalInScope: 3,
+    sendEnabled: true,
     ...over,
   };
 }

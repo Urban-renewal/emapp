@@ -2601,6 +2601,23 @@ _(no body)_
 
 **Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
+### POST /api/v1/projects/:id/signature-requests/remind
+
+- **Auth:** AuthGuard + TenantGuard (signature_requests.send; agent fine gate manage_signatures + active assignment)
+- **Summary:** HB-1 — one-tap "remind the project's PENDING signers". Server DERIVES every LIVE PENDING request (status=pending AND expires_at>now(), joined ownership→apartment→building→project) and re-mints (new token + 7-day expiry) + re-delivers each, REUSING the per-request resend path. No body: client supplies neither ownerIds nor documentId. PENDING-ONLY (signed owners never re-spammed; expired excluded). N15 kill-switch enforced AFTER authz (503 campaign_send_disabled, no state oracle). Idempotency-Key honoured. 30/min throttle. Returns { reminded, total }.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { "reminded": int, "total": int } }
+```
+
+**Errors:** `forbidden`, `not_found`, `campaign_send_disabled`, `idempotency_conflict`, `missing_token`, `invalid_token`, `token_expired`, `429`
+
 ### GET /api/v1/projects/:projectId/assignments
 
 - **Auth:** AuthGuard + TenantGuard

@@ -59,4 +59,10 @@ export interface SignaturePulseViewModel {
   /** Total projects in scope (sum of the mutually-exclusive buckets) — used by
    *  the empty-state copy to distinguish "no projects yet" from "all on track". */
   totalInScope: number;
+  /** HB-1 — is the global campaign-send KILL-SWITCH on? `true` = the one-tap
+   *  "remind pending" / campaign actions are live; `false` = the switch is off
+   *  (every send endpoint 503s) so the board should disable + explain the action
+   *  rather than let the manager tap into a failure. Passed through verbatim from
+   *  the wire `sendEnabled`. */
+  sendEnabled: boolean;
 }

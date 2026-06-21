@@ -1,5 +1,5 @@
 import { SignatureCampaignInput } from '@emapp/shared-types';
-import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
 
@@ -39,5 +39,28 @@ export class SignatureCampaignController {
     body: SignatureCampaignInput,
   ) {
     return { data: await this.signatureRequests.createCampaign(user, id, body) };
+  }
+
+  /** HB-1 — one-tap "remind the project's PENDING signers". The server DERIVES
+   *  every LIVE PENDING signature request of the project (status='pending' AND
+   *  expires_at > now(), joined ownership → apartment → building → project) and
+   *  re-mints + re-delivers each (REUSING the per-request resend path). NO body:
+   *  the client supplies neither ownerIds nor a documentId — the recipient scope
+   *  is computed server-side and is PENDING-ONLY (a signed owner is never
+   *  re-spammed; an expired request is excluded). Same coarse `signature_requests.send`
+   *  + fine manage_signatures + agent active-assignment gate as the campaign, the
+   *  SAME N15 kill-switch (enforced AFTER authz — no state oracle), and the SAME
+   *  30/min throttle as the single-request resend. Idempotency-Key honoured by the
+   *  global IdempotencyInterceptor (POST, route-keyed) → a double-submit re-mints
+   *  + re-delivers ONCE. Returns { reminded, total }. */
+  @Post(':id/signature-requests/remind')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @HttpCode(200)
+  @RequirePermission('signature_requests.send')
+  async remindPending(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', UuidParam) id: string,
+  ) {
+    return { data: await this.signatureRequests.remindProjectPending(user, id) };
   }
 }

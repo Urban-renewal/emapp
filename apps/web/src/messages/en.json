@@ -260,8 +260,27 @@
     "sharesSection": "Contractor shares",
     "sharesHint": "Grant access permissions to contractors on this project. Each share is recorded separately and can be revoked at any time.",
     "sharesManage": "Manage shares",
-    "searchPlaceholder": "Search project, type, status…",
+    "searchPlaceholder": "Search projects by name…",
     "noResults": "No results match the search",
+    "filter": {
+      "statusLabel": "Filter by status",
+      "statusAll": "All statuses",
+      "status": {
+        "planning": "Planning",
+        "gathering_signatures": "Gathering signatures",
+        "approved": "Approved",
+        "in_construction": "In construction",
+        "completed": "Completed",
+        "cancelled": "Cancelled"
+      },
+      "segmentLabel": "Filter by segment",
+      "segmentAll": "All projects",
+      "segment": {
+        "stalled": "Stalled",
+        "expiring": "Expiring soon",
+        "mine": "Assigned to me"
+      }
+    },
     "viewCards": "Cards view",
     "viewTable": "Table view",
     "dataPendingHint": "Extended details — block/parcel, units, signatures, agents — will appear here soon",

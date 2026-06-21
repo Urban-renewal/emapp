@@ -79,7 +79,7 @@ export default function ProviderOnboardPage() {
         <h1 className="text-2xl font-bold">{t('createdTitle')}</h1>
         <p className="text-sm text-muted-foreground">{t('createdHint')}</p>
 
-        <div className="rounded-md border bg-emerald-50 p-4 text-emerald-900">
+        <div className="rounded-md border border-border bg-status-success-bg p-4 text-status-success-fg">
           <p className="text-sm font-medium">{t('createdOrg')}:</p>
           <p className="mt-1 text-sm">
             {created.orgName} · <span dir="ltr">{created.slug}</span>
@@ -106,7 +106,7 @@ export default function ProviderOnboardPage() {
               <Button type="button" variant="outline" size="sm" onClick={copyToken}>
                 {copied ? t('copied') : t('copy')}
               </Button>
-              <p className="text-xs text-amber-700">{t('inviteTokenWarning')}</p>
+              <p className="text-xs text-status-warning-fg">{t('inviteTokenWarning')}</p>
             </div>
           </div>
         ) : (

@@ -78,7 +78,7 @@ export default function ProviderTenantUsersPage() {
                     {/* Already masked at the wire; passes through. */}
                     <NameDisplay name={m.nameMasked} />
                     {m.isPrimary && (
-                      <span className="ms-2 rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800 dark:bg-teal-950 dark:text-teal-200">
+                      <span className="ms-2 rounded-full bg-status-info-bg px-2 py-0.5 text-xs font-medium text-status-info-fg">
                         {t('primaryBadge')}
                       </span>
                     )}
@@ -90,10 +90,10 @@ export default function ProviderTenantUsersPage() {
                 <span
                   className={
                     m.status === 'active'
-                      ? 'shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium'
+                      ? 'shrink-0 rounded-full bg-status-neutral-bg px-2 py-0.5 text-xs font-medium text-status-neutral-fg'
                       : m.status === 'invited'
-                        ? 'shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-200'
-                        : 'shrink-0 rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700'
+                        ? 'shrink-0 rounded-full bg-status-warning-bg px-2 py-0.5 text-xs font-medium text-status-warning-fg'
+                        : 'shrink-0 rounded-full bg-status-neutral-bg px-2 py-0.5 text-xs font-medium text-status-neutral-fg'
                   }
                 >
                   {t(`status.${m.status}`)}

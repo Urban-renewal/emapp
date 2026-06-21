@@ -25,7 +25,9 @@ apps/web/public/mockServiceWorker.js
 
 # Local-only dev helpers (contain local dev secrets — never commit)
 start-dev-local.ps1
+start-prod-local.ps1
 mfa-code.ps1
+qa-test-doc.pdf
 packages/db/scripts/_tmp_*.ts
 
 # Throwaway scratch output (eyeball PDFs, scratch fixtures) — never commit.

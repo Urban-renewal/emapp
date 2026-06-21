@@ -56,6 +56,9 @@ export const SAMPLE_SIGNATURE_PULSE: SignaturePulse = {
       count: 4,
     },
   ],
+  // HB-1 — kill-switch ON in the default fixture (the one-tap remind action is
+  // live offline).
+  sendEnabled: true,
 };
 
 /** All-clear variant — used by an MSW per-test override / story to exercise the
@@ -64,4 +67,5 @@ export const SAMPLE_SIGNATURE_PULSE_ALL_CLEAR: SignaturePulse = {
   buckets: { stalled: 0, expiringSoon: 0, needsHuman: 0, onTrack: 4 },
   attention: [],
   needsHuman: [],
+  sendEnabled: true,
 };

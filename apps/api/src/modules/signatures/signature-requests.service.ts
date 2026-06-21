@@ -29,6 +29,7 @@ import type {
   SignatureRequestCreateResponse,
   SignatureRequestLinkResponse,
   SignatureDeliveryReport,
+  RemindPendingResponse,
   ListSignatureRequestsQueryDto,
 } from '@emapp/shared-types';
 import {
@@ -65,6 +66,31 @@ const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
 export interface SignatureRequestListPage {
   data: SignatureRequest[];
   page: { limit: number; cursor: string | null; has_more: boolean };
+}
+
+/** Everything the post-tx delivery step needs for ONE re-minted request. The
+ *  `signUrl` carries the fresh token (the only place it appears); the owner PII
+ *  (name/email/phone) is held in-memory only for the immediate send and never
+ *  logged. Produced inside the tenant tx by `resendOneInTx`, consumed outside it
+ *  by `deliverResendPayload`. */
+interface ResendDeliveryPayload {
+  row: typeof signatureRequests.$inferSelect;
+  signUrl: string;
+  documentName: string;
+  ownerName: string;
+  ownerEmail: string | null;
+  ownerPhone: string | null;
+  from: string;
+}
+
+/** Did at least one delivery channel actually go out? email/sms sent|queued, or
+ *  a whatsapp deep-link became ready. Drives the HB-1 `reminded` tally — a
+ *  request whose every channel was unavailable (no email + no phone) is re-minted
+ *  but NOT counted as reminded. */
+function didAnyChannelDeliver(d: SignatureDeliveryReport): boolean {
+  const went = (c: { available: boolean; status?: string }): boolean =>
+    c.available && (c.status === 'sent' || c.status === 'queued' || c.status === 'ready');
+  return went(d.email) || went(d.sms) || went(d.whatsapp);
 }
 
 /** Public-facing FE base for `/sign/:token` URLs. Falls back to a sane
@@ -807,66 +833,230 @@ export class SignatureRequestsService {
         if (req.status !== 'pending') {
           throw new ConflictException({ error: { code: 'signature_request_not_pending' } });
         }
-
-        // Re-mint a fresh token for the SAME request (new jti + new expiry).
-        const { token, jti, expiresAt } = this.tokenService.sign({
-          sub: req.id,
-          orgId: user.orgId,
-          documentId: req.documentId,
-          ownerId: req.ownerId,
-        });
-        // Atomic refresh — only if STILL pending (race vs a concurrent sign/cancel).
-        const [row] = await tx
-          .update(signatureRequests)
-          .set({ jti, expiresAt })
-          .where(and(eq(signatureRequests.id, id), eq(signatureRequests.status, 'pending')))
-          .returning();
-        if (!row) {
-          throw new ConflictException({ error: { code: 'signature_request_not_pending' } });
-        }
-
-        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
-          orgId: user.orgId,
-          actorId: user.sub,
-          actorType: 'user',
-          action: 'signature_request.resend',
-          targetTable: 'signature_requests',
-          targetId: id,
-          sessionId: user.sid,
-        });
-
-        const own = await this.loadOwnerWithPii(tx, req.ownerId);
-        const doc = await this.loadVisibleDocument(tx, req.documentId);
-        const from = await this.resolveFromForOrg(tx, user.orgId);
-        return {
-          row,
-          token,
-          documentName: doc.name,
-          ownerName: own.name,
-          ownerEmail: own.email,
-          ownerPhone: own.phonePlain,
-          from,
-        };
+        // Single-request resend MUST surface a lost-race as a 409 (the caller
+        // targeted ONE id; "nothing to do" is an error). The project-scoped
+        // remind path passes `throwIfNotPending: false` so a concurrently-signed
+        // row is silently skipped instead of failing the whole fan-out.
+        const payload = await this.resendOneInTx(tx, user, req, { throwIfNotPending: true });
+        if (!payload) throw new ConflictException({ error: { code: 'signature_request_not_pending' } });
+        return payload;
       },
       { userId: user.sub },
     );
 
-    const signUrl = `${PUBLIC_APP_URL}/sign/${txOut.token}`;
-    const delivery = await deliverSignatureLink(
+    const delivery = await this.deliverResendPayload(txOut);
+    return { request: this.toWire(txOut.row), signUrl: txOut.signUrl, delivery };
+  }
+
+  /** HB-1 — one-tap project-scoped "chase the stuck pending signers". DERIVES
+   *  every LIVE PENDING signature request of the project (status='pending' AND
+   *  expires_at > now(), joined ownership → apartment → building → project = :id),
+   *  re-mints a fresh token + 7-day expiry for each (REUSING `resendOneInTx`), and
+   *  re-delivers it. The client supplies NO ownerIds and NO documentId — the
+   *  recipient scope is computed SERVER-SIDE and is PENDING-ONLY: a signed owner
+   *  is never re-spammed, and an expired request is excluded (the manager
+   *  re-issues those via the normal create/campaign path).
+   *
+   *  AUTHZ then KILL-SWITCH (no oracle): project-visibility (RLS + agent active
+   *  assignment → no-oracle 404), then `manage_signatures` (403), then — only
+   *  AFTER authorization resolves — the N15 send kill-switch (503
+   *  `campaign_send_disabled`). An unauthorized caller is rejected before it can
+   *  learn the switch state. Delivery I/O runs OUTSIDE the tx; a per-request
+   *  delivery failure is logged (no PII) and counted out of `reminded`, never
+   *  aborting the rest. */
+  async remindProjectPending(
+    user: AccessTokenPayload,
+    projectId: string,
+  ): Promise<RemindPendingResponse> {
+    const txOut = await withTenant(
+      user.orgId,
+      async (tx) => {
+        // (1) Project-visibility gate — mirrors createCampaign / projects.get():
+        // RLS org-isolation for everyone, PLUS an active-assignment join for
+        // agents. Not visible → no row → no-oracle 404 (cross-org and
+        // unassigned-agent are indistinguishable).
+        const [proj] =
+          user.role === 'agent'
+            ? await tx
+                .select({ id: projects.id })
+                .from(projects)
+                .innerJoin(
+                  projectAssignments,
+                  and(
+                    eq(projectAssignments.projectId, projects.id),
+                    eq(projectAssignments.userId, user.sub),
+                    isNull(projectAssignments.unassignedAt),
+                  ),
+                )
+                .where(eq(projects.id, projectId))
+                .limit(1)
+            : await tx
+                .select({ id: projects.id })
+                .from(projects)
+                .where(eq(projects.id, projectId))
+                .limit(1);
+        if (!proj) throw NOT_FOUND;
+
+        // (1b) Agent-capability gate — a remind is a signature WRITE (re-mint +
+        // re-deliver), so an agent needs `manage_signatures` (Manager passes).
+        // The explicit defense-in-depth the D.54 fail-open guard requires for an
+        // agent-loosened write endpoint.
+        await requireAgentCapability(tx, user, 'manage_signatures');
+
+        // (1c) Global send kill-switch (E2 Wave-0 N15) — LAST gate, strictly
+        // AFTER authorization so an unauthorized caller never learns the switch
+        // state (no oracle). OPT-OUT: enabled unless explicitly '0'/'false'.
+        const sendFlag = serverEnv.CAMPAIGN_SEND_ENABLED;
+        if (sendFlag === '0' || sendFlag === 'false') {
+          throw new ServiceUnavailableException({ error: { code: 'campaign_send_disabled' } });
+        }
+
+        // (2) Derive every LIVE PENDING request of THIS project: pending request
+        // → its owner's active ownership → non-archived apartment → building →
+        // project = :id. status='pending' AND expires_at > now() is the LIVE
+        // filter (a row past expiry — even if not yet swept to 'expired' — is
+        // excluded: chasing it would re-mint a fresh link the resident already
+        // can't trust; that's a create/campaign decision, not a remind). DISTINCT
+        // on the request id so an owner who happens to hold two ownership rows in
+        // the project isn't double-counted. RLS scopes every table to the org.
+        const livePending = await tx
+          .selectDistinct({
+            id: signatureRequests.id,
+            documentId: signatureRequests.documentId,
+            ownerId: signatureRequests.ownerId,
+            status: signatureRequests.status,
+          })
+          .from(signatureRequests)
+          .innerJoin(ownerships, eq(ownerships.ownerId, signatureRequests.ownerId))
+          .innerJoin(apartments, eq(apartments.id, ownerships.apartmentId))
+          .innerJoin(buildings, eq(buildings.id, apartments.buildingId))
+          .where(
+            and(
+              eq(buildings.projectId, projectId),
+              eq(signatureRequests.status, 'pending'),
+              gt(signatureRequests.expiresAt, sql`now()`),
+              isNull(ownerships.endedAt),
+              eq(ownerships.relationship, 'owner'),
+              isNull(apartments.archivedAt),
+            ),
+          );
+
+        // (3) Re-mint + swap + audit + load PII for each, INSIDE the same tx, via
+        // the SAME per-request resend core. A row that lost the pending race
+        // between the SELECT and the swap is skipped (payload === null) — it
+        // signed/cancelled concurrently and must NOT be re-chased.
+        const payloads: ResendDeliveryPayload[] = [];
+        for (const req of livePending) {
+          const payload = await this.resendOneInTx(tx, user, req, { throwIfNotPending: false });
+          if (payload) payloads.push(payload);
+        }
+        return { total: livePending.length, payloads };
+      },
+      { userId: user.sub },
+    );
+
+    // (4) Deliver OUTSIDE the tx — a slow/failing email or SMS must never hold a
+    // DB transaction open. A per-request failure is logged (NO PII) and counted
+    // out of `reminded`; the rest still go out.
+    let reminded = 0;
+    for (const payload of txOut.payloads) {
+      try {
+        const delivery = await this.deliverResendPayload(payload);
+        // A request counts as "reminded" when at least one channel actually went
+        // out: email sent/queued, sms sent/queued, or a whatsapp deep-link
+        // returned for the manager to tap (mirrors the bulk path's outcome
+        // semantics). The token is ALREADY re-minted regardless — this only
+        // tallies the delivery attempt.
+        if (didAnyChannelDeliver(delivery)) reminded += 1;
+      } catch {
+        // Delivery threw — the row was already re-minted (link refreshed); the
+        // manager can retry the single request. Never log the owner's PII.
+        this.logger.error(
+          `remindProjectPending: delivery failed for request ${payload.row.id}`,
+        );
+      }
+    }
+
+    return { reminded, total: txOut.total };
+  }
+
+  /** Per-request resend CORE (HB-1 factor of `resend`). Inside an open tenant tx:
+   *  re-mint a fresh token (new jti + 7-day expiry), atomically swap the row's
+   *  jti/expiresAt WHERE STILL pending (race-safe), write the resend audit row
+   *  (NO PII — only the request id), and load the owner PII + doc name + from
+   *  needed for delivery. Returns the delivery payload, or `null` when the row
+   *  lost the pending race (concurrently signed/cancelled) and the caller asked
+   *  NOT to throw (`throwIfNotPending: false` — the fan-out remind path skips it).
+   *  Assumes the caller has ALREADY enforced visibility + capability. */
+  private async resendOneInTx(
+    tx: TenantTx,
+    user: AccessTokenPayload,
+    req: { id: string; documentId: string; ownerId: string },
+    opts: { throwIfNotPending: boolean },
+  ): Promise<ResendDeliveryPayload | null> {
+    // Re-mint a fresh token for the SAME request (new jti + new expiry).
+    const { token, jti, expiresAt } = this.tokenService.sign({
+      sub: req.id,
+      orgId: user.orgId,
+      documentId: req.documentId,
+      ownerId: req.ownerId,
+    });
+    // Atomic refresh — only if STILL pending (race vs a concurrent sign/cancel).
+    const [row] = await tx
+      .update(signatureRequests)
+      .set({ jti, expiresAt })
+      .where(and(eq(signatureRequests.id, req.id), eq(signatureRequests.status, 'pending')))
+      .returning();
+    if (!row) {
+      if (opts.throwIfNotPending) {
+        throw new ConflictException({ error: { code: 'signature_request_not_pending' } });
+      }
+      return null;
+    }
+
+    await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+      orgId: user.orgId,
+      actorId: user.sub,
+      actorType: 'user',
+      action: 'signature_request.resend',
+      targetTable: 'signature_requests',
+      targetId: req.id,
+      sessionId: user.sid,
+    });
+
+    const own = await this.loadOwnerWithPii(tx, req.ownerId);
+    const doc = await this.loadVisibleDocument(tx, req.documentId);
+    const from = await this.resolveFromForOrg(tx, user.orgId);
+    return {
+      row,
+      signUrl: `${PUBLIC_APP_URL}/sign/${token}`,
+      documentName: doc.name,
+      ownerName: own.name,
+      ownerEmail: own.email,
+      ownerPhone: own.phonePlain,
+      from,
+    };
+  }
+
+  /** Per-request resend DELIVERY (HB-1 factor of `resend`). Runs OUTSIDE the tx —
+   *  the email/SMS/WhatsApp I/O must never hold a DB transaction open. The signUrl
+   *  is the only place the fresh token appears; it is NEVER logged. */
+  private deliverResendPayload(
+    payload: ResendDeliveryPayload,
+  ): Promise<SignatureDeliveryReport> {
+    return deliverSignatureLink(
       this.email,
       this.sms,
       {
-        signUrl,
-        ownerName: txOut.ownerName,
-        ownerEmail: txOut.ownerEmail,
-        ownerPhone: txOut.ownerPhone,
-        documentName: txOut.documentName,
+        signUrl: payload.signUrl,
+        ownerName: payload.ownerName,
+        ownerEmail: payload.ownerEmail,
+        ownerPhone: payload.ownerPhone,
+        documentName: payload.documentName,
       },
       { error: (m): void => this.logger.error(m) },
-      txOut.from,
+      payload.from,
     );
-
-    return { request: this.toWire(txOut.row), signUrl, delivery };
   }
 
   /** Retrieve the signing link for a PENDING request — the phone-less-owner

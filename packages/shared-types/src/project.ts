@@ -531,6 +531,14 @@ export const SignaturePulseSchema = z.object({
   buckets: PulseBucketsSchema,
   attention: z.array(ProjectPulseRowSchema),
   needsHuman: z.array(PulseNeedsHumanRowSchema),
+  /** HB-1 — the N15 campaign-send KILL-SWITCH state, surfaced to the FE so the
+   *  board can disable / explain the one-tap "remind pending" action instead of
+   *  letting the manager tap into a 503. `true` = sends enabled (the default);
+   *  `false` = the global switch is off (CAMPAIGN_SEND_ENABLED='0'/'false') and
+   *  every send/remind/campaign endpoint will 503 `campaign_send_disabled`. This
+   *  is an org-agnostic process flag (env), NOT per-project — it rides the pulse
+   *  feed only to give the home a single read for the action's enabled state. */
+  sendEnabled: z.boolean(),
 });
 export type SignaturePulse = z.infer<typeof SignaturePulseSchema>;
 

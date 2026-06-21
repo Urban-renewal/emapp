@@ -1,3 +1,4 @@
+import { serverEnv } from '@emapp/config';
 import {
   AuditService,
   apartments,
@@ -1546,10 +1547,20 @@ export class ProjectsService {
       }
     }
 
+    // HB-1 — surface the N15 send KILL-SWITCH to the FE so the board can
+    // disable/explain the one-tap "remind pending" action instead of letting the
+    // manager tap into a 503. OPT-OUT semantics MUST match the send-path gate
+    // (signature-requests.service): enabled unless explicitly '0'/'false'. This
+    // is a process-wide env flag, NOT per-project — it rides the org-scoped pulse
+    // only as a single convenient read for the action's enabled state.
+    const sendFlag = serverEnv.CAMPAIGN_SEND_ENABLED;
+    const sendEnabled = !(sendFlag === '0' || sendFlag === 'false');
+
     return {
       buckets: { stalled, expiringSoon: expiringSoonCount, needsHuman: needsHuman.length, onTrack },
       attention,
       needsHuman,
+      sendEnabled,
     };
   }
 

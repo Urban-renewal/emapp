@@ -84,5 +84,8 @@ export function toSignaturePulseViewModel(
     // reward state and the card list can never disagree.
     isAllClear: wire.attention.length === 0,
     totalInScope,
+    // HB-1 — pass the kill-switch state through verbatim so the home can gate
+    // the one-tap "remind pending" action on it.
+    sendEnabled: wire.sendEnabled,
   };
 }

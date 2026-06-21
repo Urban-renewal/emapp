@@ -48,6 +48,67 @@ function clampPct(n: number): number {
   return Math.max(0, Math.min(100, Math.round(n)));
 }
 
+/**
+ * ThresholdSliver — HB-4 compact variant of {@link ThresholdProgress} for the
+ * board ActionCards.
+ *
+ * The board card already states the consent % + basis label as text (the home
+ * never repeats the full bar with its %/target/state caption — that lives on the
+ * project board). The sliver is a THIN, calm, label-less fill that reads the
+ * consent-toward-threshold state at a glance, reusing the same calm tone tokens
+ * (success once the line is crossed, amber otherwise — NO celebration) and the
+ * same RTL inline-start fill + reduced-motion-aware transition as the full bar.
+ *
+ * It carries its own accessible `role="progressbar"` + a full `aria-valuetext`
+ * sentence (never a bare number), but renders NO visible caption — the card's
+ * adjacent text % line is the visible label. No layout shift: a fixed-height
+ * track that fills on mount.
+ */
+export interface ThresholdSliverProps {
+  /** Share-weighted consent percentage achieved (0–100). */
+  consentedPct: number;
+  /** Whether the consent line has crossed the legal target — drives the calm
+   *  success vs amber tone (NOT a celebration). */
+  metThreshold: boolean;
+}
+
+export function ThresholdSliver({ consentedPct, metThreshold }: ThresholdSliverProps) {
+  const t = useTranslations('projects.threshold');
+
+  const pct = clampPct(consentedPct);
+  // The board card has no per-project target in the pulse payload, so the sliver
+  // announces the bare-but-complete "X% consent" sentence (no target relationship
+  // to claim) — calmer than a misleading target comparison.
+  const valueText = t('valueTextNoTarget', { pct });
+
+  // Same calm tone as the full bar: success once crossed, amber otherwise.
+  const fill = metThreshold ? 'var(--success-600)' : 'var(--warning-600)';
+
+  return (
+    <div
+      className="relative w-full overflow-hidden rounded-full"
+      style={{ height: 4, background: 'var(--bg-subtle)' }}
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={pct}
+      aria-valuetext={valueText}
+      aria-label={t('ariaLabel')}
+    >
+      <div
+        className="absolute inset-y-0"
+        style={{
+          insetInlineStart: 0,
+          width: `${pct}%`,
+          background: fill,
+          // M1 motion — reduced-motion zeroes the duration token globally.
+          transition: 'width var(--motion-duration-slow) var(--motion-ease-out)',
+        }}
+      />
+    </div>
+  );
+}
+
 export function ThresholdProgress({
   consentedPct,
   targetSignaturePct,

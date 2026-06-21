@@ -70,6 +70,14 @@ vi.mock('next-intl', () => ({
   useTranslations: (ns?: string) => (key: string, vars?: Record<string, unknown>) => {
     if (ns === 'dataState') return DATA_STATE[key] ?? `MISSING:${key}`;
     if (ns === 'consent' && key === 'basisShare') return 'לפי שיעור הבעלות';
+    // projects.threshold — the HB-4 ThresholdSliver's a11y strings.
+    if (ns === 'projects.threshold') {
+      if (key === 'valueTextNoTarget') return `${String(vars?.['pct'])}% — לא הוגדר יעד`;
+      if (key === 'ariaLabel') return 'התקדמות ההסכמות לעבר היעד';
+      return `MISSING:${key}`;
+    }
+    // HB-4 queue-tail (and-N-more) line.
+    if (key === 'queueTail') return `ועוד ${String(vars?.['count'])} פרויקטים במעקב`;
     // parametrised lines we assert content of:
     if (key === 'reason.stalled.why') return `אין תנועה כבר ${String(vars?.['days'])} ימים`;
     if (key === 'reason.expiring.why') return 'יש בקשת חתימה שעומדת לפוג';
@@ -370,6 +378,59 @@ describe('MissionControlHome (E2.1)', () => {
     const html = render();
     expect(html).toContain('למה אני רואה את זה?');
     expect(html).toMatch(/aria-expanded="false"/); // collapsed by default
+  });
+});
+
+describe('HB-4 per-card consent sliver + queue-tail line', () => {
+  it('28) each ActionCard renders a compact consent sliver (progressbar) at its %', () => {
+    // Default card() is consentedPct: 64, metThreshold: false.
+    const html = render();
+    // A thin progressbar with aria-valuenow === the card's consent % — the
+    // at-a-glance sliver, distinct from the text "% הסכמה" line.
+    expect(html).toMatch(/role="progressbar"[^>]*aria-valuenow="64"/);
+    // A meaningful aria-valuetext (never a bare number).
+    expect(html).toContain('64% — לא הוגדר יעד');
+  });
+
+  it('29) the sliver reflects a MET threshold card with the calm success tone', () => {
+    pulseState = {
+      data: vm({ cards: [card({ consentedPct: 80, metThreshold: true })], totalInScope: 1 }),
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    };
+    const html = render();
+    expect(html).toMatch(/role="progressbar"[^>]*aria-valuenow="80"/);
+    // Met → the success fill token (calm, not a celebration).
+    expect(html).toContain('var(--success-600)');
+  });
+
+  it('30) queue-tail: N > 0 (total 3 − 1 shown) → the calm "ועוד N" line', () => {
+    const html = render(); // default vm(): totalInScope 3, 1 card → N=2
+    expect(html).toContain('ועוד 2 פרויקטים במעקב');
+  });
+
+  it('31) queue-tail: N === 0 (every tracked project is on the board) → nothing', () => {
+    pulseState = {
+      data: vm({ cards: [card()], totalInScope: 1 }), // 1 tracked, 1 shown → N=0
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    };
+    const html = render();
+    expect(html).not.toContain('פרויקטים במעקב'); // no "and 0 more"
+  });
+
+  it('32) queue-tail: suppressed in the all-clear empty-state (no cards shown)', () => {
+    pulseState = {
+      data: vm({ cards: [], isAllClear: true, totalInScope: 3 }),
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    };
+    const html = render();
+    // DataState owns the empty-state; the tail never rides alongside it.
+    expect(html).not.toContain('פרויקטים במעקב');
   });
 });
 

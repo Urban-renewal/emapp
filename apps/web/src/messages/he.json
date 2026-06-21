@@ -85,7 +85,8 @@
         "remindAria": "שלח תזכורת ל{name}",
         "remindSent": "התזכורת נשלחה",
         "remindNonePending": "אין בקשת חתימה ממתינה לבעל דירה זה — ייתכן שהלוח אינו מעודכן."
-      }
+      },
+      "queueTail": "{count, plural, one {ועוד פרויקט אחד במעקב} two {ועוד שני פרויקטים במעקב} other {ועוד # פרויקטים במעקב}}"
     },
     "action": {
       "newProject": "פרויקט חדש",

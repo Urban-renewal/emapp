@@ -1,0 +1,587 @@
+{
+  "base": "http://localhost:3001",
+  "when": "local-refined",
+  "warmSamples": 3,
+  "results": [
+    {
+      "action": "LOGIN submit→dashboard",
+      "coldMs": 19540,
+      "warmMs": null
+    },
+    {
+      "action": "dashboard home",
+      "url": "/he",
+      "coldMs": 1885,
+      "warmMs": 1386,
+      "warmSamples": [
+        1386,
+        1473,
+        1383
+      ],
+      "apiCalls": [],
+      "apiCount": 0,
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "action": "projects list",
+      "url": "/he/projects",
+      "coldMs": 8089,
+      "warmMs": 2177,
+      "warmSamples": [
+        2198,
+        2089,
+        2177
+      ],
+      "apiCalls": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 232,
+          "startMs": 1834
+        },
+        {
+          "url": "/api/v1/projects",
+          "ms": 276,
+          "startMs": 1838
+        }
+      ],
+      "apiCount": 2,
+      "slowestApi": {
+        "url": "/api/v1/projects",
+        "ms": 276,
+        "startMs": 1838
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "action": "owners list",
+      "url": "/he/owners",
+      "coldMs": 14146,
+      "warmMs": 2777,
+      "warmSamples": [
+        3138,
+        2708,
+        2777
+      ],
+      "apiCalls": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 297,
+          "startMs": 2226
+        },
+        {
+          "url": "/api/v1/owners",
+          "ms": 481,
+          "startMs": 2228
+        }
+      ],
+      "apiCount": 2,
+      "slowestApi": {
+        "url": "/api/v1/owners",
+        "ms": 481,
+        "startMs": 2228
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "action": "documents list",
+      "url": "/he/documents",
+      "coldMs": 12073,
+      "warmMs": 3167,
+      "warmSamples": [
+        3167,
+        3180,
+        3013
+      ],
+      "apiCalls": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 289,
+          "startMs": 2525
+        },
+        {
+          "url": "/api/v1/documents",
+          "ms": 355,
+          "startMs": 2530
+        }
+      ],
+      "apiCount": 2,
+      "slowestApi": {
+        "url": "/api/v1/documents",
+        "ms": 355,
+        "startMs": 2530
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "action": "messages",
+      "url": "/he/messages",
+      "coldMs": 4815,
+      "warmMs": 1236,
+      "warmSamples": [
+        1236,
+        1260,
+        1233
+      ],
+      "apiCalls": [],
+      "apiCount": 0,
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "action": "buildings list",
+      "url": "/he/buildings",
+      "coldMs": 8180,
+      "warmMs": 2787,
+      "warmSamples": [
+        2865,
+        2787,
+        2577
+      ],
+      "apiCalls": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 162,
+          "startMs": 2309
+        },
+        {
+          "url": "/api/v1/projects",
+          "ms": 220,
+          "startMs": 2310
+        }
+      ],
+      "apiCount": 2,
+      "slowestApi": {
+        "url": "/api/v1/projects",
+        "ms": 220,
+        "startMs": 2310
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "action": "apartments list",
+      "url": "/he/apartments",
+      "coldMs": 4615,
+      "warmMs": 2659,
+      "warmSamples": [
+        2539,
+        2659,
+        3266
+      ],
+      "apiCalls": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 240,
+          "startMs": 2911
+        },
+        {
+          "url": "/api/v1/projects",
+          "ms": 286,
+          "startMs": 2913
+        }
+      ],
+      "apiCount": 2,
+      "slowestApi": {
+        "url": "/api/v1/projects",
+        "ms": 286,
+        "startMs": 2913
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "action": "signature-requests list",
+      "url": "/he/signature-requests",
+      "coldMs": 13655,
+      "warmMs": 2250,
+      "warmSamples": [
+        2204,
+        2250,
+        2370
+      ],
+      "apiCalls": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 219,
+          "startMs": 2014
+        },
+        {
+          "url": "/api/v1/signature-requests",
+          "ms": 303,
+          "startMs": 2015
+        }
+      ],
+      "apiCount": 2,
+      "slowestApi": {
+        "url": "/api/v1/signature-requests",
+        "ms": 303,
+        "startMs": 2015
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "action": "imports list",
+      "url": "/he/imports",
+      "coldMs": 65112,
+      "warmMs": 60718,
+      "warmSamples": [
+        61640,
+        60632,
+        60718
+      ],
+      "apiCalls": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 235,
+          "startMs": 1441
+        },
+        {
+          "url": "/api/v1/imports",
+          "ms": 285,
+          "startMs": 1444
+        }
+      ],
+      "apiCount": 2,
+      "slowestApi": {
+        "url": "/api/v1/imports",
+        "ms": 285,
+        "startMs": 1444
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "action": "members list",
+      "url": "/he/members",
+      "coldMs": 14664,
+      "warmMs": 2765,
+      "warmSamples": [
+        1477,
+        2978,
+        2765
+      ],
+      "apiCalls": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 229,
+          "startMs": 2419
+        },
+        {
+          "url": "/api/v1/members",
+          "ms": 301,
+          "startMs": 2424
+        }
+      ],
+      "apiCount": 2,
+      "slowestApi": {
+        "url": "/api/v1/members",
+        "ms": 301,
+        "startMs": 2424
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "action": "tasks list",
+      "url": "/he/tasks",
+      "coldMs": 10048,
+      "warmMs": 1985,
+      "warmSamples": [
+        1976,
+        1985,
+        2038
+      ],
+      "apiCalls": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 246,
+          "startMs": 1687
+        },
+        {
+          "url": "/api/v1/tasks",
+          "ms": 300,
+          "startMs": 1688
+        }
+      ],
+      "apiCount": 2,
+      "slowestApi": {
+        "url": "/api/v1/tasks",
+        "ms": 300,
+        "startMs": 1688
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "action": "notes list",
+      "url": "/he/notes",
+      "coldMs": 6087,
+      "warmMs": 2201,
+      "warmSamples": [
+        2201,
+        2212,
+        2018
+      ],
+      "apiCalls": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 243,
+          "startMs": 1655
+        },
+        {
+          "url": "/api/v1/members",
+          "ms": 321,
+          "startMs": 1657
+        },
+        {
+          "url": "/api/v1/notes",
+          "ms": 324,
+          "startMs": 1659
+        }
+      ],
+      "apiCount": 3,
+      "slowestApi": {
+        "url": "/api/v1/notes",
+        "ms": 324,
+        "startMs": 1659
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "action": "notifications list",
+      "url": "/he/notifications",
+      "coldMs": 7935,
+      "warmMs": 1995,
+      "warmSamples": [
+        1887,
+        2016,
+        1995
+      ],
+      "apiCalls": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 150,
+          "startMs": 1723
+        },
+        {
+          "url": "/api/v1/notifications",
+          "ms": 220,
+          "startMs": 1724
+        }
+      ],
+      "apiCount": 2,
+      "slowestApi": {
+        "url": "/api/v1/notifications",
+        "ms": 220,
+        "startMs": 1724
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "action": "audit log",
+      "url": "/he/audit",
+      "coldMs": 2978,
+      "warmMs": 808,
+      "warmSamples": [
+        944,
+        808,
+        799
+      ],
+      "apiCalls": [],
+      "apiCount": 0,
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "action": "contractors list",
+      "url": "/he/contractors",
+      "coldMs": 5173,
+      "warmMs": 2223,
+      "warmSamples": [
+        3904,
+        1928,
+        2223
+      ],
+      "apiCalls": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 181,
+          "startMs": 1947
+        },
+        {
+          "url": "/api/v1/contractors",
+          "ms": 236,
+          "startMs": 1948
+        }
+      ],
+      "apiCount": 2,
+      "slowestApi": {
+        "url": "/api/v1/contractors",
+        "ms": 236,
+        "startMs": 1948
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "action": "settings",
+      "url": "/he/settings",
+      "coldMs": 4802,
+      "warmMs": 906,
+      "warmSamples": [
+        922,
+        906,
+        891
+      ],
+      "apiCalls": [],
+      "apiCount": 0,
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "action": "settings/roles",
+      "url": "/he/settings/roles",
+      "coldMs": 7091,
+      "warmMs": 2064,
+      "warmSamples": [
+        2055,
+        2064,
+        2097
+      ],
+      "apiCalls": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 203,
+          "startMs": 1737
+        },
+        {
+          "url": "/api/v1/roles",
+          "ms": 306,
+          "startMs": 1739
+        },
+        {
+          "url": "/api/v1/roles/catalog",
+          "ms": 290,
+          "startMs": 1740
+        }
+      ],
+      "apiCount": 3,
+      "slowestApi": {
+        "url": "/api/v1/roles",
+        "ms": 306,
+        "startMs": 1739
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "action": "project detail",
+      "url": "/he/projects/177387a1-54ac-4f26-8580-d45a4428deaa",
+      "coldMs": 14893,
+      "warmMs": 1966,
+      "warmSamples": [
+        1905,
+        1966,
+        2064
+      ],
+      "apiCalls": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 202,
+          "startMs": 1761
+        },
+        {
+          "url": "/api/v1/projects/177387a1-54ac-4f26-8580-d45a442",
+          "ms": 277,
+          "startMs": 1762
+        }
+      ],
+      "apiCount": 2,
+      "slowestApi": {
+        "url": "/api/v1/projects/177387a1-54ac-4f26-8580-d45a442",
+        "ms": 277,
+        "startMs": 1762
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "action": "owner detail",
+      "url": "/he/owners/30245d06-5f2b-4a44-90d6-b4f725fff2ad",
+      "coldMs": 8532,
+      "warmMs": 2012,
+      "warmSamples": [
+        2012,
+        3567,
+        1726
+      ],
+      "apiCalls": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 129,
+          "startMs": 1512
+        },
+        {
+          "url": "/api/v1/owners/30245d06-5f2b-4a44-90d6-b4f725fff",
+          "ms": 185,
+          "startMs": 1513
+        },
+        {
+          "url": "/api/v1/owners/30245d06-5f2b-4a44-90d6-b4f725fff",
+          "ms": 196,
+          "startMs": 1514
+        }
+      ],
+      "apiCount": 3,
+      "slowestApi": {
+        "url": "/api/v1/owners/30245d06-5f2b-4a44-90d6-b4f725fff",
+        "ms": 196,
+        "startMs": 1514
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "action": "document detail",
+      "url": "/he/documents/cd056492-ec9d-4348-baa7-01863f774d95",
+      "coldMs": 64481,
+      "warmMs": 60732,
+      "warmSamples": [
+        63580,
+        60551,
+        60732
+      ],
+      "apiCalls": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 98,
+          "startMs": 1632
+        },
+        {
+          "url": "/api/v1/documents/cd056492-ec9d-4348-baa7-01863f",
+          "ms": 130,
+          "startMs": 1633
+        }
+      ],
+      "apiCount": 2,
+      "slowestApi": {
+        "url": "/api/v1/documents/cd056492-ec9d-4348-baa7-01863f",
+        "ms": 130,
+        "startMs": 1633
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    }
+  ]
+}

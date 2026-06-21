@@ -1,0 +1,65 @@
+[
+  {
+    "route": "provider-home",
+    "url": "http://localhost:3001/he/provider",
+    "bounced": false,
+    "errorBoundary": false,
+    "consoleErrors": [],
+    "failedNetwork": [],
+    "lowContrast": []
+  },
+  {
+    "route": "tenants-list",
+    "url": "http://localhost:3001/he/provider/tenants",
+    "bounced": false,
+    "errorBoundary": false,
+    "consoleErrors": [],
+    "failedNetwork": [],
+    "lowContrast": []
+  },
+  {
+    "route": "audit",
+    "url": "http://localhost:3001/he/provider/audit",
+    "bounced": false,
+    "errorBoundary": false,
+    "consoleErrors": [],
+    "failedNetwork": [],
+    "lowContrast": []
+  },
+  {
+    "route": "audit-self",
+    "url": "http://localhost:3001/he/provider/audit/self",
+    "bounced": false,
+    "errorBoundary": false,
+    "consoleErrors": [],
+    "failedNetwork": [],
+    "lowContrast": []
+  },
+  {
+    "route": "backups",
+    "url": "http://localhost:3001/he/provider/backups",
+    "bounced": false,
+    "errorBoundary": false,
+    "consoleErrors": [],
+    "failedNetwork": [],
+    "lowContrast": []
+  },
+  {
+    "route": "onboard",
+    "url": "http://localhost:3001/he/provider/onboard",
+    "bounced": false,
+    "errorBoundary": false,
+    "consoleErrors": [],
+    "failedNetwork": [],
+    "lowContrast": []
+  },
+  {
+    "route": "system-health",
+    "url": "http://localhost:3001/he/provider/system-health",
+    "bounced": false,
+    "errorBoundary": false,
+    "consoleErrors": [],
+    "failedNetwork": [],
+    "lowContrast": []
+  }
+]

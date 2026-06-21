@@ -1,0 +1,90 @@
+[
+  {
+    "role": "viewer",
+    "route": "buildings-list",
+    "url": "http://localhost:3001/he/projects",
+    "consoleErrors": [],
+    "failedNetwork": [],
+    "lowContrast": [],
+    "errorBoundary": false,
+    "textLen": 2057
+  },
+  {
+    "role": "viewer",
+    "route": "apartments-list",
+    "url": "http://localhost:3001/he/projects",
+    "consoleErrors": [],
+    "failedNetwork": [],
+    "lowContrast": [],
+    "errorBoundary": false,
+    "textLen": 2057
+  },
+  {
+    "role": "viewer",
+    "route": "contractors-list",
+    "url": "http://localhost:3001/he/contractors",
+    "consoleErrors": [],
+    "failedNetwork": [],
+    "lowContrast": [],
+    "errorBoundary": false,
+    "textLen": 767
+  },
+  {
+    "role": "viewer",
+    "route": "members-list",
+    "url": "http://localhost:3001/he/members",
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    ],
+    "failedNetwork": [
+      "403 /api/v1/members?limit=25"
+    ],
+    "lowContrast": [],
+    "errorBoundary": false,
+    "textLen": 203
+  },
+  {
+    "role": "viewer",
+    "route": "imports-list",
+    "url": "http://localhost:3001/he/imports",
+    "consoleErrors": [],
+    "failedNetwork": [],
+    "lowContrast": [],
+    "errorBoundary": false,
+    "textLen": 389
+  },
+  {
+    "role": "viewer",
+    "route": "audit",
+    "url": "http://localhost:3001/he/audit",
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    ],
+    "failedNetwork": [
+      "403 /api/v1/audit?limit=25"
+    ],
+    "lowContrast": [],
+    "errorBoundary": false,
+    "textLen": 203
+  },
+  {
+    "role": "viewer",
+    "route": "notifications",
+    "url": "http://localhost:3001/he/notifications",
+    "consoleErrors": [],
+    "failedNetwork": [],
+    "lowContrast": [],
+    "errorBoundary": false,
+    "textLen": 237
+  },
+  {
+    "role": "viewer",
+    "route": "settings",
+    "url": "http://localhost:3001/he/settings",
+    "consoleErrors": [],
+    "failedNetwork": [],
+    "lowContrast": [],
+    "errorBoundary": false,
+    "textLen": 1037
+  }
+]

@@ -1,0 +1,219 @@
+
+=== EMAPP FULL AUDIT — base=http://localhost:3001 stamp=dev ===
+
+  [manager] org login (POST /auth/login)       interaction   4508ms http=200 SLOW
+  [manager] load session (GET /me)             interaction     73ms http=200 PASS
+  discovered: project=ff5084b3-79a3-41b1-ae95-fd65374948ef building=null owner=30245d06-5f2b-4a44-90d6-b4f725fff2ad doc=2fdb2c17-9758-498d-a0c3-1f164ee605fc sigReq=7023f907-6cdc-4f92-8cb8-001feea0966f
+
+  [manager] dashboard home                     load           758ms PASS
+  [manager] projects list                      load          1598ms SLOW
+  [manager] owners list                        load           708ms PASS
+  [manager] documents list                     load           720ms PASS
+  [manager] messages                           load           730ms PASS
+  [manager] buildings list                     load          2633ms SLOW
+  [manager] apartments list                    load          2868ms SLOW
+  [manager] signature-requests list            load          1031ms SLOW
+  [manager] imports list                       load           768ms PASS
+  [manager] members list                       load           814ms PASS
+  [manager] tasks list                         load           787ms PASS
+  [manager] notes list                         load           892ms PASS
+  [manager] notifications list                 load           848ms PASS
+  [manager] audit log                          load           842ms PASS
+  [manager] contractors list                   load           778ms PASS
+  [manager] settings                           load           857ms PASS
+  [manager] settings/roles                     load           796ms PASS
+  [manager] project detail                     load          1902ms SLOW
+  [manager] project signature-progress         load          1654ms SLOW
+  [manager] project buildings                  load           833ms PASS
+  [manager] project assignments                load           923ms PASS
+  [manager] project shares                     load           764ms PASS
+  [manager] owner detail                       load          2159ms SLOW
+  [manager] document detail                    load          2052ms SLOW
+  [manager] signature-request detail           load          1879ms SLOW
+  [manager] list projects                      interaction    139ms http=200 PASS
+  [manager] get project                        interaction     54ms http=200 PASS
+  [manager] signature-progress board           interaction     88ms http=200 PASS
+  [manager] drill apartments-by-signature      interaction     84ms http=200 PASS
+  [manager] list buildings                     interaction     67ms http=200 PASS
+  [manager] list owners                        interaction    155ms http=200 PASS
+  [manager] get owner                          interaction    118ms http=200 PASS
+  [manager] list owner projects                interaction     98ms http=200 PASS
+  [manager] list documents                     interaction     83ms http=200 PASS
+  [manager] list signature-requests            interaction     88ms http=200 PASS
+  [manager] list imports                       interaction     83ms http=200 PASS
+  [manager] list conversations                 interaction     83ms http=200 PASS
+  [manager] list members                       interaction     54ms http=200 PASS
+  [manager] role matrix (GET /permissions)     interaction    106ms http=200 PASS
+  [manager] list tasks                         interaction     76ms http=200 PASS
+  [manager] list notes                         interaction     78ms http=200 PASS
+  [manager] list notifications                 interaction     57ms http=200 PASS
+  [manager] org audit                          interaction    133ms http=200 PASS
+  [manager] list contractors                   interaction     99ms http=200 PASS
+  [manager] get settings                       interaction     80ms http=200 PASS
+  [manager] project assignments                interaction     78ms http=200 PASS
+  associated: proj=42e8fdbf-d59f-4825-9831-ea0824541350 apt=ccf1351d-3864-4833-8f01-4f6319e69945 owner=c2572677-dc89-4fe0-8667-0ddba2361ce3
+  [manager] create project                     interaction     94ms http=201 PASS
+  [manager] create building                    interaction     99ms http=201 PASS
+  [manager] create apartment                   interaction    176ms http=201 PASS
+  [manager] archive apartment                  interaction     96ms http=204 PASS
+  [manager] create owner                       interaction    106ms http=201 PASS
+  [manager] reveal owner PII                   interaction     91ms http=200 PASS
+  [manager] archive owner                      interaction     92ms http=204 PASS
+  [manager] get apartment                      interaction     93ms http=200 PASS
+  [manager] inspect tabu extraction            interaction    109ms http=200 PASS
+  [manager] list ownerships                    interaction    108ms http=200 PASS
+  [manager] cross-building apartments (drill)  interaction    168ms http=200 PASS
+  [manager] create apartment (for revoke)      interaction    109ms http=201 PASS
+  [manager] revoke ownership (clear set)       interaction     91ms http=200 PASS
+  [manager] create task                        interaction     99ms http=201 PASS
+  [manager] get task                           interaction     91ms http=200 PASS
+  [manager] update task                        interaction    104ms http=200 PASS
+  [manager] create note                        interaction    125ms http=201 PASS
+  [manager] get note                           interaction    107ms http=200 PASS
+  [manager] update note                        interaction    117ms http=200 PASS
+  [manager] delete note                        interaction    188ms http=204 PASS
+  [manager] create contractor                  interaction    108ms http=201 PASS
+  [manager] get contractor                     interaction     68ms http=200 PASS
+  [manager] create document                    interaction     74ms http=201 PASS
+  [manager] upload document (R2 PUT)           interaction    759ms http=200 PASS
+  [manager] finalize document                  interaction    404ms http=200 PASS
+  [manager] get document                       interaction     93ms http=200 PASS
+  [manager] view document (inline)             interaction    101ms http=200 PASS
+  [manager] download document (attachment)     interaction     98ms http=200 PASS
+  [manager] archive document                   interaction    269ms http=204 PASS
+  [manager] create signature doc               interaction    200ms http=201 PASS
+  [manager] finalize signature doc             interaction    322ms http=200 PASS
+  [manager] create signature request           interaction    194ms http=201 PASS
+  [manager] get signature request              interaction    104ms http=200 PASS
+  [manager] resend signature request           interaction    137ms http=200 PASS
+  [public] public sign preview (GET /sign/:token) interaction     87ms http=200 PASS
+  [public] public sign submit (POST /sign/:token) interaction    143ms http=200 PASS
+  [manager] signed confirmation (GET req → signed) interaction     91ms http=200 PASS
+  [manager] create signature request (to cancel) interaction    110ms http=201 PASS
+  [manager] cancel signature request           interaction    145ms http=200 PASS
+  [manager] create conversation                interaction     92ms http=201 PASS
+  [manager] list messages                      interaction     76ms http=200 PASS
+  [manager] send message                       interaction     88ms http=201 PASS
+  [manager] mark read                          interaction     95ms http=204 PASS
+  [manager] mark notification read             interaction    123ms http=200 PASS
+  [manager] create import (metadata)           interaction    123ms http=201 PASS
+  [manager] upload import to R2                interaction    500ms http=200 PASS
+  [manager] start import                       interaction    243ms http=200 PASS
+  [manager] import status                      interaction    114ms http=200 PASS
+  [manager] import SSE stream                  interaction   1637ms http=200 SLOW
+  [manager] submit import mapping              interaction    153ms http=409 PASS(expected-deny)
+  [manager] list import errors                 interaction    111ms http=200 PASS
+  [manager] invite member                      interaction    204ms http=201 PASS
+  [n/a] get member                         N/A — invite failed
+  [n/a] update member role                 N/A — invite failed
+  [n/a] apply capability preset            N/A — invite failed
+  [n/a] set member override                N/A — invite failed
+  [n/a] clear member override              N/A — invite failed
+  [n/a] resend invite                      N/A — invite failed
+  [n/a] remove member                      N/A — invite failed
+  [manager] update settings (expect deny)      interaction     75ms http=400 PASS(expected-deny)
+  [manager] create share                       interaction     78ms http=201 PASS
+  [manager] regenerate token (share link)      interaction     75ms http=201 PASS
+  [manager] notification deep-link (notifications page) load           746ms PASS
+  [manager] logout                             interaction    145ms http=200 PASS
+  [agent] org login                          interaction    157ms http=200 PASS
+  [agent] load session (GET /me)             interaction     79ms http=200 PASS
+  [agent] dashboard home                     load           737ms PASS
+  [agent] projects list                      load          1722ms SLOW
+  [agent] apartments list                    load          2397ms SLOW
+  [agent] signature-requests list            load           855ms PASS
+  [agent] imports list                       load           639ms PASS
+  [agent] messages                           load           684ms PASS
+  [agent] create project                     interaction   1822ms http=403 SLOW
+  [agent] create building                    interaction    155ms http=404 PASS(expected-deny)
+  [agent] create owner (expect deny)         interaction     95ms http=403 PASS(expected-deny)
+  [agent] send signature request             interaction     88ms http=404 PASS(expected-deny)
+  [viewer] org login                          interaction    122ms http=200 PASS
+  [viewer] load session (GET /me)             interaction     68ms http=200 PASS
+  [viewer] dashboard home                     load           821ms PASS
+  [viewer] projects list                      load          1770ms SLOW
+  [viewer] owners list                        load           724ms PASS
+  [viewer] create project (expect deny 403)   interaction    160ms http=403 PASS(expected-deny)
+  [viewer] create apartment (expect deny 403) interaction     88ms http=403 PASS(expected-deny)
+  [viewer] list conversations                 interaction     88ms http=200 PASS
+  [provider] provider login (POST /provider/auth/login) interaction    164ms http=200 PASS
+  [provider] dashboard (system-health)          interaction    229ms http=200 PASS
+  [provider] system-health detailed             interaction     92ms http=200 PASS
+  [provider] list tenants                       interaction    149ms http=200 PASS
+  [provider] get tenant                         interaction    100ms http=200 PASS
+  [provider] tenant users                       interaction    120ms http=200 PASS
+  [provider] provider audit                     interaction     92ms http=200 PASS
+  [provider] provider self-audit                interaction    104ms http=200 PASS
+  [provider] disable tenant (suspend)           interaction    111ms http=201 PASS
+  [provider] enable tenant (reactivate)         interaction     69ms http=201 PASS
+  [n/a] force recheck                      N/A — no force-recheck endpoint exists — system-health is a read-only gauge (POST recheck route absent)
+  [provider] provider dashboard                 load          1725ms SLOW
+  [provider] provider tenants                   load          1933ms SL  [public] forgot-password page               load         90396ms SLOW
+  [public] forgot-password (POST)             interaction    286ms http=200 PASS
+  [public] reset-password page                load         90370ms SLOW
+  [public] accept-invite page                 load         90443ms SLOW
+  [contractor] token exchange (/contractor/share/:token) load         18617ms http=200 SLOW
+  [contractor] contractor portal page (view project) load           827ms PASS
+  [contractor] contractor GET /project            interaction   1654ms http=200 SLOW
+  [contractor] contractor GET /progress           interaction    110ms http=200 PASS
+  [contractor] contractor GET /documents          interaction     78ms http=200 PASS
+  [contractor] contractor download doc            interaction    108ms http=200 PASS
+  [n/a] signup                             N/A — public self-service signup is DISABLED (PUBLIC_SIGNUP_ENABLED!=1 → 404 before any work); onboarding is provider-led
+  [n/a] silent refresh                     N/A — automatic/internal — POST /auth/refresh fires transparently on token_expired (D.31), not a user action; covered by the per-page /me path
+
+=== SUMMARY (dev) ===
+Total rows: 160
+PASS: 95  SLOW: 29  FAIL: 3  N/A: 33
+
+FAILURES (http>=400 unexpected):
+  [manager] create owner → http=409 {"error":{"code":"owner_exists"}}
+  [manager] invite member → http=400 {"error":{"code":"validation_error","details":{"name":["Required"]}}}
+  [provider] provider audit → http=400 {"error":{"code":"validation_error","details":{}}}
+
+SLOW (>1000ms):
+  [manager] org login (POST /auth/login) (interaction) 2635ms
+  [manager] projects list (load) 2069ms
+  [manager] buildings list (load) 2367ms
+  [manager] apartments list (load) 2461ms
+  [manager] settings (load) 1351ms
+  [manager] project detail (load) 2955ms
+  [manager] project signature-progress (load) 2550ms
+  [manager] project buildings (load) 1087ms
+  [manager] project assignments (load) 1069ms
+  [manager] owner detail (load) 2081ms
+  [manager] document detail (load) 2293ms
+  [manager] signature-request detail (load) 2006ms
+  [agent] projects list (load) 2384ms
+  [agent] apartments list (load) 3444ms
+  [agent] signature-requests list (load) 1092ms
+  [agent] imports list (load) 1272ms
+  [agent] messages (load) 1056ms
+  [viewer] projects list (load) 1855ms
+  [provider] provider dashboard (load) 2042ms
+  [provider] provider tenants (load) 1786ms
+  [provider] provider audit (load) 1778ms
+  [provider] provider system-health (load) 1786ms
+  [tenant] tenant portal (load) 90446ms
+  [public] public sign preview page (load) 90408ms
+  [public] forgot-password page (load) 90396ms
+  [public] reset-password page (load) 90370ms
+  [public] accept-invite page (load) 90443ms
+  [contractor] token exchange (/contractor/share/:token) (load) 18617ms
+  [contractor] contractor GET /project (interaction) 1654ms
+
+=== COMPLETENESS GATE ===
+COVERED 99 / EXPECTED 105
+Roles present: manager, agent, viewer, provider, tenant, public, contractor
+Contractor role present: YES
+MISSING (6):
+  - archive project
+  - get building
+  - list apts by building
+  - reveal owner PII
+  - archive owner
+  - get settings
+
+Results → docs/PERF-AUDIT-FULL-dev.json
+
+docs/PERF-AUDIT-FULL-dev.json
+

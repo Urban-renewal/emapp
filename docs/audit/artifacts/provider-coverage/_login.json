@@ -1,0 +1,8 @@
+{
+  "loginStatus": 200,
+  "body": {
+    "data": {
+      "ok": true
+    }
+  }
+}

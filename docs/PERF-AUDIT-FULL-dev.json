@@ -1,0 +1,2353 @@
+{
+  "base": "http://localhost:3001",
+  "stamp": "dev",
+  "when": "2026-06-16T16:58:30.597Z",
+  "passMs": 1000,
+  "count": 168,
+  "results": [
+    {
+      "role": "manager",
+      "action": "org login (POST /auth/login)",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "ms": 11339,
+      "warmMs": 11339,
+      "status": 200,
+      "cov": "org login",
+      "verdict": "SLOW"
+    },
+    {
+      "role": "manager",
+      "action": "load session (GET /me)",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/me",
+      "ms": 357,
+      "warmMs": 357,
+      "status": 200,
+      "cov": "load session (GET /me)",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "dashboard home",
+      "type": "load",
+      "url": "/he",
+      "coldMs": 21243,
+      "warmMs": 1091,
+      "warmSamples": [
+        1817,
+        1091,
+        988
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "manager",
+      "action": "projects list",
+      "type": "load",
+      "url": "/he/projects",
+      "coldMs": 6402,
+      "warmMs": 2115,
+      "warmSamples": [
+        1895,
+        2115,
+        2228
+      ],
+      "apiWaterfall": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 149
+        },
+        {
+          "url": "/api/v1/projects",
+          "ms": 208
+        }
+      ],
+      "slowestApi": {
+        "url": "/api/v1/projects",
+        "ms": 208
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "manager",
+      "action": "owners list",
+      "type": "load",
+      "url": "/he/owners",
+      "coldMs": 4933,
+      "warmMs": 1051,
+      "warmSamples": [
+        979,
+        1051,
+        1160
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "manager",
+      "action": "documents list",
+      "type": "load",
+      "url": "/he/documents",
+      "coldMs": 4277,
+      "warmMs": 610,
+      "warmSamples": [
+        610,
+        592,
+        695
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "messages",
+      "type": "load",
+      "url": "/he/messages",
+      "coldMs": 3711,
+      "warmMs": 649,
+      "warmSamples": [
+        642,
+        675,
+        649
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "buildings list",
+      "type": "load",
+      "url": "/he/buildings",
+      "coldMs": 5547,
+      "warmMs": 2271,
+      "warmSamples": [
+        2256,
+        2271,
+        3182
+      ],
+      "apiWaterfall": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 274
+        },
+        {
+          "url": "/api/v1/projects",
+          "ms": 423
+        }
+      ],
+      "slowestApi": {
+        "url": "/api/v1/projects",
+        "ms": 423
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "manager",
+      "action": "apartments list",
+      "type": "load",
+      "url": "/he/apartments",
+      "coldMs": 14360,
+      "warmMs": 3503,
+      "warmSamples": [
+        3746,
+        3503,
+        2991
+      ],
+      "apiWaterfall": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 164
+        },
+        {
+          "url": "/api/v1/projects",
+          "ms": 224
+        }
+      ],
+      "slowestApi": {
+        "url": "/api/v1/projects",
+        "ms": 224
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "manager",
+      "action": "signature-requests list",
+      "type": "load",
+      "url": "/he/signature-requests",
+      "coldMs": 5812,
+      "warmMs": 887,
+      "warmSamples": [
+        819,
+        887,
+        990
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "imports list",
+      "type": "load",
+      "url": "/he/imports",
+      "coldMs": 5528,
+      "warmMs": 1117,
+      "warmSamples": [
+        994,
+        1117,
+        1293
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "manager",
+      "action": "members list",
+      "type": "load",
+      "url": "/he/members",
+      "coldMs": 6782,
+      "warmMs": 906,
+      "warmSamples": [
+        675,
+        906,
+        1265
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "tasks list",
+      "type": "load",
+      "url": "/he/tasks",
+      "coldMs": 6902,
+      "warmMs": 1227,
+      "warmSamples": [
+        1085,
+        1227,
+        1333
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "manager",
+      "action": "notes list",
+      "type": "load",
+      "url": "/he/notes",
+      "coldMs": 5482,
+      "warmMs": 951,
+      "warmSamples": [
+        702,
+        1480,
+        951
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "notifications list",
+      "type": "load",
+      "url": "/he/notifications",
+      "coldMs": 6066,
+      "warmMs": 700,
+      "warmSamples": [
+        946,
+        700,
+        659
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "audit log",
+      "type": "load",
+      "url": "/he/audit",
+      "coldMs": 4700,
+      "warmMs": 646,
+      "warmSamples": [
+        686,
+        599,
+        646
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "contractors list",
+      "type": "load",
+      "url": "/he/contractors",
+      "coldMs": 4045,
+      "warmMs": 886,
+      "warmSamples": [
+        669,
+        886,
+        979
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "settings",
+      "type": "load",
+      "url": "/he/settings",
+      "coldMs": 5689,
+      "warmMs": 718,
+      "warmSamples": [
+        797,
+        718,
+        628
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "settings/roles",
+      "type": "load",
+      "url": "/he/settings/roles",
+      "coldMs": 4814,
+      "warmMs": 789,
+      "warmSamples": [
+        733,
+        818,
+        789
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "project detail",
+      "type": "load",
+      "url": "/he/projects/7bb499be-36d9-4344-837c-de906e90c9d3",
+      "coldMs": 5606,
+      "warmMs": 1887,
+      "warmSamples": [
+        1744,
+        2172,
+        1887
+      ],
+      "apiWaterfall": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 129
+        },
+        {
+          "url": "/api/v1/projects/7bb499be-36d9-4344-837c-de906e90c",
+          "ms": 181
+        }
+      ],
+      "slowestApi": {
+        "url": "/api/v1/projects/7bb499be-36d9-4344-837c-de906e90c",
+        "ms": 181
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "manager",
+      "action": "project signature-progress",
+      "type": "load",
+      "url": "/he/projects/7bb499be-36d9-4344-837c-de906e90c9d3",
+      "coldMs": 2054,
+      "warmMs": 1787,
+      "warmSamples": [
+        1787,
+        1641,
+        2019
+      ],
+      "apiWaterfall": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 110
+        },
+        {
+          "url": "/api/v1/projects/7bb499be-36d9-4344-837c-de906e90c",
+          "ms": 165
+        }
+      ],
+      "slowestApi": {
+        "url": "/api/v1/projects/7bb499be-36d9-4344-837c-de906e90c",
+        "ms": 165
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "manager",
+      "action": "project buildings",
+      "type": "load",
+      "url": "/he/projects/7bb499be-36d9-4344-837c-de906e90c9d3/buildings",
+      "coldMs": 5816,
+      "warmMs": 768,
+      "warmSamples": [
+        1261,
+        744,
+        768
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "project assignments",
+      "type": "load",
+      "url": "/he/projects/7bb499be-36d9-4344-837c-de906e90c9d3/assignments",
+      "coldMs": 11791,
+      "warmMs": 1671,
+      "warmSamples": [
+        1671,
+        1264,
+        1829
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "manager",
+      "action": "project shares",
+      "type": "load",
+      "url": "/he/projects/7bb499be-36d9-4344-837c-de906e90c9d3/shares",
+      "coldMs": 8001,
+      "warmMs": 932,
+      "warmSamples": [
+        884,
+        1805,
+        932
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "building detail",
+      "type": "load",
+      "url": "/he/buildings/9f1cc8a4-4555-4e92-b769-b01e2e786fef",
+      "coldMs": 8540,
+      "warmMs": 2329,
+      "warmSamples": [
+        2329,
+        2681,
+        2076
+      ],
+      "apiWaterfall": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 177
+        },
+        {
+          "url": "/api/v1/buildings/9f1cc8a4-4555-4e92-b769-b01e2e78",
+          "ms": 219
+        }
+      ],
+      "slowestApi": {
+        "url": "/api/v1/buildings/9f1cc8a4-4555-4e92-b769-b01e2e78",
+        "ms": 219
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "manager",
+      "action": "owner detail",
+      "type": "load",
+      "url": "/he/owners/30245d06-5f2b-4a44-90d6-b4f725fff2ad",
+      "coldMs": 8006,
+      "warmMs": 2092,
+      "warmSamples": [
+        2158,
+        2092,
+        1706
+      ],
+      "apiWaterfall": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 116
+        },
+        {
+          "url": "/api/v1/owners/30245d06-5f2b-4a44-90d6-b4f725fff2a",
+          "ms": 167
+        },
+        {
+          "url": "/api/v1/owners/30245d06-5f2b-4a44-90d6-b4f725fff2a",
+          "ms": 173
+        }
+      ],
+      "slowestApi": {
+        "url": "/api/v1/owners/30245d06-5f2b-4a44-90d6-b4f725fff2a",
+        "ms": 173
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "manager",
+      "action": "document detail",
+      "type": "load",
+      "url": "/he/documents/917607e5-4863-4ce3-9ebb-1dc1d4ef0bed",
+      "coldMs": 7321,
+      "warmMs": 2674,
+      "warmSamples": [
+        4255,
+        2674,
+        2624
+      ],
+      "apiWaterfall": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 224
+        },
+        {
+          "url": "/api/v1/documents/917607e5-4863-4ce3-9ebb-1dc1d4ef",
+          "ms": 314
+        }
+      ],
+      "slowestApi": {
+        "url": "/api/v1/documents/917607e5-4863-4ce3-9ebb-1dc1d4ef",
+        "ms": 314
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "manager",
+      "action": "signature-request detail",
+      "type": "load",
+      "url": "/he/signature-requests/85ab990c-d16b-464c-b4ea-44144120017d",
+      "coldMs": 7327,
+      "warmMs": 2765,
+      "warmSamples": [
+        2413,
+        2765,
+        2874
+      ],
+      "apiWaterfall": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 216
+        },
+        {
+          "url": "/api/v1/signature-requests/85ab990c-d16b-464c-b4ea",
+          "ms": 279
+        }
+      ],
+      "slowestApi": {
+        "url": "/api/v1/signature-requests/85ab990c-d16b-464c-b4ea",
+        "ms": 279
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "manager",
+      "action": "list projects",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/projects?limit=25",
+      "ms": 127,
+      "warmMs": 127,
+      "status": 200,
+      "cov": "list projects",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "get project",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/projects/7bb499be-36d9-4344-837c-de906e90c9d3",
+      "ms": 124,
+      "warmMs": 124,
+      "status": 200,
+      "cov": "get project",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "signature-progress board",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/projects/7bb499be-36d9-4344-837c-de906e90c9d3/signature-progress",
+      "ms": 125,
+      "warmMs": 125,
+      "status": 200,
+      "cov": "signature-progress board",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "drill apartments-by-signature",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/projects/7bb499be-36d9-4344-837c-de906e90c9d3/signature-progress/apartments",
+      "ms": 139,
+      "warmMs": 139,
+      "status": 200,
+      "cov": "drill apartments-by-signature",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "list buildings",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/projects/7bb499be-36d9-4344-837c-de906e90c9d3/buildings?limit=25",
+      "ms": 102,
+      "warmMs": 102,
+      "status": 200,
+      "cov": "list buildings",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "get building",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/buildings/9f1cc8a4-4555-4e92-b769-b01e2e786fef",
+      "ms": 99,
+      "warmMs": 99,
+      "status": 200,
+      "cov": "get building",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "list apts by building",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/buildings/9f1cc8a4-4555-4e92-b769-b01e2e786fef/apartments?limit=25",
+      "ms": 98,
+      "warmMs": 98,
+      "status": 200,
+      "cov": "list apts by building",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "list owners",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/owners?limit=25",
+      "ms": 288,
+      "warmMs": 288,
+      "status": 200,
+      "cov": "list owners",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "get owner",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/owners/30245d06-5f2b-4a44-90d6-b4f725fff2ad",
+      "ms": 98,
+      "warmMs": 98,
+      "status": 200,
+      "cov": "get owner",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "list owner projects",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/owners/30245d06-5f2b-4a44-90d6-b4f725fff2ad/projects",
+      "ms": 107,
+      "warmMs": 107,
+      "status": 200,
+      "cov": "list owner projects",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "list documents",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/documents?limit=25",
+      "ms": 110,
+      "warmMs": 110,
+      "status": 200,
+      "cov": "list documents",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "list signature-requests",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/signature-requests?limit=25",
+      "ms": 100,
+      "warmMs": 100,
+      "status": 200,
+      "cov": "list signature-requests",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "list imports",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/imports?limit=25",
+      "ms": 130,
+      "warmMs": 130,
+      "status": 200,
+      "cov": "list imports",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "list conversations",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/conversations?limit=50",
+      "ms": 102,
+      "warmMs": 102,
+      "status": 200,
+      "cov": "list conversations",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "list members",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/members?limit=50",
+      "ms": 112,
+      "warmMs": 112,
+      "status": 200,
+      "cov": "list members",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "role matrix (GET /permissions)",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/roles/catalog",
+      "ms": 100,
+      "warmMs": 100,
+      "status": 200,
+      "cov": "role matrix",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "list tasks",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/tasks?limit=25",
+      "ms": 113,
+      "warmMs": 113,
+      "status": 200,
+      "cov": "list tasks",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "list notes",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/notes?limit=25",
+      "ms": 99,
+      "warmMs": 99,
+      "status": 200,
+      "cov": "list notes",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "list notifications",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/notifications?limit=50",
+      "ms": 85,
+      "warmMs": 85,
+      "status": 200,
+      "cov": "list notifications",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "org audit",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/audit?limit=25",
+      "ms": 90,
+      "warmMs": 90,
+      "status": 200,
+      "cov": "org audit",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "list contractors",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/contractors?limit=25",
+      "ms": 94,
+      "warmMs": 94,
+      "status": 200,
+      "cov": "list contractors",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "get settings",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/org/settings",
+      "ms": 96,
+      "warmMs": 96,
+      "status": 200,
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "project assignments",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/projects/7bb499be-36d9-4344-837c-de906e90c9d3/assignments",
+      "ms": 124,
+      "warmMs": 124,
+      "status": 200,
+      "cov": "project assignments",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "create project",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/projects",
+      "ms": 120,
+      "warmMs": 120,
+      "status": 201,
+      "cov": "create project",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "create building",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/projects/1c7bf491-81b9-4f55-9e7f-0eda30eb8ae5/buildings",
+      "ms": 122,
+      "warmMs": 122,
+      "status": 201,
+      "cov": "create building",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "create apartment",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/buildings/7cca83f0-39ea-4618-8efb-f065f2558c73/apartments",
+      "ms": 132,
+      "warmMs": 132,
+      "status": 201,
+      "cov": "create apartment",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "archive apartment",
+      "type": "interaction",
+      "method": "DELETE",
+      "path": "/api/v1/apartments/e38eb41c-f21b-4ef1-afed-72e7d2bd826a",
+      "ms": 106,
+      "warmMs": 106,
+      "status": 204,
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "create owner",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/owners",
+      "ms": 123,
+      "warmMs": 123,
+      "status": 201,
+      "cov": "create owner",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "reveal owner PII",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/owners/b1b63f10-4ae4-4a8a-94cc-fab5a1161778/reveal-pii",
+      "ms": 108,
+      "warmMs": 108,
+      "status": 200,
+      "cov": "reveal owner PII",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "archive owner",
+      "type": "interaction",
+      "method": "DELETE",
+      "path": "/api/v1/owners/b1b63f10-4ae4-4a8a-94cc-fab5a1161778",
+      "ms": 90,
+      "warmMs": 90,
+      "status": 204,
+      "cov": "archive owner",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "get apartment",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/apartments/ccf1351d-3864-4833-8f01-4f6319e69945",
+      "ms": 120,
+      "warmMs": 120,
+      "status": 200,
+      "cov": "get apartment",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "inspect tabu extraction",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/apartments/ccf1351d-3864-4833-8f01-4f6319e69945/tabu-extractions",
+      "ms": 87,
+      "warmMs": 87,
+      "status": 200,
+      "cov": "inspect tabu extraction",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "list ownerships",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/apartments/ccf1351d-3864-4833-8f01-4f6319e69945/ownerships",
+      "ms": 107,
+      "warmMs": 107,
+      "status": 200,
+      "cov": "list ownerships",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "cross-building apartments (drill)",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/projects/42e8fdbf-d59f-4825-9831-ea0824541350/signature-progress/apartments",
+      "ms": 101,
+      "warmMs": 101,
+      "status": 200,
+      "cov": "apartments list (cross-building)",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "create apartment (for revoke)",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/buildings/7cca83f0-39ea-4618-8efb-f065f2558c73/apartments",
+      "ms": 114,
+      "warmMs": 114,
+      "status": 201,
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "revoke ownership (clear set)",
+      "type": "interaction",
+      "method": "PUT",
+      "path": "/api/v1/apartments/89e0547a-3551-45ae-883b-0a2e82ebd8d9/ownerships",
+      "ms": 106,
+      "warmMs": 106,
+      "status": 200,
+      "cov": "revoke ownership",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "create task",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/tasks",
+      "ms": 112,
+      "warmMs": 112,
+      "status": 201,
+      "cov": "create task",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "get task",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/tasks/c66c3d02-738d-4c10-bf02-64d4cf4b9c5f",
+      "ms": 138,
+      "warmMs": 138,
+      "status": 200,
+      "cov": "get task",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "update task",
+      "type": "interaction",
+      "method": "PATCH",
+      "path": "/api/v1/tasks/c66c3d02-738d-4c10-bf02-64d4cf4b9c5f",
+      "ms": 114,
+      "warmMs": 114,
+      "status": 200,
+      "cov": "update task",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "create note",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/notes",
+      "ms": 100,
+      "warmMs": 100,
+      "status": 201,
+      "cov": "create note",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "get note",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/notes/13709534-2454-4c56-9538-896d180e2443",
+      "ms": 100,
+      "warmMs": 100,
+      "status": 200,
+      "cov": "get note",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "update note",
+      "type": "interaction",
+      "method": "PATCH",
+      "path": "/api/v1/notes/13709534-2454-4c56-9538-896d180e2443",
+      "ms": 105,
+      "warmMs": 105,
+      "status": 200,
+      "cov": "update note",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "delete note",
+      "type": "interaction",
+      "method": "DELETE",
+      "path": "/api/v1/notes/13709534-2454-4c56-9538-896d180e2443",
+      "ms": 113,
+      "warmMs": 113,
+      "status": 204,
+      "cov": "delete note",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "create contractor",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/contractors",
+      "ms": 184,
+      "warmMs": 184,
+      "status": 201,
+      "cov": "create contractor",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "get contractor",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/contractors/bc25d760-b8e4-4ce5-b4d0-5e63c0c0d695",
+      "ms": 149,
+      "warmMs": 149,
+      "status": 200,
+      "cov": "get contractor",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "create document",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/documents",
+      "ms": 190,
+      "warmMs": 190,
+      "status": 201,
+      "cov": "create document",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "upload document (R2 PUT)",
+      "type": "interaction",
+      "method": "PUT",
+      "path": "(R2 presigned)",
+      "ms": 592,
+      "warmMs": 592,
+      "status": 200,
+      "cov": "upload document (R2/content)",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "finalize document",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/documents/9decef17-23d7-4186-ab38-d0e2d6c7dc7a/finalize",
+      "ms": 484,
+      "warmMs": 484,
+      "status": 200,
+      "cov": "finalize document",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "get document",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/documents/9decef17-23d7-4186-ab38-d0e2d6c7dc7a",
+      "ms": 111,
+      "warmMs": 111,
+      "status": 200,
+      "cov": "get document",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "view document (inline)",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/documents/9decef17-23d7-4186-ab38-d0e2d6c7dc7a/download?disposition=inline",
+      "ms": 147,
+      "warmMs": 147,
+      "status": 200,
+      "cov": "view document (inline)",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "download document (attachment)",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/documents/9decef17-23d7-4186-ab38-d0e2d6c7dc7a/download?disposition=attachment",
+      "ms": 136,
+      "warmMs": 136,
+      "status": 200,
+      "cov": "download document (attachment)",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "archive document",
+      "type": "interaction",
+      "method": "DELETE",
+      "path": "/api/v1/documents/9decef17-23d7-4186-ab38-d0e2d6c7dc7a",
+      "ms": 305,
+      "warmMs": 305,
+      "status": 204,
+      "cov": "archive document",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "create signature doc",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/documents",
+      "ms": 213,
+      "warmMs": 213,
+      "status": 201,
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "finalize signature doc",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/documents/a7cadf5d-78b8-4e2e-847c-1ccaaf7471d8/finalize",
+      "ms": 297,
+      "warmMs": 297,
+      "status": 200,
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "create signature request",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/signature-requests",
+      "ms": 140,
+      "warmMs": 140,
+      "status": 201,
+      "cov": "create signature request",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "get signature request",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/signature-requests/09da5d38-e612-4685-a9e5-0beffa7828e6",
+      "ms": 187,
+      "warmMs": 187,
+      "status": 200,
+      "cov": "get signature request",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "resend signature request",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/signature-requests/09da5d38-e612-4685-a9e5-0beffa7828e6/resend",
+      "ms": 119,
+      "warmMs": 119,
+      "status": 200,
+      "cov": "resend signature request",
+      "verdict": "PASS"
+    },
+    {
+      "role": "public",
+      "action": "public sign preview (GET /sign/:token)",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/sign/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwOWRhNWQzOC1lNjEyLTQ2ODUtYTllNS0wYmVmZmE3ODI4ZTYiLCJvcmdJZCI6ImY0YzE4M2UyLWQ1ZWYtNGI4MS05YTQ3LTI5MTYyZDNmOTYyNiIsImRvY3VtZW50SWQiOiJhN2NhZGY1ZC03OGI4LTRlMmUtODQ3Yy0xY2NhYWY3NDcxZDgiLCJvd25lcklkIjoiYzI1NzI2NzctZGM4OS00ZmUwLTg2NjctMGRkYmEyMzYxY2UzIiwiaWF0IjoxNzgxNjI3MTI2LCJleHAiOjE3ODIyMzE5MjYsImF1ZCI6ImVtYXBwLXNpZ24iLCJpc3MiOiJlbWFwcCIsImp0aSI6IjE0M2UxODE0LTdjM2ItNDY3Yy1iNDM1LWYyMmY2MTgxMjY3NyJ9.hu5ps1TGh355M-_Gf3L-9FO8LUUONV0G3J39tr2JEPk",
+      "ms": 142,
+      "warmMs": 142,
+      "status": 200,
+      "cov": "public sign preview",
+      "verdict": "PASS"
+    },
+    {
+      "role": "public",
+      "action": "public sign submit (POST /sign/:token)",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/sign/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwOWRhNWQzOC1lNjEyLTQ2ODUtYTllNS0wYmVmZmE3ODI4ZTYiLCJvcmdJZCI6ImY0YzE4M2UyLWQ1ZWYtNGI4MS05YTQ3LTI5MTYyZDNmOTYyNiIsImRvY3VtZW50SWQiOiJhN2NhZGY1ZC03OGI4LTRlMmUtODQ3Yy0xY2NhYWY3NDcxZDgiLCJvd25lcklkIjoiYzI1NzI2NzctZGM4OS00ZmUwLTg2NjctMGRkYmEyMzYxY2UzIiwiaWF0IjoxNzgxNjI3MTI2LCJleHAiOjE3ODIyMzE5MjYsImF1ZCI6ImVtYXBwLXNpZ24iLCJpc3MiOiJlbWFwcCIsImp0aSI6IjE0M2UxODE0LTdjM2ItNDY3Yy1iNDM1LWYyMmY2MTgxMjY3NyJ9.hu5ps1TGh355M-_Gf3L-9FO8LUUONV0G3J39tr2JEPk",
+      "ms": 186,
+      "warmMs": 186,
+      "status": 200,
+      "cov": "public sign submit",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "signed confirmation (GET req → signed)",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/signature-requests/09da5d38-e612-4685-a9e5-0beffa7828e6",
+      "ms": 82,
+      "warmMs": 82,
+      "status": 200,
+      "cov": "signed confirmation",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "create signature request (to cancel)",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/signature-requests",
+      "ms": 102,
+      "warmMs": 102,
+      "status": 201,
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "cancel signature request",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/signature-requests/76ad9316-fc0d-42a0-a7c0-a730e54e4cf8/cancel",
+      "ms": 157,
+      "warmMs": 157,
+      "status": 200,
+      "cov": "cancel signature request",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "create conversation",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/conversations",
+      "ms": 147,
+      "warmMs": 147,
+      "status": 400,
+      "errorBody": "{\"error\":{\"code\":\"invalid_participant\"}}",
+      "cov": "create conversation",
+      "verdict": "FAIL"
+    },
+    {
+      "role": "n/a",
+      "action": "create conversation",
+      "type": "n/a",
+      "verdict": "N/A",
+      "note": "create failed"
+    },
+    {
+      "role": "n/a",
+      "action": "list messages",
+      "type": "n/a",
+      "verdict": "N/A",
+      "note": "no conversation"
+    },
+    {
+      "role": "n/a",
+      "action": "send message",
+      "type": "n/a",
+      "verdict": "N/A",
+      "note": "no conversation"
+    },
+    {
+      "role": "n/a",
+      "action": "mark read",
+      "type": "n/a",
+      "verdict": "N/A",
+      "note": "no conversation"
+    },
+    {
+      "role": "manager",
+      "action": "mark notification read",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/notifications/89de55b3-dfb6-44a6-83b5-e91864a51383/read",
+      "ms": 144,
+      "warmMs": 144,
+      "status": 200,
+      "cov": "mark notification read",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "create import (metadata)",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/imports",
+      "ms": 107,
+      "warmMs": 107,
+      "status": 201,
+      "cov": "create import (metadata)",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "upload import to R2",
+      "type": "interaction",
+      "method": "PUT",
+      "path": "(R2 presigned)",
+      "ms": 318,
+      "warmMs": 318,
+      "status": 200,
+      "cov": "upload import to R2",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "start import",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/imports/4bb99a60-1330-42ff-b10c-5f44ade59f23/start",
+      "ms": 397,
+      "warmMs": 397,
+      "status": 200,
+      "expectFail": true,
+      "cov": "start import",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "import status",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/imports/4bb99a60-1330-42ff-b10c-5f44ade59f23",
+      "ms": 126,
+      "warmMs": 126,
+      "status": 200,
+      "cov": "import status",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "import SSE stream",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/imports/4bb99a60-1330-42ff-b10c-5f44ade59f23/stream",
+      "ms": 2687,
+      "warmMs": 2687,
+      "status": 200,
+      "note": ": stream-open\n\nevent: progress\ndata: {\"id\":\"4bb99a60-1330-42",
+      "cov": "import SSE stream",
+      "verdict": "SLOW"
+    },
+    {
+      "role": "manager",
+      "action": "submit import mapping",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/imports/4bb99a60-1330-42ff-b10c-5f44ade59f23/mapping",
+      "ms": 239,
+      "warmMs": 239,
+      "status": 409,
+      "errorBody": "{\"error\":{\"code\":\"import_not_awaiting_mapping\",\"message\":\"status is failed\"}}",
+      "expectFail": true,
+      "cov": "submit import mapping",
+      "verdict": "PASS(expected-deny)"
+    },
+    {
+      "role": "manager",
+      "action": "list import errors",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/imports/4bb99a60-1330-42ff-b10c-5f44ade59f23/errors",
+      "ms": 112,
+      "warmMs": 112,
+      "status": 200,
+      "cov": "list import errors",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "invite member",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/members",
+      "ms": 268,
+      "warmMs": 268,
+      "status": 201,
+      "cov": "invite member",
+      "verdict": "PASS"
+    },
+    {
+      "role": "n/a",
+      "action": "get member",
+      "type": "n/a",
+      "verdict": "N/A",
+      "note": "invite failed"
+    },
+    {
+      "role": "n/a",
+      "action": "update member role",
+      "type": "n/a",
+      "verdict": "N/A",
+      "note": "invite failed"
+    },
+    {
+      "role": "n/a",
+      "action": "apply capability preset",
+      "type": "n/a",
+      "verdict": "N/A",
+      "note": "invite failed"
+    },
+    {
+      "role": "n/a",
+      "action": "set member override",
+      "type": "n/a",
+      "verdict": "N/A",
+      "note": "invite failed"
+    },
+    {
+      "role": "n/a",
+      "action": "clear member override",
+      "type": "n/a",
+      "verdict": "N/A",
+      "note": "invite failed"
+    },
+    {
+      "role": "n/a",
+      "action": "resend invite",
+      "type": "n/a",
+      "verdict": "N/A",
+      "note": "invite failed"
+    },
+    {
+      "role": "n/a",
+      "action": "remove member",
+      "type": "n/a",
+      "verdict": "N/A",
+      "note": "invite failed"
+    },
+    {
+      "role": "manager",
+      "action": "update settings (expect deny)",
+      "type": "interaction",
+      "method": "PATCH",
+      "path": "/api/v1/org/settings",
+      "ms": 98,
+      "warmMs": 98,
+      "status": 400,
+      "errorBody": "{\"error\":{\"code\":\"validation_error\",\"details\":{\"notifications\":[\"Unrecognized key(s) in object: 'digestEnabled'\"]}}}",
+      "expectFail": true,
+      "cov": "update settings",
+      "verdict": "PASS(expected-deny)"
+    },
+    {
+      "role": "manager",
+      "action": "create share",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/projects/42e8fdbf-d59f-4825-9831-ea0824541350/shares",
+      "ms": 116,
+      "warmMs": 116,
+      "status": 201,
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "regenerate token (share link)",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/shares/5c7815bc-3503-43d4-8ad2-8bd2023bc592/link",
+      "ms": 133,
+      "warmMs": 133,
+      "status": 201,
+      "cov": "regenerate token",
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "notification deep-link (notifications page)",
+      "type": "load",
+      "url": "/he/notifications",
+      "coldMs": 3428,
+      "warmMs": 1021,
+      "warmSamples": [
+        801,
+        1021,
+        1325
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW",
+      "cov": "notification deep-link"
+    },
+    {
+      "role": "manager",
+      "action": "logout",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "ms": 1483,
+      "warmMs": 1483,
+      "status": 200,
+      "cov": "logout",
+      "verdict": "SLOW"
+    },
+    {
+      "role": "agent",
+      "action": "org login",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "ms": 165,
+      "warmMs": 165,
+      "status": 200,
+      "verdict": "PASS"
+    },
+    {
+      "role": "agent",
+      "action": "load session (GET /me)",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/me",
+      "ms": 124,
+      "warmMs": 124,
+      "status": 200,
+      "verdict": "PASS"
+    },
+    {
+      "role": "agent",
+      "action": "dashboard home",
+      "type": "load",
+      "url": "/he",
+      "coldMs": 4179,
+      "warmMs": 810,
+      "warmSamples": [
+        894,
+        810,
+        695
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "role": "agent",
+      "action": "projects list",
+      "type": "load",
+      "url": "/he/projects",
+      "coldMs": 5327,
+      "warmMs": 2009,
+      "warmSamples": [
+        2009,
+        1961,
+        2191
+      ],
+      "apiWaterfall": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 147
+        },
+        {
+          "url": "/api/v1/projects",
+          "ms": 199
+        }
+      ],
+      "slowestApi": {
+        "url": "/api/v1/projects",
+        "ms": 199
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "agent",
+      "action": "apartments list",
+      "type": "load",
+      "url": "/he/apartments",
+      "coldMs": 7092,
+      "warmMs": 2476,
+      "warmSamples": [
+        2476,
+        2396,
+        2526
+      ],
+      "apiWaterfall": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 110
+        },
+        {
+          "url": "/api/v1/projects",
+          "ms": 156
+        }
+      ],
+      "slowestApi": {
+        "url": "/api/v1/projects",
+        "ms": 156
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "agent",
+      "action": "signature-requests list",
+      "type": "load",
+      "url": "/he/signature-requests",
+      "coldMs": 2421,
+      "warmMs": 907,
+      "warmSamples": [
+        907,
+        912,
+        832
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "role": "agent",
+      "action": "imports list",
+      "type": "load",
+      "url": "/he/imports",
+      "coldMs": 2131,
+      "warmMs": 595,
+      "warmSamples": [
+        595,
+        1745,
+        547
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "role": "agent",
+      "action": "messages",
+      "type": "load",
+      "url": "/he/messages",
+      "coldMs": 3220,
+      "warmMs": 561,
+      "warmSamples": [
+        561,
+        554,
+        585
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "role": "agent",
+      "action": "create project",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/projects",
+      "ms": 1044,
+      "warmMs": 1044,
+      "status": 403,
+      "errorBody": "{\"error\":{\"code\":\"forbidden\"}}",
+      "expectFail": true,
+      "verdict": "SLOW"
+    },
+    {
+      "role": "agent",
+      "action": "create building",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/projects/7bb499be-36d9-4344-837c-de906e90c9d3/buildings",
+      "ms": 140,
+      "warmMs": 140,
+      "status": 404,
+      "errorBody": "{\"error\":{\"code\":\"not_found\"}}",
+      "expectFail": true,
+      "verdict": "PASS(expected-deny)"
+    },
+    {
+      "role": "agent",
+      "action": "create apartment",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/buildings/9f1cc8a4-4555-4e92-b769-b01e2e786fef/apartments",
+      "ms": 106,
+      "warmMs": 106,
+      "status": 404,
+      "errorBody": "{\"error\":{\"code\":\"not_found\"}}",
+      "expectFail": true,
+      "verdict": "PASS(expected-deny)"
+    },
+    {
+      "role": "agent",
+      "action": "create owner (expect deny)",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/owners",
+      "ms": 91,
+      "warmMs": 91,
+      "status": 403,
+      "errorBody": "{\"error\":{\"code\":\"forbidden\"}}",
+      "expectFail": true,
+      "verdict": "PASS(expected-deny)"
+    },
+    {
+      "role": "agent",
+      "action": "send signature request",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/signature-requests",
+      "ms": 76,
+      "warmMs": 76,
+      "status": 404,
+      "errorBody": "{\"error\":{\"code\":\"not_found\"}}",
+      "expectFail": true,
+      "verdict": "PASS(expected-deny)"
+    },
+    {
+      "role": "viewer",
+      "action": "org login",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "ms": 152,
+      "warmMs": 152,
+      "status": 200,
+      "verdict": "PASS"
+    },
+    {
+      "role": "viewer",
+      "action": "load session (GET /me)",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/me",
+      "ms": 78,
+      "warmMs": 78,
+      "status": 200,
+      "verdict": "PASS"
+    },
+    {
+      "role": "viewer",
+      "action": "dashboard home",
+      "type": "load",
+      "url": "/he",
+      "coldMs": 811,
+      "warmMs": 600,
+      "warmSamples": [
+        600,
+        598,
+        763
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS"
+    },
+    {
+      "role": "viewer",
+      "action": "projects list",
+      "type": "load",
+      "url": "/he/projects",
+      "coldMs": 1595,
+      "warmMs": 1248,
+      "warmSamples": [
+        1222,
+        1248,
+        1385
+      ],
+      "apiWaterfall": [
+        {
+          "url": "/api/v1/notifications",
+          "ms": 88
+        },
+        {
+          "url": "/api/v1/projects",
+          "ms": 132
+        }
+      ],
+      "slowestApi": {
+        "url": "/api/v1/projects",
+        "ms": 132
+      },
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "viewer",
+      "action": "owners list",
+      "type": "load",
+      "url": "/he/owners",
+      "coldMs": 7557,
+      "warmMs": 1001,
+      "warmSamples": [
+        968,
+        1023,
+        1001
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "viewer",
+      "action": "create project (expect deny 403)",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/projects",
+      "ms": 117,
+      "warmMs": 117,
+      "status": 403,
+      "errorBody": "{\"error\":{\"code\":\"forbidden\"}}",
+      "expectFail": true,
+      "verdict": "PASS(expected-deny)"
+    },
+    {
+      "role": "viewer",
+      "action": "create apartment (expect deny 403)",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/buildings/9f1cc8a4-4555-4e92-b769-b01e2e786fef/apartments",
+      "ms": 119,
+      "warmMs": 119,
+      "status": 403,
+      "errorBody": "{\"error\":{\"code\":\"forbidden\"}}",
+      "expectFail": true,
+      "verdict": "PASS(expected-deny)"
+    },
+    {
+      "role": "viewer",
+      "action": "list conversations",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/conversations?limit=50",
+      "ms": 114,
+      "warmMs": 114,
+      "status": 200,
+      "verdict": "PASS"
+    },
+    {
+      "role": "provider",
+      "action": "provider login (POST /provider/auth/login)",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/provider/auth/login",
+      "ms": 147,
+      "warmMs": 147,
+      "status": 200,
+      "cov": "provider login",
+      "verdict": "PASS"
+    },
+    {
+      "role": "provider",
+      "action": "dashboard (system-health)",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/provider/system-health",
+      "ms": 310,
+      "warmMs": 310,
+      "status": 200,
+      "cov": "provider dashboard (system-health)",
+      "verdict": "PASS"
+    },
+    {
+      "role": "provider",
+      "action": "system-health detailed",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/provider/system-health?detailed=1",
+      "ms": 80,
+      "warmMs": 80,
+      "status": 200,
+      "cov": "system-health detailed",
+      "verdict": "PASS"
+    },
+    {
+      "role": "provider",
+      "action": "list tenants",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/provider/tenants?limit=25",
+      "ms": 74,
+      "warmMs": 74,
+      "status": 200,
+      "cov": "list tenants",
+      "verdict": "PASS"
+    },
+    {
+      "role": "provider",
+      "action": "get tenant",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/provider/tenants/9c6f920f-6e21-4b78-a441-13bae823d479",
+      "ms": 95,
+      "warmMs": 95,
+      "status": 200,
+      "cov": "get tenant",
+      "verdict": "PASS"
+    },
+    {
+      "role": "provider",
+      "action": "tenant users",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/provider/tenants/9c6f920f-6e21-4b78-a441-13bae823d479/users",
+      "ms": 85,
+      "warmMs": 85,
+      "status": 200,
+      "cov": "tenant users",
+      "verdict": "PASS"
+    },
+    {
+      "role": "provider",
+      "action": "provider audit",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/provider/audit?limit=25&fromDate=2026-06-09T16%3A26%3A51.285Z",
+      "ms": 97,
+      "warmMs": 97,
+      "status": 200,
+      "cov": "provider audit",
+      "verdict": "PASS"
+    },
+    {
+      "role": "provider",
+      "action": "provider self-audit",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/provider/audit/self?limit=25",
+      "ms": 69,
+      "warmMs": 69,
+      "status": 200,
+      "cov": "provider self-audit",
+      "verdict": "PASS"
+    },
+    {
+      "role": "provider",
+      "action": "disable tenant (suspend)",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/provider/tenants/7af557e0-7e2a-450f-bfec-a3d8160a10e5/suspend",
+      "ms": 89,
+      "warmMs": 89,
+      "status": 201,
+      "cov": "disable/enable tenant",
+      "verdict": "PASS"
+    },
+    {
+      "role": "provider",
+      "action": "enable tenant (reactivate)",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/provider/tenants/7af557e0-7e2a-450f-bfec-a3d8160a10e5/reactivate",
+      "ms": 79,
+      "warmMs": 79,
+      "status": 201,
+      "verdict": "PASS"
+    },
+    {
+      "role": "n/a",
+      "action": "force recheck",
+      "type": "n/a",
+      "verdict": "N/A",
+      "note": "no force-recheck endpoint exists — system-health is a read-only gauge (POST recheck route absent)"
+    },
+    {
+      "role": "provider",
+      "action": "provider dashboard",
+      "type": "load",
+      "url": "/he/provider",
+      "coldMs": 7011,
+      "warmMs": 1402,
+      "warmSamples": [
+        1402,
+        2150,
+        1301
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "provider",
+      "action": "provider tenants",
+      "type": "load",
+      "url": "/he/provider/tenants",
+      "coldMs": 3949,
+      "warmMs": 1275,
+      "warmSamples": [
+        1209,
+        1275,
+        1413
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "provider",
+      "action": "provider audit",
+      "type": "load",
+      "url": "/he/provider/audit",
+      "coldMs": 3848,
+      "warmMs": 1321,
+      "warmSamples": [
+        1299,
+        1321,
+        2453
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "provider",
+      "action": "provider system-health",
+      "type": "load",
+      "url": "/he/provider/system-health",
+      "coldMs": 5498,
+      "warmMs": 1989,
+      "warmSamples": [
+        3163,
+        1686,
+        1989
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "tenant",
+      "action": "tenant OTP request",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/auth/otp/request",
+      "ms": 115,
+      "warmMs": 115,
+      "status": 200,
+      "cov": "tenant OTP request",
+      "verdict": "PASS"
+    },
+    {
+      "role": "tenant",
+      "action": "tenant OTP verify",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/auth/otp/verify",
+      "ms": 96,
+      "warmMs": 96,
+      "status": 401,
+      "errorBody": "{\"error\":{\"code\":\"invalid_otp\",\"message\":\"קוד שגוי או שפג תוקפו\"}}",
+      "expectFail": true,
+      "cov": "tenant OTP verify",
+      "verdict": "PASS(expected-deny)"
+    },
+    {
+      "role": "tenant",
+      "action": "tenant portal",
+      "type": "load",
+      "url": "/he/portal",
+      "coldMs": 93554,
+      "warmMs": 90511,
+      "warmSamples": [
+        90592,
+        90471,
+        90511
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "public",
+      "action": "public sign preview page",
+      "type": "load",
+      "url": "/he/sign/perf-dummy-token",
+      "coldMs": 90218,
+      "warmMs": 90344,
+      "warmSamples": [
+        90158,
+        90460,
+        90344
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW"
+    },
+    {
+      "role": "public",
+      "action": "forgot-password page",
+      "type": "load",
+      "url": "/he/forgot-password",
+      "coldMs": 101325,
+      "warmMs": 90364,
+      "warmSamples": [
+        90472,
+        90343,
+        90364
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW",
+      "cov": "forgot-password (page)"
+    },
+    {
+      "role": "public",
+      "action": "forgot-password (POST)",
+      "type": "interaction",
+      "method": "POST",
+      "path": "/api/v1/auth/forgot-password",
+      "ms": 3595,
+      "warmMs": 3595,
+      "status": 200,
+      "cov": "forgot-password (POST)",
+      "verdict": "SLOW"
+    },
+    {
+      "role": "public",
+      "action": "reset-password page",
+      "type": "load",
+      "url": "/he/reset-password?token=perf-dummy",
+      "coldMs": 97450,
+      "warmMs": 90422,
+      "warmSamples": [
+        90452,
+        90384,
+        90422
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW",
+      "cov": "reset-password"
+    },
+    {
+      "role": "public",
+      "action": "accept-invite page",
+      "type": "load",
+      "url": "/he/accept-invite/perf-dummy-token",
+      "coldMs": 92980,
+      "warmMs": 90448,
+      "warmSamples": [
+        90448,
+        90442,
+        90553
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "SLOW",
+      "cov": "accept-invite"
+    },
+    {
+      "role": "contractor",
+      "action": "token exchange (/contractor/share/:token)",
+      "type": "load",
+      "warmMs": 15890,
+      "coldMs": 15891,
+      "status": 200,
+      "cov": "contractor token exchange",
+      "verdict": "SLOW"
+    },
+    {
+      "role": "contractor",
+      "action": "contractor portal page (view project)",
+      "type": "load",
+      "url": "/he/contractor/share",
+      "coldMs": 658,
+      "warmMs": 570,
+      "warmSamples": [
+        570,
+        696,
+        418
+      ],
+      "apiWaterfall": [],
+      "slowestApi": null,
+      "consoleErrors": [],
+      "verdict": "PASS",
+      "cov": "contractor view project"
+    },
+    {
+      "role": "contractor",
+      "action": "contractor GET /project",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/contractor/project",
+      "ms": 2029,
+      "warmMs": 2029,
+      "status": 200,
+      "verdict": "SLOW"
+    },
+    {
+      "role": "contractor",
+      "action": "contractor GET /progress",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/contractor/progress",
+      "ms": 154,
+      "warmMs": 154,
+      "status": 200,
+      "verdict": "PASS"
+    },
+    {
+      "role": "contractor",
+      "action": "contractor GET /documents",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/contractor/documents",
+      "ms": 126,
+      "warmMs": 126,
+      "status": 200,
+      "verdict": "PASS"
+    },
+    {
+      "role": "contractor",
+      "action": "contractor download doc",
+      "type": "interaction",
+      "method": "GET",
+      "path": "/api/v1/contractor/documents/a720fbc9-974a-4153-b8f2-23b3edae0ca4/download",
+      "ms": 359,
+      "warmMs": 359,
+      "status": 200,
+      "cov": "contractor download doc",
+      "verdict": "PASS"
+    },
+    {
+      "role": "n/a",
+      "action": "signup",
+      "type": "n/a",
+      "verdict": "N/A",
+      "note": "public self-service signup is DISABLED (PUBLIC_SIGNUP_ENABLED!=1 → 404 before any work); onboarding is provider-led"
+    },
+    {
+      "role": "n/a",
+      "action": "silent refresh",
+      "type": "n/a",
+      "verdict": "N/A",
+      "note": "automatic/internal — POST /auth/refresh fires transparently on token_expired (D.31), not a user action; covered by the per-page /me path"
+    }
+  ],
+  "gate": {
+    "expected": 105,
+    "covered": 103,
+    "missing": [
+      "archive project",
+      "get settings"
+    ],
+    "roles": [
+      "manager",
+      "public",
+      "agent",
+      "viewer",
+      "provider",
+      "tenant",
+      "contractor"
+    ]
+  }
+}

@@ -284,6 +284,61 @@ export const DocumentDownloadResponseSchema = z.object({
 });
 export type DocumentDownloadResponse = z.infer<typeof DocumentDownloadResponseSchema>;
 
+// ── DH4 (MASTER-PLAN-V13 Wave B) — document dedup probe ─────────────────────
+// "link to existing, not duplicate": before a user uploads a file, the client
+// hashes the bytes (the SAME sha256 hex it would declare at create/finalize —
+// `content_hash`) and asks whether the org ALREADY holds an identical document.
+// SUGGEST-ONLY / READ-ONLY: the probe returns link candidates so the FE can
+// offer "קשר לקיים"; it NEVER creates a link nor mutates anything. The actual
+// "link to existing" action (if any) is a separate, explicit, human-confirmed
+// step (out of scope for this slice). RLS is the boundary: candidates are
+// ALWAYS scoped to what the caller can already see (same org, agent record-
+// scoping) — the probe can never become a cross-tenant existence oracle.
+
+/**
+ * POST /documents/dedup-check request — the sha256 (hex) the client computed of
+ * the file it is about to upload. SAME field + bounds as `contentHash`
+ * everywhere else (create/finalize): tolerant of the existing 1..128 bound so a
+ * legacy/other-length hash still probes. `.strict()` rejects any extra field
+ * (no smuggled scope/org override — scope comes ONLY from RLS + the caller's
+ * role, never the client body).
+ */
+export const DedupCheckInput = z
+  .object({
+    contentHash: z.string().min(1).max(128),
+  })
+  .strict();
+export type DedupCheckInputDto = z.infer<typeof DedupCheckInput>;
+
+/**
+ * A single dedup link candidate — an EXISTING, non-archived document in the
+ * caller's scope sharing the probed contentHash. Metadata only (no r2Key, no
+ * presigned URL, no PII): just enough for the FE to render the "קשר לקיים"
+ * suggestion and link to the doc. `scope`/`scopeId` are the DH1 canonical
+ * taxonomy scope (org|project|apartment|owner); `scopeId` is null for org-scope.
+ */
+export const DedupCandidateSchema = z.object({
+  documentId: z.string().uuid(),
+  type: z.string().min(1).max(64),
+  scope: z.enum(['org', 'project', 'apartment', 'owner']),
+  scopeId: z.string().uuid().nullable(),
+  filename: z.string().min(1).max(255),
+  createdAt: z.coerce.date(),
+});
+export type DedupCandidate = z.infer<typeof DedupCandidateSchema>;
+
+/**
+ * POST /documents/dedup-check response — the link candidates (newest first) +
+ * a convenience `hasDuplicate` boolean. Empty `duplicates` ⇒ `hasDuplicate`
+ * false (the file is new to the caller's scope). NEVER an oracle: a hash that
+ * exists ONLY in another org returns the SAME empty result as a never-seen hash.
+ */
+export const DedupCheckResponseSchema = z.object({
+  duplicates: z.array(DedupCandidateSchema),
+  hasDuplicate: z.boolean(),
+});
+export type DedupCheckResponse = z.infer<typeof DedupCheckResponseSchema>;
+
 // ── DH2 (V13) — project document-CHECKLIST (ADVISORY only) ──────────────────
 // `GET /api/v1/projects/:id/document-checklist` reports, per the project's
 // renewal TRACK (derived from `projects.type`), the REQUIRED document types and

@@ -1,0 +1,92 @@
+{
+  "base": "http://localhost:3001",
+  "stamp": "dev",
+  "results": [
+    {
+      "role": "manager",
+      "action": "LOGIN (form stalled → api fallback)",
+      "ms": 40326,
+      "status": 200,
+      "verdict": "PASS(api-fallback)"
+    },
+    {
+      "role": "manager",
+      "action": "create project (form)",
+      "ms": 102526,
+      "status": null,
+      "verdict": "FAIL",
+      "detail": "(no nav)"
+    },
+    {
+      "role": "manager",
+      "action": "create building (form)",
+      "ms": 5856,
+      "status": 201,
+      "verdict": "SLOW",
+      "detail": "→ navigated"
+    },
+    {
+      "role": "manager",
+      "action": "create apartment (form)",
+      "ms": 5045,
+      "status": 201,
+      "verdict": "SLOW",
+      "detail": "→ navigated"
+    },
+    {
+      "role": "manager",
+      "action": "create owner (form)",
+      "ms": 492,
+      "status": 400,
+      "verdict": "FAIL",
+      "detail": "err=\"national_id failed the Israeli ID checksum\""
+    },
+    {
+      "role": "manager",
+      "action": "create task (form)",
+      "ms": 4556,
+      "status": 201,
+      "verdict": "SLOW",
+      "detail": "→ navigated"
+    },
+    {
+      "role": "manager",
+      "action": "create note (form)",
+      "ms": 7341,
+      "status": 201,
+      "verdict": "SLOW",
+      "detail": "→ navigated"
+    },
+    {
+      "role": "manager",
+      "action": "invite member (form)",
+      "ms": 12562,
+      "status": 201,
+      "verdict": "SLOW",
+      "detail": "(no nav)"
+    },
+    {
+      "role": "manager",
+      "action": "create contractor (form)",
+      "ms": 3592,
+      "status": 201,
+      "verdict": "SLOW",
+      "detail": "→ navigated"
+    },
+    {
+      "role": "manager",
+      "action": "reveal owner PII (button)",
+      "ms": 981,
+      "status": 200,
+      "verdict": "PASS"
+    },
+    {
+      "role": "manager",
+      "action": "settings save (button)",
+      "ms": 0,
+      "status": null,
+      "verdict": "MISSING-BUTTON",
+      "detail": "no \"/שמור|save/i\""
+    }
+  ]
+}

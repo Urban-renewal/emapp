@@ -44,8 +44,24 @@ let otherOrg: TestOrg;
 let managerId: string;
 let agentId: string;
 
-// P1, P2 assigned to the agent; P3 NOT assigned.
-const P: { p1: string; p2: string; p3: string } = { p1: '', p2: '', p3: '' };
+// P1, P2 assigned to the agent; P3 NOT assigned. P4/P5 added for HB-5
+// campaign-document derivation (P4: no campaign at all; P5: a finalized
+// 'agreement' doc but no signature_request yet).
+const P: {
+  p1: string;
+  p2: string;
+  p3: string;
+  p4: string;
+  p5: string;
+  p5agreement: string;
+} = {
+  p1: '',
+  p2: '',
+  p3: '',
+  p4: '',
+  p5: '',
+  p5agreement: '',
+};
 
 const MGR_SID = '00000000-0000-4000-8000-0000000000b1';
 const AGENT_SID = '00000000-0000-4000-8000-0000000000b2';
@@ -131,7 +147,10 @@ async function seedApartment(projectId: string): Promise<string> {
   });
 }
 
-async function seedProjectDoc(projectId: string): Promise<string> {
+async function seedProjectDoc(
+  projectId: string,
+  opts: { type?: string; uploadedAt?: Date | null; archivedAt?: Date | null } = {},
+): Promise<string> {
   return withTenant(org.id, async (tx) => {
     const [d] = await tx
       .insert(documents)
@@ -139,13 +158,16 @@ async function seedProjectDoc(projectId: string): Promise<string> {
         orgId: org.id,
         projectId,
         name: 'Project Plan',
-        type: 'contract',
+        type: opts.type ?? 'contract',
         mimeType: 'application/pdf',
         sizeBytes: 1024,
         r2Key: `org/${org.id}/doc/${randomUUID()}.pdf`,
         contentHash: 'sha256:' + 'd'.repeat(64),
         uploadedBy: managerId,
-        uploadedAt: new Date(),
+        // 0049 — finalized iff uploadedAt NOT NULL. Default finalized; callers
+        // may pass null to seed a never-finalized "ghost" doc.
+        uploadedAt: opts.uploadedAt === undefined ? new Date() : opts.uploadedAt,
+        archivedAt: opts.archivedAt ?? null,
       })
       .returning({ id: documents.id });
     return d!.id;
@@ -187,13 +209,22 @@ beforeAll(async () => {
 
   P.p1 = org.projects[0]!.id;
   P.p2 = org.projects[1]!.id;
-  P.p3 = await withTenant(org.id, async (tx) => {
-    const [p] = await tx
-      .insert(projects)
-      .values({ orgId: org.id, name: `${tag} Project 3`, type: 'tama38_1', createdBy: managerId })
-      .returning({ id: projects.id });
-    return p!.id;
-  });
+  const seedProject = async (suffix: string): Promise<string> =>
+    withTenant(org.id, async (tx) => {
+      const [p] = await tx
+        .insert(projects)
+        .values({
+          orgId: org.id,
+          name: `${tag} Project ${suffix}`,
+          type: 'tama38_1',
+          createdBy: managerId,
+        })
+        .returning({ id: projects.id });
+      return p!.id;
+    });
+  P.p3 = await seedProject('3');
+  P.p4 = await seedProject('4');
+  P.p5 = await seedProject('5');
 
   agentId = await seedAgentUser();
   await db.insert(projectAssignments).values([
@@ -238,6 +269,29 @@ beforeAll(async () => {
   await seedApartment(P.p3); // unsigned apt → low consent
   const p3doc = await seedProjectDoc(P.p3);
   await seedSig(p3doc, p3o1, 'signed', { signedAt: new Date(Date.now() - 90 * DAY) });
+
+  // ── P4 (HB-5) — NO CAMPAIGN at all: an apartment + owner but NO
+  //    signature_request ever AND no finalized 'agreement' doc. (It has a
+  //    finalized 'contract' doc to prove the type filter excludes non-agreement
+  //    docs.) → campaignDocumentId null, hasCampaign false.
+  const p4a1 = await seedApartment(P.p4);
+  await seedOwner(p4a1);
+  await seedProjectDoc(P.p4, { type: 'contract' }); // non-agreement → ignored
+  // an ARCHIVED agreement + a NEVER-FINALIZED agreement → both ignored.
+  await seedProjectDoc(P.p4, { type: 'agreement', archivedAt: new Date() });
+  await seedProjectDoc(P.p4, { type: 'agreement', uploadedAt: null });
+
+  // ── P5 (HB-5) — campaign DOC, no requests yet: a FINALIZED, non-archived,
+  //    project-scoped 'agreement' doc but NO signature_request. The fallback
+  //    (precedence rule 2) must resolve campaignDocumentId to THIS doc.
+  const p5a1 = await seedApartment(P.p5);
+  await seedOwner(p5a1);
+  // an older finalized agreement + the newest one → expect the NEWEST by uploaded_at.
+  await seedProjectDoc(P.p5, { type: 'agreement', uploadedAt: new Date(Date.now() - 5 * DAY) });
+  P.p5agreement = await seedProjectDoc(P.p5, {
+    type: 'agreement',
+    uploadedAt: new Date(Date.now() - 1 * DAY),
+  });
 }, 180_000);
 
 afterAll(() => {
@@ -252,10 +306,10 @@ describe('signaturePulse — agent-scope', () => {
     expect(ids).not.toContain(P.p3);
   });
 
-  it('SP-2) manager sees the whole org (P1+P2+P3)', async () => {
+  it('SP-2) manager sees the whole org (P1..P5)', async () => {
     const pulse = await svc.signaturePulse(manager());
     const ids = pulse.attention.map((r) => r.projectId).sort();
-    expect(ids).toEqual([P.p1, P.p2, P.p3].sort());
+    expect(ids).toEqual([P.p1, P.p2, P.p3, P.p4, P.p5].sort());
   });
 
   it('SP-3) a cross-tenant org sees an EMPTY feed for our projects (no leak)', async () => {
@@ -300,6 +354,10 @@ describe('signaturePulse — pulse fields', () => {
 });
 
 describe('signaturePulse — consent is single-source with the board', () => {
+  // Real-DB: one pulse call (now over 5 seeded projects) + 3 per-project board
+  // calls in a loop against the remote (Neon) dev DB. The default 5s `it`
+  // timeout is too tight for that many sequential round-trips over the network;
+  // give it the suite's heavier budget (the assertion, not latency, is the gate).
   it('SP-8) row consentedPct/metThreshold EQUAL the per-project board values', async () => {
     const pulse = await svc.signaturePulse(manager());
     for (const projectId of [P.p1, P.p2, P.p3]) {
@@ -309,7 +367,7 @@ describe('signaturePulse — consent is single-source with the board', () => {
       expect(row.metThreshold).toBe(board.metThreshold);
       expect(row.basis).toBe('share');
     }
-  });
+  }, 30_000);
 });
 
 describe('signaturePulse — rankAttention + buckets', () => {
@@ -331,5 +389,35 @@ describe('signaturePulse — rankAttention + buckets', () => {
     for (const nh of pulse.needsHuman) {
       expect(Object.keys(nh).sort()).toEqual(['count', 'projectId', 'projectName', 'reasons']);
     }
+  });
+});
+
+describe('signaturePulse — HB-5 campaign document (one-click holdout chase)', () => {
+  it('SP-11) a project with signature_requests → campaignDocumentId = its most-recent request doc; hasCampaign true', async () => {
+    const pulse = await svc.signaturePulse(manager());
+    for (const projectId of [P.p1, P.p2, P.p3]) {
+      const row = pulse.attention.find((r) => r.projectId === projectId)!;
+      // P1/P2/P3 each have ≥1 signature_request → precedence rule 1 fires.
+      expect(row.campaignDocumentId).not.toBeNull();
+      expect(row.hasCampaign).toBe(true);
+    }
+  });
+
+  it('SP-12) a project with NO campaign (no request, no finalized agreement) → null / false', async () => {
+    const pulse = await svc.signaturePulse(manager());
+    const p4 = pulse.attention.find((r) => r.projectId === P.p4)!;
+    // Non-agreement / archived-agreement / never-finalized-agreement are all
+    // excluded, and there is no signature_request → no campaign.
+    expect(p4.campaignDocumentId).toBeNull();
+    expect(p4.hasCampaign).toBe(false);
+  });
+
+  it('SP-13) a project with a finalized agreement but no request → falls back to that agreement doc', async () => {
+    const pulse = await svc.signaturePulse(manager());
+    const p5 = pulse.attention.find((r) => r.projectId === P.p5)!;
+    // Precedence rule 2: the NEWEST finalized, non-archived, project-scoped
+    // 'agreement' doc (uploaded 1 day ago, not the 5-day-old one).
+    expect(p5.campaignDocumentId).toBe(P.p5agreement);
+    expect(p5.hasCampaign).toBe(true);
   });
 });

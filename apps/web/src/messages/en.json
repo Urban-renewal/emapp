@@ -57,7 +57,9 @@
         "remindDisabled": "Reminders are paused right now",
         "remindNonePending": "No pending signatures in this project",
         "remindSent": "{count, plural, one {1 reminder sent} other {# reminders sent}}",
-        "remindFailed": "Sending reminders failed. Please try again."
+        "remindFailed": "Sending reminders failed. Please try again.",
+        "startCampaign": "Start collecting signatures",
+        "startCampaignAria": "Start collecting signatures in {name}"
       },
       "explain": {
         "trigger": "Why am I seeing this?",
@@ -79,12 +81,14 @@
         "loadFailed": "Loading the names failed.",
         "retry": "Try again",
         "none": "No one is stuck",
-        "fallback": "Apartment {number} · partial",
+        "fallback": "Apartment {number} · awaiting signatures",
         "noName": "Owner without a recorded name",
         "apartment": "Apartment {number}",
         "remindAria": "Send a reminder to {name}",
         "remindSent": "Reminder sent",
-        "remindNonePending": "No pending signature request for this owner — the board may be out of date."
+        "requestSent": "Signature request sent to {name}",
+        "remindNonePending": "No pending signature request for this owner — the board may be out of date.",
+        "startCampaignAria": "Start collecting signatures in apartment {number}"
       },
       "queueTail": "{count, plural, one {1 more project being tracked} other {# more projects being tracked}}"
     },

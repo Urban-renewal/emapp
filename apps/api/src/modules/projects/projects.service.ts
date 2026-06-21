@@ -1437,7 +1437,29 @@ export class ProjectsService {
                FROM signature_requests sr
                WHERE sr.status = 'pending'
                  AND sr.document_id IN (SELECT document_id FROM proj_docs WHERE project_id = v.id)
-            ) AS next_expiry_at
+            ) AS next_expiry_at,
+            -- HB-5 — the CAMPAIGN document a holdout request is CREATED against
+            -- when an owner has no live pending request. Precedence (RLS-safe,
+            -- single round-trip): (1) the document of the project's MOST-RECENT
+            -- signature_request of ANY status — whatever the project already
+            -- collects against; ELSE (2) the most-recent FINALIZED
+            -- (uploaded_at NOT NULL), non-archived, PROJECT-scoped 'agreement'
+            -- document; ELSE NULL. COALESCE preserves the precedence.
+            COALESCE(
+              (SELECT sr.document_id
+                 FROM signature_requests sr
+                 WHERE sr.document_id IN (SELECT document_id FROM proj_docs WHERE project_id = v.id)
+                 ORDER BY sr.created_at DESC
+                 LIMIT 1),
+              (SELECT d.id
+                 FROM documents d
+                 WHERE d.project_id = v.id
+                   AND d.type = 'agreement'
+                   AND d.uploaded_at IS NOT NULL
+                   AND d.archived_at IS NULL
+                 ORDER BY d.uploaded_at DESC
+                 LIMIT 1)
+            ) AS campaign_document_id
           FROM visible v
           ORDER BY v.id
         `);
@@ -1479,6 +1501,13 @@ export class ProjectsService {
       const expiringSoon =
         nextExpiryAt !== null && new Date(nextExpiryAt).getTime() - now <= expiringSoonMs;
 
+      // HB-5 — the project's campaign document (the doc a holdout request is
+      // CREATED against). null when the project has no campaign at all (no
+      // signature_request ever AND no finalized project-scoped 'agreement').
+      const campaignDoc = f['campaign_document_id'];
+      const campaignDocumentId =
+        campaignDoc === null || campaignDoc === undefined ? null : String(campaignDoc);
+
       // SINGLE-SOURCE consent — the IDENTICAL share-weighted CTE the board uses,
       // read-through cached under a pulse-specific, tenant-scoped key. The board
       // caches the ASSEMBLED SignatureProgress under sigProgress:p:<id>; we cache
@@ -1510,6 +1539,8 @@ export class ProjectsService {
         consentedPct: agg.consentedPct,
         metThreshold,
         basis: 'share' as const,
+        campaignDocumentId,
+        hasCampaign: campaignDocumentId !== null,
       });
     }
 

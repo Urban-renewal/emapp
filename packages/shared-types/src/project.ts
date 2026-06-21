@@ -480,6 +480,24 @@ export const ProjectPulseRowSchema = z.object({
   metThreshold: z.boolean(),
   /** The computation basis for `consentedPct` — drives the mandatory FE label. */
   basis: ConsentBasisEnum,
+  /**
+   * HB-5 (one-click holdout chase) — the project's CAMPAIGN document: the doc a
+   * holdout signature-request is created against when the board's per-name
+   * "remind" lands on an owner who has NO live pending request. Derived
+   * server-side (RLS-safe, single query) by the precedence:
+   *   1. the `document_id` of the project's MOST-RECENT signature_request (ANY
+   *      status) — i.e. whatever the project is already collecting against;
+   *   2. ELSE the most-recent FINALIZED (`uploaded_at` NOT NULL), non-archived,
+   *      PROJECT-scoped document of type 'agreement';
+   *   3. ELSE null (the project has no campaign — nothing to collect against).
+   * NO PII: a document id only. The FE uses it to CREATE (not just resend) a
+   * holdout's request via the existing gated POST /signature-requests.
+   */
+  campaignDocumentId: z.string().uuid().nullable(),
+  /** HB-5 — `campaignDocumentId !== null`. When false the project has no
+   *  campaign, so the board offers "start signature collection" instead of a
+   *  dead-end remind. */
+  hasCampaign: z.boolean(),
 });
 export type ProjectPulseRow = z.infer<typeof ProjectPulseRowSchema>;
 

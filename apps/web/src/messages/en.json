@@ -303,6 +303,18 @@
       "signedCount": "{signed, plural, =0 {No signatures received} one {1 signature received} other {# signatures received}} · {pending, plural, =0 {none pending} one {1 pending} other {# pending}}",
       "empty": "No consent data for this project yet."
     },
+    "leverage": {
+      "title": "Your leverage",
+      "sharePct": "{pct}% ownership",
+      "inApartment": "in {apartment}",
+      "projection": "{current}% → {projected}%",
+      "crossesThreshold": "Above threshold",
+      "belowThreshold": "Below threshold",
+      "focusCta": "Go to apartment",
+      "ownerNoName": "Owner with no recorded name",
+      "allClearTitle": "No leverage available right now",
+      "allClearBody": "Every owner who could move the project forward has already signed."
+    },
     "threshold": {
       "pct": "{pct}%",
       "target": "Target {pct}%",

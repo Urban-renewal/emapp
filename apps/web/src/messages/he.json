@@ -303,6 +303,18 @@
       "signedCount": "{signed, plural, =0 {לא התקבלו חתימות} one {חתימה אחת התקבלה} two {שתי חתימות התקבלו} other {# חתימות התקבלו}} · {pending, plural, =0 {אין ממתינות} one {אחת ממתינה} two {שתיים ממתינות} other {# ממתינות}}",
       "empty": "אין עדיין נתוני הסכמות לפרויקט הזה."
     },
+    "leverage": {
+      "title": "המנוף שלך",
+      "sharePct": "{pct}% בעלות",
+      "inApartment": "ב{apartment}",
+      "projection": "{current}% → {projected}%",
+      "crossesThreshold": "מעל הסף",
+      "belowThreshold": "מתחת לסף",
+      "focusCta": "מעבר לדירה",
+      "ownerNoName": "בעל דירה ללא שם רשום",
+      "allClearTitle": "אין כרגע מנוף זמין",
+      "allClearBody": "כל הבעלים שיכולים לקדם את הפרויקט כבר חתמו."
+    },
     "threshold": {
       "pct": "{pct}%",
       "target": "יעד {pct}%",

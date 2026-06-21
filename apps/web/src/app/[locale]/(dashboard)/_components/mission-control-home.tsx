@@ -1,19 +1,29 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, BellRing, CheckCircle2, HelpCircle } from 'lucide-react';
+import { ArrowLeft, BellRing, CheckCircle2, HelpCircle, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { useToast } from '@/components/ui/action-toast';
 import { DataState } from '@/components/ui/data-state';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useHasPermission } from '@/hooks/use-permissions';
+import {
+  isPermissionDenied,
+  useApartmentHoldouts,
+  useSignatureProgressApartments,
+} from '@/hooks/use-projects';
 import { useSessionProfile } from '@/hooks/use-session';
 import { useSignaturePulse } from '@/hooks/use-signature-pulse';
+import {
+  HOLDOUT_NONE_PENDING_CODE,
+  useResendHoldoutReminder,
+} from '@/hooks/use-signature-requests';
 import { apiClient, isOk } from '@/lib/api-client';
+import type { ApartmentHoldoutViewModel } from '@/models/apartment-signature-progress.vm';
 import type { PulseActionCardViewModel } from '@/models/signature-pulse.vm';
 
 /**
@@ -178,47 +188,326 @@ function ActionCard({
   basisLabel: string;
 }) {
   return (
-    <article className="card card-pad flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 flex-col gap-1.5">
-        <div className="flex items-center gap-2">
-          <StatusBadge intent={card.intent}>{buildTag(t, card)}</StatusBadge>
-          <span className="truncate text-sm font-medium text-foreground">
-            <NameDisplay name={card.projectName} />
-          </span>
+    <article className="card card-pad flex flex-col gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <div className="flex items-center gap-2">
+            <StatusBadge intent={card.intent}>{buildTag(t, card)}</StatusBadge>
+            <span className="truncate text-sm font-medium text-foreground">
+              <NameDisplay name={card.projectName} />
+            </span>
+          </div>
+          {/* The plain-Hebrew "why" — the system reporting what it found. */}
+          <p className="text-sm text-text-muted">{buildWhy(t, card)}</p>
+          {/* Consent % ALWAYS carries the basis label — never a bare legal %. */}
+          <p className="text-xs text-text-muted">
+            <span className="tabular" dir="ltr">
+              {t('consentPct', { pct: card.consentedPct })}
+            </span>
+            <span className="ms-1">· {basisLabel}</span>
+          </p>
         </div>
-        {/* The plain-Hebrew "why" — the system reporting what it found. */}
-        <p className="text-sm text-text-muted">{buildWhy(t, card)}</p>
-        {/* Consent % ALWAYS carries the basis label — never a bare legal %. */}
-        <p className="text-xs text-text-muted">
-          <span className="tabular" dir="ltr">
-            {t('consentPct', { pct: card.consentedPct })}
-          </span>
-          <span className="ms-1">· {basisLabel}</span>
-        </p>
+
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Primary action: open the project (read-navigation — always safe). */}
+          <Link
+            href={`/projects/${card.projectId}`}
+            className="btn btn-secondary btn-sm"
+            aria-label={t('action.openAria', { name: card.projectName })}
+          >
+            <span>{t('action.open')}</span>
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+          </Link>
+          {/* Mutating "remind" track — only for actors who may send (Viewer hidden). */}
+          {canRemind && (
+            <RemindButton
+              projectId={card.projectId}
+              projectName={card.projectName}
+              sendEnabled={sendEnabled}
+              t={t}
+            />
+          )}
+        </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
-        {/* Primary action: open the project (read-navigation — always safe). */}
-        <Link
-          href={`/projects/${card.projectId}`}
-          className="btn btn-secondary btn-sm"
-          aria-label={t('action.openAria', { name: card.projectName })}
-        >
-          <span>{t('action.open')}</span>
-          <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-        </Link>
-        {/* Mutating "remind" track — only for actors who may send (Viewer hidden). */}
-        {canRemind && (
-          <RemindButton
-            projectId={card.projectId}
-            projectName={card.projectName}
-            sendEnabled={sendEnabled}
-            t={t}
-          />
-        )}
-      </div>
+      {/* HB-3 — the inline "מי תקוע?" holdout-name expander. Collapsed by default;
+          its NAMES (PII) load ON DEMAND from the gated + audited B4 endpoint only
+          when opened — the same gate/mask contract as the project-detail drill-
+          down, never widened. The per-name remind is itself gated on `canRemind`. */}
+      <HoldoutExpander projectId={card.projectId} canRemind={canRemind} sendEnabled={sendEnabled} />
     </article>
   );
+}
+
+/**
+ * HB-3 — the board-card "מי תקוע?" (who's stuck?) holdout-name expander.
+ *
+ * Collapsed by default (calm disclosure; a real <button aria-expanded>, keyboard-
+ * operable). On first open it lazily loads the project's per-apartment signature
+ * progress (`useSignatureProgressApartments`, gated on `open`); for each NOT-fully-
+ * consented apartment it reveals the holdout owner NAMES via the `view_owner_pii`-
+ * gated + AUDITED B4 endpoint (`useApartmentHoldouts`, also gated on `open`). This
+ * is the EXACT contract the project-detail drill-down uses — no new PII exposure:
+ *   - a viewer / PII-less agent hits the BE 403 → the no-name FALLBACK line
+ *     ("דירה N · חלקי"), never a raw name. (B4 hard-403s; there is no masked path.)
+ *   - every name is wrapped in <NameDisplay> (bidi-spoof defence, §v9-H-3).
+ *   - the per-access audit fires only when a manager deliberately opens a row.
+ *
+ * Each holdout row carries the name + apartment context + a per-name single
+ * "שלח תזכורת" (only when `canRemind` — Viewer never sees it). Empty (0 holdouts)
+ * shows the calm "אין חותמים תקועים", never a bare list. No layout shift: the
+ * collapsed state is one button; the panel mounts below on expand.
+ */
+function HoldoutExpander({
+  projectId,
+  canRemind,
+  sendEnabled,
+}: {
+  projectId: string;
+  canRemind: boolean;
+  sendEnabled: boolean;
+}) {
+  const t = useTranslations('home.pulse');
+  const [open, setOpen] = useState(false);
+  const panelId = `holdouts-${projectId}`;
+
+  const apartments = useSignatureProgressApartments(projectId, open);
+
+  // The apartments worth chasing — anything not fully consented has ≥1 holdout.
+  // Stable identity across renders so the child holdout queries don't churn.
+  const pendingApartments = useMemo(
+    () => (apartments.data ?? []).filter((a) => a.status !== 'consented'),
+    [apartments.data],
+  );
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-border pt-2">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1.5 self-start text-xs font-medium text-text-muted hover:text-foreground"
+      >
+        <Users className="h-3.5 w-3.5" aria-hidden="true" />
+        {open ? t('holdouts.toggleHide') : t('holdouts.toggleShow')}
+      </button>
+
+      {open && (
+        <div id={panelId} className="flex flex-col gap-2">
+          {apartments.isLoading && (
+            <p className="text-xs text-text-muted">{t('holdouts.loading')}</p>
+          )}
+
+          {apartments.isError && (
+            <div className="flex items-start gap-2">
+              <p className="text-xs text-danger-700">{t('holdouts.loadFailed')}</p>
+              <button
+                type="button"
+                onClick={() => void apartments.refetch()}
+                className="text-xs font-medium text-text-muted hover:text-foreground"
+              >
+                {t('holdouts.retry')}
+              </button>
+            </div>
+          )}
+
+          {/* No apartment needs chasing → the calm "no one's stuck" reward line. */}
+          {!apartments.isLoading &&
+            !apartments.isError &&
+            apartments.data &&
+            pendingApartments.length === 0 && (
+              <p className="text-xs text-text-muted">{t('holdouts.none')}</p>
+            )}
+
+          {pendingApartments.length > 0 && (
+            <ul className="flex flex-col gap-1.5">
+              {pendingApartments.map((apt) => (
+                <HoldoutApartment
+                  key={apt.apartmentId}
+                  projectId={projectId}
+                  apartmentId={apt.apartmentId}
+                  apartmentNumber={apt.number}
+                  canRemind={canRemind}
+                  sendEnabled={sendEnabled}
+                  t={t}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One not-fully-consented apartment's holdout NAMES, loaded on demand from the
+ * gated + audited B4 endpoint. NEVER a bare null — every non-happy state is an
+ * explicit calm treatment:
+ *   - 403 (no `view_owner_pii`) → the no-name FALLBACK ("דירה N · חלקי"), terminal
+ *     (a retry won't grant the capability), no name revealed.
+ *   - generic error → calm retry.
+ *   - empty → suppressed (the apartment is "partial" only because of an in-flight
+ *     mismatch; render nothing rather than a misleading "0 stuck" per apartment —
+ *     the parent's project-level "none" copy is the honest empty signal).
+ */
+export function HoldoutApartment({
+  projectId,
+  apartmentId,
+  apartmentNumber,
+  canRemind,
+  sendEnabled,
+  t,
+}: {
+  projectId: string;
+  apartmentId: string;
+  apartmentNumber: string;
+  canRemind: boolean;
+  sendEnabled: boolean;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const { data, isLoading, isError, error, refetch } = useApartmentHoldouts(projectId, apartmentId);
+  const forbidden = isError && isPermissionDenied(error);
+
+  if (isLoading) {
+    return <li className="text-xs text-text-muted">{t('holdouts.loading')}</li>;
+  }
+
+  // 403 → no-name fallback: number + partial state, NO name. Terminal.
+  if (forbidden) {
+    return (
+      <li className="text-xs text-text-muted">{t('holdouts.fallback', { number: apartmentNumber })}</li>
+    );
+  }
+
+  if (isError) {
+    return (
+      <li className="flex items-center gap-2 text-xs">
+        <span className="text-danger-700">{t('holdouts.loadFailed')}</span>
+        <button
+          type="button"
+          onClick={() => void refetch()}
+          className="font-medium text-text-muted hover:text-foreground"
+        >
+          {t('holdouts.retry')}
+        </button>
+      </li>
+    );
+  }
+
+  if (!data || data.length === 0) return null;
+
+  return (
+    <>
+      {data.map((holdout) => (
+        <HoldoutRow
+          key={holdout.ownerId}
+          holdout={holdout}
+          canRemind={canRemind}
+          sendEnabled={sendEnabled}
+          t={t}
+        />
+      ))}
+    </>
+  );
+}
+
+/**
+ * One holdout owner row: the masked-or-named owner + apartment context + (gated)
+ * a per-name single "שלח תזכורת". The name is wrapped in <NameDisplay> (bidi
+ * defence) or, for a name-less shell owner, the anonymous label. The remind
+ * resolves THIS owner's pending request and resends it (idempotent), shows a calm
+ * action-toast, and refreshes the board on success.
+ */
+export function HoldoutRow({
+  holdout,
+  canRemind,
+  sendEnabled,
+  t,
+}: {
+  holdout: ApartmentHoldoutViewModel;
+  canRemind: boolean;
+  sendEnabled: boolean;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const toast = useToast();
+  const resend = useResendHoldoutReminder();
+
+  const disabled = !sendEnabled || resend.isPending;
+  const ownerLabel = holdout.name ?? t('holdouts.noName');
+
+  return (
+    <li className="flex items-center justify-between gap-2 rounded-md bg-surface-subtle px-2.5 py-1.5">
+      <span className="min-w-0 truncate text-xs text-text">
+        {holdout.name ? (
+          <NameDisplay name={holdout.name} />
+        ) : (
+          <span className="text-text-muted">{ownerLabel}</span>
+        )}
+        <span className="ms-1 text-text-muted">
+          · {t('holdouts.apartment', { number: holdout.apartmentNumber })}
+        </span>
+      </span>
+
+      {/* Per-name remind — only for actors who may send (Viewer never sees it). */}
+      {canRemind && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm shrink-0"
+          disabled={disabled}
+          aria-disabled={disabled}
+          aria-busy={resend.isPending}
+          aria-label={t('holdouts.remindAria', { name: ownerLabel })}
+          title={!sendEnabled ? t('action.remindDisabled') : undefined}
+          onClick={() => {
+            if (disabled) return;
+            resend.mutate(holdout.ownerId, {
+              onSuccess: () => {
+                toast.show({ message: t('holdouts.remindSent') });
+              },
+              onError: (err) => {
+                toast.show({
+                  message: buildHoldoutRemindErrorMessage(t, err),
+                  variant: 'assertive',
+                });
+              },
+            });
+          }}
+        >
+          <BellRing className="h-3.5 w-3.5" aria-hidden="true" />
+          <span>{resend.isPending ? t('action.remindPending') : t('action.remind')}</span>
+        </button>
+      )}
+    </li>
+  );
+}
+
+/**
+ * The calm Hebrew failure-toast copy for a per-name holdout remind. The
+ * "no live pending request" resolve-miss (`holdout_none_pending`) gets its own
+ * honest line ("nothing to remind — the board may be stale"); the kill-switch
+ * 503 reuses the paused copy; anything else falls back to the generic retry copy.
+ * Pure (exported) for unit testing.
+ */
+export function buildHoldoutRemindErrorMessage(
+  t: ReturnType<typeof useTranslations>,
+  err: unknown,
+): string {
+  const code = holdoutRemindErrorCode(err);
+  if (code === HOLDOUT_NONE_PENDING_CODE) return t('holdouts.remindNonePending');
+  if (code === 'campaign_send_disabled') return t('action.remindDisabled');
+  return t('action.remindFailed');
+}
+
+/** Best-effort `code` off a holdout-remind failure — any duck-typed
+ *  `{ code: string }` (the `ApiClientError` the resolve/resend path throws). */
+function holdoutRemindErrorCode(err: unknown): string | undefined {
+  if (err && typeof err === 'object' && 'code' in err) {
+    const code = (err as { code?: unknown }).code;
+    if (typeof code === 'string') return code;
+  }
+  return undefined;
 }
 
 /**

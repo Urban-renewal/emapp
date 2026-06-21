@@ -71,6 +71,20 @@
       "empty": {
         "noProjectsTitle": "No projects yet",
         "noProjectsHint": "Once the first project exists, we'll summarise here what needs your attention."
+      },
+      "holdouts": {
+        "toggleShow": "Who's stuck?",
+        "toggleHide": "Hide who's stuck",
+        "loading": "Loading names…",
+        "loadFailed": "Loading the names failed.",
+        "retry": "Try again",
+        "none": "No one is stuck",
+        "fallback": "Apartment {number} · partial",
+        "noName": "Owner without a recorded name",
+        "apartment": "Apartment {number}",
+        "remindAria": "Send a reminder to {name}",
+        "remindSent": "Reminder sent",
+        "remindNonePending": "No pending signature request for this owner — the board may be out of date."
       }
     },
     "action": {

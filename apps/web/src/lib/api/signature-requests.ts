@@ -143,3 +143,18 @@ export async function cancelSignatureRequest(id: string): Promise<SignatureReque
   if (!isOk(res)) throw new ApiClientError(res.error);
   return SignatureRequestDataSchema.parse({ data: res.data }).data;
 }
+
+/**
+ * POST /signature-requests/:id/resend (HB-3) — re-mint + re-deliver ONE PENDING
+ * request's signing link (new token + 7-day expiry; the prior link dies). This
+ * is the PER-NAME single remind behind the board-card "מי תקוע?" expander — NOT
+ * the project-wide remind (that is HB-1's `/projects/:id/signature-requests/
+ * remind`). Coarse `signature_requests.send` + fine `manage_signatures` gate on
+ * the BE; a 403 surfaces as `forbidden`, a 409 as `signature_request_not_pending`
+ * (the row is no longer pending — the board is stale). Idempotency-Key auto-
+ * minted so a double-tapped per-name remind re-delivers the same link once. */
+export async function resendSignatureRequest(id: string): Promise<SignatureRequest> {
+  const res = await apiClient.postIdempotent<unknown>(`/signature-requests/${id}/resend`, {});
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return SignatureRequestDataSchema.parse({ data: res.data }).data;
+}

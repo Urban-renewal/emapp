@@ -1,10 +1,12 @@
 import {
+  ClassifyDocumentInput,
   CreateDocumentInput,
   DocumentSearchQuery,
   DownloadDocumentQuery,
   FinalizeDocumentInput,
   ListDocumentsQuery,
   UpdateDocumentInput,
+  type ClassifyDocument,
   type CreateDocument,
   type DocumentSearchQueryDto,
   type DownloadDocumentQueryDto,
@@ -99,6 +101,26 @@ export class DocumentsController {
     @Body(new ZodValidationPipe(CreateDocumentInput)) body: CreateDocument,
   ) {
     return { data: await this.documents.create(user, body) };
+  }
+
+  // DH3 (V13) — heuristic document-type CLASSIFIER (SUGGEST-ONLY). Given a
+  // to-be-uploaded file's cheap signals (filename, declared mime, optional
+  // leading-bytes sample) returns a RANKED list of suggested `doc_type` values
+  // with confidence + reason. PURELY ADVISORY: it does NO DB write and NEVER
+  // mutates a document's type — the human confirms separately (D.18 / tabu
+  // auto-parse "mandatory human confirm" doctrine). `documents.read`-gated
+  // (advisory ⇒ read tier). Tighter throttle than the global 100/min (the
+  // optional sample makes this a slightly heavier advisory call). Returns the
+  // ClassifyResult under `data`; the reason keys are content-free (no PII echo).
+  @Post('classify')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @RequirePermission('documents.read')
+  async classify(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body(new ZodValidationPipe(ClassifyDocumentInput)) body: ClassifyDocument,
+  ) {
+    return { data: await this.documents.classify(user, body) };
   }
 
   @Get(':id')

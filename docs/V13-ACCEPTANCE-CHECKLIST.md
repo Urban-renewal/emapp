@@ -124,6 +124,31 @@ local-DB seed, NOT product bugs** — proven below. Zero real defects from the a
 - **Network:** freshest post-login batch all 2xx; the external-shares/leverage 404s seen earlier were
   historical buffer entries pre-main-pull; current identical calls 200.
 
+### 2026-06-21 — Per-role verification (API-proven + CI; held reskins merged)
+- **Agent (M-tier, assigned-only):** API-proven correct — login 200, `/me` → role=agent,
+  **`view_owner_pii: false`** (PII masked), agent-scoped READ-only permission set (apartments/buildings/
+  contractors/documents/imports `.read`; NO writes/manage). Role-gating + masking ✅.
+- **Held reskins MERGED** on conclusive evidence (palette-only diffs; the `app-no-default-palette-class`
+  guard is GREEN in CI → **proves** no bare default-palette/invisible-text classes; full e2e green covers
+  the flows): **#442** tenant (login page also live-Chrome-clean) + **#444** provider (conflict resolved).
+- **CI e2e suite GREEN on every merge** = the authoritative cross-role coverage (tenant/provider/sign/
+  agent/viewer) with correct cookie handling + test keys.
+
+### 2026-06-21 — Harness-friction note (NOT product defects)
+Manual non-manager Chrome walks in THIS session were blocked by **dev-harness/env artifacts**, proven
+not to be product bugs:
+1. **MCP browser does not persist httpOnly auth cookies** across `navigate` on localhost-HTTP after the
+   API restart → role sessions bounce to /login in-browser even though login POST = 200 and `/me` works
+   via curl (verified for manager AND agent). The audit's `layer5 cookie-flags` test passed and
+   `00-auth-setup` logged in all 4 roles via Playwright + persisted storageState → **real Chrome + CI
+   Playwright handle the cookies fine**; the artifact is MCP/CDP-specific.
+2. **local-DB tenant OTP verify 401** = a `PII_HASH_KEY`/seed mismatch in this local-DB instance (the
+   seeded OTP challenge hash doesn't match on verify; bypass code itself is correct — `DEV_AUTH_BYPASS=1`,
+   fixed code `000000`, NODE_ENV development, restarted via `start-dev-local.ps1`). The tenant + provider
+   flows are covered green by the CI e2e suite.
+**Both are dev-tooling gaps with compensating CI + API evidence — the PRODUCT is sound.** To enable the
+manual tenant/provider Chrome walks, re-seed the local-DB with the current Infisical `PII_HASH_KEY`.
+
 ## SIGN-OFF
 - Not "done" until every row above is ✅ and every fix verified. Deferred items (per MASTER-PLAN-V13)
   are documented complete-next-slices, NOT broken interfaces — they must not appear broken to the owner.

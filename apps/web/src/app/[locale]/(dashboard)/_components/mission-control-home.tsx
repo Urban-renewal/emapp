@@ -1,16 +1,19 @@
 'use client';
 
-import { ArrowLeft, CheckCircle2, HelpCircle } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, BellRing, CheckCircle2, HelpCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
+import { useToast } from '@/components/ui/action-toast';
 import { DataState } from '@/components/ui/data-state';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useHasPermission } from '@/hooks/use-permissions';
 import { useSessionProfile } from '@/hooks/use-session';
 import { useSignaturePulse } from '@/hooks/use-signature-pulse';
+import { apiClient, isOk } from '@/lib/api-client';
 import type { PulseActionCardViewModel } from '@/models/signature-pulse.vm';
 
 /**
@@ -142,6 +145,7 @@ export function MissionControlHome() {
                   <ActionCard
                     card={card}
                     canRemind={canRemind}
+                    sendEnabled={vm.sendEnabled}
                     t={t}
                     basisLabel={tConsent('basisShare')}
                   />
@@ -160,11 +164,16 @@ export function MissionControlHome() {
 function ActionCard({
   card,
   canRemind,
+  sendEnabled,
   t,
   basisLabel,
 }: {
   card: PulseActionCardViewModel;
   canRemind: boolean;
+  /** HB-1 kill-switch state (from the pulse). `false` → the remind action is
+   *  pre-disabled with calm explanatory copy (belt-and-suspenders with the BE
+   *  503), so the manager never taps into a guaranteed failure. */
+  sendEnabled: boolean;
   t: ReturnType<typeof useTranslations>;
   basisLabel: string;
 }) {
@@ -200,16 +209,150 @@ function ActionCard({
         </Link>
         {/* Mutating "remind" track — only for actors who may send (Viewer hidden). */}
         {canRemind && (
-          <Link
-            href={`/projects/${card.projectId}?tab=signatures`}
-            className="btn btn-ghost btn-sm"
-          >
-            {t('action.remind')}
-          </Link>
+          <RemindButton
+            projectId={card.projectId}
+            projectName={card.projectName}
+            sendEnabled={sendEnabled}
+            t={t}
+          />
         )}
       </div>
     </article>
   );
+}
+
+/**
+ * HB-1 — the inline one-tap "remind the project's PENDING signers" action.
+ *
+ * PROJECT-scoped (the projectId is in scope on every card): on click it POSTs
+ * `/projects/:id/signature-requests/remind` (no body) via `postIdempotent` (the
+ * BE is idempotent — a double-tap re-delivers the same pending set once), then
+ * shows a calm Hebrew result toast derived from `{ reminded, total }` and
+ * refreshes the board (`invalidateQueries(['signature-pulse'])`).
+ *
+ * Gating (layered, never a dead button):
+ *   - VISIBILITY: the parent only renders this when `signature_requests.send`
+ *     is held (Viewer never sees it).
+ *   - KILL-SWITCH pre-disable: when `sendEnabled === false` the button is
+ *     disabled with calm explanatory copy and the request never fires — belt-
+ *     and-suspenders with the BE 503 `campaign_send_disabled`.
+ *   - IN-FLIGHT: disabled + pending label while the mutation runs (no double-tap).
+ */
+function RemindButton({
+  projectId,
+  projectName,
+  sendEnabled,
+  t,
+}: {
+  projectId: string;
+  projectName: string;
+  sendEnabled: boolean;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+
+  const remind = useMutation({
+    mutationFn: async (): Promise<RemindResult> => {
+      const res = await apiClient.postIdempotent<RemindResult>(
+        `/projects/${projectId}/signature-requests/remind`,
+        {},
+      );
+      if (!isOk(res)) throw new RemindError(res.error.code);
+      return res.data;
+    },
+    onSuccess: (data) => {
+      toast.show({ message: buildRemindResultMessage(t, data) });
+    },
+    onError: (err) => {
+      toast.show({ message: buildRemindErrorMessage(t, err), variant: 'assertive' });
+    },
+    onSettled: () => {
+      // Refresh the board so the pulse (and any derived attention) reflects the
+      // re-delivered reminders. The home reads exactly one pulse query key.
+      void queryClient.invalidateQueries({ queryKey: ['signature-pulse'] });
+    },
+  });
+
+  const disabled = !sendEnabled || remind.isPending;
+  // Calm explanatory copy when the kill-switch is off — surfaced as a native
+  // tooltip AND the accessible description so the disabled state is never silent.
+  const switchOffCopy = t('action.remindDisabled');
+
+  return (
+    <button
+      type="button"
+      className="btn btn-ghost btn-sm"
+      disabled={disabled}
+      aria-disabled={disabled}
+      aria-busy={remind.isPending}
+      aria-label={t('action.remindAria', { name: projectName })}
+      title={!sendEnabled ? switchOffCopy : undefined}
+      onClick={() => {
+        // Belt: never fire while disabled (kill-switch off or in-flight).
+        if (disabled) return;
+        remind.mutate();
+      }}
+    >
+      <BellRing className="h-3.5 w-3.5" aria-hidden="true" />
+      <span>{remind.isPending ? t('action.remindPending') : t('action.remind')}</span>
+    </button>
+  );
+}
+
+/** The `{ reminded, total }` success payload from the remind endpoint. */
+interface RemindResult {
+  reminded: number;
+  total: number;
+}
+
+/** A typed remind failure carrying the wire `error.code` so the toast can
+ *  special-case the kill-switch 503 (`campaign_send_disabled`). */
+class RemindError extends Error {
+  constructor(readonly code: string) {
+    super(code);
+    this.name = 'RemindError';
+  }
+}
+
+/**
+ * The calm Hebrew result-toast copy for a remind, derived from `{ reminded,
+ * total }`. `total === 0` → "no pending signatures in the project"; otherwise
+ * "{reminded} reminders sent". Pure (exported) for unit testing.
+ */
+export function buildRemindResultMessage(
+  t: ReturnType<typeof useTranslations>,
+  result: RemindResult,
+): string {
+  if (result.total === 0) return t('action.remindNonePending');
+  return t('action.remindSent', { count: result.reminded });
+}
+
+/**
+ * The calm Hebrew failure-toast copy for a remind. The kill-switch 503
+ * (`campaign_send_disabled`) gets its own calm "sending is paused" line; any
+ * other failure falls back to the generic retry copy. Pure (exported) for tests.
+ */
+export function buildRemindErrorMessage(
+  t: ReturnType<typeof useTranslations>,
+  err: unknown,
+): string {
+  if (remindErrorCode(err) === 'campaign_send_disabled') {
+    return t('action.remindDisabled');
+  }
+  return t('action.remindFailed');
+}
+
+/** Best-effort `code` off a remind failure — a `RemindError` (the mutation
+ *  path) or any duck-typed `{ code: string }` (keeps the helper testable
+ *  without exporting the error class). */
+function remindErrorCode(err: unknown): string | undefined {
+  if (err instanceof RemindError) return err.code;
+  if (err && typeof err === 'object' && 'code' in err) {
+    const code = (err as { code?: unknown }).code;
+    if (typeof code === 'string') return code;
+  }
+  return undefined;
 }
 
 /** The calm reward marker shown in the all-clear empty-state. */

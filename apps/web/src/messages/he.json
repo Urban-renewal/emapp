@@ -51,7 +51,13 @@
       "action": {
         "open": "פתח פרויקט",
         "openAria": "פתח את הפרויקט {name}",
-        "remind": "שלח תזכורת"
+        "remind": "שלח תזכורת",
+        "remindPending": "שולח…",
+        "remindAria": "שלח תזכורת לחותמים הממתינים בפרויקט {name}",
+        "remindDisabled": "שליחת תזכורות מושהית כרגע",
+        "remindNonePending": "אין חתימות ממתינות בפרויקט",
+        "remindSent": "{count, plural, one {נשלחה תזכורת אחת} two {נשלחו שתי תזכורות} other {נשלחו # תזכורות}}",
+        "remindFailed": "שליחת התזכורות נכשלה. אפשר לנסות שוב."
       },
       "explain": {
         "trigger": "למה אני רואה את זה?",

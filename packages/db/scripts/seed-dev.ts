@@ -67,6 +67,8 @@ import {
 } from '../src/schema/index';
 import { withBootstrap } from '../src/wrappers/with-bootstrap';
 
+import { uploadSeedDocBytes } from './seed-storage';
+
 // OWASP Password Storage Cheat Sheet — must match apps/api password.ts.
 const ARGON2 = { memoryCost: 19456, timeCost: 2, parallelism: 1 } as const;
 
@@ -644,6 +646,12 @@ async function runExtensions(orgId: string): Promise<void> {
 }
 
 async function runDocuments(orgId: string): Promise<void> {
+  // Collected across the tx so we can upload renderable bytes AFTER commit
+  // (the storage write is not part of the DB transaction). Includes both
+  // newly-created docs and any already-existing seed docs, so re-running the
+  // seed against a configured R2 backfills bytes for docs created by an
+  // earlier (pre-this-fix) seed run.
+  const docsForBytes: Array<{ r2Key: string; name: string }> = [];
   await withBootstrap(async (tx) => {
     // Resolve the Pilot project by NAME — NOT .limit(1). Smoke-test agents
     // create many projects under Alpha; picking "the first" picked a smoke
@@ -704,6 +712,10 @@ async function runDocuments(orgId: string): Promise<void> {
       // UNIQUE index on documents.r2_key. We include orgId so re-seeding
       // a different org wouldn't collide.
       const r2Key = `documents/${orgId}/${d.key}.pdf`;
+      // Every seed doc (new or pre-existing) is a byte-upload target so a
+      // re-run against a configured R2 backfills bytes for docs an earlier
+      // (pre-fix) seed created metadata-only.
+      docsForBytes.push({ r2Key, name: d.name });
       const existing = await tx
         .select({ id: documents.id })
         .from(documents)
@@ -734,11 +746,23 @@ async function runDocuments(orgId: string): Promise<void> {
       });
       docsCreated += 1;
     }
-    if (docsCreated > 0)
-      console.log(
-        `[seed-dev/docs] created ${docsCreated} documents (metadata only — bytes absent from FakeStorage).`,
-      );
+    if (docsCreated > 0) console.log(`[seed-dev/docs] created ${docsCreated} documents.`);
   });
+
+  // Upload renderable PDF bytes AFTER the tx (storage is not transactional).
+  // Real R2 → preview works in the running API. No R2 configured → skipped
+  // (FakeStorage is per-process; the standalone seed can't reach the API's
+  // in-memory store). Run the backfill script in that case, or seed with
+  // Infisical R2_* present.
+  const uploaded = await uploadSeedDocBytes(docsForBytes);
+  if (docsForBytes.length > 0) {
+    console.log(
+      uploaded
+        ? `[seed-dev/docs] uploaded renderable PDF bytes for ${docsForBytes.length} document(s) to R2.`
+        : '[seed-dev/docs] R2 not configured — document bytes NOT uploaded (metadata only). ' +
+            'Run `pnpm --filter @emapp/db backfill:doc-bytes` with Infisical to add renderable bytes.',
+    );
+  }
 }
 
 async function runSignatureWorkflow(orgId: string): Promise<void> {

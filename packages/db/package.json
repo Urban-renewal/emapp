@@ -16,6 +16,7 @@
     "seed:demo": "tsx scripts/seed-demo.ts",
     "verify:seed": "tsx scripts/verify-seed.ts",
     "provider:bootstrap": "tsx scripts/bootstrap-provider-admin.ts",
+    "backfill:doc-bytes": "tsx scripts/backfill-doc-bytes.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:rls": "vitest run test/rls-isolation.spec.ts",
@@ -30,6 +31,8 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1068.0",
+    "@aws-sdk/s3-request-presigner": "^3.1068.0",
     "@types/node": "^20.19.43",
     "@types/pg": "^8.11.0",
     "drizzle-kit": "^0.31.10",

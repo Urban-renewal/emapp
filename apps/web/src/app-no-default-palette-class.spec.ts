@@ -10,7 +10,7 @@
  * Those classes are NOT part of the EMAPP token set — they map to Tailwind's
  * built-in colors, which are INVISIBLE to a token re-skin or per-org branding.
  * `bg-amber-100` cannot be re-themed from `globals.css`; only the EMAPP
- * semantic classes (`bg-status-warning-bg`, `bg-brand`, `text-muted`, …) can.
+ * semantic classes (`bg-status-warning-bg`, `bg-brand`, `text-text-muted`, …) can.
  * The inline-color ratchet can't see these (they're class names, not literals
  * — see that spec's "honest limits" block), so this guard closes the gap.
  *
@@ -75,10 +75,13 @@ const BASELINE_FILES = 1;
  * Default Tailwind palette class: a color-bearing utility prefix
  * (`bg`/`text`/`border`/`ring`/gradient/svg/…) + one of the 22 built-in
  * Tailwind color families + a numeric shade (50 / 100–900 / 950). EMAPP
- * semantic classes (`bg-brand`, `bg-status-warning-bg`, `text-muted`,
+ * semantic classes (`bg-brand`, `bg-status-warning-bg`, `text-text-muted`,
  * `bg-navy-900`, …) do NOT match — they carry no default-family name with a
  * numeric shade in this exact shape, so they pass cleanly. `\b` boundaries
- * keep it from matching inside longer identifiers.
+ * keep it from matching inside longer identifiers. (NB: the muted TEXT color
+ * is `text-text-muted`, never bare `text-muted` — that bare class maps to the
+ * near-white --muted surface and renders invisible text; it is banned by
+ * `app-no-bare-text-muted.spec.ts`.)
  */
 const DEFAULT_PALETTE_CLASS =
   /\b(bg|text|border|ring|from|to|via|fill|stroke|divide|outline|decoration|shadow|accent|caret|ring-offset)-(gray|slate|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(50|[1-9]00|950)\b/g;
@@ -121,7 +124,7 @@ describe('app components — no NEW default-palette-class debt (E2.0-GUARD ratch
         totalOccurrences > BASELINE_OCCURRENCES || fileCount > BASELINE_FILES
           ? 'INCREASED — you added a default-palette Tailwind class. Use an ' +
             'EMAPP semantic class instead (bg-brand, bg-status-warning-bg, ' +
-            'text-muted, bg-surface, …). See docs/design-research/05-visual-system.md §1.6/§3.3.'
+            'text-text-muted, bg-surface, …). See docs/design-research/05-visual-system.md §1.6/§3.3.'
           : 'DECREASED — debt went down (thank you). Lower ' +
             'BASELINE_OCCURRENCES / BASELINE_FILES in this spec to the new ' +
             'numbers to lock in the win.';

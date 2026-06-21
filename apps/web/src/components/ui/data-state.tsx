@@ -89,7 +89,7 @@ export function DataState({
     return (
       <div className="space-y-1 text-start" role="status">
         <p className="text-sm font-medium text-foreground">{t('forbiddenTitle')}</p>
-        <p className="text-sm text-muted">{t('forbiddenBody')}</p>
+        <p className="text-sm text-text-muted">{t('forbiddenBody')}</p>
       </div>
     );
   }
@@ -99,7 +99,7 @@ export function DataState({
     return (
       <div className="space-y-2 text-start" role="status">
         <p className="text-sm font-medium text-foreground">{t('errorTitle')}</p>
-        <p className="text-sm text-muted">{t('errorBody')}</p>
+        <p className="text-sm text-text-muted">{t('errorBody')}</p>
         {onRetry && (
           <Button variant="outline" size="sm" onClick={onRetry}>
             {t('retry')}
@@ -134,7 +134,7 @@ export function DataState({
         aria-live="polite"
       >
         <p className="text-sm font-medium text-foreground">{emptyTitle}</p>
-        {emptyHint && <p className="text-sm text-muted">{emptyHint}</p>}
+        {emptyHint && <p className="text-sm text-text-muted">{emptyHint}</p>}
         {emptyAction && <div className="mt-2">{emptyAction}</div>}
       </div>
     );

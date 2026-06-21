@@ -41,7 +41,7 @@ type TabId = 'tenants' | 'docs' | 'tasks' | 'dashboard';
  *  - Tabs nav (`.card overflow-hidden`): 4 tabs per partner ProjectPage
  *    lines 911-915 — Tenants / Docs+Messages / Tasks / Dashboard.
  *    Active tab gets `aria-selected="true"` + navy-900 bottom border;
- *    inactive tabs use `text-muted` color.
+ *    inactive tabs use `text-text-muted` color.
  *  - Tab content panels:
  *     • דיירים → CTA card linking to `/projects/[id]/buildings` (the
  *       existing per-project building/apartment management surface);
@@ -350,12 +350,11 @@ export function ProjectDetailClient() {
                *  shown whenever there is a signature surface (apartments exist).
                *  Hidden alongside the board when there's no signature data yet —
                *  there is nothing to leverage before apartments exist. */}
-              {id &&
-                (data.signaturesSignedCount ?? 0) + (data.signaturesPendingCount ?? 0) > 0 && (
-                  <section className="flex flex-col gap-3 rounded-md border bg-card p-4">
-                    <LeverageCard projectId={id} />
-                  </section>
-                )}
+              {id && (data.signaturesSignedCount ?? 0) + (data.signaturesPendingCount ?? 0) > 0 && (
+                <section className="flex flex-col gap-3 rounded-md border bg-card p-4">
+                  <LeverageCard projectId={id} />
+                </section>
+              )}
 
               {id && (
                 <section className="flex flex-col gap-3 rounded-md border bg-card p-4">

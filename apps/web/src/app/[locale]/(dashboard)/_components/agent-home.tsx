@@ -37,7 +37,7 @@ import { MissionControlHome } from './mission-control-home';
  * Client island (TanStack hooks) — matches the codebase's established dashboard
  * pattern. Read-only: no mutating forms. Token-only styling (EMAPP semantic
  * classes; the prior inline `var(--…)` color styles were re-homed to
- * `text-foreground` / `text-muted` / `.card` so a re-skin flows through).
+ * `text-foreground` / `text-text-muted` / `.card` so a re-skin flows through).
  */
 
 const HOME_LIMIT = 5;

@@ -90,7 +90,17 @@
         "remindNonePending": "אין בקשת חתימה ממתינה לבעל דירה זה — ייתכן שהלוח אינו מעודכן.",
         "startCampaignAria": "התחל איסוף חתימות בדירה {number}"
       },
-      "queueTail": "{count, plural, one {ועוד פרויקט אחד במעקב} two {ועוד שני פרויקטים במעקב} other {ועוד # פרויקטים במעקב}}"
+      "queueTail": "{count, plural, one {ועוד פרויקט אחד במעקב} two {ועוד שני פרויקטים במעקב} other {ועוד # פרויקטים במעקב}}",
+      "fleet": {
+        "heading": "כל הפרויקטים · {count}",
+        "showAll": "הצג הכל",
+        "openAria": "פתח את הפרויקט {name}",
+        "onBoard": "במעקב",
+        "state": {
+          "met": "ביעד",
+          "onTrack": "מתקדם"
+        }
+      }
     },
     "action": {
       "newProject": "פרויקט חדש",

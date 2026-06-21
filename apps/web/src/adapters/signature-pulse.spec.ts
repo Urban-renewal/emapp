@@ -10,7 +10,7 @@
 import { PULSE_STALLED_DAYS, type ProjectPulseRow, type SignaturePulse } from '@emapp/shared-types';
 import { describe, expect, it } from 'vitest';
 
-import { PULSE_CARD_LIMIT, toSignaturePulseViewModel } from './signature-pulse';
+import { FLEET_TILE_CAP, PULSE_CARD_LIMIT, toSignaturePulseViewModel } from './signature-pulse';
 
 function row(over: Partial<ProjectPulseRow> & { projectId: string }): ProjectPulseRow {
   return {
@@ -129,6 +129,80 @@ describe('toSignaturePulseViewModel — reason derivation + order + all-clear', 
       pulse([row({ projectId: 'p1', projectName: 'Safe\u202EEvil' })]),
     );
     expect(vm.cards[0]?.projectName).not.toContain('\u202E');
+  });
+
+  // ── NS-Fleet — the full-fleet tile derivation (ALL in-scope projects) ──
+
+  it('13) fleet maps EVERY in-scope project (not just the top-N cards)', () => {
+    const many = Array.from({ length: PULSE_CARD_LIMIT + 6 }, (_, i) =>
+      row({ projectId: `p${i}` }),
+    );
+    const vm = toSignaturePulseViewModel(pulse(many));
+    // Cards are truncated to the limit, but the fleet carries ALL of them.
+    expect(vm.cards).toHaveLength(PULSE_CARD_LIMIT);
+    expect(vm.fleet).toHaveLength(PULSE_CARD_LIMIT + 6);
+    expect(vm.fleetCapped).toBe(false);
+  });
+
+  it('14) fleet preserves the server (most-urgent-first) order', () => {
+    const vm = toSignaturePulseViewModel(
+      pulse([row({ projectId: 'b' }), row({ projectId: 'a' }), row({ projectId: 'c' })]),
+    );
+    expect(vm.fleet.map((p) => p.projectId)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('15) fleet tile state: stalled → danger, expiring → warning, met → success', () => {
+    const vm = toSignaturePulseViewModel(
+      pulse([
+        row({ projectId: 'stalled', stalledDays: PULSE_STALLED_DAYS + 1 }),
+        row({ projectId: 'expiring', stalledDays: 2, expiringSoon: true }),
+        row({ projectId: 'met', consentedPct: 90, metThreshold: true }),
+      ]),
+    );
+    const byId = Object.fromEntries(vm.fleet.map((p) => [p.projectId, p]));
+    expect(byId['stalled']).toMatchObject({ state: 'stalled', intent: 'danger' });
+    expect(byId['expiring']).toMatchObject({ state: 'expiring', intent: 'warning' });
+    expect(byId['met']).toMatchObject({ state: 'met', intent: 'success' });
+  });
+
+  it('16) fleet tile state: a calm on-track project (consent, no flag, not met) → info', () => {
+    const vm = toSignaturePulseViewModel(
+      pulse([row({ projectId: 'p1', stalledDays: 1, consentedPct: 40, metThreshold: false })]),
+    );
+    expect(vm.fleet[0]).toMatchObject({ state: 'onTrack', intent: 'info' });
+  });
+
+  it('17) fleet tile state: never-signed 0% → notStarted (neutral)', () => {
+    const vm = toSignaturePulseViewModel(
+      pulse([row({ projectId: 'p1', stalledDays: null, consentedPct: 0 })]),
+    );
+    expect(vm.fleet[0]).toMatchObject({ state: 'notStarted', intent: 'neutral' });
+  });
+
+  it('18) fleet marks projects that ALSO appear as attention cards (isOnBoard)', () => {
+    const vm = toSignaturePulseViewModel(
+      pulse([row({ projectId: 'carded' }), row({ projectId: 'tail' })], undefined, true),
+      1, // only the first row becomes a card
+    );
+    const byId = Object.fromEntries(vm.fleet.map((p) => [p.projectId, p]));
+    expect(byId['carded']?.isOnBoard).toBe(true);
+    expect(byId['tail']?.isOnBoard).toBe(false);
+    // The full fleet still shows BOTH — the rest is visible, not hidden.
+    expect(vm.fleet).toHaveLength(2);
+  });
+
+  it('19) fleet caps at FLEET_TILE_CAP and flags fleetCapped for a large org', () => {
+    const many = Array.from({ length: FLEET_TILE_CAP + 5 }, (_, i) => row({ projectId: `p${i}` }));
+    const vm = toSignaturePulseViewModel(pulse(many));
+    expect(vm.fleet).toHaveLength(FLEET_TILE_CAP);
+    expect(vm.fleetCapped).toBe(true);
+  });
+
+  it('20) fleet strips bidi-override codepoints from the tile name', () => {
+    const vm = toSignaturePulseViewModel(
+      pulse([row({ projectId: 'p1', projectName: 'Safe\u202EEvil' })]),
+    );
+    expect(vm.fleet[0]?.projectName).not.toContain('\u202E');
   });
 
   it('12) HB-5: campaignDocumentId + hasCampaign carried through verbatim', () => {

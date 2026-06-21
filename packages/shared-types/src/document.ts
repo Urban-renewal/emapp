@@ -458,3 +458,88 @@ export const ClassifyResultSchema = z.object({
   suggestOnly: z.literal(true),
 });
 export type ClassifyResult = z.infer<typeof ClassifyResultSchema>;
+
+// ── FL-5 (MASTER-PLAN-V13 Wave A) — נסח/tabu BACKFILL REMEDIATION SWEEP ──────
+// `POST /api/v1/documents/remediation-sweep` re-classifies PRE-EXISTING
+// documents whose content is נסח/tabu (land_registry) but were uploaded BEFORE
+// the DH3 classifier existed, so they were never typed `land_registry` and —
+// critically — never derived `sensitive = true` (the #450 HIGH follow-up: a
+// tabu-content doc that lists every owner's national_id but is stored as
+// `other`/`document` is a PII doc WITHOUT the step-up gate / at-rest envelope).
+//
+// The sweep re-runs the SAME DH3 classifier (filename + declared mime — the
+// signals already stored on each row; NO content fetch, no PII read) over the
+// org's documents and reports the docs it would re-type to `land_registry`
+// (which then DERIVES sensitive = true, turn-ON only, exactly as create/PATCH).
+//
+// DRY-RUN BY DEFAULT (the whole point): the default invocation REPORTS the
+// proposed transitions and COMMITS NOTHING. A commit happens ONLY with an
+// explicit `dryRun: false`. IDEMPOTENT: a doc already typed `land_registry`
+// (and sensitive) is never a candidate, so applying twice is a no-op.
+//
+// CONFIDENCE FLOOR: only HIGH-confidence land_registry matches are remediated
+// (REMEDIATION_MIN_CONFIDENCE) so an ambiguous filename never auto-retypes a
+// doc — this is a SECURITY sweep (it only ever turns sensitivity ON), never a
+// generic re-tagger. SENSITIVITY IS NEVER WEAKENED: the sweep only flips
+// `type → land_registry` + `sensitive → true`; it never clears a flag.
+
+/** The MINIMUM classifier confidence a `land_registry` suggestion must reach to
+ *  be a remediation candidate. Tuned to the DH3 filename/content נסח/tabu rules
+ *  (>=0.85) so only an UNAMBIGUOUS tabu signal retypes a pre-existing doc. */
+export const REMEDIATION_MIN_CONFIDENCE = 0.85;
+
+/** Hard ceiling on docs SCANNED per sweep invocation (defense-in-depth: the
+ *  sweep is a maintenance batch, never an unbounded full-table scan on one
+ *  request). Keyset-free: the sweep is idempotent, so a follow-up call simply
+ *  picks up where the last left off (already-remediated docs are skipped). */
+export const REMEDIATION_MAX_SCAN = 1_000;
+
+/** POST /documents/remediation-sweep request. DRY-RUN BY DEFAULT: `dryRun`
+ *  absent or true ⇒ report only, commit nothing. `dryRun: false` ⇒ apply the
+ *  proposed transitions. `.strict()` — no smuggled org/scope override. */
+export const RemediationSweepInput = z
+  .object({
+    /** DEFAULT TRUE (report-only). Must be EXPLICITLY false to apply. */
+    dryRun: z.boolean().optional().default(true),
+    /** Max docs to SCAN this invocation (1..REMEDIATION_MAX_SCAN). */
+    limit: z.coerce.number().int().min(1).max(REMEDIATION_MAX_SCAN).default(REMEDIATION_MAX_SCAN),
+  })
+  .strict();
+export type RemediationSweepInputDto = z.infer<typeof RemediationSweepInput>;
+
+/** One proposed (dry-run) or applied transition. METADATA ONLY — the document
+ *  id + the type/sensitive transition + the classifier confidence/reason. NO
+ *  filename, NO content, NO PII (the `reason` is the DH3 content-free key). */
+export const RemediationItemSchema = z.object({
+  documentId: z.string().uuid(),
+  fromType: z.string().min(1).max(64),
+  toType: DocumentTypeEnum,
+  /** The doc's sensitive flag BEFORE the sweep. */
+  wasSensitive: z.boolean(),
+  /** The sensitive flag the sweep DERIVES (always true for land_registry —
+   *  turn-ON only; the sweep never sets this false). */
+  willBeSensitive: z.boolean(),
+  confidence: z.number().min(0).max(1),
+  /** DH3 content-free reason key (e.g. 'filename_nesach'). */
+  reason: z.string().min(1).max(64),
+});
+export type RemediationItem = z.infer<typeof RemediationItemSchema>;
+
+/** POST /documents/remediation-sweep response (under `data`). Carries the COUNTS
+ *  + a bounded SAMPLE of affected items (ids + transitions only). `applied`
+ *  echoes whether this was a real commit (dryRun=false) or a report (dryRun=true,
+ *  the default). `scanned` = docs inspected; `candidates` = how many WOULD/DID
+ *  change; `sample` is capped (the full set is not streamed — ids only, no PII). */
+export const RemediationSweepResultSchema = z.object({
+  /** false ⇒ DRY-RUN report (nothing was written). true ⇒ changes committed. */
+  applied: z.boolean(),
+  scanned: z.number().int().nonnegative(),
+  candidates: z.number().int().nonnegative(),
+  /** Bounded sample of the affected docs (REMEDIATION_SAMPLE_MAX). */
+  sample: z.array(RemediationItemSchema),
+});
+export type RemediationSweepResult = z.infer<typeof RemediationSweepResultSchema>;
+
+/** Max items echoed in the `sample` array (the report is a SUMMARY, not a full
+ *  dump — ids only, no PII, but still bounded so the response stays small). */
+export const REMEDIATION_SAMPLE_MAX = 50;

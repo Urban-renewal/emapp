@@ -10,7 +10,11 @@
 import { ClassifyResultSchema } from '@emapp/shared-types';
 import { describe, expect, it } from 'vitest';
 
-import { classifyDocument, type ClassifierInput } from './document-classifier';
+import {
+  classifyDocument,
+  remediationLandRegistryMatch,
+  type ClassifierInput,
+} from './document-classifier';
 
 function run(input: Partial<ClassifierInput> & { filename: string; mimeType: string }) {
   return classifyDocument({ sample: undefined, ...input });
@@ -165,5 +169,39 @@ describe('DH3 classifier · security posture', () => {
     const big = Buffer.concat([Buffer.from('AC1015', 'latin1'), Buffer.alloc(1_048_576)]);
     const r = run({ filename: 'x.bin', mimeType: 'application/pdf', sample: big });
     expect(r.suggestions.find((s) => s.reason === 'magic_dwg')).toBeDefined();
+  });
+});
+
+describe('FL-5 · remediationLandRegistryMatch (backfill predicate)', () => {
+  it('matches an unambiguous נסח/tabu filename (high confidence)', () => {
+    const m = remediationLandRegistryMatch({ filename: 'נסח טאבו.pdf', mimeType: 'application/pdf' });
+    expect(m).not.toBeNull();
+    expect(m!.confidence).toBeGreaterThanOrEqual(0.85);
+    expect(m!.reason).toMatch(/^[a-z0-9_]+$/); // content-free key, no filename echo
+  });
+
+  it('matches a latin `tabu` token filename', () => {
+    const m = remediationLandRegistryMatch({ filename: 'tabu_extract_2021.pdf', mimeType: 'application/pdf' });
+    expect(m).not.toBeNull();
+  });
+
+  it('does NOT match a non-tabu doc (agreement) — no false positive', () => {
+    expect(
+      remediationLandRegistryMatch({ filename: 'הסכם התחדשות.pdf', mimeType: 'application/pdf' }),
+    ).toBeNull();
+  });
+
+  it('does NOT match a blueprint / generic filename', () => {
+    expect(remediationLandRegistryMatch({ filename: 'תוכנית בניין.pdf', mimeType: 'application/pdf' })).toBeNull();
+    expect(remediationLandRegistryMatch({ filename: 'מסמך כללי.pdf', mimeType: 'application/pdf' })).toBeNull();
+  });
+
+  it('does NOT match `tabular.xlsx` (the bounded-token guard holds)', () => {
+    expect(
+      remediationLandRegistryMatch({
+        filename: 'tabular_data.xlsx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+    ).toBeNull();
   });
 });

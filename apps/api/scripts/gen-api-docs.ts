@@ -92,6 +92,7 @@ import {
   PortalUpdateContactSchema,
   ProviderSelfAuditQuerySchema,
   PublicSignSubmitInput,
+  RemediationSweepInput,
   RevokeRoleInput,
   SetMemberOverrideInput,
   SignatureCampaignInput,
@@ -1959,6 +1960,17 @@ const ENDPOINTS: Endpoint[] = [
     response:
       '{ "data": { "suggestions": [{ "docType": "land_registry", "confidence": 0.9, "signal": "filename", "reason": "filename_nesach" }], "suggestOnly": true } }',
     errors: ['validation_error', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/documents/remediation-sweep',
+    auth: 'AuthGuard + TenantGuard (documents.update; agent fine gate manage_documents)',
+    summary:
+      'FL-5 (V13) — נסח/tabu BACKFILL REMEDIATION SWEEP (closes the #450 HIGH follow-up). Re-runs the DH3 classifier over the ORG\'s PRE-EXISTING documents using each row\'s STORED metadata (filename + declared mime — NO content fetch, no PII read) and re-types the UNAMBIGUOUS tabu/נסח docs (confidence >= REMEDIATION_MIN_CONFIDENCE) to land_registry, DERIVING sensitive=true (TURN-ON ONLY — sensitivity is never weakened). DRY-RUN BY DEFAULT: dryRun absent/true ⇒ REPORTS the proposed transitions and commits NOTHING; an EXPLICIT dryRun:false applies them. IDEMPOTENT: already-land_registry docs are excluded from the candidate set, so a re-run is a no-op (the apply UPDATE also re-asserts the pre-state in its WHERE). Org-scoped via withTenant (RLS — never reaches another org); 10/min throttle. The report carries counts + a bounded sample of {documentId, type/sensitive transition, confidence, content-free reason} — NO filename, NO content, NO PII; an apply writes a metadata-only document.remediation_reclassify audit row per doc.',
+    request: RemediationSweepInput,
+    response:
+      '{ "data": { "applied": false, "scanned": 120, "candidates": 3, "sample": [ { "documentId": "uuid", "fromType": "other", "toType": "land_registry", "wasSensitive": false, "willBeSensitive": true, "confidence": 0.9, "reason": "filename_nesach" } ] } }',
+    errors: ['validation_error', 'forbidden', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'GET',

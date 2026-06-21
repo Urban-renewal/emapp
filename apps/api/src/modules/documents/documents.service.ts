@@ -22,6 +22,7 @@ import {
   DOCUMENT_SCAN_REJECTED_CODE,
   DOCUMENT_TYPE_MISMATCH_CODE,
   DOCUMENT_UPLOAD_INCOMPLETE_CODE,
+  REMEDIATION_SAMPLE_MAX,
   type ClassifyDocument,
   type ClassifyResult,
   type CreateDocument,
@@ -31,6 +32,9 @@ import {
   type DocumentDownloadResponse,
   type DocumentUploadResponse,
   type FinalizeDocument,
+  type RemediationItem,
+  type RemediationSweepInputDto,
+  type RemediationSweepResult,
   type UpdateDocument,
 } from '@emapp/shared-types';
 import {
@@ -59,7 +63,7 @@ import { notificationLink } from '../notifications/notification-links';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
-import { classifyDocument } from './document-classifier';
+import { classifyDocument, remediationLandRegistryMatch } from './document-classifier';
 import { verifyMagicBytes } from './magic-bytes';
 import { FILE_SCAN_PROVIDER } from './scan-provider.factory';
 import {
@@ -913,6 +917,143 @@ export class DocumentsService {
       }
     }
     return classifyDocument({ filename: input.filename, mimeType: input.mimeType, sample });
+  }
+
+  /**
+   * FL-5 (MASTER-PLAN-V13 Wave A) — נסח/tabu BACKFILL REMEDIATION SWEEP. Closes
+   * the #450 HIGH follow-up: pre-existing documents whose CONTENT is נסח/tabu
+   * (land_registry) but were uploaded BEFORE the DH3 classifier existed were
+   * never typed `land_registry` and — the security hole — never derived
+   * `sensitive = true`, so a PII-dense tabu doc (every owner's national_id) was
+   * stored WITHOUT the step-up gate. This sweep re-runs the SAME DH3 classifier
+   * over each doc's STORED metadata (filename + declared mime — NO content
+   * fetch, no PII read) and re-types the unambiguous tabu docs to
+   * `land_registry`, deriving `sensitive = true` (TURN-ON ONLY, exactly like
+   * create/PATCH — sensitivity is NEVER weakened by the sweep).
+   *
+   * ORG-SCOPED, NO new auth path: it runs inside the caller's own `withTenant`
+   * (RLS tenant_isolation) — it NEVER reaches another org's documents. The
+   * controller gates it on `documents.update` + the same `manage_documents`
+   * agent fine-gate as PATCH (re-typing IS a document update).
+   *
+   * DRY-RUN BY DEFAULT (`input.dryRun` defaults true at the Zod boundary): the
+   * default invocation REPORTS the proposed transitions and COMMITS NOTHING —
+   * the SELECT runs but no UPDATE is issued. A commit happens ONLY when the
+   * caller passes `dryRun: false`.
+   *
+   * IDEMPOTENT: the candidate filter excludes docs already typed
+   * `land_registry`, so a doc the sweep already fixed is never re-selected;
+   * applying twice is a no-op. Archived docs are skipped (a fixed-population
+   * sweep over live docs).
+   */
+  async remediationSweep(
+    user: AccessTokenPayload,
+    input: RemediationSweepInputDto,
+  ): Promise<RemediationSweepResult> {
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        // The same fine agent-gate PATCH uses — re-typing a doc IS an update.
+        // (Manager passes; a loosened agent cell can never fall open.)
+        await requireAgentCapability(tx, user, 'manage_documents');
+
+        // CANDIDATE FILTER (idempotency + scope): non-archived docs in the org
+        // that are NOT ALREADY land_registry. An already-correctly-classified
+        // tabu doc (type='land_registry') is structurally EXCLUDED here, so a
+        // re-run never re-touches it. We project metadata ONLY (id, name, type,
+        // mimeType, sensitive) — no r2Key, no content. Agent record-scoping
+        // applies (the sweep never widens what an agent can see/touch).
+        const rows = await tx
+          .select({
+            id: documents.id,
+            name: documents.name,
+            type: documents.type,
+            mimeType: documents.mimeType,
+            sensitive: documents.sensitive,
+          })
+          .from(documents)
+          .where(
+            and(
+              isNull(documents.archivedAt),
+              sql`${documents.type} <> 'land_registry'`,
+              this.agentDocScope(user),
+            ),
+          )
+          .orderBy(...keysetOrderBy(documents.createdAt, documents.id))
+          .limit(input.limit);
+
+        // Classify each from STORED metadata; keep only the unambiguous
+        // land_registry (tabu/נסח) matches above the confidence floor.
+        const items: RemediationItem[] = [];
+        for (const row of rows) {
+          const match = remediationLandRegistryMatch({
+            filename: row.name,
+            mimeType: row.mimeType,
+          });
+          if (!match) continue;
+          items.push({
+            documentId: row.id,
+            fromType: row.type,
+            toType: 'land_registry',
+            wasSensitive: row.sensitive,
+            // TURN-ON ONLY: land_registry is sensitive-by-type → always true.
+            // The sweep never sets this false (sensitivity is never weakened).
+            willBeSensitive: true,
+            confidence: match.confidence,
+            reason: match.reason,
+          });
+        }
+
+        // APPLY only when explicitly asked (dryRun=false). The default path is
+        // strictly side-effect-free: the SELECT above ran, but NO UPDATE and NO
+        // audit row is written — a true dry run.
+        if (!input.dryRun && items.length > 0) {
+          for (const item of items) {
+            // Idempotent UPDATE: the WHERE re-asserts the pre-state
+            // (type <> 'land_registry') so a concurrent second sweep that
+            // already fixed this row updates 0 rows (no double-apply). We set
+            // type='land_registry' and sensitive=true (turn-ON only — we never
+            // pass sensitive=false here). archived_at unchanged.
+            await tx
+              .update(documents)
+              .set({ type: 'land_registry', sensitive: true, updatedAt: new Date() })
+              .where(
+                and(
+                  eq(documents.id, item.documentId),
+                  sql`${documents.type} <> 'land_registry'`,
+                ),
+              );
+            await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+              orgId: user.orgId,
+              actorId: user.sub,
+              actorType: 'user',
+              action: 'document.remediation_reclassify',
+              targetTable: 'documents',
+              targetId: item.documentId,
+              // METADATA ONLY — the type/sensitive transition + the content-free
+              // classifier reason key. NEVER the filename or any content/PII.
+              beforeState: { type: item.fromType, sensitive: item.wasSensitive },
+              afterState: { type: 'land_registry', sensitive: true },
+              metadata: { reason: item.reason, confidence: item.confidence },
+              sessionId: user.sid,
+            });
+          }
+        }
+
+        return {
+          // TRUE only when this was a real commit AND there was something to
+          // commit — a dry-run, or an apply that found zero candidates, both
+          // wrote nothing, so `applied` reflects "changes were written".
+          applied: !input.dryRun && items.length > 0,
+          scanned: rows.length,
+          candidates: items.length,
+          // Bounded sample — ids + transitions only (no PII), capped so the
+          // report stays small even for a large remediation population.
+          sample: items.slice(0, REMEDIATION_SAMPLE_MAX),
+        };
+      },
+      { userId: user.sub },
+    );
   }
 
   async getDownloadUrl(

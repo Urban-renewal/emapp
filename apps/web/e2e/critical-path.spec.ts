@@ -326,7 +326,33 @@ async function installStubs(page: import('@playwright/test').Page): Promise<Chai
       await route.fallback();
       return;
     }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: {} }) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: {} }),
+    });
+  });
+  // HB-5 — the state-aware per-name chase CREATES a request (against the card's
+  // campaignDocumentId) when the holdout has no live pending request. Stub the
+  // bare create POST (no query string — distinct from the GET list route above)
+  // so a future board test that exercises the create path doesn't 404 + trip the
+  // §P0-3 console guardrail. Benign valid {data:{request}} envelope.
+  await page.route('**/api/v1/signature-requests', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          request: { id: 'e2e-created-req' },
+          signUrl: 'https://example.test/s/x',
+          delivery: { channel: 'none' },
+        },
+      }),
+    });
   });
 
   // Browser-side /me — permission gates (the SSR /me is served by the

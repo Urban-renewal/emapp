@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, BellRing, CheckCircle2, HelpCircle, Users } from 'lucide-react';
+import { ArrowLeft, BellRing, CheckCircle2, HelpCircle, Send, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
@@ -21,7 +21,8 @@ import { useSessionProfile } from '@/hooks/use-session';
 import { useSignaturePulse } from '@/hooks/use-signature-pulse';
 import {
   HOLDOUT_NONE_PENDING_CODE,
-  useResendHoldoutReminder,
+  useChaseHoldout,
+  type HoldoutChaseAction,
 } from '@/hooks/use-signature-requests';
 import { apiClient, isOk } from '@/lib/api-client';
 import type { ApartmentHoldoutViewModel } from '@/models/apartment-signature-progress.vm';
@@ -237,22 +238,37 @@ function ActionCard({
             <span>{t('action.open')}</span>
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
           </Link>
-          {/* Mutating "remind" track — only for actors who may send (Viewer hidden). */}
-          {canRemind && (
-            <RemindButton
-              projectId={card.projectId}
-              projectName={card.projectName}
-              sendEnabled={sendEnabled}
-              t={t}
-            />
-          )}
+          {/* HB-5 — state-aware secondary action (mutating track, Viewer hidden):
+              • campaign ACTIVE  → the project-wide one-tap "remind pending".
+              • NO campaign yet  → "התחל איסוף חתימות" (a Link to the project,
+                where the campaign is started) — never a dead-end remind. */}
+          {canRemind &&
+            (card.hasCampaign ? (
+              <RemindButton
+                projectId={card.projectId}
+                projectName={card.projectName}
+                sendEnabled={sendEnabled}
+                t={t}
+              />
+            ) : (
+              <Link
+                href={`/projects/${card.projectId}`}
+                className="btn btn-primary btn-sm"
+                aria-label={t('action.startCampaignAria', { name: card.projectName })}
+              >
+                <Send className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>{t('action.startCampaign')}</span>
+              </Link>
+            ))}
         </div>
       </div>
 
-      {/* HB-3 — the inline "מי תקוע?" holdout-name expander. Collapsed by default;
-          its NAMES (PII) load ON DEMAND from the gated + audited B4 endpoint only
-          when opened — the same gate/mask contract as the project-detail drill-
-          down, never widened. The per-name remind is itself gated on `canRemind`. */}
+      {/* HB-3/HB-5 — the inline "מי תקוע?" holdout-name expander. Collapsed by
+          default; its NAMES (PII) load ON DEMAND from the gated + audited B4
+          endpoint only when opened — the same gate/mask contract as the
+          project-detail drill-down, never widened. The per-name action is
+          state-aware (resend/create-against-the-apartment-doc vs start-campaign)
+          and gated on `canRemind` + the holdout's own per-apartment signable doc. */}
       <HoldoutExpander projectId={card.projectId} canRemind={canRemind} sendEnabled={sendEnabled} />
     </article>
   );
@@ -396,7 +412,9 @@ export function HoldoutApartment({
   // 403 → no-name fallback: number + partial state, NO name. Terminal.
   if (forbidden) {
     return (
-      <li className="text-xs text-text-muted">{t('holdouts.fallback', { number: apartmentNumber })}</li>
+      <li className="text-xs text-text-muted">
+        {t('holdouts.fallback', { number: apartmentNumber })}
+      </li>
     );
   }
 
@@ -423,6 +441,7 @@ export function HoldoutApartment({
         <HoldoutRow
           key={holdout.ownerId}
           holdout={holdout}
+          projectId={projectId}
           canRemind={canRemind}
           sendEnabled={sendEnabled}
           t={t}
@@ -434,27 +453,43 @@ export function HoldoutApartment({
 
 /**
  * One holdout owner row: the masked-or-named owner + apartment context + (gated)
- * a per-name single "שלח תזכורת". The name is wrapped in <NameDisplay> (bidi
- * defence) or, for a name-less shell owner, the anonymous label. The remind
- * resolves THIS owner's pending request and resends it (idempotent), shows a calm
- * action-toast, and refreshes the board on success.
+ * a STATE-AWARE per-name action. The name is wrapped in <NameDisplay> (bidi
+ * defence) or, for a name-less shell owner, the anonymous label.
+ *
+ * HB-5 — the per-name action is one click but state-aware:
+ *   • campaign ACTIVE (`hasCampaign`): the chase resolves THIS owner's pending
+ *     request and RESENDS it; if there is none it CREATES a request against the
+ *     project's campaign document (the existing gated create) — never a
+ *     dead-end. The action-toast reads "reminder sent" (resent) vs "signature
+ *     request sent" (created).
+ *   • NO campaign: there is nothing to collect against, so the action is a Link
+ *     to the project to "start collecting signatures" — not a dead-end remind.
  */
 export function HoldoutRow({
   holdout,
+  projectId,
   canRemind,
   sendEnabled,
   t,
 }: {
   holdout: ApartmentHoldoutViewModel;
+  projectId: string;
   canRemind: boolean;
   sendEnabled: boolean;
   t: ReturnType<typeof useTranslations>;
 }) {
   const toast = useToast();
-  const resend = useResendHoldoutReminder();
+  const chase = useChaseHoldout();
 
-  const disabled = !sendEnabled || resend.isPending;
+  const disabled = !sendEnabled || chase.isPending;
   const ownerLabel = holdout.name ?? t('holdouts.noName');
+  // HB-5 fix — gate the per-name chase on THIS holdout's OWN per-apartment
+  // signable doc (not the project-wide campaign doc). Signing is per-apartment,
+  // so the create targets the apartment the holdout actually owns → an associated
+  // owner gets 201 (vs the old project-wide doc that 409'd `recipient_not_
+  // associated` for holdouts in any other apartment). null ⇒ no apartment/project
+  // agreement to collect against → the calm "start collection" guidance Link.
+  const signableDocumentId = holdout.signableDocumentId;
 
   return (
     <li className="flex items-center justify-between gap-2 rounded-md bg-surface-subtle px-2.5 py-1.5">
@@ -469,35 +504,55 @@ export function HoldoutRow({
         </span>
       </span>
 
-      {/* Per-name remind — only for actors who may send (Viewer never sees it). */}
-      {canRemind && (
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm shrink-0"
-          disabled={disabled}
-          aria-disabled={disabled}
-          aria-busy={resend.isPending}
-          aria-label={t('holdouts.remindAria', { name: ownerLabel })}
-          title={!sendEnabled ? t('action.remindDisabled') : undefined}
-          onClick={() => {
-            if (disabled) return;
-            resend.mutate(holdout.ownerId, {
-              onSuccess: () => {
-                toast.show({ message: t('holdouts.remindSent') });
-              },
-              onError: (err) => {
-                toast.show({
-                  message: buildHoldoutRemindErrorMessage(t, err),
-                  variant: 'assertive',
-                });
-              },
-            });
-          }}
-        >
-          <BellRing className="h-3.5 w-3.5" aria-hidden="true" />
-          <span>{resend.isPending ? t('action.remindPending') : t('action.remind')}</span>
-        </button>
-      )}
+      {/* Per-name action — only for actors who may send (Viewer never sees it). */}
+      {canRemind &&
+        (signableDocumentId ? (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm shrink-0"
+            disabled={disabled}
+            aria-disabled={disabled}
+            aria-busy={chase.isPending}
+            aria-label={t('holdouts.remindAria', { name: ownerLabel })}
+            title={!sendEnabled ? t('action.remindDisabled') : undefined}
+            onClick={() => {
+              if (disabled) return;
+              chase.mutate(
+                { ownerId: holdout.ownerId, signableDocumentId },
+                {
+                  onSuccess: (action: HoldoutChaseAction) => {
+                    toast.show({
+                      message:
+                        action === 'created'
+                          ? t('holdouts.requestSent', { name: ownerLabel })
+                          : t('holdouts.remindSent'),
+                    });
+                  },
+                  onError: (err) => {
+                    toast.show({
+                      message: buildHoldoutRemindErrorMessage(t, err),
+                      variant: 'assertive',
+                    });
+                  },
+                },
+              );
+            }}
+          >
+            <BellRing className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>{chase.isPending ? t('action.remindPending') : t('action.remind')}</span>
+          </button>
+        ) : (
+          // No signable doc for this apartment/project — route to where collection
+          // is started, never a dead-end (and never a 409).
+          <Link
+            href={`/projects/${projectId}`}
+            className="btn btn-ghost btn-sm shrink-0"
+            aria-label={t('holdouts.startCampaignAria', { number: holdout.apartmentNumber })}
+          >
+            <Send className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>{t('action.startCampaign')}</span>
+          </Link>
+        ))}
     </li>
   );
 }

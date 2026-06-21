@@ -57,7 +57,9 @@
         "remindDisabled": "שליחת תזכורות מושהית כרגע",
         "remindNonePending": "אין חתימות ממתינות בפרויקט",
         "remindSent": "{count, plural, one {נשלחה תזכורת אחת} two {נשלחו שתי תזכורות} other {נשלחו # תזכורות}}",
-        "remindFailed": "שליחת התזכורות נכשלה. אפשר לנסות שוב."
+        "remindFailed": "שליחת התזכורות נכשלה. אפשר לנסות שוב.",
+        "startCampaign": "התחל איסוף חתימות",
+        "startCampaignAria": "התחל איסוף חתימות בפרויקט {name}"
       },
       "explain": {
         "trigger": "למה אני רואה את זה?",
@@ -79,12 +81,14 @@
         "loadFailed": "טעינת השמות נכשלה.",
         "retry": "נסה שוב",
         "none": "אין חותמים תקועים",
-        "fallback": "דירה {number} · חלקי",
+        "fallback": "דירה {number} · ממתינה לחתימות",
         "noName": "בעל דירה ללא שם רשום",
         "apartment": "דירה {number}",
         "remindAria": "שלח תזכורת ל{name}",
         "remindSent": "התזכורת נשלחה",
-        "remindNonePending": "אין בקשת חתימה ממתינה לבעל דירה זה — ייתכן שהלוח אינו מעודכן."
+        "requestSent": "בקשת חתימה נשלחה ל{name}",
+        "remindNonePending": "אין בקשת חתימה ממתינה לבעל דירה זה — ייתכן שהלוח אינו מעודכן.",
+        "startCampaignAria": "התחל איסוף חתימות בדירה {number}"
       },
       "queueTail": "{count, plural, one {ועוד פרויקט אחד במעקב} two {ועוד שני פרויקטים במעקב} other {ועוד # פרויקטים במעקב}}"
     },

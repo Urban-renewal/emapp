@@ -53,5 +53,8 @@ export const SAMPLE_APARTMENT_HOLDOUTS: ApartmentHoldout[] = [
     ownerId: 'dddddddd-dddd-dddd-dddd-ddddddddddd1',
     name: 'ישראל ישראלי',
     apartmentNumber: '2',
+    // HB-5 fix — this apartment's own finalized agreement doc (the one-click
+    // chase creates against THIS, so the offline create path targets apt 2's doc).
+    signableDocumentId: 'ffffffff-ffff-ffff-ffff-fffffffffff2',
   },
 ];

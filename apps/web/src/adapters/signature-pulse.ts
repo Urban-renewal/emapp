@@ -66,6 +66,10 @@ function toCard(row: ProjectPulseRow): PulseActionCardViewModel {
     consentedPct: row.consentedPct,
     basis: row.basis,
     metThreshold: row.metThreshold,
+    // HB-5 — passed through verbatim so the card can choose its primary action
+    // (resend/create-against-campaign vs start-campaign) without re-deriving.
+    campaignDocumentId: row.campaignDocumentId,
+    hasCampaign: row.hasCampaign,
   };
 }
 

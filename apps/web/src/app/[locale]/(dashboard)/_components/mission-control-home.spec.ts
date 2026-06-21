@@ -36,6 +36,7 @@ const T: Record<string, string> = {
   'action.remindDisabled': 'שליחת תזכורות מושהית כרגע',
   'action.remindNonePending': 'אין חתימות ממתינות בפרויקט',
   'action.remindFailed': 'שליחת התזכורות נכשלה. אפשר לנסות שוב.',
+  'action.startCampaign': 'התחל איסוף חתימות',
   'explain.trigger': 'למה אני רואה את זה?',
   'explain.body': 'המיון לפי דחיפות',
   'allClear.title': 'הכול תחת שליטה',
@@ -88,10 +89,15 @@ vi.mock('next-intl', () => ({
     if (key === 'action.remindAria')
       return `שלח תזכורת לחותמים הממתינים בפרויקט ${String(vars?.['name'])}`;
     if (key === 'action.remindSent') return `נשלחו ${String(vars?.['count'])} תזכורות`;
-    // HB-3 parametrised holdout lines.
-    if (key === 'holdouts.fallback') return `דירה ${String(vars?.['number'])} · חלקי`;
+    // HB-3/HB-5 parametrised holdout lines.
+    if (key === 'holdouts.fallback') return `דירה ${String(vars?.['number'])} · ממתינה לחתימות`;
     if (key === 'holdouts.apartment') return `דירה ${String(vars?.['number'])}`;
     if (key === 'holdouts.remindAria') return `שלח תזכורת ל${String(vars?.['name'])}`;
+    if (key === 'holdouts.requestSent') return `בקשת חתימה נשלחה ל${String(vars?.['name'])}`;
+    if (key === 'holdouts.startCampaignAria')
+      return `התחל איסוף חתימות בדירה ${String(vars?.['number'])}`;
+    if (key === 'action.startCampaignAria')
+      return `התחל איסוף חתימות בפרויקט ${String(vars?.['name'])}`;
     if (key.startsWith('clause.')) return `clause:${key}`;
     return T[key] ?? `MISSING:${key}`;
   },
@@ -107,6 +113,7 @@ vi.mock('lucide-react', () => ({
   BellRing: () => createElement('span', { 'data-icon': 'bell' }),
   CheckCircle2: () => createElement('span', { 'data-icon': 'check' }),
   HelpCircle: () => createElement('span', { 'data-icon': 'help' }),
+  Send: () => createElement('span', { 'data-icon': 'send' }),
   Sparkles: () => createElement('span', { 'data-icon': 'sparkles' }),
   Users: () => createElement('span', { 'data-icon': 'users' }),
 }));
@@ -177,7 +184,7 @@ type HoldoutsState = {
 };
 let apartmentsState: ApartmentsState;
 let holdoutsState: HoldoutsState;
-const resendMutate = vi.fn();
+const chaseMutate = vi.fn();
 
 vi.mock('@/hooks/use-projects', () => ({
   useSignatureProgressApartments: () => apartmentsState,
@@ -187,7 +194,7 @@ vi.mock('@/hooks/use-projects', () => ({
 }));
 vi.mock('@/hooks/use-signature-requests', () => ({
   HOLDOUT_NONE_PENDING_CODE: 'holdout_none_pending',
-  useResendHoldoutReminder: () => ({ mutate: resendMutate, isPending: false }),
+  useChaseHoldout: () => ({ mutate: chaseMutate, isPending: false }),
 }));
 
 // StatusBadge passthrough so the tag text renders.
@@ -222,6 +229,9 @@ function card(over: Partial<SignaturePulseViewModel['cards'][number]> = {}) {
     consentedPct: 64,
     basis: 'share' as const,
     metThreshold: false,
+    // HB-5 — default to a campaign-active project (the resend/create path).
+    campaignDocumentId: 'doc-1',
+    hasCampaign: true,
     ...over,
   };
 }
@@ -251,7 +261,7 @@ beforeEach(() => {
   // DON'T open the expander never hit a holdout panel.
   apartmentsState = { data: [], isLoading: false, isError: false, refetch: vi.fn() };
   holdoutsState = { data: [], isLoading: false, isError: false, refetch: vi.fn() };
-  resendMutate.mockClear();
+  chaseMutate.mockClear();
 });
 afterEach(() => vi.clearAllMocks());
 
@@ -328,6 +338,32 @@ describe('MissionControlHome (E2.1)', () => {
     // The enabled button carries no `disabled` attribute and no paused tooltip.
     expect(html).not.toMatch(/<button[^>]*aria-label="שלח תזכורת[^"]*"[^>]*disabled/);
     expect(html).not.toContain('שליחת תזכורות מושהית כרגע');
+  });
+
+  it('5e) HB-5: a card with NO campaign → "התחל איסוף חתימות" CTA (a Link), NOT a remind button', () => {
+    canRemind = true;
+    pulseState = {
+      data: vm({
+        cards: [
+          card({
+            reason: 'notStarted',
+            intent: 'neutral',
+            hasCampaign: false,
+            campaignDocumentId: null,
+          }),
+        ],
+        totalInScope: 1,
+      }),
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    };
+    const html = render();
+    // The primary mutating affordance is a start-campaign Link to the project.
+    expect(html).toContain('התחל איסוף חתימות');
+    expect(html).toMatch(/href="\/projects\/p1"/);
+    // The project-wide remind button is REPLACED (no dead-end remind).
+    expect(html).not.toContain('שלח תזכורת');
   });
 
   it('6) loading → DataState list skeleton (never a bare null)', () => {
@@ -472,14 +508,31 @@ describe('HB-1 remind result/error toast copy (pure helpers)', () => {
 // same parametrised table the next-intl mock uses (so the components render the
 // REAL Hebrew copy under direct SSR).
 const tHoldout = ((key: string, vars?: Record<string, unknown>) => {
-  if (key === 'holdouts.fallback') return `דירה ${String(vars?.['number'])} · חלקי`;
+  if (key === 'holdouts.fallback') return `דירה ${String(vars?.['number'])} · ממתינה לחתימות`;
   if (key === 'holdouts.apartment') return `דירה ${String(vars?.['number'])}`;
   if (key === 'holdouts.remindAria') return `שלח תזכורת ל${String(vars?.['name'])}`;
+  if (key === 'holdouts.requestSent') return `בקשת חתימה נשלחה ל${String(vars?.['name'])}`;
+  if (key === 'holdouts.startCampaignAria')
+    return `התחל איסוף חתימות בדירה ${String(vars?.['number'])}`;
   return T[key] ?? `MISSING:${key}`;
 }) as unknown as Parameters<typeof HoldoutRow>[0]['t'];
 
-function holdout(over: Partial<{ ownerId: string; name: string | null; apartmentNumber: string }> = {}) {
-  return { ownerId: 'o1', name: 'דנה כהן', apartmentNumber: '4', ...over };
+function holdout(
+  over: Partial<{
+    ownerId: string;
+    name: string | null;
+    apartmentNumber: string;
+    signableDocumentId: string | null;
+  }> = {},
+) {
+  // HB-5 — default to a per-apartment signable doc (the chase create target).
+  return {
+    ownerId: 'o1',
+    name: 'דנה כהן',
+    apartmentNumber: '4',
+    signableDocumentId: 'doc-apt-4',
+    ...over,
+  };
 }
 
 describe('HB-3 board-card holdout expander (MissionControlHome)', () => {
@@ -538,8 +591,8 @@ describe('HB-3 HoldoutApartment — holdout NAMES + masking/403 (presentational)
       refetch: vi.fn(),
     };
     const html = renderApartment();
-    // The fallback line: number + partial state, NO owner name revealed.
-    expect(html).toContain('דירה 4 · חלקי');
+    // The fallback line: number + "awaiting signatures", NO owner name revealed.
+    expect(html).toContain('דירה 4 · ממתינה לחתימות');
     expect(html).not.toContain('דנה כהן');
     // No remind button either (there is no resolvable name/request to chase).
     expect(html).not.toContain('שלח תזכורת');
@@ -562,6 +615,7 @@ describe('HB-3 HoldoutRow — per-name remind gating + dispatch (presentational)
     return renderToStaticMarkup(
       createElement(HoldoutRow, {
         holdout: holdout(),
+        projectId: 'p1',
         canRemind: true,
         sendEnabled: true,
         t: tHoldout,
@@ -592,7 +646,7 @@ describe('HB-3 HoldoutRow — per-name remind gating + dispatch (presentational)
 });
 
 // Recursively find the first element whose props carry an onClick handler.
-// `HoldoutRow`'s hooks (useToast / useResendHoldoutReminder) are module-mocked to
+// `HoldoutRow`'s hooks (useToast / useChaseHoldout) are module-mocked to
 // return plain objects, so the component can be invoked as a plain function to
 // obtain its element tree (the repo's node-env pattern — no real React runtime).
 type ReactNodeLike = { props?: { onClick?: () => void; children?: unknown } } | null | undefined;
@@ -612,12 +666,13 @@ function findOnClick(node: unknown): (() => void) | undefined {
   return undefined;
 }
 
-describe('HB-3 per-name remind dispatch (direct onClick)', () => {
-  it('24) clicking remind calls the resend mutation with THIS owner id', () => {
+describe('HB-5 per-name chase dispatch (direct onClick)', () => {
+  it('24) clicking the action calls the chase mutation with {ownerId, signableDocumentId}', () => {
     // Invoke the component as a plain function (mocked hooks return plain
     // objects) to get its element tree, then call the button's onClick.
     const tree = HoldoutRow({
-      holdout: holdout({ ownerId: 'owner-42' }),
+      holdout: holdout({ ownerId: 'owner-42', signableDocumentId: 'doc-apt-9' }),
+      projectId: 'p1',
       canRemind: true,
       sendEnabled: true,
       t: tHoldout,
@@ -625,8 +680,30 @@ describe('HB-3 per-name remind dispatch (direct onClick)', () => {
     const onClick = findOnClick(tree);
     expect(onClick).toBeTypeOf('function');
     onClick?.();
-    expect(resendMutate).toHaveBeenCalledTimes(1);
-    expect(resendMutate.mock.calls[0]?.[0]).toBe('owner-42');
+    expect(chaseMutate).toHaveBeenCalledTimes(1);
+    // First positional arg is the chase input: this owner + THIS holdout's OWN
+    // per-apartment signable doc (HB-5 fix — not the project-wide campaign doc).
+    expect(chaseMutate.mock.calls[0]?.[0]).toEqual({
+      ownerId: 'owner-42',
+      signableDocumentId: 'doc-apt-9',
+    });
+  });
+
+  it('24b) NO signable doc (signableDocumentId=null) → the per-name action is a START-campaign Link, NOT the chase button', () => {
+    const html = renderToStaticMarkup(
+      createElement(HoldoutRow, {
+        holdout: holdout({ ownerId: 'owner-42', signableDocumentId: null }),
+        projectId: 'p7',
+        canRemind: true,
+        sendEnabled: true,
+        t: tHoldout,
+      }),
+    );
+    // A Link to the project (start collection), never a dead-end remind button
+    // (and never a create that would 409).
+    expect(html).toMatch(/<a[^>]*href="\/projects\/p7"/);
+    expect(html).toContain('התחל איסוף חתימות');
+    expect(html).not.toContain('שלח תזכורת');
   });
 });
 

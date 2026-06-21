@@ -33,6 +33,10 @@ export const SAMPLE_SIGNATURE_PULSE: SignaturePulse = {
       consentedPct: 64,
       metThreshold: false,
       basis: 'share',
+      // HB-5 — has a campaign (reuses the SAMPLE_DOCUMENTS contract doc on this
+      // project): a holdout with no live pending request can be CREATED against it.
+      campaignDocumentId: 'ffffffff-ffff-ffff-ffff-fffffffffff1',
+      hasCampaign: true,
     },
     {
       // expiring — a pending request lapses within the 7d window.
@@ -46,6 +50,25 @@ export const SAMPLE_SIGNATURE_PULSE: SignaturePulse = {
       consentedPct: 71,
       metThreshold: false,
       basis: 'share',
+      // HB-5 — campaign active (it has pending requests).
+      campaignDocumentId: 'ffffffff-ffff-ffff-ffff-fffffffffff2',
+      hasCampaign: true,
+    },
+    {
+      // HB-5 not-started — NO campaign at all: the board offers "start signature
+      // collection" instead of a dead-end remind.
+      projectId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3',
+      projectName: 'תמ״א 38/1 — רמת גן',
+      lastSignatureAt: null,
+      signedThisWeek: 0,
+      stalledDays: null,
+      nextExpiryAt: null,
+      expiringSoon: false,
+      consentedPct: 0,
+      metThreshold: false,
+      basis: 'share',
+      campaignDocumentId: null,
+      hasCampaign: false,
     },
   ],
   needsHuman: [

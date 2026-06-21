@@ -241,6 +241,9 @@ export default function TenantLoginPage() {
     // into the same Hebrew `phoneInvalid` copy — anti-enum is preserved
     // because we never disclose whether a valid phone maps to an owner.
     const phoneRaw = typeof data.phone === 'string' ? data.phone.trim() : '';
+    // TODO C14-P1.2 — the OTP-schema `isValidIsraeliPhone` tightening is a
+    // separate deferred slice; this slice is FE re-skin only (no auth/OTP
+    // logic or schema change here).
     if (!isValidIsraeliPhone(phoneRaw)) {
       phoneForm.setError('phone', { type: 'client', message: t('phoneInvalid') });
       return;
@@ -331,16 +334,16 @@ export default function TenantLoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center" style={{ padding: 24 }}>
+    <div className="flex min-h-screen items-center justify-center bg-surface-app p-6">
       <div className="card card-pad flex w-full flex-col gap-4" style={{ maxWidth: 420 }}>
         <header className="flex flex-col gap-1">
-          <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+          <span className="text-xs font-medium text-text-muted">
             {tCommon('rolePicker.tenant.label')}
           </span>
-          <h1 className="text-xl font-bold" style={{ color: 'var(--text)' }}>
+          <h1 className="text-xl font-bold text-text">
             {step === 'phone' ? t('phoneStepTitle') : t('codeStepTitle')}
           </h1>
-          <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-[13px] text-text-muted">
             {step === 'phone' ? t('phoneStepHint') : t('codeStepHint', { phone })}
           </p>
         </header>
@@ -367,7 +370,7 @@ export default function TenantLoginPage() {
                 {...phoneForm.register('phone')}
               />
               {phoneForm.formState.errors.phone && (
-                <span className="text-xs" style={{ color: 'var(--danger-700)' }}>
+                <span className="text-xs text-danger-700">
                   {phoneForm.formState.errors.phone.message}
                 </span>
               )}
@@ -386,23 +389,21 @@ export default function TenantLoginPage() {
                 placeholder={t('orgSlugPlaceholder')}
                 {...phoneForm.register('org_slug')}
               />
-              <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                {t('orgSlugHint')}
-              </span>
+              <span className="text-[11px] text-text-muted">{t('orgSlugHint')}</span>
               {showPrefilledHint && (
-                <span className="text-[11px]" style={{ color: 'var(--success-700)' }} role="status">
+                <span className="text-[11px] text-success-700" role="status">
                   {t('orgSlugPrefilled')}
                 </span>
               )}
               {phoneForm.formState.errors.org_slug && (
-                <span className="text-xs" style={{ color: 'var(--danger-700)' }}>
+                <span className="text-xs text-danger-700">
                   {phoneForm.formState.errors.org_slug.message}
                 </span>
               )}
             </div>
 
             {serverError && (
-              <p className="text-sm" style={{ color: 'var(--danger-700)' }} role="alert">
+              <p className="text-sm text-danger-700" role="alert">
                 {serverError}
               </p>
             )}
@@ -445,20 +446,20 @@ export default function TenantLoginPage() {
                 {...codeForm.register('code')}
               />
               {codeForm.formState.errors.code && (
-                <span className="text-xs" style={{ color: 'var(--danger-700)' }}>
+                <span className="text-xs text-danger-700">
                   {codeForm.formState.errors.code.message}
                 </span>
               )}
             </div>
 
             {resendAck && (
-              <p className="text-sm" style={{ color: 'var(--success-700)' }} role="status">
+              <p className="text-sm text-success-700" role="status">
                 {resendAck}
               </p>
             )}
 
             {serverError && (
-              <p className="text-sm" style={{ color: 'var(--danger-700)' }} role="alert">
+              <p className="text-sm text-danger-700" role="alert">
                 {serverError}
               </p>
             )}
@@ -503,12 +504,8 @@ export default function TenantLoginPage() {
           </form>
         )}
 
-        <div className="flex flex-col gap-1 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
-          <Link
-            href="/login"
-            className="text-xs hover:underline"
-            style={{ color: 'var(--navy-700)' }}
-          >
+        <div className="flex flex-col gap-1 border-t border-border pt-2">
+          <Link href="/login" className="text-xs text-navy-700 hover:underline">
             {t('notATenant')}
           </Link>
         </div>

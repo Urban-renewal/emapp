@@ -202,6 +202,22 @@ export default function middleware(req: NextRequest) {
     return applyCsp(NextResponse.next({ request: { headers: requestHeaders } }));
   }
 
+  // DEV-ONLY navigation-login route (`/dev-login`) for browser QA tooling.
+  // Let the request reach the route handler (which is itself DOUBLE-GATED
+  // and 404s unless NODE_ENV==='development' AND DEV_AUTH_BYPASS==='1') —
+  // without this the locale-less, no-org-cookie path would be bounced to
+  // /he/login by the auth gate below. This bypass is MEANINGFUL only in
+  // dev: in production the handler returns 404 regardless, so allowing the
+  // request through here mints nothing. Gated on the SAME two conditions
+  // as the handler so the matcher itself is inert in prod.
+  if (
+    pathname === '/dev-login' &&
+    process.env.NODE_ENV === 'development' &&
+    process.env.DEV_AUTH_BYPASS === '1'
+  ) {
+    return applyCsp(NextResponse.next({ request: { headers: requestHeaders } }));
+  }
+
   // V10-S4 follow-up — narrow defer for locale-less `/provider*` paths
   // when the user holds a provider cookie. Without this, the auth-gate
   // block below would see no org cookie and redirect the just-

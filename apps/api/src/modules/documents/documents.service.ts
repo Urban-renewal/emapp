@@ -17,10 +17,13 @@ import {
   type TenantTx,
 } from '@emapp/db';
 import {
+  CLASSIFY_SAMPLE_MAX_BYTES,
   DOCUMENT_MAX_SIZE_BYTES,
   DOCUMENT_SCAN_REJECTED_CODE,
   DOCUMENT_TYPE_MISMATCH_CODE,
   DOCUMENT_UPLOAD_INCOMPLETE_CODE,
+  type ClassifyDocument,
+  type ClassifyResult,
   type CreateDocument,
   type DedupCandidate,
   type DedupCheckResponse,
@@ -56,6 +59,7 @@ import { notificationLink } from '../notifications/notification-links';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 
+import { classifyDocument } from './document-classifier';
 import { verifyMagicBytes } from './magic-bytes';
 import { FILE_SCAN_PROVIDER } from './scan-provider.factory';
 import {
@@ -871,6 +875,44 @@ export class DocumentsService {
       userId: user.sub,
     });
     return toDocument(row);
+  }
+
+  /**
+   * DH3 (MASTER-PLAN-V13 Wave B) — heuristic document-type CLASSIFIER.
+   * SUGGEST-ONLY: returns a RANKED list of suggested `doc_type` values for a
+   * to-be-uploaded file from its cheap signals (filename, declared mimeType,
+   * and an OPTIONAL leading-bytes sample). This method:
+   *   - does NO DB read/write (no withTenant — it touches no customer data; the
+   *     org context only authorizes the caller via the controller guard),
+   *   - NEVER mutates a document's type (the human confirms separately — the
+   *     same "mandatory human confirm" doctrine as D.18 / the tabu auto-parse).
+   *
+   * SECURITY: `filename`/`sampleBase64` are external input. The sample is
+   * base64-decoded and HARD-CAPPED to CLASSIFY_SAMPLE_MAX_BYTES (leading bytes
+   * are all the heuristics need); the raw bytes are NEVER logged or echoed (the
+   * suggestion `reason` keys are content-free constants). A malformed base64
+   * sample is treated as "no sample" — the classifier still runs on the
+   * filename + mime signals (advisory; never throws on a bad optional sample).
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- async to keep
+  // the controller call-site uniform (await) and allow a future content-fetch
+  // variant without a signature change; the body is intentionally pure today.
+  async classify(_user: AccessTokenPayload, input: ClassifyDocument): Promise<ClassifyResult> {
+    let sample: Buffer | undefined;
+    if (input.sampleBase64) {
+      try {
+        // Decode and immediately cap to the leading-bytes ceiling. base64 from
+        // a trusted-shape (Zod-bounded length) string; a bad-encoding result is
+        // simply shorter/garbage and harmless to the substring/magic checks.
+        const decoded = Buffer.from(input.sampleBase64, 'base64');
+        sample = decoded.subarray(0, CLASSIFY_SAMPLE_MAX_BYTES);
+      } catch {
+        // Defensive — Buffer.from(base64) does not throw, but never let a
+        // sample-decode hiccup fail an advisory suggestion.
+        sample = undefined;
+      }
+    }
+    return classifyDocument({ filename: input.filename, mimeType: input.mimeType, sample });
   }
 
   async getDownloadUrl(

@@ -74,6 +74,7 @@ import {
   ApplyCapabilityPresetInput,
   AssignRoleInput,
   BulkCreateSignatureRequestInput,
+  ClassifyDocumentInput,
   ClearMemberOverrideInput,
   CreateCustomRoleInput,
   CreateDiscoveryRecordInput,
@@ -1929,6 +1930,17 @@ const ENDPOINTS: Endpoint[] = [
       'invalid_token',
       'token_expired',
     ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/documents/classify',
+    auth: 'AuthGuard + TenantGuard (documents.read)',
+    summary:
+      'DH3 (V13) — heuristic document-type CLASSIFIER (SUGGEST-ONLY). Given a to-be-uploaded file\'s cheap signals (filename, declared mimeType, OPTIONAL leading-bytes sampleBase64) returns a RANKED list of suggested doc_type values (curated DocumentTypeEnum) each with a 0..1 confidence, the signal family (filename|mime|magic_byte|content_text) and a content-free reason key. PURELY ADVISORY: NO DB write, NEVER mutates a document type — the human confirms separately (D.18 / tabu auto-parse "mandatory human confirm"). 60/min throttle. The sample is base64-decoded + hard-capped to the leading bytes; raw bytes/filename are NEVER logged or echoed (reason keys are constants). Empty suggestions when no signal fires.',
+    request: ClassifyDocumentInput,
+    response:
+      '{ "data": { "suggestions": [{ "docType": "land_registry", "confidence": 0.9, "signal": "filename", "reason": "filename_nesach" }], "suggestOnly": true } }',
+    errors: ['validation_error', 'missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'GET',

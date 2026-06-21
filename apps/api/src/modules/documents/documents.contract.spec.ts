@@ -279,6 +279,77 @@ describe('CONTRACT · documents · CRUD + finalize + isolation', () => {
   });
 });
 
+// ── DH3 (V13) — heuristic CLASSIFIER (SUGGEST-ONLY) contract ─────────────────
+async function classify(at: string, body: Json): Promise<Res> {
+  return call('/documents/classify', {
+    method: 'POST',
+    cookie: `access_token=${at}`,
+    body: JSON.stringify(body),
+  });
+}
+
+describe('CONTRACT · documents · classify (DH3 suggest-only)', () => {
+  ct('DH3-1 unauthenticated classify → 401', async () => {
+    const r = await call('/documents/classify', {
+      method: 'POST',
+      body: JSON.stringify({ filename: 'נסח.pdf', mimeType: 'application/pdf' }),
+    });
+    expect(r.status).toBe(401);
+  });
+
+  ct('DH3-2 filename signal → ranked {data:{suggestions,suggestOnly:true}}', async () => {
+    const at = await manager('cls');
+    const r = await classify(at, { filename: 'נסח טאבו 123.pdf', mimeType: 'application/pdf' });
+    expect(r.status, r.raw).toBe(200);
+    const data = r.body['data'] as Json;
+    expect(data['suggestOnly']).toBe(true);
+    const sugg = data['suggestions'] as Json[];
+    expect(Array.isArray(sugg)).toBe(true);
+    expect(sugg.length).toBeGreaterThan(0);
+    // Top suggestion is land_registry (נסח); shape carries docType+confidence.
+    expect((sugg[0] as Json)['docType']).toBe('land_registry');
+    expect(typeof (sugg[0] as Json)['confidence']).toBe('number');
+    // No raw filename echo anywhere (reason keys are content-free constants).
+    expect(JSON.stringify(r.body)).not.toContain('טאבו');
+  });
+
+  ct('DH3-3 Zod rejects bad input (missing filename / bad mime / unknown field) → 400', async () => {
+    const at = await manager('clsbad');
+    expect((await classify(at, { mimeType: 'application/pdf' })).status).toBe(400);
+    expect((await classify(at, { filename: 'x.pdf', mimeType: 'image/svg+xml' })).status).toBe(400);
+    const unk = await classify(at, { filename: 'x.pdf', mimeType: 'application/pdf', injected: true });
+    expect(unk.status).toBe(400);
+    expect((unk.body['error'] as Json)?.['code']).toBe('validation_error');
+    // Oversized sample (> base64 cap) → 400.
+    const huge = 'A'.repeat(20_000);
+    expect((await classify(at, { filename: 'x.pdf', mimeType: 'application/pdf', sampleBase64: huge })).status).toBe(400);
+  });
+
+  ct('DH3-4 SUGGEST-ONLY: classify creates NO document (list count unchanged)', async () => {
+    const at = await manager('clsnowrite');
+    const before = await call('/documents', { cookie: `access_token=${at}` });
+    const beforeCount = (before.body['data'] as Json[]).length;
+    // A classify with a PDF magic-byte sample (base64 of "%PDF-1.4").
+    const sample = Buffer.from('%PDF-1.4\nhello', 'latin1').toString('base64');
+    const r = await classify(at, { filename: 'הסכם.pdf', mimeType: 'application/pdf', sampleBase64: sample });
+    expect(r.status).toBe(200);
+    const after = await call('/documents', { cookie: `access_token=${at}` });
+    expect((after.body['data'] as Json[]).length).toBe(beforeCount);
+  });
+
+  ct('DH3-5 unknown-signal filename → empty suggestions (FE leaves type unset)', async () => {
+    const at = await manager('clsempty');
+    // .png with a generic name + no marker → no filename/content signal; the
+    // weak image mime prior yields at most an "other" low-confidence hint, so
+    // assert the shape is valid and never asserts a strong type.
+    const r = await classify(at, { filename: 'random-scan-001.png', mimeType: 'image/png' });
+    expect(r.status).toBe(200);
+    const sugg = (r.body['data'] as Json)['suggestions'] as Json[];
+    // No HIGH-confidence false positive.
+    for (const s of sugg) expect((s as Json)['confidence'] as number).toBeLessThan(0.5);
+  });
+});
+
 afterAll(() => {
   if (!LIVE) return;
   // eslint-disable-next-line no-console

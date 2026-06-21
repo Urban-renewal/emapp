@@ -387,3 +387,74 @@ export const DocumentChecklistSchema = z.object({
   advisory: z.literal(true),
 });
 export type DocumentChecklist = z.infer<typeof DocumentChecklistSchema>;
+
+// ── DH3 (V13) — heuristic document-type CLASSIFIER (SUGGEST-ONLY) ────────────
+// `POST /api/v1/documents/classify` returns a RANKED list of suggested
+// `doc_type` values for a document the user is about to upload (or re-type),
+// from the curated `DocumentTypeEnum`, each with a confidence + the signal that
+// matched. It is PURELY ADVISORY: it NEVER writes/mutates a document's type —
+// the human confirms separately (the same "mandatory human confirm" doctrine as
+// D.18 / the tabu auto-parse, MASTER-PLAN-V13 DH3 "suggest-never-auto-commit").
+//
+// The classifier reads only the inputs the FE already holds for a picked file:
+//   - `filename`    — the original name (Hebrew or latin); regex signals.
+//   - `mimeType`    — the declared MIME (allow-listed `DocumentMimeEnum`).
+//   - `sampleBase64`— OPTIONAL, the FIRST bytes of the file (base64). Used for a
+//                     magic-byte sniff and a cheap first-page text scan for
+//                     marker phrases (e.g. נסח/טאבו ⇒ land_registry). HARD-CAPPED
+//                     small (leading bytes are all the heuristics need) so a
+//                     caller can never push large payloads through this advisory
+//                     path. The raw bytes are NEVER logged and never stored.
+
+/** Max RAW sample size (bytes) the classifier inspects — leading bytes only.
+ *  8 KiB comfortably covers every magic signature + a first-page text peek;
+ *  anything larger is irrelevant to the heuristics and a needless payload. */
+export const CLASSIFY_SAMPLE_MAX_BYTES = 8_192;
+/** Max base64 STRING length for `sampleBase64` (defense-in-depth at the Zod
+ *  boundary, before any decode). base64 is 4 chars per 3 bytes; round up and
+ *  add slack for padding/whitespace. The service re-checks the DECODED length
+ *  against CLASSIFY_SAMPLE_MAX_BYTES (the authoritative cap). */
+export const CLASSIFY_SAMPLE_MAX_BASE64_CHARS = 12_000;
+
+/** POST /documents/classify request — the signals about a to-be-uploaded file.
+ *  `mimeType` is the same allow-list as upload (fail-closed; no html/svg). */
+export const ClassifyDocumentInput = z
+  .object({
+    filename: z.string().trim().min(1).max(255),
+    mimeType: DocumentMimeEnum,
+    /** OPTIONAL leading-bytes sample (base64). Bounded here AND re-checked
+     *  post-decode against CLASSIFY_SAMPLE_MAX_BYTES in the service. */
+    sampleBase64: z.string().max(CLASSIFY_SAMPLE_MAX_BASE64_CHARS).optional(),
+  })
+  .strict();
+export type ClassifyDocument = z.infer<typeof ClassifyDocumentInput>;
+
+/** The signal family that produced a suggestion — lets the FE render a reason
+ *  ("matched filename" vs "content marker") and lets tests pin WHY a type won. */
+export const ClassifySignalEnum = z.enum(['filename', 'mime', 'magic_byte', 'content_text']);
+export type ClassifySignal = z.infer<typeof ClassifySignalEnum>;
+
+/** One ranked suggestion. `confidence` is 0..1 (higher = stronger). `reason`
+ *  is a short, content-free, stable key the FE maps to a localized string —
+ *  NEVER raw filename/bytes (no PII echo). */
+export const ClassifySuggestionSchema = z.object({
+  docType: DocumentTypeEnum,
+  confidence: z.number().min(0).max(1),
+  signal: ClassifySignalEnum,
+  /** Stable, content-free reason key (e.g. 'filename_tabu', 'content_nesach',
+   *  'mime_pdf'). Maps to a localized label on the FE; carries no user input. */
+  reason: z.string().min(1).max(64),
+});
+export type ClassifySuggestion = z.infer<typeof ClassifySuggestionSchema>;
+
+/** POST /documents/classify response payload (under `data`). `suggestions` is
+ *  ranked DESC by confidence (best first); EMPTY when no signal fired (the FE
+ *  then leaves the type unset for the human to choose). SUGGEST-ONLY — this
+ *  response never reflects or implies a committed type. */
+export const ClassifyResultSchema = z.object({
+  suggestions: z.array(ClassifySuggestionSchema),
+  /** Always true — pins the suggest-only contract so a future auto-apply
+   *  variant must be a DISTINCT shape, not a silent behavior change. */
+  suggestOnly: z.literal(true),
+});
+export type ClassifyResult = z.infer<typeof ClassifyResultSchema>;

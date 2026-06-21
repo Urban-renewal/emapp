@@ -85,7 +85,8 @@
         "remindAria": "Send a reminder to {name}",
         "remindSent": "Reminder sent",
         "remindNonePending": "No pending signature request for this owner — the board may be out of date."
-      }
+      },
+      "queueTail": "{count, plural, one {1 more project being tracked} other {# more projects being tracked}}"
     },
     "action": {
       "newProject": "New project",

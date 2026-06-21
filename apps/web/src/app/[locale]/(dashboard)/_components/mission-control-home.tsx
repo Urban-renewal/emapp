@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/action-toast';
 import { DataState } from '@/components/ui/data-state';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { ThresholdSliver } from '@/components/ui/threshold-progress';
 import { useHasPermission } from '@/hooks/use-permissions';
 import {
   isPermissionDenied,
@@ -163,6 +164,19 @@ export function MissionControlHome() {
               ))}
             </ul>
           )}
+
+          {/* 5) HB-4 — the calm queue-tail line. The board shows only the top-N
+              ranked attention cards; this reassures the manager that the rest of
+              the portfolio is still tracked (not forgotten) WITHOUT cluttering the
+              triage list. N = (total tracked in scope) − (cards shown). Rendered
+              only when N > 0 (never "ועוד 0"); suppressed entirely in the empty/
+              all-clear state (DataState owns those, so `vm.cards.length === 0`
+              short-circuits here). */}
+          {vm && vm.cards.length > 0 && vm.totalInScope - vm.cards.length > 0 && (
+            <p className="text-xs text-text-muted" role="status">
+              {t('queueTail', { count: vm.totalInScope - vm.cards.length })}
+            </p>
+          )}
         </DataState>
       </section>
     </div>
@@ -206,6 +220,11 @@ function ActionCard({
             </span>
             <span className="ms-1">· {basisLabel}</span>
           </p>
+          {/* HB-4 — the compact at-a-glance consent sliver. A thin, calm fill
+              under the % text (success once the line is crossed, amber otherwise),
+              reusing the board's ThresholdProgress tokens. The card has no full
+              bar today; this adds the visual-at-a-glance the % text alone can't. */}
+          <ThresholdSliver consentedPct={card.consentedPct} metThreshold={card.metThreshold} />
         </div>
 
         <div className="flex shrink-0 items-center gap-2">

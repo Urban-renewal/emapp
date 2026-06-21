@@ -104,7 +104,7 @@ export default function ProviderLoginPage() {
       <div className="card card-pad w-full max-w-sm space-y-6">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-text">{t('providerLoginTitle')}</h1>
-          <p className="mt-1 text-sm text-muted">{t('providerLoginSubtitle')}</p>
+          <p className="mt-1 text-sm text-text-muted">{t('providerLoginSubtitle')}</p>
         </div>
 
         {/* §S1-SEC1 — method="post" defense in depth. */}
@@ -180,7 +180,7 @@ export default function ProviderLoginPage() {
                 {errors.mfa_code.message ?? t('mfaCodeInvalid')}
               </p>
             )}
-            <p className="mt-1 text-xs text-muted">{t('mfaCodeHint')}</p>
+            <p className="mt-1 text-xs text-text-muted">{t('mfaCodeHint')}</p>
           </div>
 
           {serverError && <p className="text-sm text-danger-700">{serverError}</p>}

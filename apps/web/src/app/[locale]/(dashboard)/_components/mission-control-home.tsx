@@ -3,7 +3,7 @@
 import { ArrowLeft, CheckCircle2, HelpCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { useId, useState } from 'react';
+import { useState } from 'react';
 
 import { DataState } from '@/components/ui/data-state';
 import { NameDisplay } from '@/components/ui/name-display';
@@ -54,7 +54,13 @@ export function MissionControlHome() {
   const canRemind = useHasPermission('signature_requests.send');
 
   const [explainOpen, setExplainOpen] = useState(false);
-  const explainId = useId();
+  // Stable static id (NOT useId): exactly one MissionControlHome renders per
+  // page (page.tsx role-branches Manager/Agent home — never both), so a fixed
+  // id is collision-free AND deterministic across SSR↔client. useId() here
+  // produced a tree-position prefix that differed server vs client under the
+  // App-Router RSC boundary → a hydration-mismatch console error on the
+  // centerpiece. A constant eliminates it with zero behavioural change.
+  const explainId = 'mission-control-home';
 
   const vm = pulse.data;
   const greeting = buildGreeting(t);

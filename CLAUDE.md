@@ -153,11 +153,25 @@ per-slice gate table) + `docs/ENGINEERING-CHARTER.md`.
 Before "done"/merge, the change is WALKED in the owner's REAL Chrome (Claude-in-Chrome
 MCP) against the running app, AS the actual role — NOT headless, NOT Playwright, NOT MSW,
 NOT unit-green. Those are "code green" ONLY; they are NOT acceptance. The real-browser
-walk IS the gate: dev-login as the role, exercise the interaction, confirm the 4 axes
-(Network all 2xx / URL / Cookies / Redirect) + the rendered result + console clean
-(dev-HMR noise excepted). A subagent only produces code-green; the real-Chrome walk is
-MANDATORY before merge and is the owner's standard. This SUPERSEDES the "OR Playwright"
-option in the FE DoD above — Playwright is a regression net, not the acceptance gate.
+walk IS the gate: dev-login as the role, exercise the interaction, confirm the 5 axes
+(Network all 2xx / URL / Cookies / Redirect / **Latency <1s warm**) + the rendered result
+
+- console clean (dev-HMR noise excepted). A subagent only produces code-green; the
+  real-Chrome walk is MANDATORY before merge and is the owner's standard. This SUPERSEDES the
+  "OR Playwright" option in the FE DoD above — Playwright is a regression net, not the
+  acceptance gate.
+
+**LATENCY IS A FIRST-CLASS ACCEPTANCE AXIS (owner 2026-06-23, anchored — "otherwise we lose
+the customer").** EVERY browser-observable action — navigation, click, submit — MUST complete
+in **under 1 second warm**. MEASURE it on every walk (Chrome Network timing / API
+`responseTime` in the boot log), never by feel. A warm interaction ≥1s is a **FAIL** that
+blocks merge — root-cause it (host disk full → even /health 0.9s; dev→Neon RTT → run
+`DB_TARGET=local`; redundant/duplicate FE fetches; N+1 queries) and fix before merge. ONE
+cold first-hit webpack-compile spike is the only excepted case, and it MUST be explicitly
+distinguished from a warm regression (re-hit the route and confirm the 2nd call is <1s) — do
+NOT wave a slow interaction away as "compile" without re-measuring. Report the measured ms
+per interaction in the walk evidence, not "felt fast". (Backup: memory
+`feedback_sub_second_interaction_budget`.)
 
 \### G-RT — Red-team THROUGHOUT + loop-until-closed (every security-sensitive change; default-on for any non-trivial implementation)
 

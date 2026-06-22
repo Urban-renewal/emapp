@@ -4,6 +4,7 @@ import type { CreateProject, ProjectSegment, ProjectStatus } from '@emapp/shared
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
+import { toDocumentChecklistViewModel } from '@/adapters/document-checklist';
 import {
   toApartmentHoldoutViewModels,
   toApartmentSignatureProgressViewModels,
@@ -17,6 +18,7 @@ import {
   archiveProject,
   createProject,
   getApartmentHoldouts,
+  getDocumentChecklist,
   getProject,
   getProjectLeverage,
   getSignatureProgress,
@@ -29,6 +31,7 @@ import type {
   ApartmentHoldoutViewModel,
   ApartmentSignatureProgressViewModel,
 } from '@/models/apartment-signature-progress.vm';
+import type { DocumentChecklistViewModel } from '@/models/document-checklist.vm';
 import type { ProjectLeverageViewModel } from '@/models/project-leverage.vm';
 import type { ProjectViewModel } from '@/models/project.vm';
 import type { SignatureProgressViewModel } from '@/models/signature-progress.vm';
@@ -50,7 +53,12 @@ import type { SignatureProgressViewModel } from '@/models/signature-progress.vm'
 
 // Query-key builders live in a PLAIN module so the server RSC prefetch can
 // call them too (a `'use client'` export cannot be invoked from the server).
-import { PROJECTS_KEY, projectQueryKey, projectsListQueryKey } from './use-projects.keys';
+import {
+  PROJECTS_KEY,
+  projectDocumentChecklistQueryKey,
+  projectQueryKey,
+  projectsListQueryKey,
+} from './use-projects.keys';
 
 export { projectQueryKey, projectsListQueryKey };
 
@@ -153,6 +161,33 @@ export function useProjectLeverage(id: string | undefined) {
     queryFn: () => {
       if (!id) throw new Error('useProjectLeverage requires an id');
       return getProjectLeverage(id);
+    },
+    enabled: Boolean(id),
+    staleTime: 30_000,
+    select,
+  });
+}
+
+/**
+ * DH2 (V13) — the ADVISORY per-project required-docs checklist. Drives the
+ * "מסמכי חובה: present מתוך total · חסר: …" line + the quiet missing-type chips
+ * in each project group on the documents page. The wire carries NO PII (only
+ * doc-type keys + present booleans + counts); the adapter resolves the MISSING
+ * types to localized labels. `enabled`-gated so each group fetches lazily and
+ * only for the projects actually shown on the current keyset page.
+ */
+export function useDocumentChecklist(id: string | undefined) {
+  const locale = useDisplayLocale();
+  const select = useCallback(
+    (data: import('@emapp/shared-types').DocumentChecklist): DocumentChecklistViewModel =>
+      toDocumentChecklistViewModel(data, locale),
+    [locale],
+  );
+  return useQuery({
+    queryKey: projectDocumentChecklistQueryKey(id ?? '', locale),
+    queryFn: () => {
+      if (!id) throw new Error('useDocumentChecklist requires an id');
+      return getDocumentChecklist(id);
     },
     enabled: Boolean(id),
     staleTime: 30_000,

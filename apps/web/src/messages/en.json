@@ -828,7 +828,19 @@
     "noResults": "No results match the search",
     "viewCards": "Cards view",
     "viewTable": "Table view",
-    "dataPendingHint": "Advanced filters — by project, owner, signature status — coming soon",
+    "orientation": {
+      "withMissing": "{count} documents · {missing} required documents missing",
+      "allClear": "{count} documents · all required documents present"
+    },
+    "group": {
+      "unassigned": "Not linked to a project",
+      "projectFallback": "Project",
+      "docCount": "{count} documents"
+    },
+    "checklist": {
+      "summary": "Required documents: {present} of {total} · missing:",
+      "complete": "All required documents present"
+    },
     "signaturesEntry": "Signature requests",
     "signaturesHint": "Signature requests on documents are managed on a separate page.",
     "column": {

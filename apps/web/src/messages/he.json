@@ -828,7 +828,19 @@
     "noResults": "אין תוצאות לחיפוש",
     "viewCards": "תצוגת כרטיסים",
     "viewTable": "תצוגת טבלה",
-    "dataPendingHint": "פילטרים מתקדמים (לפי פרויקט/דייר/סטטוס חתימה) יתווספו בהמשך",
+    "orientation": {
+      "withMissing": "{count} מסמכים · חסרים {missing} מסמכי-חובה",
+      "allClear": "{count} מסמכים · כל מסמכי החובה קיימים"
+    },
+    "group": {
+      "unassigned": "ללא שיוך לפרויקט",
+      "projectFallback": "פרויקט",
+      "docCount": "{count} מסמכים"
+    },
+    "checklist": {
+      "summary": "מסמכי חובה: {present} מתוך {total} · חסר:",
+      "complete": "כל מסמכי החובה קיימים"
+    },
     "signaturesEntry": "בקשות חתימה",
     "signaturesHint": "בקשות חתימה על מסמכים מנוהלות בעמוד נפרד.",
     "column": {

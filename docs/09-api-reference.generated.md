@@ -3301,6 +3301,23 @@ _(no body)_
 
 **Errors:** `validation_error`, `invalid_token`, `consent_required`, `signature_request_already_signed`, `encryption_not_configured`, `429`
 
+### GET /api/v1/sign/:token/document
+
+- **Auth:** Public (signing JWT in the path IS the credential)
+- **Summary:** C2 (Gate-6) — token-scoped decrypt-STREAM of a SENSITIVE document (the preview points here instead of a raw R2 presign so national_id / נסח PII is never served unencrypted). Serves ONLY sensitive+encrypted docs; 30 / IP / hour; generic invalid_token on any miss (no oracle).
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+binary stream (Content-Disposition: attachment; nosniff)
+```
+
+**Errors:** `invalid_token`, `storage_unavailable`, `doc_encryption_unavailable`, `429`
+
 ### GET /api/v1/signature-requests
 
 - **Auth:** AuthGuard + TenantGuard (signature_requests.read)

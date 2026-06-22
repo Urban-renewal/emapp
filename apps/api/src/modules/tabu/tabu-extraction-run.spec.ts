@@ -84,6 +84,7 @@ import {
   encryptDocEnvelope,
   memberships,
   projectAssignments,
+  reloadEnv,
   users,
   type IStorageProvider,
 } from '@emapp/db';
@@ -517,8 +518,16 @@ function rowCountOf(res: RunResultLike): number | undefined {
   return res.rowCount ?? res.data?.rowCount;
 }
 
+// Gate-6: tabu-create RE-ENCRYPTS the source נסח at rest, and the run-path
+// regression (1b) decrypts an EMAPPENC envelope — both need DOC_ENCRYPTION_KEY.
+// CI / Infisical dev don't deliver it yet; seed the documented TEST-ONLY 32-byte
+// value (??= keeps a real secret authoritative) so the registry resolves a key.
+const TEST_DOC_KEY_B64 = Buffer.from('emapp-7d-test-doc-key-32bytes!!!').toString('base64');
+
 beforeAll(async () => {
   await setupTestDatabase();
+  process.env['DOC_ENCRYPTION_KEY'] ??= TEST_DOC_KEY_B64;
+  reloadEnv();
   const tag = `s7b-tabu-run-${Date.now()}`;
   org = await createTestOrg(tag, tag);
   otherOrg = await createTestOrg(`${tag}-b`, `${tag}-b`);

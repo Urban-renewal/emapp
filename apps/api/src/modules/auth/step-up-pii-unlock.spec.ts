@@ -93,6 +93,7 @@ import {
   FakeEmailProvider,
   NoopFileScanProvider,
   organizations,
+  reloadEnv,
   withTenant,
   type IExtractionProvider,
   type IStorageProvider,
@@ -494,8 +495,17 @@ function docInput(over: Record<string, unknown> = {}): CreateDocument {
   } as unknown as CreateDocument;
 }
 
+// Gate-6: E5 creates a tabu extraction, whose create() RE-ENCRYPTS the source
+// נסח in place when it flips it sensitive — so it needs DOC_ENCRYPTION_KEY. CI /
+// Infisical dev don't deliver it yet; seed the documented TEST-ONLY 32-byte
+// value (??= keeps a real secret authoritative) so the encrypt registry
+// resolves a key instead of fail-closing to 503 doc_encryption_unavailable.
+const TEST_DOC_KEY_B64 = Buffer.from('emapp-7d-test-doc-key-32bytes!!!').toString('base64');
+
 beforeAll(async () => {
   await setupTestDatabase();
+  process.env['DOC_ENCRYPTION_KEY'] ??= TEST_DOC_KEY_B64;
+  reloadEnv();
   testStart = new Date(Date.now() - 5_000);
   const tag = `s7b-stepup-${Date.now()}`;
   org = await createTestOrg(tag, tag);

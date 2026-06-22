@@ -60,7 +60,14 @@
 import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 
-import { db, memberships, projectAssignments, users, type IStorageProvider } from '@emapp/db';
+import {
+  db,
+  memberships,
+  projectAssignments,
+  reloadEnv,
+  users,
+  type IStorageProvider,
+} from '@emapp/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { providerPool } from '../../../../../packages/db/src/client';
@@ -297,8 +304,16 @@ async function extractionCountForApartment(apartmentId: string): Promise<number>
   }
 }
 
+// Gate-6: tabu-create RE-ENCRYPTS the source נסח in place when it flips it
+// sensitive — so create() needs DOC_ENCRYPTION_KEY. CI / Infisical dev don't
+// deliver it yet; seed the documented TEST-ONLY 32-byte value (??= keeps a real
+// secret authoritative) so the encrypt registry resolves a key.
+const TEST_DOC_KEY_B64 = Buffer.from('emapp-7d-test-doc-key-32bytes!!!').toString('base64');
+
 beforeAll(async () => {
   await setupTestDatabase();
+  process.env['DOC_ENCRYPTION_KEY'] ??= TEST_DOC_KEY_B64;
+  reloadEnv();
   const tag = `s7a-tabu-${Date.now()}`;
   org = await createTestOrg(tag, tag);
   otherOrg = await createTestOrg(`${tag}-b`, `${tag}-b`);

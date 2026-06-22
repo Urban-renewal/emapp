@@ -14,7 +14,7 @@
 import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 
-import type { IStorageProvider } from '@emapp/db';
+import { reloadEnv, type IStorageProvider } from '@emapp/db';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { providerPool } from '../../../../../packages/db/src/client';
@@ -25,6 +25,16 @@ import type { AccessTokenPayload } from '../auth/auth.service';
 import { DocumentsService } from './documents.service';
 
 const pool = () => providerPool;
+
+// Gate-6: a PATCH that flips a doc sensitive RE-ENCRYPTS its plaintext object in
+// place, so update() needs DOC_ENCRYPTION_KEY. CI / Infisical dev don't deliver
+// it yet — seed the documented TEST-ONLY 32-byte value (??= keeps a real secret
+// authoritative) so the encrypt registry resolves a key instead of 503-ing.
+const TEST_DOC_KEY_B64 = Buffer.from('emapp-7d-test-doc-key-32bytes!!!').toString('base64');
+function seedDocEncryptionKey(): void {
+  process.env['DOC_ENCRYPTION_KEY'] ??= TEST_DOC_KEY_B64;
+  reloadEnv();
+}
 
 /** Stub storage returning PLAINTEXT source bytes so the Gate-6 in-place
  *  re-encrypt that runs when update() flips a doc sensitive can read → envelope
@@ -89,6 +99,7 @@ describe('S7b hardening — sensitive turn-ON via PATCH (HIGH-1)', () => {
   let org: TestOrg;
   beforeAll(async () => {
     await setupTestDatabase();
+    seedDocEncryptionKey();
     org = await createTestOrg(`s7b-hard1-${Date.now()}`);
   });
   /* shared pools; global teardown closes them */

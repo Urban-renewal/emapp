@@ -27,7 +27,7 @@
 import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 
-import { documents, withTenant } from '@emapp/db';
+import { documents, reloadEnv, withTenant } from '@emapp/db';
 import { RemediationSweepResultSchema } from '@emapp/shared-types';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -110,8 +110,17 @@ async function readDoc(id: string): Promise<{ type: string; sensitive: boolean }
   });
 }
 
+// Gate-6: the APPLY path RE-ENCRYPTS the re-typed plaintext object IN PLACE,
+// so it needs DOC_ENCRYPTION_KEY. CI (and Infisical dev) does not deliver it
+// yet — seed the documented TEST-ONLY 32-byte value (??= keeps a real secret
+// authoritative) and re-snapshot the @emapp/db env so the encrypt registry
+// resolves a key instead of fail-closing to 503 doc_encryption_unavailable.
+const TEST_DOC_KEY_B64 = Buffer.from('emapp-7d-test-doc-key-32bytes!!!').toString('base64');
+
 beforeAll(async () => {
   await setupTestDatabase();
+  process.env['DOC_ENCRYPTION_KEY'] ??= TEST_DOC_KEY_B64;
+  reloadEnv();
   svc = new DocumentsService(storageStub, scanStub, notificationsStub);
   // Unique tag so re-runs against a dirty local DB don't collide on the org slug
   // (the fixed-slug pattern is fine in CI's fresh DB but bites on local re-run).

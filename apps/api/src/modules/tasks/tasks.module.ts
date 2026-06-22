@@ -14,5 +14,8 @@ import { TasksService } from './tasks.service';
   imports: [AuthModule, CalendarEmailModule, NotificationsModule],
   controllers: [TasksController],
   providers: [TasksService],
+  // G1 (Autonomous Master Plan, TaskWatcher) — ProposalsModule reuses
+  // TasksService.create VERBATIM as the `task.create` proposal executor.
+  exports: [TasksService],
 })
 export class TasksModule {}

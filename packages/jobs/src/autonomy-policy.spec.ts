@@ -56,6 +56,10 @@ const EXPECTED_AUTO_EXECUTE: readonly AutonomyActionKind[] = [
   // ELIGIBLE by the boundary (internal+reversible+non-PII+non-outbound). Phase 1
   // still ships propose-not-execute; the classification is the permission ceiling.
   'signature_request.reissue',
+  // G1 TaskWatcher: open a SYSTEM-OWNED task — internal+reversible+non-PII+non-
+  // outbound, so autoExecute-ELIGIBLE by the boundary. G1 still ships propose-and-
+  // confirm (auto-execute is a future owner opt-in); the classification is the ceiling.
+  'task.create',
 ];
 
 describe('AutonomyPolicy — THE ONE BOUNDARY (charter §1)', () => {

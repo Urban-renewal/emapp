@@ -20,6 +20,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { proposals, providerDb } from '@emapp/db';
+import type { CreateTask } from '@emapp/shared-types';
 import { ForbiddenException } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -28,6 +29,7 @@ import { createTestOrg, type TestOrg } from '../../../../../packages/db/test/fac
 import { setupTestDatabase } from '../../../../../packages/db/test/setup';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import type { SignatureRequestsService } from '../signatures/signature-requests.service';
+import type { TaskOrigin, TasksService } from '../tasks/tasks.service';
 
 import { ProposalsService } from './proposals.service';
 
@@ -43,6 +45,21 @@ const fakeSignatures = {
     return { id } as never;
   },
 } as unknown as SignatureRequestsService;
+
+/** Fake TasksService — records create(user, input, origin) calls for the G1
+ *  `task.create` executor. Proves the proposals layer replays the gated method
+ *  with the system-origin stamp + the PII-free composed copy. */
+const taskCreateCalls: Array<{
+  orgId: string;
+  input: CreateTask;
+  origin?: TaskOrigin;
+}> = [];
+const fakeTasks = {
+  create: async (user: AccessTokenPayload, input: CreateTask, origin?: TaskOrigin) => {
+    taskCreateCalls.push({ orgId: user.orgId, input, origin });
+    return { id: randomUUID() } as never;
+  },
+} as unknown as TasksService;
 
 function manager(org: TestOrg): AccessTokenPayload {
   return {
@@ -63,6 +80,8 @@ async function seedProposal(opts: {
   kind: string;
   scopeId?: string;
   dedupKey?: string;
+  scopeType?: string;
+  evidence?: Record<string, unknown>;
 }): Promise<string> {
   const scopeId = opts.scopeId ?? randomUUID();
   const [row] = await providerDb
@@ -71,9 +90,9 @@ async function seedProposal(opts: {
       orgId: opts.orgId,
       kind: opts.kind,
       status: 'pending',
-      scopeType: 'signature_request',
+      scopeType: opts.scopeType ?? 'signature_request',
       scopeId,
-      evidence: { signatureRequestId: scopeId, reason: 'expired_unsigned' },
+      evidence: opts.evidence ?? { signatureRequestId: scopeId, reason: 'expired_unsigned' },
       dedupKey: opts.dedupKey ?? `${opts.kind}:${scopeId}`,
       actorType: 'system',
     })
@@ -90,7 +109,7 @@ async function readStatus(id: string): Promise<string | null> {
 
 beforeAll(async () => {
   await setupTestDatabase();
-  svc = new ProposalsService(fakeSignatures);
+  svc = new ProposalsService(fakeSignatures, fakeTasks);
   orgA = await createTestOrg(`propa-${Date.now()}`, `propa-${Date.now()}`);
   orgB = await createTestOrg(`propb-${Date.now()}`, `propb-${Date.now()}`);
 }, 120_000);
@@ -187,6 +206,66 @@ describe('ProposalsService.approve', () => {
     const id = await seedProposal({ orgId: orgA.id, kind: 'signature_request.reissue' });
     await providerDb.execute(sql`UPDATE proposals SET status = 'rejected' WHERE id = ${id}`);
     await expect(svc.approve(manager(orgA), id)).rejects.toThrow();
+  });
+
+  it('G1 task.create: replays gated tasks.create with the system-origin stamp + PII-free composed copy', async () => {
+    taskCreateCalls.length = 0;
+    const projectId = randomUUID();
+    const dedupKey = `task.create:missing-doc:${projectId}:land_registry`;
+    const id = await seedProposal({
+      orgId: orgA.id,
+      kind: 'task.create',
+      scopeType: 'project',
+      scopeId: projectId,
+      dedupKey,
+      evidence: {
+        condition: 'missing_required_doc',
+        projectId,
+        projectType: 'tama38_1',
+        track: 'tama38',
+        missingDocType: 'land_registry',
+      },
+    });
+
+    const view = await svc.approve(manager(orgA), id);
+    expect(view.status).toBe('applied');
+    expect(await readStatus(id)).toBe('applied');
+
+    // The EXISTING gated tasks.create was replayed exactly once, scoped to the
+    // project, with the SYSTEM-OWNED origin stamp carrying the dedup key.
+    expect(taskCreateCalls).toHaveLength(1);
+    const call = taskCreateCalls[0]!;
+    expect(call.orgId).toBe(orgA.id);
+    expect(call.input.projectId).toBe(projectId);
+    expect(call.origin).toEqual({ source: 'system', originRef: dedupKey });
+    // The composed title/body is PII-free + user-framed (the doc-type label only,
+    // never an owner identity); it carries the נסח-טאבו Hebrew label.
+    expect(call.input.title).toContain('נסח טאבו');
+    expect(call.input.title.toLowerCase()).not.toContain('national');
+
+    // System-attributed audit row for the approve transition.
+    const audit = await providerDb.execute<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM audit_log
+            WHERE org_id = ${orgA.id} AND actor_type = 'system'
+              AND action = 'proposal.approve' AND target_id = ${id}`,
+    );
+    expect(audit.rows[0]?.n).toBe(1);
+  });
+
+  it('G1 task.create: a non-manager is FORBIDDEN', async () => {
+    const id = await seedProposal({
+      orgId: orgA.id,
+      kind: 'task.create',
+      scopeType: 'project',
+      evidence: {
+        condition: 'missing_required_doc',
+        projectId: randomUUID(),
+        projectType: 'tama38_1',
+        track: 'tama38',
+        missingDocType: 'agreement',
+      },
+    });
+    await expect(svc.approve(viewer(orgA), id)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('FAIL-CLOSED: a kind with no registered executor cannot apply', async () => {

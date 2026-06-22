@@ -52,6 +52,10 @@ import { and, eq, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import {
+  PermissionResolutionCache,
+  PermissionService,
+} from '../../common/authz/permission.service';
+import {
   decodeCursor,
   encodeCursor,
   keysetCondition,
@@ -332,6 +336,13 @@ function toDocument(r: DocumentRow): Document {
 @Injectable()
 export class DocumentsService {
   private readonly logger = new Logger(DocumentsService.name);
+
+  // B5 (red-team blocker) — engine-backed permission resolution for the
+  // sensitive-doc gate's defence-in-depth reveal-PII re-assertion. The engine is
+  // dependency-free (it takes the request tx + a per-call cache), so we own one
+  // instance here exactly like AuthorizationGuard does — no DI/constructor churn
+  // (the test harness constructs this service with three positional providers).
+  private readonly permissions = new PermissionService();
 
   constructor(
     @Inject(STORAGE_PROVIDER) private readonly storage: IStorageProvider,
@@ -1172,6 +1183,27 @@ export class DocumentsService {
    * per-record visibility checks (never an existence oracle).
    */
   private async assertPiiUnlocked(tx: TenantTx, user: AccessTokenPayload): Promise<void> {
+    // B5 (red-team blocker, 2026-06-22) — DEFENCE IN DEPTH. The step-up
+    // unlock IS the cleartext-PII gate (a sensitive doc is national_id-dense),
+    // so honoring an unlock requires the caller to ACTUALLY hold the
+    // reveal-PII capability NOW — re-resolved from the live engine, not trusted
+    // from the token. The controller already gates the unlock endpoints on
+    // `owners.reveal_pii`, but this re-assertion closes the residual window: a
+    // pre-existing / forged `pii_unlocked_at` (e.g. stamped before a role lost
+    // the permission, or planted) can NEVER be leveraged by a role that does
+    // not currently hold reveal-PII. A Viewer (documents.read+download but NOT
+    // owners.reveal_pii) is rejected here even with a valid unlock row.
+    const cache = new PermissionResolutionCache();
+    const effective = await this.permissions.effectivePermissions(
+      { id: user.sub, orgId: user.orgId },
+      { type: 'org', id: user.orgId },
+      tx,
+      cache,
+    );
+    if (!effective.has('owners.reveal_pii')) {
+      throw PII_STEP_UP_REQUIRED;
+    }
+
     const { security } = await getOrgSettings(tx, user.orgId);
     const ttlMs = security.piiUnlockTtlMinutes * 60_000;
     // auth_sessions is auth-infra (no RLS; app_user has SELECT). An

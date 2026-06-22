@@ -67,6 +67,29 @@ export async function createTestOrg(name: string, slug?: string): Promise<TestOr
     acceptedAt: new Date(),
   });
 
+  // Engine-backed authorization (IAM slice 5) resolves a user's effective
+  // permissions from `role_assignments ⋈ role_permissions`, NOT from the
+  // legacy `memberships.role`. A real org's manager gets an org-scoped
+  // assignment to the system `manager` role at signup/backfill; the factory
+  // mirrors that so the seeded manager actually HOLDS the manager permission
+  // set (incl. owners.reveal_pii). Without this, service-level engine checks
+  // (e.g. the sensitive-doc PII gate's reveal-PII re-assertion) would resolve
+  // an EMPTY set for the factory manager and wrongly deny. Best-effort: the
+  // system roles are seeded globally by the migrations (org_id IS NULL); skip
+  // silently if absent so non-IAM suites that don't need it still get an org.
+  const sysMgr = await providerPool.query<{ id: string }>(
+    `SELECT id FROM roles WHERE org_id IS NULL AND is_system = true AND key = 'manager' LIMIT 1`,
+  );
+  const managerRoleId = sysMgr.rows[0]?.id;
+  if (managerRoleId) {
+    await providerPool.query(
+      `INSERT INTO role_assignments (user_id, role_id, scope_type, scope_id, granted_at)
+       VALUES ($1, $2, 'org', $3, now())
+       ON CONFLICT (user_id, role_id, scope_type, scope_id) DO NOTHING`,
+      [manager.id, managerRoleId, org.id],
+    );
+  }
+
   const testProjects = await withTenant(org.id, async (tx) => {
     const [proj1] = await tx
       .insert(projects)

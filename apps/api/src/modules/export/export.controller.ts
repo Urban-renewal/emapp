@@ -17,7 +17,15 @@ import { ExportService, type ProjectExportInput } from './export.service';
 import { PdfExportService } from './pdf-export.service';
 
 const UuidParam = new ZodValidationPipe(z.string().uuid());
-const FormatQuery = z.object({ format: z.enum(['xlsx', 'pdf']).default('xlsx') });
+// B6 (DOCUMENT-SECURITY-AUDIT) — `pii` opts the export INTO cleartext
+// national_id/phone columns. Default `masked` preserves the D.54 reveal-on-
+// demand posture (no step-up needed). `full` emits cleartext PII and is gated
+// in the composer by the SAME step-up unlock that guards a sensitive document
+// download (throws `pii_step_up_required` 403 without a valid session unlock).
+const FormatQuery = z.object({
+  format: z.enum(['xlsx', 'pdf']).default('xlsx'),
+  pii: z.enum(['masked', 'full']).default('masked'),
+});
 
 /**
  * V11 B.S10 — Project export endpoint (Phase 7).
@@ -68,7 +76,8 @@ export class ExportController {
     @Res({ passthrough: true }) reply: FastifyReply,
     @CurrentUser() user: AccessTokenPayload,
     @Param('id', UuidParam) projectId: string,
-    @Query(new ZodValidationPipe(FormatQuery)) query: { format: 'xlsx' | 'pdf' },
+    @Query(new ZodValidationPipe(FormatQuery))
+    query: { format: 'xlsx' | 'pdf'; pii: 'masked' | 'full' },
   ): Promise<Buffer> {
     // M2 fix — the endpoint now gates on `export.run` (Manager/Admin/Owner),
     // not `projects.read`. This closes the viewer/agent export leak: a read-only
@@ -103,7 +112,18 @@ export class ExportController {
       );
     }
 
-    const composed = await this.composer.composeProjectExport(user, projectId, query.format);
+    // B6 — `pii=full` requests cleartext national_id/phone columns. The
+    // composer gates that mode on the SAME step-up unlock a sensitive document
+    // download requires (throws `pii_step_up_required` 403 without it). The
+    // rate-limit slot above is consumed BEFORE the gate, matching the existing
+    // ordering (a 403 still costs the caller a slot — no free probing loop).
+    const composed = await this.composer.composeProjectExport(
+      user,
+      projectId,
+      query.format,
+      query.pii,
+    );
+    const piiIncluded = composed.piiIncluded;
 
     // Wave 5 E-C2 (errors audit 2026-05-28) — PII hygiene: pre-extract
     // the only field the post-render header logic needs (project name),
@@ -147,7 +167,10 @@ export class ExportController {
       reply.raw.off('close', onClose);
       const errorTag =
         e instanceof Error ? (e.name === 'Error' ? 'render_error' : e.name) : 'render_error';
-      await this.composer.auditExportOutcome(user, projectId, query.format, 'failed', { errorTag });
+      await this.composer.auditExportOutcome(user, projectId, query.format, 'failed', {
+        errorTag,
+        piiIncluded,
+      });
       throw e;
     }
 
@@ -163,6 +186,7 @@ export class ExportController {
     // row is the gate; this one is the outcome marker).
     await this.composer.auditExportOutcome(user, projectId, query.format, 'delivered', {
       bytes: buf.byteLength,
+      piiIncluded,
     });
 
     // ── Content-Disposition with Hebrew-safe filename ────────────────

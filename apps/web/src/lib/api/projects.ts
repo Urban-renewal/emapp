@@ -11,6 +11,7 @@
 import {
   ApartmentHoldoutsResponseSchema,
   ApartmentSignatureProgressSchema,
+  DocumentChecklistSchema,
   ProjectLeverageSchema,
   ProjectListItemSchema,
   ProjectSchema,
@@ -18,6 +19,7 @@ import {
   type ApartmentHoldout,
   type ApartmentSignatureProgress,
   type CreateProject,
+  type DocumentChecklist,
   type Project,
   type ProjectLeverage,
   type ProjectListItem,
@@ -154,6 +156,19 @@ export async function getProjectLeverage(id: string): Promise<ProjectLeverage> {
   const res = await apiClient.get<unknown>(`/projects/${id}/leverage`);
   const data = unwrap(res);
   return ProjectLeverageDataSchema.parse({ data }).data;
+}
+
+// DH2 (V13) — the ADVISORY project document-checklist: the REQUIRED doc TYPES
+// per renewal track + present/missing auto-tick + completeness %. NO PII on the
+// wire (no document ids/names — only type keys + booleans + counts). Same coarse
+// `projects.read` gate as the board. Defensive `.parse()` per the FE-doesn't-
+// trust-the-wire convention.
+const DocumentChecklistDataSchema = z.object({ data: DocumentChecklistSchema });
+
+export async function getDocumentChecklist(id: string): Promise<DocumentChecklist> {
+  const res = await apiClient.get<unknown>(`/projects/${id}/document-checklist`);
+  const data = unwrap(res);
+  return DocumentChecklistDataSchema.parse({ data }).data;
 }
 
 export async function createProject(body: CreateProject): Promise<Project> {

@@ -7,3 +7,4 @@ export * from './audit-retention-job';
 export * from './signature-expiry-job';
 export * from './mapping-fingerprint';
 export * from './producer';
+export * from './autonomy-policy';

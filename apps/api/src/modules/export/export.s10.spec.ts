@@ -25,6 +25,7 @@
 import {
   apartments,
   auditLog,
+  authSessions,
   buildings,
   encryptOwnerPii,
   memberships,
@@ -173,6 +174,37 @@ function userOf(o: TestOrg, role: 'manager' | 'agent' | 'viewer' = 'manager'): A
     // sid must be a valid UUID — audit_log.session_id is `uuid` typed
     // and pg validates at the parameter binding layer.
     sid: '00000000-0000-0000-0000-000000000000',
+    type: 'access',
+    iat: 0,
+    exp: 0,
+  } as unknown as AccessTokenPayload;
+}
+
+/**
+ * B6 — create a real `auth_sessions` row for the org's user and return a
+ * payload whose `sid` points at it. `unlocked: true` stamps `pii_unlocked_at`
+ * now() (a VALID step-up unlock); `false`/omitted leaves it NULL (locked).
+ * auth_sessions is auth-infra (no RLS), so we use the bare `db` — same
+ * pattern the factories use for user/membership setup.
+ */
+async function makeSessionUser(
+  o: TestOrg,
+  opts: { unlocked?: boolean; unlockedAt?: Date } = {},
+): Promise<AccessTokenPayload> {
+  const [sess] = await db
+    .insert(authSessions)
+    .values({
+      userId: o.users[0]!.id,
+      tokenHash: `b6-${Date.now()}-${Math.random()}`,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      piiUnlockedAt: opts.unlocked ? (opts.unlockedAt ?? new Date()) : null,
+    })
+    .returning({ id: authSessions.id });
+  return {
+    sub: o.users[0]!.id,
+    orgId: o.id,
+    role: 'manager',
+    sid: sess!.id,
     type: 'access',
     iat: 0,
     exp: 0,
@@ -597,5 +629,106 @@ describe('V11 B.S10 · ExportComposerService — project export (Phase 7)', () =
     expect(row).toBeDefined();
     expect(row!.action).toBe('project.export.failed');
     expect((row!.afterState as { error?: string }).error).toBe('TimeoutError');
+  });
+
+  // ── B6 (DOCUMENT-SECURITY-AUDIT) — full-PII export requires step-up ──────
+  describe('B6 — full-PII export step-up gate', () => {
+    it('B6.1) default (masked) export needs NO step-up — masked cleartext, pii_included=false', async () => {
+      // No session unlock at all — the masked path must still serve.
+      const { input, piiIncluded } = await svc.composeProjectExport(
+        userOf(orgA),
+        orgA.projects[0]!.id,
+        'xlsx',
+        // piiMode defaults to 'masked'
+      );
+      expect(piiIncluded).toBe(false);
+      const allOwners = input.buildings.flatMap((b) => b.apartments.flatMap((a) => a.owners));
+      expect(allOwners.length).toBeGreaterThan(0);
+      // Every national_id is masked — no cleartext leaks on the default path.
+      expect(allOwners.every((o) => o.nationalId!.startsWith('•'))).toBe(true);
+      expect(allOwners.some((o) => o.nationalId === '300000010')).toBe(false);
+    });
+
+    it('B6.2) full export WITHOUT a valid unlock → 403 pii_step_up_required (no cleartext served)', async () => {
+      const locked = await makeSessionUser(orgA, { unlocked: false });
+      await expect(
+        svc.composeProjectExport(locked, orgA.projects[0]!.id, 'xlsx', 'full'),
+      ).rejects.toMatchObject({
+        status: 403,
+        response: { error: { code: 'pii_step_up_required' } },
+      });
+    });
+
+    it('B6.2b) full export with an EXPIRED unlock (older than the TTL) → 403 pii_step_up_required', async () => {
+      // piiUnlockTtlMinutes default = 60; stamp it 61 minutes ago → expired.
+      const stale = await makeSessionUser(orgA, {
+        unlocked: true,
+        unlockedAt: new Date(Date.now() - 61 * 60 * 1000),
+      });
+      await expect(
+        svc.composeProjectExport(stale, orgA.projects[0]!.id, 'xlsx', 'full'),
+      ).rejects.toMatchObject({
+        status: 403,
+        response: { error: { code: 'pii_step_up_required' } },
+      });
+    });
+
+    it('B6.3) full export WITH a valid unlock → 200, CLEARTEXT national_id/phone, pii_included=true', async () => {
+      const unlocked = await makeSessionUser(orgA, { unlocked: true });
+      const { input, piiIncluded } = await svc.composeProjectExport(
+        unlocked,
+        orgA.projects[0]!.id,
+        'xlsx',
+        'full',
+      );
+      expect(piiIncluded).toBe(true);
+      const allOwners = input.buildings.flatMap((b) => b.apartments.flatMap((a) => a.owners));
+      const david = allOwners.find((o) => o.name === 'דוד כהן')!;
+      // Full fidelity: the REAL national_id + phone are emitted (the audited,
+      // step-up-gated path — the one legitimate bulk-PII surface).
+      expect(david.nationalId).toBe('300000010');
+      expect(david.phone).toBe('0501110001');
+    });
+
+    it('B6.4) full export with a valid unlock writes an audit row with pii_included=true and NO PII', async () => {
+      const unlocked = await makeSessionUser(orgA, { unlocked: true });
+      await svc.composeProjectExport(unlocked, orgA.projects[0]!.id, 'xlsx', 'full');
+      const [row] = await withTenant(orgA.id, (tx) =>
+        tx
+          .select({ afterState: auditLog.afterState })
+          .from(auditLog)
+          .where(
+            and(
+              eq(auditLog.action, 'project.export.requested'),
+              eq(auditLog.targetId, orgA.projects[0]!.id),
+              eq(auditLog.sessionId, unlocked.sid),
+            ),
+          )
+          .orderBy(desc(auditLog.createdAt))
+          .limit(1),
+      );
+      expect(row).toBeDefined();
+      const after = row!.afterState as { piiIncluded?: boolean; rowCount?: number };
+      expect(after.piiIncluded).toBe(true);
+      expect(after.rowCount).toBeGreaterThan(0);
+      // PII-never-logged: the audit row's serialized JSON must NOT contain any
+      // owner national_id or phone — counts + flags only.
+      const json = JSON.stringify(row!.afterState);
+      expect(json).not.toContain('300000010'); // David's national_id
+      expect(json).not.toContain('0501110001'); // David's phone
+    });
+
+    it('B6.5) a valid unlock does NOT change the MASKED default — masked stays masked, pii_included=false', async () => {
+      const unlocked = await makeSessionUser(orgA, { unlocked: true });
+      const { input, piiIncluded } = await svc.composeProjectExport(
+        unlocked,
+        orgA.projects[0]!.id,
+        'xlsx',
+        'masked',
+      );
+      expect(piiIncluded).toBe(false);
+      const allOwners = input.buildings.flatMap((b) => b.apartments.flatMap((a) => a.owners));
+      expect(allOwners.every((o) => o.nationalId!.startsWith('•'))).toBe(true);
+    });
   });
 });

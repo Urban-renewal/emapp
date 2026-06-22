@@ -51,15 +51,24 @@ describe('PERF-3 — projects/documents list composite index', () => {
   // archived_at IS NULL + created_at/id ordering, so the same index applies.
   async function listPlan(table: 'projects' | 'documents'): Promise<string> {
     return withTenant(org.id, async (tx) => {
-      // Disable seq scan AND bitmap scan so the planner must reveal whether an
-      // index can serve the ORDER BY without a Sort. Bitmap scans use the index
-      // but lose row order (they'd still need a Sort), so on a tiny table the
-      // planner would otherwise pick bitmap+Sort and mask the result. With both
-      // off, the only sort-free path is a plain ordered Index Scan — which
-      // exists only when an index covers this exact ordering. tx-local — both
-      // revert on COMMIT.
+      // Disable seq scan, bitmap scan AND sort so the planner must reveal
+      // whether an index can serve the ORDER BY without a Sort. Bitmap scans use
+      // the index but lose row order (they'd still need a Sort), so on a tiny
+      // table the planner would otherwise pick bitmap+Sort and mask the result.
+      // `enable_sort = off` closes the remaining flake: on a freshly-created
+      // EMPTY test org (no stats), sorting ~0 rows is near-free, so the planner
+      // could pick a NON-partial org-leading index (idx_projects_org /
+      // idx_projects_org_type) + a cheap Sort over the partial ordered index —
+      // failing the `toContain` assertion non-deterministically (same commit
+      // passed on the PR run, failed on the post-merge main run). With sort
+      // penalized too, the ONLY cheap path is a plain ordered Index Scan — which
+      // exists only when an index covers this exact ordering. The guard's
+      // meaning is preserved: if the ordered index were missing there is still
+      // no sort-free path, so `toContain(idx_..._org_created)` still fails.
+      // tx-local — all revert on COMMIT.
       await tx.execute(sql`SET LOCAL enable_seqscan = off`);
       await tx.execute(sql`SET LOCAL enable_bitmapscan = off`);
+      await tx.execute(sql`SET LOCAL enable_sort = off`);
       const res = await tx.execute(
         sql`EXPLAIN SELECT id FROM ${sql.identifier(table)}
               WHERE archived_at IS NULL

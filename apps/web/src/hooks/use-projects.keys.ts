@@ -53,3 +53,12 @@ export function projectsListQueryKey(
 export function projectQueryKey(id: string, locale: 'he' | 'en') {
   return [...PROJECTS_KEY, 'one', id, locale] as const;
 }
+
+/**
+ * Shape is `['projects', 'document-checklist', id, locale]` — the advisory
+ * per-project required-docs checklist (DH2/V13). Locale-keyed because the
+ * adapter resolves missing doc-types to localized labels in `select`.
+ */
+export function projectDocumentChecklistQueryKey(id: string, locale: 'he' | 'en') {
+  return [...PROJECTS_KEY, 'document-checklist', id, locale] as const;
+}

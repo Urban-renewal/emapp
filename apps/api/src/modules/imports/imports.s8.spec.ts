@@ -91,10 +91,22 @@ class FakeProducer implements IJobProducer {
  *  size" cases. */
 class FakeStorage {
   private nextHead: { contentLength: number } | null = null;
+  /** B7 — capture the opts the service binds into the presigned PUT so a test
+   *  can prove the import upload is create-only + checksum-bound (mirrors the
+   *  documents anti-overwrite contract, #500). */
+  public lastUploadOpts: {
+    createOnly?: boolean;
+    contentSha256Hex?: string;
+    contentType?: string;
+  } | null = null;
   setNextHead(meta: { contentLength: number } | null): void {
     this.nextHead = meta;
   }
-  async getUploadUrl(): Promise<string> {
+  async getUploadUrl(
+    _key: string,
+    opts?: { createOnly?: boolean; contentSha256Hex?: string; contentType?: string },
+  ): Promise<string> {
+    this.lastUploadOpts = opts ?? null;
     return 'https://fake-storage.test/upload/key';
   }
   async getDownloadUrl(): Promise<string> {
@@ -221,6 +233,29 @@ describe('Phase 6 S8 · §A — POST /imports (create)', () => {
     expect(created).toBeDefined();
     expect(created!.actorType).toBe('user');
     expect(created!.actorId).toBe(orgA.users[0]!.id);
+  }, 30_000);
+
+  it('A1b) presigned PUT is create-only + checksum-bound to the BARE create-declared hash (B7 anti-דריסה, mirrors documents #500)', async () => {
+    const bareHex = 'b'.repeat(64);
+    const result = await svc.create(userOf(orgA, 'manager'), {
+      projectId: orgA.projects[0]!.id,
+      fileName: 'bound.xlsx',
+      fileSizeBytes: 8192,
+      fileContentHash: bareHex,
+      dryRun: false,
+      requireConfirm: false,
+    });
+    expect(result.uploadUrl).toMatch(/^https:\/\//);
+    // The service must bind the anti-overwrite guards into the presign call.
+    expect(storage.lastUploadOpts?.createOnly, 'import presign must be create-only').toBe(true);
+    // It must pass the BARE hex (NOT the `sha256:`-prefixed DB value) so the
+    // provider base64-encodes a valid 32-byte digest — the same value the FE
+    // sends as x-amz-checksum-sha256.
+    expect(
+      storage.lastUploadOpts?.contentSha256Hex,
+      'checksum binding must be the bare create-declared hex, un-prefixed',
+    ).toBe(bareHex);
+    expect(storage.lastUploadOpts?.contentSha256Hex).not.toMatch(/^sha256:/);
   }, 30_000);
 
   it('A2) Viewer is rejected with ForbiddenException', async () => {

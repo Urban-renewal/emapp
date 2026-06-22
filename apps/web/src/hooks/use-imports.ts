@@ -10,6 +10,7 @@ import {
   confirmImport,
   createImport,
   getImport,
+  hexSha256ToBase64,
   listImportErrors,
   listImports,
   sha256OfBlob,
@@ -99,7 +100,14 @@ export function useUploadImport() {
       const created = await createImport(body);
       const mime =
         args.file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      await uploadToPresignedXhr(created.uploadUrl, args.file, mime, args.onProgress);
+      // B7 — the BE signed `If-None-Match: *` + `x-amz-checksum-sha256` into the
+      // presigned URL (create-only + checksum-bound, mirroring documents #500).
+      // Send the SAME sha256 we declared at create (base64-of-raw-digest) so the
+      // bound checksum and the sent checksum match; R2 rejects otherwise.
+      await uploadToPresignedXhr(created.uploadUrl, args.file, mime, args.onProgress, {
+        createOnly: true,
+        contentSha256Base64: hexSha256ToBase64(contentHash),
+      });
       const started = await startImport(created.import.id);
       return started;
     },

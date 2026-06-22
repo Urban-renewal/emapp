@@ -172,6 +172,35 @@ NOT wave a slow interaction away as "compile" without re-measuring. Report the m
 per interaction in the walk evidence, not "felt fast". (Backup: memory
 `feedback_sub_second_interaction_budget`.)
 
+**OUTCOME, NOT MECHANICS — acceptance is the real-world EFFECT, end-to-end (owner 2026-06-23,
+anchored).** A 2xx + optimistic UI update + a refetch is the ACTOR's MECHANICAL confirmation;
+it is NOT acceptance. For ANY state-changing action, the walk MUST verify the action's PURPOSE
+actually happened, end-to-end, for EVERY party it affects — generically, for every action:
+
+1. **Propagation to the affected party.** If approving a proposal reissues a signature request
+   to an apartment owner, LOG IN AS that owner (or inspect their real surface) and confirm they
+   ACTUALLY received it. "The actor saw 201" proves the API ran — NOT that the recipient got
+   anything. Verify the downstream artifact exists where the affected party would see it.
+2. **Notifications actually fire.** If an action should alert a party (bell, SMS, email,
+   inbox), confirm the alert REALLY appears for the recipient (check the bell as them; check
+   the outbound/notification record). A silent state change that should have notified is a FAIL.
+3. **Effect legibility — the situation picture must VISIBLY change.** After the action a human
+   must grasp the NEW state AT A GLANCE. If "everything looks the same" and the only evidence
+   the action happened is a network 201, **the UI FAILED — that's a blocker, not a pass.** State
+   changes must be visible, distinguishable, and self-explaining (what changed, why I'm seeing
+   it, what's next), per the per-role situation-picture-at-a-glance north-star.
+4. **Verify the negative / no silent half-apply:** the actor's view, the affected party's view,
+   and the counters/ledgers/notifications all moved CONSISTENTLY — not one without the others.
+
+**SCALE-READY, MODERN COLLECTIONS (owner 2026-06-23, anchored).** Any list/collection of domain
+entities (signatures, projects, owners, documents, proposals) MUST be designed for HIGH SCALE
+from the start — NOT a flat, undifferentiated "wall" of rows/cards that only reads at demo size.
+At hundreds/thousands of items it must stay scannable + prioritized: grouping, what-needs-
+attention-first, at-a-glance status, progressive disclosure / zoom-in, sort/filter — consistent
+with the situation-picture-at-a-glance north-star (calm, system-manages-by-rules, one-click-
+confirm, zoom-in). A "flat wall" that works only at demo scale is a FAIL, even if every row is
+individually correct.
+
 \### G-RT — Red-team THROUGHOUT + loop-until-closed (every security-sensitive change; default-on for any non-trivial implementation)
 
 An INDEPENDENT red-team (NOT the builder, NOT the builder's own @security PASS) tries to

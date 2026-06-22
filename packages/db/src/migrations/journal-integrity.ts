@@ -175,3 +175,67 @@ export function findUnappliedMigrations(
     .filter((e) => !applied.has(Number(e.when)))
     .map((e) => ({ tag: e.tag, when: e.when }));
 }
+
+/**
+ * Pure detector for the *watermark-vs-journal divergence* variant of M-1
+ * (real incident 2026-06-23). DISTINCT from `findUnappliedMigrations` above:
+ * that one reports EVERY unapplied entry (including normal pending ones above
+ * the tip); THIS one reports only the entries the migrator would SILENTLY SKIP.
+ *
+ * Recall the migrator's apply rule (verified from drizzle-orm 0.45 source):
+ *   watermark = MAX(created_at) over `drizzle.__drizzle_migrations`
+ *   apply(entry)  iff  watermark < entry.when
+ * so an entry with `when <= watermark` is applied iff it is ALREADY in the
+ * applied set — otherwise it is skipped with NO error and `migrate.ts` still
+ * logs "applied successfully".
+ *
+ * The incident: the dev watermark was a leftover pre-renumber `when`
+ * (1783586400000) sitting ABOVE `0079_external_share`'s `when` (1783500000000).
+ * `0079`'s hash was NOT in the applied set, yet its `when` was below the
+ * watermark — so a `db:migrate` would have silently skipped it (table never
+ * created) while reporting success. The static `checkJournalIntegrity` guard
+ * cannot see this because the journal itself is internally monotonic; only the
+ * live applied-state reveals the divergence.
+ *
+ * VIOLATION === `entry.when <= watermark` AND `entry.hash ∉ appliedHashes`.
+ * Entries above the watermark are normal pending migrations (the migrator will
+ * apply them) — never a violation. A fresh db (empty applied set) has watermark
+ * `null`/undefined → no entry is below it → no violation.
+ *
+ * Pure: hashes are pre-computed by the caller (which reads the `.sql` files the
+ * same way drizzle does — sha256 of the raw file content) so this function is
+ * unit-testable with NO filesystem and NO database.
+ */
+export interface WatermarkSkipEntry {
+  idx: number;
+  tag: string;
+  when: number;
+  /** sha256(hex) of the entry's `.sql` file content — drizzle's hash. */
+  hash: string;
+}
+
+export interface WatermarkSkipViolation {
+  idx: number;
+  tag: string;
+  when: number;
+}
+
+export function findWatermarkSkipViolations(input: {
+  appliedHashes: ReadonlySet<string> | readonly string[];
+  /** MAX(created_at) over applied rows. `null`/`undefined` === fresh db. */
+  watermark: number | null | undefined;
+  journalEntries: readonly WatermarkSkipEntry[];
+}): WatermarkSkipViolation[] {
+  // Fresh db: no watermark → nothing can be "below" it → no silent skip.
+  if (input.watermark === null || input.watermark === undefined) return [];
+
+  const applied =
+    input.appliedHashes instanceof Set
+      ? input.appliedHashes
+      : new Set<string>(input.appliedHashes as readonly string[]);
+  const watermark = input.watermark;
+
+  return input.journalEntries
+    .filter((e) => e.when <= watermark && !applied.has(e.hash))
+    .map((e) => ({ idx: e.idx, tag: e.tag, when: e.when }));
+}

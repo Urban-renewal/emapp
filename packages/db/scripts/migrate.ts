@@ -38,6 +38,7 @@
  *   composition; no logic lives there that isn't tested through one
  *   of these helpers.
  */
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -48,7 +49,12 @@ import { Pool, type PoolClient } from 'pg';
 
 import { resolveDbTarget } from '../src/db-target';
 import { env } from '../src/env';
-import { checkJournalIntegrity, type Journal } from '../src/migrations/journal-integrity';
+import {
+  checkJournalIntegrity,
+  findWatermarkSkipViolations,
+  type Journal,
+  type WatermarkSkipEntry,
+} from '../src/migrations/journal-integrity';
 import * as schema from '../src/schema/index';
 
 /**
@@ -74,6 +80,103 @@ export function assertJournalIntegrity(migrationsFolder: string): void {
     const lines = violations.map((v) => `  - [${v.kind}] idx ${v.idx} (${v.tag}): ${v.detail}`);
     throw new Error(
       `Migration journal integrity check failed — refusing to migrate:\n${lines.join('\n')}`,
+    );
+  }
+}
+
+/**
+ * Read each journal entry + the sha256(hex) of its `.sql` file — computed the
+ * EXACT way drizzle's `readMigrationFiles` does it: `sha256(rawFileContent)`,
+ * hex digest, over the whole file (NOT per-statement). Pure read of the
+ * migrations folder; no db. Exported so the runtime-drift preflight composes
+ * over a value the spec can also build by hand.
+ */
+export function readJournalEntryHashes(migrationsFolder: string): WatermarkSkipEntry[] {
+  const journalPath = join(migrationsFolder, 'meta', '_journal.json');
+  if (!existsSync(journalPath)) {
+    throw new Error(`Migration journal not found at ${journalPath} — refusing to migrate.`);
+  }
+  const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as Journal;
+  return (journal.entries ?? []).map((entry) => {
+    const sqlPath = join(migrationsFolder, `${entry.tag}.sql`);
+    const content = readFileSync(sqlPath, 'utf8');
+    return {
+      idx: entry.idx,
+      tag: entry.tag,
+      when: entry.when,
+      hash: createHash('sha256').update(content).digest('hex'),
+    };
+  });
+}
+
+/**
+ * v12+ POST-connect runtime-drift preflight — catches the watermark-vs-journal
+ * divergence variant of M-1 (real incident 2026-06-23) that the pure static
+ * `assertJournalIntegrity` CANNOT see.
+ *
+ * The static guard only proves the journal is internally monotonic. It is blind
+ * to the live db state. The incident: the dev `__drizzle_migrations` watermark
+ * was a leftover pre-renumber `when` (1783586400000) sitting ABOVE
+ * `0079_external_share`'s `when` (1783500000000) — so drizzle's single
+ * MAX(created_at) snapshot would have SILENTLY SKIPPED 0079 (its `when` is below
+ * the watermark, its hash not yet applied) while still logging "applied
+ * successfully". This preflight reads the live applied set, computes the
+ * watermark, and throws if ANY journal entry would be silently skipped.
+ *
+ * Read-only: it SELECTs from `drizzle.__drizzle_migrations` and (on violation)
+ * throws BEFORE drizzle's `migrate()` runs. It NEVER mutates. Fresh db (table
+ * absent / empty) → no watermark → no violation → proceeds silently.
+ *
+ * Exported helper `readJournalEntryHashes` + the pure
+ * `findWatermarkSkipViolations` carry the logic; this function is the thin
+ * db-reading composition.
+ */
+export async function assertNoWatermarkSkip(
+  client: PoolClient,
+  migrationsFolder: string,
+): Promise<void> {
+  // 1) Read the applied set. Handle the table-absent case (fresh db) as "no
+  //    rows" rather than an error — to_regclass returns NULL when the table
+  //    does not exist, letting us branch without catching a 42P01.
+  const tableCheck = await client.query<{ exists: boolean }>(
+    "SELECT to_regclass('drizzle.__drizzle_migrations') IS NOT NULL AS exists",
+  );
+  if (!tableCheck.rows[0]?.exists) {
+    // Fresh db — drizzle will create the table and apply everything in idx
+    // order. No watermark, no possible silent skip.
+    return;
+  }
+
+  const applied = await client.query<{ hash: string; created_at: string | null }>(
+    'SELECT hash, created_at FROM drizzle.__drizzle_migrations',
+  );
+  const appliedHashes = new Set<string>(applied.rows.map((r) => r.hash));
+  const createdAts = applied.rows
+    .map((r) => (r.created_at === null ? null : Number(r.created_at)))
+    .filter((c): c is number => c !== null);
+  // 2) watermark = MAX(created_at) over applied rows. Empty set → fresh-ish db
+  //    (table present, no rows) → null → no violation.
+  const watermark = createdAts.length > 0 ? Math.max(...createdAts) : null;
+
+  // 3) Compute each journal entry's hash drizzle's way, then 4) detect skips.
+  const journalEntries = readJournalEntryHashes(migrationsFolder);
+  const violations = findWatermarkSkipViolations({ appliedHashes, watermark, journalEntries });
+
+  if (violations.length > 0) {
+    const lines = violations.map(
+      (v) => `  - idx ${v.idx} (${v.tag}): when ${v.when} <= db watermark ${watermark}`,
+    );
+    throw new Error(
+      'Migration watermark-skip check failed — refusing to migrate:\n' +
+        `${lines.join('\n')}\n` +
+        `The db's __drizzle_migrations watermark (${watermark}) is at or above the ` +
+        'above journal `when`s whose migrations are NOT yet applied. Drizzle takes a ' +
+        'single MAX(created_at) snapshot and would SILENTLY SKIP these while reporting ' +
+        'success (the M-1 watermark-divergence class, real incident 2026-06-23).\n' +
+        'Remediation: either apply the listed migration SQL out-of-band and insert its ' +
+        'row into drizzle.__drizzle_migrations (hash + created_at = the journal `when`), ' +
+        'or reconcile the journal/watermark so no unapplied entry sits below the watermark. ' +
+        'Do NOT just bump the `when` of an already-applied entry — that re-applies it elsewhere.',
     );
   }
 }
@@ -230,6 +333,13 @@ async function main() {
       PII_ENCRYPTION_KEY: env.PII_ENCRYPTION_KEY!,
       PII_HASH_KEY: env.PII_HASH_KEY!,
     });
+
+    // Preflight #1 — POST-connect runtime-drift guard. The pure preflight #0
+    // above proves the journal is internally healthy; THIS one reads the live
+    // applied set and throws if the db watermark would make drizzle silently
+    // skip an unapplied entry (the M-1 watermark-divergence incident). Runs on
+    // the same dedicated client, read-only, before any apply.
+    await assertNoWatermarkSkip(client, './migrations');
 
     // Bind drizzle to THE SAME client — no pool checkout in between,
     // so the GUCs are guaranteed to be the ones the migrator sees.

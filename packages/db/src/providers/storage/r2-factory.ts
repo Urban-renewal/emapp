@@ -71,7 +71,12 @@ export interface R2SdkDeps {
     client: any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     command: any,
-    opts: { expiresIn: number },
+    // B7 — `signableHeaders`/`unhoistableHeaders` are part of the real SDK's
+    // `RequestPresigningArguments`; the provider passes them so the create-only
+    // + checksum headers are actually SIGNED into the URL (and thus enforced by
+    // R2), not merely carried on the command. Optional so existing call sites
+    // that pass only `{ expiresIn }` still satisfy this contract.
+    opts: { expiresIn: number; signableHeaders?: Set<string>; unhoistableHeaders?: Set<string> },
   ) => Promise<string>;
   /** Command constructors used by R2StorageProvider. */
   readonly PutObjectCommand: new (opts: {
@@ -79,6 +84,9 @@ export interface R2SdkDeps {
     Key: string;
     ContentType: string;
     ContentLength: number;
+    // B7 — create-only + checksum-bound presigned PUT (anti-overwrite).
+    IfNoneMatch?: string;
+    ChecksumSHA256?: string;
   }) => unknown;
   readonly GetObjectCommand: new (opts: {
     Bucket: string;
@@ -86,7 +94,12 @@ export interface R2SdkDeps {
     ResponseContentDisposition?: string;
   }) => unknown;
   readonly DeleteObjectCommand: new (opts: { Bucket: string; Key: string }) => unknown;
-  readonly HeadObjectCommand: new (opts: { Bucket: string; Key: string }) => unknown;
+  readonly HeadObjectCommand: new (opts: {
+    Bucket: string;
+    Key: string;
+    // B7 — required so HEAD returns x-amz-checksum-sha256 (finalize gate).
+    ChecksumMode?: 'ENABLED';
+  }) => unknown;
   readonly ListObjectsV2Command: new (opts: { Bucket: string; MaxKeys: number }) => unknown;
   /** Optional client tuning. If omitted, the SDK's defaults apply
    *  (30s socket timeout, infinite connection timeout, 3 attempts).

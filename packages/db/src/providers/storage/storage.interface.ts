@@ -4,6 +4,23 @@ export interface UploadUrlOptions {
   contentType: string;
   maxSizeBytes: number;
   ttlSeconds: number;
+  /** SECURITY (B7 / DOCUMENT-SECURITY-AUDIT.md): the client-declared sha256
+   *  content hash (hex, lowercase) to BIND into the presigned PUT via
+   *  `x-amz-checksum-sha256`. R2/S3 rejects the PUT (BadDigest) if the
+   *  uploaded bytes don't hash to this value — so a leaked PUT URL cannot
+   *  store arbitrary attacker bytes, and the stored object's checksum is
+   *  STORAGE-attested (not just client-declared) for the finalize gate.
+   *  Hex is converted to the base64 the S3 checksum header expects by the
+   *  provider. Omitted ⇒ no checksum binding (legacy / non-hashed callers). */
+  contentSha256Hex?: string;
+  /** SECURITY (B7): when true the presigned PUT is CREATE-ONLY — the
+   *  provider sets `If-None-Match: '*'` so storage REJECTS a PUT to a key
+   *  that already holds an object (HTTP 412 PreconditionFailed). This closes
+   *  the scan-then-swap TOCTOU (דריסה): a leaked/re-used PUT URL can upload
+   *  the object ONCE; any second PUT (overwrite) to the same key is rejected
+   *  by storage, never silently accepted. Document keys are server-random and
+   *  used for exactly one upload, so create-only is always correct here. */
+  createOnly?: boolean;
 }
 
 export interface DownloadUrlOptions {

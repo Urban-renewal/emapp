@@ -40,7 +40,23 @@ interface S3ClientLike {
 }
 
 interface SignedUrlFn {
-  (client: S3ClientLike, command: unknown, opts: { expiresIn: number }): Promise<string>;
+  (
+    client: S3ClientLike,
+    command: unknown,
+    /** Mirrors `@aws-sdk/s3-request-presigner`'s `RequestPresigningArguments`
+     *  for the subset we use. `signableHeaders` forces a header into the
+     *  presigned URL's `X-Amz-SignedHeaders` (so R2 ENFORCES it — the client
+     *  MUST send it). `unhoistableHeaders` keeps a header OUT of the query
+     *  string (it stays a header the client sends, rather than being hoisted
+     *  and baked into the URL). B7: without `signableHeaders` the SDK does NOT
+     *  sign `if-none-match` / `x-amz-checksum-sha256`, so the create-only +
+     *  checksum binding would be COSMETIC (R2 wouldn't require them). */
+    opts: {
+      expiresIn: number;
+      signableHeaders?: Set<string>;
+      unhoistableHeaders?: Set<string>;
+    },
+  ): Promise<string>;
 }
 
 interface R2Deps {
@@ -54,6 +70,13 @@ interface R2Deps {
     /** 7d server-side putObject — the real SDK accepts the body inline;
      *  presign-minting call sites simply omit it. */
     Body?: Buffer;
+    /** B7 — create-only guard. `'*'` makes S3/R2 reject a PUT to an
+     *  already-existing key (412 PreconditionFailed). Presigned into the
+     *  URL so the storage layer enforces single-shot upload (anti-דריסה). */
+    IfNoneMatch?: string;
+    /** B7 — base64 sha256 the uploaded bytes MUST hash to. S3/R2 rejects
+     *  (BadDigest) on mismatch, binding the URL to the declared content. */
+    ChecksumSHA256?: string;
   }) => unknown;
   GetObjectCommand: new (opts: {
     Bucket: string;
@@ -62,7 +85,15 @@ interface R2Deps {
     ResponseContentType?: string;
   }) => unknown;
   DeleteObjectCommand: new (opts: { Bucket: string; Key: string }) => unknown;
-  HeadObjectCommand: new (opts: { Bucket: string; Key: string }) => unknown;
+  HeadObjectCommand: new (opts: {
+    Bucket: string;
+    Key: string;
+    /** B7 — REQUIRED to make S3/R2 return `ChecksumSHA256` on the HEAD
+     *  response. Without `ChecksumMode:'ENABLED'` the checksum is omitted
+     *  even for objects stored WITH a checksum, which the fail-closed
+     *  finalize gate would (incorrectly) read as "no attestation". */
+    ChecksumMode?: 'ENABLED';
+  }) => unknown;
   ListObjectsV2Command: new (opts: { Bucket: string; MaxKeys: number }) => unknown;
 }
 
@@ -84,13 +115,59 @@ export class R2StorageProvider implements IStorageProvider {
 
   async getUploadUrl(key: string, opts: UploadUrlOptions): Promise<string> {
     return withErrorTelemetry('getUploadUrl', () => {
+      // B7 (DOCUMENT-SECURITY-AUDIT.md) — harden the presigned PUT against
+      // overwrite/tamper (דריסה):
+      //   • createOnly  → `IfNoneMatch:'*'` makes R2 reject a PUT to an
+      //     already-existing key (412). A leaked URL can upload ONCE; a
+      //     second PUT (the scan-then-swap) is refused by storage.
+      //   • contentSha256Hex → bind `x-amz-checksum-sha256` so R2 rejects
+      //     (BadDigest) any bytes that don't hash to the declared value.
+      //     S3's checksum header is base64 of the RAW digest, so we convert
+      //     the hex hash the rest of the app uses into base64 here.
+      // Only bind a checksum when the hex decodes to EXACTLY a 32-byte sha256
+      // digest. `Buffer.from(hex,'hex')` silently DROPS non-hex chars and
+      // truncates odd-length input, so a malformed value would otherwise
+      // produce a wrong-length checksum that R2 rejects with an opaque error.
+      // A malformed/non-canonical hash therefore degrades SAFELY to a
+      // create-only PUT with no checksum binding — and finalize's layer-2
+      // (which compares the real R2-attested checksum against content_hash)
+      // still rejects the mismatch fail-closed. No false-accept either way.
+      const checksumB64 = (() => {
+        if (!opts.contentSha256Hex) return undefined;
+        const raw = Buffer.from(opts.contentSha256Hex, 'hex');
+        return raw.length === 32 ? raw.toString('base64') : undefined;
+      })();
       const cmd = new this.deps.PutObjectCommand({
         Bucket: this.bucket,
         Key: key,
         ContentType: opts.contentType,
         ContentLength: opts.maxSizeBytes,
+        ...(opts.createOnly ? { IfNoneMatch: '*' } : {}),
+        ...(checksumB64 ? { ChecksumSHA256: checksumB64 } : {}),
       });
-      return this.deps.getSignedUrl(this.deps.client, cmd, { expiresIn: opts.ttlSeconds });
+      // B7 — the create-only / checksum guards on the COMMAND are not enough:
+      // the presigner only puts a header into `X-Amz-SignedHeaders` (so R2
+      // ENFORCES it) if the header is in `signableHeaders`. Without this, a
+      // leaked URL could still overwrite (scan-then-swap / דריסה) by issuing a
+      // PUT that simply omits `If-None-Match` / `x-amz-checksum-sha256`. We sign
+      // ONLY the headers we actually set, so legacy callers (no createOnly, no
+      // checksum) keep an unchanged URL. `x-amz-checksum-sha256` is ALSO marked
+      // unhoistable so it stays a request header the client must send (rather
+      // than being hoisted into the query string) — the client then transmits
+      // the same checksum, and R2 verifies the bytes against it (BadDigest on
+      // mismatch). The FE upload path (apps/web .../documents.ts uploadToPresigned)
+      // sends both headers to match.
+      const signableHeaders = new Set<string>();
+      if (opts.createOnly) signableHeaders.add('if-none-match');
+      if (checksumB64) signableHeaders.add('x-amz-checksum-sha256');
+      const presignOpts: {
+        expiresIn: number;
+        signableHeaders?: Set<string>;
+        unhoistableHeaders?: Set<string>;
+      } = { expiresIn: opts.ttlSeconds };
+      if (signableHeaders.size > 0) presignOpts.signableHeaders = signableHeaders;
+      if (checksumB64) presignOpts.unhoistableHeaders = new Set(['x-amz-checksum-sha256']);
+      return this.deps.getSignedUrl(this.deps.client, cmd, presignOpts);
     });
   }
 
@@ -186,7 +263,16 @@ export class R2StorageProvider implements IStorageProvider {
       // socket is torn down when the signal fires. v8 SOLID-6.
       const sendOpts = opts?.signal ? { abortSignal: opts.signal } : undefined;
       const res = (await this.deps.client.send(
-        new this.deps.HeadObjectCommand({ Bucket: this.bucket, Key: key }),
+        // B7 — `ChecksumMode:'ENABLED'` makes R2 return the stored object's
+        // `x-amz-checksum-sha256`, which the finalize integrity gate compares
+        // against the create-declared content hash (tamper-evidence). Omitting
+        // it would yield `undefined` for EVERY object → fail-closed finalize
+        // would reject all legitimate uploads.
+        new this.deps.HeadObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          ChecksumMode: 'ENABLED',
+        }),
         sendOpts,
       )) as HeadObjectResponse;
       if (typeof res?.ContentLength !== 'number') return null;

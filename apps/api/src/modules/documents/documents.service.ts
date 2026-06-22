@@ -165,6 +165,47 @@ function integrityMismatch(field: 'size' | 'hash'): BadRequestException {
   });
 }
 
+/**
+ * B7 (DOCUMENT-SECURITY-AUDIT.md) — normalise a storage-attested sha256
+ * checksum to lowercase hex for comparison against the app's hex
+ * `content_hash`.
+ *
+ * R2/S3 attest the object checksum via `x-amz-checksum-sha256` as base64 of
+ * the RAW 32-byte digest. The rest of the app stores `content_hash` as the
+ * 64-char hex digest. This converts the base64 attestation to hex.
+ *
+ * FAIL-CLOSED: returns `null` for ANY input that is not a real sha256
+ * attestation —
+ *   • `undefined` (the provider attested NO checksum even though it returned
+ *     an object): the finalize gate treats `null` as a mismatch, NOT a pass.
+ *     Because the presigned PUT now binds a checksum, a real object that
+ *     carries none was written outside our bound PUT (tamper) ⇒ reject.
+ *   • a value that doesn't base64-decode to exactly 32 bytes (garbage / a
+ *     truncated header) ⇒ reject.
+ * The caller already accepts a HEX value too (R2 returns base64, but a
+ * defensive 64-char hex input is passed through), so both encodings the
+ * provider could plausibly emit normalise correctly.
+ */
+function decodeStorageChecksumToHex(attested: string | undefined): string | null {
+  if (typeof attested !== 'string' || attested.length === 0) return null;
+  // Already hex (64 lowercase/uppercase hex chars) — pass through normalised.
+  if (/^[0-9a-fA-F]{64}$/.test(attested)) return attested.toLowerCase();
+  // Otherwise expect base64 of the raw 32-byte digest.
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(attested, 'base64');
+  } catch {
+    return null;
+  }
+  // Reject anything that isn't exactly a 32-byte sha256 digest. (Buffer.from
+  // is lenient on non-base64 input, so the length check is the real gate.)
+  if (buf.length !== 32) return null;
+  // Round-trip guard: re-encoding must reproduce the input (modulo padding),
+  // otherwise the input wasn't a clean base64 digest.
+  if (buf.toString('base64').replace(/=+$/, '') !== attested.replace(/=+$/, '')) return null;
+  return buf.toString('hex');
+}
+
 /** Memoized registry, keyed on the raw env value so a SIGHUP `reloadEnv()` key
  *  rotation (or a test that mutates `process.env.DOC_ENCRYPTION_KEY` +
  *  `reloadEnv()`) transparently rebuilds it on next access — WITHOUT re-parsing
@@ -563,6 +604,17 @@ export class DocumentsService {
           contentType: input.mimeType,
           maxSizeBytes: Math.min(input.sizeBytes, DOCUMENT_MAX_SIZE_BYTES),
           ttlSeconds: UPLOAD_URL_TTL_SECONDS,
+          // B7 (DOCUMENT-SECURITY-AUDIT.md) — anti-overwrite hardening of the
+          // presigned PUT. The key is server-random and used for exactly ONE
+          // upload, so:
+          //   • createOnly: storage rejects a PUT to an already-stored key
+          //     (412) — closes scan-then-swap TOCTOU (a leaked/re-used URL
+          //     can't overwrite the scanned object).
+          //   • contentSha256Hex: bind the PUT to the create-declared hash so
+          //     storage rejects (BadDigest) any other bytes — the stored
+          //     object's checksum becomes STORAGE-attested for finalize.
+          createOnly: true,
+          contentSha256Hex: input.contentHash,
         });
       } catch (e) {
         // Compensate: a row with no usable upload URL is useless — archive
@@ -630,6 +682,34 @@ export class DocumentsService {
     };
   }
 
+  /**
+   * B7 re-finalize idempotency rule (shared by the fast-path guard and the
+   * atomic-UPDATE race-loser). The doc is ALREADY finalised (`uploaded_at`
+   * set). Compare the incoming declared {sizeBytes, contentHash} to the STORED
+   * values:
+   *   • MATCH  → idempotent no-op. Return the already-finalised doc so the
+   *     caller resolves to HTTP 200. NOTHING is re-stamped, NO bytes move, and
+   *     NO integrity/scan/purge runs — it's a pure retry (a client whose first
+   *     finalize response was lost to a network blip). Safe because the
+   *     create-only + checksum-bound presigned PUT already makes a
+   *     post-finalize byte swap impossible, so a same-value re-call cannot
+   *     launder anything.
+   *   • DIFFER → 409 `document_already_uploaded`. This is the actual
+   *     laundering/conflict attempt the B7 guard blocks: a second finalize
+   *     trying to re-declare different size/hash over an immutable doc.
+   */
+  private reFinalizeIdempotency(
+    row: DocumentRow,
+    input: FinalizeDocument,
+  ): { row: DocumentRow; mismatch: false; mismatchField: null; idempotent: true } {
+    const sameValues =
+      input.sizeBytes === row.sizeBytes && input.contentHash === row.contentHash;
+    if (!sameValues) {
+      throw new ConflictException({ error: { code: 'document_already_uploaded' } });
+    }
+    return { row, mismatch: false, mismatchField: null, idempotent: true };
+  }
+
   // Integrity gate (TWO-LAYER):
   //   1) CLIENT consistency — the finalize-declared size/hash must match
   //      what was declared at create. Catches a confused/inconsistent
@@ -653,6 +733,26 @@ export class DocumentsService {
         // order to confirm + stamp uploaded_at below.
         const row = await this.loadVisible(tx, user, id, false);
         await requireAgentCapability(tx, user, 'manage_documents');
+        // B7 (DOCUMENT-SECURITY-AUDIT.md) — FINALIZE-ONCE guard, IDEMPOTENT-FOR-
+        // SAME / REJECT-FOR-DIFFERENT. A doc with `uploaded_at` already set is
+        // finalised + immutable; mirrors the sensitive content-upload path's
+        // `document_already_uploaded` guard.
+        //
+        // Retry-safety (idempotency contract — documents-deep.contract DD4): a
+        // client whose first finalize response was lost to a network blip MUST
+        // be able to retry with the SAME declared {sizeBytes, contentHash} and
+        // get the already-finalised doc back (HTTP 200) — a pure no-op that
+        // re-stamps nothing and moves no bytes.
+        //
+        // B7 laundering-protection: a re-finalize with DIFFERENT declared values
+        // is the actual conflict the guard blocks — it gets 409. Because the
+        // presign is create-only + binds x-amz-checksum-sha256, a post-finalize
+        // byte swap is already impossible; so returning 200 on an IDENTICAL
+        // re-call cannot launder anything (no bytes change, nothing re-stamps).
+        // Only a CONFLICTING (different-value) re-finalize is rejected.
+        if (row.uploadedAt) {
+          return this.reFinalizeIdempotency(row, input);
+        }
         // Layer 1: client-consistency. Size is checked FIRST so the thrown
         // error can name the offending field (Slice 5c — actionable
         // mismatch). A truncated re-upload surfaces 'size'; a tampered one
@@ -669,19 +769,68 @@ export class DocumentsService {
         // weaken the gate, but it also MUST NOT block a legitimate
         // finalize on a transient R2 hiccup. We log + treat as "no
         // attestation" (layer-1 stands). Fake → null → no-op.
+        //
+        // B7 — FAIL-CLOSED integrity. Because the presigned PUT now BINDS
+        // x-amz-checksum-sha256 + is create-only, by the time we reach here the
+        // stored bytes PROVABLY hash to content_hash (upload-time enforcement).
+        // Layer-2 RE-VERIFIES that fact at finalize so a byte-swap written
+        // outside our bound PUT can never be laundered into a finalised doc.
+        //
+        // HIGH-1 (round-2 red-team): R2 is S3-COMPATIBLE, not S3 — it may NOT
+        // echo `x-amz-checksum-sha256` on HEAD for a presigned-PUT-supplied
+        // checksum. Treating an absent HEAD-checksum as a REJECT would false-
+        // reject EVERY legitimate upload on such a deployment (safe direction,
+        // but a launch blocker). FIX (Option A — R2-independent re-verify):
+        //   • head() attests a checksum  → verify it (defense-in-depth, no I/O).
+        //   • head() present but NO checksum → FALL BACK to streaming the
+        //     object bytes and recomputing sha256 SERVER-SIDE, then compare to
+        //     content_hash. This re-verifies integrity WITHOUT depending on R2
+        //     echoing the checksum. Match → accept; mismatch → reject + purge.
+        //   • head() === null (provider can't attest, e.g. the in-memory Fake)
+        //     → no storage-attested fact; layer-1 legitimately stands alone.
+        // Every branch stays FAIL-CLOSED: a mismatch (attested OR recomputed)
+        // rejects; only a positively-verified match (or "no attestation at
+        // all") proceeds.
         if (mismatchField === null) {
           try {
             const head = await this.storage.head(row.r2Key);
             if (head !== null) {
               const sizeOk = head.contentLength === row.sizeBytes;
-              const hashOk =
-                head.checksumSha256 === undefined || head.checksumSha256 === row.contentHash;
+              // R2 attests the checksum as base64 of the raw digest; the app
+              // stores content_hash as hex. Normalise the attestation to hex
+              // before comparing. A non-base64 value normalises to null and
+              // triggers the byte-recompute fallback below (fail-closed).
+              const attestedHashHex = decodeStorageChecksumToHex(head.checksumSha256);
+              let hashOk: boolean;
+              if (attestedHashHex !== null) {
+                // Storage attested a checksum — verify it directly (no extra I/O).
+                hashOk = attestedHashHex === row.contentHash.toLowerCase();
+              } else {
+                // HIGH-1 — no HEAD checksum (R2 omitted it). Re-verify by
+                // streaming the bytes and recomputing sha256 ourselves. Bounded
+                // by DOCUMENT_MAX_SIZE_BYTES (the presign already capped the
+                // PUT). Only reached on the absent-checksum path.
+                const bytes = await readObjectBytes(
+                  this.storage,
+                  row.r2Key,
+                  DOCUMENT_MAX_SIZE_BYTES,
+                );
+                const recomputedHex = createHash('sha256').update(bytes).digest('hex');
+                hashOk = recomputedHex === row.contentHash.toLowerCase();
+              }
               if (!sizeOk) mismatchField = 'size';
               else if (!hashOk) mismatchField = 'hash';
             }
           } catch (e: unknown) {
+            // A storage failure here (head() OR the recompute read) MUST NOT
+            // silently weaken the gate, but also MUST NOT block a legitimate
+            // finalize on a transient R2 hiccup. We log + treat as "no
+            // storage-attested fact" — layer-1 (client-consistency) stands
+            // alone, exactly as for head()===null. (The create-only +
+            // checksum-bound PUT already guarantees the stored bytes match;
+            // this re-verify is defense-in-depth, not the sole boundary.)
             this.logger.error(
-              `storage.head() failed during finalize (doc=${row.id}): ${
+              `storage integrity re-verify failed during finalize (doc=${row.id}): ${
                 e instanceof Error ? e.message : 'unknown'
               }`,
             );
@@ -701,8 +850,16 @@ export class DocumentsService {
             targetId: row.id,
             sessionId: user.sid,
           });
-          return { row, mismatch: true as const, mismatchField };
+          return { row, mismatch: true as const, mismatchField, idempotent: false as const };
         }
+        // B7 — finalize-once is now ATOMIC, not check-then-act. The early
+        // `if (row.uploadedAt)` above is only a cheap fast-path; under READ
+        // COMMITTED (withTenant's default isolation) two concurrent finalizes
+        // could BOTH read uploaded_at=null and BOTH pass that guard, then both
+        // stamp — a TOCTOU that lets a second finalize re-launder a post-finalize
+        // byte swap. The guarantee lives in the WHERE: only the row that is
+        // still `uploaded_at IS NULL` is updated; the loser's UPDATE matches 0
+        // rows and we reject 409. (Mirrors the sensitive content path's guard.)
         const [updated] = await tx
           .update(documents)
           // 0049 — mark the upload confirmed. P0.B1 — scan_status stays
@@ -711,8 +868,19 @@ export class DocumentsService {
           // the download gate requires uploaded_at AND scan_status='clean', so
           // the doc is FAIL-CLOSED (un-servable) in this 'pending' window.
           .set({ updatedAt: new Date(), uploadedAt: new Date() })
-          .where(eq(documents.id, row.id))
+          .where(and(eq(documents.id, row.id), isNull(documents.uploadedAt)))
           .returning();
+        if (!updated) {
+          // The conditional UPDATE matched 0 rows ⇒ another concurrent finalize
+          // won the race between our read and this update and already stamped
+          // uploaded_at. RE-LOAD the now-finalised row and apply the SAME
+          // idempotency rule as the fast-path: a same-value retry is a 200
+          // no-op, a different-value (laundering) re-call is a 409. This makes
+          // the race-LOSER idempotent-safe too — not a blanket 409 that would
+          // break a legitimate client whose first response was lost mid-race.
+          const current = await this.loadVisible(tx, user, id, false);
+          return this.reFinalizeIdempotency(current, input);
+        }
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
@@ -722,10 +890,26 @@ export class DocumentsService {
           targetId: row.id,
           sessionId: user.sid,
         });
-        return { row: updated ?? row, mismatch: false as const, mismatchField: null };
+        return {
+          row: updated,
+          mismatch: false as const,
+          mismatchField: null,
+          idempotent: false as const,
+        };
       },
       { userId: user.sub },
     );
+
+    // Idempotent same-value re-finalize (fast-path or race-loser): the doc was
+    // ALREADY finalised with these exact declared values. Return it verbatim —
+    // a pure no-op. Do NOT re-run integrity/scan/purge: no bytes changed and
+    // nothing re-stamps, and the create-only + checksum-bound PUT already makes
+    // a post-finalize byte swap impossible, so re-verifying would be redundant
+    // I/O with no security benefit. (Only a DIFFERENT-value re-call — the real
+    // laundering attempt — reaches reFinalizeIdempotency's 409 throw instead.)
+    if (result.idempotent) {
+      return toDocument(result.row);
+    }
 
     if (result.mismatch) {
       await this.storage.delete(result.row.r2Key).catch((e: unknown) => {
@@ -1302,10 +1486,19 @@ export class DocumentsService {
       throw new ServiceUnavailableException({ error: { code: 'storage_unavailable' } });
     }
 
-    await withTenant(
+    const stamped = await withTenant(
       user.orgId,
       async (tx) => {
-        await tx
+        // INFO-2 (round-2 red-team) — this stamp is the "mirror" of finalize's
+        // FINALIZE-ONCE guard, so make it ATOMIC too (not check-then-act). The
+        // earlier `if (row.uploadedAt)` read is a cheap fast-path; under READ
+        // COMMITTED two concurrent content-uploads could BOTH read
+        // uploaded_at=null, both pass that guard, and both re-stamp — letting a
+        // second upload re-launder a post-finalize byte swap. The guarantee
+        // lives in the WHERE: only the row still `uploaded_at IS NULL` is
+        // updated; the loser matches 0 rows and we reject 409 (same code as the
+        // fast-path + finalize guard).
+        const [updated] = await tx
           .update(documents)
           .set({
             uploadedAt: new Date(),
@@ -1314,7 +1507,9 @@ export class DocumentsService {
             bytesEncrypted: true,
             updatedAt: new Date(),
           })
-          .where(eq(documents.id, row.id));
+          .where(and(eq(documents.id, row.id), isNull(documents.uploadedAt)))
+          .returning();
+        if (!updated) return { won: false as const };
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
@@ -1324,9 +1519,17 @@ export class DocumentsService {
           targetId: row.id,
           sessionId: user.sid,
         });
+        return { won: true as const };
       },
       { userId: user.sub },
     );
+    if (!stamped.won) {
+      // A concurrent content-upload won the race and already stamped
+      // uploaded_at. The envelope we PUT either lost the create-only race at
+      // storage or harmlessly overwrote an identical-checksum object; either
+      // way this caller did not finalise the doc.
+      throw new ConflictException({ error: { code: 'document_already_uploaded' } });
+    }
     return { uploaded: true };
   }
 

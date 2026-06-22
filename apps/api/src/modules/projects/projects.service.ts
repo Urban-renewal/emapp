@@ -7,6 +7,7 @@ import {
   documents,
   projectAssignments,
   projectSetSignatureDocIdsSql,
+  projectSignatureDocIdsSql,
   projects,
   withTenant,
   type Project as ProjectRow,
@@ -132,15 +133,21 @@ function statsSubqueries(projectIdRef: ReturnType<typeof sql>) {
       WHERE b.project_id = ${projectIdRef}
         AND a.archived_at IS NULL AND b.archived_at IS NULL
     ), 0)`.as('units_count'),
+    // A signature counts for THIS project when its document is associated with
+    // the project EITHER project-level (d.project_id) OR via the doc's apartment
+    // (apartment → building → project). Owners sign their APARTMENT's agreement
+    // doc (apartment-scoped, project_id NULL/different), so the bare
+    // `d.project_id = P` join silently missed those — see
+    // `projectSignatureDocIdsSql` (the canonical, index-using doc-set).
     signaturesPendingCount: sql<number>`COALESCE((
       SELECT COUNT(*)::int FROM signature_requests sr
-      INNER JOIN documents d ON d.id = sr.document_id
-      WHERE d.project_id = ${projectIdRef} AND sr.status = 'pending'
+      WHERE sr.status = 'pending'
+        AND sr.document_id IN (${projectSignatureDocIdsSql(projectIdRef)})
     ), 0)`.as('sigs_pending'),
     signaturesSignedCount: sql<number>`COALESCE((
       SELECT COUNT(*)::int FROM signature_requests sr
-      INNER JOIN documents d ON d.id = sr.document_id
-      WHERE d.project_id = ${projectIdRef} AND sr.status = 'signed'
+      WHERE sr.status = 'signed'
+        AND sr.document_id IN (${projectSignatureDocIdsSql(projectIdRef)})
     ), 0)`.as('sigs_signed'),
     agentsCount: sql<number>`COALESCE((
       SELECT COUNT(DISTINCT user_id)::int FROM project_assignments
@@ -586,11 +593,14 @@ export class ProjectsService {
    * measure (NOT share-weighted). An apartment is consented iff it has >=1 active
    * owner ownership AND the count of those owners equals the count of those
    * owners who hold a SIGNED signature_request on a project document. The
-   * "matching signed request" join is `signature_requests sr JOIN documents d ON
-   * d.id = sr.document_id WHERE sr.owner_id = o.owner_id AND sr.status='signed'
-   * AND d.project_id = <projectId>` — identical to how the rest of the repo
-   * defines "this owner signed for this project". NO PII: only counts + the
-   * project's own target/derived percentages leave this method.
+   * "matching signed request" detection is `sr.status='signed' AND
+   * sr.document_id IN (projectSignatureDocIdsSql(projectId))` — the canonical
+   * project↔document resolution (project-level docs ∪ apartment-level docs whose
+   * apartment is in the project). This FIXES the live bug where an owner signed
+   * their APARTMENT's agreement doc (apartment-scoped, project_id NULL/different)
+   * and the old bare `d.project_id = <projectId>` join missed it, leaving
+   * consentedPct / signaturesSigned at 0. NO PII: only counts + the project's
+   * own target/derived percentages leave this method.
    */
   async signatureProgress(user: AccessTokenPayload, projectId: string): Promise<SignatureProgress> {
     // E2 Wave-0 PERF — read-through cache (tenant-scoped key: org_id + epoch +
@@ -694,10 +704,9 @@ export class ProjectsService {
                AND EXISTS (
                  SELECT 1
                  FROM signature_requests sr
-                 INNER JOIN documents d ON d.id = sr.document_id
                  WHERE sr.owner_id = o.owner_id
                    AND sr.status = 'signed'
-                   AND d.project_id = ${projectId}
+                   AND sr.document_id IN (${projectSignatureDocIdsSql(projectId)})
                )), 0) AS signed_share
         FROM proj_apartments pa
       ),
@@ -722,11 +731,11 @@ export class ProjectsService {
         -- Σ of per-apartment contributions (the share-weighted numerator).
         COALESCE((SELECT SUM(contribution) FROM apt_contrib), 0) AS consented_weight,
         (SELECT COUNT(*)::int FROM signature_requests sr
-           INNER JOIN documents d ON d.id = sr.document_id
-           WHERE d.project_id = ${projectId} AND sr.status = 'signed') AS signatures_signed,
+           WHERE sr.status = 'signed'
+             AND sr.document_id IN (${projectSignatureDocIdsSql(projectId)})) AS signatures_signed,
         (SELECT COUNT(*)::int FROM signature_requests sr
-           INNER JOIN documents d ON d.id = sr.document_id
-           WHERE d.project_id = ${projectId} AND sr.status = 'pending') AS signatures_pending,
+           WHERE sr.status = 'pending'
+             AND sr.document_id IN (${projectSignatureDocIdsSql(projectId)})) AS signatures_pending,
         (SELECT target_signature_pct FROM projects WHERE id = ${projectId}) AS target_signature_pct
     `);
     const r = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
@@ -863,10 +872,9 @@ export class ProjectsService {
                  AND EXISTS (
                    SELECT 1
                    FROM signature_requests sr
-                   INNER JOIN documents d ON d.id = sr.document_id
                    WHERE sr.owner_id = o.owner_id
                      AND sr.status = 'signed'
-                     AND d.project_id = ${projectId}
+                     AND sr.document_id IN (${projectSignatureDocIdsSql(projectId)})
                  )) AS signed_owners
           FROM apartments a
           INNER JOIN buildings b ON b.id = a.building_id
@@ -925,9 +933,11 @@ export class ProjectsService {
    *
    * "Holdout" = an ACTIVE owner ownership (`ended_at IS NULL AND relationship='owner'`)
    * of the apartment who DOES NOT hold a SIGNED signature_request on a project
-   * document — the EXACT negation of the consent join the drill-down/board use
-   * (`signature_requests sr JOIN documents d ON d.id = sr.document_id WHERE
-   * sr.owner_id = o.owner_id AND sr.status='signed' AND d.project_id = <projectId>`).
+   * document — the EXACT negation of the consent detection the drill-down/board
+   * use (`sr.owner_id = o.owner_id AND sr.status='signed' AND sr.document_id IN
+   * (projectSignatureDocIdsSql(projectId))` — project-level docs ∪ the project's
+   * apartment-level docs, so an owner who signed their apartment's agreement is
+   * correctly NOT a holdout).
    *
    * STRICT PII boundary: the projection returns ONLY `owner_id`, the in-SQL
    * decrypted `name`, and the apartment `number`. national_id / phone are NEVER
@@ -985,10 +995,9 @@ export class ProjectsService {
             AND NOT EXISTS (
               SELECT 1
               FROM signature_requests sr
-              INNER JOIN documents d ON d.id = sr.document_id
               WHERE sr.owner_id = o.owner_id
                 AND sr.status = 'signed'
-                AND d.project_id = ${projectId}
+                AND sr.document_id IN (${projectSignatureDocIdsSql(projectId)})
             )
           ORDER BY pgp_sym_decrypt(ow.name_encrypted, current_setting('app.encryption_key'))::text
                      COLLATE he_il_icu ASC NULLS LAST,
@@ -1174,10 +1183,9 @@ export class ProjectsService {
                    AND EXISTS (
                      SELECT 1
                      FROM signature_requests sr
-                     INNER JOIN documents d ON d.id = sr.document_id
                      WHERE sr.owner_id = o.owner_id
                        AND sr.status = 'signed'
-                       AND d.project_id = ${projectId}
+                       AND sr.document_id IN (${projectSignatureDocIdsSql(projectId)})
                    )), 0) AS signed_share
             FROM proj_apartments pa
           ),
@@ -1215,10 +1223,9 @@ export class ProjectsService {
               AND NOT EXISTS (
                 SELECT 1
                 FROM signature_requests sr
-                INNER JOIN documents d ON d.id = sr.document_id
                 WHERE sr.owner_id = o.owner_id
                   AND sr.status = 'signed'
-                  AND d.project_id = ${projectId}
+                  AND sr.document_id IN (${projectSignatureDocIdsSql(projectId)})
               )
           ),
           -- Per-OWNER total delta (signing flips them in ALL their apartments)

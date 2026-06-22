@@ -5,8 +5,9 @@
  * A PURE decision: given a pending signature request's timing facts + an injected
  * `now`, decide whether it is DUE for a reminder and, if so, at which cadence
  * STEP. The recommender uses this to DETECT due requests (set-based); the step
- * feeds the M1 idempotency key (proposal_id + recipient + cadence_step) so each
- * step is sent at most once.
+ * feeds the M1 idempotency key (recipient + cadence_step — NOT proposal_id, so
+ * the key is stable across re-proposals of the same recipient+step) so each step
+ * is sent at most once.
  *
  * No DB, no zod, no node: — FE-safe + pure + fully unit-testable with an injected
  * clock, exactly like `autonomy-policy` + `outbound-policy`.

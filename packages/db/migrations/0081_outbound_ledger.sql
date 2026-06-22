@@ -10,13 +10,17 @@
 --
 -- ── WHY THIS TABLE (M1 — "ledger before send" is NOT exactly-once) ───────────
 -- Every governed outbound (a reminder email/SMS) carries a DETERMINISTIC
--- idempotency key = proposal_id + recipient + cadence_step. The UNIQUE
--- constraint on that key + the explicit state machine (pending_send → sent →
--- failed) is the root fix for the duplicate-SMS class: a double-approve or a
--- retry-after-ambiguous-failure CLAIMS the same key, finds a prior terminal
--- `sent`, and no-ops the replay — it never blind-resends. "Write a ledger row
--- before sending" only gives attempt-durability; the UNIQUE key + state machine
--- is what guarantees exactly-once. Mirrors the proven `import_jobs`
+-- idempotency key = recipient_ref + cadence_step (org scope comes from the
+-- (org_id, idempotency_key) UNIQUE; proposal_id is DELIBERATELY NOT in the key —
+-- the exactly-once unit is per recipient+step, STABLE across re-proposals, so a
+-- re-PROPOSAL of the same recipient+step collides with a parked row instead of
+-- minting a second send). The UNIQUE constraint on that key + the explicit state
+-- machine (pending_send → sent → failed) is the root fix for the duplicate-SMS
+-- class: a double-approve, a retry-after-ambiguous-failure, OR a cross-proposal
+-- re-propose CLAIMS the same key, finds a prior terminal `sent` (or a parked
+-- `pending_send`), and no-ops the replay — it never blind-resends. "Write a
+-- ledger row before sending" only gives attempt-durability; the UNIQUE key +
+-- state machine is what guarantees exactly-once. Mirrors the proven `import_jobs`
 -- idempotency_key UNIQUE idiom.
 --
 -- ── STATE MACHINE ───────────────────────────────────────────────────────────
@@ -40,9 +44,10 @@
 CREATE TABLE IF NOT EXISTS outbound_ledger (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id        uuid NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
-  -- The proposal whose APPROVE drove this send (the audit/causal link). Part of
-  -- the idempotency key. ON DELETE RESTRICT — a proposal with a ledger row is
-  -- never silently removed.
+  -- The proposal whose APPROVE drove this send (the audit/causal link). A
+  -- NON-KEY column — NOT part of the idempotency key (the key is stable across
+  -- re-proposals; see the header). ON DELETE RESTRICT — a proposal with a ledger
+  -- row is never silently removed.
   proposal_id   uuid NOT NULL REFERENCES proposals(id) ON DELETE RESTRICT,
   -- The channel the send went out on. Part of the idempotency key shaping the
   -- rate bucket; 'email' | 'sms' (CHECK-pinned).
@@ -57,8 +62,9 @@ CREATE TABLE IF NOT EXISTS outbound_ledger (
   -- legitimate next-cadence reminder is a distinct send, while a retry of the
   -- SAME step collides on the UNIQUE key and is de-duplicated.
   cadence_step  integer NOT NULL,
-  -- The DETERMINISTIC idempotency key = proposal_id + recipient_ref +
-  -- cadence_step (composed string). UNIQUE per org. This is the M1 root.
+  -- The DETERMINISTIC idempotency key = recipient_ref + cadence_step (composed
+  -- string; NOT proposal_id — stable across re-proposals). UNIQUE per org. This
+  -- is the M1 root.
   idempotency_key text NOT NULL,
   -- pending_send | sent | failed (CHECK-pinned). The state machine.
   status        text NOT NULL DEFAULT 'pending_send',

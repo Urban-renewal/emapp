@@ -95,6 +95,93 @@ function didAnyChannelDeliver(d: SignatureDeliveryReport): boolean {
   return went(d.email) || went(d.sms) || went(d.whatsapp);
 }
 
+/**
+ * Reason strings that denote a channel was simply NOT ATTEMPTED (no recipient on
+ * file / phone unparseable). Nothing went out on such a channel, so on its own it
+ * is a DEFINITE non-send. Kept as an explicit set so the classifier is an
+ * ALLOWLIST, not a fall-through (re-red-team #509).
+ */
+const NOT_ATTEMPTED_REASONS = new Set([
+  'no_email_on_file',
+  'no_phone_on_file',
+  'no_phone_on_file_or_unparseable',
+  'no_channel_available',
+]);
+
+/**
+ * Is this channel reason a KNOWN-STRUCTURAL decline? — the gateway received the
+ * call and explicitly refused the message (invalid number / bad creds). A true
+ * non-send → contributes to DEFINITE. Reserved ENDINGS: `_rejected` / `_declined`.
+ */
+function isStructuralDecline(reason: string): boolean {
+  return reason.endsWith('_rejected') || reason.endsWith('_declined');
+}
+
+/**
+ * Classify a NON-delivery for the OutboundGovernor's definite-vs-ambiguous axis
+ * (#506 H1, re-hardened by the #509 re-red-team). Called ONLY when
+ * `didAnyChannelDeliver` is false.
+ *
+ * THE EXACTLY-ONCE INVARIANT: this maps to `failed` (RE-CLAIMABLE → re-sent on the
+ * next approve) ONLY for a provably-did-not-send case. Anything that MIGHT have
+ * dispatched maps to `ambiguous` (parked, never auto-resent). A real SMS is money;
+ * a false `definite` is a DOUBLE-SEND.
+ *
+ * The delivery layer encodes each channel's outcome in its `reason`:
+ *   - `*_rejected` / `*_declined` → STRUCTURAL decline (gateway refused the
+ *                        message on a successful HTTP call / a 4xx client error).
+ *                        Provably did NOT go out → DEFINITE.
+ *   - `*_send_failed` / `*_ambiguous` → TRANSPORT failure (throw / 5xx / timeout /
+ *                        unparseable body). MAY have gone out → AMBIGUOUS.
+ *   - not-attempted (`no_*_on_file`, …) → nothing went out on that channel.
+ *
+ * FAIL-SAFE ALLOWLIST (the #509 fix): the whole attempt is `definite` ONLY when
+ * EVERY non-delivering channel is EITHER a known-structural decline OR a
+ * not-attempted channel — and there was nothing transport-ambiguous. ANY
+ * transport-ambiguous channel, OR ANY reason we do NOT positively recognize as
+ * structural/not-attempted, forces `ambiguous`. We never *infer* definite from the
+ * absence of a known-ambiguous marker; we require positive proof of a non-send.
+ */
+export function classifyNonDelivery(d: SignatureDeliveryReport): {
+  failureKind: 'definite' | 'ambiguous';
+  failureCode: string;
+} {
+  const channels = [d.email, d.sms, d.whatsapp];
+  // Only channels that actually failed to deliver carry a `reason` here (a
+  // delivered channel is excluded by the `didAnyChannelDeliver` precondition).
+  const reasons = channels
+    .map((c) => c.reason ?? '')
+    .filter((r) => r.length > 0);
+
+  // (1) ANY transport-ambiguous channel → the whole attempt is AMBIGUOUS. This is
+  // the SAFE short-circuit: something may have gone out, so never auto-resend.
+  const anyAmbiguous = reasons.some(
+    (r) => r.endsWith('_send_failed') || r.endsWith('_ambiguous'),
+  );
+  if (anyAmbiguous) {
+    return { failureKind: 'ambiguous', failureCode: 'provider_send_failed' };
+  }
+
+  // (2) DEFINITE requires POSITIVE proof for EVERY non-delivering channel: each
+  // must be a known-structural decline OR a recognized not-attempted reason. If a
+  // single reason is unrecognized, we cannot prove it was a non-send → AMBIGUOUS
+  // (the contract's mandated SAFE default — never *infer* a clean retry).
+  const everyReasonProvable = reasons.every(
+    (r) => isStructuralDecline(r) || NOT_ATTEMPTED_REASONS.has(r),
+  );
+  if (!everyReasonProvable) {
+    return { failureKind: 'ambiguous', failureCode: 'provider_unknown' };
+  }
+
+  const anyStructural = reasons.some((r) => isStructuralDecline(r));
+  if (anyStructural) {
+    return { failureKind: 'definite', failureCode: 'provider_rejected' };
+  }
+  // Every channel was simply not-on-file / unavailable — nothing was attempted, so
+  // nothing went out: a DEFINITE non-send, re-claimable once a channel resolves.
+  return { failureKind: 'definite', failureCode: 'no_channel_available' };
+}
+
 /** Public-facing FE base for `/sign/:token` URLs. Falls back to a sane
  *  dev default; in prod set explicitly to the deployed FE origin. */
 const PUBLIC_APP_URL = process.env['PUBLIC_APP_URL'] ?? 'http://localhost:3001';
@@ -1040,13 +1127,17 @@ export class SignatureRequestsService {
       now: new Date(),
       // The ACTUAL send REUSES the existing gated resend verbatim. A non-pending
       // request (signed/cancelled concurrently) throws ConflictException out of
-      // `resend`, which the Governor catches → settles the ledger `failed`.
+      // `resend`, which the Governor catches → settles the ledger AMBIGUOUS
+      // (parked `pending_send`, never auto-resent). On a returned non-delivery we
+      // CLASSIFY (definite vs ambiguous) so the Governor knows whether the failed
+      // ledger row is re-claimable (#506 H1). A delivered send is `sent`.
       send: async () => {
         const res = await this.resend(user, input.signatureRequestId);
-        return {
-          delivered: didAnyChannelDeliver(res.delivery),
-          providerMessageId: res.request.id,
-        };
+        if (didAnyChannelDeliver(res.delivery)) {
+          return { delivered: true, providerMessageId: res.request.id };
+        }
+        const { failureKind, failureCode } = classifyNonDelivery(res.delivery);
+        return { delivered: false, failureKind, failureCode };
       },
     });
   }

@@ -28,8 +28,21 @@
  * (request, step). The partial-unique on `proposals(org_id, dedup_key) WHERE
  * pending` makes a second detection of the SAME step a no-op while the proposal
  * is live; a LATER cadence step (a different key) can legitimately re-propose.
- * This composes with the M1 ledger key (proposal_id + recipient + cadence_step):
- * the proposal is deduped at draft time, the SEND is deduped at execute time.
+ * This composes with the M1 ledger key (recipient + cadence_step — proposal_id is
+ * DELIBERATELY NOT in the ledger key, so the send is deduped per recipient+step
+ * STABLY across re-proposals; a parked send blocks a re-proposed duplicate): the
+ * proposal is deduped at draft time, the SEND is deduped at execute time.
+ *
+ * ── Failed-send retry (#506 H1) — the cadence is consistent with re-claim ────
+ * `reminders_sent` counts ONLY `sent` rows, so a DEFINITE-failed step-N ledger
+ * row does NOT advance the count — the policy correctly re-derives step N, the
+ * SAME idempotency key, and a re-approve RE-CLAIMS the failed ledger row (the
+ * Governor's status-guarded UPDATE) → exactly one re-send, no double-send, no
+ * mis-advance. `last_contact_at` likewise filters on `sent`, so a failed attempt
+ * does not reset the cadence clock (the retry stays due). A PARKED ambiguous row
+ * stays `pending_send` (also not counted as `sent`): the Governor's
+ * pending_send→already_sent guard makes it un-resendable by this autonomous path,
+ * so the re-proposed step-N is a no-op replay until a human disambiguates it.
  *
  * ── NO PII ──────────────────────────────────────────────────────────────────
  * The query reads ONLY non-PII columns (ids, timestamps, status, counts) — never

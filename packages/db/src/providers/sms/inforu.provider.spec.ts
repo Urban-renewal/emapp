@@ -90,8 +90,11 @@ describe('InforuSmsProvider.send — status mapping', () => {
   });
 });
 
-describe('InforuSmsProvider.send — transport failure mapping (must NEVER throw)', () => {
-  it('HTTP non-ok (401) → rejected with http_401', async () => {
+describe('InforuSmsProvider.send — transport vs structural mapping (#509 exactly-once)', () => {
+  // ── STRUCTURAL declines (gateway refused on a successful/4xx call) → `rejected`
+  //    (DEFINITE non-send, safe to re-claim/retry). ──────────────────────────────
+  it('HTTP 401 (auth — client error) → STRUCTURAL `rejected` with http_401', async () => {
+    // A 4xx is the gateway refusing the request BEFORE dispatch → provably no send.
     const f = fakeFetch({ ok: false, status: 401, json: async () => ({ StatusId: 1 }) });
     const provider = makeProvider(f);
     const result = await provider.send('0501234567', 'hello');
@@ -99,36 +102,71 @@ describe('InforuSmsProvider.send — transport failure mapping (must NEVER throw
     expect(result.error).toBe('http_401');
   });
 
-  it('HTTP non-ok (500) → rejected with http_500', async () => {
-    const f = fakeFetch({ ok: false, status: 500, json: async () => ({ StatusId: 1 }) });
+  it('HTTP 400 (malformed — client error) → STRUCTURAL `rejected`', async () => {
+    const f = fakeFetch({ ok: false, status: 400, json: async () => ({}) });
     const provider = makeProvider(f);
     const result = await provider.send('0501234567', 'hello');
     expect(result.status).toBe('rejected');
+    expect(result.error).toBe('http_400');
+  });
+
+  // ── TRANSPORT-AMBIGUOUS (may have dispatched before failing) → `failed`
+  //    (NEVER `rejected`; downstream parks it, never auto-resends). ──────────────
+  it('HTTP 500 (server error) → AMBIGUOUS `failed` with http_500 (NOT rejected — may have sent)', async () => {
+    const f = fakeFetch({ ok: false, status: 500, json: async () => ({ StatusId: 1 }) });
+    const provider = makeProvider(f);
+    const result = await provider.send('0501234567', 'hello');
+    expect(result.status).toBe('failed');
     expect(result.error).toBe('http_500');
   });
 
-  it('fetchImpl rejects (network error) → rejected with the error message, never throws', async () => {
+  it('HTTP 504 (gateway timeout) → AMBIGUOUS `failed` with http_504', async () => {
+    const f = fakeFetch({ ok: false, status: 504, json: async () => ({}) });
+    const provider = makeProvider(f);
+    const result = await provider.send('0501234567', 'hello');
+    expect(result.status).toBe('failed');
+    expect(result.error).toBe('http_504');
+  });
+
+  it('HTTP 408 (request timeout) → AMBIGUOUS `failed`', async () => {
+    const f = fakeFetch({ ok: false, status: 408, json: async () => ({}) });
+    const provider = makeProvider(f);
+    const result = await provider.send('0501234567', 'hello');
+    expect(result.status).toBe('failed');
+    expect(result.error).toBe('http_408');
+  });
+
+  it('HTTP 429 (rate limited) → AMBIGUOUS `failed`', async () => {
+    const f = fakeFetch({ ok: false, status: 429, json: async () => ({}) });
+    const provider = makeProvider(f);
+    const result = await provider.send('0501234567', 'hello');
+    expect(result.status).toBe('failed');
+    expect(result.error).toBe('http_429');
+  });
+
+  it('fetchImpl rejects (network throw) → AMBIGUOUS `failed`, never throws, keeps the message', async () => {
+    // The socket may have dropped AFTER the gateway dispatched → ambiguous.
     const f = vi.fn(async () => {
       throw new Error('ECONNREFUSED');
     }) as unknown as typeof fetch;
     const provider = makeProvider(f);
     const result = await provider.send('0501234567', 'hello');
-    expect(result.status).toBe('rejected');
+    expect(result.status).toBe('failed');
     expect(result.error).toBe('ECONNREFUSED');
   });
 
-  it('fetchImpl rejects with a non-Error value → rejected with network_error', async () => {
+  it('fetchImpl rejects with a non-Error value → AMBIGUOUS `failed` with network_error', async () => {
     const f = vi.fn(async () => {
       // eslint-disable-next-line @typescript-eslint/no-throw-literal
       throw 'string-failure';
     }) as unknown as typeof fetch;
     const provider = makeProvider(f);
     const result = await provider.send('0501234567', 'hello');
-    expect(result.status).toBe('rejected');
+    expect(result.status).toBe('failed');
     expect(result.error).toBe('network_error');
   });
 
-  it('res.json() rejects (malformed JSON body) → rejected with bad_json', async () => {
+  it('res.json() rejects on a 2xx (unparseable body) → AMBIGUOUS `failed` with bad_json (2xx = may have dispatched)', async () => {
     const f = fakeFetch({
       ok: true,
       status: 200,
@@ -138,7 +176,7 @@ describe('InforuSmsProvider.send — transport failure mapping (must NEVER throw
     });
     const provider = makeProvider(f);
     const result = await provider.send('0501234567', 'hello');
-    expect(result.status).toBe('rejected');
+    expect(result.status).toBe('failed');
     expect(result.error).toBe('bad_json');
   });
 });

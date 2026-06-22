@@ -147,7 +147,7 @@ describe('deliverSignatureLink — SMS channel', () => {
     expect(report.sms.status).toBe('queued');
   });
 
-  it('ownerPhone present + sms.send {status:rejected} → {available:false, reason:sms_rejected}', async () => {
+  it('ownerPhone present + sms.send {status:rejected} (STRUCTURAL) → {available:false, reason:sms_rejected}', async () => {
     const { provider: email } = fakeEmail(OK_EMAIL);
     const { provider: sms } = fakeSms({ id: 's', status: 'rejected', error: 'gateway-said-no' });
     const { logger } = spyLogger();
@@ -156,6 +156,22 @@ describe('deliverSignatureLink — SMS channel', () => {
 
     expect(report.sms.available).toBe(false);
     expect(report.sms.reason).toBe('sms_rejected');
+    expect(report.sms.status).toBeUndefined();
+  });
+
+  it('ownerPhone present + sms.send {status:failed} (TRANSPORT-AMBIGUOUS, #509) → {available:false, reason:sms_send_failed}', async () => {
+    // A provider `failed` is a transport-ambiguous outcome (5xx / timeout / network
+    // throw flattened by the provider). It MUST map to the ambiguous bucket
+    // (`sms_send_failed`), NOT `sms_rejected` — else the Governor would re-claim +
+    // re-send a message that may already have gone out → double SMS.
+    const { provider: email } = fakeEmail(OK_EMAIL);
+    const { provider: sms } = fakeSms({ id: 's', status: 'failed', error: 'http_504' });
+    const { logger } = spyLogger();
+
+    const report = await deliverSignatureLink(email, sms, ctx(), logger);
+
+    expect(report.sms.available).toBe(false);
+    expect(report.sms.reason).toBe('sms_send_failed');
     expect(report.sms.status).toBeUndefined();
   });
 

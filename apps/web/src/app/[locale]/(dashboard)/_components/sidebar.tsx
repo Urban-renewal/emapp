@@ -10,6 +10,7 @@ import {
   HardHat,
   History,
   Home,
+  Inbox,
   Lock,
   MessageSquare,
   Settings,
@@ -33,6 +34,7 @@ interface NavItem {
   /** Key under the `nav` next-intl namespace. */
   labelKey:
     | 'home'
+    | 'inbox'
     | 'projects'
     | 'owners'
     | 'imports'
@@ -119,6 +121,15 @@ export function Sidebar({ userName, userRole, tier }: Props) {
   // an agent holds it iff view_owners is ON) and any future capability, with
   // NO `role === 'agent'` math. UX only; the BE guard stays authoritative.
   const canReadOwners = useHasPermission('owners.read');
+  // Approval Inbox (autonomy engine) is manager-only — the BE gates list AND
+  // approve/reject on `requireManager` (a ROLE check, not a permission). The
+  // usual "gate on a permission, not the role string" rule mirrors the BE's
+  // actual gate; here the BE gate IS role-based, so the honest FE mirror is the
+  // role. (An earlier cut gated on `signature_requests.send`, but AGENTS hold
+  // that — they'd see the nav link then hit a 403 on every inbox load. The
+  // proposals.* permission family flagged in PR 503/505 will replace both with a
+  // manager-only permission.) UX only; the BE `requireManager` stays authoritative.
+  const canSeeInbox = userRole === 'manager';
   const rawPath = usePathname() ?? '/';
   // Strip the `/he` or `/en` locale prefix so item.href can be compared
   // against the unprefixed app paths.
@@ -134,6 +145,9 @@ export function Sidebar({ userName, userRole, tier }: Props) {
   // only the grouping moved.
   const primaryItems: NavItem[] = [
     { href: '/', labelKey: 'home', icon: Home, enabled: true },
+    ...(canSeeInbox
+      ? [{ href: '/inbox', labelKey: 'inbox', icon: Inbox, enabled: true } as NavItem]
+      : []),
     { href: '/projects', labelKey: 'projects', icon: FileText, enabled: true },
     ...(canReadOwners
       ? [{ href: '/owners', labelKey: 'owners', icon: Users, enabled: true } as NavItem]

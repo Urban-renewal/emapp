@@ -41,6 +41,7 @@ import { NotificationsProducerService } from '../notifications/notifications-pro
 import { StatsCacheService } from '../projects/stats-cache.service';
 
 import { notifyAfterSign } from './signature-link-delivery';
+import { sanitizeSignatureSvg } from './signature-svg-sanitizer';
 import { SignatureTokenService } from './signature-token.service';
 
 /** Generic 401 for the resident — no oracle distinguishes
@@ -383,8 +384,24 @@ export class PublicSignService {
           .where(eq(users.id, req.createdBy))
           .limit(1);
 
-        // D.12 LAW — encrypt the SVG at rest via pgcrypto.
-        const signatureBlob = await encryptField(tx, body.signatureSvg, encKey);
+        // Signature-flow H2 (defense-in-depth) — SANITISE the resident SVG at
+        // INGEST so active content NEVER persists. The wire validation is only
+        // an outer-tag Zod regex (`/^<svg…<\/svg>$/`) + byte cap, which accepts
+        // arbitrary inner markup (`<script>`, `onload=`, `<foreignObject>`,
+        // `<image href>`). We run the SAME allowlist rebuild the certificate
+        // renderer uses: extract ONLY the viewBox + `<path d="…">` geometry and
+        // emit a clean controlled SVG — every script / event-handler /
+        // external-ref / foreignObject is stripped before encrypt+store. The
+        // STORED blob is therefore safe even if a future code path renders it
+        // raw. The signature strokes are preserved faithfully (path geometry
+        // round-trips). An empty result means the input carried NO drawable
+        // geometry (pure payload) — reject with the same generic surface as the
+        // <50-byte / not-svg Zod guards (a real signature always has paths).
+        const safeSvg = sanitizeSignatureSvg(body.signatureSvg);
+        if (!safeSvg) throw new BadRequestException({ error: { code: 'invalid_signature' } });
+
+        // D.12 LAW — encrypt the SANITISED SVG at rest via pgcrypto.
+        const signatureBlob = await encryptField(tx, safeSvg, encKey);
 
         const [signatureRow] = await tx
           .insert(signatures)

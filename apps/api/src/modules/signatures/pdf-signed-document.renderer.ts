@@ -6,6 +6,7 @@ import {
   loadHeeboFontCss,
 } from '../../common/pdf/chromium-html-pdf';
 
+import { sanitizeSignatureSvg } from './signature-svg-sanitizer';
 import type {
   ISignedDocumentRenderer,
   RenderedArtifact,
@@ -161,30 +162,4 @@ function formatJerusalem(date: Date): string {
     minute: '2-digit',
     hour12: false,
   }).format(date);
-}
-
-/**
- * Build a CLEAN signature SVG from the stored markup. We do NOT embed the raw
- * user SVG (a stored SVG can carry `<script>` / `onload=` and would execute in
- * the Chromium render context). Instead we extract only the `<path d="…">`
- * geometry, escape each `d` value as attribute content, and emit a controlled
- * SVG with a viewBox we read from the source (falling back to a sane default).
- * If nothing usable is found, returns an empty string (no signature drawn) —
- * never raw user markup.
- */
-function sanitizeSignatureSvg(svg: string): string {
-  if (!svg) return '';
-  const vb = /viewBox\s*=\s*["']\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*["']/i.exec(svg);
-  const vbW = vb ? Number(vb[3]) : 300;
-  const vbH = vb ? Number(vb[4]) : 100;
-  const viewBox = `0 0 ${Number.isFinite(vbW) && vbW > 0 ? vbW : 300} ${Number.isFinite(vbH) && vbH > 0 ? vbH : 100}`;
-  const paths = [...svg.matchAll(/<path[^>]*\sd\s*=\s*["']([^"']+)["']/gi)].map((m) => m[1] ?? '');
-  if (paths.length === 0) return '';
-  const pathEls = paths
-    .map(
-      (dAttr) =>
-        `<path d="${escapeHtml(dAttr)}" fill="none" stroke="#1a1a1a" stroke-width="1.5" />`,
-    )
-    .join('');
-  return `<svg viewBox="${escapeHtml(viewBox)}" xmlns="http://www.w3.org/2000/svg">${pathEls}</svg>`;
 }

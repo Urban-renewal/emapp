@@ -1,56 +1,50 @@
 'use client';
 
-import { FileSignature, FileText, LayoutGrid, List as ListIcon, Plus, Search } from 'lucide-react';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  FileSignature,
+  FileText,
+  Plus,
+  Search,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useDocumentList } from '@/hooks/use-documents';
 import { useHasPermission } from '@/hooks/use-permissions';
+import { useDocumentChecklist, useProjectList } from '@/hooks/use-projects';
+import type { DocumentViewModel } from '@/models/document.vm';
 
 /**
- * V11 A.S8 — DocsPage reskin per
- * `MEAPP_design/screens-team.jsx` DocsPage (lines 506-570).
+ * Documents page — "Organized documents" slice (V13).
  *
- * Same filters-bar pattern as A.S4 ProjectsList:
- *   - Search input + cards/table view toggle + signature-requests
- *     entry pill + primary "העלאת מסמך" button.
- *   - Cards (default) or Table view of documents.
+ * The customer is a technophobic building-committee volunteer: a flat
+ * name·type·size·date dump reads as מבולגן even though the BE already
+ * organizes docs by project + tracks a required-docs checklist. This page
+ * surfaces that organization:
+ *   - documents are GROUPED by project (collapsible sections), with an
+ *     "ללא שיוך" group for unscoped docs. The `projectId` already rides the
+ *     `DocumentViewModel` (no BE change for grouping). Within a project, docs
+ *     are sub-grouped by `typeLabel` (doc_type), never a flat dump.
+ *   - each project group surfaces the ADVISORY required-docs CHECKLIST +
+ *     completeness % (`GET /api/v1/projects/:id/document-checklist`), fetched
+ *     lazily per shown group. Missing required types render as quiet chips;
+ *     color/filled badges are reserved for that ATTENTION state.
+ *   - a plain-Hebrew orientation header states the situation in words.
  *
- * Partner DocsPage has 3 visual blocks the reskin doesn't port:
- *   - 4 KPI cards (signed / pending / processing / rejected counts)
- *     — needs an aggregator endpoint that doesn't exist on the wire.
- *   - "Document templates" grid (Send to sign templates) — needs a
- *     templates table that doesn't exist on the wire.
- *   - Per-row "tenant" + "project" columns — the org-tier `Document`
- *     wire today carries only name / type / size / created / archived
- *     (per `apps/web/src/models/document.vm.ts`); per-doc tenant +
- *     project would require a join the wire doesn't expose.
- *
- * Flagged via `documents.dataPendingHint` next to the filters bar.
- * Signature requests get their own entry pill linking to
- * `/signature-requests` (kept as a separate route — unifying the two
- * surfaces into one page would require BE shape changes outside this
- * slice's scope).
- *
- * Client-side search filters the current page on `name` + `typeLabel`
- * (lowercase). Server-side `?q=` needs a BE slice.
- *
- * RSC prefetch fan-out (perf-research/01-rsc-waterfall.md §2.2): the
- * interactive body — moved VERBATIM out of `page.tsx`, logic unchanged. On a
- * cold load `useDocumentList` resolves SYNCHRONOUSLY from the dehydrated cache
- * the server `page.tsx` seeded via `<HydrationBoundary>`, so NO client
- * `GET /documents` fires; on prefetch failure it falls back to its existing
- * `<ListSkeleton>` / error path.
+ * Search stays client-side over the current keyset page (a server-side `?q=`
+ * for documents would need a BE slice — out of scope here).
  */
 export function DocumentsListClient() {
   const t = useTranslations('documents');
   const tp = useTranslations('projects');
   const [cursor, setCursor] = useState<string | undefined>(undefined);
-  const [view, setView] = useState<'cards' | 'table'>('cards');
   const [query, setQuery] = useState('');
   // Active (default) vs archived view — soft-archived docs are otherwise
   // invisible in the cockpit. Switching resets pagination.
@@ -58,6 +52,16 @@ export function DocumentsListClient() {
   // IAM slice 5b — "upload" CTA (creates a document) gated on `documents.create`.
   const canCreate = useHasPermission('documents.create');
   const { data, isLoading, isError, refetch } = useDocumentList({ limit: 25, cursor, archived });
+
+  // Project id → name, so each group header can show the project name rather
+  // than a bare id. A miss (project not on the first page) falls back to the
+  // id-less "פרויקט" label — the group still renders.
+  const { data: projectsData } = useProjectList({ limit: 100 });
+  const projectNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of projectsData?.items ?? []) map.set(p.id, p.name);
+    return map;
+  }, [projectsData?.items]);
 
   const items = useMemo(() => data?.items ?? [], [data?.items]);
   const page = data?.page;
@@ -69,6 +73,37 @@ export function DocumentsListClient() {
       (d) => d.name.toLowerCase().includes(q) || d.typeLabel.toLowerCase().includes(q),
     );
   }, [items, query]);
+
+  // Group the shown docs by project; unscoped docs land in their own group.
+  // `null` key = the "ללא שיוך" group, always rendered LAST.
+  const groups = useMemo(() => {
+    const byProject = new Map<string | null, DocumentViewModel[]>();
+    for (const d of filteredItems) {
+      const key = d.projectId ?? null;
+      const bucket = byProject.get(key);
+      if (bucket) bucket.push(d);
+      else byProject.set(key, [d]);
+    }
+    const scoped = [...byProject.entries()].filter(([k]) => k !== null) as [
+      string,
+      DocumentViewModel[],
+    ][];
+    const unscoped = byProject.get(null);
+    return { scoped, unscoped: unscoped ?? [] };
+  }, [filteredItems]);
+
+  // Each project group reports its missing-required count up here so the
+  // orientation header can state "M מסמכי-חובה חסרים" across the shown groups.
+  const [missingByProject, setMissingByProject] = useState<Record<string, number>>({});
+  const reportMissing = useCallback((projectId: string, missing: number) => {
+    setMissingByProject((prev) =>
+      prev[projectId] === missing ? prev : { ...prev, [projectId]: missing },
+    );
+  }, []);
+  const totalMissing = useMemo(
+    () => groups.scoped.reduce((sum, [pid]) => sum + (missingByProject[pid] ?? 0), 0),
+    [groups.scoped, missingByProject],
+  );
 
   if (isLoading) return <ListSkeleton rows={6} />;
 
@@ -113,49 +148,6 @@ export function DocumentsListClient() {
             className="input"
             style={{ paddingInlineEnd: 38 }}
           />
-        </div>
-
-        {/* View toggle (partner pattern from A.S4) */}
-        <div
-          role="tablist"
-          aria-label={t('listTitle')}
-          className="flex gap-0.5 rounded-lg border p-0.5"
-          style={{ background: 'var(--bg-subtle)', borderColor: 'var(--border)' }}
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === 'cards'}
-            aria-label={t('viewCards')}
-            title={t('viewCards')}
-            onClick={() => setView('cards')}
-            className="flex items-center justify-center rounded-md transition-colors"
-            style={{
-              padding: '6px 8px',
-              background: view === 'cards' ? 'var(--bg-surface)' : 'transparent',
-              boxShadow: view === 'cards' ? 'var(--shadow-xs)' : 'none',
-              color: view === 'cards' ? 'var(--text)' : 'var(--text-muted)',
-            }}
-          >
-            <LayoutGrid className="h-[15px] w-[15px]" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === 'table'}
-            aria-label={t('viewTable')}
-            title={t('viewTable')}
-            onClick={() => setView('table')}
-            className="flex items-center justify-center rounded-md transition-colors"
-            style={{
-              padding: '6px 8px',
-              background: view === 'table' ? 'var(--bg-surface)' : 'transparent',
-              boxShadow: view === 'table' ? 'var(--shadow-xs)' : 'none',
-              color: view === 'table' ? 'var(--text)' : 'var(--text-muted)',
-            }}
-          >
-            <ListIcon className="h-[15px] w-[15px]" aria-hidden="true" />
-          </button>
         </div>
 
         {/* Active / archived view toggle — archived docs are reachable here. */}
@@ -203,97 +195,39 @@ export function DocumentsListClient() {
         )}
       </div>
 
-      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-        {t('dataPendingHint')}
-      </p>
+      {/* Plain-Hebrew orientation — states the situation in words. */}
+      {items.length > 0 && (
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+          {totalMissing > 0
+            ? t('orientation.withMissing', { count: items.length, missing: totalMissing })
+            : t('orientation.allClear', { count: items.length })}
+        </p>
+      )}
 
       {filteredItems.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
           {items.length === 0 ? t('empty') : t('noResults')}
         </p>
-      ) : view === 'cards' ? (
-        <div
-          className="grid gap-3.5"
-          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}
-        >
-          {filteredItems.map((d) => (
-            <Link
-              key={d.id}
-              href={`/documents/${d.id}`}
-              className="card card-pad flex flex-col gap-2 transition-shadow hover:shadow-md focus:outline-none focus-visible:shadow-md"
-            >
-              <div className="flex items-start gap-3">
-                <FileText
-                  className="mt-0.5 h-5 w-5 shrink-0"
-                  style={{ color: 'var(--navy-700)' }}
-                  aria-hidden="true"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-semibold" style={{ color: 'var(--text)' }}>
-                    <NameDisplay name={d.name} />
-                  </div>
-                  <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                    {d.typeLabel} · {d.sizeLabel} · {d.createdRelative}
-                  </div>
-                </div>
-                {d.isArchived && (
-                  <span className="badge badge-neutral">
-                    <span className="badge-dot" aria-hidden="true" />
-                    <span>{tp('archived')}</span>
-                  </span>
-                )}
-              </div>
-            </Link>
-          ))}
-        </div>
       ) : (
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>{t('column.name')}</th>
-                <th>{t('column.type')}</th>
-                <th>{t('column.size')}</th>
-                <th>{t('column.created')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredItems.map((d) => (
-                <tr
-                  key={d.id}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => {
-                    window.location.assign(`/documents/${d.id}`);
-                  }}
-                >
-                  <td style={{ fontWeight: 500 }}>
-                    <Link
-                      href={`/documents/${d.id}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex items-center gap-2"
-                      style={{ color: 'var(--text)', textDecoration: 'none' }}
-                    >
-                      <FileText
-                        className="h-3.5 w-3.5"
-                        style={{ color: 'var(--text-muted)' }}
-                        aria-hidden="true"
-                      />
-                      <NameDisplay name={d.name} />
-                    </Link>
-                    {d.isArchived && (
-                      <span className="badge badge-neutral" style={{ marginInlineStart: 8 }}>
-                        <span className="badge-dot" aria-hidden="true" />
-                        <span>{tp('archived')}</span>
-                      </span>
-                    )}
-                  </td>
-                  <td className="muted">{d.typeLabel}</td>
-                  <td className="muted tabular">{d.sizeLabel}</td>
-                  <td className="muted text-[12px]">{d.createdRelative}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="flex flex-col gap-3">
+          {groups.scoped.map(([projectId, docs]) => (
+            <ProjectDocGroup
+              key={projectId}
+              projectId={projectId}
+              projectName={projectNames.get(projectId) ?? null}
+              docs={docs}
+              onMissing={reportMissing}
+            />
+          ))}
+          {groups.unscoped.length > 0 && (
+            <ProjectDocGroup
+              key="__unscoped__"
+              projectId={null}
+              projectName={null}
+              docs={groups.unscoped}
+              onMissing={reportMissing}
+            />
+          )}
         </div>
       )}
 
@@ -311,5 +245,185 @@ export function DocumentsListClient() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * One collapsible project group. Header = project name + the advisory
+ * required-docs checklist line; body = the project's docs sub-grouped by
+ * doc_type (typeLabel). For the unscoped ("ללא שיוך") group `projectId` is
+ * null — no checklist is fetched.
+ */
+function ProjectDocGroup({
+  projectId,
+  projectName,
+  docs,
+  onMissing,
+}: {
+  projectId: string | null;
+  projectName: string | null;
+  docs: DocumentViewModel[];
+  onMissing: (projectId: string, missing: number) => void;
+}) {
+  const t = useTranslations('documents');
+  const tp = useTranslations('projects');
+
+  // Sub-group by doc_type label, ordered alphabetically for a stable read.
+  const byType = useMemo(() => {
+    const map = new Map<string, DocumentViewModel[]>();
+    for (const d of docs) {
+      const bucket = map.get(d.typeLabel);
+      if (bucket) bucket.push(d);
+      else map.set(d.typeLabel, [d]);
+    }
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'he'));
+  }, [docs]);
+
+  return (
+    <details className="card" open style={{ overflow: 'hidden' }}>
+      <summary
+        className="flex cursor-pointer list-none items-center gap-2.5 px-4 py-3"
+        style={{ color: 'var(--text)' }}
+      >
+        <ChevronDown
+          className="h-4 w-4 shrink-0 transition-transform"
+          style={{ color: 'var(--text-muted)' }}
+          aria-hidden="true"
+        />
+        <span className="truncate text-sm font-semibold">
+          {projectId === null ? (
+            t('group.unassigned')
+          ) : (
+            <NameDisplay name={projectName ?? t('group.projectFallback')} />
+          )}
+        </span>
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          {t('group.docCount', { count: docs.length })}
+        </span>
+        {projectId !== null && <ChecklistLine projectId={projectId} onMissing={onMissing} />}
+      </summary>
+
+      <div
+        className="flex flex-col gap-3 border-t px-4 py-3"
+        style={{ borderColor: 'var(--border)' }}
+      >
+        {byType.map(([typeLabel, typeDocs]) => (
+          <div key={typeLabel} className="flex flex-col gap-1.5">
+            <div
+              className="text-[11px] font-medium uppercase tracking-wide"
+              style={{ color: 'var(--text-soft)' }}
+            >
+              {typeLabel}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {typeDocs.map((d) => (
+                <Link
+                  key={d.id}
+                  href={`/documents/${d.id}`}
+                  className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--bg-subtle)] focus:outline-none focus-visible:bg-[var(--bg-subtle)]"
+                >
+                  <FileText
+                    className="h-4 w-4 shrink-0"
+                    style={{ color: 'var(--navy-700)' }}
+                    aria-hidden="true"
+                  />
+                  <span
+                    className="min-w-0 flex-1 truncate text-sm"
+                    style={{ color: 'var(--text)' }}
+                  >
+                    <NameDisplay name={d.name} />
+                  </span>
+                  <span className="shrink-0 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    {d.sizeLabel} · {d.createdRelative}
+                  </span>
+                  {d.isArchived && (
+                    <span className="badge badge-neutral shrink-0">
+                      <span className="badge-dot" aria-hidden="true" />
+                      <span>{tp('archived')}</span>
+                    </span>
+                  )}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+/**
+ * The advisory required-docs checklist line inside a project group header.
+ * Renders QUIETLY when complete (a calm "כל מסמכי החובה קיימים" with a soft
+ * check); reserves color + filled chips for the ATTENTION state (missing
+ * required types). On load/error it renders nothing (the group still works) —
+ * never a lone "—" that reads as broken.
+ */
+function ChecklistLine({
+  projectId,
+  onMissing,
+}: {
+  projectId: string;
+  onMissing: (projectId: string, missing: number) => void;
+}) {
+  const t = useTranslations('documents');
+  const { data: checklist } = useDocumentChecklist(projectId);
+
+  // Report the missing count up for the orientation header (0 when complete).
+  // In an effect (never during render) so the parent setState is safe; the
+  // parent setter dedupes, so a stable value never loops.
+  const missingCount = checklist?.missing.length;
+  useEffect(() => {
+    if (missingCount !== undefined) onMissing(projectId, missingCount);
+  }, [projectId, missingCount, onMissing]);
+
+  if (!checklist || checklist.totalCount === 0) return null;
+
+  if (checklist.isComplete) {
+    return (
+      <span
+        className="ms-auto flex items-center gap-1.5 text-xs"
+        style={{ color: 'var(--text-muted)' }}
+      >
+        <CheckCircle2
+          className="h-3.5 w-3.5"
+          style={{ color: 'var(--success-600)' }}
+          aria-hidden="true"
+        />
+        {t('checklist.complete')}
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="ms-auto flex flex-wrap items-center justify-end gap-1.5 text-xs"
+      style={{ color: 'var(--text)' }}
+    >
+      <AlertTriangle
+        className="h-3.5 w-3.5 shrink-0"
+        style={{ color: 'var(--warning-600)' }}
+        aria-hidden="true"
+      />
+      <span style={{ color: 'var(--text-muted)' }}>
+        {t('checklist.summary', {
+          present: checklist.presentCount,
+          total: checklist.totalCount,
+        })}
+      </span>
+      {checklist.missing.map((m) => (
+        <span
+          key={m.type}
+          className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+          style={{
+            background: 'var(--warning-50)',
+            color: 'var(--warning-700)',
+            border: '1px solid var(--warning-100)',
+          }}
+        >
+          {m.typeLabel}
+        </span>
+      ))}
+    </span>
   );
 }

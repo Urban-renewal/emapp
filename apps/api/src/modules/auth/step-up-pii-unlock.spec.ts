@@ -319,8 +319,12 @@ async function seedFinalizedDoc(opts: {
     placeholders += `, $${vals.length}`;
   }
   if (opts.sensitive === true) {
-    cols.push('sensitive');
-    placeholders += `, true`;
+    // A STORED sensitive doc (uploaded_at set) is encrypted at rest by the
+    // Gate-6 invariant (0080 CHECK + 0081 reject-on-insert trigger), so the
+    // fixture must reflect that: bytes_encrypted=true. (The storage is stubbed
+    // in these gate tests — only the DB flags drive the behavior under test.)
+    cols.push('sensitive', 'bytes_encrypted');
+    placeholders += `, true, true`;
   }
   const c = await providerPool.connect();
   try {

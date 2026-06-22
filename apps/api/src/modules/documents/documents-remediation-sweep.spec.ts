@@ -70,6 +70,7 @@ async function insertDoc(opts: {
   sensitive?: boolean;
   mimeType?: string;
 }): Promise<string> {
+  const sensitive = opts.sensitive ?? false;
   return withTenant(orgA.id, async (tx) => {
     const [row] = await tx
       .insert(documents)
@@ -82,7 +83,14 @@ async function insertDoc(opts: {
         r2Key: `org/${orgA.id}/${randomUUID()}`,
         contentHash: randomUUID().replace(/-/g, ''),
         uploadedBy: mgrId,
-        sensitive: opts.sensitive ?? false,
+        sensitive,
+        // A STORED sensitive doc (uploaded_at set) is encrypted at rest by the
+        // Gate-6 invariant (0080 CHECK + 0081 reject-on-insert trigger), so a
+        // sensitive seed must carry bytes_encrypted=true — these fixtures model
+        // ALREADY-correctly-stored sensitive docs (storage is stubbed). The
+        // sweep's plaintext→sensitive FLIP cases seed sensitive=false (trigger
+        // no-op) and the sweep itself re-encrypts on the flip.
+        bytesEncrypted: sensitive,
         uploadedAt: new Date(),
         scanStatus: 'clean',
       })

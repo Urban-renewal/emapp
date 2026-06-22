@@ -77,8 +77,11 @@ import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 
 import {
+  DocEnvelopeKeyRegistry,
+  StubExtractionProvider,
   db,
   env as dbEnv,
+  encryptDocEnvelope,
   memberships,
   projectAssignments,
   users,
@@ -114,6 +117,15 @@ function stubDocBytes(): Buffer {
     ].join('\n'),
     'utf8',
   );
+}
+
+/** The SOURCE OBJECT AS IT SITS AT REST: the parseable Tabu text wrapped in an
+ *  EMAPPENC envelope (exactly what B2 stores on tabu-create). The run path MUST
+ *  decrypt this before parsing — feeding the raw envelope to the parser yields
+ *  zero rows (the regression this guards). */
+function encryptedStubDocBytes(): Buffer {
+  const registry = DocEnvelopeKeyRegistry.fromEnv(dbEnv.DOC_ENCRYPTION_KEY);
+  return encryptDocEnvelope(stubDocBytes(), registry);
 }
 
 // ── stub providers ───────────────────────────────────────────────────────────
@@ -335,7 +347,12 @@ async function seedApartment(pid: string): Promise<string> {
   }
 }
 
-/** A FINALIZED document on `apartmentId` with a known r2_key. */
+/** A FINALIZED, SENSITIVE נסח document on `apartmentId` with a known r2_key.
+ *  A real tabu source נסח is sensitive (lists every owner's national_id) and is
+ *  ENCRYPTED at rest (B2 + the 0080 CHECK / 0081 reject trigger), so the fixture
+ *  seeds sensitive=true AND bytes_encrypted=true — and the run path therefore
+ *  must DECRYPT the object before parsing it. (The serving stub returns whatever
+ *  bytes the test stages for this r2_key.) */
 async function seedFinalizedDoc(
   orgId: string,
   uploaderId: string,
@@ -350,9 +367,9 @@ async function seedFinalizedDoc(
     const r = await c.query<{ id: string }>(
       `INSERT INTO documents
          (org_id, apartment_id, name, type, mime_type, size_bytes, r2_key,
-          content_hash, uploaded_by, uploaded_at, scan_status)
-       VALUES ($1, $2, 'nesach.pdf', 'other', 'application/pdf', 100, $3, 'h',
-               $4, now(), 'clean')
+          content_hash, uploaded_by, uploaded_at, scan_status, sensitive, bytes_encrypted)
+       VALUES ($1, $2, 'nesach.pdf', 'land_registry', 'application/pdf', 100, $3, 'h',
+               $4, now(), 'clean', true, true)
        RETURNING id`,
       [orgId, apartmentId, r2Key, uploaderId],
     );
@@ -557,6 +574,42 @@ describe('tabu-extraction · runExtraction (parse → encrypt → store)', () =>
     expect(meta.engine).toBe('stub');
     expect(meta.extractedAt).not.toBeNull();
     expect(meta.rawText && meta.rawText.length).toBeGreaterThan(0);
+  }, 30_000);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 1b) ENCRYPTED source object → the run path DECRYPTS the envelope BEFORE
+  //     parsing. The source נסח sits at rest as an EMAPPENC envelope (B2); the
+  //     storage stub serves THAT envelope and the REAL StubExtractionProvider
+  //     parses the result. Without the decrypt step the parser sees ciphertext →
+  //     ZERO rows → this test goes RED. With it → the two known owners parse.
+  //     (Regression guard for the Gate-6 "run path parses ciphertext" bug.)
+  // ─────────────────────────────────────────────────────────────────────────
+  it('1b) encrypted source envelope → DECRYPT then parse → known owners (NOT ciphertext-garbage)', async () => {
+    const aptId = await seedApartment(projectId);
+    const doc = await seedFinalizedDoc(org.id, managerId, aptId);
+    const exId = await seedDraftExtraction(org.id, aptId, doc.id, managerId);
+
+    // Storage serves the ENCRYPTED envelope (exactly what B2 stores at rest) and
+    // the engine is the REAL byte-parsing Stub — so a missing decrypt yields 0
+    // rows, not the two known owners.
+    const svc = await makeRunSvc(
+      new FixedBytesStorage(encryptedStubDocBytes()),
+      new StubExtractionProvider(),
+    );
+    const res = await svc.runExtraction(manager(), exId);
+
+    expect(rowCountOf(res)).toBe(2);
+
+    const rows = await readRowsDecrypted(exId);
+    expect(rows.length).toBe(2);
+    expect(rows[0]!.name).toBe(OWNER_A.name);
+    expect(rows[0]!.nationalId).toBe(OWNER_A.nationalId);
+    expect(rows[1]!.name).toBe(OWNER_B.name);
+    expect(rows[1]!.nationalId).toBe(OWNER_B.nationalId);
+
+    // The decrypted plaintext is what got parsed → raw_text round-trips to it.
+    const meta = await readExtractionMeta(exId);
+    expect(meta.rawText).toContain(OWNER_A.nationalId);
   }, 30_000);
 
   // ─────────────────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import {
   apartments,
   authSessions,
   buildings,
+  decryptDocEnvelope,
   decryptField,
   documents,
   encryptDocEnvelope,
@@ -445,7 +446,15 @@ export class TabuExtractionsService {
         if (!doc || doc.archivedAt) throw NOT_FOUND;
         if (!doc.uploadedAt || doc.scanStatus !== 'clean') throw DOC_NOT_FINALIZED;
 
-        const bytes = await this.readObjectBytes(doc.r2Key);
+        // The source נסח is ENCRYPTED at rest (B2 wraps it in an EMAPPENC
+        // envelope on tabu-create + the create()/flip paths re-encrypt). DECRYPT
+        // the envelope before parsing — feeding ciphertext to the extractor would
+        // yield garbage rows. A pre-B2 object that is NOT an envelope is read as-is
+        // (idempotent across the rollout). Bytes are NEVER logged.
+        const raw = await this.readObjectBytes(doc.r2Key);
+        const bytes = looksLikeDocEnvelope(raw)
+          ? decryptDocEnvelope(raw, DocEnvelopeKeyRegistry.fromEnv(dbEnv.DOC_ENCRYPTION_KEY))
+          : raw;
 
         // 4. Pluggable engine — default Stub makes NO external call.
         const result = await this.extractionProvider.extract({

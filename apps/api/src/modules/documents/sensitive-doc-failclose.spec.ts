@@ -15,10 +15,10 @@
  *   raw R2 presigned URL.
  *
  * The legacy `sensitive && !bytes_encrypted && uploaded` pre-state can no longer
- * be INSERTed directly (the 0081 BEFORE-INSERT trigger derives bytes_encrypted=
- * true). We reproduce it the sanctioned way — `SET LOCAL session_replication_role
- * = replica` for that one fixture insert (skips the trigger), exactly as a
- * pre-0080 production row looked.
+ * be INSERTed directly (the 0081 BEFORE-INSERT trigger REJECTS it). We reproduce
+ * it the sanctioned way — `SET LOCAL session_replication_role = replica` for that
+ * one fixture insert (skips the trigger), exactly as a pre-0080 production row
+ * looked.
  *
  * Real-DB, in-process service harness (mirrors doc-encryption-7d.spec).
  *
@@ -116,7 +116,7 @@ const CHECK_NAME = 'documents_sensitive_encrypted_at_rest';
  *  `sensitive && !bytes_encrypted && uploaded` legacy state — a row that can no
  *  longer be written normally (the 0080 CHECK + 0081 trigger forbid it). We do
  *  it the way a real pre-constraint row exists in production: drop the CHECK,
- *  insert under `session_replication_role=replica` (skips the 0081 derive
+ *  insert under `session_replication_role=replica` (skips the 0081 reject
  *  trigger), then re-add the CHECK `NOT VALID` (new writes guarded, the legacy
  *  row grandfathered — exactly the production posture pre-backfill). */
 async function seedDoc(opts: {

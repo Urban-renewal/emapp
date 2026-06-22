@@ -1,31 +1,42 @@
--- 0081: documents — BEFORE-INSERT derive `bytes_encrypted = true` for a row that
--- is inserted ALREADY-uploaded AND sensitive (the 0080 CHECK invariant).
+-- 0081: documents — BEFORE-INSERT REJECT a row that is inserted ALREADY-uploaded
+-- AND sensitive AND not-yet-encrypted (the 0080 CHECK invariant), at the INSERT
+-- seam.
+--
+-- WHY REJECT (not derive):
+-- An earlier draft DERIVED `bytes_encrypted := true` for such a row. That was a
+-- SECURITY HOLE: it silently marked a row "encrypted at rest" WITHOUT anything
+-- actually encrypting the bytes — so any future writer that INSERTs a sensitive,
+-- already-uploaded, plaintext object would have its row stamped
+-- bytes_encrypted=true, defeating the 0080 CHECK on INSERT and re-arming the
+-- exact drift class (claimed-encrypted-but-plaintext) this Gate-6 work closes.
+-- The invariant must be "ENCRYPT OR BE REJECTED", never "claimed-encrypted-but-
+-- plaintext". So the trigger now RAISES instead of deriving: an INSERT that would
+-- store plaintext sensitive bytes is refused at the DB layer, mirroring the 0080
+-- CHECK but with a clear, actionable error.
 --
 -- WHY a trigger (and why INSERT-ONLY):
 -- The 0080 CHECK `NOT (sensitive AND uploaded_at IS NOT NULL AND NOT bytes_encrypted)`
--- ripples to EVERY raw-SQL seeder / test fixture that INSERTs a sensitive doc
--- WITH bytes at rest (uploaded_at set) but WITHOUT bytes_encrypted=true — ~35
--- spec files. A fixture that inserts an already-uploaded sensitive row is, by
--- construction, asserting "a STORED sensitive document"; a real stored sensitive
--- document IS encrypted at rest, so deriving bytes_encrypted=true is the CORRECT
--- representation. One trigger replaces 35 brittle per-file edits (the repo
--- lesson: prefer a BEFORE-trigger derive over patching N raw seeders).
+-- already rejects such a row, but with a generic constraint-violation message.
+-- This trigger gives a precise, named failure at the INSERT seam and documents
+-- the sanctioned escape hatch (replica role) for the few fixtures that must
+-- reproduce the legacy pre-state.
 --
--- WHY this does NOT mask the production bug it guards against:
+-- WHY this does NOT break document creation:
 --   * The ONLY production INSERT (documents.service.ts create) inserts with
---     uploaded_at = NULL (bytes arrive later at finalize) → the trigger is a
---     NO-OP at create, and the real encrypt-at-rest happens at finalize.
+--     uploaded_at = NULL (bytes arrive later at finalize) → the predicate is
+--     false (uploaded_at IS NULL) → the trigger is a NO-OP at create, and the
+--     real encrypt-at-rest happens at finalize.
 --   * The dangerous historical drift (sensitive flipped ON over a PLAINTEXT
 --     object) happens on UPDATE (update-retype + remediationSweep), NOT INSERT.
---     This trigger is INSERT-ONLY, so it NEVER silently "claims" encryption for
---     a flip — those paths now re-encrypt IN the audited tx (set bytes_encrypted
---     =true alongside the object overwrite) and the 0080 CHECK still catches any
---     future flip that forgets to.
+--     Those paths now re-encrypt IN the audited tx (set bytes_encrypted=true
+--     alongside the object overwrite) and the 0080 CHECK still catches any future
+--     flip that forgets to.
 --
--- A backfill / regression test that must reproduce the legacy
--- `sensitive && !bytes_encrypted` pre-state inserts under
--- `SET LOCAL session_replication_role = replica` (skips the trigger), which is
--- the sanctioned way to seed a pre-constraint row.
+-- A backfill / regression test (or a seeder) that must reproduce the legacy
+-- `sensitive && !bytes_encrypted && uploaded` pre-state INSERTs under
+-- `SET LOCAL session_replication_role = 'replica'` (skips the trigger), which is
+-- the sanctioned way to seed a pre-constraint row — the same pattern the
+-- failclose spec uses.
 --
 -- Reversibility: HIGH. DROP TRIGGER + DROP FUNCTION restores prior behaviour.
 -- Idempotent/guarded so a concurrent test-worker migrate() is safe.
@@ -35,10 +46,12 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  -- Only a sensitive row that ALREADY has bytes at rest (uploaded) and is not
-  -- yet marked encrypted is derived — exactly the 0080 CHECK's trigger surface.
+  -- A sensitive row that ALREADY has bytes at rest (uploaded) and is NOT marked
+  -- encrypted would be PLAINTEXT PII at rest — exactly the 0080 CHECK's surface.
+  -- REJECT it (never silently claim encryption that did not happen).
   IF NEW.sensitive AND NEW.uploaded_at IS NOT NULL AND NOT NEW.bytes_encrypted THEN
-    NEW.bytes_encrypted := true;
+    RAISE EXCEPTION 'sensitive document inserted with bytes at rest but bytes_encrypted=false (plaintext-at-rest is forbidden; encrypt the object and set bytes_encrypted=true, or seed pre-constraint rows under session_replication_role=replica)'
+      USING ERRCODE = 'check_violation';
   END IF;
   RETURN NEW;
 END

@@ -61,11 +61,16 @@ function manager(org: TestOrg): AccessTokenPayload {
 
 async function seedDoc(org: TestOrg, opts: { type: string; sensitive?: boolean }) {
   const id = randomUUID();
+  const sensitive = opts.sensitive ?? false;
   await pool().query(
+    // A STORED sensitive doc (uploaded_at set) is encrypted at rest by the
+    // Gate-6 invariant (0080 CHECK + 0081 reject-on-insert trigger), so
+    // bytes_encrypted tracks sensitive here. Storage is stubbed in these tests —
+    // only the DB flags drive the behavior under test.
     `INSERT INTO documents (id, org_id, project_id, apartment_id, name, type, mime_type,
-       size_bytes, content_hash, r2_key, uploaded_by, uploaded_at, scan_status, sensitive)
+       size_bytes, content_hash, r2_key, uploaded_by, uploaded_at, scan_status, sensitive, bytes_encrypted)
      VALUES ($1, $2, $3, NULL, 'hardening doc', $4, 'application/pdf',
-       100, 'h', $5, $6, now(), 'clean', $7)`,
+       100, 'h', $5, $6, now(), 'clean', $7, $8)`,
     [
       id,
       org.id,
@@ -73,7 +78,8 @@ async function seedDoc(org: TestOrg, opts: { type: string; sensitive?: boolean }
       opts.type,
       `t/${id}`,
       org.users.find((u) => u.role === 'manager')!.id,
-      opts.sensitive ?? false,
+      sensitive,
+      sensitive,
     ],
   );
   return id;

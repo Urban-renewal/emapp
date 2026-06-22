@@ -307,11 +307,13 @@ async function seedFinalizedDoc(orgId: string, uploaderId: string, aptId: string
   const c = await providerPool.connect();
   try {
     const r = await c.query<{ id: string }>(
+      // A STORED sensitive נסח is encrypted at rest (0080 CHECK + 0081 reject
+      // trigger), so the fixture sets bytes_encrypted=true to mirror reality.
       `INSERT INTO documents
          (org_id, apartment_id, name, type, mime_type, size_bytes, r2_key,
-          content_hash, uploaded_by, uploaded_at, scan_status, sensitive)
+          content_hash, uploaded_by, uploaded_at, scan_status, sensitive, bytes_encrypted)
        VALUES ($1, $2, 'nesach.pdf', 'other', 'application/pdf', 100, $3,
-               $4, $5, now(), 'clean', true) RETURNING id`,
+               $4, $5, now(), 'clean', true, true) RETURNING id`,
       [orgId, aptId, `org/${orgId}/doc/${randomUUID()}`, `h-${randomUUID()}`, uploaderId],
     );
     return r.rows[0]!.id;

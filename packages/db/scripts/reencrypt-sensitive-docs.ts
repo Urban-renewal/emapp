@@ -51,7 +51,7 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNotNull } from 'drizzle-orm';
 
 import {
   DocEnvelopeConfigError,
@@ -151,7 +151,12 @@ async function main(): Promise<void> {
   );
 
   // CANDIDATE SET (cross-org maintenance via the BYPASSRLS provider pool):
-  // sensitive, NOT yet encrypted, uploaded (has bytes at rest), not archived.
+  // sensitive, NOT yet encrypted, uploaded (has bytes at rest). ARCHIVED rows
+  // are INCLUDED on purpose: an archived sensitive object is still PLAINTEXT
+  // PII at rest in R2 (archived ≠ shredded — the object lingers), and the 0080
+  // CHECK validates ALL rows with no archived exemption, so an archived
+  // violating row would abort `ADD CONSTRAINT` in prod. We must re-encrypt
+  // them too.
   // Ordered by id for a STABLE, RESUMABLE walk (the bytes_encrypted flip is the
   // real resume marker — a re-run never re-selects an already-fixed doc).
   const rows = await providerDb
@@ -166,7 +171,6 @@ async function main(): Promise<void> {
         eq(documents.sensitive, true),
         eq(documents.bytesEncrypted, false),
         isNotNull(documents.uploadedAt),
-        isNull(documents.archivedAt),
       ),
     )
     .orderBy(asc(documents.id));

@@ -3,11 +3,12 @@ import {
   PublicSignSubmitInput,
   type PublicSignSubmit,
 } from '@emapp/shared-types';
-import { Body, Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Req, Res } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { FastifyRequest } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { safeDownloadFilename } from '../documents/storage';
 
 import { PublicSignService } from './public-sign.service';
 
@@ -32,6 +33,35 @@ export class PublicSignController {
     const audit = extractAudit(req);
     const data = await this.publicSign.preview(token, audit);
     return { data };
+  }
+
+  /**
+   * C2 (Gate-6) — GET /sign/:token/document — token-scoped decrypt-STREAM of a
+   * SENSITIVE document's PLAINTEXT. The preview returns THIS URL (instead of a
+   * raw R2 presign) for sensitive+encrypted docs so national_id / נסח PII is
+   * never served unencrypted to the unauthenticated signer. The service runs the
+   * full token gate chain and serves ONLY sensitive+encrypted docs (everything
+   * else → generic 401 invalid_token). Forced attachment + nosniff, mirroring
+   * the authenticated document download.
+   */
+  @Get(':token/document')
+  @Throttle({ default: { limit: 30, ttl: 60 * 60 * 1000 } })
+  async previewDocument(
+    @Param('token') token: string,
+    @Req() req: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ) {
+    const audit = extractAudit(req);
+    const result = await this.publicSign.previewDocumentStream(token, audit);
+    const disp =
+      `attachment; filename="${safeDownloadFilename(result.name)}"` +
+      `; filename*=UTF-8''${encodeURIComponent(result.name)}`;
+    return reply
+      .header('content-type', result.mimeType)
+      .header('content-disposition', disp)
+      .header('content-length', String(result.sizeBytes))
+      .header('x-content-type-options', 'nosniff')
+      .send(result.stream);
   }
 
   @Post(':token')

@@ -1,14 +1,17 @@
 import {
   AuditService,
+  DocEnvelopeKeyRegistry,
   apartments,
   authSessions,
   buildings,
   decryptField,
   documents,
+  encryptDocEnvelope,
   encryptField,
   encryptOwnerPii,
   env as dbEnv,
   hashField,
+  looksLikeDocEnvelope,
   owners,
   projectAssignments,
   projects,
@@ -223,10 +226,34 @@ export class TabuExtractionsService {
         //     extraction is attached to it (turn-ON only, never off). Its
         //     download now requires the per-session PII step-up unlock.
         if (!doc.sensitive) {
+          // SECURITY (Gate-6) — ATOMIC re-encrypt: the doc is already uploaded;
+          // if its bytes at rest are still PLAINTEXT we MUST re-encrypt the object
+          // IN PLACE and set bytes_encrypted=true in the SAME UPDATE as
+          // sensitive=true (the 0080 CHECK forbids committing sensitive over a
+          // plaintext object, and the serving path would otherwise plain-presign a
+          // national_id-dense נסח). A read/put failure THROWS → the whole create
+          // rolls back (no flip over plaintext).
+          const reEncrypt = Boolean(doc.uploadedAt && !doc.bytesEncrypted);
+          if (reEncrypt) await this.ensureSourceObjectEncrypted(doc.r2Key);
           await tx
             .update(documents)
-            .set({ sensitive: true, updatedAt: new Date() })
+            .set({
+              sensitive: true,
+              ...(reEncrypt ? { bytesEncrypted: true } : {}),
+              updatedAt: new Date(),
+            })
             .where(eq(documents.id, doc.id));
+          if (reEncrypt) {
+            await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+              orgId: user.orgId,
+              actorId: user.sub,
+              actorType: 'user',
+              action: 'document.reencrypt_at_rest',
+              targetTable: 'documents',
+              targetId: doc.id,
+              sessionId: user.sid,
+            });
+          }
         }
 
         // 6. Insert the draft envelope.
@@ -314,6 +341,25 @@ export class TabuExtractionsService {
       { userId: user.sub },
     );
     return toWire(row);
+  }
+
+  /**
+   * SECURITY (Gate-6) — ensure the source נסח object is an EMAPPENC envelope,
+   * re-encrypting it IN PLACE if it is still plaintext. Called INSIDE the create
+   * tx right before the `sensitive=true` flip, with the caller setting
+   * bytes_encrypted=true in the same UPDATE. THROWS on a missing/unreadable object
+   * or a putObject failure → the flip tx rolls back (never `sensitive=true` over
+   * plaintext). Idempotent (already-envelope → NO-OP). Uses the SAME shared
+   * @emapp/db EMAPPENC primitives as the documents content-upload path and the
+   * backfill, so the bytes are byte-identical and decrypt via the same registry.
+   * Never logs/echoes bytes — only ids / lengths surface anywhere.
+   */
+  private async ensureSourceObjectEncrypted(r2Key: string): Promise<void> {
+    const bytes = await this.readObjectBytes(r2Key);
+    if (looksLikeDocEnvelope(bytes)) return;
+    const registry = DocEnvelopeKeyRegistry.fromEnv(dbEnv.DOC_ENCRYPTION_KEY);
+    const envelope = encryptDocEnvelope(bytes, registry);
+    await this.storage.putObject(r2Key, envelope, { contentType: 'application/octet-stream' });
   }
 
   /** Read a source object's full bytes via the storage provider. The source נסח

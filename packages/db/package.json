@@ -17,6 +17,7 @@
     "verify:seed": "tsx scripts/verify-seed.ts",
     "provider:bootstrap": "tsx scripts/bootstrap-provider-admin.ts",
     "backfill:doc-bytes": "tsx scripts/backfill-doc-bytes.ts",
+    "reencrypt:sensitive": "tsx scripts/reencrypt-sensitive-docs.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:rls": "vitest run test/rls-isolation.spec.ts",

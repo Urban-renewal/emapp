@@ -12,7 +12,9 @@
  * Harness mirrors documents-scan-gate.spec.ts (real DB, providerPool seeding).
  */
 import { randomUUID } from 'node:crypto';
+import { Readable } from 'node:stream';
 
+import type { IStorageProvider } from '@emapp/db';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { providerPool } from '../../../../../packages/db/src/client';
@@ -23,6 +25,29 @@ import type { AccessTokenPayload } from '../auth/auth.service';
 import { DocumentsService } from './documents.service';
 
 const pool = () => providerPool;
+
+/** Stub storage returning PLAINTEXT source bytes so the Gate-6 in-place
+ *  re-encrypt that runs when update() flips a doc sensitive can read → envelope
+ *  → putObject (a no-op here). The specs assert DB-level sensitive flips. */
+class StubStorage implements IStorageProvider {
+  async getUploadUrl(): Promise<string> {
+    return 'https://r2.example.test/put';
+  }
+  async getDownloadUrl(): Promise<string> {
+    return 'https://r2.example.test/get';
+  }
+  async delete(): Promise<void> {}
+  async head(): Promise<null> {
+    return null;
+  }
+  async putObject(): Promise<void> {}
+  async getObjectStream(): Promise<Readable> {
+    return Readable.from([Buffer.from('%PDF-1.4 plaintext doc bytes %%EOF')]);
+  }
+  async healthCheck(): Promise<void> {}
+}
+const stubStorage = new StubStorage();
+const makeDocsSvc = () => new DocumentsService(stubStorage, undefined as never, undefined as never);
 
 function manager(org: TestOrg): AccessTokenPayload {
   return {
@@ -63,12 +88,7 @@ describe('S7b hardening — sensitive turn-ON via PATCH (HIGH-1)', () => {
   /* shared pools; global teardown closes them */
 
   it('PATCH type → id_document re-derives sensitive=true', async () => {
-    const svc = new DocumentsService(
-      // storage/scanner/notifications are not touched by update()
-      undefined as never,
-      undefined as never,
-      undefined as never,
-    );
+    const svc = makeDocsSvc();
     const docId = await seedDoc(org, { type: 'other', sensitive: false });
     await svc.update(manager(org), docId, { type: 'id_document' });
     const { rows } = await pool().query(`SELECT sensitive FROM documents WHERE id = $1`, [docId]);
@@ -79,7 +99,7 @@ describe('S7b hardening — sensitive turn-ON via PATCH (HIGH-1)', () => {
     // A land-registry extract lists every owner's national_id, so the doc_type
     // alone must turn sensitive ON (encrypt-at-rest + OTP + contractor-exclude),
     // exactly like id_document/financial. Guards the #1 live PII leak.
-    const svc = new DocumentsService(undefined as never, undefined as never, undefined as never);
+    const svc = makeDocsSvc();
     const docId = await seedDoc(org, { type: 'other', sensitive: false });
     await svc.update(manager(org), docId, { type: 'land_registry' });
     const { rows } = await pool().query(`SELECT sensitive FROM documents WHERE id = $1`, [docId]);
@@ -87,7 +107,7 @@ describe('S7b hardening — sensitive turn-ON via PATCH (HIGH-1)', () => {
   });
 
   it('PATCH name only does NOT flip sensitive (no accidental ON, never OFF)', async () => {
-    const svc = new DocumentsService(undefined as never, undefined as never, undefined as never);
+    const svc = makeDocsSvc();
     const plain = await seedDoc(org, { type: 'other', sensitive: false });
     await svc.update(manager(org), plain, { name: 'renamed' });
     const a = await pool().query(`SELECT sensitive FROM documents WHERE id = $1`, [plain]);

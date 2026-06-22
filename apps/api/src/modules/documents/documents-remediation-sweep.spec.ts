@@ -25,6 +25,7 @@
  *     vitest run src/modules/documents/documents-remediation-sweep.spec.ts
  */
 import { randomUUID } from 'node:crypto';
+import { Readable } from 'node:stream';
 
 import { documents, withTenant } from '@emapp/db';
 import { RemediationSweepResultSchema } from '@emapp/shared-types';
@@ -41,8 +42,14 @@ let svc: DocumentsService;
 let orgA: TestOrg;
 let mgrId: string;
 
-// Inert stubs — the sweep touches NONE of these (no storage, no scan, no notify).
-const storageStub = {} as never;
+// The sweep now re-encrypts a re-typed PLAINTEXT object IN PLACE (Gate-6) when it
+// flips a doc sensitive — so storage must serve PLAINTEXT bytes (read → envelope
+// → putObject no-op). Scan + notify are still untouched by the sweep.
+const storageStub = {
+  getObjectStream: async () =>
+    Readable.from([Buffer.from('%PDF-1.4 plaintext נסח source bytes %%EOF')]),
+  putObject: async () => undefined,
+} as never;
 const scanStub = {} as never;
 const notificationsStub = {} as never;
 
@@ -131,7 +138,11 @@ describe('FL-5 · DocumentsService.remediationSweep (dry-run-default, idempotent
   });
 
   it('APPLY (dryRun:false) re-types the tabu doc → land_registry + sensitive', async () => {
-    const tabuId = await insertDoc({ name: 'tabu_extract_2021.pdf', type: 'document', sensitive: false });
+    const tabuId = await insertDoc({
+      name: 'tabu_extract_2021.pdf',
+      type: 'document',
+      sensitive: false,
+    });
 
     const r = await svc.remediationSweep(manager(), { dryRun: false, limit: 1000 });
     expect(r.applied).toBe(true);
@@ -169,8 +180,16 @@ describe('FL-5 · DocumentsService.remediationSweep (dry-run-default, idempotent
   });
 
   it('a NON-tabu doc is NOT misclassified as land_registry (no false-positive flip)', async () => {
-    const agreementId = await insertDoc({ name: 'הסכם התחדשות.pdf', type: 'agreement', sensitive: false });
-    const blueprintId = await insertDoc({ name: 'תוכנית בניין.pdf', type: 'blueprint', sensitive: false });
+    const agreementId = await insertDoc({
+      name: 'הסכם התחדשות.pdf',
+      type: 'agreement',
+      sensitive: false,
+    });
+    const blueprintId = await insertDoc({
+      name: 'תוכנית בניין.pdf',
+      type: 'blueprint',
+      sensitive: false,
+    });
     const genericId = await insertDoc({ name: 'מסמך כללי.pdf', type: 'other', sensitive: false });
 
     // Apply — none of these should change.
@@ -194,7 +213,9 @@ describe('FL-5 · DocumentsService.remediationSweep (dry-run-default, idempotent
     expect(serialized).not.toContain('123456789');
     expect(serialized).not.toContain('.pdf');
     // Reason keys are the DH3 content-free constants.
-    const item = r.sample.find((s) => s.reason.startsWith('filename_') || s.reason.startsWith('content_'));
+    const item = r.sample.find(
+      (s) => s.reason.startsWith('filename_') || s.reason.startsWith('content_'),
+    );
     expect(item).toBeDefined();
   });
 

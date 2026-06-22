@@ -1268,6 +1268,26 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `exceeds_ceiling`, `cannot_widen`, `invalid_scope`, `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/external-shares/:id/documents/:documentId/access
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** SEC-H1 — FAIL-CLOSED party-share document-retrieval authz decision: the ONE shared resolver consumes external_shares (expiry-on-every-request / revocation / scope-membership / allow_sensitive / OTP / watermark) and returns allow+serve-constraints OR deny+coarse-reason. RLS org isolation; sensitive bytes ⇒ requiresDecryptStream (never a presigned URL). Deny reasons are PII-free.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `otpVerified` | string | no | enum=["true","false"] |
+
+
+**Response**
+
+```json
+{ "data": { "allow": true, "constraints": { "requiresDecryptStream": bool, "watermarkSubject": "string|null" } } | { "allow": false, "reason": "share_revoked|share_expired|documents_not_granted|download_not_granted|out_of_scope|sensitive_not_allowed|otp_required|document_not_servable" } }
+```
+
+**Errors:** `validation_error`, `missing_token`, `invalid_token`, `token_expired`
+
 ### POST /api/v1/external-shares/:id/extend
 
 - **Auth:** AuthGuard + TenantGuard (Manager)

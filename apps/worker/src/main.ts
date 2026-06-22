@@ -32,6 +32,8 @@ import { env, pool, PostgresCacheProvider, reloadEnv, resolveDbTarget } from '@e
 import {
   AUDIT_RETENTION_CRON_DAILY,
   AUDIT_RETENTION_JOB_NAME,
+  PROPOSAL_PRODUCER_CRON_HOURLY,
+  PROPOSAL_PRODUCER_JOB_NAME,
   REAPER_CRON_HOURLY,
   REAPER_JOB_NAME,
   SIGNATURE_EXPIRY_CRON_HOURLY,
@@ -45,6 +47,7 @@ import pino from 'pino';
 import { registerCrashHandlers, registerSignalHandlers, smokeTestDb } from './bootstrap';
 import { AuditRetentionHandler } from './handlers/audit-retention.handler';
 import { ImportJobHandler } from './handlers/import-job.handler';
+import { ProposalProducerHandler } from './handlers/proposal-producer.handler';
 import { ReaperHandler } from './handlers/reaper.handler';
 import { SignatureExpiryHandler } from './handlers/signature-expiry.handler';
 import {
@@ -322,6 +325,43 @@ async function main(): Promise<void> {
     log.error(
       { err: e instanceof Error ? e.message : 'unknown' },
       'signature expiry sweep registration failed',
+    );
+    process.exit(1);
+  }
+
+  // Autonomous Master Plan, Phase 1 — proposal producer. The FOURTH periodic
+  // consumer: runs the generic ProposalProducer over its recommenders (Phase 1:
+  // signature-reissue) hourly at :45 — offset from the reaper (:00) /
+  // signature-expiry (:30) ticks, and AFTER the :30 expiry sweep so freshly-
+  // expired requests are visible to the reissue recommender within the hour. It
+  // NEVER sends and NEVER auto-applies — only DRAFTS proposals into the inbox.
+  // Concurrency 1 — serial keeps two ticks from double-detecting (the dedup key
+  // makes that safe regardless, but serial avoids the wasted work).
+  const proposalProducerHandler = new ProposalProducerHandler();
+  try {
+    await registerHandler({
+      boss: boss as unknown as BossLike,
+      registration: {
+        handler: proposalProducerHandler,
+        payloadSchema: proposalProducerHandler.payloadSchema,
+      },
+      concurrency: 1,
+      log: {
+        info: (msg, meta) => log.info(meta ?? {}, msg),
+        warn: (msg, meta) => log.warn(meta ?? {}, msg),
+        error: (msg, meta) => log.error(meta ?? {}, msg),
+      },
+      signal: shutdownController.signal,
+    });
+    await boss.schedule(PROPOSAL_PRODUCER_JOB_NAME, PROPOSAL_PRODUCER_CRON_HOURLY);
+    log.info(
+      { name: proposalProducerHandler.name, cron: PROPOSAL_PRODUCER_CRON_HOURLY },
+      'proposal producer scheduled',
+    );
+  } catch (e: unknown) {
+    log.error(
+      { err: e instanceof Error ? e.message : 'unknown' },
+      'proposal producer registration failed',
     );
     process.exit(1);
   }

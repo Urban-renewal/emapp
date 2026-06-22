@@ -24,6 +24,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@emapp/jobs": "workspace:*",
     "@node-rs/argon2": "^2.0.2",
     "@t3-oss/env-core": "^0.11.0",
     "drizzle-orm": "^0.45.2",

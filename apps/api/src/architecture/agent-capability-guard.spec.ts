@@ -35,6 +35,15 @@ const ALLOWLIST = new Set<string>([
   'notes/notes.controller.ts#create',
   'notes/notes.controller.ts#update',
   'notes/notes.controller.ts#archive',
+  // proposals.approve → MANAGER-ONLY scoping (autonomy Phase-1). The approve
+  // endpoint carries @RequirePermission('signature_requests.send') (a cell POLICY
+  // loosens to agents), but the delegated service method gates on `requireManager`
+  // — an agent literally cannot approve a proposal (non-manager → 403 at the
+  // service). So the fine-scoping is the manager-role check, NOT an agent
+  // capability; requireAgentCapability would be WRONG here (Phase-1 approve is
+  // manager-only by design). Re-evaluate when a `proposals.*` permission family +
+  // agent-reachable proposal kinds land (flagged in #503 / the FE-inbox slice).
+  'proposals/proposals.controller.ts#approve',
 ]);
 
 describe('architecture: D.54 fail-open guard (every agent-loosened write endpoint gates the capability)', () => {

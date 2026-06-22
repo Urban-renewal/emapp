@@ -13,6 +13,15 @@
  * The AWS SDK is mocked via plain JS classes — `@emapp/db` does NOT
  * depend on @aws-sdk/*; the SDK lives in the apps that USE it.
  */
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { describe, expect, it } from 'vitest';
 
 import { buildR2Provider, r2EnvIsComplete } from '../src/providers/storage/r2-factory';
@@ -25,7 +34,7 @@ class FakeS3Client {
   constructor(config: unknown) {
     this.config = config;
   }
-  async send(): Promise<unknown> {
+  async send(_command?: unknown): Promise<unknown> {
     return {};
   }
 }
@@ -39,7 +48,7 @@ class FakeDelCmd {
   constructor(public opts: { Bucket: string; Key: string }) {}
 }
 class FakeHeadCmd {
-  constructor(public opts: { Bucket: string; Key: string }) {}
+  constructor(public opts: { Bucket: string; Key: string; ChecksumMode?: string }) {}
 }
 class FakeListCmd {
   constructor(public opts: { Bucket: string; MaxKeys: number }) {}
@@ -168,5 +177,185 @@ describe('R2 factory — buildR2Provider', () => {
     // we passed, and the getSignedUrl mock returned a URL containing
     // the bucket+key+ttl — proving the full chain works.
     expect(url).toBe(`https://signed.fake/${VALID_ENV.R2_BUCKET}/test/key.xlsx?expires=300`);
+  });
+
+  it('B7) getUploadUrl binds IfNoneMatch:* (create-only) + base64 checksum into the PUT command', async () => {
+    // Capture the exact PutObjectCommand opts the provider constructs.
+    let captured: Record<string, unknown> | undefined;
+    const deps = {
+      ...fakeSdkDeps,
+      PutObjectCommand: class {
+        constructor(public opts: Record<string, unknown>) {
+          captured = opts;
+        }
+      },
+    };
+    const p = buildR2Provider(VALID_ENV, deps);
+    // A 64-char hex sha256 → R2's header wants base64 of the raw digest.
+    const hex = 'a'.repeat(64);
+    await p.getUploadUrl('org/o/doc/u', {
+      contentType: 'application/pdf',
+      maxSizeBytes: 2048,
+      ttlSeconds: 300,
+      createOnly: true,
+      contentSha256Hex: hex,
+    });
+    expect(captured?.['IfNoneMatch'], 'create-only guard must be presigned in').toBe('*');
+    expect(
+      captured?.['ChecksumSHA256'],
+      'the declared hash must be bound as base64 of the raw digest',
+    ).toBe(Buffer.from(hex, 'hex').toString('base64'));
+  });
+
+  it('B7b) getUploadUrl OMITS the guards when not requested (legacy callers unchanged)', async () => {
+    let captured: Record<string, unknown> | undefined;
+    const deps = {
+      ...fakeSdkDeps,
+      PutObjectCommand: class {
+        constructor(public opts: Record<string, unknown>) {
+          captured = opts;
+        }
+      },
+    };
+    const p = buildR2Provider(VALID_ENV, deps);
+    await p.getUploadUrl('org/o/doc/u', {
+      contentType: 'application/pdf',
+      maxSizeBytes: 2048,
+      ttlSeconds: 300,
+    });
+    expect(captured && 'IfNoneMatch' in captured).toBe(false);
+    expect(captured && 'ChecksumSHA256' in captured).toBe(false);
+  });
+
+  it('B7d) the REAL presigner SIGNS if-none-match + x-amz-checksum-sha256 into the URL (enforcement, not assumption)', async () => {
+    // SECURITY-CRITICAL (B7 red-team): asserting the COMMAND carries the opts
+    // (B7 above) is INSUFFICIENT — in aws-sdk v3 a request header is only
+    // ENFORCED by R2 if it lands in the presigned URL's `X-Amz-SignedHeaders`,
+    // which requires the provider to pass `signableHeaders`. This test mints a
+    // URL with the REAL @aws-sdk/s3-request-presigner against the REAL
+    // PutObjectCommand and inspects the actual query params. If the provider
+    // ever drops `signableHeaders`, `X-Amz-SignedHeaders` loses the headers and
+    // a leaked URL could overwrite/swap — this fails.
+    const provider = new R2StorageProvider(VALID_ENV.R2_BUCKET, {
+      // Real S3Client (no network call — presigning is offline/crypto only).
+      client: new S3Client({
+        region: 'auto',
+        endpoint: VALID_ENV.R2_ENDPOINT,
+        credentials: {
+          accessKeyId: VALID_ENV.R2_ACCESS_KEY_ID,
+          secretAccessKey: VALID_ENV.R2_SECRET_ACCESS_KEY,
+        },
+        forcePathStyle: false,
+      }) as unknown as ConstructorParameters<typeof R2StorageProvider>[1]['client'],
+      getSignedUrl: getSignedUrl as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['getSignedUrl'],
+      PutObjectCommand: PutObjectCommand as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['PutObjectCommand'],
+      GetObjectCommand: GetObjectCommand as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['GetObjectCommand'],
+      DeleteObjectCommand: DeleteObjectCommand as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['DeleteObjectCommand'],
+      HeadObjectCommand: HeadObjectCommand as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['HeadObjectCommand'],
+      ListObjectsV2Command: ListObjectsV2Command as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['ListObjectsV2Command'],
+    });
+    const hex = 'a'.repeat(64);
+    const url = await provider.getUploadUrl('org/o/doc/u', {
+      contentType: 'application/pdf',
+      maxSizeBytes: 2048,
+      ttlSeconds: 300,
+      createOnly: true,
+      contentSha256Hex: hex,
+    });
+    const signed = new URL(url).searchParams.get('X-Amz-SignedHeaders') ?? '';
+    const signedSet = new Set(signed.split(';'));
+    expect(signedSet.has('if-none-match'), 'create-only header must be SIGNED into the URL').toBe(
+      true,
+    );
+    expect(
+      signedSet.has('x-amz-checksum-sha256'),
+      'checksum header must be SIGNED into the URL (client MUST send it, R2 enforces it)',
+    ).toBe(true);
+    // The checksum stays a request header (unhoistable) — it must NOT be hoisted
+    // into the query string as `x-amz-checksum-sha256=...`; the client sends it.
+    expect(
+      new URL(url).searchParams.has('x-amz-checksum-sha256'),
+      'checksum must be a signed header the client sends, not hoisted into the query',
+    ).toBe(false);
+  });
+
+  it('B7e) a legacy PUT (no createOnly / no checksum) does NOT sign those headers', async () => {
+    // Backward-compat: callers that mint a plain presigned PUT keep an URL that
+    // requires NO extra headers, so existing flows are byte-for-byte unchanged.
+    const provider = new R2StorageProvider(VALID_ENV.R2_BUCKET, {
+      client: new S3Client({
+        region: 'auto',
+        endpoint: VALID_ENV.R2_ENDPOINT,
+        credentials: {
+          accessKeyId: VALID_ENV.R2_ACCESS_KEY_ID,
+          secretAccessKey: VALID_ENV.R2_SECRET_ACCESS_KEY,
+        },
+        forcePathStyle: false,
+      }) as unknown as ConstructorParameters<typeof R2StorageProvider>[1]['client'],
+      getSignedUrl: getSignedUrl as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['getSignedUrl'],
+      PutObjectCommand: PutObjectCommand as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['PutObjectCommand'],
+      GetObjectCommand: GetObjectCommand as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['GetObjectCommand'],
+      DeleteObjectCommand: DeleteObjectCommand as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['DeleteObjectCommand'],
+      HeadObjectCommand: HeadObjectCommand as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['HeadObjectCommand'],
+      ListObjectsV2Command: ListObjectsV2Command as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['ListObjectsV2Command'],
+    });
+    const url = await provider.getUploadUrl('org/o/doc/legacy', {
+      contentType: 'application/pdf',
+      maxSizeBytes: 2048,
+      ttlSeconds: 300,
+    });
+    const signed = new URL(url).searchParams.get('X-Amz-SignedHeaders') ?? '';
+    const signedSet = new Set(signed.split(';'));
+    expect(signedSet.has('if-none-match')).toBe(false);
+    expect(signedSet.has('x-amz-checksum-sha256')).toBe(false);
+  });
+
+  it('B7c) head() requests ChecksumMode:ENABLED so R2 returns the stored checksum', async () => {
+    // SECURITY-CRITICAL (B7 review): S3/R2 omit `ChecksumSHA256` from a HEAD
+    // response UNLESS the request set `ChecksumMode:'ENABLED'`. Without it, the
+    // finalize fail-closed gate would read every object as "no checksum" and
+    // reject EVERY legitimate upload. Pin that the command carries the flag,
+    // and that the provider surfaces the attested checksum.
+    let headOpts: { ChecksumMode?: string } | undefined;
+    const deps = {
+      ...fakeSdkDeps,
+      S3Client: class extends FakeS3Client {
+        override async send(command?: unknown): Promise<unknown> {
+          const cmd = command as { opts?: { ChecksumMode?: string } };
+          if (cmd?.opts && 'ChecksumMode' in cmd.opts) headOpts = cmd.opts;
+          // Model R2's HEAD response when checksum mode is enabled.
+          return { ContentLength: 1234, ChecksumSHA256: 'YmFzZTY0Y2hlY2tzdW0=' };
+        }
+      },
+      HeadObjectCommand: FakeHeadCmd,
+    };
+    const p = buildR2Provider(VALID_ENV, deps);
+    const meta = await p.head('org/o/doc/u');
+    expect(headOpts?.ChecksumMode, 'HEAD must request ChecksumMode:ENABLED').toBe('ENABLED');
+    expect(meta).toEqual({ contentLength: 1234, checksumSha256: 'YmFzZTY0Y2hlY2tzdW0=' });
   });
 });

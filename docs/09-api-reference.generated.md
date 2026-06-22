@@ -2263,6 +2263,69 @@ _(no body)_
 
 **Errors:** `forbidden`, `not_found`, `parcel_payload_missing`, `parcel_setup_not_draft`, `parcel_skeleton_conflict`, `validation_error`, `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/parked-outbound
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** List the outbound_ledger rows STUCK pending_send needing human attention: PARKED-AMBIGUOUS (failure_code NOT NULL — provider threw/timed out, the SMS MAY have gone out) + STALE-CRASHED (failure_code NULL AND older than ?staleMinutes — a claim that never settled). Newest-first, keyset-paginated. Optional ?reason filter (ambiguous|stale). PII-FREE: ids/channel/failure_code/created_at only, never phone/email/owner. RLS org isolation. These rows are NEVER auto-resent (M1 exactly-once).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+| `reason` | string | no | enum=["ambiguous","stale"] |
+| `staleMinutes` | integer | no | minimum=1, maximum=1440 |
+
+
+**Response**
+
+```json
+{ "data": [ {ParkedOutbound} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `forbidden`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/parked-outbound/:id/resolve
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** RESOLVE a parked outbound row after the manager checks the provider dashboard. Body { outcome: 'sent' | 'failed' }. 'sent' (it DID go out) → terminal sent: a DELIVERY NO-OP, records the truth, triggers NO send, preserves exactly-once. 'failed' (it did NOT go out) → terminal failed, which is RE-CLAIMABLE so the reminder retries the SAME step through the FULL governed path (never from here). Atomic + audited + status-guarded (WHERE status='pending_send') so it can't race a concurrent governor settle. Non-pending → 409.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `outcome` | string | yes | enum=["sent","failed"] |
+
+
+**Response**
+
+```json
+{ "data": { "id": "uuid", "status": "sent|failed" } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `parked_not_pending`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/parked-outbound/count
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Count the parked outbound rows per bucket (ambiguous + stale + total) for the manager attention badge. ?staleMinutes overrides the stale window (default 15). PII-free. RLS org isolation.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `staleMinutes` | integer | no | minimum=1, maximum=1440 |
+
+
+**Response**
+
+```json
+{ "data": { "ambiguous": int, "stale": int, "total": int } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `missing_token`, `invalid_token`, `token_expired`
+
 ### GET /api/v1/portal/apartment
 
 - **Auth:** TenantAuthGuard

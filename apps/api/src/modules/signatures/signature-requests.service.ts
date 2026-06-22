@@ -8,12 +8,14 @@ import {
   buildEmailFrom,
   buildings,
   documents,
+  governOutboundSend,
   owners,
   ownerships,
   projectAssignments,
   projects,
   signatureRequests,
   withTenant,
+  type GovernedSendOutcome,
   type IEmailProvider,
   type ISMSProvider,
   type TenantTx,
@@ -977,6 +979,76 @@ export class SignatureRequestsService {
     }
 
     return { reminded, total: txOut.total };
+  }
+
+  /**
+   * GOVERNED reminder send — the autonomy Phase-2 executor's gated target
+   * (Autonomous Master Plan, Phase 2; the first GOVERNED-OUTBOUND exemplar).
+   *
+   * The proposals `reminder.send` executor calls this on APPROVE. It sends ONE
+   * reminder for ONE signature request THROUGH the OutboundGovernor:
+   *   - the pure GATE PIPELINE (kill-switch · consent · circuit-breaker ·
+   *     quiet-hours · rate-ceiling) decides allow/deny/defer;
+   *   - the M1 outbound_ledger CLAIMS the deterministic idempotency key
+   *     (proposalId + signatureRequestId + cadenceStep) BEFORE sending, so a
+   *     double-approve / retry can NEVER double-send (a prior terminal `sent` →
+   *     exactly-once no-op replay);
+   *   - on `allow` + a fresh claim, the ACTUAL send REUSES the existing gated
+   *     `resend(user, id)` verbatim (re-mint fresh link + deliver email/SMS) — the
+   *     Governor adds governance + exactly-once AROUND it, never duplicating the
+   *     send logic.
+   *
+   * The kill-switch is resolved here from `CAMPAIGN_SEND_ENABLED` (OPT-OUT:
+   * enabled unless '0'/'false') and handed to the gate — the gate is the single
+   * authoritative kill-switch check on this path (`resend` itself does not gate on
+   * it). Consent defaults to TRUE (there is no per-owner outbound opt-out registry
+   * yet — that is a documented seam the ConsentGate already accepts via the
+   * resolved snapshot; when the registry lands, resolve it here). The breaker is
+   * not yet wired to a live trip-source in Phase 2, so it defaults to NOT tripped;
+   * the gate is in the pipeline ready for the breach-loop (Phase 5).
+   *
+   * Returns the governed outcome; the executor maps a non-`sent` outcome to an
+   * exception so the proposal stays pending/actionable (per-item independence,
+   * design correction M2 — a bulk approve is never one atomic tx).
+   *
+   * NOTE on RLS/visibility: `resend(user, id)` runs under ITS OWN
+   * withTenant/RLS + agent capability checks, so a stale or out-of-scope proposal
+   * cannot drive a send the manager couldn't perform by hand (RE-EVALUATE at
+   * execute). The Governor's ledger writes are org-scoped (withTenant). */
+  async sendGovernedReminder(
+    user: AccessTokenPayload,
+    input: { proposalId: string; signatureRequestId: string; cadenceStep: number },
+  ): Promise<GovernedSendOutcome> {
+    // Resolve the kill-switch (OPT-OUT: enabled unless explicitly disabled).
+    const sendFlag = serverEnv.CAMPAIGN_SEND_ENABLED;
+    const killSwitchEnabled = sendFlag !== '0' && sendFlag !== 'false';
+
+    return governOutboundSend({
+      orgId: user.orgId,
+      proposalId: input.proposalId,
+      // Email is the primary reminder channel; the ledger key + rate bucket use
+      // it. The actual fan-out (email AND/OR sms) happens inside `resend`.
+      channel: 'email',
+      recipientRef: input.signatureRequestId,
+      cadenceStep: input.cadenceStep,
+      // Consent default — the documented seam for a future per-owner opt-out
+      // registry. ConsentGate denies when this is false.
+      recipientConsented: true,
+      killSwitchEnabled,
+      // No live breaker trip-source in Phase 2 — the gate is wired, ready.
+      breakerTripped: false,
+      now: new Date(),
+      // The ACTUAL send REUSES the existing gated resend verbatim. A non-pending
+      // request (signed/cancelled concurrently) throws ConflictException out of
+      // `resend`, which the Governor catches → settles the ledger `failed`.
+      send: async () => {
+        const res = await this.resend(user, input.signatureRequestId);
+        return {
+          delivered: didAnyChannelDeliver(res.delivery),
+          providerMessageId: res.request.id,
+        };
+      },
+    });
   }
 
   /** Per-request resend CORE (HB-1 factor of `resend`). Inside an open tenant tx:

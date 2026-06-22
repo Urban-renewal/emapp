@@ -28,9 +28,63 @@
  */
 import type { DetectedCondition, IRecommender, RecommenderContext } from '@emapp/jobs';
 
+import { providerPool } from '../client';
 import { withTenant } from '../wrappers/with-tenant';
 
 import { emitProposal } from './proposals';
+
+/**
+ * A stable, arbitrary 64-bit key for the producer's TICK NON-REENTRANCY advisory
+ * lock (design correction "tick non-reentrancy"). Two ticks of the proposal
+ * producer must never run concurrently — an overlapping tick would re-detect the
+ * same conditions and (while idempotent via the dedup key + the M1 ledger key)
+ * waste work and, worse, race the OutboundGovernor's claim window. The lock makes
+ * a double-tick a clean SKIP. The number is just a unique app-chosen constant.
+ */
+export const PROPOSAL_PRODUCER_ADVISORY_LOCK_KEY = 4815162342 as const;
+
+export interface GuardedTickResult {
+  /** false when a prior tick still held the lock — this tick was SKIPPED. */
+  ran: boolean;
+  result?: ProposalProducerTickResult;
+}
+
+/**
+ * Run one producer tick UNDER a session-level advisory lock so two overlapping
+ * ticks can never double-draft (tick non-reentrancy). Uses `pg_try_advisory_lock`
+ * (non-blocking): if another tick holds it, this one SKIPS cleanly (`ran:false`)
+ * rather than queueing. The lock is held on a dedicated `providerPool` connection
+ * for the tick's duration and released in `finally` (also auto-released if the
+ * connection drops). This composes with the dedup key (draft-time) + the M1
+ * ledger key (send-time) — defense in depth against double-propose → double-send.
+ */
+export async function runProposalProducerTickGuarded(
+  recommenders: IRecommender[],
+  ctx: RecommenderContext,
+  log: ProducerLogger = NOOP_LOGGER,
+): Promise<GuardedTickResult> {
+  const client = await providerPool.connect();
+  try {
+    const locked = await client.query<{ locked: boolean }>(
+      'SELECT pg_try_advisory_lock($1) AS locked',
+      [PROPOSAL_PRODUCER_ADVISORY_LOCK_KEY],
+    );
+    if (!locked.rows[0]?.locked) {
+      log.warn('proposal producer tick skipped — prior tick still running (advisory lock held)');
+      return { ran: false };
+    }
+    try {
+      const result = await runProposalProducerTick(recommenders, ctx, log);
+      return { ran: true, result };
+    } finally {
+      await client
+        .query('SELECT pg_advisory_unlock($1)', [PROPOSAL_PRODUCER_ADVISORY_LOCK_KEY])
+        .catch(() => undefined);
+    }
+  } finally {
+    client.release();
+  }
+}
 
 export interface ProducerLogger {
   info(msg: string, meta?: Record<string, unknown>): void;

@@ -18,9 +18,11 @@ const UuidParam = new ZodValidationPipe(z.string().uuid());
  * Approval-Inbox controller (Autonomous Master Plan, Phase 1) — the BE read +
  * approve/reject the FE inbox will drive (the FE is a SEPARATE follow-on slice).
  *
- * AUTHZ posture (no permission-catalog churn in the foundation slice): in Phase 1
- * the ONLY proposal kind is `signature_request.reissue`, whose APPROVE literally
- * re-issues a signature request. So:
+ * AUTHZ posture (no permission-catalog churn in the foundation slice): the
+ * proposal kinds so far are `signature_request.reissue` (APPROVE re-issues a
+ * signing link) and `reminder.send` (APPROVE sends ONE governed reminder) — BOTH
+ * signature-chase actions, so the existing `signature_requests.*` gates fit
+ * exactly (no new permission family needed yet). So:
  *   - GET /proposals    → `signature_requests.read`  (reading proposals == reading
  *                          the signature-chase surface).
  *   - POST …/approve    → `signature_requests.send`  (approving == re-issuing a

@@ -22,7 +22,11 @@
  * NO PII / row content in logs: only integer per-recommender counts (the
  * reaper/retention/expiry no-PII convention).
  */
-import { createSignatureReissueRecommender, runProposalProducerTick } from '@emapp/db';
+import {
+  createReminderCadenceRecommender,
+  createSignatureReissueRecommender,
+  runProposalProducerTickGuarded,
+} from '@emapp/db';
 import {
   PROPOSAL_PRODUCER_JOB_NAME,
   ProposalProducerJobPayloadSchema,
@@ -45,23 +49,41 @@ export class ProposalProducerHandler implements IJobHandler<ProposalProducerJobP
 
   readonly payloadSchema = ProposalProducerJobPayloadSchema;
 
-  /** The recommenders this producer runs. Phase 1: just signature-reissue.
-   *  Adding a behavior = registering another recommender here (drop-in). */
-  private readonly recommenders: IRecommender[] = [createSignatureReissueRecommender()];
+  /** The recommenders this producer runs. Each runs in its OWN try/catch inside
+   *  `runProposalProducerTick` (design correction H-error: per-producer isolation
+   *  — one throwing recommender never drops the others' proposals). Adding a
+   *  behavior = registering another recommender here (drop-in):
+   *    - signature-reissue (Phase 1): expiry → re-issue (internal, reversible).
+   *    - reminder-cadence  (Phase 2): pending-no-response → reminder.send
+   *      (governed outbound; APPROVE sends ONE reminder through the
+   *      OutboundGovernor + the M1 exactly-once ledger). */
+  private readonly recommenders: IRecommender[] = [
+    createSignatureReissueRecommender(),
+    createReminderCadenceRecommender(),
+  ];
 
   async handle(_payload: ProposalProducerJobPayload, ctx: JobContext): Promise<void> {
     ctx.log.info('proposal producer tick: drafting proposals (no send, no auto-apply)');
 
-    const { results, totalEmitted } = await runProposalProducerTick(
+    // TICK NON-REENTRANCY (design correction): a session advisory lock makes an
+    // overlapping tick a clean SKIP rather than a double-draft (which would race
+    // the OutboundGovernor's M1 claim window). The dedup key + ledger key already
+    // make double-draft idempotent; the lock avoids the wasted work + the race.
+    const { ran, result } = await runProposalProducerTickGuarded(
       this.recommenders,
       { now: new Date() },
       ctx.log,
     );
 
+    if (!ran || !result) {
+      ctx.log.info('proposal producer tick skipped — prior tick still running');
+      return;
+    }
+
     // Counts only — no org/request/proposal ids, no PII.
     ctx.log.info('proposal producer tick complete', {
-      totalEmitted,
-      recommenders: results.map((r) => ({
+      totalEmitted: result.totalEmitted,
+      recommenders: result.results.map((r) => ({
         id: r.recommenderId,
         emitted: r.emitted,
         deduped: r.deduped,

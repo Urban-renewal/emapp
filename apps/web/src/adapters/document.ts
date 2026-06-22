@@ -15,6 +15,13 @@ const TYPE_LABELS_HE: Record<string, string> = {
   regulation: 'תקנון / רגולציה',
   permit: 'אישור / היתר',
   financial: 'מסמך פיננסי',
+  // BINDER slice 3 — deal-party taxonomy adds
+  survey: 'שומה / הערכת שמאי',
+  survey_map: 'מפת מדידה / תשריט',
+  guarantee: 'ערבות / בטוחה',
+  municipal_approval: 'אישור / היתר עירייה',
+  schedule: 'לוח זמנים / תכנית עבודה',
+  legal_opinion: 'חוות דעת משפטית',
   other: 'אחר',
   // legacy generic types (back-compat display)
   contract: 'חוזה',
@@ -30,6 +37,13 @@ const TYPE_LABELS_EN: Record<string, string> = {
   regulation: 'Regulation',
   permit: 'Permit',
   financial: 'Financial',
+  // BINDER slice 3 — deal-party taxonomy adds
+  survey: 'Appraisal',
+  survey_map: 'Survey map',
+  guarantee: 'Guarantee',
+  municipal_approval: 'Municipal approval',
+  schedule: 'Schedule',
+  legal_opinion: 'Legal opinion',
   other: 'Other',
   contract: 'Contract',
   id_document: 'ID Document',

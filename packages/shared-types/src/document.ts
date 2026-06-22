@@ -32,6 +32,21 @@ export const DocumentTypeEnum = z.enum([
   'land_registry', // נסח טאבו — carries EVERY owner's national_id → ALWAYS sensitive
   'blueprint', // תוכנית / שרטוט
   'regulation', // תקנון / רגולציה
+  // BINDER slice 3 (party-binder taxonomy adds) — the documents the OTHER deal
+  // parties bring to a renewal file. Before these, such docs fell to "כללי /
+  // אחר" on the binder board (no party bucket); they now classify + group under
+  // their party (appraiser / surveyor / contractor / municipality / lawyer).
+  // NO DB migration — `documents.type` is free text on the table; reads are
+  // tolerant (DocumentSchema.type is z.string, not this enum). These are all
+  // NON-sensitive: none are national_id-dense the way נסח/ID/financial are, so
+  // none are added to SENSITIVE_DOC_TYPES (over-marking would push non-PII docs
+  // through the at-rest-encryption + step-up gate needlessly).
+  'survey', // שומה / הערכת שמאי — the appraiser's (שמאי) valuation
+  'survey_map', // מפת מדידה / תשריט מדידה — the surveyor's (מודד) measurement map
+  'guarantee', // ערבות / בטוחה — the contractor's (קבלן) bank/performance guarantee
+  'municipal_approval', // היתר / אישור עירייה — the municipality's approval
+  'schedule', // לוח זמנים / תכנית עבודה — the contractor's (קבלן) work schedule
+  'legal_opinion', // חוות דעת משפטית — the lawyer's (עו״ד) legal opinion
   // legacy generic types (kept for back-compat with existing data + uploads):
   'contract',
   'permit',

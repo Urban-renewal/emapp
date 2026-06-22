@@ -141,6 +141,7 @@
   },
   "nav": {
     "home": "Home",
+    "inbox": "Pending decisions",
     "projects": "Projects",
     "owners": "Owners",
     "imports": "Imports",
@@ -167,6 +168,23 @@
     "tagline": "Urban Renewal",
     "navLandmark": "Primary navigation",
     "sectionTools": "Management & Tools"
+  },
+  "inbox": {
+    "title": "Pending decisions",
+    "pendingLead": "{count, plural, one {1 decision is waiting for you} other {# decisions are waiting for you}}",
+    "subtitle": "Per your rules — ready for your approval. Each decision is yours, one click away.",
+    "reject": "Dismiss",
+    "next": "Next",
+    "resetToFirstPage": "Back to first page",
+    "empty": {
+      "title": "No pending decisions — all clear",
+      "hint": "When something needs your approval, it will appear here."
+    },
+    "toast": {
+      "approved": "Approved — the action ran",
+      "rejected": "Suggestion dismissed",
+      "failed": "The action failed — you can try again"
+    }
   },
   "errorBoundary": {
     "title": "Something went wrong",

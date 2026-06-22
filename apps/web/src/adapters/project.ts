@@ -176,8 +176,10 @@ export function toApartmentSignatureProgressViewModel(
   const number = stripBidiOverrides(a.number);
   // 7c F2 — formatApartmentLabel dedups numbers that already carry the
   // "דירה" word (imported/extracted data), fixing the live "דירה דירה 7".
-  const numberSeg = formatApartmentLabel(number);
-  const designation = a.floor !== null ? `${numberSeg} · קומה ${a.floor}` : numberSeg;
+  // FL-9 — append the floor qualifier (when known) so same-numbered apartments
+  // across floors disambiguate ("דירה 1 · קומה 2"). No building info is on this
+  // wire (ApartmentSignatureProgressSchema = number + floor only).
+  const designation = formatApartmentLabel(number, 'דירה', { floor: a.floor });
   return {
     apartmentId: a.apartmentId,
     number,

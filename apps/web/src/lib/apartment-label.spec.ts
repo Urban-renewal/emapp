@@ -39,3 +39,62 @@ describe('formatApartmentLabel (7c F2 — no "דירה דירה" duplication)', 
     expect(formatApartmentLabel('Aptos', 'Apt')).toBe('Apt Aptos');
   });
 });
+
+describe('formatApartmentLabel (FL-9 — building/floor disambiguation qualifier)', () => {
+  it('base label is byte-for-byte unchanged when no context is passed', () => {
+    // The whole-codebase compatibility guarantee: every existing call site that
+    // passes only (number) or (number, prefix) keeps its pinned label exactly.
+    expect(formatApartmentLabel('1')).toBe('דירה 1');
+    expect(formatApartmentLabel('4', 'Apt')).toBe('Apt 4');
+    expect(formatApartmentLabel('דירה 7')).toBe('דירה 7');
+  });
+
+  it('appends the Hebrew floor qualifier when a floor is supplied', () => {
+    expect(formatApartmentLabel('1', 'דירה', { floor: 2 })).toBe('דירה 1 · קומה 2');
+  });
+
+  it('appends an English floor qualifier via floorWord', () => {
+    expect(formatApartmentLabel('1', 'Apt', { floor: 2, floorWord: 'Floor' })).toBe(
+      'Apt 1 · Floor 2',
+    );
+  });
+
+  it('renders floor 0 (קומת קרקע is a real floor, not "absent")', () => {
+    expect(formatApartmentLabel('1', 'דירה', { floor: 0 })).toBe('דירה 1 · קומה 0');
+  });
+
+  it('drops the floor segment gracefully when floor is null or undefined', () => {
+    expect(formatApartmentLabel('1', 'דירה', { floor: null })).toBe('דירה 1');
+    expect(formatApartmentLabel('1', 'דירה', {})).toBe('דירה 1');
+  });
+
+  it('appends a building qualifier when the project spans multiple buildings', () => {
+    expect(formatApartmentLabel('1', 'דירה', { building: 'בניין א' })).toBe('דירה 1 · בניין א');
+  });
+
+  it('appends floor THEN building, in that order, when both are present', () => {
+    expect(formatApartmentLabel('1', 'דירה', { floor: 2, building: 'בניין א' })).toBe(
+      'דירה 1 · קומה 2 · בניין א',
+    );
+  });
+
+  it('drops a blank / whitespace-only building segment', () => {
+    expect(formatApartmentLabel('1', 'דירה', { building: '   ' })).toBe('דירה 1');
+    expect(formatApartmentLabel('1', 'דירה', { building: null })).toBe('דירה 1');
+  });
+
+  it('bidi-strips the building segment (§v9-H-3 RTL-spoof defense, safe-by-default)', () => {
+    const RLO = String.fromCharCode(0x202e); // right-to-left override
+    const out = formatApartmentLabel('1', 'דירה', { building: `בניין${RLO}א` });
+    expect(out).not.toContain(RLO);
+    expect(out).toBe('דירה 1 · בנייןא');
+  });
+
+  it('keeps the no-double-prefix guard intact even with a floor qualifier', () => {
+    // The number already carries "דירה" → it is NOT re-prefixed, and the floor
+    // qualifier is still appended to the deduped base ("דירה דירה 7 · קומה 2"
+    // must NEVER appear).
+    expect(formatApartmentLabel('דירה 7', 'דירה', { floor: 2 })).toBe('דירה 7 · קומה 2');
+    expect(formatApartmentLabel('  דירה 7  ', 'דירה', { floor: 2 })).toBe('דירה 7 · קומה 2');
+  });
+});

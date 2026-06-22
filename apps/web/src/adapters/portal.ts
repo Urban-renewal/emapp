@@ -200,18 +200,16 @@ export function toPortalApartmentRowViewModel(
   const pTypeLabels = locale === 'he' ? PROJECT_TYPE_HE : PROJECT_TYPE_EN;
   const uTypeLabels = locale === 'he' ? UNIT_TYPE_HE : UNIT_TYPE_EN;
 
-  // "דירה 4 · קומה 2" / "Apt 4 · Floor 2" — drop the floor segment when
-  // the wire didn't carry one (storage units often have no floor).
-  const floorSeg =
-    row.apartment.floor === null
-      ? null
-      : locale === 'he'
-        ? `קומה ${row.apartment.floor}`
-        : `Floor ${row.apartment.floor}`;
-  // 7c F2 — formatApartmentLabel dedups numbers that already carry the
-  // "דירה" word (imported/extracted data), fixing the live "דירה דירה 7".
-  const numberSeg = formatApartmentLabel(row.apartment.number, locale === 'he' ? 'דירה' : 'Apt');
-  const apartmentDesignation = floorSeg ? `${numberSeg} · ${floorSeg}` : numberSeg;
+  // "דירה 4 · קומה 2" / "Apt 4 · Floor 2" — formatApartmentLabel (7c F2) dedups
+  // an already-"דירה"-prefixed number AND (FL-9) appends the floor qualifier
+  // when the wire carried one (dropped for storage units that have no floor),
+  // so same-numbered apartments across floors disambiguate. No building info is
+  // on the portal apartment wire.
+  const apartmentDesignation = formatApartmentLabel(
+    row.apartment.number,
+    locale === 'he' ? 'דירה' : 'Apt',
+    { floor: row.apartment.floor, floorWord: locale === 'he' ? 'קומה' : 'Floor' },
+  );
 
   const sizeLabel =
     row.apartment.sizeSqm !== null

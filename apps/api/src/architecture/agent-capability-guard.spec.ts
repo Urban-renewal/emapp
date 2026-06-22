@@ -44,6 +44,17 @@ const ALLOWLIST = new Set<string>([
   // manager-only by design). Re-evaluate when a `proposals.*` permission family +
   // agent-reachable proposal kinds land (flagged in #503 / the FE-inbox slice).
   'proposals/proposals.controller.ts#approve',
+  // parked-outbound.resolve → MANAGER-ONLY scoping (autonomy — #509 ops surface).
+  // The resolve endpoint carries @RequirePermission('signature_requests.send') (a
+  // cell POLICY loosens to agents), but the delegated service method gates on
+  // `requireManager` — an agent literally cannot resolve a parked outbound row
+  // (non-manager → 403 at the service). So the fine-scoping is the manager-role
+  // check, NOT an agent capability; requireAgentCapability would be WRONG here
+  // (resolve is manager-only by design — it disambiguates a maybe-sent reminder
+  // after a HUMAN checks the provider dashboard). Same precedent as
+  // proposals.approve above. Re-evaluate if a `proposals.*`/`outbound.*`
+  // permission family + agent-reachable kinds ever land.
+  'parked-outbound/parked-outbound.controller.ts#resolve',
 ]);
 
 describe('architecture: D.54 fail-open guard (every agent-loosened write endpoint gates the capability)', () => {

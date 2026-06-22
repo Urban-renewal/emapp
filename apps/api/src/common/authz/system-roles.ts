@@ -49,13 +49,28 @@ export interface SystemRoleDef {
 const ALL_READS: readonly Permission[] = PERMISSIONS.filter((p) => p.endsWith('.read'));
 
 /**
+ * The Approval-Inbox (autonomy engine) permission family. Manager-and-above ONLY
+ * by design — the inbox surface is gated by `ProposalsService.requireManager`, so
+ * granting `proposals.*` to Agent/Viewer would hand them a permission they could
+ * never use (the route guard would pass but `requireManager` would 403 — exactly
+ * the inconsistency this tightening removes). It is therefore EXCLUDED from the
+ * `ALL_OPERATIONAL` derivation (which feeds Admin/Manager/Agent) and added back
+ * EXPLICITLY to ADMIN + MANAGER below. Owner holds it via `...PERMISSIONS`.
+ */
+const PROPOSALS_PERMISSIONS: readonly Permission[] = PERMISSIONS.filter((p) =>
+  p.startsWith('proposals.'),
+);
+const PROPOSALS_SET = new Set<Permission>(PROPOSALS_PERMISSIONS);
+
+/**
  * "ALL operational" = everything EXCEPT the org-admin governance permissions
- * (members, roles, org.*). This is the Manager surface before reveal_pii/export
- * are layered back on. We derive it so it can never drift from the catalog.
+ * (members, roles, org.*) AND the manager-only `proposals.*` family. This is the
+ * Agent surface base (Manager layers `proposals.*` back on explicitly). We derive
+ * it so it can never drift from the catalog.
  */
 const GOVERNANCE_PREFIXES = ['members.', 'roles.', 'org.'] as const;
 const ALL_OPERATIONAL: readonly Permission[] = PERMISSIONS.filter(
-  (p) => !GOVERNANCE_PREFIXES.some((g) => p.startsWith(g)),
+  (p) => !GOVERNANCE_PREFIXES.some((g) => p.startsWith(g)) && !PROPOSALS_SET.has(p),
 );
 
 // ── Owner: everything ──────────────────────────────────────────────────────
@@ -65,6 +80,7 @@ const OWNER: readonly Permission[] = [...PERMISSIONS];
 //    reveal_pii + export. NOT billing / transfer / delete-org. ──────────────
 const ADMIN: readonly Permission[] = [
   ...ALL_OPERATIONAL, // includes owners.reveal_pii + export.run (operational, non-governance)
+  ...PROPOSALS_PERMISSIONS, // Approval Inbox — manager-and-above (excluded from ALL_OPERATIONAL)
   'members.read',
   'members.invite',
   'members.update',
@@ -85,6 +101,7 @@ const ADMIN: readonly Permission[] = [
 //    administration + org-governance stay Owner/Admin-only). ──────────────────
 const MANAGER: readonly Permission[] = [
   ...ALL_OPERATIONAL,
+  ...PROPOSALS_PERMISSIONS, // Approval Inbox — manager-only family (excluded from ALL_OPERATIONAL)
   'members.invite',
   'members.update',
   'members.remove',
@@ -112,7 +129,10 @@ const AGENT: readonly Permission[] = ALL_OPERATIONAL.filter(
 //    (least-privilege; legacy had those reads at Manager+ only; the members
 //    contract + sidebar e2e tests pin this). Manager+/Admin/Owner still reach
 //    members.read + audit.read via the `export.run ⇒ <r>.read` closure.
-const VIEWER_READ_EXCLUDE = ['members.', 'roles.', 'audit.', 'org.'] as const;
+//    `proposals.read` is ALSO excluded — the Approval Inbox is manager-only
+//    (requireManager), so a Viewer must not even hold the read (it would be a
+//    permission they could never use; consistent with the agent exclusion).
+const VIEWER_READ_EXCLUDE = ['members.', 'roles.', 'audit.', 'org.', 'proposals.'] as const;
 const VIEWER: readonly Permission[] = ALL_READS.filter(
   (p) => p !== 'owners.reveal_pii' && !VIEWER_READ_EXCLUDE.some((g) => p.startsWith(g)),
 );

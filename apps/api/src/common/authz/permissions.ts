@@ -59,6 +59,19 @@ export const PERMISSIONS = [
   'signature_requests.send',
   'signature_requests.cancel',
 
+  // ── proposals (Approval Inbox — autonomy engine) : read, approve, reject ─
+  // Manager-only by design (see system-roles.ts). The Approval Inbox lists +
+  // approves/rejects autonomous DRAFTs; the binding gate stays
+  // `ProposalsService.requireManager` + the replayed gated method's own
+  // capability check — these route-level permissions TIGHTEN the controller
+  // (was borrowing `signature_requests.*`, semantically wrong once non-signature
+  // kinds — e.g. `task.create` — landed). NOT granted to viewer/agent: the
+  // surface is manager-only, so a holder who can't pass `requireManager` would
+  // hold a permission they could never use (inconsistent).
+  'proposals.read',
+  'proposals.approve',
+  'proposals.reject',
+
   // ── tasks · notes · contractors : `*` ; shares : create, revoke ──────────
   'tasks.read',
   'tasks.create',
@@ -198,6 +211,12 @@ export const PERMISSION_IMPLICATIONS: ReadonlyMap<Permission, readonly Permissio
   // project_assignments.manage ⇒ project_assignments.read
   // (buildWriteImpliesRead matches create|update|archive, NOT manage — explicit.)
   add('project_assignments.manage', 'project_assignments.read');
+
+  // proposals.approve / proposals.reject ⇒ proposals.read
+  // (buildWriteImpliesRead matches create|update|archive, NOT approve/reject —
+  // explicit. A holder of an inbox action can also list the inbox.)
+  add('proposals.approve', 'proposals.read');
+  add('proposals.reject', 'proposals.read');
 
   // export.run ⇒ <resource>.read (for every readable resource)
   for (const r of READABLE_RESOURCES) add('export.run', `${r}.read` as Permission);

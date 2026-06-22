@@ -16,23 +16,25 @@ const UuidParam = new ZodValidationPipe(z.string().uuid());
 
 /**
  * Approval-Inbox controller (Autonomous Master Plan, Phase 1) — the BE read +
- * approve/reject the FE inbox will drive (the FE is a SEPARATE follow-on slice).
+ * approve/reject the FE inbox drives.
  *
- * AUTHZ posture (no permission-catalog churn in the foundation slice): the
- * proposal kinds so far are `signature_request.reissue` (APPROVE re-issues a
- * signing link) and `reminder.send` (APPROVE sends ONE governed reminder) — BOTH
- * signature-chase actions, so the existing `signature_requests.*` gates fit
- * exactly (no new permission family needed yet). So:
- *   - GET /proposals    → `signature_requests.read`  (reading proposals == reading
- *                          the signature-chase surface).
- *   - POST …/approve    → `signature_requests.send`  (approving == re-issuing a
- *                          signing link — the send-class capability).
- *   - POST …/reject     → `signature_requests.read`  (a read-class dismissal).
- * The service additionally enforces `requireManager` on every op (defense in
- * depth + the proposals surface is manager-only), and RLS isolates per-org. When
- * future kinds beyond signatures land, a dedicated `proposals.*` permission family
- * should be introduced + mapped — flagged for the next slice. Every handler
- * declares a gate so AuthorizationGuard never fails open by omission.
+ * AUTHZ posture — the DEDICATED `proposals.*` permission family (granted to
+ * manager-and-above ONLY; see system-roles.ts). The routes previously BORROWED
+ * `signature_requests.*`, which was correct when the only kind was
+ * signature-reissue but went semantically wrong once non-signature kinds landed
+ * (e.g. `task.create` — an agent holding `signature_requests.send` passed the
+ * route guard, stopped only by the service `requireManager`). The route gates
+ * now match the surface:
+ *   - GET /proposals    → `proposals.read`     (list the inbox).
+ *   - POST …/approve    → `proposals.approve`  (one-click confirm a draft).
+ *   - POST …/reject     → `proposals.reject`   (dismiss a draft).
+ * THE BINDING GATE IS UNCHANGED: `ProposalsService.requireManager` on EVERY op
+ * (defense in depth + the inbox is manager-only) PLUS the replayed gated method's
+ * own capability check at execute time — those stay the authoritative gate. This
+ * is a TIGHTENING of the coarse route gate, not a security fix: a non-manager now
+ * fails at the guard too (not only the service), and the permissions no longer
+ * widen WHO can approve (manager-only is preserved). RLS isolates per-org. Every
+ * handler declares a gate so AuthorizationGuard never fails open by omission.
  */
 @Controller('proposals')
 @UseGuards(AuthGuard, TenantGuard, new AuthorizationGuard())
@@ -40,7 +42,7 @@ export class ProposalsController {
   constructor(private readonly proposals: ProposalsService) {}
 
   @Get()
-  @RequirePermission('signature_requests.read')
+  @RequirePermission('proposals.read')
   async list(
     @CurrentUser() user: AccessTokenPayload,
     @Query(new ZodValidationPipe(ListProposalsQuery)) query: ListProposalsQueryDto,
@@ -49,13 +51,13 @@ export class ProposalsController {
   }
 
   @Post(':id/approve')
-  @RequirePermission('signature_requests.send')
+  @RequirePermission('proposals.approve')
   async approve(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.proposals.approve(user, id) };
   }
 
   @Post(':id/reject')
-  @RequirePermission('signature_requests.read')
+  @RequirePermission('proposals.reject')
   async reject(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.proposals.reject(user, id) };
   }

@@ -49,6 +49,9 @@ const ALL_PERMS = [
   'signature_requests.read',
   'signature_requests.send',
   'signature_requests.cancel',
+  'proposals.read',
+  'proposals.approve',
+  'proposals.reject',
   'tasks.read',
   'tasks.create',
   'tasks.update',
@@ -89,15 +92,21 @@ const ALL_PERMS = [
   'org.transfer_ownership',
   'org.delete',
 ];
-const reads = ALL_PERMS.filter((p) => p.endsWith('.read'));
+// `proposals.*` = the manager-only Approval-Inbox family. Excluded from the
+// `operational` base + viewer `reads`, added back explicitly to admin + manager
+// only (owner via the full catalog). Mirrors system-roles.ts + the seed
+// migration; drift in any one goes red.
+const PROPOSALS = ALL_PERMS.filter((p) => p.startsWith('proposals.'));
+const reads = ALL_PERMS.filter((p) => p.endsWith('.read') && !p.startsWith('proposals.'));
 const gov = (p: string) =>
   p.startsWith('members.') || p.startsWith('roles.') || p.startsWith('org.');
-const operational = ALL_PERMS.filter((p) => !gov(p));
+const operational = ALL_PERMS.filter((p) => !gov(p) && !p.startsWith('proposals.'));
 
 const EXPECTED: Record<string, string[]> = {
   owner: [...ALL_PERMS],
   admin: [
     ...operational,
+    ...PROPOSALS,
     'members.read',
     'members.invite',
     'members.update',
@@ -110,9 +119,10 @@ const EXPECTED: Record<string, string[]> = {
     'org.settings.update',
     'org.security_policy.manage',
   ],
-  // manager: ALL operational PLUS member administration (invite/update/remove)
-  // — owner-approved Gate-2/Gate-6 grant (migration 0053). NOT roles.*, NOT org.*.
-  manager: [...operational, 'members.invite', 'members.update', 'members.remove'],
+  // manager: ALL operational PLUS the manager-only proposals.* family PLUS member
+  // administration (invite/update/remove) — owner-approved Gate-2/Gate-6 grant
+  // (migration 0053 + the proposals grant 0082). NOT roles.*, NOT org.*.
+  manager: [...operational, ...PROPOSALS, 'members.invite', 'members.update', 'members.remove'],
   agent: operational.filter(
     (p) =>
       ![

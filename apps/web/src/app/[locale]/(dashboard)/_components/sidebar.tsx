@@ -121,15 +121,15 @@ export function Sidebar({ userName, userRole, tier }: Props) {
   // an agent holds it iff view_owners is ON) and any future capability, with
   // NO `role === 'agent'` math. UX only; the BE guard stays authoritative.
   const canReadOwners = useHasPermission('owners.read');
-  // Approval Inbox (autonomy engine) is manager-only — the BE gates list AND
-  // approve/reject on `requireManager` (a ROLE check, not a permission). The
-  // usual "gate on a permission, not the role string" rule mirrors the BE's
-  // actual gate; here the BE gate IS role-based, so the honest FE mirror is the
-  // role. (An earlier cut gated on `signature_requests.send`, but AGENTS hold
-  // that — they'd see the nav link then hit a 403 on every inbox load. The
-  // proposals.* permission family flagged in PR 503/505 will replace both with a
-  // manager-only permission.) UX only; the BE `requireManager` stays authoritative.
-  const canSeeInbox = userRole === 'manager';
+  // Approval Inbox (autonomy engine) gates on the DEDICATED `proposals.read`
+  // permission — the manager-only family granted to manager-and-above ONLY (see
+  // BE system-roles.ts). This replaces the earlier `userRole === 'manager'`
+  // stopgap with the established FE pattern (gate on a permission, not a role
+  // string): a manager holds `proposals.read`, an agent/viewer does not, so the
+  // link shows for manager and is hidden otherwise — matching the BE's
+  // `proposals.read` route guard + `requireManager` binding gate exactly. UX
+  // only; the BE stays authoritative (defense in depth).
+  const canSeeInbox = useHasPermission('proposals.read');
   const rawPath = usePathname() ?? '/';
   // Strip the `/he` or `/en` locale prefix so item.href can be compared
   // against the unprefixed app paths.

@@ -32,6 +32,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 //     signal, not noise — these are the strings a real user sees. ---
 const NAV_LABEL: Record<string, string> = {
   home: 'ראשי',
+  inbox: 'החלטות ממתינות',
   projects: 'פרויקטים',
   owners: 'בעלי דירות',
   imports: 'ייבוא',
@@ -219,6 +220,56 @@ describe('Sidebar — Owners capability-gate (P4 #11)', () => {
     for (const near of ['owners.reveal_pii', 'owners', 'owners.read.extra', 'owners.write']) {
       const html = renderSidebar([near]);
       expect(hasOwnersNav(html), `near-miss "${near}" must NOT open the gate`).toBe(false);
+    }
+  });
+});
+
+/**
+ * Approval-Inbox nav gate — the #505 tightening. The inbox link previously gated
+ * on `userRole === 'manager'` (a stopgap role-string). It now gates on the
+ * dedicated `proposals.read` permission (manager-only family). These tests pin
+ * the new gate: manager (holds proposals.read) sees the link; agent/viewer (do
+ * NOT hold it) never do — even when their role string is passed, because the
+ * gate reads the PERMISSION, not the role.
+ */
+function hasInboxNav(html: string): boolean {
+  return html.includes(NAV_LABEL.inbox!) || /href="\/inbox"/.test(html);
+}
+
+describe('Sidebar — Approval-Inbox gate (#505 — proposals.read)', () => {
+  it('SHOWS the inbox link when the actor holds proposals.read (manager)', () => {
+    const html = renderSidebar(['proposals.read'], { userRole: 'manager' });
+    expect(hasInboxNav(html)).toBe(true);
+    expect(html).toMatch(/href="\/inbox"/);
+  });
+
+  it('HIDES the inbox link when proposals.read is absent — even with role=agent', () => {
+    const html = renderSidebar(['projects.read', 'tasks.read'], { userRole: 'agent' });
+    expect(hasInboxNav(html)).toBe(false);
+    expect(html).not.toMatch(/href="\/inbox"/);
+  });
+
+  it('HIDES the inbox link for a viewer (no proposals.read in their set)', () => {
+    const html = renderSidebar(['projects.read', 'owners.read'], { userRole: 'viewer' });
+    expect(hasInboxNav(html)).toBe(false);
+  });
+
+  it('gates on the PERMISSION not the role: role=manager but no proposals.read → hidden', () => {
+    // Adversarial: the gate must NOT fall back to the role string. A manager
+    // whose effective set somehow lacks proposals.read does not see the link.
+    const html = renderSidebar(['projects.read'], { userRole: 'manager' });
+    expect(hasInboxNav(html)).toBe(false);
+  });
+
+  it('does NOT open for near-miss permission strings', () => {
+    for (const near of [
+      'proposals',
+      'proposals.approve.extra',
+      'proposals.write',
+      'proposal.read',
+    ]) {
+      const html = renderSidebar([near], { userRole: 'manager' });
+      expect(hasInboxNav(html), `near-miss "${near}" must NOT open the inbox gate`).toBe(false);
     }
   });
 });

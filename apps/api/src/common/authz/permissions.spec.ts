@@ -50,6 +50,9 @@ const EXPECTED_CATALOG = [
   'signature_requests.read',
   'signature_requests.send',
   'signature_requests.cancel',
+  'proposals.read',
+  'proposals.approve',
+  'proposals.reject',
   'tasks.read',
   'tasks.create',
   'tasks.update',
@@ -143,15 +146,21 @@ describe('IAM · permission implications (§2)', () => {
 });
 
 // ── §4 — the 6 system roles, each pinned to its EXACT set ───────────────────
-const reads = EXPECTED_CATALOG.filter((p) => p.endsWith('.read'));
+// `proposals.*` is the manager-only Approval-Inbox family: EXCLUDED from the
+// `operational` base (which feeds admin/manager/agent) + from the viewer `reads`,
+// and added back EXPLICITLY to admin + manager only (owner gets it via the full
+// catalog). This mirrors system-roles.ts so a drift in either side goes red.
+const PROPOSALS = EXPECTED_CATALOG.filter((p) => p.startsWith('proposals.'));
+const reads = EXPECTED_CATALOG.filter((p) => p.endsWith('.read') && !p.startsWith('proposals.'));
 const isGov = (p: string) =>
   p.startsWith('members.') || p.startsWith('roles.') || p.startsWith('org.');
-const operational = EXPECTED_CATALOG.filter((p) => !isGov(p));
+const operational = EXPECTED_CATALOG.filter((p) => !isGov(p) && !p.startsWith('proposals.'));
 
 const EXPECTED_ROLE_PERMS: Record<string, string[]> = {
   owner: [...EXPECTED_CATALOG],
   admin: [
     ...operational,
+    ...PROPOSALS,
     'members.read',
     'members.invite',
     'members.update',
@@ -164,9 +173,10 @@ const EXPECTED_ROLE_PERMS: Record<string, string[]> = {
     'org.settings.update',
     'org.security_policy.manage',
   ],
-  // manager: ALL operational PLUS member administration (invite/update/remove)
-  // — the owner-approved Gate-2/Gate-6 grant. NOT roles.*, NOT org.*.
-  manager: [...operational, 'members.invite', 'members.update', 'members.remove'],
+  // manager: ALL operational PLUS the manager-only proposals.* family PLUS member
+  // administration (invite/update/remove) — the owner-approved Gate-2/Gate-6
+  // grant. NOT roles.*, NOT org.*.
+  manager: [...operational, ...PROPOSALS, 'members.invite', 'members.update', 'members.remove'],
   agent: operational.filter(
     (p) =>
       ![

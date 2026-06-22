@@ -1,46 +1,92 @@
 'use client';
 
 import {
-  AlertTriangle,
-  CheckCircle2,
-  ChevronDown,
+  ArrowRight,
+  Building2,
+  Check,
+  ClipboardCheck,
+  Compass,
   FileSignature,
   FileText,
+  Files,
+  HardHat,
   Plus,
+  Ruler,
+  Scale,
   Search,
+  UserCheck,
+  Users,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ComponentType } from 'react';
+import { useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useDocumentList } from '@/hooks/use-documents';
 import { useHasPermission } from '@/hooks/use-permissions';
-import { useDocumentChecklist, useProjectList } from '@/hooks/use-projects';
+import { useProjectList } from '@/hooks/use-projects';
+import {
+  DOCUMENT_PARTIES,
+  type DocumentParty,
+  providerPartyForDocType,
+} from '@/lib/document-party';
 import type { DocumentViewModel } from '@/models/document.vm';
 
 /**
- * Documents page — "Organized documents" slice (V13).
+ * Documents page — PARTY BINDER board (V13 doc-management re-skin, slice 1).
  *
- * The customer is a technophobic building-committee volunteer: a flat
- * name·type·size·date dump reads as מבולגן even though the BE already
- * organizes docs by project + tracks a required-docs checklist. This page
- * surfaces that organization:
- *   - documents are GROUPED by project (collapsible sections), with an
- *     "ללא שיוך" group for unscoped docs. The `projectId` already rides the
- *     `DocumentViewModel` (no BE change for grouping). Within a project, docs
- *     are sub-grouped by `typeLabel` (doc_type), never a flat dump.
- *   - each project group surfaces the ADVISORY required-docs CHECKLIST +
- *     completeness % (`GET /api/v1/projects/:id/document-checklist`), fetched
- *     lazily per shown group. Missing required types render as quiet chips;
- *     color/filled badges are reserved for that ATTENTION state.
- *   - a plain-Hebrew orientation header states the situation in words.
+ * Owner complaint this kills: "still מבולגן — a wall of files that doesn't
+ * scale and bores the technophobe." The earlier surface grouped docs by
+ * project + a per-project required-docs checklist; useful, but the LANDING
+ * was still a list of files.
  *
- * Search stays client-side over the current keyset page (a server-side `?q=`
- * for documents would need a BE slice — out of scope here).
+ * This slice re-skins the DEFAULT view into a calm grid of ~8 PARTY cards
+ * ("who is responsible": בעלים / שמאי / אדריכל / עירייה / קבלן / עו״ד /
+ * מפקח / מודד / כללי). The party axis is DERIVED FE-side from the `doc_type`
+ * the read model already carries (`providerPartyForDocType`) — there is NO
+ * migration and NO new BE endpoint; this is presentation over data the page
+ * already fetches.
+ *
+ * Two clicks to a file (the calm-at-a-glance contract):
+ *   1. Landing = party cards. NO filenames. Each card shows the party name, a
+ *      one-line gist (count + the latest doc), and a quiet completeness mark
+ *      (teal check when present, neutral ring for empty). A party with zero
+ *      docs renders as a quiet GHOST card.
+ *   2. Clicking a card ZOOMS IN to that party's actual documents, grouped by
+ *      doc_type — this is where filenames appear (in-page; no new route).
+ *
+ * Search + active/archived + upload affordances are preserved. Per-project
+ * completeness (the old checklist) is deferred to slice 2 (completeness-per-
+ * party); this slice keeps the gist derived purely from the docs on the page.
  */
+
+/** Per-party icon + accent token. Color is reserved for ATTENTION only —
+ *  here the accent tints the small icon tile, never a full card fill. */
+const PARTY_META: Record<
+  DocumentParty,
+  { icon: ComponentType<{ className?: string; 'aria-hidden'?: boolean }> }
+> = {
+  owner: { icon: Users },
+  appraiser: { icon: UserCheck },
+  architect: { icon: Compass },
+  municipality: { icon: Building2 },
+  contractor: { icon: HardHat },
+  lawyer: { icon: Scale },
+  supervisor: { icon: ClipboardCheck },
+  surveyor: { icon: Ruler },
+  other: { icon: Files },
+};
+
+interface PartyBucket {
+  party: DocumentParty;
+  docs: DocumentViewModel[];
+  /** The most-recently-created doc, used for the card gist. */
+  latest: DocumentViewModel | null;
+}
+
 export function DocumentsListClient() {
   const t = useTranslations('documents');
   const tp = useTranslations('projects');
@@ -49,13 +95,13 @@ export function DocumentsListClient() {
   // Active (default) vs archived view — soft-archived docs are otherwise
   // invisible in the cockpit. Switching resets pagination.
   const [archived, setArchived] = useState(false);
+  // The zoomed-in party (slice-1 "two clicks deep"). null = the board.
+  const [activeParty, setActiveParty] = useState<DocumentParty | null>(null);
   // IAM slice 5b — "upload" CTA (creates a document) gated on `documents.create`.
   const canCreate = useHasPermission('documents.create');
   const { data, isLoading, isError, refetch } = useDocumentList({ limit: 25, cursor, archived });
 
-  // Project id → name, so each group header can show the project name rather
-  // than a bare id. A miss (project not on the first page) falls back to the
-  // id-less "פרויקט" label — the group still renders.
+  // Project id → name, so the zoomed-in file rows can show the owning project.
   const { data: projectsData } = useProjectList({ limit: 100 });
   const projectNames = useMemo(() => {
     const map = new Map<string, string>();
@@ -74,36 +120,34 @@ export function DocumentsListClient() {
     );
   }, [items, query]);
 
-  // Group the shown docs by project; unscoped docs land in their own group.
-  // `null` key = the "ללא שיוך" group, always rendered LAST.
-  const groups = useMemo(() => {
-    const byProject = new Map<string | null, DocumentViewModel[]>();
+  // Derive the party axis: every shown doc → exactly one of the 8 parties,
+  // purely from its `type` (the tolerant wire string). Buckets are keyed in
+  // the canonical `DOCUMENT_PARTIES` order so the board is stable.
+  const buckets = useMemo<PartyBucket[]>(() => {
+    const byParty = new Map<DocumentParty, DocumentViewModel[]>();
     for (const d of filteredItems) {
-      const key = d.projectId ?? null;
-      const bucket = byProject.get(key);
+      const party = providerPartyForDocType(d.type);
+      const bucket = byParty.get(party);
       if (bucket) bucket.push(d);
-      else byProject.set(key, [d]);
+      else byParty.set(party, [d]);
     }
-    const scoped = [...byProject.entries()].filter(([k]) => k !== null) as [
-      string,
-      DocumentViewModel[],
-    ][];
-    const unscoped = byProject.get(null);
-    return { scoped, unscoped: unscoped ?? [] };
+    return DOCUMENT_PARTIES.map((party) => {
+      const docs = byParty.get(party) ?? [];
+      // "latest" = the most-relevant fact for the gist. The list is keyset-
+      // ordered newest-first, so the first doc in the bucket is the latest.
+      const latest = docs[0] ?? null;
+      return { party, docs, latest };
+    });
   }, [filteredItems]);
 
-  // Each project group reports its missing-required count up here so the
-  // orientation header can state "M מסמכי-חובה חסרים" across the shown groups.
-  const [missingByProject, setMissingByProject] = useState<Record<string, number>>({});
-  const reportMissing = useCallback((projectId: string, missing: number) => {
-    setMissingByProject((prev) =>
-      prev[projectId] === missing ? prev : { ...prev, [projectId]: missing },
-    );
-  }, []);
-  const totalMissing = useMemo(
-    () => groups.scoped.reduce((sum, [pid]) => sum + (missingByProject[pid] ?? 0), 0),
-    [groups.scoped, missingByProject],
-  );
+  // Plain-Hebrew orientation, user-voiced (the user's situation, never
+  // "the system did X"). Names the parties still awaiting their first doc.
+  const orientation = useMemo(() => {
+    const active = buckets.filter((b) => b.docs.length > 0);
+    if (active.length === 0) return null; // empty-state copy handles this
+    const empty = buckets.filter((b) => b.docs.length === 0);
+    return { activeCount: active.length, emptyParties: empty.map((b) => b.party) };
+  }, [buckets]);
 
   if (isLoading) return <ListSkeleton rows={6} />;
 
@@ -119,6 +163,10 @@ export function DocumentsListClient() {
       </div>
     );
   }
+
+  const activeBucket = activeParty
+    ? (buckets.find((b) => b.party === activeParty) ?? null)
+    : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -167,6 +215,7 @@ export function DocumentsListClient() {
                   if (archived === tab.key) return;
                   setArchived(tab.key);
                   setCursor(undefined);
+                  setActiveParty(null);
                 }}
                 className="rounded-full px-3 py-1 text-xs font-medium transition-colors"
                 style={{
@@ -195,12 +244,10 @@ export function DocumentsListClient() {
         )}
       </div>
 
-      {/* Plain-Hebrew orientation — states the situation in words. */}
-      {items.length > 0 && (
+      {/* Plain-Hebrew orientation — states the situation in words, user-voiced. */}
+      {orientation && (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-          {totalMissing > 0
-            ? t('orientation.withMissing', { count: items.length, missing: totalMissing })
-            : t('orientation.allClear', { count: items.length })}
+          <OrientationLine emptyParties={orientation.emptyParties} />
         </p>
       )}
 
@@ -208,105 +255,208 @@ export function DocumentsListClient() {
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
           {items.length === 0 ? t('empty') : t('noResults')}
         </p>
+      ) : activeBucket ? (
+        <PartyZoomIn bucket={activeBucket} projectNames={projectNames} onBack={() => setActiveParty(null)} />
       ) : (
-        <div className="flex flex-col gap-3">
-          {groups.scoped.map(([projectId, docs]) => (
-            <ProjectDocGroup
-              key={projectId}
-              projectId={projectId}
-              projectName={projectNames.get(projectId) ?? null}
-              docs={docs}
-              onMissing={reportMissing}
-            />
+        <ul
+          className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+          aria-label={t('listTitle')}
+        >
+          {buckets.map((bucket) => (
+            <li key={bucket.party}>
+              <PartyCard bucket={bucket} onOpen={() => setActiveParty(bucket.party)} />
+            </li>
           ))}
-          {groups.unscoped.length > 0 && (
-            <ProjectDocGroup
-              key="__unscoped__"
-              projectId={null}
-              projectName={null}
-              docs={groups.unscoped}
-              onMissing={reportMissing}
-            />
+        </ul>
+      )}
+
+      {/* Pagination — only meaningful on the board (the zoom-in is a filter of
+          the current page; loading more docs there would change the board). */}
+      {!activeBucket && (
+        <div className="flex flex-wrap items-center gap-2">
+          {page?.has_more && page.cursor && (
+            <Button variant="outline" size="sm" onClick={() => setCursor(page.cursor ?? undefined)}>
+              {tp('next')}
+            </Button>
+          )}
+          {cursor && (
+            <Button variant="ghost" size="sm" onClick={() => setCursor(undefined)}>
+              {tp('resetToFirstPage')}
+            </Button>
           )}
         </div>
       )}
-
-      {/* Pagination */}
-      <div className="flex flex-wrap items-center gap-2">
-        {page?.has_more && page.cursor && (
-          <Button variant="outline" size="sm" onClick={() => setCursor(page.cursor ?? undefined)}>
-            {tp('next')}
-          </Button>
-        )}
-        {cursor && (
-          <Button variant="ghost" size="sm" onClick={() => setCursor(undefined)}>
-            {tp('resetToFirstPage')}
-          </Button>
-        )}
-      </div>
     </div>
   );
 }
 
 /**
- * One collapsible project group. Header = project name + the advisory
- * required-docs checklist line; body = the project's docs sub-grouped by
- * doc_type (typeLabel). For the unscoped ("ללא שיוך") group `projectId` is
- * null — no checklist is fetched.
+ * The plain-Hebrew orientation sentence. User-voiced (the user's situation,
+ * never "the system did X"). When every active party has docs → "all in
+ * order"; otherwise it names the parties still awaiting a first doc (capping
+ * the list at two, then "+N more"), so the read stays calm at scale.
  */
-function ProjectDocGroup({
-  projectId,
-  projectName,
-  docs,
-  onMissing,
+function OrientationLine({ emptyParties }: { emptyParties: DocumentParty[] }) {
+  const t = useTranslations('documents');
+  const tParty = useTranslations('documents.party');
+
+  if (emptyParties.length === 0) return <>{t('board.orientation.allFilled')}</>;
+
+  const names = emptyParties.map((p) => tParty(p));
+  let parties: string;
+  if (names.length === 1) {
+    parties = names[0]!;
+  } else if (names.length === 2) {
+    parties = t('board.orientation.twoParties', { first: names[0]!, second: names[1]! });
+  } else {
+    parties = t('board.orientation.manyParties', { first: names[0]!, count: names.length - 1 });
+  }
+  return <>{t('board.orientation.someEmpty', { parties })}</>;
+}
+
+/**
+ * One PARTY card on the landing board. Calm by default: a tinted icon tile,
+ * the party name, a one-line gist (count + latest), and a quiet completeness
+ * mark. A party with zero docs renders as a GHOST card (muted, "טרם התקבלו
+ * מסמכים") and is NOT clickable. NO filenames here — those live one zoom in.
+ */
+function PartyCard({ bucket, onOpen }: { bucket: PartyBucket; onOpen: () => void }) {
+  const t = useTranslations('documents');
+  const tParty = useTranslations('documents.party');
+  const { party, docs, latest } = bucket;
+  const Icon = PARTY_META[party].icon;
+  const isEmpty = docs.length === 0;
+  const name = tParty(party);
+
+  if (isEmpty) {
+    return (
+      <div
+        className="card flex items-center gap-3 px-4 py-3.5"
+        style={{ opacity: 0.7 }}
+        aria-disabled="true"
+      >
+        <PartyIconTile Icon={Icon} muted />
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-semibold" style={{ color: 'var(--text-muted)' }}>
+            {name}
+          </span>
+          <span className="text-xs" style={{ color: 'var(--text-soft)' }}>
+            {t('board.ghost')}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={t('board.open', { party: name })}
+      className="card flex w-full items-center gap-3 px-4 py-3.5 text-start transition-colors hover:bg-[var(--bg-subtle)] focus:outline-none focus-visible:bg-[var(--bg-subtle)]"
+      style={{ cursor: 'pointer' }}
+    >
+      <PartyIconTile Icon={Icon} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-sm font-semibold" style={{ color: 'var(--text)' }}>
+          {name}
+        </span>
+        <span className="truncate text-xs" style={{ color: 'var(--text-muted)' }}>
+          {latest
+            ? t('board.gist.latest', { count: docs.length, when: latest.createdRelative })
+            : t('board.gist.count', { count: docs.length })}
+        </span>
+      </div>
+      {/* A quiet teal check — this party has documents (slice-1 completeness =
+          "present". Required-vs-present completeness-per-party is slice 2). */}
+      <span
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+        style={{ background: 'var(--success-50)' }}
+        title={t('board.complete')}
+        aria-hidden="true"
+      >
+        <Check className="h-3.5 w-3.5" style={{ color: 'var(--success-600)' }} />
+      </span>
+    </button>
+  );
+}
+
+/** The small rounded icon tile inside a party card. Teal accent when active,
+ *  muted for a ghost (empty) party. */
+function PartyIconTile({
+  Icon,
+  muted = false,
 }: {
-  projectId: string | null;
-  projectName: string | null;
-  docs: DocumentViewModel[];
-  onMissing: (projectId: string, missing: number) => void;
+  Icon: ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+  muted?: boolean;
+}) {
+  return (
+    <span
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+      style={{
+        background: muted ? 'var(--bg-subtle)' : 'var(--navy-50)',
+        color: muted ? 'var(--text-soft)' : 'var(--navy-700)',
+      }}
+      aria-hidden="true"
+    >
+      <Icon className="h-5 w-5" aria-hidden={true} />
+    </span>
+  );
+}
+
+/**
+ * The zoomed-in view of ONE party's documents — two clicks deep, where the
+ * actual files appear. Reuses the EXISTING file-row rendering, sub-grouped by
+ * doc_type (typeLabel) for a stable read. A back affordance returns to the
+ * board. No new route — this is in-page state.
+ */
+function PartyZoomIn({
+  bucket,
+  projectNames,
+  onBack,
+}: {
+  bucket: PartyBucket;
+  projectNames: Map<string, string>;
+  onBack: () => void;
 }) {
   const t = useTranslations('documents');
   const tp = useTranslations('projects');
+  const tParty = useTranslations('documents.party');
+  const name = tParty(bucket.party);
 
-  // Sub-group by doc_type label, ordered alphabetically for a stable read.
+  // Sub-group by doc_type label, ordered alphabetically (Hebrew collation).
   const byType = useMemo(() => {
     const map = new Map<string, DocumentViewModel[]>();
-    for (const d of docs) {
-      const bucket = map.get(d.typeLabel);
-      if (bucket) bucket.push(d);
-      else map.set(d.typeLabel, [d]);
+    for (const d of bucket.docs) {
+      const key = d.typeLabel;
+      const list = map.get(key);
+      if (list) list.push(d);
+      else map.set(key, [d]);
     }
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'he'));
-  }, [docs]);
+  }, [bucket.docs]);
 
   return (
-    <details className="card" open style={{ overflow: 'hidden' }}>
-      <summary
-        className="flex cursor-pointer list-none items-center gap-2.5 px-4 py-3"
-        style={{ color: 'var(--text)' }}
-      >
-        <ChevronDown
-          className="h-4 w-4 shrink-0 transition-transform"
-          style={{ color: 'var(--text-muted)' }}
-          aria-hidden="true"
-        />
-        <span className="truncate text-sm font-semibold">
-          {projectId === null ? (
-            t('group.unassigned')
-          ) : (
-            <NameDisplay name={projectName ?? t('group.projectFallback')} />
-          )}
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2.5">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1.5 text-sm font-medium"
+          style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
+        >
+          <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          {t('board.back')}
+        </button>
+        <span className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+          {name}
         </span>
         <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          {t('group.docCount', { count: docs.length })}
+          {t('board.gist.count', { count: bucket.docs.length })}
         </span>
-        {projectId !== null && <ChecklistLine projectId={projectId} onMissing={onMissing} />}
-      </summary>
+      </div>
 
-      <div
-        className="flex flex-col gap-3 border-t px-4 py-3"
-        style={{ borderColor: 'var(--border)' }}
-      >
+      <div className="card flex flex-col gap-3 px-4 py-3">
         {byType.map(([typeLabel, typeDocs]) => (
           <div key={typeLabel} className="flex flex-col gap-1.5">
             <div
@@ -316,114 +466,49 @@ function ProjectDocGroup({
               {typeLabel}
             </div>
             <div className="flex flex-col gap-1.5">
-              {typeDocs.map((d) => (
-                <Link
-                  key={d.id}
-                  href={`/documents/${d.id}`}
-                  className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--bg-subtle)] focus:outline-none focus-visible:bg-[var(--bg-subtle)]"
-                >
-                  <FileText
-                    className="h-4 w-4 shrink-0"
-                    style={{ color: 'var(--navy-700)' }}
-                    aria-hidden="true"
-                  />
-                  <span
-                    className="min-w-0 flex-1 truncate text-sm"
-                    style={{ color: 'var(--text)' }}
+              {typeDocs.map((d) => {
+                const projectName = d.projectId ? projectNames.get(d.projectId) : null;
+                return (
+                  <Link
+                    key={d.id}
+                    href={`/documents/${d.id}`}
+                    className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--bg-subtle)] focus:outline-none focus-visible:bg-[var(--bg-subtle)]"
                   >
-                    <NameDisplay name={d.name} />
-                  </span>
-                  <span className="shrink-0 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                    {d.sizeLabel} · {d.createdRelative}
-                  </span>
-                  {d.isArchived && (
-                    <span className="badge badge-neutral shrink-0">
-                      <span className="badge-dot" aria-hidden="true" />
-                      <span>{tp('archived')}</span>
+                    <FileText
+                      className="h-4 w-4 shrink-0"
+                      style={{ color: 'var(--navy-700)' }}
+                      aria-hidden="true"
+                    />
+                    <span
+                      className="min-w-0 flex-1 truncate text-sm"
+                      style={{ color: 'var(--text)' }}
+                    >
+                      <NameDisplay name={d.name} />
                     </span>
-                  )}
-                </Link>
-              ))}
+                    {projectName && (
+                      <span
+                        className="hidden shrink-0 text-[11px] sm:inline"
+                        style={{ color: 'var(--text-soft)' }}
+                      >
+                        <NameDisplay name={projectName} />
+                      </span>
+                    )}
+                    <span className="shrink-0 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                      {d.sizeLabel} · {d.createdRelative}
+                    </span>
+                    {d.isArchived && (
+                      <span className="badge badge-neutral shrink-0">
+                        <span className="badge-dot" aria-hidden="true" />
+                        <span>{tp('archived')}</span>
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
             </div>
           </div>
         ))}
       </div>
-    </details>
-  );
-}
-
-/**
- * The advisory required-docs checklist line inside a project group header.
- * Renders QUIETLY when complete (a calm "כל מסמכי החובה קיימים" with a soft
- * check); reserves color + filled chips for the ATTENTION state (missing
- * required types). On load/error it renders nothing (the group still works) —
- * never a lone "—" that reads as broken.
- */
-function ChecklistLine({
-  projectId,
-  onMissing,
-}: {
-  projectId: string;
-  onMissing: (projectId: string, missing: number) => void;
-}) {
-  const t = useTranslations('documents');
-  const { data: checklist } = useDocumentChecklist(projectId);
-
-  // Report the missing count up for the orientation header (0 when complete).
-  // In an effect (never during render) so the parent setState is safe; the
-  // parent setter dedupes, so a stable value never loops.
-  const missingCount = checklist?.missing.length;
-  useEffect(() => {
-    if (missingCount !== undefined) onMissing(projectId, missingCount);
-  }, [projectId, missingCount, onMissing]);
-
-  if (!checklist || checklist.totalCount === 0) return null;
-
-  if (checklist.isComplete) {
-    return (
-      <span
-        className="ms-auto flex items-center gap-1.5 text-xs"
-        style={{ color: 'var(--text-muted)' }}
-      >
-        <CheckCircle2
-          className="h-3.5 w-3.5"
-          style={{ color: 'var(--success-600)' }}
-          aria-hidden="true"
-        />
-        {t('checklist.complete')}
-      </span>
-    );
-  }
-
-  return (
-    <span
-      className="ms-auto flex flex-wrap items-center justify-end gap-1.5 text-xs"
-      style={{ color: 'var(--text)' }}
-    >
-      <AlertTriangle
-        className="h-3.5 w-3.5 shrink-0"
-        style={{ color: 'var(--warning-600)' }}
-        aria-hidden="true"
-      />
-      <span style={{ color: 'var(--text-muted)' }}>
-        {t('checklist.summary', {
-          present: checklist.presentCount,
-          total: checklist.totalCount,
-        })}
-      </span>
-      {checklist.missing.map((m) => (
-        <span
-          key={m.type}
-          className="rounded-full px-2 py-0.5 text-[11px] font-medium"
-          style={{
-            background: 'var(--warning-50)',
-            color: 'var(--warning-700)',
-            border: '1px solid var(--warning-100)',
-          }}
-        >
-          {m.typeLabel}
-        </span>
-      ))}
-    </span>
+    </div>
   );
 }

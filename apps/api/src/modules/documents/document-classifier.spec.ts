@@ -56,6 +56,21 @@ describe('DH3 classifier · filename signals → docType', () => {
     ['floor-plan.png', 'floor_plan'],
     ['תעודת זהות.jpg', 'id_document'],
     ['היתר בניה.pdf', 'permit'],
+    // BINDER slice 3 — the 6 deal-party taxonomy adds.
+    // Regression guard (red-team #502): a tax-assessment money doc keeps the
+    // SENSITIVE `financial` suggestion and is NOT demoted to non-sensitive survey.
+    ['שומת מס 2026.pdf', 'financial'],
+    ['שומה מקרקעין.pdf', 'survey'],
+    ['הערכת שמאי.pdf', 'survey'],
+    ['מפת מדידה גוש 6941.pdf', 'survey_map'],
+    ['תשריט מדידה.pdf', 'survey_map'],
+    ['ערבות בנקאית.pdf', 'guarantee'],
+    ['bank-guarantee.pdf', 'guarantee'],
+    ['אישור עירייה.pdf', 'municipal_approval'],
+    ['היתר עירייה.pdf', 'municipal_approval'],
+    ['לוח זמנים לביצוע.pdf', 'schedule'],
+    ['תכנית עבודה.pdf', 'schedule'],
+    ['חוות דעת משפטית.pdf', 'legal_opinion'],
   ];
   for (const [filename, expected] of cases) {
     it(`'${filename}' → top suggestion ${expected}`, () => {
@@ -76,8 +91,12 @@ describe('DH3 classifier · filename signals → docType', () => {
   }
 
   it('is case-insensitive on latin tokens', () => {
-    expect(top({ filename: 'AGREEMENT.PDF', mimeType: 'application/pdf' })?.docType).toBe('agreement');
-    expect(top({ filename: 'BluePrint.dwg', mimeType: 'application/pdf' })?.docType).toBe('blueprint');
+    expect(top({ filename: 'AGREEMENT.PDF', mimeType: 'application/pdf' })?.docType).toBe(
+      'agreement',
+    );
+    expect(top({ filename: 'BluePrint.dwg', mimeType: 'application/pdf' })?.docType).toBe(
+      'blueprint',
+    );
   });
 });
 
@@ -118,15 +137,35 @@ describe('DH3 classifier · content-text markers', () => {
     const r = run({ filename: 'doc.txt', mimeType: 'text/plain', sample: text });
     expect(r.suggestions.find((s) => s.docType === 'regulation')).toBeDefined();
   });
+
+  // BINDER slice 3 — content markers for the deal-party taxonomy adds.
+  const partyMarkers: Array<[string, string]> = [
+    ['הערכת שווי המקרקעין', 'survey'],
+    ['שמאי מקרקעין מוסמך', 'survey'],
+    ['מפת מדידה מצבית', 'survey_map'],
+    ['ערבות בנקאית אוטונומית', 'guarantee'],
+    ['חוות דעת משפטית מטעם', 'legal_opinion'],
+  ];
+  for (const [phrase, expected] of partyMarkers) {
+    it(`content "${phrase}" → ${expected}`, () => {
+      const text = Buffer.from(`${phrase}\nשורה נוספת`, 'utf8');
+      const r = run({ filename: 'doc.txt', mimeType: 'text/plain', sample: text });
+      const hit = r.suggestions.find((s) => s.docType === expected);
+      expect(hit, `expected a ${expected} suggestion`).toBeDefined();
+      expect(hit?.signal).toBe('content_text');
+    });
+  }
 });
 
 describe('DH3 classifier · multi-signal reinforcement', () => {
   it('filename נסח + content marker → land_registry with a confidence BONUS', () => {
     const text = Buffer.from('לשכת רישום המקרקעין\nנסח רישום', 'utf8');
     const filenameOnly = top({ filename: 'נסח.pdf', mimeType: 'application/pdf' });
-    const both = run({ filename: 'נסח.pdf', mimeType: 'application/pdf', sample: text }).suggestions.find(
-      (s) => s.docType === 'land_registry',
-    );
+    const both = run({
+      filename: 'נסח.pdf',
+      mimeType: 'application/pdf',
+      sample: text,
+    }).suggestions.find((s) => s.docType === 'land_registry');
     expect(both).toBeDefined();
     // Two independent signals → strictly higher than the single-signal score.
     expect(both!.confidence).toBeGreaterThan(filenameOnly!.confidence);
@@ -151,7 +190,9 @@ describe('DH3 classifier · ambiguous / empty (suggest-only)', () => {
 
   it('an empty sample buffer is ignored (no magic/content signal)', () => {
     const r = run({ filename: 'x.pdf', mimeType: 'application/pdf', sample: Buffer.alloc(0) });
-    expect(r.suggestions.every((s) => s.signal !== 'magic_byte' && s.signal !== 'content_text')).toBe(true);
+    expect(
+      r.suggestions.every((s) => s.signal !== 'magic_byte' && s.signal !== 'content_text'),
+    ).toBe(true);
   });
 });
 
@@ -174,14 +215,20 @@ describe('DH3 classifier · security posture', () => {
 
 describe('FL-5 · remediationLandRegistryMatch (backfill predicate)', () => {
   it('matches an unambiguous נסח/tabu filename (high confidence)', () => {
-    const m = remediationLandRegistryMatch({ filename: 'נסח טאבו.pdf', mimeType: 'application/pdf' });
+    const m = remediationLandRegistryMatch({
+      filename: 'נסח טאבו.pdf',
+      mimeType: 'application/pdf',
+    });
     expect(m).not.toBeNull();
     expect(m!.confidence).toBeGreaterThanOrEqual(0.85);
     expect(m!.reason).toMatch(/^[a-z0-9_]+$/); // content-free key, no filename echo
   });
 
   it('matches a latin `tabu` token filename', () => {
-    const m = remediationLandRegistryMatch({ filename: 'tabu_extract_2021.pdf', mimeType: 'application/pdf' });
+    const m = remediationLandRegistryMatch({
+      filename: 'tabu_extract_2021.pdf',
+      mimeType: 'application/pdf',
+    });
     expect(m).not.toBeNull();
   });
 
@@ -192,8 +239,12 @@ describe('FL-5 · remediationLandRegistryMatch (backfill predicate)', () => {
   });
 
   it('does NOT match a blueprint / generic filename', () => {
-    expect(remediationLandRegistryMatch({ filename: 'תוכנית בניין.pdf', mimeType: 'application/pdf' })).toBeNull();
-    expect(remediationLandRegistryMatch({ filename: 'מסמך כללי.pdf', mimeType: 'application/pdf' })).toBeNull();
+    expect(
+      remediationLandRegistryMatch({ filename: 'תוכנית בניין.pdf', mimeType: 'application/pdf' }),
+    ).toBeNull();
+    expect(
+      remediationLandRegistryMatch({ filename: 'מסמך כללי.pdf', mimeType: 'application/pdf' }),
+    ).toBeNull();
   });
 
   it('does NOT match `tabular.xlsx` (the bounded-token guard holds)', () => {

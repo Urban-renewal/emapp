@@ -948,7 +948,7 @@ _(no body)_
 | `projectId` | unknown | no | — |
 | `sensitive` | boolean | no | — |
 | `sizeBytes` | integer | yes | minimum=1, maximum=52428800 |
-| `type` | string | yes | enum=["agreement","land_registry","blueprint","regulation","contract","permit","id_document","floor_plan","financial","other"] |
+| `type` | string | yes | enum=["agreement","land_registry","blueprint","regulation","survey","survey_map","guarantee","municipal_approval","schedule","legal_opinion","contract","permit","id_document","floor_plan","financial","other"] |
 
 
 **Response**
@@ -1003,7 +1003,7 @@ _(no body)_
 | field | type | required | constraints |
 |---|---|---|---|
 | `name` | string | no | minLength=1, maxLength=255 |
-| `type` | string | no | enum=["agreement","land_registry","blueprint","regulation","contract","permit","id_document","floor_plan","financial","other"] |
+| `type` | string | no | enum=["agreement","land_registry","blueprint","regulation","survey","survey_map","guarantee","municipal_approval","schedule","legal_opinion","contract","permit","id_document","floor_plan","financial","other"] |
 
 
 **Response**
@@ -1149,7 +1149,7 @@ _(no body)_
 | `limit` | integer | no | minimum=1, maximum=100 |
 | `q` | string | yes | minLength=1, maxLength=255 |
 | `scope` | string | no | enum=["project","apartment","org"] |
-| `type` | string | no | enum=["agreement","land_registry","blueprint","regulation","contract","permit","id_document","floor_plan","financial","other"] |
+| `type` | string | no | enum=["agreement","land_registry","blueprint","regulation","survey","survey_map","guarantee","municipal_approval","schedule","legal_opinion","contract","permit","id_document","floor_plan","financial","other"] |
 
 
 **Response**

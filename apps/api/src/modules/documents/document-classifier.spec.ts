@@ -57,6 +57,9 @@ describe('DH3 classifier · filename signals → docType', () => {
     ['תעודת זהות.jpg', 'id_document'],
     ['היתר בניה.pdf', 'permit'],
     // BINDER slice 3 — the 6 deal-party taxonomy adds.
+    // Regression guard (red-team #502): a tax-assessment money doc keeps the
+    // SENSITIVE `financial` suggestion and is NOT demoted to non-sensitive survey.
+    ['שומת מס 2026.pdf', 'financial'],
     ['שומה מקרקעין.pdf', 'survey'],
     ['הערכת שמאי.pdf', 'survey'],
     ['מפת מדידה גוש 6941.pdf', 'survey_map'],

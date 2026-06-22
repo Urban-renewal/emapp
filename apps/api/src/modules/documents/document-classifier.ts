@@ -113,10 +113,22 @@ export const FILENAME_RULES: readonly FilenameRule[] = [
   { test: /permit/u, docType: 'permit', confidence: 0.75, reason: 'filename_permit' },
   // financial — financial statements (the generic money doc).
   { test: /financial/u, docType: 'financial', confidence: 0.6, reason: 'filename_financial' },
+  // שומת מס (tax assessment) is a MONEY doc → keep the SENSITIVE `financial`
+  // suggestion. Placed above + out-ranking the appraiser's bare `שומה → survey`
+  // so an ambiguous money-שומה is never demoted to a non-sensitive type
+  // (red-team #502 regression fix: slice-3 removed the old `שומה → financial`
+  // base rule; this restores the financial-preferring signal for the tax case).
+  {
+    test: /שומת[\s_-]?מס/u,
+    docType: 'financial',
+    confidence: 0.82,
+    reason: 'filename_shumat_mas',
+  },
   // ── BINDER slice 3 — deal-party taxonomy adds ───────────────────────────────
   // survey — שומה / הערכת שמאי (the appraiser's valuation). שומה used to map to
-  // `financial`; the more specific `survey` type now wins (both land in the
-  // appraiser party, so the binder bucket is unchanged either way).
+  // `financial`; the more specific `survey` type now wins for the bare appraiser
+  // case (both land in the appraiser party). The `שומת מס` rule above takes the
+  // tax-assessment money doc back to the sensitive `financial` suggestion.
   { test: /שומה/u, docType: 'survey', confidence: 0.72, reason: 'filename_shuma' },
   {
     test: /הערכת[\s_-]?שמאי/u,

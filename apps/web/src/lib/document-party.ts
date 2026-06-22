@@ -24,13 +24,13 @@
 /** The fixed set of binder parties. Order here is the canonical board order. */
 export const DOCUMENT_PARTIES = [
   'owner', // בעלים — land registry / id documents
-  'appraiser', // שמאי — financial appraisal (survey later)
+  'appraiser', // שמאי — financial appraisal + שומה (survey)
   'architect', // אדריכל — blueprints / floor plans
-  'municipality', // עירייה — permits
-  'contractor', // קבלן — agreements / contracts
-  'lawyer', // עו״ד — regulations / תקנון
+  'municipality', // עירייה — permits + אישור/היתר עירייה (municipal_approval)
+  'contractor', // קבלן — agreements / contracts + ערבות (guarantee) + לוח זמנים (schedule)
+  'lawyer', // עו״ד — regulations / תקנון + חוות דעת משפטית (legal_opinion)
   'supervisor', // מפקח — (no default doc_type yet)
-  'surveyor', // מודד — (no default doc_type yet)
+  'surveyor', // מודד — מפת מדידה / תשריט (survey_map)
   'other', // כללי / אחר — neutral bucket + unknowns
 ] as const;
 
@@ -46,18 +46,28 @@ const PARTY_BY_DOC_TYPE: Record<string, DocumentParty> = {
   // owner — carries owner PII / the registry record
   land_registry: 'owner', // נסח טאבו
   id_document: 'owner', // תעודת זהות
-  // appraiser — the financial / valuation file ('survey' joins here later)
+  // appraiser — the financial / valuation file (financial + the שמאי's שומה)
   financial: 'appraiser',
+  survey: 'appraiser', // שומה / הערכת שמאי — the appraiser's valuation
+  // surveyor — the מודד's measurement map (distinct party from the appraiser)
+  survey_map: 'surveyor', // מפת מדידה / תשריט מדידה
   // architect — the drawings
   blueprint: 'architect', // תוכנית / שרטוט
   floor_plan: 'architect', // תוכנית דירה
   // municipality — the authority's approvals
   permit: 'municipality', // היתר
-  // contractor — the signed renewal deal
+  municipal_approval: 'municipality', // אישור / היתר עירייה
+  // contractor — the signed renewal deal + the contractor's commitments
   agreement: 'contractor', // הסכם
   contract: 'contractor',
-  // lawyer — the legal framework
+  guarantee: 'contractor', // ערבות / בטוחה — the contractor's bank/performance guarantee
+  // schedule (לוח זמנים / תכנית עבודה) → contractor: the contractor AUTHORS and
+  // owns the delivery timetable; the מפקח (supervisor) monitors progress against
+  // it but does not produce it, so it binds to the party who issues it.
+  schedule: 'contractor',
+  // lawyer — the legal framework + the עו״ד's opinion
   regulation: 'lawyer', // תקנון / רגולציה
+  legal_opinion: 'lawyer', // חוות דעת משפטית
   // neutral
   other: 'other',
 };

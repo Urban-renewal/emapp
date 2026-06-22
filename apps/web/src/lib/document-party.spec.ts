@@ -10,11 +10,7 @@
 import { DocumentTypeEnum } from '@emapp/shared-types';
 import { describe, expect, it } from 'vitest';
 
-import {
-  DOCUMENT_PARTIES,
-  type DocumentParty,
-  providerPartyForDocType,
-} from './document-party';
+import { DOCUMENT_PARTIES, type DocumentParty, providerPartyForDocType } from './document-party';
 
 describe('providerPartyForDocType — known doc types', () => {
   const cases: Array<[string, DocumentParty]> = [
@@ -28,6 +24,13 @@ describe('providerPartyForDocType — known doc types', () => {
     ['contract', 'contractor'],
     ['regulation', 'lawyer'],
     ['other', 'other'],
+    // BINDER slice 3 — the 6 deal-party taxonomy adds.
+    ['survey', 'appraiser'], // שומה / הערכת שמאי
+    ['survey_map', 'surveyor'], // מפת מדידה / תשריט
+    ['guarantee', 'contractor'], // ערבות / בטוחה
+    ['municipal_approval', 'municipality'], // אישור / היתר עירייה
+    ['schedule', 'contractor'], // לוח זמנים / תכנית עבודה
+    ['legal_opinion', 'lawyer'], // חוות דעת משפטית
   ];
 
   it.each(cases)('maps %s → %s', (docType, party) => {

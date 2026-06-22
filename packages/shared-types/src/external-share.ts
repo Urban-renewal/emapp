@@ -114,3 +114,57 @@ export const ListExternalSharesQuery = z.object({
   partyType: ExternalSharePartyTypeSchema.optional(),
 });
 export type ListExternalSharesQueryDto = z.infer<typeof ListExternalSharesQuery>;
+
+// SEC-H1 — the party-share document-retrieval AUTHZ DECISION contract.
+//
+// The shared `ExternalPartyAuthzResolver` consumes `external_shares`
+// (expiry / revocation / scope / allow_sensitive / OTP / watermark) and yields
+// this allow/deny verdict + serve constraints. The manager-facing resolution
+// endpoint (`GET /external-shares/:id/documents/:documentId/access`) returns it
+// so the "invite a party" FE (UX-slice-4) can show what a party WOULD reach
+// before the X-S4 party-token tier lands. Deny reasons are coarse + PII-free.
+
+export const ExternalPartyDenyReasonSchema = z.enum([
+  'share_revoked',
+  'share_expired',
+  'documents_not_granted',
+  'download_not_granted',
+  'out_of_scope',
+  'sensitive_not_allowed',
+  'otp_required',
+  'document_not_servable',
+]);
+export type ExternalPartyDenyReason = z.infer<typeof ExternalPartyDenyReasonSchema>;
+
+export const ExternalPartyServeConstraintsSchema = z
+  .object({
+    requiresDecryptStream: z.boolean(),
+    watermarkSubject: z.string().nullable(),
+  })
+  .strict();
+export type ExternalPartyServeConstraints = z.infer<typeof ExternalPartyServeConstraintsSchema>;
+
+export const ExternalPartyAccessDecisionSchema = z.discriminatedUnion('allow', [
+  z.object({ allow: z.literal(true), constraints: ExternalPartyServeConstraintsSchema }).strict(),
+  z.object({ allow: z.literal(false), reason: ExternalPartyDenyReasonSchema }).strict(),
+]);
+export type ExternalPartyAccessDecision = z.infer<typeof ExternalPartyAccessDecisionSchema>;
+
+/** Query for the resolution endpoint: whether to evaluate as OTP-verified (the
+ *  X-S4 party-token tier will set this from a real verified session; the
+ *  manager preview defaults to false = fail-closed).
+ *
+ *  Explicit 'true'|'false' enum — NOT z.coerce.boolean (which coerces the
+ *  *string* 'false' to `true`, a fail-OPEN that would let `?otpVerified=false`
+ *  clear the OTP gate). A missing or 'false' value yields `false` (fail-closed);
+ *  ONLY the literal string 'true' yields `true`. Inferred type is boolean. */
+export const ExternalPartyAccessQuery = z
+  .object({
+    otpVerified: z
+      .enum(['true', 'false'])
+      .optional()
+      .default('false')
+      .transform((v) => v === 'true'),
+  })
+  .strict();
+export type ExternalPartyAccessQueryDto = z.infer<typeof ExternalPartyAccessQuery>;

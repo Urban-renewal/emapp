@@ -28,6 +28,7 @@ import {
   CreateShareInput,
   CreateExternalShareInput,
   ExtendExternalShareInput,
+  ExternalPartyAccessQuery,
   ListExternalSharesQuery,
   UpdateExternalShareInput,
   ListProposalsQuery,
@@ -838,6 +839,17 @@ const ENDPOINTS: Endpoint[] = [
       'Revoke the grant (revoked_at + revoked_by — immediate, no physical delete). Idempotent. 204.',
     response: '(204 No Content)',
     errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/external-shares/:id/documents/:documentId/access',
+    auth: 'AuthGuard + TenantGuard',
+    summary:
+      'SEC-H1 — FAIL-CLOSED party-share document-retrieval authz decision: the ONE shared resolver consumes external_shares (expiry-on-every-request / revocation / scope-membership / allow_sensitive / OTP / watermark) and returns allow+serve-constraints OR deny+coarse-reason. RLS org isolation; sensitive bytes ⇒ requiresDecryptStream (never a presigned URL). Deny reasons are PII-free.',
+    request: ExternalPartyAccessQuery,
+    response:
+      '{ "data": { "allow": true, "constraints": { "requiresDecryptStream": bool, "watermarkSubject": "string|null" } } | { "allow": false, "reason": "share_revoked|share_expired|documents_not_granted|download_not_granted|out_of_scope|sensitive_not_allowed|otp_required|document_not_servable" } }',
+    errors: ['validation_error', 'missing_token', 'invalid_token', 'token_expired'],
   },
   // Autonomous Master Plan, Phase 1 — Approval-Inbox (proposals). Manager-only
   // (service requireManager). Phase-1 kind = signature_request.reissue.

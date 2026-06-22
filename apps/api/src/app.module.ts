@@ -33,6 +33,7 @@ import { ParcelSetupsModule } from './modules/parcel-setups/parcel-setups.module
 import { PortalModule } from './modules/portal/portal.module';
 import { ProjectAssignmentsModule } from './modules/project-assignments/project-assignments.module';
 import { ProjectsModule } from './modules/projects/projects.module';
+import { ProposalsModule } from './modules/proposals/proposals.module';
 import { ProviderModule } from './modules/provider/provider.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { SharesModule } from './modules/shares/shares.module';
@@ -106,6 +107,10 @@ import { QueueModule } from './queue/queue.module';
     RolesModule,
     OrgModule,
     SignaturesModule,
+    // Autonomous Master Plan, Phase 1 — Approval-Inbox BE (proposals read +
+    // approve/reject). Reuses SignatureRequestsService.reissueExpired verbatim as
+    // the first kind executor. FE inbox is a separate follow-on slice.
+    ProposalsModule,
     QueueModule,
     ImportsModule,
     // D.37 — Phase 6.5 Provider Admin BE (read-only). Tier-isolated:

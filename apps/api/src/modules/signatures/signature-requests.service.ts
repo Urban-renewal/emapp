@@ -838,7 +838,8 @@ export class SignatureRequestsService {
         // remind path passes `throwIfNotPending: false` so a concurrently-signed
         // row is silently skipped instead of failing the whole fan-out.
         const payload = await this.resendOneInTx(tx, user, req, { throwIfNotPending: true });
-        if (!payload) throw new ConflictException({ error: { code: 'signature_request_not_pending' } });
+        if (!payload)
+          throw new ConflictException({ error: { code: 'signature_request_not_pending' } });
         return payload;
       },
       { userId: user.sub },
@@ -971,9 +972,7 @@ export class SignatureRequestsService {
       } catch {
         // Delivery threw — the row was already re-minted (link refreshed); the
         // manager can retry the single request. Never log the owner's PII.
-        this.logger.error(
-          `remindProjectPending: delivery failed for request ${payload.row.id}`,
-        );
+        this.logger.error(`remindProjectPending: delivery failed for request ${payload.row.id}`);
       }
     }
 
@@ -1041,9 +1040,7 @@ export class SignatureRequestsService {
   /** Per-request resend DELIVERY (HB-1 factor of `resend`). Runs OUTSIDE the tx —
    *  the email/SMS/WhatsApp I/O must never hold a DB transaction open. The signUrl
    *  is the only place the fresh token appears; it is NEVER logged. */
-  private deliverResendPayload(
-    payload: ResendDeliveryPayload,
-  ): Promise<SignatureDeliveryReport> {
+  private deliverResendPayload(payload: ResendDeliveryPayload): Promise<SignatureDeliveryReport> {
     return deliverSignatureLink(
       this.email,
       this.sms,
@@ -1509,6 +1506,92 @@ export class SignatureRequestsService {
     );
     // A cancel drops a pending request from the counts (idempotent re-cancel is
     // a harmless extra bump). Invalidate the org's stats.
+    await this.invalidateStats(user.orgId);
+    return this.toWire(row);
+  }
+
+  /** Reissue an EXPIRED signature request — the autonomy Phase-1 executor's
+   *  gated target (Autonomous Master Plan: expiry → re-issue). Re-mint a fresh
+   *  token (new jti + new 7-day expiry) and flip the row `expired` → `pending`,
+   *  WITHOUT any email/SMS send. This is the INTERNAL, REVERSIBLE half of the
+   *  reissue (the outbound send is Phase 2's cadence loop) — exactly the
+   *  `signature_request.reissue` AutonomyPolicy kind (internal + reversible +
+   *  non-PII). The prior dead link's jti is overwritten; the new jti is the one
+   *  live credential. NO token is returned (no out-of-band delivery here — the
+   *  manager re-sends via the existing resend/getLink paths if/when they choose).
+   *
+   *  AUTHZ — mirrors the send/getLink path: agent document-visibility (404) +
+   *  manage_signatures capability (403); manager passes both. The executor only
+   *  calls this AFTER re-asserting `classify(kind)` at execute time (the boundary
+   *  is re-checked), and the human has APPROVED the proposal — so this is never an
+   *  unattended send.
+   *
+   *  STATE: only an `expired` request is reissuable. A pending/signed/cancelled
+   *  request 409s (`signature_request_not_reissuable`) — there is nothing lapsed
+   *  to revive (the proposal that targeted it is stale; the executor cleans up). */
+  async reissueExpired(user: AccessTokenPayload, id: string): Promise<SignatureRequest> {
+    const row = await withTenant(
+      user.orgId,
+      async (tx) => {
+        const [existing] = await tx
+          .select({
+            id: signatureRequests.id,
+            documentId: signatureRequests.documentId,
+            ownerId: signatureRequests.ownerId,
+            status: signatureRequests.status,
+          })
+          .from(signatureRequests)
+          .where(eq(signatureRequests.id, id))
+          .limit(1);
+        if (!existing) throw NOT_FOUND;
+        // D.46 — agent: document must be in an assigned project (404), then the
+        // manage_signatures capability (403). Gate BEFORE minting.
+        if (user.role === 'agent')
+          await this.assertDocVisibleForAgent(tx, user, existing.documentId);
+        await requireAgentCapability(tx, user, 'manage_signatures');
+
+        if (existing.status !== 'expired') {
+          throw new ConflictException({
+            error: { code: 'signature_request_not_reissuable' },
+          });
+        }
+
+        // Re-mint a fresh token for the SAME request (new jti + new expiry).
+        const { jti, expiresAt } = this.tokenService.sign({
+          sub: existing.id,
+          orgId: user.orgId,
+          documentId: existing.documentId,
+          ownerId: existing.ownerId,
+        });
+        // Atomic refresh — only if STILL expired (race vs a concurrent reissue).
+        const [updated] = await tx
+          .update(signatureRequests)
+          .set({ jti, expiresAt, status: 'pending' })
+          .where(and(eq(signatureRequests.id, id), eq(signatureRequests.status, 'expired')))
+          .returning();
+        if (!updated) {
+          throw new ConflictException({
+            error: { code: 'signature_request_not_reissuable' },
+          });
+        }
+
+        // Audit the reissue distinctly. actorType stays 'user' — the human
+        // APPROVED it; the proposal id + system origin are recorded in the
+        // proposal row + the proposals executor's own audit. NO PII, no token.
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'signature_request.reissue',
+          targetTable: 'signature_requests',
+          targetId: updated.id,
+          sessionId: user.sid,
+        });
+        return updated;
+      },
+      { userId: user.sub },
+    );
+    // Reissue revives a request into the pending pool — invalidate stats.
     await this.invalidateStats(user.orgId);
     return this.toWire(row);
   }

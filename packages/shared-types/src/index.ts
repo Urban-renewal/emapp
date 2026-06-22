@@ -49,6 +49,9 @@ export * from './role';
 export * from './org-settings';
 export * from './document';
 export * from './signature-request';
+// Autonomous Master Plan, Phase 1 — Approval-Inbox proposal wire shapes
+// (pending list + approve/reject). PII-free evidence by contract.
+export * from './proposal';
 export * from './import';
 // D.37 — Phase 6.5 Provider Admin BE (read-only). Tier-isolated wire
 // shapes for /api/v1/provider/* endpoints. NEVER share fields with the

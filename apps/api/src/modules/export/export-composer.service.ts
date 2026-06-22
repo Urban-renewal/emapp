@@ -1,6 +1,7 @@
 import {
   AuditService,
   apartments,
+  authSessions,
   buildings,
   decryptOwnerPiiBatch,
   owners,
@@ -9,8 +10,10 @@ import {
   projects,
   users,
   withTenant,
+  type TenantTx,
 } from '@emapp/db';
 import {
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -20,6 +23,7 @@ import {
 import { and, eq, isNull, inArray } from 'drizzle-orm';
 
 import { canViewOwners } from '../../common/authz/agent-capabilities';
+import { getOrgSettings } from '../../common/org-settings.resolver';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 import type {
@@ -28,6 +32,31 @@ import type {
   ProjectExportInput,
   ProjectExportOwner,
 } from './export.service';
+
+/**
+ * B6 (DOCUMENT-SECURITY-AUDIT) — a FULL-PII export (cleartext national_id +
+ * phone for every owner) is the single biggest PII surface in the product, so
+ * it must clear the SAME step-up gate that guards a single sensitive document
+ * download. This mirrors the documents path's DISTINCT, actionable 403
+ * (`documents.service.ts` `PII_STEP_UP_REQUIRED`) verbatim — same code, same
+ * shape — so the FE opens the step-up OTP dialog on this `pii_step_up_required`
+ * code regardless of which surface raised it. It is thrown only AFTER project
+ * visibility + owner-read scope are established, so it is never an existence
+ * oracle.
+ *
+ * Composition note: B5 (parallel PR) gates the step-up UNLOCK itself on
+ * `owners.reveal_pii`; the two compose — a full-PII export needs BOTH
+ * `export.run` (controller @RequirePermission) AND a `reveal_pii`-gated valid
+ * unlock on the caller's current session.
+ */
+const PII_STEP_UP_REQUIRED = new ForbiddenException({
+  error: { code: 'pii_step_up_required', message: 'נדרש אימות נוסף לייצוא נתונים רגישים' },
+});
+
+/** Export PII fidelity. `masked` (default) is the D.54 reveal-on-demand
+ *  posture — national_id/phone are masked for everyone, no step-up. `full`
+ *  emits cleartext PII columns and REQUIRES a valid PII step-up unlock. */
+export type ExportPiiMode = 'masked' | 'full';
 
 /**
  * V11 B.S10 — Project → ProjectExportInput composer (Phase 7).
@@ -71,11 +100,35 @@ export class ExportComposerService {
   // a DoS/OOM guard. Exposed for the spec.
   static readonly MAX_EXPORT_APARTMENTS = 5000;
 
+  /**
+   * B6 — the step-up gate, identical to `documents.service.ts`
+   * `assertPiiUnlocked`: a FULL-PII export is served ONLY when the caller's
+   * CURRENT session (`user.sid`) holds a VALID unlock — `pii_unlocked_at` NOT
+   * NULL and younger than the org's `security.piiUnlockTtlMinutes` (default
+   * 60). `auth_sessions` is auth-infra (no RLS; app_user has SELECT); an
+   * unknown/ghost sid finds no row → locked (fail-closed). MUST be called only
+   * AFTER project visibility + owner-read scope (never an existence oracle).
+   */
+  private async assertPiiUnlocked(tx: TenantTx, user: AccessTokenPayload): Promise<void> {
+    const { security } = await getOrgSettings(tx, user.orgId);
+    const ttlMs = security.piiUnlockTtlMinutes * 60_000;
+    const [sess] = await tx
+      .select({ piiUnlockedAt: authSessions.piiUnlockedAt })
+      .from(authSessions)
+      .where(eq(authSessions.id, user.sid))
+      .limit(1);
+    const unlockedAt = sess?.piiUnlockedAt ?? null;
+    if (!unlockedAt || unlockedAt.getTime() + ttlMs <= Date.now()) {
+      throw PII_STEP_UP_REQUIRED;
+    }
+  }
+
   async composeProjectExport(
     user: AccessTokenPayload,
     projectId: string,
     format: 'xlsx' | 'pdf',
-  ): Promise<{ input: ProjectExportInput; rowCount: number }> {
+    piiMode: ExportPiiMode = 'masked',
+  ): Promise<{ input: ProjectExportInput; rowCount: number; piiIncluded: boolean }> {
     const t0 = Date.now();
     const result = await withTenant(
       user.orgId,
@@ -181,10 +234,12 @@ export class ExportComposerService {
             action: 'project.export.requested',
             targetTable: 'projects',
             targetId: projectId,
-            afterState: { format, rowCount: 0 },
+            // B6 — an empty project carries zero owner rows, so no cleartext
+            // PII is emitted regardless of `piiMode`; the flag is false.
+            afterState: { format, rowCount: 0, piiIncluded: false },
             sessionId: user.sid,
           });
-          return { input: empty, rowCount: 0 };
+          return { input: empty, rowCount: 0, piiIncluded: false };
         }
         const bldIds = bldRows.map((b) => b.id);
 
@@ -267,6 +322,22 @@ export class ExportComposerService {
                   ),
                 );
 
+        // B6 — does this export ACTUALLY emit cleartext PII columns? Only when
+        // the caller asked for `full` fidelity AND there are owner rows to
+        // emit (an owner-read-scoped actor with zero owners emits no PII). Any
+        // full-mode owner emission is treated as PII-bearing for the step-up
+        // gate + audit flag (the columns are unmasked).
+        const piiIncluded = piiMode === 'full' && ownRows.length > 0;
+
+        // B6 — a FULL-PII export must clear the SAME step-up gate as a single
+        // sensitive document download. Asserted HERE — after visibility +
+        // owner-read scope, and BEFORE the decrypt below, so a locked caller
+        // never even round-trips the cleartext into heap. Without a valid
+        // unlock this throws the shared `pii_step_up_required` 403.
+        if (piiIncluded) {
+          await this.assertPiiUnlocked(tx, user);
+        }
+
         // 6) Decrypt PII in ONE round-trip per column (3 total) using
         //    the batched helper. ownerId on each EncryptedOwnerRow is
         //    a position-preserving key the caller chooses — we use a
@@ -306,12 +377,13 @@ export class ExportComposerService {
             error: { code: 'export_decrypt_failed', message: 'export temporarily unavailable' },
           });
         }
-        // D.54 / D.50 — the export is MASKED for everyone (reveal-on-demand model:
-        // cleartext PII is reachable only via the audited POST /owners/:id/
-        // reveal-pii, never a bulk export). The batched decrypt already ran; we
-        // mask national_id/phone in Node here. The transient cleartext is never
-        // logged/persisted (audit logs only project/org/rowCount). D.50 ("export
-        // fidelity == on-screen fidelity") holds trivially: on-screen is masked too.
+        // D.54 / D.50 — the DEFAULT export is MASKED for everyone (reveal-on-
+        // demand model). A `full` export (B6) emits cleartext national_id/phone
+        // but ONLY after the step-up gate above passed. The transient cleartext
+        // is never logged/persisted (audit logs only project/org/rowCount +
+        // a pii_included flag — never the values). D.50 ("export fidelity ==
+        // on-screen fidelity") holds: masked default mirrors the masked screen;
+        // full mirrors the audited reveal.
         // S3a — a SHELL owner has no national_id; keep it null in the export
         // (the renderer shows a blank cell) rather than masking an empty value.
         const maskNid = (v: string | null): string | null =>
@@ -324,8 +396,8 @@ export class ExportComposerService {
             return {
               __apartmentId: r.apartmentId,
               name: d.name,
-              nationalId: maskNid(d.nationalId),
-              phone: maskPhone(d.phone),
+              nationalId: piiMode === 'full' ? d.nationalId : maskNid(d.nationalId),
+              phone: piiMode === 'full' ? d.phone : maskPhone(d.phone),
               email: r.email,
               ownershipPct: Number(r.ownershipPct),
               role: r.role,
@@ -398,11 +470,14 @@ export class ExportComposerService {
           action: 'project.export.requested',
           targetTable: 'projects',
           targetId: projectId,
-          afterState: { format, rowCount },
+          // B6 — capture row count + a pii_included flag for forensics. NO
+          // national_id/phone (or any owner value) ever lands here — counts
+          // and flags only, per the PII-never-logged rule.
+          afterState: { format, rowCount, piiIncluded },
           sessionId: user.sid,
         });
 
-        return { input, rowCount };
+        return { input, rowCount, piiIncluded };
       },
       { userId: user.sub },
     );
@@ -433,7 +508,7 @@ export class ExportComposerService {
     projectId: string,
     format: 'xlsx' | 'pdf',
     outcome: 'delivered' | 'failed',
-    extra?: { rowCount?: number; bytes?: number; errorTag?: string },
+    extra?: { rowCount?: number; bytes?: number; errorTag?: string; piiIncluded?: boolean },
   ): Promise<void> {
     try {
       await withTenant(
@@ -451,6 +526,10 @@ export class ExportComposerService {
               rowCount: extra?.rowCount,
               bytes: extra?.bytes,
               error: extra?.errorTag,
+              // B6 — carry the pii_included flag onto the OUTCOME row too so a
+              // delivered cleartext-PII export is auditable end-to-end. Counts
+              // and flags only — never any owner value.
+              piiIncluded: extra?.piiIncluded,
             },
             sessionId: user.sid,
           });

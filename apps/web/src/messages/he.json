@@ -832,6 +832,34 @@
       "withMissing": "{count} מסמכים · חסרים {missing} מסמכי-חובה",
       "allClear": "{count} מסמכים · כל מסמכי החובה קיימים"
     },
+    "board": {
+      "orientation": {
+        "allEmpty": "עדיין לא נאסף אף מסמך · התחילו בהעלאה מאחד הגורמים",
+        "allFilled": "הכל מסודר — לכל הגורמים הפעילים יש מסמכים",
+        "someEmpty": "כמעט הכל מסודר — טרם התקבלו מסמכים מ{parties}",
+        "twoParties": "{first} ו{second}",
+        "manyParties": "{first} ועוד {count}"
+      },
+      "open": "פתיחת המסמכים של {party}",
+      "ghost": "טרם התקבלו מסמכים",
+      "gist": {
+        "count": "{count} מסמכים",
+        "latest": "{count} מסמכים · האחרון {when}"
+      },
+      "complete": "הושלם",
+      "back": "חזרה לגורמים"
+    },
+    "party": {
+      "owner": "בעלים",
+      "appraiser": "שמאי",
+      "architect": "אדריכל",
+      "municipality": "עירייה",
+      "contractor": "קבלן",
+      "lawyer": "עו״ד",
+      "supervisor": "מפקח",
+      "surveyor": "מודד",
+      "other": "כללי / אחר"
+    },
     "group": {
       "unassigned": "ללא שיוך לפרויקט",
       "projectFallback": "פרויקט",

@@ -832,6 +832,34 @@
       "withMissing": "{count} documents · {missing} required documents missing",
       "allClear": "{count} documents · all required documents present"
     },
+    "board": {
+      "orientation": {
+        "allEmpty": "Nothing collected yet · start by uploading from one of the parties",
+        "allFilled": "All in order — every active party has documents",
+        "someEmpty": "Almost there — no documents yet from {parties}",
+        "twoParties": "{first} and {second}",
+        "manyParties": "{first} and {count} more"
+      },
+      "open": "Open {party} documents",
+      "ghost": "No documents yet",
+      "gist": {
+        "count": "{count} documents",
+        "latest": "{count} documents · latest {when}"
+      },
+      "complete": "Complete",
+      "back": "Back to parties"
+    },
+    "party": {
+      "owner": "Owners",
+      "appraiser": "Appraiser",
+      "architect": "Architect",
+      "municipality": "Municipality",
+      "contractor": "Contractor",
+      "lawyer": "Lawyer",
+      "supervisor": "Supervisor",
+      "surveyor": "Surveyor",
+      "other": "General / Other"
+    },
     "group": {
       "unassigned": "Not linked to a project",
       "projectFallback": "Project",

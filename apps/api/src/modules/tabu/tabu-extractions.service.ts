@@ -1,7 +1,6 @@
 import {
   AuditService,
   apartments,
-  authSessions,
   buildings,
   decryptField,
   documents,
@@ -31,7 +30,6 @@ import type {
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -42,13 +40,13 @@ import {
   requireAgentCapability,
   resolveOwnerPiiFidelity,
 } from '../../common/authz/agent-capabilities';
+import { assertSessionPiiUnlocked } from '../../common/authz/pii-step-up';
 import {
   decodeCursor,
   encodeCursor,
   keysetCondition,
   keysetOrderBy,
 } from '../../common/keyset-cursor';
-import { getOrgSettings } from '../../common/org-settings.resolver';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { STORAGE_PROVIDER } from '../documents/storage';
 import {
@@ -65,15 +63,6 @@ const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
  *  (ListOwnershipsQuery.limit, currently 25). Derived, not hardcoded, so a
  *  DTO change cannot drift the service again. */
 const DEFAULT_LIST_LIMIT = ListOwnershipsQuery.parse({}).limit;
-
-/** 7c — the review/confirm surface materializes decrypted owner PII, so it
- * sits behind the SAME per-session unlock gate as the sensitive-document
- * download (7b-OTP, D-P5.5/7/8). 403 — the FE opens the OTP dialog. Only
- * ever thrown AFTER the apartment-visibility check passed, so it is never
- * an existence oracle. */
-const PII_STEP_UP_REQUIRED = new ForbiddenException({
-  error: { code: 'pii_step_up_required' },
-});
 
 /** 7c — review writes (row edit) and confirm apply to a DRAFT only. A
  * confirmed/discarded extraction is terminal → 409 (the caller already
@@ -472,27 +461,23 @@ export class TabuExtractionsService {
   }
 
   /**
-   * 7c — the PII unlock gate (D-P5.5/7/8). The caller's CURRENT session
-   * (user.sid) must hold a VALID unlock: auth_sessions.pii_unlocked_at NOT
-   * NULL AND younger than the org's security.piiUnlockTtlMinutes (default
-   * 60). Byte-for-byte the sensitive-document download gate
-   * (DocumentsService.getDownloadUrl). Fail-closed: an unknown/ghost sid
-   * finds no row → locked. ALWAYS ordered AFTER assertApartmentVisible so
-   * the 403 is never an existence oracle.
+   * 7c — the PII step-up ACCESS gate (D-P5.5/7/8). Delegates to the SHARED
+   * `assertSessionPiiUnlocked` (the single source of truth for the
+   * freshness/TTL check), so the tabu and sensitive-document paths can never
+   * silently drift apart. ALWAYS ordered AFTER assertApartmentVisible so the
+   * 403 is never an existence oracle.
+   *
+   * CLEARTEXT CONTRACT (why tabu DIFFERS from the document download): tabu row
+   * review reveals PII PER-FIELD and masks `national_id` at the sink via
+   * `resolveOwnerPiiFidelity` (listRows below) — a viewer / an agent WITHOUT
+   * `view_owner_pii` legitimately passes THIS access gate and sees the
+   * •-masked id. So the access gate must NOT additionally require cleartext
+   * entitlement (`owners.reveal_pii`) — doing so would BREAK legitimate masked
+   * review. (The sensitive-document download serves a WHOLE FILE all-or-nothing
+   * and so layers any extra cleartext check at its OWN call site, not here.)
    */
   private async assertPiiUnlocked(tx: TenantTx, user: AccessTokenPayload): Promise<void> {
-    const { security } = await getOrgSettings(tx, user.orgId);
-    const ttlMs = security.piiUnlockTtlMinutes * 60_000;
-    // auth_sessions is auth-infra (no RLS; app_user has SELECT).
-    const [sess] = await tx
-      .select({ piiUnlockedAt: authSessions.piiUnlockedAt })
-      .from(authSessions)
-      .where(eq(authSessions.id, user.sid))
-      .limit(1);
-    const unlockedAt = sess?.piiUnlockedAt ?? null;
-    if (!unlockedAt || unlockedAt.getTime() + ttlMs <= Date.now()) {
-      throw PII_STEP_UP_REQUIRED;
-    }
+    await assertSessionPiiUnlocked(tx, user);
   }
 
   // Load the extraction + enforce the via-parent visibility (no-oracle 404).

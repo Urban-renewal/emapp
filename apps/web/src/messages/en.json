@@ -855,16 +855,21 @@
         "allEmpty": "Nothing collected yet · start by uploading from one of the parties",
         "allFilled": "All in order — every active party has documents",
         "someEmpty": "Almost there — no documents yet from {parties}",
+        "someUnmet": "Almost there — required documents not yet received from {parties}",
         "twoParties": "{first} and {second}",
         "manyParties": "{first} and {count} more"
       },
       "open": "Open {party} documents",
       "ghost": "No documents yet",
+      "missing": "Missing: {types}",
       "gist": {
         "count": "{count} documents",
-        "latest": "{count} documents · latest {when}"
+        "latest": "{count} documents · latest {when}",
+        "allReceived": "{count} documents · all required received",
+        "someMissing": "{received} of {required} received · missing: {types}"
       },
       "complete": "Complete",
+      "completeness": "{received} of {required} required documents received",
       "back": "Back to parties"
     },
     "party": {

@@ -8,6 +8,7 @@ import { toDocumentViewModel, toDocumentViewModels } from '@/adapters/document';
 import {
   archiveDocument,
   fetchDownload,
+  getBoardCompleteness,
   getDocument,
   listDocuments,
   uploadDocumentFlow,
@@ -48,6 +49,24 @@ export function useDocumentList(
     queryFn: () => listDocuments({ limit: query.limit ?? 25, ...query }),
     staleTime: 30_000,
     select,
+  });
+}
+
+/**
+ * PARTY-BINDER board completeness — per-party required-vs-received over the
+ * WHOLE board scope, computed server-side. The board cannot derive this from
+ * its 25-doc keyset page (it would mis-count requirements across unloaded
+ * projects). Fail-SOFT: a failed/parse-rejected response leaves `data`
+ * undefined and the board renders WITHOUT completeness badges (the calm
+ * slice-1 "present" check) — completeness is an enhancement, never a blocker.
+ * No locale in the key: the response is counts + doc-type keys (label-resolved
+ * at the component), identical across locales.
+ */
+export function useBoardCompleteness() {
+  return useQuery({
+    queryKey: [...DOCUMENTS_KEY, 'board-completeness'],
+    queryFn: getBoardCompleteness,
+    staleTime: 30_000,
   });
 }
 

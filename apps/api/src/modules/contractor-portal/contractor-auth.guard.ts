@@ -80,9 +80,13 @@ export class ContractorAuthGuard implements CanActivate {
     // an expired JWT, but we RE-ASSERT the `exp` here so expiry is enforced on
     // every contractor read/download as an explicit gate — not implicitly via
     // the verify path. `exp` is seconds-since-epoch (JWT spec); reject the
-    // instant it is reached or passed. Same generic 401 as a revoked/forged
-    // token → an attacker cannot distinguish "expired" from "invalid".
-    if (payload.exp * 1000 <= Date.now()) {
+    // instant it is reached or passed. The `typeof !== 'number'` clause makes
+    // this gate SELF-SUFFICIENT: an exp-less/non-numeric payload would make
+    // `exp * 1000` NaN and `NaN <= now` false (fail-OPEN) — so we reject a
+    // missing/malformed exp outright rather than relying on verify()'s shape
+    // check still being there after a future refactor. Same generic 401 as a
+    // revoked/forged token → an attacker cannot distinguish "expired" from "invalid".
+    if (typeof payload.exp !== 'number' || payload.exp * 1000 <= Date.now()) {
       throw new UnauthorizedException({ error: { code: 'invalid_token' } });
     }
 

@@ -231,6 +231,29 @@ describe('ContractorAuthGuard — share expiry on retrieval', () => {
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
+  it('the guard is SELF-SUFFICIENT: a verify() that returns an exp-LESS payload → 401 (no NaN fail-open)', async () => {
+    await setShareRevoked(false);
+    await setOrgSuspended(false);
+    // The dangerous case: `exp` absent (or non-numeric) makes `exp * 1000` NaN
+    // and `NaN <= now` FALSE → without the typeof guard the gate would fail OPEN.
+    // Simulate a future verify() refactor that drops its exp shape-check; the
+    // guard's own `typeof exp !== 'number'` clause must still refuse.
+    const expLessVerify = {
+      verify: () => ({
+        sub: contractorId,
+        projectId,
+        shareId,
+        orgId: orgA.id,
+        iat: Math.floor(Date.now() / 1000),
+        // exp deliberately omitted
+      }),
+    } as unknown as ShareTokenService;
+    const guardWithExpLessVerify = new ContractorAuthGuard(expLessVerify);
+    await expect(
+      guardWithExpLessVerify.canActivate(mockCtx('any.token.value') as never),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
   it('a REVOKED share → 401 on retrieval (not just on listing)', async () => {
     await setShareRevoked(true);
     // A still-in-window token (valid exp) on a revoked share is refused at the

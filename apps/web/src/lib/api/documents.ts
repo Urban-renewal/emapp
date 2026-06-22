@@ -19,10 +19,12 @@
  *  - 50 MB hard ceiling (also pre-checked client-side in uploadDocumentFlow).
  */
 import {
+  BoardCompletenessSchema,
   DOCUMENT_MAX_SIZE_BYTES,
   DocumentDownloadResponseSchema,
   DocumentSchema,
   DocumentUploadResponseSchema,
+  type BoardCompleteness,
   type CreateDocument,
   type Document,
   type DocumentMime,
@@ -77,6 +79,18 @@ export async function listDocuments(
   const items = z.array(DocumentSchema).parse(res.data);
   const page = PageSchema.parse(res.page);
   return { items, page };
+}
+
+const BoardCompletenessDataSchema = z.object({ data: BoardCompletenessSchema });
+
+/** GET /documents/board-completeness — per-PARTY required-vs-received over the
+ *  WHOLE board scope, computed server-side (the FE can't: the board is keyset-
+ *  paginated). Defensive Zod parse like every other wrapper (ARCHITECTURE-MAP
+ *  §1). Counts + doc-type keys only — no PII on the wire. */
+export async function getBoardCompleteness(): Promise<BoardCompleteness> {
+  const res = await apiClient.get<unknown>(`/documents/board-completeness`);
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return BoardCompletenessDataSchema.parse({ data: res.data }).data;
 }
 
 export async function getDocument(id: string): Promise<Document> {

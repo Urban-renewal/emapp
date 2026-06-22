@@ -504,6 +504,23 @@ export class ImportsService {
         contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         maxSizeBytes: input.fileSizeBytes,
         ttlSeconds: UPLOAD_URL_TTL_SECONDS,
+        // B7 (DOCUMENT-SECURITY-AUDIT.md) — anti-overwrite hardening of the
+        // presigned PUT, mirroring documents.create (#500). The import key is
+        // server-random (newImportKey) and used for exactly ONE upload, so:
+        //   • createOnly: storage rejects a PUT to an already-stored key (412
+        //     PreconditionFailed) — closes the scan-then-swap TOCTOU (דריסה):
+        //     a leaked/re-used PUT URL can store the xlsx ONCE; a second PUT
+        //     (overwrite) is refused by storage, never silently accepted.
+        //   • contentSha256Hex: bind the PUT to the create-declared hash so
+        //     storage rejects (BadDigest) any bytes that don't hash to it —
+        //     the stored object's checksum becomes STORAGE-attested. We have
+        //     the BARE hex here (input.fileContentHash; Zod's Sha256HexLower
+        //     enforces it). The DB column stores it `sha256:`-prefixed via
+        //     toStoredHash, but the presign binding wants the bare hex the
+        //     provider base64-encodes — so we pass input.fileContentHash, NOT
+        //     the prefixed fileContentHash variable.
+        createOnly: true,
+        contentSha256Hex: input.fileContentHash,
       });
     } catch (e) {
       // Compensate: archive the orphan row so it doesn't dangle. Also

@@ -291,6 +291,65 @@ describe('R2 factory — buildR2Provider', () => {
     ).toBe(false);
   });
 
+  it('B7d-import) the xlsx-import presign (create-only + checksum) SIGNS both headers into the URL (defense-in-depth, mirrors documents #500)', async () => {
+    // SECURITY (task_40412210): the imports.service create() now mints its xlsx
+    // PUT with createOnly + contentSha256Hex (same as documents). Prove the REAL
+    // presigner signs `if-none-match` + `x-amz-checksum-sha256` into the URL for
+    // the import content-type too — so a leaked import PUT URL can't scan-then-
+    // swap (דריסה) the xlsx, and R2 enforces the bound checksum (BadDigest).
+    const provider = new R2StorageProvider(VALID_ENV.R2_BUCKET, {
+      client: new S3Client({
+        region: 'auto',
+        endpoint: VALID_ENV.R2_ENDPOINT,
+        credentials: {
+          accessKeyId: VALID_ENV.R2_ACCESS_KEY_ID,
+          secretAccessKey: VALID_ENV.R2_SECRET_ACCESS_KEY,
+        },
+        forcePathStyle: false,
+      }) as unknown as ConstructorParameters<typeof R2StorageProvider>[1]['client'],
+      getSignedUrl: getSignedUrl as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['getSignedUrl'],
+      PutObjectCommand: PutObjectCommand as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['PutObjectCommand'],
+      GetObjectCommand: GetObjectCommand as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['GetObjectCommand'],
+      DeleteObjectCommand: DeleteObjectCommand as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['DeleteObjectCommand'],
+      HeadObjectCommand: HeadObjectCommand as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['HeadObjectCommand'],
+      ListObjectsV2Command: ListObjectsV2Command as unknown as ConstructorParameters<
+        typeof R2StorageProvider
+      >[1]['ListObjectsV2Command'],
+    });
+    const hex = 'c'.repeat(64);
+    const url = await provider.getUploadUrl('org/o/import/u.xlsx', {
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      maxSizeBytes: 8192,
+      ttlSeconds: 300,
+      createOnly: true,
+      contentSha256Hex: hex,
+    });
+    const signed = new URL(url).searchParams.get('X-Amz-SignedHeaders') ?? '';
+    const signedSet = new Set(signed.split(';'));
+    expect(
+      signedSet.has('if-none-match'),
+      'import create-only header must be SIGNED into the URL',
+    ).toBe(true);
+    expect(
+      signedSet.has('x-amz-checksum-sha256'),
+      'import checksum header must be SIGNED into the URL',
+    ).toBe(true);
+    expect(
+      new URL(url).searchParams.has('x-amz-checksum-sha256'),
+      'import checksum must stay a signed request header, not hoisted into the query',
+    ).toBe(false);
+  });
+
   it('B7e) a legacy PUT (no createOnly / no checksum) does NOT sign those headers', async () => {
     // Backward-compat: callers that mint a plain presigned PUT keep an URL that
     // requires NO extra headers, so existing flows are byte-for-byte unchanged.

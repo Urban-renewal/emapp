@@ -10,3 +10,5 @@ export * from './mapping-fingerprint';
 export * from './producer';
 export * from './autonomy-policy';
 export * from './recommender';
+export * from './outbound-policy';
+export * from './reminder-cadence';

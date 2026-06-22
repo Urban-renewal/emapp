@@ -9,6 +9,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, eq, type SQL } from 'drizzle-orm';
+import { z } from 'zod';
 
 import {
   decodeCursor,
@@ -21,6 +22,11 @@ import { SignatureRequestsService } from '../signatures/signature-requests.servi
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
 const FORBIDDEN = new ForbiddenException({ error: { code: 'forbidden' } });
+
+/** The shape of a `reminder.send` proposal's evidence snapshot we depend on at
+ *  execute time. Zod-parsed (no raw `unknown` access, per CLAUDE.md) — a malformed
+ *  evidence blob fails closed rather than sending with a default step. */
+const ReminderEvidence = z.object({ cadenceStep: z.number().int().min(0) });
 
 export interface ProposalListPage {
   data: ProposalView[];
@@ -69,6 +75,37 @@ export class ProposalsService {
       // proposal's scopeId is the signature_request id.
       'signature_request.reissue': async (user, proposal) => {
         await this.signatureRequests.reissueExpired(user, proposal.scopeId);
+      },
+      // Phase-2 first GOVERNED-OUTBOUND producer: send ONE reminder for a pending
+      // signature request THROUGH the OutboundGovernor (gates + M1 exactly-once
+      // ledger). Replays the EXISTING gated `resend` verbatim as the send thunk —
+      // the governance + exactly-once wrap it, they don't duplicate the send. The
+      // proposal's scopeId is the signature_request id; the cadence step is read
+      // from the (Zod-validated) evidence snapshot taken at emit.
+      'reminder.send': async (user, proposal) => {
+        const { cadenceStep } = ReminderEvidence.parse(proposal.evidence);
+        const outcome = await this.signatureRequests.sendGovernedReminder(user, {
+          proposalId: proposal.id,
+          signatureRequestId: proposal.scopeId,
+          cadenceStep,
+        });
+        // Per-item independence (design correction M2): a non-`sent` outcome does
+        // NOT silently "succeed". A gate denied/deferred it (kill-switch off,
+        // consent withdrawn, breaker tripped, ceiling hit, quiet hours) or the
+        // provider failed → throw so the apply path leaves the proposal PENDING
+        // (it stays actionable; the manager retries when the condition lifts).
+        // `already_sent` is the M1 exactly-once no-op: the send already happened,
+        // so the proposal legitimately flips to `applied`.
+        if (outcome.result === 'sent' || outcome.result === 'already_sent') return;
+        if (outcome.result === 'blocked') {
+          throw new ConflictException({
+            error: { code: 'outbound_blocked', details: { reason: outcome.decision.reason } },
+          });
+        }
+        // result === 'failed'
+        throw new ConflictException({
+          error: { code: 'outbound_failed', details: { reason: outcome.failureCode } },
+        });
       },
     };
   }

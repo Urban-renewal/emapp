@@ -154,12 +154,11 @@ Before "done"/merge, the change is WALKED in the owner's REAL Chrome (Claude-in-
 MCP) against the running app, AS the actual role — NOT headless, NOT Playwright, NOT MSW,
 NOT unit-green. Those are "code green" ONLY; they are NOT acceptance. The real-browser
 walk IS the gate: dev-login as the role, exercise the interaction, confirm the 5 axes
-(Network all 2xx / URL / Cookies / Redirect / **Latency <1s warm**) + the rendered result
-
-- console clean (dev-HMR noise excepted). A subagent only produces code-green; the
-  real-Chrome walk is MANDATORY before merge and is the owner's standard. This SUPERSEDES the
-  "OR Playwright" option in the FE DoD above — Playwright is a regression net, not the
-  acceptance gate.
+(Network all 2xx / URL / Cookies / Redirect / **Latency <1s warm**), the rendered result,
+and a clean console (dev-HMR noise excepted). A subagent only produces code-green; the
+real-Chrome walk is MANDATORY before merge and is the owner's standard. This SUPERSEDES the
+"OR Playwright" option in the FE DoD above — Playwright is a regression net, not the
+acceptance gate.
 
 **LATENCY IS A FIRST-CLASS ACCEPTANCE AXIS (owner 2026-06-23, anchored — "otherwise we lose
 the customer").** EVERY browser-observable action — navigation, click, submit — MUST complete

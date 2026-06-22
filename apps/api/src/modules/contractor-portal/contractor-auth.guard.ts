@@ -26,13 +26,29 @@ const LAST_ACCESS_THROTTLE_MS = 5 * 60 * 1000;
  * Per request it:
  *   1. extracts the share-access token (cookie or Bearer),
  *   2. verifies it (audience `emapp-share` — token-confusion proof),
- *   3. loads the bound `shares` row under the token's org RLS and refuses
+ *   3. ENFORCES the token's `exp` at RETRIEVAL — fail-closed, generic 401 —
+ *      so an expired/over-TTL credential is rejected on EVERY read/download,
+ *      not merely on listing (red-team blocker: a long-lived JWT must NOT
+ *      outlive the share's intended lifetime),
+ *   4. loads the bound `shares` row under the token's org RLS and refuses
  *      if it is missing / REVOKED (revoked_at), or the org is SUSPENDED
  *      (D.49) — every one of these is a generic 401 (no oracle),
- *   4. attaches `req.contractor` = { the token + the live `permissions` }.
+ *   5. attaches `req.contractor` = { the token + the live `permissions` }.
  *
  * Revocation is immediate: `shares.revoked_at` is checked on EVERY request,
- * so the 30-day token TTL never outlives a manager's revoke.
+ * so the token TTL never outlives a manager's revoke.
+ *
+ * EXPIRY (SECURITY, share-expiry-on-retrieval): `ShareTokenService.verify()`
+ * already throws on an expired JWT, but the legacy `shares` table has NO
+ * `expires_at` column — so the token's own `exp` claim IS the share's intended
+ * lifetime, and it is the ONLY expiry signal available without a schema
+ * migration. We therefore RE-ASSERT `exp` here, at retrieval, as an explicit
+ * fail-closed gate independent of the verify path: even if a future verify
+ * refactor stopped rejecting an aged token (or a token were minted/replayed
+ * with a stale `exp`), this guard still refuses every document read once the
+ * credential's lifetime has passed. A per-share, manager-settable `expires_at`
+ * (shorter than the token TTL) is a SEPARATE, migration-bearing change and is
+ * deliberately NOT introduced here.
  */
 export interface ContractorContext {
   /** contractor id (token sub). */
@@ -59,6 +75,20 @@ export class ContractorAuthGuard implements CanActivate {
 
     // Throws ShareTokenVerifyError (→ 401 invalid_token) on any failure.
     const payload = this.shareToken.verify(token);
+
+    // RETRIEVAL-TIME EXPIRY (fail-closed, no-oracle). `verify()` already rejects
+    // an expired JWT, but we RE-ASSERT the `exp` here so expiry is enforced on
+    // every contractor read/download as an explicit gate — not implicitly via
+    // the verify path. `exp` is seconds-since-epoch (JWT spec); reject the
+    // instant it is reached or passed. The `typeof !== 'number'` clause makes
+    // this gate SELF-SUFFICIENT: an exp-less/non-numeric payload would make
+    // `exp * 1000` NaN and `NaN <= now` false (fail-OPEN) — so we reject a
+    // missing/malformed exp outright rather than relying on verify()'s shape
+    // check still being there after a future refactor. Same generic 401 as a
+    // revoked/forged token → an attacker cannot distinguish "expired" from "invalid".
+    if (typeof payload.exp !== 'number' || payload.exp * 1000 <= Date.now()) {
+      throw new UnauthorizedException({ error: { code: 'invalid_token' } });
+    }
 
     // Load the bound share under the token's org RLS. A forged orgId can't
     // see another org's share row (RLS), and a revoked/suspended share is

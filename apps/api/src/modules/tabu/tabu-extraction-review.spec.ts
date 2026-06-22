@@ -434,6 +434,25 @@ async function setAgentCap(on: boolean): Promise<void> {
   }
 }
 
+/** Toggle the agent's `view_owner_pii` capability — the SINGLE switch that
+ *  flips tabu row review between masked (off) and cleartext (on), per
+ *  `resolveOwnerPiiFidelity` (D.54). The asymmetry-pin tests (B2/B3) below
+ *  assert BOTH sides so a future change that leaks cleartext to a masked role
+ *  on tabu — or that breaks legitimate masked review — fails RED here. */
+async function setAgentViewOwnerPii(on: boolean): Promise<void> {
+  const c = await providerPool.connect();
+  try {
+    await c.query(
+      `UPDATE memberships
+       SET capabilities = jsonb_set(capabilities, '{view_owner_pii}', $1::jsonb)
+       WHERE user_id = $2 AND org_id = $3 AND revoked_at IS NULL`,
+      [on ? 'true' : 'false', agentId, org.id],
+    );
+  } finally {
+    c.release();
+  }
+}
+
 /** Pre-existing org owner with HMAC hashes — the hash-match target. */
 async function seedOwner(orgId: string, name: string, nid: string): Promise<string> {
   const encKey = dbEnv.PII_ENCRYPTION_KEY as string;
@@ -814,6 +833,69 @@ describe('7c · B) rows masking by role fidelity', () => {
     const mgrRows = rowsOf(await svc[METHOD_ROWS](payload(managerId, 'manager', mgrSid), exId));
     const ma = [...mgrRows].sort((x, y) => (x.position ?? 0) - (y.position ?? 0))[0]!;
     expect(ma.nationalId).toBe(ROW_A.nid);
+  }, 40_000);
+
+  // ── B5-asymmetry PIN (the regression guard the unify-gate fix exists for) ──
+  // The tabu step-up gate is an ACCESS gate ONLY; the cleartext-vs-masked
+  // decision is SEPARATE and lives in resolveOwnerPiiFidelity (D.54). These two
+  // tests pin BOTH directions for the AGENT so a future change can NEVER (a)
+  // leak cleartext to an agent who lacks view_owner_pii, nor (b) break the
+  // legitimate masked review of an agent who passed step-up. Both run with a
+  // VALID unlock — proving the access gate alone does NOT decide fidelity.
+
+  it('B2) assigned agent WITHOUT view_owner_pii + valid unlock → nationalId MASKED (the access gate must NOT grant cleartext on its own)', async () => {
+    const { exId } = await seedDraftWithRows();
+    const svc = makeReviewSvc();
+    await setAgentViewOwnerPii(false); // masked fidelity
+
+    const sid = await unlockedSession(agentId);
+    const rows = rowsOf(await svc[METHOD_ROWS](payload(agentId, 'agent', sid), exId));
+    const a = [...rows].sort((x, y) => (x.position ?? 0) - (y.position ?? 0))[0]!;
+    expect(typeof a.nationalId).toBe('string');
+    const masked = a.nationalId as string;
+    expect(
+      masked,
+      'agent without view_owner_pii must NEVER receive the clear national_id',
+    ).not.toBe(ROW_A.nid);
+    expect(masked.includes(ROW_A.nid), 'the full national_id leaked inside the mask').toBe(false);
+    expect(masked).toContain('•');
+    expect(masked.endsWith(ROW_A.nid.slice(-2))).toBe(true);
+  }, 40_000);
+
+  it('B3) assigned agent WITH view_owner_pii + valid unlock → nationalId CLEARTEXT (legitimate cleartext review is intentionally allowed; NOT gated on owners.reveal_pii)', async () => {
+    const { exId } = await seedDraftWithRows();
+    const svc = makeReviewSvc();
+    await setAgentViewOwnerPii(true); // unmasked fidelity
+    try {
+      const sid = await unlockedSession(agentId);
+      const rows = rowsOf(await svc[METHOD_ROWS](payload(agentId, 'agent', sid), exId));
+      const a = [...rows].sort((x, y) => (x.position ?? 0) - (y.position ?? 0))[0]!;
+      expect(a.nationalId, 'agent WITH view_owner_pii must get the CLEAR national_id').toBe(
+        ROW_A.nid,
+      );
+    } finally {
+      await setAgentViewOwnerPii(false); // restore default-OFF for other tests
+    }
+  }, 40_000);
+
+  it('B4) [shared access-gate] assigned agent WITH view_owner_pii but NO unlock → 403 pii_step_up_required (the unified step-up gate runs BEFORE fidelity; cleartext entitlement does not bypass it)', async () => {
+    const { exId } = await seedDraftWithRows();
+    const svc = makeReviewSvc();
+    await setAgentViewOwnerPii(true);
+    try {
+      const sid = await seedSession(agentId); // live session, NO unlock
+      let thrown: unknown;
+      try {
+        await svc[METHOD_ROWS](payload(agentId, 'agent', sid), exId);
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown, 'cleartext entitlement bypassed the step-up access gate').toBeTruthy();
+      expect(errStatus(thrown)).toBe(403);
+      expect(errCode(thrown)).toBe(PII_STEP_UP_REQUIRED);
+    } finally {
+      await setAgentViewOwnerPii(false);
+    }
   }, 40_000);
 });
 

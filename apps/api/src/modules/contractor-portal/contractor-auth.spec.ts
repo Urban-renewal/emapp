@@ -169,3 +169,106 @@ describe('ContractorAuthGuard', () => {
     await setOrgSuspended(false);
   });
 });
+
+/**
+ * SECURITY — share EXPIRY enforced on RETRIEVAL (red-team blocker).
+ *
+ * A long-lived share JWT must NOT outlive the share's intended lifetime: an
+ * expired / over-TTL credential is refused on EVERY contractor read/download
+ * (the guard is the single chokepoint for `/contractor/*`), fail-closed and
+ * with the same generic 401 as a revoked/forged token (no oracle). The guard
+ * re-asserts `exp` explicitly, independent of the verify path.
+ */
+describe('ContractorAuthGuard — share expiry on retrieval', () => {
+  /** Mint a share-token with a caller-chosen `exp` (valid sig/aud/iss). Used to
+   *  forge an OVER-TTL credential whose only defect is a past `exp`. */
+  function tokenWithExp(expSeconds: number): string {
+    const nowSec = Math.floor(Date.now() / 1000);
+    // Explicit iat + exp in the payload (NO `expiresIn` option, so @nestjs/jwt
+    // honors our `exp` verbatim). `verify()` requires both as numbers — keep iat.
+    // SHARE_TOKEN_SECRET falls back to JWT_SECRET in test (single-secret).
+    return jwt.sign(
+      { sub: contractorId, projectId, shareId, orgId: orgA.id, iat: nowSec, exp: expSeconds },
+      {
+        secret: serverEnv.SHARE_TOKEN_SECRET ?? serverEnv.JWT_SECRET,
+        algorithm: 'HS256',
+        issuer: 'emapp',
+        audience: 'emapp-share',
+      },
+    );
+  }
+
+  it('an EXPIRED / over-TTL share → 401 on document retrieval (no-oracle)', async () => {
+    await setShareRevoked(false);
+    await setOrgSuspended(false);
+    // exp 1 hour in the PAST — share row is active, but the credential's
+    // lifetime has passed → retrieval is refused.
+    const expired = tokenWithExp(Math.floor(Date.now() / 1000) - 3600);
+    await expect(guard.canActivate(mockCtx(expired) as never)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
+
+  it('the guard RE-ASSERTS exp even when verify() returns a stale token (defense-in-depth)', async () => {
+    await setShareRevoked(false);
+    await setOrgSuspended(false);
+    // Simulate a verify path that does NOT reject an aged token (e.g. a future
+    // refactor / a replayed payload): the guard's own retrieval-time exp gate
+    // must still refuse. Proves the gate is independent of verify().
+    const staleVerify = {
+      verify: () => ({
+        sub: contractorId,
+        projectId,
+        shareId,
+        orgId: orgA.id,
+        iat: Math.floor(Date.now() / 1000) - 7200,
+        exp: Math.floor(Date.now() / 1000) - 3600,
+      }),
+    } as unknown as ShareTokenService;
+    const guardWithStaleVerify = new ContractorAuthGuard(staleVerify);
+    await expect(
+      guardWithStaleVerify.canActivate(mockCtx('any.token.value') as never),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('the guard is SELF-SUFFICIENT: a verify() that returns an exp-LESS payload → 401 (no NaN fail-open)', async () => {
+    await setShareRevoked(false);
+    await setOrgSuspended(false);
+    // The dangerous case: `exp` absent (or non-numeric) makes `exp * 1000` NaN
+    // and `NaN <= now` FALSE → without the typeof guard the gate would fail OPEN.
+    // Simulate a future verify() refactor that drops its exp shape-check; the
+    // guard's own `typeof exp !== 'number'` clause must still refuse.
+    const expLessVerify = {
+      verify: () => ({
+        sub: contractorId,
+        projectId,
+        shareId,
+        orgId: orgA.id,
+        iat: Math.floor(Date.now() / 1000),
+        // exp deliberately omitted
+      }),
+    } as unknown as ShareTokenService;
+    const guardWithExpLessVerify = new ContractorAuthGuard(expLessVerify);
+    await expect(
+      guardWithExpLessVerify.canActivate(mockCtx('any.token.value') as never),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('a REVOKED share → 401 on retrieval (not just on listing)', async () => {
+    await setShareRevoked(true);
+    // A still-in-window token (valid exp) on a revoked share is refused at the
+    // retrieval chokepoint — every `/contractor/*` read goes through this guard.
+    await expect(guard.canActivate(mockCtx(freshToken()) as never)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    await setShareRevoked(false);
+  });
+
+  it('a VALID in-window share → allows (200 path)', async () => {
+    await setShareRevoked(false);
+    await setOrgSuspended(false);
+    // exp 1 hour in the FUTURE, active + non-suspended → guard allows.
+    const future = tokenWithExp(Math.floor(Date.now() / 1000) + 3600);
+    await expect(guard.canActivate(mockCtx(future) as never)).resolves.toBe(true);
+  });
+});

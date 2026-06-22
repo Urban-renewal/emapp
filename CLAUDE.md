@@ -140,6 +140,50 @@ Trigger: this DoD was added after S1 shipped a login form that submitted
 credentials via GET URL because the SSR HTML had no `method="post"`. RTL
 unit tests passed; the bug was caught by user inspection of view-source.
 
+\## ===== STANDING DELIVERY GATES (every implementation — never skip, never forget) =====
+
+These are NON-NEGOTIABLE and apply to EVERY slice / feature / fix / refactor — forever,
+not per-task. A task is "done" ONLY when ALL of these pass; NEVER report "done" or merge
+before they do. They are anchored HERE (not in memory) so no agent — including future
+ones — re-derives or forgets them. Cross-ref: `docs/MASTER-PLAN-INDEX.md` §2.5 (the
+per-slice gate table) + `docs/ENGINEERING-CHARTER.md`.
+
+\### G-QA — Manual real-browser QA (every browser-observable change)
+
+Before "done"/merge, the change is WALKED in the owner's REAL Chrome (Claude-in-Chrome
+MCP) against the running app, AS the actual role — NOT headless, NOT Playwright, NOT MSW,
+NOT unit-green. Those are "code green" ONLY; they are NOT acceptance. The real-browser
+walk IS the gate: dev-login as the role, exercise the interaction, confirm the 4 axes
+(Network all 2xx / URL / Cookies / Redirect) + the rendered result + console clean
+(dev-HMR noise excepted). A subagent only produces code-green; the real-Chrome walk is
+MANDATORY before merge and is the owner's standard. This SUPERSEDES the "OR Playwright"
+option in the FE DoD above — Playwright is a regression net, not the acceptance gate.
+
+\### G-RT — Red-team THROUGHOUT + loop-until-closed (every security-sensitive change; default-on for any non-trivial implementation)
+
+An INDEPENDENT red-team (NOT the builder, NOT the builder's own @security PASS) tries to
+BYPASS the change from every angle. It runs THROUGHOUT the implementation and RE-RUNS
+after EVERY fix, looping UNBOUNDED — as many rounds as it takes — until the red-team
+confirms the issue is closed from ALL directions (the owner: "infinite loop is fine by me
+until the solution is found"). The builder's self-review is necessary, NEVER sufficient
+(fox guarding the henhouse). A red-team can ALSO over-state — verify its claim against the
+real code/contract before fixing. Only after the red-team can no longer break it does the
+work go to the owner for HIS final acceptance (he is the LAST gate, not the first). Report
+the attack matrix tried-and-failed, not just "fixed".
+
+\### G-WHOLE — Verify yourself + the big picture
+
+Own holistic quality on EVERY change: SOLID/seams, sub-second latency, error-handling +
+fail-closed, observability, generic-not-special-cased, root-cause-not-plaster. Don't make
+the owner find the gap. These are the flow — re-derive nothing.
+
+\### Dispatch rule (so agents don't forget)
+
+EVERY build/fix agent dispatch MUST carry G-QA + G-RT in its brief. When you spawn a
+builder, YOU own running the independent red-team (G-RT) after it AND the real-browser
+walk (G-QA) before merge — a dispatched task is NOT complete on the agent's word alone.
+The agent reports code-green; YOU close the gates.
+
 \## ===== AUTOPILOT PROTOCOL =====
 
 \### Multi-agent heartbeats (per-track, append-only)

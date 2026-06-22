@@ -2133,6 +2133,23 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
+### POST /api/v1/owners/:id/opt-out
+
+- **Auth:** AuthGuard + TenantGuard (Manager · owners.update; agent: edit_project_data + assigned project)
+- **Summary:** M2 — mark the owner OPTED OUT of autonomous outbound (the recipient_opt_outs registry the ConsentGate reads). Body { channel?: email|sms|all (default all), source?: manager (default) }. NO PII in URL/body. Idempotent UPSERT per (owner, channel); durable (no delete); audited. 204.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+(204 No Content)
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
 ### GET /api/v1/owners/:id/projects
 
 - **Auth:** AuthGuard + TenantGuard (owners.read)

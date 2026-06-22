@@ -66,9 +66,11 @@ export interface OutboundRequest {
 export interface OutboundSnapshot {
   /** The CAMPAIGN_SEND_ENABLED kill-switch state (resolved from env). */
   killSwitchEnabled: boolean;
-  /** Whether the recipient is consented (NOT opted-out) for outbound on this
-   *  channel. Resolved by the Governor; absent opt-out registry → true (the
-   *  documented seam for a future per-owner opt-out table). */
+  /** Whether the recipient is consented (NOT opted-out) for outbound. Resolved by
+   *  the Governor from the `recipient_opt_outs` registry (M2): FALSE only when the
+   *  recipient is opted out of EVERY send channel (or `all`) — a single-channel
+   *  opt-out keeps this TRUE and is enforced as per-channel delivery suppression
+   *  by the caller, not by this gate. */
   recipientConsented: boolean;
   /** Count of sends to THIS recipient within the per-recipient window. */
   recipientSendsInWindow: number;

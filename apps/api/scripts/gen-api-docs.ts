@@ -565,6 +565,22 @@ const ENDPOINTS: Endpoint[] = [
     ],
   },
   {
+    method: 'POST',
+    path: '/api/v1/owners/:id/opt-out',
+    auth: 'AuthGuard + TenantGuard (Manager · owners.update; agent: edit_project_data + assigned project)',
+    summary:
+      'M2 — mark the owner OPTED OUT of autonomous outbound (the recipient_opt_outs registry the ConsentGate reads). Body { channel?: email|sms|all (default all), source?: manager (default) }. NO PII in URL/body. Idempotent UPSERT per (owner, channel); durable (no delete); audited. 204.',
+    response: '(204 No Content)',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
     method: 'DELETE',
     path: '/api/v1/owners/:id',
     auth: 'AuthGuard + TenantGuard (Manager)',

@@ -1,12 +1,18 @@
 import { createHash } from 'node:crypto';
+import { Readable } from 'node:stream';
 
 import { serverEnv } from '@emapp/config';
 import {
   AuditService,
   DEFAULT_EMAIL_FROM,
+  DOC_ENVELOPE_HEADER_LEN,
+  DocEnvelopeConfigError,
+  DocEnvelopeKeyRegistry,
   buildEmailFrom,
+  decryptDocEnvelope,
   decryptOwnerName,
   documents,
+  env,
   encryptField,
   owners,
   piiProcessingConsents,
@@ -17,6 +23,7 @@ import {
   type IEmailProvider,
   type IStorageProvider,
 } from '@emapp/db';
+import { DOCUMENT_MAX_SIZE_BYTES } from '@emapp/shared-types';
 import type { PublicSignPreview, PublicSignSubmit } from '@emapp/shared-types';
 import {
   BadRequestException,
@@ -148,6 +155,10 @@ export class PublicSignService {
             archivedAt: documents.archivedAt,
             uploadedAt: documents.uploadedAt,
             scanStatus: documents.scanStatus,
+            // C2 (Gate-6): the sensitivity + at-rest-encryption flags decide
+            // whether the resident may be handed a raw presigned URL at all.
+            sensitive: documents.sensitive,
+            bytesEncrypted: documents.bytesEncrypted,
           })
           .from(documents)
           .where(eq(documents.id, req.documentId))
@@ -159,6 +170,14 @@ export class PublicSignService {
         // → generic INVALID_TOKEN (no-oracle), never a minted presigned URL.
         if (!doc || doc.archivedAt || !doc.uploadedAt || doc.scanStatus !== 'clean')
           throw INVALID_TOKEN;
+        // C2 (Gate-6) — a SENSITIVE document (national_id / נסח PII) must NEVER
+        // be raw-presigned to the UNAUTHENTICATED signer. FAIL-CLOSED: if it is
+        // sensitive but NOT encrypted at rest, its R2 object is plaintext —
+        // refuse the preview entirely (generic INVALID_TOKEN, no-oracle) rather
+        // than leak. The backfill re-encrypts these; until then they are not
+        // servable on the public link. A sensitive + ENCRYPTED doc is served via
+        // the token-scoped decrypt-STREAM route (the URL points THERE, not R2).
+        if (doc.sensitive && !doc.bytesEncrypted) throw INVALID_TOKEN;
 
         // v8 §v8-S3 — name now pgcrypto-encrypted; decrypt inside
         // the same tx (app.encryption_key GUC is set by withTenant).
@@ -184,27 +203,37 @@ export class PublicSignService {
         // withTenant tx so organizations.settings is RLS-scoped.
         const settings = await getOrgSettings(tx, claims.orgId);
 
-        // Short-lived presigned GET for the document. Same pattern as
-        // documents.getDownloadUrl — forced attachment + sanitized
-        // filename. The download URL is itself a bearer credential and
-        // expires in DOWNLOAD_URL_TTL_SECONDS.
+        // C2 (Gate-6) — choose the document delivery channel by sensitivity:
+        //   - SENSITIVE + ENCRYPTED → the token-scoped API decrypt-STREAM route
+        //     (`GET /api/v1/sign/:token/document`). The resident's browser
+        //     fetches the PLAINTEXT through the API (which decrypts the EMAPPENC
+        //     envelope) — R2 is NEVER handed a raw presigned URL for these bytes.
+        //   - NON-sensitive → the existing short-lived presigned R2 GET
+        //     (byte-identical behaviour; forced attachment + sanitized filename).
+        //     The presign is itself a bearer credential, expires in
+        //     DOWNLOAD_URL_TTL_SECONDS.
+        // (sensitive + !encrypted already threw INVALID_TOKEN above — fail-closed.)
         let downloadUrl: string;
-        try {
-          downloadUrl = await this.storage.getDownloadUrl(doc.r2Key, {
-            ttlSeconds: DOWNLOAD_URL_TTL_SECONDS,
-            responseFilename: safeDownloadFilename(doc.name),
-          });
-        } catch (e: unknown) {
-          this.logger.error(
-            `presign failed during sign preview (req=${req.id}): ${
-              e instanceof Error ? e.message : 'unknown'
-            }`,
-          );
-          // Infra outage — not a client error. Same governed pattern
-          // as documents.getDownloadUrl (audit-pass II A3).
-          throw new ServiceUnavailableException({
-            error: { code: 'storage_unavailable' },
-          });
+        if (doc.sensitive) {
+          downloadUrl = signDocumentStreamUrl(token);
+        } else {
+          try {
+            downloadUrl = await this.storage.getDownloadUrl(doc.r2Key, {
+              ttlSeconds: DOWNLOAD_URL_TTL_SECONDS,
+              responseFilename: safeDownloadFilename(doc.name),
+            });
+          } catch (e: unknown) {
+            this.logger.error(
+              `presign failed during sign preview (req=${req.id}): ${
+                e instanceof Error ? e.message : 'unknown'
+              }`,
+            );
+            // Infra outage — not a client error. Same governed pattern
+            // as documents.getDownloadUrl (audit-pass II A3).
+            throw new ServiceUnavailableException({
+              error: { code: 'storage_unavailable' },
+            });
+          }
         }
 
         await new AuditService(tx, audit).log({
@@ -234,6 +263,124 @@ export class PublicSignService {
       // invalid_token (no oracle on internals). Logged server-side.
       this.logger.error(
         `preview failed (sub=${claims.sub}): ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+      throw INVALID_TOKEN;
+    }
+  }
+
+  /**
+   * C2 (Gate-6) — GET /sign/:token/document — the token-scoped decrypt-STREAM
+   * for a SENSITIVE document. The resident's browser fetches the PLAINTEXT
+   * THROUGH the API (which decrypts the EMAPPENC envelope) instead of being
+   * handed a raw presigned R2 URL — so national_id / נסח PII is never served
+   * unencrypted to the unauthenticated signer.
+   *
+   * Re-runs the EXACT same gate chain as preview() (token verify → SR
+   * pending/not-expired/claim-match → doc finalised + scan-clean), then the C2
+   * invariant: this route serves ONLY a doc that is `sensitive && bytes_encrypted`
+   * (non-sensitive docs keep the presign path; a sensitive-but-unencrypted doc is
+   * fail-closed). Every miss → the SAME generic INVALID_TOKEN (no oracle). Mirrors
+   * documents.getDecryptedStream but with the public-link (token) authorization
+   * instead of a session.
+   */
+  async previewDocumentStream(
+    token: string,
+    audit: { ip: string | undefined; userAgent: string | undefined },
+  ): Promise<{ stream: Readable; mimeType: string; name: string; sizeBytes: number }> {
+    const claims = this.tokenService.verify(token);
+    try {
+      const doc = await withTenant(claims.orgId, async (tx) => {
+        const [req] = await tx
+          .select({
+            id: signatureRequests.id,
+            status: signatureRequests.status,
+            expiresAt: signatureRequests.expiresAt,
+            documentId: signatureRequests.documentId,
+            ownerId: signatureRequests.ownerId,
+          })
+          .from(signatureRequests)
+          .where(and(eq(signatureRequests.id, claims.sub), eq(signatureRequests.jti, claims.jti)))
+          .limit(1);
+        if (
+          !req ||
+          req.status !== 'pending' ||
+          req.expiresAt.getTime() <= Date.now() ||
+          req.documentId !== claims.documentId ||
+          req.ownerId !== claims.ownerId
+        ) {
+          throw INVALID_TOKEN;
+        }
+        const [d] = await tx
+          .select({
+            id: documents.id,
+            name: documents.name,
+            mimeType: documents.mimeType,
+            r2Key: documents.r2Key,
+            archivedAt: documents.archivedAt,
+            uploadedAt: documents.uploadedAt,
+            scanStatus: documents.scanStatus,
+            sensitive: documents.sensitive,
+            bytesEncrypted: documents.bytesEncrypted,
+          })
+          .from(documents)
+          .where(eq(documents.id, req.documentId))
+          .limit(1);
+        if (!d || d.archivedAt || !d.uploadedAt || d.scanStatus !== 'clean') throw INVALID_TOKEN;
+        // This route is ONLY for sensitive + encrypted docs. Anything else →
+        // generic INVALID_TOKEN (no oracle): a non-sensitive doc is served by the
+        // presign URL, and a sensitive-but-unencrypted doc is fail-closed.
+        if (!d.sensitive || !d.bytesEncrypted) throw INVALID_TOKEN;
+        await new AuditService(tx, audit).log({
+          orgId: claims.orgId,
+          actorType: 'system',
+          action: 'signature.preview_document',
+          targetTable: 'signature_requests',
+          targetId: req.id,
+          metadata: { jti_hash: this.hashJti(claims.jti) },
+        });
+        return d;
+      });
+
+      // Read the EMAPPENC envelope from R2 and decrypt it with the shared
+      // doc-envelope primitive (same key registry as the API content path).
+      let envelope: Buffer;
+      try {
+        envelope = await readObjectBytesBounded(this.storage, doc.r2Key);
+      } catch (e: unknown) {
+        this.logger.error(
+          `sign-document envelope read failed (sub=${claims.sub}): ${
+            e instanceof Error ? e.message : 'unknown'
+          }`,
+        );
+        throw new ServiceUnavailableException({ error: { code: 'storage_unavailable' } });
+      }
+      let plaintext: Buffer;
+      try {
+        const registry = DocEnvelopeKeyRegistry.fromEnv(env.DOC_ENCRYPTION_KEY);
+        plaintext = decryptDocEnvelope(envelope, registry);
+      } catch (e: unknown) {
+        // A config/rotation gap → 503 (ops); a malformed/corrupt envelope →
+        // generic INVALID_TOKEN (never leak internals to the resident).
+        if (e instanceof DocEnvelopeConfigError) {
+          this.logger.error(`sign-document decrypt config error (sub=${claims.sub})`);
+          throw new ServiceUnavailableException({ error: { code: 'doc_encryption_unavailable' } });
+        }
+        this.logger.error(`sign-document decrypt failed (sub=${claims.sub})`);
+        throw INVALID_TOKEN;
+      }
+      return {
+        stream: Readable.from(plaintext),
+        mimeType: doc.mimeType,
+        name: doc.name,
+        sizeBytes: plaintext.length,
+      };
+    } catch (e: unknown) {
+      if (e instanceof UnauthorizedException) throw e;
+      if (e instanceof ServiceUnavailableException) throw e;
+      this.logger.error(
+        `previewDocumentStream failed (sub=${claims.sub}): ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
       );
       throw INVALID_TOKEN;
     }
@@ -584,4 +731,43 @@ export class PublicSignService {
     // attempt without ever exposing the raw jti.
     return createHash('sha256').update(jti, 'utf8').digest('hex').slice(0, 16);
   }
+}
+
+/**
+ * C2 (Gate-6) — build the absolute https URL of the token-scoped document
+ * decrypt-stream route the resident's browser fetches for a SENSITIVE doc.
+ * `APP_BASE_URL` is the same env the password-reset links use (defaults to the
+ * production app origin). The `/api/v1` prefix matches the global Nest prefix.
+ * The token IS the credential (already in the resident's URL), so embedding it
+ * in the document URL leaks nothing the signer doesn't already hold.
+ */
+function signDocumentStreamUrl(token: string): string {
+  const base = (process.env['APP_BASE_URL'] ?? 'https://app.emapp.co.il').replace(/\/+$/, '');
+  return `${base}/api/v1/sign/${encodeURIComponent(token)}/document`;
+}
+
+/**
+ * Read an object's bytes (bounded) for the public-sign decrypt-stream. Mirrors
+ * the API documents service's bounded read: ceiling = the max document size plus
+ * the envelope header. Half-open R2 streams are destroyed so no connection leaks.
+ */
+async function readObjectBytesBounded(
+  storage: IStorageProvider,
+  key: string,
+): Promise<Buffer> {
+  const maxBytes = DOCUMENT_MAX_SIZE_BYTES + DOC_ENVELOPE_HEADER_LEN;
+  const stream = await storage.getObjectStream(key);
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    for await (const chunk of stream) {
+      const buf = chunk as Buffer;
+      total += buf.length;
+      if (total > maxBytes) throw new Error('object_exceeds_ceiling');
+      chunks.push(buf);
+    }
+  } finally {
+    stream.destroy();
+  }
+  return Buffer.concat(chunks);
 }

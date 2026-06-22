@@ -65,6 +65,16 @@ export {
   type ValidatorResult,
 } from './helpers/provider-validators';
 export * from './schema/index';
+export {
+  DocEnvelopeKeyRegistry,
+  DocEnvelopeConfigError,
+  DocEnvelopeFormatError,
+  encryptDocEnvelope,
+  decryptDocEnvelope,
+  looksLikeDocEnvelope,
+  ENVELOPE_HEADER_LEN as DOC_ENVELOPE_HEADER_LEN,
+  LEGACY_DEFAULT_KEY_ID as DOC_ENVELOPE_LEGACY_KEY_ID,
+} from './doc-envelope';
 export { sql } from 'drizzle-orm';
 export { AuditService } from './audit/audit.service';
 export type { AuditEntry } from './audit/audit.service';

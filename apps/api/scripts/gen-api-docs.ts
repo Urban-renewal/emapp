@@ -2370,6 +2370,15 @@ const ENDPOINTS: Endpoint[] = [
     errors: ['invalid_token', 'storage_unavailable', '429'],
   },
   {
+    method: 'GET',
+    path: '/api/v1/sign/:token/document',
+    auth: 'Public (signing JWT in the path IS the credential)',
+    summary:
+      'C2 (Gate-6) — token-scoped decrypt-STREAM of a SENSITIVE document (the preview points here instead of a raw R2 presign so national_id / נסח PII is never served unencrypted). Serves ONLY sensitive+encrypted docs; 30 / IP / hour; generic invalid_token on any miss (no oracle).',
+    response: 'binary stream (Content-Disposition: attachment; nosniff)',
+    errors: ['invalid_token', 'storage_unavailable', 'doc_encryption_unavailable', '429'],
+  },
+  {
     method: 'POST',
     path: '/api/v1/sign/:token',
     auth: 'Public (signing JWT in the path IS the credential)',

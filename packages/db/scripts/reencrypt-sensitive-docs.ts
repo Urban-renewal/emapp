@@ -210,8 +210,26 @@ async function main(): Promise<void> {
       // 2) Read the bytes.
       const bytes = await readBytes(storage, row.r2Key, MAX_READ);
 
-      // 3) Idempotency — already an EMAPPENC envelope? Repair the flag only.
+      // 3) Idempotency — already an EMAPPENC envelope? Repair the flag only,
+      //    but ONLY after a full decrypt round-trip proves it is genuinely
+      //    decryptable under the configured registry. A garbled/forged
+      //    EMAPPENC-prefixed object must NEVER be marked bytes_encrypted=true
+      //    (that would fail-OPEN the serving path on an undecryptable doc). On a
+      //    decrypt failure we report it for investigation and leave the flag
+      //    false (the serving fail-close then refuses it).
       if (looksLikeDocEnvelope(bytes)) {
+        let decryptable = false;
+        try {
+          decryptDocEnvelope(bytes, registry);
+          decryptable = true;
+        } catch {
+          decryptable = false;
+        }
+        if (!decryptable) {
+          report.byOutcome.verify_failed += 1;
+          report.failures.push({ id: row.id, reason: 'existing_envelope_undecryptable' });
+          continue;
+        }
         report.byOutcome.already_encrypted += 1;
         if (APPLY) {
           await providerDb

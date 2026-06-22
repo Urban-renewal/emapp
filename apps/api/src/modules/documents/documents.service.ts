@@ -1407,15 +1407,23 @@ export class DocumentsService {
 
   /**
    * SECURITY (Gate-6) — ensure the R2 object at `r2Key` is an EMAPPENC envelope,
-   * re-encrypting it IN PLACE if it is still plaintext. The ATOMIC counterpart of
-   * {@link encryptExistingObject}: this does ONLY the R2 work (read → encrypt →
-   * put) and is meant to be called INSIDE the flip tx, with the caller setting
-   * `bytes_encrypted=true` in the same UPDATE. It does NOT touch the DB itself.
+   * re-encrypting it IN PLACE if it is still plaintext. Does ONLY the R2 work
+   * (read → encrypt → put) and is meant to be called INSIDE the flip tx, with the
+   * caller setting `bytes_encrypted=true` in the same UPDATE. It does NOT touch
+   * the DB itself.
    *
    * THROWS on a missing / unreadable object or a putObject failure — so the
    * caller's flip tx ROLLS BACK and the doc is NEVER committed `sensitive=true`
    * over plaintext (no partial / violating state ever reaches the row). Idempotent:
    * an object that is already an envelope is a NO-OP. Never logs/echoes bytes.
+   *
+   * TRADE-OFF (in-tx R2 I/O): this holds the tenant tx open across one bounded R2
+   * read + one put (≤ DOCUMENT_MAX_SIZE_BYTES). That is the price of ATOMICITY —
+   * the 0080 CHECK forbids committing `sensitive=true` over a plaintext object, so
+   * the encrypt MUST land before the flip commits. Ordering is encrypt → UPDATE →
+   * commit, so the flag never precedes the ciphertext; a putObject-then-rollback
+   * (UPDATE/audit fails afterwards) leaves R2 encrypted + DB bytes_encrypted=false
+   * — fail-SAFE (serving 503s it) and self-healed by the backfill's flag-repair.
    */
   private async ensureObjectEncryptedInTx(r2Key: string): Promise<void> {
     const bytes = await readObjectBytes(

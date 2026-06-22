@@ -127,7 +127,7 @@ export function Sidebar({ userName, userRole, tier }: Props) {
   // actual gate; here the BE gate IS role-based, so the honest FE mirror is the
   // role. (An earlier cut gated on `signature_requests.send`, but AGENTS hold
   // that — they'd see the nav link then hit a 403 on every inbox load. The
-  // proposals.* permission family flagged in #503/#505 will replace both with a
+  // proposals.* permission family flagged in PR 503/505 will replace both with a
   // manager-only permission.) UX only; the BE `requireManager` stays authoritative.
   const canSeeInbox = userRole === 'manager';
   const rawPath = usePathname() ?? '/';

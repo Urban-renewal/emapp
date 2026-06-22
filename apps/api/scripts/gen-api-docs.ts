@@ -30,6 +30,7 @@ import {
   ExtendExternalShareInput,
   ListExternalSharesQuery,
   UpdateExternalShareInput,
+  ListProposalsQuery,
   CreateTaskInput,
   ListApartmentsQuery,
   ListAuditQuery,
@@ -838,6 +839,60 @@ const ENDPOINTS: Endpoint[] = [
     response: '(204 No Content)',
     errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
+  // Autonomous Master Plan, Phase 1 — Approval-Inbox (proposals). Manager-only
+  // (service requireManager). Phase-1 kind = signature_request.reissue.
+  {
+    method: 'GET',
+    path: '/api/v1/proposals',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'List PENDING autonomy proposals for the org, newest-first, keyset-paginated. Optional ?kind filter. Evidence is the snapshot taken at emit (never recomputed). PII-free. RLS org isolation. This is the data the FE Approval Inbox renders.',
+    request: ListProposalsQuery,
+    response:
+      '{ "data": [ {Proposal} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'forbidden',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/proposals/:id/approve',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'APPROVE a pending proposal: re-assert classify(kind) at execute time (the boundary is re-checked), then replay the EXISTING gated domain method for the kind (signature_request.reissue → reissueExpired, internal re-mint, no send). On success the row flips → applied + a system-attributed audit row. Non-pending → 409. No auto-apply.',
+    response: '{ "data": { ...Proposal } }',
+    errors: [
+      'forbidden',
+      'not_found',
+      'proposal_not_pending',
+      'proposal_kind_not_executable',
+      'signature_request_not_reissuable',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/proposals/:id/reject',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'REJECT a pending proposal: flip → rejected + audit. Releases the dedup key so the condition can be re-proposed later. Non-pending → 409.',
+    response: '{ "data": { ...Proposal } }',
+    errors: [
+      'forbidden',
+      'not_found',
+      'proposal_not_pending',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
   {
     method: 'GET',
     path: '/api/v1/tasks',
@@ -1545,7 +1600,7 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/projects/:id/signature-progress/apartments/:apartmentId/holdouts',
     auth: 'AuthGuard + TenantGuard (projects.read; FINE view_owner_pii capability gate in service)',
     summary:
-      'E2 Wave-2 B4 — apartment HOLDOUTS ("מי תקוע / who\'s stuck"): the NAMED list of the apartment\'s active owners who have NOT signed. The ONLY signature-progress surface returning owner NAMES → view_owner_pii-gated + audited per access (ISO A.12.4), mirroring owners reveal-pii. No-oracle 404 for cross-org / unassigned-agent / apartment-not-in-project. Each row also carries the per-APARTMENT signableDocumentId (this apartment\'s finalized agreement, else the project agreement fallback, else null) — the doc a one-click chase CREATES against so the create targets the holdout\'s OWN apartment (201, not a 409). Returns ownerId + name + apartmentNumber + signableDocumentId ONLY; NEVER national_id/phone.',
+      "E2 Wave-2 B4 — apartment HOLDOUTS (\"מי תקוע / who's stuck\"): the NAMED list of the apartment's active owners who have NOT signed. The ONLY signature-progress surface returning owner NAMES → view_owner_pii-gated + audited per access (ISO A.12.4), mirroring owners reveal-pii. No-oracle 404 for cross-org / unassigned-agent / apartment-not-in-project. Each row also carries the per-APARTMENT signableDocumentId (this apartment's finalized agreement, else the project agreement fallback, else null) — the doc a one-click chase CREATES against so the create targets the holdout's OWN apartment (201, not a 409). Returns ownerId + name + apartmentNumber + signableDocumentId ONLY; NEVER national_id/phone.",
     response:
       '{ "data": { "holdouts": [ {ApartmentHoldout: ownerId, name, apartmentNumber, signableDocumentId} ] } }',
     errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
@@ -1967,7 +2022,7 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/documents/remediation-sweep',
     auth: 'AuthGuard + TenantGuard (documents.update; agent fine gate manage_documents)',
     summary:
-      'FL-5 (V13) — נסח/tabu BACKFILL REMEDIATION SWEEP (closes the #450 HIGH follow-up). Re-runs the DH3 classifier over the ORG\'s PRE-EXISTING documents using each row\'s STORED metadata (filename + declared mime — NO content fetch, no PII read) and re-types the UNAMBIGUOUS tabu/נסח docs (confidence >= REMEDIATION_MIN_CONFIDENCE) to land_registry, DERIVING sensitive=true (TURN-ON ONLY — sensitivity is never weakened). DRY-RUN BY DEFAULT: dryRun absent/true ⇒ REPORTS the proposed transitions and commits NOTHING; an EXPLICIT dryRun:false applies them. IDEMPOTENT: already-land_registry docs are excluded from the candidate set, so a re-run is a no-op (the apply UPDATE also re-asserts the pre-state in its WHERE). Org-scoped via withTenant (RLS — never reaches another org); 10/min throttle. The report carries counts + a bounded sample of {documentId, type/sensitive transition, confidence, content-free reason} — NO filename, NO content, NO PII; an apply writes a metadata-only document.remediation_reclassify audit row per doc.',
+      "FL-5 (V13) — נסח/tabu BACKFILL REMEDIATION SWEEP (closes the #450 HIGH follow-up). Re-runs the DH3 classifier over the ORG's PRE-EXISTING documents using each row's STORED metadata (filename + declared mime — NO content fetch, no PII read) and re-types the UNAMBIGUOUS tabu/נסח docs (confidence >= REMEDIATION_MIN_CONFIDENCE) to land_registry, DERIVING sensitive=true (TURN-ON ONLY — sensitivity is never weakened). DRY-RUN BY DEFAULT: dryRun absent/true ⇒ REPORTS the proposed transitions and commits NOTHING; an EXPLICIT dryRun:false applies them. IDEMPOTENT: already-land_registry docs are excluded from the candidate set, so a re-run is a no-op (the apply UPDATE also re-asserts the pre-state in its WHERE). Org-scoped via withTenant (RLS — never reaches another org); 10/min throttle. The report carries counts + a bounded sample of {documentId, type/sensitive transition, confidence, content-free reason} — NO filename, NO content, NO PII; an apply writes a metadata-only document.remediation_reclassify audit row per doc.",
     request: RemediationSweepInput,
     response:
       '{ "data": { "applied": false, "scanned": 120, "candidates": 3, "sample": [ { "documentId": "uuid", "fromType": "other", "toType": "land_registry", "wasSensitive": false, "willBeSensitive": true, "confidence": 0.9, "reason": "filename_nesach" } ] } }',

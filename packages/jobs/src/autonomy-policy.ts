@@ -104,6 +104,14 @@ export const AutonomyActionKindSchema = z.enum([
   'scan.reReject', //               re-reject a doc that failed an AV/scan re-check
   'breach.throttle.autoExpiring', //auto-expiring brute-force throttle window
   'tabu.parse.toDraft', //          parse a נסח into a DRAFT structure (no commit)
+  'signature_request.reissue', //   re-mint a fresh signing link for a LAPSED
+  //                                request — INTERNAL (no send) + reversible +
+  //                                non-PII. Distinct from `link.reissue.send`
+  //                                (which ALSO sends → outbound). By THE ONE
+  //                                BOUNDARY this is autoExecute-ELIGIBLE, but
+  //                                Phase 1 still PROPOSES it (propose-not-execute);
+  //                                the classification states what is permissible,
+  //                                the executor decides when to actually run.
 
   // ── Outbound (always propose-then-confirm; never auto, charter §1) ────────
   'reminder.send', //               a signature-reminder email/SMS to an owner
@@ -221,6 +229,21 @@ const ACTION_TABLE: Record<AutonomyActionKind, ActionSpec> = {
     internal: true,
     reversible: true,
     pii: true,
+    outbound: false,
+    consentRequired: false,
+    rateBucket: 'internal',
+  },
+  'signature_request.reissue': {
+    // Re-mint a fresh signing link for a LAPSED request: INTERNAL (no email/SMS
+    // — that is `link.reissue.send`), REVERSIBLE (the request can re-expire /
+    // be cancelled), and NON-PII (the link is a bearer token, not national_id;
+    // no PII is read or disclosed by the re-mint). By THE ONE BOUNDARY this is
+    // autoExecute-ELIGIBLE — but Phase 1 ships propose-not-execute, so the
+    // producer emits it as a DRAFT and the executor only runs it on human
+    // APPROVE. The classification is the permission ceiling, not the trigger.
+    internal: true,
+    reversible: true,
+    pii: false,
     outbound: false,
     consentRequired: false,
     rateBucket: 'internal',

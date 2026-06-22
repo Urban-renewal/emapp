@@ -184,6 +184,32 @@ builder, YOU own running the independent red-team (G-RT) after it AND the real-b
 walk (G-QA) before merge — a dispatched task is NOT complete on the agent's word alone.
 The agent reports code-green; YOU close the gates.
 
+\## ===== EXECUTION POSTURE (bias to action — do NOT be over-cautious; the plan is CLOSED, BUILD it) =====
+
+The STANDING DELIVERY GATES above are about QUALITY (never lower the bar). This is about
+VELOCITY (never stall). The owner's repeated #1 frustration: stopping / parking / waiting for
+approval when the right move is to keep building. Anchored HERE (not memory) so it isn't forgotten.
+
+1. **BIAS HARD TO ACTION.** If something is built + gate-passed (G-RT CLOSED + CI green + G-QA
+   where applicable), MERGE it — do not park it for "final approval." A red-team-CLOSED, CI-green
+   PR has NO open ends; merging it IS the instruction, not a decision to defer to the owner.
+2. **KEEP THE PIPELINE FULL.** Never end a step with "done, awaiting you" when the plan has a next
+   buildable slice. The moment one slice merges, dispatch the next — no idle gaps. A heartbeat tick
+   that finds buildable work BUILDS it; it does not just report status.
+3. **ONLY genuinely-irreversible INFRA/LEGAL/DEPLOY actions wait for the owner:** prod deploy
+   timing, prod data backfills / migrations on live data, KMS / secret provisioning, R2 bucket
+   config, DPO / legal sign-offs, sending real outbound to real recipients. For THOSE: PREPARE
+   everything (runbook, the exact command/PR) so it's one-click for him — don't perform the
+   irreversible act, but never leave it un-prepared either.
+4. **The plan is CLOSED** (`docs/MASTER-PLAN-INDEX.md` — 85/85 + the design-readiness corrections).
+   The job now is to IMPLEMENT it **systematically + thoroughly**, slice by slice in dependency
+   order, running independent tracks **in PARALLEL to shorten total time** — WITHOUT lowering the
+   quality gates. Shorten wall-clock via parallelism + tight pipelines, never via skipped gates.
+5. **Distinguish "over-cautious parking" (forbidden) from "genuinely owner-gated" (#3 only).** When
+   unsure which, default to ACTION for anything reversible/buildable; reserve waiting for the true
+   infra/legal/deploy set. Do NOT invent justifications to wait. If you catch yourself explaining
+   why a merge/build is "probably fine but I'll wait" — that's the bug; proceed.
+
 \## ===== AUTOPILOT PROTOCOL =====
 
 \### Multi-agent heartbeats (per-track, append-only)

@@ -94,17 +94,32 @@ export class ProposalsService {
         // consent withdrawn, breaker tripped, ceiling hit, quiet hours) or the
         // provider failed → throw so the apply path leaves the proposal PENDING
         // (it stays actionable; the manager retries when the condition lifts).
-        // `already_sent` is the M1 exactly-once no-op: the send already happened,
-        // so the proposal legitimately flips to `applied`.
+        // `already_sent` is the M1 exactly-once no-op: the send already happened
+        // (a terminal `sent` row), so the proposal legitimately flips to `applied`.
         if (outcome.result === 'sent' || outcome.result === 'already_sent') return;
         if (outcome.result === 'blocked') {
           throw new ConflictException({
             error: { code: 'outbound_blocked', details: { reason: outcome.decision.reason } },
           });
         }
-        // result === 'failed'
+        // result === 'failed' — a DEFINITE non-send (provider rejection / nothing
+        // attempted). The ledger row is `failed` (RE-CLAIMABLE): throwing leaves
+        // the proposal PENDING so the manager retries; the next approve re-claims
+        // the failed row + re-sends the SAME step (#506 H1 fix — a failed step is
+        // no longer permanently dead + falsely "succeeded").
+        if (outcome.result === 'failed') {
+          throw new ConflictException({
+            error: { code: 'outbound_failed', details: { reason: outcome.failureCode } },
+          });
+        }
+        // result === 'ambiguous' — the provider threw / timed out; the SMS MAY
+        // have gone out. NEVER auto-resend. The ledger row is PARKED (`pending_send`)
+        // and is un-resendable by this path. Surface a DISTINCT state so the
+        // manager sees "needs manual check at the provider", NOT a false success
+        // and NOT a clean retry. The proposal stays PENDING (the throw leaves it
+        // un-flipped) — a human resolves it out-of-band.
         throw new ConflictException({
-          error: { code: 'outbound_failed', details: { reason: outcome.failureCode } },
+          error: { code: 'outbound_ambiguous', details: { reason: outcome.failureCode } },
         });
       },
     };

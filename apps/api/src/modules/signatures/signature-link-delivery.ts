@@ -340,6 +340,14 @@ async function sendOne(
     // pure body-builders — they stay From-free. `from` is always pre-built by
     // `buildEmailFrom` at the call site (single source for header safety).
     const res = await email.send(from === undefined ? msg : { ...msg, from });
+    if (res.status === 'failed') {
+      // TRANSPORT-AMBIGUOUS (#509): may have dispatched → ambiguous bucket
+      // (`*_send_failed`), same as the throw path. NEVER `*_rejected` (definite).
+      logger.error(
+        `[signature-delivery:${tag}] email send_failed for ${maskEmail(msg.to)}: ${res.error ?? 'unknown'}`,
+      );
+      return { available: false, reason: `${tag}_send_failed`, to: maskEmail(msg.to) };
+    }
     if (res.status === 'rejected') {
       logger.error(
         `[signature-delivery:${tag}] email rejected for ${maskEmail(msg.to)}: ${res.error ?? 'unknown'}`,
@@ -377,10 +385,21 @@ async function sendInviteEmail(
     // Attach the per-org From display name here (the body-builder stays
     // From-free). `from` is always pre-built via `buildEmailFrom`.
     const res = await email.send(from === undefined ? msg : { ...msg, from });
+    if (res.status === 'failed') {
+      // TRANSPORT-AMBIGUOUS (#509): the provider could not confirm the send (5xx /
+      // timeout) — it MAY have gone out. Map to the ambiguous bucket
+      // (`email_send_failed`), same as the throw path; NEVER `email_rejected`
+      // (definite). The classifier parks it; the Governor never auto-resends it.
+      logger.error(
+        `[signature-delivery] email send_failed for ${maskEmail(ctx.ownerEmail)}: ` +
+          `${res.error ?? 'unknown'}`,
+      );
+      return { available: false, reason: 'email_send_failed' };
+    }
     if (res.status === 'rejected') {
-      // Provider gave a structured rejection — surface as generic
-      // unavailable; never echo the provider's internal code (could be
-      // a deliverability tell to an attacker).
+      // Provider gave a STRUCTURAL rejection (invalid/suppressed address) —
+      // provably did not send → definite. Surface as generic unavailable; never
+      // echo the provider's internal code (could be a deliverability tell).
       logger.error(
         `[signature-delivery] email rejected for ${maskEmail(ctx.ownerEmail)}: ` +
           `${res.error ?? 'unknown'}`,
@@ -416,7 +435,19 @@ async function sendInviteSms(
       signUrl: ctx.signUrl,
     });
     const res = await sms.send(ctx.ownerPhone, body);
+    if (res.status === 'failed') {
+      // TRANSPORT-AMBIGUOUS (#509): the provider could not confirm the send went
+      // out (network throw / 5xx / timeout / unparseable body). The SMS MAY have
+      // already been dispatched, so this maps to the SAME ambiguous bucket as a
+      // thrown send (`*_send_failed`) — `classifyNonDelivery` treats it AMBIGUOUS
+      // and the Governor parks it (never auto-resent). NEVER map this to
+      // `sms_rejected` (definite) — that would risk a double-send.
+      logger.error(`[signature-delivery:sms] send_failed: ${res.error ?? 'unknown'}`);
+      return { available: false, reason: 'sms_send_failed' };
+    }
     if (res.status === 'rejected') {
+      // STRUCTURAL decline (gateway received the call and refused the message —
+      // invalid number / bad creds). A true non-send → DEFINITE → re-claimable.
       // Never log the phone or the signing URL (the URL embeds the token).
       logger.error(`[signature-delivery:sms] rejected: ${res.error ?? 'unknown'}`);
       return { available: false, reason: 'sms_rejected' };

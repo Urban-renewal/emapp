@@ -44,20 +44,40 @@ export class InforuSmsProvider implements ISMSProvider {
     try {
       res = await this.fetchImpl(url, init);
     } catch (err) {
+      // TRANSPORT-AMBIGUOUS (#509 re-red-team): a fetch THROW is a network/
+      // timeout/socket-drop. The gateway MAY have ALREADY dispatched the SMS
+      // before the socket died, so this is NOT a structural rejection — it is
+      // AMBIGUOUS. Map to `failed`, never `rejected`. The downstream classifier
+      // treats `failed` as ambiguous (parked, never auto-resent). Mapping it to
+      // `rejected` would let the Governor re-claim + re-send → DOUBLE SMS.
       return {
         id: 'error',
-        status: 'rejected',
+        status: 'failed',
         error: err instanceof Error ? err.message : 'network_error',
       };
     }
     if (!res.ok) {
-      return { id: 'error', status: 'rejected', error: `http_${res.status}` };
+      // Split HTTP non-2xx by class (#509 re-red-team):
+      //   - 5xx (server error) + 408/429 (timeout/rate) → the gateway may have
+      //     accepted+dispatched before failing → AMBIGUOUS → `failed`.
+      //   - 4xx client errors (401 auth, 400 malformed, etc.) → the gateway
+      //     refused the request BEFORE any dispatch → STRUCTURAL → `rejected`
+      //     (a true non-send, safe to re-claim/retry).
+      const ambiguous = res.status >= 500 || res.status === 408 || res.status === 429;
+      return {
+        id: 'error',
+        status: ambiguous ? 'failed' : 'rejected',
+        error: `http_${res.status}`,
+      };
     }
     let json: unknown;
     try {
       json = await res.json();
     } catch {
-      return { id: 'error', status: 'rejected', error: 'bad_json' };
+      // HTTP 2xx but the body did not parse: the gateway accepted the HTTP call
+      // (2xx) so it MAY have dispatched; we simply can't read its verdict. That
+      // is AMBIGUOUS, not a structural decline → `failed`, never `rejected`.
+      return { id: 'error', status: 'failed', error: 'bad_json' };
     }
     return parseResponse(json);
   }
@@ -119,6 +139,10 @@ function parseResponse(json: unknown): SMSDeliveryResult {
   if (statusId === 1) {
     return { id: 'inforu', status: 'sent' };
   }
+  // STRUCTURAL decline: the gateway accepted the HTTP call (2xx) and explicitly
+  // returned a non-success StatusId (invalid number, bad sender, malformed). The
+  // message provably did NOT go out → `rejected` (DEFINITE, re-claimable). This
+  // is the ONLY path that may emit `rejected`; transport failures use `failed`.
   return {
     id: 'rejected',
     status: 'rejected',

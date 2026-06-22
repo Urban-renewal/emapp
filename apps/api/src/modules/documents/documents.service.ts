@@ -4,7 +4,6 @@ import { Readable } from 'node:stream';
 import {
   AuditService,
   apartments,
-  authSessions,
   buildings,
   documents,
   env,
@@ -40,7 +39,6 @@ import {
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Inject,
   Injectable,
   InternalServerErrorException,
@@ -55,13 +53,13 @@ import {
   PermissionResolutionCache,
   PermissionService,
 } from '../../common/authz/permission.service';
+import { assertSessionPiiUnlocked, PII_STEP_UP_REQUIRED } from '../../common/authz/pii-step-up';
 import {
   decodeCursor,
   encodeCursor,
   keysetCondition,
   keysetOrderBy,
 } from '../../common/keyset-cursor';
-import { getOrgSettings } from '../../common/org-settings.resolver';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { notificationLink } from '../notifications/notification-links';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
@@ -111,17 +109,6 @@ const SCAN_REJECTED = new ConflictException({
  */
 const TYPE_MISMATCH = new ConflictException({
   error: { code: DOCUMENT_TYPE_MISMATCH_CODE },
-});
-
-/**
- * 7b-OTP (D-P5.5/7/8) — the caller's session has NO valid PII unlock for a
- * SENSITIVE document. 403, DISTINCT + actionable (the FE opens the step-up
- * OTP dialog), NOT 404: this is only ever thrown AFTER the per-record
- * visibility check passed, so the caller is already authorized to know the
- * doc exists — it is never an existence oracle.
- */
-const PII_STEP_UP_REQUIRED = new ForbiddenException({
-  error: { code: 'pii_step_up_required', message: 'נדרש אימות נוסף לצפייה במסמך רגיש' },
 });
 
 /** PII-bearing document types — sensitive-by-type at create (D-P5.7). */
@@ -1065,10 +1052,7 @@ export class DocumentsService {
               .update(documents)
               .set({ type: 'land_registry', sensitive: true, updatedAt: new Date() })
               .where(
-                and(
-                  eq(documents.id, item.documentId),
-                  sql`${documents.type} <> 'land_registry'`,
-                ),
+                and(eq(documents.id, item.documentId), sql`${documents.type} <> 'land_registry'`),
               );
             await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
               orgId: user.orgId,
@@ -1175,12 +1159,20 @@ export class DocumentsService {
   }
 
   /**
-   * 7b-OTP (D-P5.5/7/8) — the SENSITIVE-document gate, shared by the presign
-   * download path and the 7d decrypt-stream path. A sensitive doc is served
-   * ONLY when the CALLER'S CURRENT session (user.sid) holds a VALID unlock:
-   * pii_unlocked_at NOT NULL and younger than the org's
-   * security.piiUnlockTtlMinutes (default 60). MUST be called only AFTER the
-   * per-record visibility checks (never an existence oracle).
+   * 7b-OTP (D-P5.5/7/8) — the SENSITIVE-document step-up ACCESS gate, shared by
+   * the presign download path and the 7d decrypt-stream path. Delegates to the
+   * SHARED `assertSessionPiiUnlocked` (the single source of truth for the
+   * freshness/TTL check), so this path and the tabu review path can never
+   * silently drift apart. MUST be called only AFTER the per-record visibility
+   * checks (never an existence oracle).
+   *
+   * CLEARTEXT CONTRACT (why the document path DIFFERS from tabu review): a
+   * sensitive-document download serves a WHOLE FILE — all-or-nothing cleartext,
+   * with NO per-field mask. So if a stricter cleartext entitlement is ever
+   * layered on top of the access gate (e.g. `owners.reveal_pii`), it belongs
+   * HERE at this call site, NOT inside the shared helper — because the tabu
+   * path deliberately allows masked-role review through the same access gate
+   * and masks `national_id` per-field via `resolveOwnerPiiFidelity` instead.
    */
   private async assertPiiUnlocked(tx: TenantTx, user: AccessTokenPayload): Promise<void> {
     // B5 (red-team blocker, 2026-06-22) — DEFENCE IN DEPTH. The step-up
@@ -1204,19 +1196,11 @@ export class DocumentsService {
       throw PII_STEP_UP_REQUIRED;
     }
 
-    const { security } = await getOrgSettings(tx, user.orgId);
-    const ttlMs = security.piiUnlockTtlMinutes * 60_000;
-    // auth_sessions is auth-infra (no RLS; app_user has SELECT). An
-    // unknown/ghost sid simply finds no row → locked (fail-closed).
-    const [sess] = await tx
-      .select({ piiUnlockedAt: authSessions.piiUnlockedAt })
-      .from(authSessions)
-      .where(eq(authSessions.id, user.sid))
-      .limit(1);
-    const unlockedAt = sess?.piiUnlockedAt ?? null;
-    if (!unlockedAt || unlockedAt.getTime() + ttlMs <= Date.now()) {
-      throw PII_STEP_UP_REQUIRED;
-    }
+    // Access gate (session pii_unlock freshness/TTL) via the shared helper
+    // (B5b/#497) — the SAME fail-closed check the tabu path uses; the
+    // `owners.reveal_pii` entitlement above is the documents-specific layer
+    // (whole-file cleartext), per this method's doc-comment.
+    await assertSessionPiiUnlocked(tx, user);
   }
 
   /**

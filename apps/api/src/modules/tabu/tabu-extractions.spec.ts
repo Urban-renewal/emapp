@@ -58,14 +58,49 @@
  *     vitest run src/modules/tabu/tabu-extractions.spec.ts
  */
 import { randomUUID } from 'node:crypto';
+import { Readable } from 'node:stream';
 
-import { db, memberships, projectAssignments, users } from '@emapp/db';
+import {
+  db,
+  memberships,
+  projectAssignments,
+  reloadEnv,
+  users,
+  type IStorageProvider,
+} from '@emapp/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { providerPool } from '../../../../../packages/db/src/client';
 import { createTestOrg, type TestOrg } from '../../../../../packages/db/test/factories';
 import { setupTestDatabase } from '../../../../../packages/db/test/setup';
 import type { AccessTokenPayload } from '../auth/auth.service';
+
+/** Stub storage for the 7b+ create path: returns PLAINTEXT bytes so the Gate-6
+ *  in-place re-encrypt (read → envelope → putObject) runs; putObject is a no-op
+ *  (the spec asserts DB-level behaviour, not R2 bytes). */
+class StubStorage implements IStorageProvider {
+  async getUploadUrl(): Promise<string> {
+    return 'https://r2.example.test/put';
+  }
+  async getDownloadUrl(): Promise<string> {
+    return 'https://r2.example.test/get';
+  }
+  async delete(): Promise<void> {}
+  async head(): Promise<null> {
+    return null;
+  }
+  async putObject(): Promise<void> {}
+  async getObjectStream(): Promise<Readable> {
+    return Readable.from([Buffer.from('%PDF-1.4 plaintext נסח source bytes %%EOF')]);
+  }
+  async healthCheck(): Promise<void> {}
+}
+/** create/list/getOne must never invoke the extraction engine (that is run()). */
+const inertExtractionProvider = {
+  async extract(): Promise<never> {
+    throw new Error('extract() must not be called by the create/list/getOne path');
+  },
+} as never;
 
 // ── Expected service location + method names (adjust if the builder differs) ──
 const SERVICE_MODULE = './tabu-extractions.service';
@@ -148,10 +183,11 @@ async function loadService(): Promise<TabuServiceLike> {
   if (typeof Ctor !== 'function') {
     throw new Error(`[RED] ${SERVICE_CLASS} not exported from ${SERVICE_MODULE} yet.`);
   }
-  // The builder's service takes no constructor deps in 7a (envelope only — no
-  // storage/scan/notification needed). If it grows deps, this instantiation is
-  // the single place to wire fakes.
-  const instance = new Ctor();
+  // 7b+ — the service takes (storage, extractionProvider). create() now reads the
+  // source object to re-encrypt it IN PLACE when it flips the doc sensitive
+  // (Gate-6). A stub storage returning plaintext bytes lets that path run; the
+  // inert extraction provider must never be called by create/list/getOne.
+  const instance = new Ctor(new StubStorage(), inertExtractionProvider);
   const probe = instance as unknown as Record<string, unknown>;
   for (const m of [METHOD_CREATE, METHOD_LIST, METHOD_GET_ONE]) {
     if (typeof probe[m] !== 'function') {
@@ -268,8 +304,16 @@ async function extractionCountForApartment(apartmentId: string): Promise<number>
   }
 }
 
+// Gate-6: tabu-create RE-ENCRYPTS the source נסח in place when it flips it
+// sensitive — so create() needs DOC_ENCRYPTION_KEY. CI / Infisical dev don't
+// deliver it yet; seed the documented TEST-ONLY 32-byte value (??= keeps a real
+// secret authoritative) so the encrypt registry resolves a key.
+const TEST_DOC_KEY_B64 = Buffer.from('emapp-7d-test-doc-key-32bytes!!!').toString('base64');
+
 beforeAll(async () => {
   await setupTestDatabase();
+  process.env['DOC_ENCRYPTION_KEY'] ??= TEST_DOC_KEY_B64;
+  reloadEnv();
   const tag = `s7a-tabu-${Date.now()}`;
   org = await createTestOrg(tag, tag);
   otherOrg = await createTestOrg(`${tag}-b`, `${tag}-b`);

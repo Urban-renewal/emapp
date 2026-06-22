@@ -1545,7 +1545,7 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/projects/:id/signature-progress/apartments/:apartmentId/holdouts',
     auth: 'AuthGuard + TenantGuard (projects.read; FINE view_owner_pii capability gate in service)',
     summary:
-      'E2 Wave-2 B4 — apartment HOLDOUTS ("מי תקוע / who\'s stuck"): the NAMED list of the apartment\'s active owners who have NOT signed. The ONLY signature-progress surface returning owner NAMES → view_owner_pii-gated + audited per access (ISO A.12.4), mirroring owners reveal-pii. No-oracle 404 for cross-org / unassigned-agent / apartment-not-in-project. Each row also carries the per-APARTMENT signableDocumentId (this apartment\'s finalized agreement, else the project agreement fallback, else null) — the doc a one-click chase CREATES against so the create targets the holdout\'s OWN apartment (201, not a 409). Returns ownerId + name + apartmentNumber + signableDocumentId ONLY; NEVER national_id/phone.',
+      "E2 Wave-2 B4 — apartment HOLDOUTS (\"מי תקוע / who's stuck\"): the NAMED list of the apartment's active owners who have NOT signed. The ONLY signature-progress surface returning owner NAMES → view_owner_pii-gated + audited per access (ISO A.12.4), mirroring owners reveal-pii. No-oracle 404 for cross-org / unassigned-agent / apartment-not-in-project. Each row also carries the per-APARTMENT signableDocumentId (this apartment's finalized agreement, else the project agreement fallback, else null) — the doc a one-click chase CREATES against so the create targets the holdout's OWN apartment (201, not a 409). Returns ownerId + name + apartmentNumber + signableDocumentId ONLY; NEVER national_id/phone.",
     response:
       '{ "data": { "holdouts": [ {ApartmentHoldout: ownerId, name, apartmentNumber, signableDocumentId} ] } }',
     errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
@@ -1967,7 +1967,7 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/documents/remediation-sweep',
     auth: 'AuthGuard + TenantGuard (documents.update; agent fine gate manage_documents)',
     summary:
-      'FL-5 (V13) — נסח/tabu BACKFILL REMEDIATION SWEEP (closes the #450 HIGH follow-up). Re-runs the DH3 classifier over the ORG\'s PRE-EXISTING documents using each row\'s STORED metadata (filename + declared mime — NO content fetch, no PII read) and re-types the UNAMBIGUOUS tabu/נסח docs (confidence >= REMEDIATION_MIN_CONFIDENCE) to land_registry, DERIVING sensitive=true (TURN-ON ONLY — sensitivity is never weakened). DRY-RUN BY DEFAULT: dryRun absent/true ⇒ REPORTS the proposed transitions and commits NOTHING; an EXPLICIT dryRun:false applies them. IDEMPOTENT: already-land_registry docs are excluded from the candidate set, so a re-run is a no-op (the apply UPDATE also re-asserts the pre-state in its WHERE). Org-scoped via withTenant (RLS — never reaches another org); 10/min throttle. The report carries counts + a bounded sample of {documentId, type/sensitive transition, confidence, content-free reason} — NO filename, NO content, NO PII; an apply writes a metadata-only document.remediation_reclassify audit row per doc.',
+      "FL-5 (V13) — נסח/tabu BACKFILL REMEDIATION SWEEP (closes the #450 HIGH follow-up). Re-runs the DH3 classifier over the ORG's PRE-EXISTING documents using each row's STORED metadata (filename + declared mime — NO content fetch, no PII read) and re-types the UNAMBIGUOUS tabu/נסח docs (confidence >= REMEDIATION_MIN_CONFIDENCE) to land_registry, DERIVING sensitive=true (TURN-ON ONLY — sensitivity is never weakened). DRY-RUN BY DEFAULT: dryRun absent/true ⇒ REPORTS the proposed transitions and commits NOTHING; an EXPLICIT dryRun:false applies them. IDEMPOTENT: already-land_registry docs are excluded from the candidate set, so a re-run is a no-op (the apply UPDATE also re-asserts the pre-state in its WHERE). Org-scoped via withTenant (RLS — never reaches another org); 10/min throttle. The report carries counts + a bounded sample of {documentId, type/sensitive transition, confidence, content-free reason} — NO filename, NO content, NO PII; an apply writes a metadata-only document.remediation_reclassify audit row per doc.",
     request: RemediationSweepInput,
     response:
       '{ "data": { "applied": false, "scanned": 120, "candidates": 3, "sample": [ { "documentId": "uuid", "fromType": "other", "toType": "land_registry", "wasSensitive": false, "willBeSensitive": true, "confidence": 0.9, "reason": "filename_nesach" } ] } }',
@@ -2368,6 +2368,15 @@ const ENDPOINTS: Endpoint[] = [
       'Resident-facing signing-page preview (document + signer context). 30 / IP / hour. Generic invalid_token on any token failure (no oracle).',
     response: '{ "data": { ...SignPreview } }',
     errors: ['invalid_token', 'storage_unavailable', '429'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/sign/:token/document',
+    auth: 'Public (signing JWT in the path IS the credential)',
+    summary:
+      'C2 (Gate-6) — token-scoped decrypt-STREAM of a SENSITIVE document (the preview points here instead of a raw R2 presign so national_id / נסח PII is never served unencrypted). Serves ONLY sensitive+encrypted docs; 30 / IP / hour; generic invalid_token on any miss (no oracle).',
+    response: 'binary stream (Content-Disposition: attachment; nosniff)',
+    errors: ['invalid_token', 'storage_unavailable', 'doc_encryption_unavailable', '429'],
   },
   {
     method: 'POST',

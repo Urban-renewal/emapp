@@ -50,7 +50,10 @@ import {
 } from '@nestjs/common';
 import { and, eq, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 
-import { requireAgentCapability } from '../../common/authz/agent-capabilities';
+import {
+  requireAgentCapability,
+  resolveOwnerPiiFidelity,
+} from '../../common/authz/agent-capabilities';
 import {
   decodeCursor,
   encodeCursor,
@@ -118,6 +121,19 @@ const TYPE_MISMATCH = new ConflictException({
  */
 const PII_STEP_UP_REQUIRED = new ForbiddenException({
   error: { code: 'pii_step_up_required', message: 'נדרש אימות נוסף לצפייה במסמך רגיש' },
+});
+
+/**
+ * M-1 (Gate-6) — the caller PASSED the session step-up but lacks the
+ * `view_owner_pii` capability (a viewer, or an agent without the flag). A
+ * sensitive document IS owner PII (national_id / נסח), so step-up ALONE is not
+ * sufficient: the actor must ALSO be authorized to see owner cleartext. 403,
+ * distinct from the step-up code — this is an AUTHORIZATION miss (no OTP retry
+ * will fix it), not a freshness miss. Only ever thrown AFTER the per-record
+ * visibility check (never an existence oracle).
+ */
+const PII_VIEW_FORBIDDEN = new ForbiddenException({
+  error: { code: 'forbidden', message: 'אין הרשאה לצפות במסמך רגיש (PII)' },
 });
 
 /** PII-bearing document types — sensitive-by-type at create (D-P5.7). */
@@ -1006,6 +1022,11 @@ export class DocumentsService {
             type: documents.type,
             mimeType: documents.mimeType,
             sensitive: documents.sensitive,
+            // Gate-6: needed to decide which re-typed docs hold PLAINTEXT bytes
+            // at rest that must be re-encrypted IN PLACE (atomically with the flip).
+            uploadedAt: documents.uploadedAt,
+            bytesEncrypted: documents.bytesEncrypted,
+            r2Key: documents.r2Key,
           })
           .from(documents)
           .where(
@@ -1044,20 +1065,37 @@ export class DocumentsService {
         // strictly side-effect-free: the SELECT above ran, but NO UPDATE and NO
         // audit row is written — a true dry run.
         if (!input.dryRun && items.length > 0) {
+          // Index the candidate rows for the uploaded/encrypted/r2Key lookup below.
+          const byId = new Map(rows.map((r) => [r.id, r]));
           for (const item of items) {
+            const cand = byId.get(item.documentId);
+            // SECURITY (Gate-6) — ATOMIC re-encrypt: a re-typed doc whose object
+            // is uploaded + still PLAINTEXT (bytes_encrypted=false) holds
+            // national_id-dense נסח bytes in the clear at rest. We MUST NOT commit
+            // `sensitive=true` over a plaintext object (the 0080 CHECK forbids it).
+            // Re-encrypt IN PLACE WITHIN this tx and set bytes_encrypted=true in
+            // the SAME UPDATE — so the row never commits in a violating state. A
+            // read/put failure THROWS → the whole sweep rolls back (atomic).
+            const reEncrypt = Boolean(cand && cand.uploadedAt && !cand.bytesEncrypted);
+            if (reEncrypt && cand) {
+              await this.ensureObjectEncryptedInTx(cand.r2Key);
+            }
             // Idempotent UPDATE: the WHERE re-asserts the pre-state
             // (type <> 'land_registry') so a concurrent second sweep that
             // already fixed this row updates 0 rows (no double-apply). We set
             // type='land_registry' and sensitive=true (turn-ON only — we never
-            // pass sensitive=false here). archived_at unchanged.
+            // pass sensitive=false here), plus bytes_encrypted=true when we just
+            // re-encrypted the object. archived_at unchanged.
             await tx
               .update(documents)
-              .set({ type: 'land_registry', sensitive: true, updatedAt: new Date() })
+              .set({
+                type: 'land_registry',
+                sensitive: true,
+                ...(reEncrypt ? { bytesEncrypted: true } : {}),
+                updatedAt: new Date(),
+              })
               .where(
-                and(
-                  eq(documents.id, item.documentId),
-                  sql`${documents.type} <> 'land_registry'`,
-                ),
+                and(eq(documents.id, item.documentId), sql`${documents.type} <> 'land_registry'`),
               );
             await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
               orgId: user.orgId,
@@ -1073,6 +1111,17 @@ export class DocumentsService {
               metadata: { reason: item.reason, confidence: item.confidence },
               sessionId: user.sid,
             });
+            if (reEncrypt) {
+              await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+                orgId: user.orgId,
+                actorId: user.sub,
+                actorType: 'user',
+                action: 'document.reencrypt_at_rest',
+                targetTable: 'documents',
+                targetId: item.documentId,
+                sessionId: user.sid,
+              });
+            }
           }
         }
 
@@ -1109,7 +1158,9 @@ export class DocumentsService {
         // VALID unlock: pii_unlocked_at NOT NULL and younger than the org's
         // security.piiUnlockTtlMinutes (default 60). NON-sensitive docs skip
         // this block entirely — behavior byte-for-byte unchanged (D-P5.7).
-        if (row.sensitive) await this.assertPiiUnlocked(tx, user);
+        // Gate-6 (M-1 + 7b-OTP) — a sensitive doc requires BOTH view_owner_pii
+        // authorization AND a fresh session step-up (see assertSensitiveDocAccess).
+        if (row.sensitive) await this.assertSensitiveDocAccess(tx, user);
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
@@ -1171,6 +1222,30 @@ export class DocumentsService {
    * security.piiUnlockTtlMinutes (default 60). MUST be called only AFTER the
    * per-record visibility checks (never an existence oracle).
    */
+  /**
+   * Gate-6 (M-1 + step-up) — the COMBINED sensitive-document access gate, the
+   * single thing both serving paths (presign download + decrypt-stream) call for
+   * a `sensitive` doc. TWO independent requirements, BOTH mandatory:
+   *
+   *   1. AUTHORIZATION (M-1): the actor may see owner PII cleartext at all —
+   *      `resolveOwnerPiiFidelity === 'unmasked'` (manager always; agent iff
+   *      `view_owner_pii`; viewer never). A sensitive doc IS owner PII, so a
+   *      viewer who happens to clear the OTP must STILL be refused (the prior
+   *      blind spot: step-up alone leaked full PII content to a viewer).
+   *   2. FRESHNESS (7b-OTP): the current session holds a valid PII step-up
+   *      unlock (younger than the org TTL).
+   *
+   * Authorization is checked FIRST: a viewer/un-flagged agent gets the stable
+   * `forbidden` (no OTP retry would help) rather than being told to step up.
+   * Both are only reachable AFTER the per-record visibility check.
+   */
+  private async assertSensitiveDocAccess(tx: TenantTx, user: AccessTokenPayload): Promise<void> {
+    // M-1: must be allowed to see owner cleartext PII (not merely masked).
+    if ((await resolveOwnerPiiFidelity(tx, user)) !== 'unmasked') throw PII_VIEW_FORBIDDEN;
+    // 7b-OTP: must hold a fresh session step-up unlock.
+    await this.assertPiiUnlocked(tx, user);
+  }
+
   private async assertPiiUnlocked(tx: TenantTx, user: AccessTokenPayload): Promise<void> {
     const { security } = await getOrgSettings(tx, user.orgId);
     const ttlMs = security.piiUnlockTtlMinutes * 60_000;
@@ -1330,6 +1405,49 @@ export class DocumentsService {
     return { uploaded: true };
   }
 
+  /**
+   * SECURITY (Gate-6) — ensure the R2 object at `r2Key` is an EMAPPENC envelope,
+   * re-encrypting it IN PLACE if it is still plaintext. Does ONLY the R2 work
+   * (read → encrypt → put) and is meant to be called INSIDE the flip tx, with the
+   * caller setting `bytes_encrypted=true` in the same UPDATE. It does NOT touch
+   * the DB itself.
+   *
+   * THROWS on a missing / unreadable object or a putObject failure — so the
+   * caller's flip tx ROLLS BACK and the doc is NEVER committed `sensitive=true`
+   * over plaintext (no partial / violating state ever reaches the row). Idempotent:
+   * an object that is already an envelope is a NO-OP. Never logs/echoes bytes.
+   *
+   * TRADE-OFF (in-tx R2 I/O): this holds the tenant tx open across one bounded R2
+   * read + one put (≤ DOCUMENT_MAX_SIZE_BYTES). That is the price of ATOMICITY —
+   * the 0080 CHECK forbids committing `sensitive=true` over a plaintext object, so
+   * the encrypt MUST land before the flip commits. Ordering is encrypt → UPDATE →
+   * commit, so the flag never precedes the ciphertext; a putObject-then-rollback
+   * (UPDATE/audit fails afterwards) leaves R2 encrypted + DB bytes_encrypted=false
+   * — fail-SAFE (serving 503s it) and self-healed by the backfill's flag-repair.
+   */
+  private async ensureObjectEncryptedInTx(r2Key: string): Promise<void> {
+    const bytes = await readObjectBytes(
+      this.storage,
+      r2Key,
+      DOCUMENT_MAX_SIZE_BYTES + ENVELOPE_HEADER_LEN,
+    );
+    // Already wrapped (a concurrent flip / a re-run) → nothing to do.
+    if (this.looksLikeEnvelope(bytes)) return;
+    const envelope = this.encryptEnvelope(bytes);
+    await this.storage.putObject(r2Key, envelope, { contentType: 'application/octet-stream' });
+  }
+
+  /** True iff the buffer's leading bytes are a well-formed EMAPPENC header.
+   *  Lets the re-encrypt path detect an already-wrapped object without the key
+   *  (idempotency). Mirrors the parse guard in decryptEnvelope. */
+  private looksLikeEnvelope(buf: Buffer): boolean {
+    return (
+      buf.length >= ENVELOPE_HEADER_LEN &&
+      buf.subarray(0, ENVELOPE_MAGIC.length).equals(ENVELOPE_MAGIC) &&
+      buf[ENVELOPE_MAGIC.length] === ENVELOPE_VERSION
+    );
+  }
+
   /** Build the at-rest envelope: EMAPPENC|v1|keyId|iv|tag|ciphertext.
    *  iv is RANDOM PER OBJECT (GCM requirement — an iv reuse under the same
    *  key would be catastrophic); NO AAD (pinned, see constants above). */
@@ -1424,7 +1542,8 @@ export class DocumentsService {
         const r = await this.loadVisible(tx, user, id, true);
         // The OTP unlock gate stays exactly where it is in the presign path:
         // after visibility/ghost/scan, before the audit + serve.
-        if (r.sensitive) await this.assertPiiUnlocked(tx, user);
+        // Gate-6 (M-1 + 7b-OTP) — same combined gate as the presign path.
+        if (r.sensitive) await this.assertSensitiveDocAccess(tx, user);
         if (!r.bytesEncrypted) {
           // Decrypt-stream is only for app-envelope objects; a plain object
           // here means the caller routed wrongly (resolveDownload prevents
@@ -1489,19 +1608,47 @@ export class DocumentsService {
         disposition: 'attachment' | 'inline';
       }
   > {
-    const encrypted = await withTenant(
+    const peek = await withTenant(
       user.orgId,
       async (tx) => {
         const [r] = await tx
-          .select({ bytesEncrypted: documents.bytesEncrypted })
+          .select({
+            sensitive: documents.sensitive,
+            bytesEncrypted: documents.bytesEncrypted,
+          })
           .from(documents)
           .where(eq(documents.id, id))
           .limit(1);
-        return r?.bytesEncrypted ?? false;
+        return { sensitive: r?.sensitive ?? false, encrypted: r?.bytesEncrypted ?? false };
       },
       { userId: user.sub },
     );
-    if (!encrypted) {
+    // SECURITY (Gate-6) — FAIL-CLOSED: a SENSITIVE doc whose bytes are NOT
+    // encrypted at rest must NEVER be plain-presigned (that served national_id /
+    // נסח PII in the clear). This is the serving-side guarantee that closes the
+    // window between a sensitive-ON flip and the in-place re-encrypt (or a
+    // pre-backfill legacy row): if re-encryption hasn't happened / failed, we
+    // REFUSE rather than leak. 503 `doc_encryption_pending` (a TRANSIENT
+    // operational state — the object's at-rest encryption is pending the backfill
+    // / re-encrypt, not a client error) — only reachable AFTER getDownloadUrl's
+    // visibility chain would pass; here the peek is RLS-scoped so a foreign id
+    // reads as not-sensitive and falls through to getDownloadUrl's generic 404.
+    // The peek itself is NOT an oracle: a foreign/unknown id reads sensitive=false
+    // → presign path → 404.
+    if (peek.sensitive && !peek.encrypted) {
+      // Re-run the FULL visibility chain first so this state is only ever
+      // surfaced for the caller's OWN visible doc (never an existence oracle):
+      // loadVisible throws the generic 404 for a foreign/unknown/ghost id.
+      await withTenant(
+        user.orgId,
+        async (tx) => {
+          await this.loadVisible(tx, user, id, true);
+        },
+        { userId: user.sub },
+      );
+      throw new ServiceUnavailableException({ error: { code: 'doc_encryption_pending' } });
+    }
+    if (!peek.encrypted) {
       return { kind: 'presign', data: await this.getDownloadUrl(user, id, disposition) };
     }
     return { kind: 'stream', ...(await this.getDecryptedStream(user, id, disposition)) };
@@ -1740,12 +1887,28 @@ export class DocumentsService {
         await requireAgentCapability(tx, user, 'manage_documents');
         const patch: Partial<typeof documents.$inferInsert> = { updatedAt: new Date() };
         if (input.name !== undefined) patch.name = input.name;
+        let reEncryptedInTx = false;
         if (input.type !== undefined) {
           patch.type = input.type;
           // D-P5.7 turn-ON-only: retyping TO a sensitive type re-derives
           // sensitive=true (else upload-as-other → PATCH-to-id_document would
           // bypass the step-up gate). Never turns sensitive OFF.
-          if (SENSITIVE_DOC_TYPES.has(input.type)) patch.sensitive = true;
+          if (SENSITIVE_DOC_TYPES.has(input.type)) {
+            patch.sensitive = true;
+            // SECURITY (Gate-6) — ATOMIC re-encrypt: if this flip turns a
+            // NOT-YET-sensitive, ALREADY-UPLOADED, PLAINTEXT object sensitive, its
+            // bytes at rest are plaintext. We MUST NOT commit `sensitive=true` over
+            // a plaintext object (the 0080 CHECK forbids it, and the serving path
+            // would otherwise have a window). Re-encrypt the object IN PLACE WITHIN
+            // this tx and set `bytes_encrypted=true` in the SAME patch — so the row
+            // never commits in a violating state. If R2 read/put fails, this throws
+            // and the WHOLE retype rolls back (atomic: no flip over plaintext).
+            if (!before.sensitive && before.uploadedAt && !before.bytesEncrypted) {
+              await this.ensureObjectEncryptedInTx(before.r2Key);
+              patch.bytesEncrypted = true;
+              reEncryptedInTx = true;
+            }
+          }
         }
         const [row] = await tx.update(documents).set(patch).where(eq(documents.id, id)).returning();
         if (!row) throw NOT_FOUND;
@@ -1760,6 +1923,18 @@ export class DocumentsService {
           afterState: { name: row.name, type: row.type },
           sessionId: user.sid,
         });
+        if (reEncryptedInTx) {
+          // Audit the at-rest re-encryption in the SAME atomic tx as the flip.
+          await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+            orgId: user.orgId,
+            actorId: user.sub,
+            actorType: 'user',
+            action: 'document.reencrypt_at_rest',
+            targetTable: 'documents',
+            targetId: row.id,
+            sessionId: user.sid,
+          });
+        }
         return toDocument(row);
       },
       { userId: user.sub },

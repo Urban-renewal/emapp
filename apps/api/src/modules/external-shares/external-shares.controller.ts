@@ -1,10 +1,12 @@
 import {
   CreateExternalShareInput,
   ExtendExternalShareInput,
+  ExternalPartyAccessQuery,
   ListExternalSharesQuery,
   UpdateExternalShareInput,
   type CreateExternalShare,
   type ExtendExternalShare,
+  type ExternalPartyAccessQueryDto,
   type ListExternalSharesQueryDto,
   type UpdateExternalShare,
 } from '@emapp/shared-types';
@@ -81,6 +83,28 @@ export class ExternalSharesController {
     @Body(new ZodValidationPipe(UpdateExternalShareInput)) body: UpdateExternalShare,
   ) {
     return { data: await this.externalShares.update(user, id, body) };
+  }
+
+  // SEC-H1 — the party-share document-retrieval AUTHZ resolution surface. Given
+  // a grant + a document, returns the FAIL-CLOSED allow/deny decision + serve
+  // constraints produced by the ONE shared resolver consuming `external_shares`
+  // (expiry / revocation / scope / allow_sensitive / OTP / watermark). This is
+  // the enforcement the "invite a party" FE (UX-slice-4) depends on existing.
+  // Read-only org-member surface (@TenantScoped); the party-token (X-S4) tier
+  // will call the SAME `resolveDocumentAccess` once it lands.
+  @Get('external-shares/:id/documents/:documentId/access')
+  @TenantScoped()
+  async resolveDocumentAccess(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', UuidParam) id: string,
+    @Param('documentId', UuidParam) documentId: string,
+    @Query(new ZodValidationPipe(ExternalPartyAccessQuery)) query: ExternalPartyAccessQueryDto,
+  ) {
+    return {
+      data: await this.externalShares.resolveDocumentAccess(user, id, documentId, {
+        otpVerified: query.otpVerified,
+      }),
+    };
   }
 
   @Post('external-shares/:id/extend')

@@ -61,15 +61,27 @@ describe('ExternalSharesController — authz declaration (F1 defense-in-depth)',
     expect(isTenantScoped('revoke')).toBe(false);
   });
 
-  it('the catalog-keyless routes (list/update/extend/resend) stay @TenantScoped', () => {
-    for (const name of ['list', 'update', 'extend', 'resend']) {
+  it('the catalog-keyless routes (list/update/extend/resend/resolveDocumentAccess) stay @TenantScoped', () => {
+    // resolveDocumentAccess (SEC-H1) is a read-only org-member resolution
+    // surface — no in-catalog read permission exists for external shares, so it
+    // carries @TenantScoped like list/update (NO_ENGINE_EQUIVALENT). RLS +
+    // the resolver's fail-closed decision are the substantive gates.
+    for (const name of ['list', 'update', 'extend', 'resend', 'resolveDocumentAccess']) {
       expect(isTenantScoped(name), `${name} tenant-scoped`).toBe(true);
       expect(permissionOf(name), `${name} has no @RequirePermission`).toBeUndefined();
     }
   });
 
   it('EVERY route declares exactly one authz gate (no ungated handler)', () => {
-    for (const name of ['list', 'create', 'update', 'extend', 'resend', 'revoke']) {
+    for (const name of [
+      'list',
+      'create',
+      'update',
+      'extend',
+      'resend',
+      'revoke',
+      'resolveDocumentAccess',
+    ]) {
       const hasPerm = permissionOf(name) !== undefined;
       const tenant = isTenantScoped(name);
       expect(hasPerm || tenant, `${name} declares an authz gate`).toBe(true);

@@ -392,3 +392,156 @@ describe('PARTY_PRESET_CEILINGS — every enum value has a ceiling', () => {
     }
   });
 });
+
+/**
+ * SEC-H1 — resolveDocumentAccess: the DB-backed party-share retrieval authz
+ * path, against the real local DB. Proves RLS cross-org isolation (the resolver
+ * NEVER yields another org's doc — out_of_scope, no oracle) on TOP of the pure
+ * allow/deny matrix already covered in external-party-authz.spec.ts.
+ */
+describe('ExternalSharesService.resolveDocumentAccess — DB-backed (SEC-H1)', () => {
+  let buildingAId: string;
+  let apartmentAId: string;
+  let plainDocAId: string; // org A, project-level, non-sensitive, servable
+  let sensitiveDocAId: string; // org A, project-level, sensitive + encrypted, servable
+  let ghostDocAId: string; // org A, never finalized (uploaded_at NULL)
+  let shareAId: string; // org A grant: developer, project-scope, sensitive, otp off
+
+  async function seedDoc(
+    orgId: string,
+    projectId: string,
+    opts: {
+      sensitive?: boolean;
+      bytesEncrypted?: boolean;
+      uploaded?: boolean;
+      scan?: 'clean' | 'pending';
+      apartmentId?: string | null;
+    } = {},
+  ): Promise<string> {
+    const c = await providerPool.connect();
+    try {
+      const r = await c.query(
+        `INSERT INTO documents
+           (org_id, project_id, apartment_id, name, type, mime_type, size_bytes, r2_key,
+            content_hash, uploaded_by, uploaded_at, scan_status, sensitive, bytes_encrypted)
+         VALUES ($1,$2,$3,'doc','other','application/pdf',10,$4,'h',$5,$6,$7,$8,$9)
+         RETURNING id`,
+        [
+          orgId,
+          projectId,
+          opts.apartmentId ?? null,
+          `r2-${orgId}-${Math.random().toString(36).slice(2)}`,
+          orgA.users[0]!.id, // any in-org user; uploaded_by FK only needs to exist
+          opts.uploaded === false ? null : new Date(),
+          opts.scan ?? 'clean',
+          opts.sensitive ?? false,
+          opts.bytesEncrypted ?? false,
+        ],
+      );
+      return r.rows[0].id as string;
+    } finally {
+      c.release();
+    }
+  }
+
+  beforeAll(async () => {
+    const c = await providerPool.connect();
+    try {
+      const b = await c.query(
+        `INSERT INTO buildings (project_id, address, city) VALUES ($1,'addr','city') RETURNING id`,
+        [projectAId],
+      );
+      buildingAId = b.rows[0].id;
+      const a = await c.query(
+        `INSERT INTO apartments (building_id, number) VALUES ($1,'1') RETURNING id`,
+        [buildingAId],
+      );
+      apartmentAId = a.rows[0].id;
+    } finally {
+      c.release();
+    }
+    plainDocAId = await seedDoc(orgA.id, projectAId, {});
+    sensitiveDocAId = await seedDoc(orgA.id, projectAId, {
+      sensitive: true,
+      bytesEncrypted: true,
+    });
+    ghostDocAId = await seedDoc(orgA.id, projectAId, { uploaded: false });
+
+    const share = await svc.create(manager(orgA), {
+      partyType: 'developer',
+      scopeType: 'project',
+      scopeIds: [projectAId],
+      permissions: FULL,
+      allowSensitive: true,
+      otpRequired: false,
+    });
+    shareAId = share.id;
+  });
+
+  it('ALLOWS a non-sensitive, in-scope, servable doc (presign-eligible)', async () => {
+    const d = await svc.resolveDocumentAccess(manager(orgA), shareAId, plainDocAId);
+    expect(d.allow).toBe(true);
+    if (d.allow) expect(d.constraints.requiresDecryptStream).toBe(false);
+  });
+
+  it('SENSITIVE doc + allow_sensitive + NO OTP → deny (otp_required)', async () => {
+    const d = await svc.resolveDocumentAccess(manager(orgA), shareAId, sensitiveDocAId, {
+      otpVerified: false,
+    });
+    expect(d).toEqual({ allow: false, reason: 'otp_required' });
+  });
+
+  it('SENSITIVE doc + allow_sensitive + OTP verified → ALLOW + requiresDecryptStream', async () => {
+    const d = await svc.resolveDocumentAccess(manager(orgA), shareAId, sensitiveDocAId, {
+      otpVerified: true,
+    });
+    expect(d.allow).toBe(true);
+    if (d.allow) expect(d.constraints.requiresDecryptStream).toBe(true);
+  });
+
+  it('GHOST doc (uploaded_at NULL) → deny (document_not_servable)', async () => {
+    const d = await svc.resolveDocumentAccess(manager(orgA), shareAId, ghostDocAId, {
+      otpVerified: true,
+    });
+    expect(d).toEqual({ allow: false, reason: 'document_not_servable' });
+  });
+
+  it('RLS cross-org: org B manager resolving org A share+doc → out_of_scope (no oracle)', async () => {
+    // Under org B's RLS, org A's share is invisible → the share lookup misses →
+    // out_of_scope (NOT a distinct "share not found" — no existence oracle).
+    const d = await svc.resolveDocumentAccess(manager(orgB), shareAId, plainDocAId);
+    expect(d).toEqual({ allow: false, reason: 'out_of_scope' });
+  });
+
+  it('out-of-scope doc: an apartment-scoped grant denies a project-level doc', async () => {
+    const aptShare = await svc.create(manager(orgA), {
+      partyType: 'appraiser', // apartment-scope ceiling
+      scopeType: 'apartment',
+      scopeIds: [apartmentAId],
+      permissions: {
+        overview: { on: true },
+        documents: { on: true, actions: { download: true } },
+        signatures: { on: false },
+      },
+      allowSensitive: false,
+      otpRequired: false,
+    });
+    // plainDocAId is project-level (apartment_id NULL) → not in an apartment scope.
+    const d = await svc.resolveDocumentAccess(manager(orgA), aptShare.id, plainDocAId);
+    expect(d).toEqual({ allow: false, reason: 'out_of_scope' });
+  });
+
+  it('REVOKED grant → deny (share_revoked) on retrieval', async () => {
+    const s = await svc.create(manager(orgA), {
+      partyType: 'developer',
+      scopeType: 'project',
+      scopeIds: [projectAId],
+      permissions: FULL,
+      allowSensitive: true,
+      otpRequired: false,
+    });
+    await svc.revoke(manager(orgA), s.id);
+    const d = await svc.resolveDocumentAccess(manager(orgA), s.id, plainDocAId);
+    expect(d).toEqual({ allow: false, reason: 'share_revoked' });
+  });
+});

@@ -270,6 +270,23 @@ approval when the right move is to keep building. Anchored HERE (not memory) so 
    over more, never a skipped pass. Only batch COHESIVE work (never couple an unrelated/independently-
    risky change); if a change is too big to red-team well, split it. Quality > raw PR-count.
 
+8. **ANTI-PARK MECHANISM (owner 2026-06-23, after repeated park-then-apologize — the #1 recurring
+   failure). This is MECHANICAL, not aspirational — it removes the discretion that keeps getting abused:**
+   - **The phrases "I'll do it next turn" / "on fresh context" / "later" / "deferring to" for work that
+     is ALREADY code-green are BANNED.** Ready work is driven to MERGE in the SAME turn it becomes ready.
+     Context-thinness is NEVER a defer-reason — if genuinely near the limit, the FINAL action of the turn
+     is the merge (or the next concrete step), never a PROMISE to act next turn.
+   - **STOP APOLOGIZING. "You're right, I apologize" / "you're right, that's the bug" is FORBIDDEN as a
+     response** — it costs a turn, signals contrition instead of change, and is exactly what frustrates
+     the owner. Replace every would-be apology with the executed action (the merged PR, the dispatched
+     builder). SHOW, don't say. If you catch yourself typing an apology, delete it and run the command.
+   - **TURN-START RITUAL (every heartbeat + every post-builder turn): DRAIN FIRST.** Before any analysis
+     or status report, the FIRST actions are: `gh pr list` → merge every green PR, collect every finished
+     builder → commit/walk/merge it. Only THEN start or report new work. NEVER write a status update while
+     a green PR sits unmerged or a finished builder sits uncommitted.
+   - Reports are for EVIDENCE of action taken (merged #X, walked Y), never for narrating what you WILL do.
+     Wall-clock spent reporting/analyzing instead of merging IS the bug.
+
 \## ===== AUTOPILOT PROTOCOL =====
 
 \### Multi-agent heartbeats (per-track, append-only)

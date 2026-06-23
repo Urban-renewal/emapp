@@ -878,13 +878,42 @@
       "gist": {
         "count": "{count} מסמכים",
         "latest": "{count} מסמכים · האחרון {when}",
+        "latestType": "{count} מסמכים · אחרון: {type}",
+        "latestWhen": "האחרון התקבל {when}",
         "allReceived": "{count} מסמכים · כל מסמכי החובה התקבלו",
         "someMissing": "{received} מתוך {required} התקבלו · חסר: {types}"
       },
       "complete": "הושלם",
       "completeness": "{received} מתוך {required} מסמכי-חובה התקבלו",
-      "back": "חזרה לגורמים"
+      "back": "חזרה לגורמים",
+      "zoomEmpty": "אין מסמכים להצגה כרגע",
+      "uploadMissing": "העלה {type}",
+      "uploadMissingAria": "העלאת {type} עבור {party}"
     },
+    "views": {
+      "label": "תצוגה",
+      "party": "לפי גורם",
+      "project": "לפי פרויקט",
+      "all": "כל המסמכים"
+    },
+    "project": {
+      "open": "פתיחת המסמכים של {name}",
+      "back": "חזרה לפרויקטים",
+      "empty": "אין עדיין פרויקטים",
+      "zoomEmpty": "אין מסמכים בפרויקט זה עדיין"
+    },
+    "row": {
+      "apartment": "דירה {number}",
+      "sensitive": "רגיש",
+      "downloadAria": "הורדת {name}",
+      "archiveAria": "ארכוב {name}"
+    },
+    "loadMore": "טען עוד",
+    "loadingMore": "טוען עוד…",
+    "resetPage": "חזרה לדף הראשון",
+    "popupBlocked": "הדפדפן חסם את פתיחת הקובץ — אפשר חלונות קופצים ונסה שוב.",
+    "archiveDone": "המסמך הועבר לארכיון.",
+    "archivedEmpty": "אין מסמכים בארכיון.",
     "party": {
       "owner": "בעלים",
       "appraiser": "שמאי",
@@ -921,6 +950,22 @@
     "tab": {
       "active": "פעילים",
       "archived": "בארכיון"
+    },
+    "detail": {
+      "metaTitle": "פרטי המסמך",
+      "sensitive": "רגיש — מכיל מידע אישי",
+      "sensitiveHint": "צפייה והורדה דורשות אימות נוסף (קוד חד-פעמי)",
+      "scanLabel": "סריקת אבטחה",
+      "parentProject": "פרויקט",
+      "parentApartment": "דירה",
+      "noParent": "לא משויך לפרויקט",
+      "stepUpHint": "צפייה דורשת אימות",
+      "openedNewTab": "המסמך נפתח בכרטיסייה חדשה",
+      "downloadStarted": "ההורדה החלה",
+      "popupBlocked": "אפשרו חלונות קופצים כדי לצפות במסמך",
+      "archivedTitle": "מסמך מאורכב",
+      "archivedBody": "המסמך הועבר לארכיון ואינו זמין לצפייה או להורדה. ניתן לשחזר אותו דרך רשימת המסמכים המאורכבים.",
+      "archivedToList": "לרשימת המסמכים"
     }
   },
   "ownerships": {

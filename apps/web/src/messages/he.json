@@ -883,8 +883,13 @@
         "allReceived": "{count} מסמכים · כל מסמכי החובה התקבלו",
         "someMissing": "{received} מתוך {required} התקבלו · חסר: {types}"
       },
+      "docsFiled": "{count} מסמכים",
+      "core": {
+        "missing": "מסמכי-ליבה {received}/{required} · חסר: {types}",
+        "complete": "מסמכי-ליבה {received}/{required}"
+      },
       "complete": "הושלם",
-      "completeness": "{received} מתוך {required} מסמכי-חובה התקבלו",
+      "completeness": "מסמכי-ליבה {received}/{required}",
       "back": "חזרה לגורמים",
       "zoomEmpty": "אין מסמכים להצגה כרגע",
       "uploadMissing": "העלה {type}",

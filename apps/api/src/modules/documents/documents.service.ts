@@ -1848,6 +1848,47 @@ export class DocumentsService {
   }
 
   /**
+   * Agent record-scoping for the board-completeness `total` rollup. IDENTICAL in
+   * intent to {@link agentDocScope} but the project leg resolves via the SAME
+   * CANONICAL scope as the board's `received`/`required` pass: a doc is in an
+   * agent's scope when its CANONICAL project — COALESCE(doc_scope='project' →
+   * doc_scope_id, project_id) — is an active assignment, OR (the apartment leg,
+   * unchanged) it hangs off an apartment in an assigned project.
+   *
+   * WHY a dedicated helper (the S1 bug): `agentDocScope` keys the project leg on
+   * the LEGACY `documents.project_id` column ONLY. The `received` pass resolves
+   * the canonical doc_scope. So a doc filed canonically with project_id=NULL
+   * satisfied a `received` slot yet was INVISIBLE to the `total` rollup — the
+   * two numbers behind one party card measured two different populations. This
+   * predicate makes `total` use the canonical resolver too, so the two passes can
+   * never diverge on scope. Returns `undefined` for non-agents (managers/viewers
+   * are RLS-org-bound on both passes, so they were never divergent).
+   */
+  private agentBoardScope(user: AccessTokenPayload): SQL | undefined {
+    if (user.role !== 'agent') return undefined;
+    // Canonical resolved project id — the SAME COALESCE the received pass uses.
+    const resolvedProjectId = sql`COALESCE(
+      CASE WHEN ${documents.docScope} = 'project' THEN ${documents.docScopeId} END,
+      ${documents.projectId}
+    )`;
+    const directProjectAssigned = sql<boolean>`EXISTS (
+      SELECT 1 FROM project_assignments pa
+      WHERE pa.user_id = ${user.sub}::uuid
+        AND pa.unassigned_at IS NULL
+        AND pa.project_id = ${resolvedProjectId}
+    )`;
+    const viaApartment = sql<boolean>`EXISTS (
+      SELECT 1 FROM apartments a
+      JOIN buildings b ON b.id = a.building_id
+      JOIN project_assignments pa ON pa.project_id = b.project_id
+      WHERE pa.user_id = ${user.sub}::uuid
+        AND pa.unassigned_at IS NULL
+        AND a.id = ${documents.apartmentId}
+    )`;
+    return or(directProjectAssigned, viaApartment);
+  }
+
+  /**
    * DH4 (MASTER-PLAN-V13 Wave B) — document DEDUP probe ("link to existing, not
    * duplicate"). The client hashes the file it is about to upload (the SAME
    * sha256 hex `content_hash` everywhere else) and asks whether the caller's
@@ -2227,16 +2268,27 @@ export class DocumentsService {
         }
 
         // ── Phase 1 (board-summary) — the WHOLE-BOARD per-party document rollup.
-        // ONE aggregate pass over EVERY non-archived doc the caller can SEE
-        // (the SAME agentDocScope record-scoping as `list`, so a manager gets all
-        // org docs via RLS and an agent only their assigned projects' docs).
-        // Grouped by the doc's ACTUAL type → party (providerPartyForDocType),
+        // ONE aggregate pass over EVERY non-archived doc the caller can SEE,
+        // grouped by the doc's ACTUAL type → party (providerPartyForDocType),
         // carrying the per-type count + the most-recent createdAt so we can derive
-        // each party's `total`, `latestType`, `latestCreatedAt`. COUNTS + TYPE
-        // KEYS only — no id, no name, no owner PII. This fixes the "counts lie"
-        // board bug (the FE counted a single 25-doc keyset page; a party with
-        // >25 docs was truncated). Sub-second: a GROUP BY type over the indexed,
-        // org-scoped, non-archived rows — no N+1, no per-doc fetch.
+        // each party's `total` (docs filed), `latestType`, `latestCreatedAt`.
+        // COUNTS + TYPE KEYS only — no id, no name, no owner PII. Fixes the
+        // "counts lie" board bug (the FE counted a single 25-doc keyset page; a
+        // party with >25 docs was truncated). Sub-second: a GROUP BY type over the
+        // indexed, org-scoped, non-archived rows — no N+1, no per-doc fetch.
+        //
+        // SCOPE-ALIGNMENT (the S1 fix — the two passes must NOT diverge on which
+        // docs are "in scope"): the `received`/`required` slot pass above resolves
+        // a doc's project via the CANONICAL COALESCE(doc_scope='project' →
+        // doc_scope_id, project_id) resolver, bounded to the in-scope project set.
+        // The earlier `total` pass keyed an AGENT's visibility on the LEGACY
+        // `documents.project_id` column alone (`agentDocScope`), so a doc filed
+        // canonically (doc_scope='project'/doc_scope_id=X, legacy project_id NULL)
+        // counted toward `received` but NOT toward `total` — two unaligned
+        // populations behind ONE card. `agentBoardScope` resolves the agent's
+        // project leg via the SAME canonical COALESCE (plus the apartment leg,
+        // unchanged), so an agent's `total` and `received` now cover ONE
+        // population. A manager is RLS-only on both passes (all org docs).
         interface PartyRollup {
           total: number;
           latestType: string | null;
@@ -2250,7 +2302,7 @@ export class DocumentsService {
             latest: sql<Date>`MAX(${documents.createdAt})`,
           })
           .from(documents)
-          .where(and(isNull(documents.archivedAt), this.agentDocScope(user)))
+          .where(and(isNull(documents.archivedAt), this.agentBoardScope(user)))
           .groupBy(documents.type);
         for (const row of typeAgg) {
           const party = providerPartyForDocType(row.type);

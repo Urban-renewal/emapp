@@ -16,7 +16,12 @@
  * and the BE de-dups. REJECT is a pure state flip (the BE 409s a non-pending
  * row), so it needs no idempotency key.
  */
-import { ProposalSchema, type ProposalView } from '@emapp/shared-types';
+import {
+  ProposalApproveResponseSchema,
+  ProposalSchema,
+  type ProposalApproveResponse,
+  type ProposalView,
+} from '@emapp/shared-types';
 import { z } from 'zod';
 
 import { apiClient, isList, isOk } from '../api-client';
@@ -25,6 +30,7 @@ import { ApiClientError } from './errors';
 import { PageSchema } from './paging';
 
 const ProposalDataSchema = z.object({ data: ProposalSchema });
+const ProposalApproveDataSchema = z.object({ data: ProposalApproveResponseSchema });
 
 export interface ProposalListPage {
   items: ProposalView[];
@@ -52,11 +58,19 @@ export async function listProposals(query: ListProposalsQuery = {}): Promise<Pro
 }
 
 /** APPROVE — replays the gated action (BE re-checks the boundary). Idempotent
- *  key minted by `postIdempotent` so a retry can't double-apply. */
-export async function approveProposal(id: string): Promise<ProposalView> {
+ *  key minted by `postIdempotent` so a retry can't double-apply.
+ *
+ *  Returns the applied `ProposalApproveResponse` — the proposal view PLUS, for
+ *  contact-producing kinds (e.g. `signature_request.reissue`), the optional
+ *  `delivery` OUTCOME (so the inbox can confirm the owner WAS re-contacted, with
+ *  the governed-outbound `state` + masked `recipient`). Defensive Zod parse here
+ *  (ARCHITECTURE-MAP §1): a drift in the new `delivery` shape surfaces as a parse
+ *  error, never a silently-dropped outcome. `delivery` is `undefined` for
+ *  internal-only kinds. */
+export async function approveProposal(id: string): Promise<ProposalApproveResponse> {
   const res = await apiClient.postIdempotent<unknown>(`/proposals/${id}/approve`, {});
   if (!isOk(res)) throw new ApiClientError(res.error);
-  return ProposalDataSchema.parse({ data: res.data }).data;
+  return ProposalApproveDataSchema.parse({ data: res.data }).data;
 }
 
 /** REJECT — dismiss the proposal (state flip; the BE 409s a non-pending row). */

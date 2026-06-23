@@ -65,10 +65,13 @@ export function useProposalList(query: ListProposalsQuery = {}) {
 }
 
 /** Shared optimistic-remove mutation factory — APPROVE + REJECT both remove the
- *  row instantly and roll back on error. The only difference is the mutationFn. */
-function useRemoveOnSettle(mutationFn: (id: string) => Promise<unknown>) {
+ *  row instantly and roll back on error. The only difference is the mutationFn.
+ *  Generic over the result `TData` so a typed `mutateAsync` carries through (the
+ *  approve mutation returns the `ProposalApproveResponse` incl. `delivery`; the
+ *  caller reads the outcome to confirm the owner WAS re-contacted). */
+function useRemoveOnSettle<TData>(mutationFn: (id: string) => Promise<TData>) {
   const qc = useQueryClient();
-  return useMutation({
+  return useMutation<TData, Error, string, { prev: ProposalCacheSnapshot }>({
     mutationFn,
     onMutate: async (id: string): Promise<{ prev: ProposalCacheSnapshot }> => {
       await qc.cancelQueries({ queryKey: PROPOSALS_KEY });
@@ -87,7 +90,10 @@ function useRemoveOnSettle(mutationFn: (id: string) => Promise<unknown>) {
   });
 }
 
-/** APPROVE — replays the gated action; optimistic remove + rollback. */
+/** APPROVE — replays the gated action; optimistic remove + rollback. Resolves to
+ *  the `ProposalApproveResponse` so the caller can surface the `delivery` outcome
+ *  (the legibility confirmation: owner re-contacted, on which channel — or why
+ *  not). */
 export function useApproveProposal() {
   return useRemoveOnSettle((id: string) => approveProposal(id));
 }

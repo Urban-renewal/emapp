@@ -184,6 +184,19 @@
       "approved": "Approved — the action ran",
       "rejected": "Suggestion dismissed",
       "failed": "The action failed — you can try again"
+    },
+    "delivery": {
+      "sentWithRecipient": "Signature renewed — the owner got a new link via {channel} ({recipient})",
+      "sentNoRecipient": "Signature renewed — the owner got a new link via {channel}",
+      "alreadySent": "Already sent — no new link went out",
+      "blocked": "Not sent — blocked per your rules",
+      "noChannel": "No way to reach the owner — nothing was sent",
+      "ambiguous": "May not have been sent — worth checking",
+      "channel": {
+        "email": "email",
+        "sms": "SMS",
+        "whatsapp": "WhatsApp"
+      }
     }
   },
   "errorBoundary": {

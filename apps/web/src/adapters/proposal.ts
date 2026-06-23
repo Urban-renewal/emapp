@@ -19,11 +19,11 @@
  * future kind that forgets a label falls through to the safe generic line — it
  * NEVER renders a raw `kind` string or PII.
  */
-import type { ProposalView } from '@emapp/shared-types';
+import type { ProposalApplyDelivery, ProposalView } from '@emapp/shared-types';
 
 import { formatRelative } from '@/lib/format';
 import type { DisplayLocale } from '@/lib/locale';
-import type { ProposalViewModel } from '@/models/proposal.vm';
+import type { ProposalApproveOutcome, ProposalViewModel } from '@/models/proposal.vm';
 
 interface KindCopy {
   /** Neutral-passive "why" — the user's pending decision, never system-voice. */
@@ -92,4 +92,59 @@ export function toProposalViewModels(
   locale: DisplayLocale = 'he',
 ): ProposalViewModel[] {
   return items.map((p) => toProposalViewModel(p, locale));
+}
+
+/**
+ * Map the wire `delivery` OUTCOME → the inbox CONFIRMATION model (the legibility
+ * contract, G-QA rule #3). PURE + locale-agnostic: it decides the i18n KEY +
+ * the toast TONE only; the client component resolves the actual copy via
+ * next-intl (interpolating the translated channel label + masked recipient).
+ *
+ * Honest-by-construction: ONLY `state: 'sent'` maps to a `success` tone. Every
+ * non-`sent` state maps to `neutral` (already_sent — idempotent, nothing new
+ * went out) or `warning` (blocked / failed / ambiguous / no_channel — the
+ * manager must NOT read these as a send). A `state: 'sent'` with NO channel is
+ * incoherent (sent on... nothing?) → treated as `ambiguous`, never a false
+ * success. The `sent` copy splits on whether a masked recipient is present
+ * (email echoes `na***@domain`; sms/whatsapp do not) so the line stays
+ * grammatical either way.
+ */
+export function toApproveOutcome(delivery: ProposalApplyDelivery): ProposalApproveOutcome {
+  const { state, channel, recipient } = delivery;
+  const base = { state, channel, recipient } as const;
+
+  switch (state) {
+    case 'sent': {
+      // A `sent` with no channel can't be confirmed as a real send — be honest.
+      if (channel === null) {
+        return { ...base, tone: 'warning', messageKey: 'ambiguous' };
+      }
+      return {
+        ...base,
+        tone: 'success',
+        messageKey: recipient ? 'sentWithRecipient' : 'sentNoRecipient',
+      };
+    }
+    case 'already_sent':
+      return { ...base, tone: 'neutral', messageKey: 'alreadySent' };
+    case 'blocked':
+      return { ...base, tone: 'warning', messageKey: 'blocked' };
+    case 'no_channel':
+      return { ...base, tone: 'warning', messageKey: 'noChannel' };
+    case 'failed':
+    case 'ambiguous':
+      // Both mean "we can't confirm it went out" — one honest non-success line.
+      return { ...base, tone: 'warning', messageKey: 'ambiguous' };
+    default: {
+      // Exhaustiveness guard — a new wire state lands here loud, never silent.
+      const _exhaustive: never = state;
+      return {
+        state: _exhaustive,
+        channel,
+        recipient,
+        tone: 'warning',
+        messageKey: 'ambiguous',
+      };
+    }
+  }
 }

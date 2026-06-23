@@ -1086,6 +1086,12 @@
       "signed": "חתום",
       "cancelled": "בוטל"
     },
+    "view": {
+      "label": "תצוגה",
+      "attention": "צריך טיפול",
+      "fleet": "כל הפרויקטים",
+      "all": "כל הבקשות"
+    },
     "field": {
       "document": "מסמך",
       "documentPlaceholder": "בחר מסמך...",

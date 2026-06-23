@@ -1086,6 +1086,12 @@
       "signed": "Signed",
       "cancelled": "Cancelled"
     },
+    "view": {
+      "label": "View",
+      "attention": "Needs attention",
+      "fleet": "All projects",
+      "all": "All requests"
+    },
     "field": {
       "document": "Document",
       "documentPlaceholder": "Pick a document...",

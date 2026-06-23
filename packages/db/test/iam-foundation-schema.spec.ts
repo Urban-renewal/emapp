@@ -121,7 +121,7 @@ const EXPECTED: Record<string, string[]> = {
   ],
   // manager: ALL operational PLUS the manager-only proposals.* family PLUS member
   // administration (invite/update/remove) — owner-approved Gate-2/Gate-6 grant
-  // (migration 0053 + the proposals grant 0082). NOT roles.*, NOT org.*.
+  // (migration 0053 + the proposals grant 0083). NOT roles.*, NOT org.*.
   manager: [...operational, ...PROPOSALS, 'members.invite', 'members.update', 'members.remove'],
   agent: operational.filter(
     (p) =>

@@ -1,4 +1,4 @@
--- ════════════════ 0082 · proposals.* permission family (Approval Inbox) ═════
+-- ════════════════ 0083 · proposals.* permission family (Approval Inbox) ═════
 -- Owner-directed authz tightening. Introduces the `proposals.*` permission
 -- family and grants it to the manager-and-above system roles so the
 -- Approval-Inbox controller (apps/api/src/modules/proposals/proposals.controller

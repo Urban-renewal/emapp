@@ -35,15 +35,15 @@ const ALLOWLIST = new Set<string>([
   'notes/notes.controller.ts#create',
   'notes/notes.controller.ts#update',
   'notes/notes.controller.ts#archive',
-  // proposals.approve → MANAGER-ONLY scoping (autonomy Phase-1). The approve
-  // endpoint carries @RequirePermission('signature_requests.send') (a cell POLICY
-  // loosens to agents), but the delegated service method gates on `requireManager`
-  // — an agent literally cannot approve a proposal (non-manager → 403 at the
-  // service). So the fine-scoping is the manager-role check, NOT an agent
-  // capability; requireAgentCapability would be WRONG here (Phase-1 approve is
-  // manager-only by design). Re-evaluate when a `proposals.*` permission family +
-  // agent-reachable proposal kinds land (flagged in #503 / the FE-inbox slice).
-  'proposals/proposals.controller.ts#approve',
+  // proposals.approve is NO LONGER in this allowlist. #510 cut the Approval-Inbox
+  // routes over from the BORROWED `@RequirePermission('signature_requests.send')`
+  // (an agent-loosened cell) to the DEDICATED `proposals.*` family
+  // (`proposals.approve`), which is NOT agent-loosened in POLICY. The scanner
+  // therefore no longer classifies proposals#approve as an agent-write endpoint
+  // at all — an agent cannot reach it via the coarse gate (manager-and-above
+  // only). Keeping it here would now be STALE (same precedent as
+  // notifications.markRead above), which the "no stale entries" test rightly
+  // rejects.
   // parked-outbound.resolve → MANAGER-ONLY scoping (autonomy — #509 ops surface).
   // The resolve endpoint carries @RequirePermission('signature_requests.send') (a
   // cell POLICY loosens to agents), but the delegated service method gates on

@@ -25,6 +25,7 @@
 import {
   createReminderCadenceRecommender,
   createSignatureReissueRecommender,
+  createTaskWatcherRecommender,
   runProposalProducerTickGuarded,
 } from '@emapp/db';
 import {
@@ -56,10 +57,14 @@ export class ProposalProducerHandler implements IJobHandler<ProposalProducerJobP
    *    - signature-reissue (Phase 1): expiry → re-issue (internal, reversible).
    *    - reminder-cadence  (Phase 2): pending-no-response → reminder.send
    *      (governed outbound; APPROVE sends ONE reminder through the
-   *      OutboundGovernor + the M1 exactly-once ledger). */
+   *      OutboundGovernor + the M1 exactly-once ledger).
+   *    - task-watcher      (G1):      gathering-signatures project missing a
+   *      required doc type → task.create (internal, reversible; APPROVE opens a
+   *      SYSTEM-OWNED task via the existing gated tasks.create). */
   private readonly recommenders: IRecommender[] = [
     createSignatureReissueRecommender(),
     createReminderCadenceRecommender(),
+    createTaskWatcherRecommender(),
   ];
 
   async handle(_payload: ProposalProducerJobPayload, ctx: JobContext): Promise<void> {

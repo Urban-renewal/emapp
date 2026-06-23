@@ -24,6 +24,9 @@ import {
 } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { SignatureRequestsService } from '../signatures/signature-requests.service';
+import { TasksService } from '../tasks/tasks.service';
+
+import { composeMissingDocTask } from './task-watcher-copy';
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
 const FORBIDDEN = new ForbiddenException({ error: { code: 'forbidden' } });
@@ -32,6 +35,16 @@ const FORBIDDEN = new ForbiddenException({ error: { code: 'forbidden' } });
  *  execute time. Zod-parsed (no raw `unknown` access, per CLAUDE.md) — a malformed
  *  evidence blob fails closed rather than sending with a default step. */
 const ReminderEvidence = z.object({ cadenceStep: z.number().int().min(0) });
+
+/** The shape of a `task.create` (G1 TaskWatcher) proposal's evidence snapshot we
+ *  depend on at execute time. Zod-parsed (no raw `unknown`) — a malformed evidence
+ *  blob fails closed rather than creating a mis-titled task. PII-FREE by contract:
+ *  project + doc-type taxonomy + track only. */
+const MissingDocTaskEvidence = z.object({
+  condition: z.literal('missing_required_doc'),
+  projectId: z.string().uuid(),
+  missingDocType: z.string().min(1).max(50),
+});
 
 export interface ProposalListPage {
   data: ProposalView[];
@@ -76,7 +89,10 @@ export class ProposalsService {
    *  here (drop-in), so the apply path is generic, not special-cased per kind. */
   private readonly executors: Partial<Record<AutonomyActionKind, KindExecutor>>;
 
-  constructor(private readonly signatureRequests: SignatureRequestsService) {
+  constructor(
+    private readonly signatureRequests: SignatureRequestsService,
+    private readonly tasks: TasksService,
+  ) {
     this.executors = {
       // Phase-1 first producer: reissue an EXPIRED signature request AND
       // re-deliver the renewed signing link to the apartment owner. The old
@@ -140,6 +156,30 @@ export class ProposalsService {
         throw new ConflictException({
           error: { code: 'outbound_ambiguous', details: { reason: outcome.failureCode } },
         });
+      },
+      // G1 TaskWatcher: APPROVE opens a SYSTEM-OWNED task for a detected work
+      // condition (a gathering-signatures project missing a required doc type).
+      // Replays the EXISTING gated `tasks.create` VERBATIM (manager-tier + agent
+      // capability + RLS + auto-assign + audit all run unchanged); the only delta is
+      // the internal system-origin stamp ({source:'system', originRef:<dedupKey>}),
+      // which the FE DTO cannot reach. The title/body is system-composed, PII-FREE,
+      // and user-framed ("חסר נסח טאבו בפרויקט — מוצע לפתוח משימה"). The dedup key
+      // is reused as origin_ref so the tasks partial-unique
+      // (`tasks_system_origin_open_unique`) independently prevents a duplicate open
+      // system task for the same gap.
+      'task.create': async (user, proposal) => {
+        const ev = MissingDocTaskEvidence.parse(proposal.evidence);
+        const { title, description } = composeMissingDocTask(ev.missingDocType);
+        await this.tasks.create(
+          user,
+          {
+            projectId: ev.projectId,
+            title,
+            description,
+            type: 'document_followup',
+          },
+          { source: 'system', originRef: proposal.dedupKey },
+        );
       },
     };
   }

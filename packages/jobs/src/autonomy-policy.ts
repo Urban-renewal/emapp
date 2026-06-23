@@ -112,6 +112,17 @@ export const AutonomyActionKindSchema = z.enum([
   //                                Phase 1 still PROPOSES it (propose-not-execute);
   //                                the classification states what is permissible,
   //                                the executor decides when to actually run.
+  'task.create', //                 G1 TaskWatcher: open a SYSTEM-OWNED task for a
+  //                                detected work condition (e.g. a gathering-
+  //                                signatures project missing a required doc type).
+  //                                INTERNAL (no send) + REVERSIBLE (archive the
+  //                                task) + NON-PII (project/doc-type ids only). By
+  //                                THE ONE BOUNDARY this is autoExecute-ELIGIBLE,
+  //                                but G1 ships PROPOSE-AND-CONFIRM — the producer
+  //                                emits a DRAFT and the executor only creates the
+  //                                task on the manager's APPROVE (auto-execution is
+  //                                a future owner opt-in; same pattern as
+  //                                signature_request.reissue above).
 
   // ── Outbound (always propose-then-confirm; never auto, charter §1) ────────
   'reminder.send', //               a signature-reminder email/SMS to an owner
@@ -241,6 +252,22 @@ const ACTION_TABLE: Record<AutonomyActionKind, ActionSpec> = {
     // autoExecute-ELIGIBLE — but Phase 1 ships propose-not-execute, so the
     // producer emits it as a DRAFT and the executor only runs it on human
     // APPROVE. The classification is the permission ceiling, not the trigger.
+    internal: true,
+    reversible: true,
+    pii: false,
+    outbound: false,
+    consentRequired: false,
+    rateBucket: 'internal',
+  },
+  'task.create': {
+    // Open a SYSTEM-OWNED task for a detected work condition (G1 TaskWatcher).
+    // INTERNAL (no email/SMS leaves the system), REVERSIBLE (archive un-does it),
+    // and NON-PII (the title/body + evidence carry project/apartment/doc-type ids
+    // and counts only — never owner national_id/phone/name; the executor composes a
+    // PII-free, user-framed title). By THE ONE BOUNDARY this is autoExecute-ELIGIBLE
+    // — but G1 ships propose-AND-confirm: the producer drafts it and the executor
+    // only creates the task on a human APPROVE (auto-execute is a future owner
+    // opt-in). The classification is the permission ceiling, not the trigger.
     internal: true,
     reversible: true,
     pii: false,

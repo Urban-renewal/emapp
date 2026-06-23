@@ -80,6 +80,7 @@ export * from './helpers/proposals';
 export * from './helpers/proposal-producer';
 export * from './helpers/recommenders/signature-reissue.recommender';
 export * from './helpers/recommenders/reminder-cadence.recommender';
+export * from './helpers/recommenders/task-watcher.recommender';
 export * from './helpers/outbound-governor';
 export * from './helpers/org-suspension';
 export * from './helpers/notifications';

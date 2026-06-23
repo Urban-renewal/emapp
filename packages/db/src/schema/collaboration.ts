@@ -114,6 +114,18 @@ export const tasks = pgTable(
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id),
+    // G1 (Autonomous Master Plan, TaskWatcher) — the SYSTEM-OWNED task namespace.
+    // 'user' (default) = a human authored it through the normal UI; 'system' = the
+    // autonomy engine created it on a manager's APPROVE of a `task.create` proposal.
+    // Pinned by a CHECK (migration 0082). Set ONLY by the gated executor, never by a
+    // request body (CreateTaskInput stays strict + does not expose it), so the tasks
+    // RLS/authorship policy is unchanged.
+    source: text('source').notNull().default('user'),
+    // The producing condition's deterministic dedup key (e.g.
+    // 'task.create:missing-doc:<projectId>:land_registry'). NULL for human tasks.
+    // A partial UNIQUE on (org_id, origin_ref) WHERE source='system' AND open dedups
+    // auto-create + lets the future auto-close find the row. PII-FREE.
+    originRef: text('origin_ref'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -139,6 +151,13 @@ export const tasks = pgTable(
       .on(table.orgId, table.createdAt.desc(), table.id.desc())
       .where(sql`archived_at IS NULL`),
     priorityCheck: check('tasks_priority_range', sql`${table.priority} BETWEEN 1 AND 3`),
+    // G1 — at most ONE open (non-archived) system task per origin condition. Dedups
+    // auto-create + lets the future auto-close find the row. Human tasks (origin_ref
+    // NULL) are never constrained. Mirrors migration 0082.
+    systemOriginOpenUnique: uniqueIndex('tasks_system_origin_open_unique')
+      .on(table.orgId, table.originRef)
+      .where(sql`source = 'system' AND origin_ref IS NOT NULL AND archived_at IS NULL`),
+    sourceCheck: check('tasks_source_valid', sql`${table.source} IN ('user', 'system')`),
   }),
 );
 

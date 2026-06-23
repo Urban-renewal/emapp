@@ -38,6 +38,19 @@ export interface TaskListPage {
   page: { limit: number; cursor: string | null; has_more: boolean };
 }
 
+/**
+ * G1 — the internal system-origin stamp for {@link TasksService.create}. Set ONLY
+ * by the proposals executor on a manager's APPROVE of a `task.create` proposal;
+ * never reachable from a request body (it is a method param, not a DTO field). When
+ * present with `source:'system'` the created row is a SYSTEM-OWNED task whose
+ * `origin_ref` is the producing condition's deterministic dedup key (dedups
+ * auto-create + anchors the future auto-close).
+ */
+export interface TaskOrigin {
+  source: 'system';
+  originRef: string;
+}
+
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
 
 function toTask(r: typeof tasks.$inferSelect): Task {
@@ -315,8 +328,18 @@ export class TasksService {
    * the creator a freshly-created task would VANISH from its creator's
    * view. The assignee `Set` de-dups, so a creator who also appears in
    * `input.assigneeIds` still yields exactly ONE `task_assignees` row.
+   *
+   * G1 (Autonomous Master Plan, TaskWatcher) — `origin` is an OPTIONAL, internal
+   * stamp ({@link TaskOrigin}) set ONLY by the proposals executor when a manager
+   * APPROVES a `task.create` proposal, marking the row SYSTEM-OWNED
+   * (`source='system'`) with the producing condition's dedup key as `origin_ref`.
+   * It is NOT part of the FE `CreateTask` DTO (which stays `.strict()`), so a
+   * request body can never claim a system source — the authorship policy is
+   * unchanged. Every other gate (manager/agent capability, RLS, auto-assign, audit)
+   * runs identically; the only delta is the two stamped columns + the audit
+   * `actorType` reflecting the system origin.
    */
-  async create(user: AccessTokenPayload, input: CreateTask): Promise<Task> {
+  async create(user: AccessTokenPayload, input: CreateTask, origin?: TaskOrigin): Promise<Task> {
     // P5 slice 2 / D-O7 — recipients for the task_assigned notification, resolved
     // INSIDE the create tx (an org-scoped read, satisfying the producer's
     // recipient∈org invariant) but EMITTED after commit. Declared here to survive
@@ -350,6 +373,11 @@ export class TasksService {
             scheduledAt: input.scheduledAt ?? null,
             location: input.location ?? null,
             createdBy: user.sub,
+            // G1 — system-owned task stamp (defaults to a human-authored 'user'
+            // task; the FE DTO cannot reach this). origin_ref dedups auto-create +
+            // anchors the future auto-close.
+            source: origin?.source ?? 'user',
+            originRef: origin?.originRef ?? null,
           })
           .returning();
         if (!row)
@@ -370,11 +398,19 @@ export class TasksService {
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
           orgId: user.orgId,
           actorId: user.sub,
-          actorType: 'user',
+          // G1 — a system-sourced create is audited `actorType:'system'` (the
+          // autonomous-act audit convention) even though a human clicked APPROVE;
+          // actorId stays the approving manager for accountability. A normal
+          // human-authored create stays 'user'.
+          actorType: origin?.source === 'system' ? 'system' : 'user',
           action: 'task.create',
           targetTable: 'tasks',
           targetId: row.id,
-          afterState: { title: row.title, assignees: assigneeIds.length },
+          afterState: {
+            title: row.title,
+            assignees: assigneeIds.length,
+            source: row.source,
+          },
           sessionId: user.sid,
         });
         // P5 slice 2 / D-O7 — resolve task_assigned recipients through the ONE

@@ -30,9 +30,11 @@ import { OrgModule } from './modules/org/org.module';
 import { OwnersModule } from './modules/owners/owners.module';
 import { OwnershipsModule } from './modules/ownerships/ownerships.module';
 import { ParcelSetupsModule } from './modules/parcel-setups/parcel-setups.module';
+import { ParkedOutboundModule } from './modules/parked-outbound/parked-outbound.module';
 import { PortalModule } from './modules/portal/portal.module';
 import { ProjectAssignmentsModule } from './modules/project-assignments/project-assignments.module';
 import { ProjectsModule } from './modules/projects/projects.module';
+import { ProposalsModule } from './modules/proposals/proposals.module';
 import { ProviderModule } from './modules/provider/provider.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { SharesModule } from './modules/shares/shares.module';
@@ -106,6 +108,15 @@ import { QueueModule } from './queue/queue.module';
     RolesModule,
     OrgModule,
     SignaturesModule,
+    // Autonomous Master Plan, Phase 1 — Approval-Inbox BE (proposals read +
+    // approve/reject). Reuses SignatureRequestsService.reissueExpired verbatim as
+    // the first kind executor. FE inbox is a separate follow-on slice.
+    ProposalsModule,
+    // Autonomous Master Plan — PARKED-OUTBOUND ops surface (#509 observability
+    // gap). Manager-facing read + resolve over outbound_ledger's stuck
+    // pending_send rows (ambiguous maybe-sent + stale never-settled claims) the
+    // exactly-once spine never auto-resends. MIGRATION-FREE; manager-only + RLS.
+    ParkedOutboundModule,
     QueueModule,
     ImportsModule,
     // D.37 — Phase 6.5 Provider Admin BE (read-only). Tier-isolated:

@@ -339,9 +339,13 @@ charter, the human-confirm floors, and PROPOSE-FREELY/EXECUTE-NARROWLY bind them
 ### MUST-FIX before any engine code
 
 **M1 — Outbound is exactly-once, not "ledger-then-send" (root of duplicate-SMS).**
-Every outbound carries a deterministic idempotency key = `proposal_id + recipient + cadence_step`;
-the `outbound_ledger` row has a UNIQUE constraint on it (proven idiom: `import_jobs.idempotency_key
-UNIQUE`). Ledger row states are explicit: `pending_send -> sent -> failed`. The OutboundGovernor
+Every outbound carries a deterministic idempotency key = `recipient + cadence_step` (NOT
+`proposal_id` — the exactly-once unit is per recipient+step, STABLE across re-proposals, so a
+re-PROPOSAL of the same recipient+step collides with the parked row instead of minting a second
+send; org scope comes from the `(org_id, idempotency_key)` UNIQUE half; `proposal_id` is kept only
+as a non-key causal column). The `outbound_ledger` row has a UNIQUE constraint on it (proven idiom:
+`import_jobs.idempotency_key UNIQUE`). Ledger row states are explicit: `pending_send -> sent ->
+failed`. The OutboundGovernor
 checks for a prior terminal `sent` on the key BEFORE sending; a retry after an ambiguous failure
 re-checks delivery status, never blind-resends. "Ledger before send" gives attempt-durability, NOT
 exactly-once — the key + UNIQUE + state machine is the root fix.

@@ -188,6 +188,8 @@ section closes those, and flags the broken **D.51** citation (Q4).
 | Q8 | **Security / PII fail-closed** | RLS on every read, PII encrypted + never logged/in-title, human-confirm FLOORS, step-up gated on `owners.reveal_pii`. | `security-reviewer` (mandatory on auth/PII/RLS/export slices) + independent red-team re-verify | enforced |
 | Q9 | **Typing — no `any`** | no `any`; no `unknown` without `z.parse()`. | typecheck + CI | enforced |
 | Q10 | **A11y / contrast** | no invisible text (bare `text-muted` ban), view-source check, palette ratchet green. | CI palette test + FE DoD | enforced (FE) |
+| Q11 | **Manual real-browser QA (G-QA)** | every browser-observable change is WALKED in the owner's REAL Chrome (Claude-in-Chrome) as the role before done/merge — headless/Playwright/MSW/unit-green is "code green" only, NOT acceptance. 4-axis + interaction + console-clean. | the owner's real-Chrome walk before merge (CLAUDE.md §STANDING DELIVERY GATES G-QA) | **per-slice gate — now anchored** |
+| Q12 | **Red-team throughout + loop-until-closed (G-RT)** | every security-sensitive (and non-trivial) change gets an INDEPENDENT red-team that re-runs after EVERY fix, UNBOUNDED, until it can no longer break it; builder's own @security PASS is necessary-not-sufficient; verify red-team claims vs real code. | independent red-team agent, looped (CLAUDE.md §STANDING DELIVERY GATES G-RT) | **per-change gate — now anchored** |
 
 For Q1/Q6 to be truly enforced (not just documented), the per-slice green-gate brief must
 DEMAND the number / the trace in the PR description — the same way the browser-smoke DoD

@@ -28,8 +28,10 @@ import {
   CreateShareInput,
   CreateExternalShareInput,
   ExtendExternalShareInput,
+  ExternalPartyAccessQuery,
   ListExternalSharesQuery,
   UpdateExternalShareInput,
+  ListProposalsQuery,
   CreateTaskInput,
   ListApartmentsQuery,
   ListAuditQuery,
@@ -111,6 +113,10 @@ import {
   ListConversationsQuery,
   ListMessagesQuery,
   SendMessageInput,
+  // Autonomous Master Plan — PARKED-OUTBOUND ops surface (#509 observability gap).
+  ListParkedOutboundQuery,
+  CountParkedOutboundQuery,
+  ResolveParkedOutboundInput,
 } from '@emapp/shared-types';
 import type { ZodTypeAny } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -840,6 +846,121 @@ const ENDPOINTS: Endpoint[] = [
   },
   {
     method: 'GET',
+    path: '/api/v1/external-shares/:id/documents/:documentId/access',
+    auth: 'AuthGuard + TenantGuard',
+    summary:
+      'SEC-H1 — FAIL-CLOSED party-share document-retrieval authz decision: the ONE shared resolver consumes external_shares (expiry-on-every-request / revocation / scope-membership / allow_sensitive / OTP / watermark) and returns allow+serve-constraints OR deny+coarse-reason. RLS org isolation; sensitive bytes ⇒ requiresDecryptStream (never a presigned URL). Deny reasons are PII-free.',
+    request: ExternalPartyAccessQuery,
+    response:
+      '{ "data": { "allow": true, "constraints": { "requiresDecryptStream": bool, "watermarkSubject": "string|null" } } | { "allow": false, "reason": "share_revoked|share_expired|documents_not_granted|download_not_granted|out_of_scope|sensitive_not_allowed|otp_required|document_not_servable" } }',
+    errors: ['validation_error', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  // Autonomous Master Plan, Phase 1 — Approval-Inbox (proposals). Manager-only
+  // (service requireManager). Phase-1 kind = signature_request.reissue.
+  {
+    method: 'GET',
+    path: '/api/v1/proposals',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'List PENDING autonomy proposals for the org, newest-first, keyset-paginated. Optional ?kind filter. Evidence is the snapshot taken at emit (never recomputed). PII-free. RLS org isolation. This is the data the FE Approval Inbox renders.',
+    request: ListProposalsQuery,
+    response:
+      '{ "data": [ {Proposal} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'forbidden',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/proposals/:id/approve',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'APPROVE a pending proposal: re-assert classify(kind) at execute time (the boundary is re-checked), then replay the EXISTING gated domain method for the kind (signature_request.reissue → reissueExpired, internal re-mint, no send). On success the row flips → applied + a system-attributed audit row. Non-pending → 409. No auto-apply.',
+    response: '{ "data": { ...Proposal } }',
+    errors: [
+      'forbidden',
+      'not_found',
+      'proposal_not_pending',
+      'proposal_kind_not_executable',
+      'signature_request_not_reissuable',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/proposals/:id/reject',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'REJECT a pending proposal: flip → rejected + audit. Releases the dedup key so the condition can be re-proposed later. Non-pending → 409.',
+    response: '{ "data": { ...Proposal } }',
+    errors: [
+      'forbidden',
+      'not_found',
+      'proposal_not_pending',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  // Autonomous Master Plan — PARKED-OUTBOUND ops surface (#509 observability
+  // gap). Manager-only (service requireManager). Reads/updates the EXISTING
+  // outbound_ledger table (MIGRATION-FREE). PII-free: recipient_ref is the
+  // signature_request id ONLY.
+  {
+    method: 'GET',
+    path: '/api/v1/parked-outbound',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'List the outbound_ledger rows STUCK pending_send needing human attention: PARKED-AMBIGUOUS (failure_code NOT NULL — provider threw/timed out, the SMS MAY have gone out) + STALE-CRASHED (failure_code NULL AND older than ?staleMinutes — a claim that never settled). Newest-first, keyset-paginated. Optional ?reason filter (ambiguous|stale). PII-FREE: ids/channel/failure_code/created_at only, never phone/email/owner. RLS org isolation. These rows are NEVER auto-resent (M1 exactly-once).',
+    request: ListParkedOutboundQuery,
+    response:
+      '{ "data": [ {ParkedOutbound} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'forbidden',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/parked-outbound/count',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'Count the parked outbound rows per bucket (ambiguous + stale + total) for the manager attention badge. ?staleMinutes overrides the stale window (default 15). PII-free. RLS org isolation.',
+    request: CountParkedOutboundQuery,
+    response: '{ "data": { "ambiguous": int, "stale": int, "total": int } }',
+    errors: ['validation_error', 'forbidden', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/parked-outbound/:id/resolve',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      "RESOLVE a parked outbound row after the manager checks the provider dashboard. Body { outcome: 'sent' | 'failed' }. 'sent' (it DID go out) → terminal sent: a DELIVERY NO-OP, records the truth, triggers NO send, preserves exactly-once. 'failed' (it did NOT go out) → terminal failed, which is RE-CLAIMABLE so the reminder retries the SAME step through the FULL governed path (never from here). Atomic + audited + status-guarded (WHERE status='pending_send') so it can't race a concurrent governor settle. Non-pending → 409.",
+    request: ResolveParkedOutboundInput,
+    response: '{ "data": { "id": "uuid", "status": "sent|failed" } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'parked_not_pending',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'GET',
     path: '/api/v1/tasks',
     auth: 'AuthGuard + TenantGuard',
     summary:
@@ -1545,7 +1666,7 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/projects/:id/signature-progress/apartments/:apartmentId/holdouts',
     auth: 'AuthGuard + TenantGuard (projects.read; FINE view_owner_pii capability gate in service)',
     summary:
-      'E2 Wave-2 B4 — apartment HOLDOUTS ("מי תקוע / who\'s stuck"): the NAMED list of the apartment\'s active owners who have NOT signed. The ONLY signature-progress surface returning owner NAMES → view_owner_pii-gated + audited per access (ISO A.12.4), mirroring owners reveal-pii. No-oracle 404 for cross-org / unassigned-agent / apartment-not-in-project. Each row also carries the per-APARTMENT signableDocumentId (this apartment\'s finalized agreement, else the project agreement fallback, else null) — the doc a one-click chase CREATES against so the create targets the holdout\'s OWN apartment (201, not a 409). Returns ownerId + name + apartmentNumber + signableDocumentId ONLY; NEVER national_id/phone.',
+      "E2 Wave-2 B4 — apartment HOLDOUTS (\"מי תקוע / who's stuck\"): the NAMED list of the apartment's active owners who have NOT signed. The ONLY signature-progress surface returning owner NAMES → view_owner_pii-gated + audited per access (ISO A.12.4), mirroring owners reveal-pii. No-oracle 404 for cross-org / unassigned-agent / apartment-not-in-project. Each row also carries the per-APARTMENT signableDocumentId (this apartment's finalized agreement, else the project agreement fallback, else null) — the doc a one-click chase CREATES against so the create targets the holdout's OWN apartment (201, not a 409). Returns ownerId + name + apartmentNumber + signableDocumentId ONLY; NEVER national_id/phone.",
     response:
       '{ "data": { "holdouts": [ {ApartmentHoldout: ownerId, name, apartmentNumber, signableDocumentId} ] } }',
     errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
@@ -1967,11 +2088,21 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/documents/remediation-sweep',
     auth: 'AuthGuard + TenantGuard (documents.update; agent fine gate manage_documents)',
     summary:
-      'FL-5 (V13) — נסח/tabu BACKFILL REMEDIATION SWEEP (closes the #450 HIGH follow-up). Re-runs the DH3 classifier over the ORG\'s PRE-EXISTING documents using each row\'s STORED metadata (filename + declared mime — NO content fetch, no PII read) and re-types the UNAMBIGUOUS tabu/נסח docs (confidence >= REMEDIATION_MIN_CONFIDENCE) to land_registry, DERIVING sensitive=true (TURN-ON ONLY — sensitivity is never weakened). DRY-RUN BY DEFAULT: dryRun absent/true ⇒ REPORTS the proposed transitions and commits NOTHING; an EXPLICIT dryRun:false applies them. IDEMPOTENT: already-land_registry docs are excluded from the candidate set, so a re-run is a no-op (the apply UPDATE also re-asserts the pre-state in its WHERE). Org-scoped via withTenant (RLS — never reaches another org); 10/min throttle. The report carries counts + a bounded sample of {documentId, type/sensitive transition, confidence, content-free reason} — NO filename, NO content, NO PII; an apply writes a metadata-only document.remediation_reclassify audit row per doc.',
+      "FL-5 (V13) — נסח/tabu BACKFILL REMEDIATION SWEEP (closes the #450 HIGH follow-up). Re-runs the DH3 classifier over the ORG's PRE-EXISTING documents using each row's STORED metadata (filename + declared mime — NO content fetch, no PII read) and re-types the UNAMBIGUOUS tabu/נסח docs (confidence >= REMEDIATION_MIN_CONFIDENCE) to land_registry, DERIVING sensitive=true (TURN-ON ONLY — sensitivity is never weakened). DRY-RUN BY DEFAULT: dryRun absent/true ⇒ REPORTS the proposed transitions and commits NOTHING; an EXPLICIT dryRun:false applies them. IDEMPOTENT: already-land_registry docs are excluded from the candidate set, so a re-run is a no-op (the apply UPDATE also re-asserts the pre-state in its WHERE). Org-scoped via withTenant (RLS — never reaches another org); 10/min throttle. The report carries counts + a bounded sample of {documentId, type/sensitive transition, confidence, content-free reason} — NO filename, NO content, NO PII; an apply writes a metadata-only document.remediation_reclassify audit row per doc.",
     request: RemediationSweepInput,
     response:
       '{ "data": { "applied": false, "scanned": 120, "candidates": 3, "sample": [ { "documentId": "uuid", "fromType": "other", "toType": "land_registry", "wasSensitive": false, "willBeSensitive": true, "confidence": 0.9, "reason": "filename_nesach" } ] } }',
     errors: ['validation_error', 'forbidden', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/documents/board-completeness',
+    auth: 'AuthGuard + TenantGuard (documents.read)',
+    summary:
+      "PARTY-BINDER board completeness (binder slice 2) — per-BINDER-PARTY REQUIRED-vs-RECEIVED across the WHOLE board scope (the caller's org; for an AGENT restricted to active project assignments), computed SERVER-SIDE over ALL the scope's projects + ALL their non-archived documents in one aggregate pass (two index-bounded queries, no N+1). Closes the FE bug where completeness was derived from a single 25-doc keyset page while counting requirements across every project (bogus \"0/21\"). A \"required slot\" is a (project, requiredType) pair per the project's track (REQUIRED_DOC_TYPES_BY_TRACK); a slot is RECEIVED when a non-archived doc of that type exists for that project (canonical doc_scope='project'+doc_scope_id OR legacy project_id); slots roll up to a party via providerPartyForDocType. withTenant→RLS org-isolation + (agent) assigned-project scoping is the boundary. Counts + doc-type KEYS only — NO PII, NO document ids/names.",
+    response:
+      '{ "data": { "byParty": [ { "party": "owner|appraiser|architect|municipality|contractor|lawyer|supervisor|surveyor|other", "required": int, "received": int, "isComplete": bool, "hasRequirement": bool, "missingTypes": [ { "type": "DocumentType" } ] } ], "unmetParties": ["party"], "hasAnyRequirement": bool, "allRequirementsMet": bool } }',
+    errors: ['missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'GET',
@@ -2393,10 +2524,10 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/signature-requests',
     auth: 'AuthGuard + TenantGuard (signature_requests.read)',
     summary:
-      'List signature requests, cursor-paginated. Underlying-document visibility scoping in the service.',
+      'List signature requests, cursor-paginated. Underlying-document visibility scoping in the service. Optional filters: status, documentId, ownerId, projectId (scopes the flat list to one project; honors agent record-scoping). Rows are enriched SignatureRequestListItems — projectName/apartmentLabel/documentName (non-PII display context) + ownerDisplay, the owner NAME, MASKED-BY-DEFAULT and revealed only behind view_owner_pii (manager always · agent iff the flag · viewer never); national_id/phone never appear.',
     request: ListSignatureRequestsQuery,
     response:
-      '{ "data": [ {SignatureRequest} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+      '{ "data": [ {SignatureRequestListItem} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
     errors: [
       'validation_error',
       'invalid_cursor',

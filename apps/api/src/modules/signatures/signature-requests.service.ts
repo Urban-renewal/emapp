@@ -8,16 +8,19 @@ import {
   buildEmailFrom,
   buildings,
   documents,
+  governOutboundSend,
   owners,
   ownerships,
   projectAssignments,
   projects,
   signatureRequests,
   withTenant,
+  type GovernedSendOutcome,
   type IEmailProvider,
   type ISMSProvider,
   type TenantTx,
 } from '@emapp/db';
+import { DEFAULT_OUTBOUND_GATES, QuietHoursGate, type OutboundGate } from '@emapp/jobs';
 import type {
   CreateSignatureRequest,
   BulkCreateSignatureRequest,
@@ -26,11 +29,13 @@ import type {
   SignatureCampaignInput,
   SignatureCampaignResponse,
   SignatureRequest,
+  SignatureRequestListItem,
   SignatureRequestCreateResponse,
   SignatureRequestLinkResponse,
   SignatureDeliveryReport,
   RemindPendingResponse,
   ListSignatureRequestsQueryDto,
+  ProposalApplyDelivery,
 } from '@emapp/shared-types';
 import {
   BadRequestException,
@@ -44,7 +49,10 @@ import {
 } from '@nestjs/common';
 import { and, eq, gt, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 
-import { requireAgentCapability } from '../../common/authz/agent-capabilities';
+import {
+  requireAgentCapability,
+  resolveOwnerPiiFidelity,
+} from '../../common/authz/agent-capabilities';
 import {
   decodeCursor,
   encodeCursor,
@@ -55,6 +63,9 @@ import { getOrgSettings } from '../../common/org-settings.resolver';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { SMS_PROVIDER } from '../auth/tenant/otp.service';
 import { EMAIL_PROVIDER } from '../members/invite-email';
+import { notificationLink } from '../notifications/notification-links';
+import { resolveNotificationRecipients } from '../notifications/notification-recipients';
+import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 import { StatsCacheService } from '../projects/stats-cache.service';
 
 import { deliverSignatureLink } from './signature-link-delivery';
@@ -62,9 +73,11 @@ import { SignatureTokenService } from './signature-token.service';
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
 
-/** Manager-side list page envelope (D.16 + keyset pagination). */
+/** Manager-side list page envelope (D.16 + keyset pagination). Slice-2: rows
+ *  are enriched `SignatureRequestListItem`s (display context + masked-default
+ *  owner name) rather than the bare forensic `SignatureRequest`. */
 export interface SignatureRequestListPage {
-  data: SignatureRequest[];
+  data: SignatureRequestListItem[];
   page: { limit: number; cursor: string | null; has_more: boolean };
 }
 
@@ -91,6 +104,128 @@ function didAnyChannelDeliver(d: SignatureDeliveryReport): boolean {
   const went = (c: { available: boolean; status?: string }): boolean =>
     c.available && (c.status === 'sent' || c.status === 'queued' || c.status === 'ready');
   return went(d.email) || went(d.sms) || went(d.whatsapp);
+}
+
+/**
+ * The `cadenceStep` for a REISSUE-on-approve send (must be >= 0 — the
+ * `outbound_ledger_cadence_step_nonneg` CHECK). The OutboundGovernor's M1
+ * idempotency key is `recipientRef:cadenceStep`.
+ *
+ * EXACTLY-ONCE FOR REISSUE: the uniqueness comes ENTIRELY from `recipientRef`,
+ * which we set to the PROPOSAL id (NOT the signature_request id). Two consequences:
+ *   - NO COLLISION WITH CADENCE: a `reminder.send` keys on
+ *     `recipientRef = signatureRequestId`; a proposalId is a DIFFERENT UUID, so the
+ *     two namespaces never share a key — the cadenceStep value here is irrelevant
+ *     to cadence dedup, and `0` is the safe CHECK-satisfying constant.
+ *   - PER-APPROVAL UNIT: each reissue approval is its own proposal → its own key →
+ *     it delivers; a retried in-flight approve re-enters with the SAME proposalId →
+ *     the UNIQUE claim collides → `already_sent` (NO second send). A re-approve of
+ *     the same proposal is impossible (the state machine flips it to `applied`).
+ * (Contrast the cadence case, where proposalId is DELIBERATELY OUT of the key so a
+ * re-proposal of the SAME recipient+step collides — there the exactly-once unit is
+ * recipient+step; here it is the approval, so the proposal id IS the discriminator.)
+ */
+const REISSUE_SEND_CADENCE_STEP = 0;
+
+/**
+ * The gate pipeline for a REISSUE-on-approve send: the DEFAULT outbound gates
+ * (kill-switch · consent · breaker · rate-ceiling) MINUS QuietHoursGate.
+ *
+ * WHY quiet-hours-EXEMPT: a reissue is an EXPLICIT, on-demand human re-contact
+ * (the manager just approved "re-send this owner their renewed link"), exactly
+ * like the manual `resend` — which has NO outbound gating at all. Deferring it to
+ * 08:00 would silently re-create the very "owner doesn't get the link" gap this
+ * fix closes (nothing re-drives a quiet-hours-parked reissue), so the human's
+ * approve sends NOW. The hard protections (kill-switch off, consent withdrawn,
+ * breaker tripped, per-recipient/org ceilings) STILL apply. Derived by FILTERING
+ * the default list by reference (not re-listing it), so any future gate added to
+ * DEFAULT is automatically included here too — only quiet-hours is dropped.
+ */
+const REISSUE_SEND_GATES: readonly OutboundGate[] = DEFAULT_OUTBOUND_GATES.filter(
+  (g) => g !== QuietHoursGate,
+);
+
+/**
+ * Reason strings that denote a channel was simply NOT ATTEMPTED (no recipient on
+ * file / phone unparseable). Nothing went out on such a channel, so on its own it
+ * is a DEFINITE non-send. Kept as an explicit set so the classifier is an
+ * ALLOWLIST, not a fall-through (re-red-team #509).
+ */
+const NOT_ATTEMPTED_REASONS = new Set([
+  'no_email_on_file',
+  'no_phone_on_file',
+  'no_phone_on_file_or_unparseable',
+  'no_channel_available',
+]);
+
+/**
+ * Is this channel reason a KNOWN-STRUCTURAL decline? — the gateway received the
+ * call and explicitly refused the message (invalid number / bad creds). A true
+ * non-send → contributes to DEFINITE. Reserved ENDINGS: `_rejected` / `_declined`.
+ */
+function isStructuralDecline(reason: string): boolean {
+  return reason.endsWith('_rejected') || reason.endsWith('_declined');
+}
+
+/**
+ * Classify a NON-delivery for the OutboundGovernor's definite-vs-ambiguous axis
+ * (#506 H1, re-hardened by the #509 re-red-team). Called ONLY when
+ * `didAnyChannelDeliver` is false.
+ *
+ * THE EXACTLY-ONCE INVARIANT: this maps to `failed` (RE-CLAIMABLE → re-sent on the
+ * next approve) ONLY for a provably-did-not-send case. Anything that MIGHT have
+ * dispatched maps to `ambiguous` (parked, never auto-resent). A real SMS is money;
+ * a false `definite` is a DOUBLE-SEND.
+ *
+ * The delivery layer encodes each channel's outcome in its `reason`:
+ *   - `*_rejected` / `*_declined` → STRUCTURAL decline (gateway refused the
+ *                        message on a successful HTTP call / a 4xx client error).
+ *                        Provably did NOT go out → DEFINITE.
+ *   - `*_send_failed` / `*_ambiguous` → TRANSPORT failure (throw / 5xx / timeout /
+ *                        unparseable body). MAY have gone out → AMBIGUOUS.
+ *   - not-attempted (`no_*_on_file`, …) → nothing went out on that channel.
+ *
+ * FAIL-SAFE ALLOWLIST (the #509 fix): the whole attempt is `definite` ONLY when
+ * EVERY non-delivering channel is EITHER a known-structural decline OR a
+ * not-attempted channel — and there was nothing transport-ambiguous. ANY
+ * transport-ambiguous channel, OR ANY reason we do NOT positively recognize as
+ * structural/not-attempted, forces `ambiguous`. We never *infer* definite from the
+ * absence of a known-ambiguous marker; we require positive proof of a non-send.
+ */
+export function classifyNonDelivery(d: SignatureDeliveryReport): {
+  failureKind: 'definite' | 'ambiguous';
+  failureCode: string;
+} {
+  const channels = [d.email, d.sms, d.whatsapp];
+  // Only channels that actually failed to deliver carry a `reason` here (a
+  // delivered channel is excluded by the `didAnyChannelDeliver` precondition).
+  const reasons = channels.map((c) => c.reason ?? '').filter((r) => r.length > 0);
+
+  // (1) ANY transport-ambiguous channel → the whole attempt is AMBIGUOUS. This is
+  // the SAFE short-circuit: something may have gone out, so never auto-resend.
+  const anyAmbiguous = reasons.some((r) => r.endsWith('_send_failed') || r.endsWith('_ambiguous'));
+  if (anyAmbiguous) {
+    return { failureKind: 'ambiguous', failureCode: 'provider_send_failed' };
+  }
+
+  // (2) DEFINITE requires POSITIVE proof for EVERY non-delivering channel: each
+  // must be a known-structural decline OR a recognized not-attempted reason. If a
+  // single reason is unrecognized, we cannot prove it was a non-send → AMBIGUOUS
+  // (the contract's mandated SAFE default — never *infer* a clean retry).
+  const everyReasonProvable = reasons.every(
+    (r) => isStructuralDecline(r) || NOT_ATTEMPTED_REASONS.has(r),
+  );
+  if (!everyReasonProvable) {
+    return { failureKind: 'ambiguous', failureCode: 'provider_unknown' };
+  }
+
+  const anyStructural = reasons.some((r) => isStructuralDecline(r));
+  if (anyStructural) {
+    return { failureKind: 'definite', failureCode: 'provider_rejected' };
+  }
+  // Every channel was simply not-on-file / unavailable — nothing was attempted, so
+  // nothing went out: a DEFINITE non-send, re-claimable once a channel resolves.
+  return { failureKind: 'definite', failureCode: 'no_channel_available' };
 }
 
 /** Public-facing FE base for `/sign/:token` URLs. Falls back to a sane
@@ -123,6 +258,12 @@ export class SignatureRequestsService {
     // Optional so specs that `new SignatureRequestsService(...)` without it
     // still construct (no-op invalidation).
     @Optional() private readonly statsCache?: StatsCacheService,
+    // In-app notification PRODUCER — the LEGIBILITY signal for autonomy acts that
+    // contact someone (reissue re-delivers a renewed signing link, so the manager
+    // must see "owner re-notified", not a vanished card). OPTIONAL so specs that
+    // `new SignatureRequestsService(...)` without it still construct (the emit is
+    // best-effort and self-guards; a missing producer is a silent no-op).
+    @Optional() private readonly notifications?: NotificationsProducerService,
   ) {}
 
   /** Best-effort org-stats invalidation after a request write. Never throws
@@ -838,7 +979,8 @@ export class SignatureRequestsService {
         // remind path passes `throwIfNotPending: false` so a concurrently-signed
         // row is silently skipped instead of failing the whole fan-out.
         const payload = await this.resendOneInTx(tx, user, req, { throwIfNotPending: true });
-        if (!payload) throw new ConflictException({ error: { code: 'signature_request_not_pending' } });
+        if (!payload)
+          throw new ConflictException({ error: { code: 'signature_request_not_pending' } });
         return payload;
       },
       { userId: user.sub },
@@ -971,13 +1113,85 @@ export class SignatureRequestsService {
       } catch {
         // Delivery threw — the row was already re-minted (link refreshed); the
         // manager can retry the single request. Never log the owner's PII.
-        this.logger.error(
-          `remindProjectPending: delivery failed for request ${payload.row.id}`,
-        );
+        this.logger.error(`remindProjectPending: delivery failed for request ${payload.row.id}`);
       }
     }
 
     return { reminded, total: txOut.total };
+  }
+
+  /**
+   * GOVERNED reminder send — the autonomy Phase-2 executor's gated target
+   * (Autonomous Master Plan, Phase 2; the first GOVERNED-OUTBOUND exemplar).
+   *
+   * The proposals `reminder.send` executor calls this on APPROVE. It sends ONE
+   * reminder for ONE signature request THROUGH the OutboundGovernor:
+   *   - the pure GATE PIPELINE (kill-switch · consent · circuit-breaker ·
+   *     quiet-hours · rate-ceiling) decides allow/deny/defer;
+   *   - the M1 outbound_ledger CLAIMS the deterministic idempotency key
+   *     (proposalId + signatureRequestId + cadenceStep) BEFORE sending, so a
+   *     double-approve / retry can NEVER double-send (a prior terminal `sent` →
+   *     exactly-once no-op replay);
+   *   - on `allow` + a fresh claim, the ACTUAL send REUSES the existing gated
+   *     `resend(user, id)` verbatim (re-mint fresh link + deliver email/SMS) — the
+   *     Governor adds governance + exactly-once AROUND it, never duplicating the
+   *     send logic.
+   *
+   * The kill-switch is resolved here from `CAMPAIGN_SEND_ENABLED` (OPT-OUT:
+   * enabled unless '0'/'false') and handed to the gate — the gate is the single
+   * authoritative kill-switch check on this path (`resend` itself does not gate on
+   * it). Consent defaults to TRUE (there is no per-owner outbound opt-out registry
+   * yet — that is a documented seam the ConsentGate already accepts via the
+   * resolved snapshot; when the registry lands, resolve it here). The breaker is
+   * not yet wired to a live trip-source in Phase 2, so it defaults to NOT tripped;
+   * the gate is in the pipeline ready for the breach-loop (Phase 5).
+   *
+   * Returns the governed outcome; the executor maps a non-`sent` outcome to an
+   * exception so the proposal stays pending/actionable (per-item independence,
+   * design correction M2 — a bulk approve is never one atomic tx).
+   *
+   * NOTE on RLS/visibility: `resend(user, id)` runs under ITS OWN
+   * withTenant/RLS + agent capability checks, so a stale or out-of-scope proposal
+   * cannot drive a send the manager couldn't perform by hand (RE-EVALUATE at
+   * execute). The Governor's ledger writes are org-scoped (withTenant). */
+  async sendGovernedReminder(
+    user: AccessTokenPayload,
+    input: { proposalId: string; signatureRequestId: string; cadenceStep: number },
+  ): Promise<GovernedSendOutcome> {
+    // Resolve the kill-switch (OPT-OUT: enabled unless explicitly disabled).
+    const sendFlag = serverEnv.CAMPAIGN_SEND_ENABLED;
+    const killSwitchEnabled = sendFlag !== '0' && sendFlag !== 'false';
+
+    return governOutboundSend({
+      orgId: user.orgId,
+      proposalId: input.proposalId,
+      // Email is the primary reminder channel; the ledger key + rate bucket use
+      // it. The actual fan-out (email AND/OR sms) happens inside `resend`.
+      channel: 'email',
+      recipientRef: input.signatureRequestId,
+      cadenceStep: input.cadenceStep,
+      // Consent default — the documented seam for a future per-owner opt-out
+      // registry. ConsentGate denies when this is false.
+      recipientConsented: true,
+      killSwitchEnabled,
+      // No live breaker trip-source in Phase 2 — the gate is wired, ready.
+      breakerTripped: false,
+      now: new Date(),
+      // The ACTUAL send REUSES the existing gated resend verbatim. A non-pending
+      // request (signed/cancelled concurrently) throws ConflictException out of
+      // `resend`, which the Governor catches → settles the ledger AMBIGUOUS
+      // (parked `pending_send`, never auto-resent). On a returned non-delivery we
+      // CLASSIFY (definite vs ambiguous) so the Governor knows whether the failed
+      // ledger row is re-claimable (#506 H1). A delivered send is `sent`.
+      send: async () => {
+        const res = await this.resend(user, input.signatureRequestId);
+        if (didAnyChannelDeliver(res.delivery)) {
+          return { delivered: true, providerMessageId: res.request.id };
+        }
+        const { failureKind, failureCode } = classifyNonDelivery(res.delivery);
+        return { delivered: false, failureKind, failureCode };
+      },
+    });
   }
 
   /** Per-request resend CORE (HB-1 factor of `resend`). Inside an open tenant tx:
@@ -1041,9 +1255,7 @@ export class SignatureRequestsService {
   /** Per-request resend DELIVERY (HB-1 factor of `resend`). Runs OUTSIDE the tx —
    *  the email/SMS/WhatsApp I/O must never hold a DB transaction open. The signUrl
    *  is the only place the fresh token appears; it is NEVER logged. */
-  private deliverResendPayload(
-    payload: ResendDeliveryPayload,
-  ): Promise<SignatureDeliveryReport> {
+  private deliverResendPayload(payload: ResendDeliveryPayload): Promise<SignatureDeliveryReport> {
     return deliverSignatureLink(
       this.email,
       this.sms,
@@ -1348,7 +1560,28 @@ export class SignatureRequestsService {
   /** GET /signature-requests — Manager+Viewer see all in org; Agent sees
    *  only requests on documents whose parent project is an active
    *  assignment (record-scoping mirrors documents.list per audit-pass V
-   *  #2). Keyset pagination, optional status/document/owner filters. */
+   *  #2). Keyset pagination, optional status/document/owner/project filters.
+   *
+   *  SLICE-2 ENRICHMENT (legibility at scale): each row is returned as a
+   *  `SignatureRequestListItem` carrying DISPLAY context — `projectName` /
+   *  `apartmentLabel` / `documentName` (non-PII, same-org names the actor can
+   *  already see) and `ownerDisplay`, the owner NAME. The name is MASKED-BY-
+   *  DEFAULT and revealed ONLY behind `view_owner_pii` (manager always · agent
+   *  iff the flag · viewer never), resolved through the SINGLE source
+   *  `resolveOwnerPiiFidelity` — the EXACT gate the B4 holdouts / leverage paths
+   *  use (`projects.service.ts` — `signatureProgressHoldouts` L977 + `leverage`
+   *  L1149). A Viewer / PII-less Agent ALWAYS gets `ownerDisplay: null`;
+   *  national_id / phone are NEVER selected, returned, or logged.
+   *
+   *  TWO-STEP (keyset preserved, then enrich): the keyset PAGE is selected on the
+   *  base `signature_requests` table EXACTLY as before — same filters, same
+   *  `keysetCondition`/`keysetOrderBy` (the D.58 ms-precision helpers), same
+   *  `cur`/`encodeCursor` round-trip — so the cursor cannot regress from added
+   *  joins (the joins are in the SECOND query, never in the ranked/filtered set).
+   *  The enrichment is ONE batched lookup over the page's ≤limit (≤100) ids via
+   *  an `IN (...)` on the PK (no seq-scan) joining documents → apartment →
+   *  building → project + owners, with the name decrypt conditional on the
+   *  resolved fidelity. */
   async list(
     user: AccessTokenPayload,
     query: ListSignatureRequestsQueryDto,
@@ -1359,13 +1592,38 @@ export class SignatureRequestsService {
       throw new BadRequestException({ error: { code: 'invalid_cursor' } });
     }
 
-    const rows = await withTenant(
+    const { rows, enrichment } = await withTenant(
       user.orgId,
       async (tx) => {
         const filters: (SQL | undefined)[] = [];
         if (query.status) filters.push(eq(signatureRequests.status, query.status));
         if (query.documentId) filters.push(eq(signatureRequests.documentId, query.documentId));
         if (query.ownerId) filters.push(eq(signatureRequests.ownerId, query.ownerId));
+
+        // SLICE-2 — optional projectId filter, resolved through the SAME
+        // document→project resolution the agent scoping uses (direct project_id
+        // OR via apartment → building → project). Bound to SQL as an EXISTS on
+        // the request's document. Because it is ANDed with the agent-scoping
+        // EXISTS below, an agent supplying a projectId they are NOT assigned to
+        // simply matches no rows (empty page) — it can NEVER surface another
+        // project's requests (it is an additional restriction, never a widening).
+        if (query.projectId) {
+          const inDirectProject = sql<boolean>`EXISTS (
+            SELECT 1
+            FROM documents d
+            WHERE d.id = ${signatureRequests.documentId}
+              AND d.project_id = ${query.projectId}::uuid
+          )`;
+          const inProjectViaApartment = sql<boolean>`EXISTS (
+            SELECT 1
+            FROM documents d
+            JOIN apartments a ON a.id = d.apartment_id
+            JOIN buildings b ON b.id = a.building_id
+            WHERE d.id = ${signatureRequests.documentId}
+              AND b.project_id = ${query.projectId}::uuid
+          )`;
+          filters.push(or(inDirectProject, inProjectViaApartment));
+        }
 
         // Agent record-scoping via the underlying document. Same shape
         // as documents.service.list (audit-pass V #2): two EXISTS
@@ -1396,12 +1654,22 @@ export class SignatureRequestsService {
           ? keysetCondition(signatureRequests.createdAt, signatureRequests.id, cur)
           : undefined;
 
-        return tx
+        const pageRows = await tx
           .select()
           .from(signatureRequests)
           .where(and(...filters, keyset))
           .orderBy(...keysetOrderBy(signatureRequests.createdAt, signatureRequests.id))
           .limit(limit + 1);
+
+        // The cursor/has_more set is the +1-row window; enrich ONLY the rows we
+        // will actually return (≤ limit) so the join cost is bounded.
+        const returned = pageRows.length > limit ? pageRows.slice(0, limit) : pageRows;
+        const enrichment = await this.enrichListRows(
+          tx,
+          user,
+          returned.map((r) => r.id),
+        );
+        return { rows: pageRows, enrichment };
       },
       { userId: user.sub },
     );
@@ -1410,13 +1678,120 @@ export class SignatureRequestsService {
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
     const last = pageRows[pageRows.length - 1];
     return {
-      data: pageRows.map((r) => this.toWire(r)),
+      data: pageRows.map((r) => {
+        const e = enrichment.get(r.id);
+        return {
+          ...this.toWire(r),
+          projectName: e?.projectName ?? null,
+          apartmentLabel: e?.apartmentLabel ?? null,
+          documentName: e?.documentName ?? null,
+          ownerDisplay: e?.ownerDisplay ?? null,
+        };
+      }),
       page: {
         limit,
         cursor: hasMore && last ? encodeCursor(last) : null,
         has_more: hasMore,
       },
     };
+  }
+
+  /** SLICE-2 — batched display-context enrichment for a page of list rows.
+   *
+   *  ONE query over the page's request ids (an `IN (...)` on the PK — no
+   *  seq-scan) LEFT JOINs the request's document → (apartment → building) →
+   *  project and the owner, returning the display columns:
+   *    - `documentName`   = documents.name (NON-PII)
+   *    - `apartmentLabel` = apartments.number — the doc's apartment, or the
+   *                         project-scoped doc's apartment is null (NON-PII)
+   *    - `projectName`    = projects.name resolved via the doc's DIRECT project,
+   *                         else via apartment → building → project (NON-PII)
+   *    - `ownerDisplay`   = pgp_sym_decrypt(owner name) — ONLY when `reveal`
+   *                         (view_owner_pii); else NULL. national_id / phone are
+   *                         NEVER selected.
+   *
+   *  PII gate: `resolveOwnerPiiFidelity` (the SINGLE source — manager always ·
+   *  agent iff view_owner_pii · viewer/never else). `reveal === false` ⇒ the
+   *  name decrypt is not even emitted into the SQL (a literal NULL), so the
+   *  cleartext never leaves Postgres for a masked caller. LEFT JOINs so a
+   *  scope-less document / archived apartment yields nulls (the row still shows,
+   *  with neutral display context) rather than dropping the request. RLS scopes
+   *  every joined table to the org via the caller's withTenant tx. */
+  private async enrichListRows(
+    tx: TenantTx,
+    user: AccessTokenPayload,
+    requestIds: string[],
+  ): Promise<
+    Map<
+      string,
+      {
+        projectName: string | null;
+        apartmentLabel: string | null;
+        documentName: string | null;
+        ownerDisplay: string | null;
+      }
+    >
+  > {
+    const out = new Map<
+      string,
+      {
+        projectName: string | null;
+        apartmentLabel: string | null;
+        documentName: string | null;
+        ownerDisplay: string | null;
+      }
+    >();
+    if (requestIds.length === 0) return out;
+
+    // PII fidelity decision (mirrors B4 holdouts / leverage). Manager always
+    // unmasked; agent iff view_owner_pii; viewer/anyone-else masked.
+    const fidelity = await resolveOwnerPiiFidelity(tx, user);
+    const reveal = fidelity === 'unmasked';
+
+    // The id-set predicate is built via drizzle's `inArray` (correct per-element
+    // parameterisation — a raw `= ANY(${jsArray})` would render a record tuple,
+    // not a uuid[]). The base table is UN-aliased so `inArray(signatureRequests
+    // .id, …)` renders `"signature_requests"."id"` consistently. `sr.id = ANY`
+    // is replaced by this `IN (...)` form; it is still PK-indexed (no seq-scan).
+    const idIn = inArray(signatureRequests.id, requestIds);
+    const result = await tx.execute<{
+      id: string;
+      project_name: string | null;
+      apartment_label: string | null;
+      document_name: string | null;
+      owner_name: string | null;
+    }>(sql`
+      SELECT
+        ${signatureRequests.id} AS id,
+        COALESCE(dp.name, ap.name) AS project_name,
+        a.number AS apartment_label,
+        d.name AS document_name,
+        ${
+          reveal
+            ? sql`pgp_sym_decrypt(ow.name_encrypted, current_setting('app.encryption_key'))::text`
+            : sql`NULL::text`
+        } AS owner_name
+      FROM ${signatureRequests}
+      LEFT JOIN documents d ON d.id = ${signatureRequests.documentId}
+      LEFT JOIN projects dp ON dp.id = d.project_id
+      LEFT JOIN apartments a ON a.id = d.apartment_id
+      LEFT JOIN buildings b ON b.id = a.building_id
+      LEFT JOIN projects ap ON ap.id = b.project_id
+      LEFT JOIN owners ow ON ow.id = ${signatureRequests.ownerId} AND ow.erased_at IS NULL
+      WHERE ${idIn}
+    `);
+
+    for (const row of result.rows) {
+      out.set(row.id, {
+        projectName: row.project_name,
+        apartmentLabel: row.apartment_label,
+        documentName: row.document_name,
+        // Defensive: only surface the name when revealed AND non-null. For a
+        // masked caller `owner_name` is the SQL literal NULL already.
+        ownerDisplay: reveal ? (row.owner_name ?? null) : null,
+      });
+    }
+    return out;
   }
 
   /** GET /signature-requests/:id — single row.
@@ -1511,6 +1886,303 @@ export class SignatureRequestsService {
     // a harmless extra bump). Invalidate the org's stats.
     await this.invalidateStats(user.orgId);
     return this.toWire(row);
+  }
+
+  /** Reissue an EXPIRED signature request — the autonomy Phase-1 executor's
+   *  gated target (Autonomous Master Plan: expiry → re-issue). Re-mint a fresh
+   *  token (new jti + new 7-day expiry) and flip the row `expired` → `pending`,
+   *  WITHOUT any email/SMS send. This is the INTERNAL, REVERSIBLE half of the
+   *  reissue (the outbound send is Phase 2's cadence loop) — exactly the
+   *  `signature_request.reissue` AutonomyPolicy kind (internal + reversible +
+   *  non-PII). The prior dead link's jti is overwritten; the new jti is the one
+   *  live credential. NO token is returned (no out-of-band delivery here — the
+   *  manager re-sends via the existing resend/getLink paths if/when they choose).
+   *
+   *  AUTHZ — mirrors the send/getLink path: agent document-visibility (404) +
+   *  manage_signatures capability (403); manager passes both. The executor only
+   *  calls this AFTER re-asserting `classify(kind)` at execute time (the boundary
+   *  is re-checked), and the human has APPROVED the proposal — so this is never an
+   *  unattended send.
+   *
+   *  STATE: only an `expired` request is reissuable. A pending/signed/cancelled
+   *  request 409s (`signature_request_not_reissuable`) — there is nothing lapsed
+   *  to revive (the proposal that targeted it is stale; the executor cleans up). */
+  async reissueExpired(user: AccessTokenPayload, id: string): Promise<SignatureRequest> {
+    const row = await withTenant(
+      user.orgId,
+      async (tx) => {
+        const [existing] = await tx
+          .select({
+            id: signatureRequests.id,
+            documentId: signatureRequests.documentId,
+            ownerId: signatureRequests.ownerId,
+            status: signatureRequests.status,
+          })
+          .from(signatureRequests)
+          .where(eq(signatureRequests.id, id))
+          .limit(1);
+        if (!existing) throw NOT_FOUND;
+        // D.46 — agent: document must be in an assigned project (404), then the
+        // manage_signatures capability (403). Gate BEFORE minting.
+        if (user.role === 'agent')
+          await this.assertDocVisibleForAgent(tx, user, existing.documentId);
+        await requireAgentCapability(tx, user, 'manage_signatures');
+
+        if (existing.status !== 'expired') {
+          throw new ConflictException({
+            error: { code: 'signature_request_not_reissuable' },
+          });
+        }
+
+        // Re-mint a fresh token for the SAME request (new jti + new expiry).
+        const { jti, expiresAt } = this.tokenService.sign({
+          sub: existing.id,
+          orgId: user.orgId,
+          documentId: existing.documentId,
+          ownerId: existing.ownerId,
+        });
+        // Atomic refresh — only if STILL expired (race vs a concurrent reissue).
+        const [updated] = await tx
+          .update(signatureRequests)
+          .set({ jti, expiresAt, status: 'pending' })
+          .where(and(eq(signatureRequests.id, id), eq(signatureRequests.status, 'expired')))
+          .returning();
+        if (!updated) {
+          throw new ConflictException({
+            error: { code: 'signature_request_not_reissuable' },
+          });
+        }
+
+        // Audit the reissue distinctly. actorType stays 'user' — the human
+        // APPROVED it; the proposal id + system origin are recorded in the
+        // proposal row + the proposals executor's own audit. NO PII, no token.
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'signature_request.reissue',
+          targetTable: 'signature_requests',
+          targetId: updated.id,
+          sessionId: user.sid,
+        });
+        return updated;
+      },
+      { userId: user.sub },
+    );
+    // Reissue revives a request into the pending pool — invalidate stats.
+    await this.invalidateStats(user.orgId);
+    return this.toWire(row);
+  }
+
+  /**
+   * Reissue an EXPIRED request AND re-deliver the renewed signing link to the
+   * apartment owner — the autonomy `signature_request.reissue` proposal's APPROVE
+   * action (the gap fix). The prior `reissueExpired` ONLY re-minted + flipped
+   * expired→pending with NO send, so the owner who must sign received a fresh link
+   * they NEVER GOT and the manager saw only a vanished inbox card. This method
+   * closes that loop: the owner is ACTUALLY re-contacted, and the OUTCOME is
+   * returned (masked channel + recipient) so the inbox shows "renewed + owner
+   * re-notified" instead of nothing.
+   *
+   * TWO BOUNDARY-HONEST HALVES (the autonomy classification keeps them distinct):
+   *   1. `reissueExpired(user, signatureRequestId)` — the INTERNAL re-mint
+   *      (`signature_request.reissue`: internal · reversible · non-PII · NO send).
+   *      Flips expired→pending + audits. Unchanged; reused VERBATIM.
+   *   2. A GOVERNED-OUTBOUND send (the `link.reissue.send` class: outbound +
+   *      consent) THROUGH `governOutboundSend` — the SAME M1 exactly-once ledger +
+   *      gate pipeline the `reminder.send` executor uses. The actual send REUSES
+   *      the existing gated `resend(user, id)` (re-mint fresh link + deliver
+   *      email/SMS) as the thunk; the Governor adds governance + exactly-once
+   *      AROUND it, never duplicating the send. PII (owner name/email/phone) is
+   *      held in-memory only inside `resend`'s delivery step and never logged.
+   *
+   * WHY IMMEDIATE (not deferred-to-cadence): an explicit human APPROVE of a
+   * reissue is exactly the `resend` precedent — the manager pressed a button to
+   * re-contact this owner NOW. The reminder-cadence producer (#506) only operates
+   * on ALREADY-pending requests via SEPARATE `reminder.send` proposals; deferring
+   * the reissue's send to it would leave the owner uncontacted until a SECOND,
+   * unrelated human approval lands. So delivery happens here, on approve.
+   *
+   * EXACTLY-ONCE: the Governor's ledger key is `recipientRef:cadenceStep`. We use
+   * `recipientRef = proposalId` (each reissue approval is its own send-unit) and a
+   * dedicated `REISSUE_SEND_CADENCE_STEP` sentinel that can NEVER collide with a
+   * cadence reminder's step. A retried in-flight approve re-enters with the SAME
+   * proposalId → the UNIQUE claim collides → `already_sent` (NO second send). A
+   * LATER reissue of the same request is a NEW proposal → a new key → it delivers.
+   * A re-approve of the same proposal is impossible (the state machine flips it to
+   * `applied`). So no double-send from any retry/double-approve path.
+   *
+   * KILL-SWITCH / CONSENT: resolved here from `CAMPAIGN_SEND_ENABLED` (OPT-OUT)
+   * and handed to the gate — the same posture as `sendGovernedReminder`. A
+   * kill-switch-off / consent-withdrawn org gets `blocked` (NO send, NO ledger
+   * row); the re-mint already happened (reversible) and the manager retries when
+   * the condition lifts.
+   *
+   * NOTIFICATION (legibility): after the send result is known, a best-effort
+   * in-app notification fans out to the org's managers + the request's project
+   * agents — "owner re-notified" — deep-linked to the document. It NEVER fails the
+   * apply (self-guarded producer); a notify failure is logged (no PII) only.
+   */
+  async reissueAndDeliver(
+    user: AccessTokenPayload,
+    input: { signatureRequestId: string; proposalId: string },
+  ): Promise<{ request: SignatureRequest; delivery: ProposalApplyDelivery }> {
+    // (1) INTERNAL re-mint — reuse the existing gated path VERBATIM. It enforces
+    // its own withTenant/RLS + agent visibility/capability + the expired-only
+    // state guard, audits `signature_request.reissue`, and flips expired→pending.
+    // A non-expired request 409s out of here (the proposal stays pending).
+    const request = await this.reissueExpired(user, input.signatureRequestId);
+
+    // (2) GOVERNED-OUTBOUND send of the renewed link (the `link.reissue.send`
+    // class). The Governor claims the M1 key, runs the gates, and on allow+claim
+    // calls the thunk — which REUSES the gated `resend` (re-mint + deliver). A
+    // non-pending request (raced sign/cancel) throws out of `resend` → the
+    // Governor parks the ledger row AMBIGUOUS (never auto-resent).
+    const sendFlag = serverEnv.CAMPAIGN_SEND_ENABLED;
+    const killSwitchEnabled = sendFlag !== '0' && sendFlag !== 'false';
+
+    let lastReport: SignatureDeliveryReport | null = null;
+    const outcome = await governOutboundSend({
+      orgId: user.orgId,
+      proposalId: input.proposalId,
+      // Email is the primary channel for the ledger key + rate bucket; the actual
+      // fan-out (email AND/OR sms) happens inside `resend`.
+      channel: 'email',
+      // The reissue APPROVAL is the exactly-once unit (see header) — key on the
+      // proposal id, NOT the request id, so distinct reissues each deliver while a
+      // retried same-approve collides → already_sent.
+      recipientRef: input.proposalId,
+      cadenceStep: REISSUE_SEND_CADENCE_STEP,
+      // Consent defaults TRUE — same documented seam as sendGovernedReminder (no
+      // per-owner outbound opt-out registry yet; ConsentGate denies when false).
+      recipientConsented: true,
+      killSwitchEnabled,
+      breakerTripped: false,
+      now: new Date(),
+      // Quiet-hours-EXEMPT (see REISSUE_SEND_GATES): an explicit human approve is
+      // an on-demand re-contact, not a cadence reminder. All other gates apply.
+      gates: REISSUE_SEND_GATES,
+      send: async () => {
+        const res = await this.resend(user, input.signatureRequestId);
+        lastReport = res.delivery;
+        if (didAnyChannelDeliver(res.delivery)) {
+          return { delivered: true, providerMessageId: res.request.id };
+        }
+        const { failureKind, failureCode } = classifyNonDelivery(res.delivery);
+        return { delivered: false, failureKind, failureCode };
+      },
+    });
+
+    const delivery = this.summarizeReissueDelivery(outcome, lastReport);
+
+    // (3) LEGIBILITY — best-effort in-app notification "owner re-notified". Fully
+    // isolated: a notify failure NEVER fails the apply (the owner was already
+    // contacted). Only fired when a channel actually carried the link.
+    if (delivery.delivered) {
+      await this.notifyReissueDelivered(user, input.signatureRequestId, request.documentId);
+    }
+
+    return { request, delivery };
+  }
+
+  /** Map a governed-outbound outcome + the per-channel report into the MINIMAL,
+   *  PII-bounded `ProposalApplyDelivery` wire shape the inbox renders.
+   *
+   *  PII BOUNDARY (security review fix): the per-channel `report` is consumed HERE
+   *  only — to pick which channel carried it + the MASKED email recipient — and is
+   *  DELIBERATELY NOT placed on the returned shape. The report's
+   *  `whatsapp.deepLink` embeds the RAW phone + the LIVE signing token; surfacing
+   *  it on the proposal-approve response would leak a bearer credential onto the
+   *  inbox surface. Only `delivered/state/channel/recipient` (recipient masked for
+   *  email, `null` for sms/whatsapp) leave this method. */
+  private summarizeReissueDelivery(
+    outcome: GovernedSendOutcome,
+    report: SignatureDeliveryReport | null,
+  ): ProposalApplyDelivery {
+    switch (outcome.result) {
+      case 'sent': {
+        // Pick the channel that actually carried it (email first, then sms, then
+        // the manager-driven whatsapp deep-link). `report` is present on a `sent`.
+        // Email is the ONLY channel that echoes a recipient — and ONLY the
+        // already-`maskEmail`'d form (`report.email.to`). sms/whatsapp → null
+        // (the phone is PII and the whatsapp deepLink carries the live token).
+        if (report?.email.available && report.email.status) {
+          return {
+            delivered: true,
+            state: 'sent',
+            channel: 'email',
+            recipient: report.email.to ?? null,
+          };
+        }
+        if (report?.sms.available && report.sms.status) {
+          return { delivered: true, state: 'sent', channel: 'sms', recipient: null };
+        }
+        if (report?.whatsapp.available) {
+          return { delivered: true, state: 'sent', channel: 'whatsapp', recipient: null };
+        }
+        return { delivered: true, state: 'sent', channel: null, recipient: null };
+      }
+      // The M1 no-op replay (a prior terminal `sent` for this proposal's key): the
+      // owner was ALREADY contacted by the original attempt — surface it as such,
+      // not a failure.
+      case 'already_sent':
+        return { delivered: false, state: 'already_sent', channel: null, recipient: null };
+      // A gate denied/deferred (kill-switch off / consent withdrawn / breaker /
+      // ceiling): NO send happened. The re-mint stands; retry later.
+      case 'blocked':
+        return { delivered: false, state: 'blocked', channel: null, recipient: null };
+      // A DEFINITE non-send (no channel on file / provider rejection).
+      case 'failed':
+        return { delivered: false, state: 'failed', channel: null, recipient: null };
+      // AMBIGUOUS — provider threw/timed out; the send MAY have gone out. Surface
+      // a DISTINCT "needs manual check" state, never a false success.
+      case 'ambiguous':
+        return { delivered: false, state: 'ambiguous', channel: null, recipient: null };
+      default:
+        return { delivered: false, state: 'no_channel', channel: null, recipient: null };
+    }
+  }
+
+  /** Best-effort "owner re-notified" in-app notification for a delivered reissue.
+   *  Recipients resolved via the single D-O7 source (managers + project agents),
+   *  the actor (the approver) excluded. Self-guarded: never throws into the apply.
+   *  NO PII — the document name is same-org already-visible; no owner identity. */
+  private async notifyReissueDelivered(
+    user: AccessTokenPayload,
+    signatureRequestId: string,
+    documentId: string,
+  ): Promise<void> {
+    if (!this.notifications) return;
+    try {
+      // Resolve the doc's project (for the agent fan-out) + recipients in ONE
+      // org-scoped tx; resolveNotificationRecipients enforces recipient∈org.
+      const recipients = await withTenant(
+        user.orgId,
+        async (tx) => {
+          const doc = await this.loadVisibleDocument(tx, documentId);
+          return resolveNotificationRecipients(tx, user.orgId, {
+            projectId: doc.projectId,
+            actorUserId: user.sub,
+          });
+        },
+        { userId: user.sub },
+      );
+      if (recipients.length === 0) return;
+      await this.notifications.emitMany(recipients, {
+        orgId: user.orgId,
+        type: 'signature_received',
+        title: 'קישור החתימה חודש ונשלח מחדש',
+        body: 'בעל/ת הדירה קיבל/ה מחדש את קישור החתימה לאחר שפג תוקפו.',
+        link: notificationLink.document(documentId),
+        metadata: { signatureRequestId },
+      });
+    } catch (e: unknown) {
+      // A notification must NEVER fail the apply — the owner was already
+      // contacted. Log the failure TYPE only (no PII, no ids of value).
+      this.logger.warn(
+        `reissue notify failed (req=${signatureRequestId}): ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+    }
   }
 
   /** Agent-only visibility helper for `get()`. Same shape as

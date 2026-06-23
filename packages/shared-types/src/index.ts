@@ -49,6 +49,13 @@ export * from './role';
 export * from './org-settings';
 export * from './document';
 export * from './signature-request';
+// Autonomous Master Plan, Phase 1 — Approval-Inbox proposal wire shapes
+// (pending list + approve/reject). PII-free evidence by contract.
+export * from './proposal';
+// Autonomous Master Plan — PARKED-OUTBOUND ops surface (#509 observability gap).
+// Manager-facing read over outbound_ledger + a manager-RESOLVE action for the
+// maybe-sent (ambiguous) / never-settled (stale) rows. PII-free by contract.
+export * from './parked-outbound';
 export * from './import';
 // D.37 — Phase 6.5 Provider Admin BE (read-only). Tier-isolated wire
 // shapes for /api/v1/provider/* endpoints. NEVER share fields with the

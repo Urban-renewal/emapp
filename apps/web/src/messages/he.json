@@ -141,6 +141,7 @@
   },
   "nav": {
     "home": "ראשי",
+    "inbox": "החלטות ממתינות",
     "projects": "פרויקטים",
     "owners": "בעלי דירות",
     "imports": "ייבוא",
@@ -167,6 +168,36 @@
     "tagline": "התחדשות עירונית",
     "navLandmark": "ניווט ראשי",
     "sectionTools": "ניהול וכלים"
+  },
+  "inbox": {
+    "title": "החלטות ממתינות",
+    "pendingLead": "{count, plural, one {החלטה אחת ממתינה לך} two {שתי החלטות ממתינות לך} other {# החלטות ממתינות לך}}",
+    "subtitle": "לפי הכללים שלך — מוכן לאישורך. כל החלטה היא שלך, בלחיצה אחת.",
+    "reject": "דחה",
+    "next": "הבא",
+    "resetToFirstPage": "חזרה לתחילת הרשימה",
+    "empty": {
+      "title": "אין החלטות ממתינות — הכל מסודר",
+      "hint": "כשתוכן יידרש לאישורך, הוא יופיע כאן."
+    },
+    "toast": {
+      "approved": "אושר — הפעולה בוצעה",
+      "rejected": "ההצעה נדחתה",
+      "failed": "הפעולה נכשלה — אפשר לנסות שוב"
+    },
+    "delivery": {
+      "sentWithRecipient": "החתימה חודשה — הבעלים קיבל קישור חדש ב{channel} ({recipient})",
+      "sentNoRecipient": "החתימה חודשה — הבעלים קיבל קישור חדש ב{channel}",
+      "alreadySent": "כבר נשלח — לא נשלח קישור חדש",
+      "blocked": "לא נשלח — חסום לפי הכללים שלך",
+      "noChannel": "אין ערוץ ליצירת קשר עם הבעלים — לא נשלח",
+      "ambiguous": "ייתכן שלא נשלח — מומלץ לבדוק",
+      "channel": {
+        "email": "דוא״ל",
+        "sms": "SMS",
+        "whatsapp": "וואטסאפ"
+      }
+    }
   },
   "errorBoundary": {
     "title": "משהו השתבש",
@@ -832,6 +863,39 @@
       "withMissing": "{count} מסמכים · חסרים {missing} מסמכי-חובה",
       "allClear": "{count} מסמכים · כל מסמכי החובה קיימים"
     },
+    "board": {
+      "orientation": {
+        "allEmpty": "עדיין לא נאסף אף מסמך · התחילו בהעלאה מאחד הגורמים",
+        "allFilled": "הכל מסודר — לכל הגורמים הפעילים יש מסמכים",
+        "someEmpty": "כמעט הכל מסודר — טרם התקבלו מסמכים מ{parties}",
+        "someUnmet": "כמעט הכל מסודר — טרם התקבלו מסמכי-חובה מ{parties}",
+        "twoParties": "{first} ו{second}",
+        "manyParties": "{first} ועוד {count}"
+      },
+      "open": "פתיחת המסמכים של {party}",
+      "ghost": "טרם התקבלו מסמכים",
+      "missing": "חסר: {types}",
+      "gist": {
+        "count": "{count} מסמכים",
+        "latest": "{count} מסמכים · האחרון {when}",
+        "allReceived": "{count} מסמכים · כל מסמכי החובה התקבלו",
+        "someMissing": "{received} מתוך {required} התקבלו · חסר: {types}"
+      },
+      "complete": "הושלם",
+      "completeness": "{received} מתוך {required} מסמכי-חובה התקבלו",
+      "back": "חזרה לגורמים"
+    },
+    "party": {
+      "owner": "בעלים",
+      "appraiser": "שמאי",
+      "architect": "אדריכל",
+      "municipality": "עירייה",
+      "contractor": "קבלן",
+      "lawyer": "עו״ד",
+      "supervisor": "מפקח",
+      "surveyor": "מודד",
+      "other": "כללי / אחר"
+    },
     "group": {
       "unassigned": "ללא שיוך לפרויקט",
       "projectFallback": "פרויקט",
@@ -1021,6 +1085,12 @@
       "pending": "ממתין",
       "signed": "חתום",
       "cancelled": "בוטל"
+    },
+    "view": {
+      "label": "תצוגה",
+      "attention": "צריך טיפול",
+      "fleet": "כל הפרויקטים",
+      "all": "כל הבקשות"
     },
     "field": {
       "document": "מסמך",

@@ -171,6 +171,19 @@ export class DocumentsController {
     return { data: await this.documents.remediationSweep(user, body) };
   }
 
+  // Binder slice 2 — PARTY-BINDER board completeness. Per-PARTY required-vs-
+  // received across the WHOLE board scope (org, or an agent's assigned projects),
+  // computed SERVER-SIDE over ALL the scope's projects + docs (the FE cannot —
+  // the board is keyset-paginated; a single page would mis-count). Counts +
+  // doc-type keys only — NO PII, NO ids/names. Same coarse `documents.read` gate
+  // as list; RLS + the agent project-scoping are the boundary (in the service).
+  // Declared BEFORE @Get(':id') so the literal path is not captured as an :id.
+  @Get('board-completeness')
+  @RequirePermission('documents.read')
+  async boardCompleteness(@CurrentUser() user: AccessTokenPayload) {
+    return { data: await this.documents.boardCompleteness(user) };
+  }
+
   @Get(':id')
   @RequirePermission('documents.read')
   async get(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {

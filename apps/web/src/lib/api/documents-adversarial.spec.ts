@@ -182,6 +182,51 @@ describe('Documents upload — presigned URL handling', () => {
     // Caller said image/jpg, R2 sees image/jpeg.
     expect((init?.headers as Record<string, string>)['Content-Type']).toBe('image/jpeg');
   });
+
+  it('B7-FE1) uploadToPresigned SENDS If-None-Match + x-amz-checksum-sha256 when guards are passed', async () => {
+    // The BE signs these headers INTO the presigned URL (signableHeaders); the
+    // PUT MUST send the same values or R2 rejects (412 / SignatureDoesNotMatch).
+    // This proves the client side of the B7 control — the control is only closed
+    // when the URL carries the headers AND the client sends them.
+    const spy = vi.fn(() => Promise.resolve(jsonResp(200, ''))) as unknown as typeof fetch;
+    globalThis.fetch = spy as unknown as typeof fetch;
+    const checksumB64 = 'kAUKBQU=' + 'A'.repeat(36); // arbitrary base64 stand-in
+    await uploadToPresigned('https://r2/x', new Blob(['x']), 'application/pdf', {
+      createOnly: true,
+      contentSha256Base64: checksumB64,
+    });
+    const init = (spy as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0]?.[1];
+    const headers = init?.headers as Record<string, string>;
+    expect(headers['If-None-Match'], 'create-only header must be sent to R2').toBe('*');
+    expect(headers['x-amz-checksum-sha256'], 'checksum header must be sent to R2').toBe(checksumB64);
+  });
+
+  it('B7-FE2) uploadToPresigned omits the guard headers when none are requested (legacy path unchanged)', async () => {
+    const spy = vi.fn(() => Promise.resolve(jsonResp(200, ''))) as unknown as typeof fetch;
+    globalThis.fetch = spy as unknown as typeof fetch;
+    await uploadToPresigned('https://r2/x', new Blob(['x']), 'application/pdf');
+    const headers = (
+      (spy as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0]?.[1]
+        ?.headers as Record<string, string>
+    );
+    expect(headers['If-None-Match']).toBeUndefined();
+    expect(headers['x-amz-checksum-sha256']).toBeUndefined();
+  });
+
+  it('B7-FE3) hexSha256ToBase64 converts a hex digest to base64-of-raw the way the BE binds it', async () => {
+    const { hexSha256ToBase64 } = await import('./documents');
+    // The BE does Buffer.from(hex,'hex').toString('base64'); the FE must produce
+    // the IDENTICAL string so the sent checksum == the signed checksum.
+    const hex = 'a'.repeat(64);
+    const expected = Buffer.from(hex, 'hex').toString('base64');
+    expect(hexSha256ToBase64(hex), 'FE base64 must equal the BE-bound base64').toBe(expected);
+    // A real sha256 (mixed bytes), not just repeated.
+    const real = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08';
+    expect(hexSha256ToBase64(real)).toBe(Buffer.from(real, 'hex').toString('base64'));
+    // Non-canonical input degrades to '' (safe — mirrors the BE's degrade).
+    expect(hexSha256ToBase64('not-hex')).toBe('');
+    expect(hexSha256ToBase64('abc')).toBe('');
+  });
 });
 
 describe('Documents sha256 + finalize', () => {

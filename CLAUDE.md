@@ -140,6 +140,118 @@ Trigger: this DoD was added after S1 shipped a login form that submitted
 credentials via GET URL because the SSR HTML had no `method="post"`. RTL
 unit tests passed; the bug was caught by user inspection of view-source.
 
+\## ===== STANDING DELIVERY GATES (every implementation — never skip, never forget) =====
+
+These are NON-NEGOTIABLE and apply to EVERY slice / feature / fix / refactor — forever,
+not per-task. A task is "done" ONLY when ALL of these pass; NEVER report "done" or merge
+before they do. They are anchored HERE (not in memory) so no agent — including future
+ones — re-derives or forgets them. Cross-ref: `docs/MASTER-PLAN-INDEX.md` §2.5 (the
+per-slice gate table) + `docs/ENGINEERING-CHARTER.md`.
+
+\### G-QA — Manual real-browser QA (every browser-observable change)
+
+Before "done"/merge, the change is WALKED in the owner's REAL Chrome (Claude-in-Chrome
+MCP) against the running app, AS the actual role — NOT headless, NOT Playwright, NOT MSW,
+NOT unit-green. Those are "code green" ONLY; they are NOT acceptance. The real-browser
+walk IS the gate: dev-login as the role, exercise the interaction, confirm the 5 axes
+(Network all 2xx / URL / Cookies / Redirect / **Latency <1s warm**), the rendered result,
+and a clean console (dev-HMR noise excepted). A subagent only produces code-green; the
+real-Chrome walk is MANDATORY before merge and is the owner's standard. This SUPERSEDES the
+"OR Playwright" option in the FE DoD above — Playwright is a regression net, not the
+acceptance gate.
+
+**LATENCY IS A FIRST-CLASS ACCEPTANCE AXIS (owner 2026-06-23, anchored — "otherwise we lose
+the customer").** EVERY browser-observable action — navigation, click, submit — MUST complete
+in **under 1 second warm**. MEASURE it on every walk (Chrome Network timing / API
+`responseTime` in the boot log), never by feel. A warm interaction ≥1s is a **FAIL** that
+blocks merge — root-cause it (host disk full → even /health 0.9s; dev→Neon RTT → run
+`DB_TARGET=local`; redundant/duplicate FE fetches; N+1 queries) and fix before merge. ONE
+cold first-hit webpack-compile spike is the only excepted case, and it MUST be explicitly
+distinguished from a warm regression (re-hit the route and confirm the 2nd call is <1s) — do
+NOT wave a slow interaction away as "compile" without re-measuring. Report the measured ms
+per interaction in the walk evidence, not "felt fast". (Backup: memory
+`feedback_sub_second_interaction_budget`.)
+
+**OUTCOME, NOT MECHANICS — acceptance is the real-world EFFECT, end-to-end (owner 2026-06-23,
+anchored).** A 2xx + optimistic UI update + a refetch is the ACTOR's MECHANICAL confirmation;
+it is NOT acceptance. For ANY state-changing action, the walk MUST verify the action's PURPOSE
+actually happened, end-to-end, for EVERY party it affects — generically, for every action:
+
+1. **Propagation to the affected party.** If approving a proposal reissues a signature request
+   to an apartment owner, LOG IN AS that owner (or inspect their real surface) and confirm they
+   ACTUALLY received it. "The actor saw 201" proves the API ran — NOT that the recipient got
+   anything. Verify the downstream artifact exists where the affected party would see it.
+2. **Notifications actually fire.** If an action should alert a party (bell, SMS, email,
+   inbox), confirm the alert REALLY appears for the recipient (check the bell as them; check
+   the outbound/notification record). A silent state change that should have notified is a FAIL.
+3. **Effect legibility — the situation picture must VISIBLY change.** After the action a human
+   must grasp the NEW state AT A GLANCE. If "everything looks the same" and the only evidence
+   the action happened is a network 201, **the UI FAILED — that's a blocker, not a pass.** State
+   changes must be visible, distinguishable, and self-explaining (what changed, why I'm seeing
+   it, what's next), per the per-role situation-picture-at-a-glance north-star.
+4. **Verify the negative / no silent half-apply:** the actor's view, the affected party's view,
+   and the counters/ledgers/notifications all moved CONSISTENTLY — not one without the others.
+
+**SCALE-READY, MODERN COLLECTIONS (owner 2026-06-23, anchored).** Any list/collection of domain
+entities (signatures, projects, owners, documents, proposals) MUST be designed for HIGH SCALE
+from the start — NOT a flat, undifferentiated "wall" of rows/cards that only reads at demo size.
+At hundreds/thousands of items it must stay scannable + prioritized: grouping, what-needs-
+attention-first, at-a-glance status, progressive disclosure / zoom-in, sort/filter — consistent
+with the situation-picture-at-a-glance north-star (calm, system-manages-by-rules, one-click-
+confirm, zoom-in). A "flat wall" that works only at demo scale is a FAIL, even if every row is
+individually correct.
+
+\### G-RT — Red-team THROUGHOUT + loop-until-closed (every security-sensitive change; default-on for any non-trivial implementation)
+
+An INDEPENDENT red-team (NOT the builder, NOT the builder's own @security PASS) tries to
+BYPASS the change from every angle. It runs THROUGHOUT the implementation and RE-RUNS
+after EVERY fix, looping UNBOUNDED — as many rounds as it takes — until the red-team
+confirms the issue is closed from ALL directions (the owner: "infinite loop is fine by me
+until the solution is found"). The builder's self-review is necessary, NEVER sufficient
+(fox guarding the henhouse). A red-team can ALSO over-state — verify its claim against the
+real code/contract before fixing. Only after the red-team can no longer break it does the
+work go to the owner for HIS final acceptance (he is the LAST gate, not the first). Report
+the attack matrix tried-and-failed, not just "fixed".
+
+\### G-WHOLE — Verify yourself + the big picture
+
+Own holistic quality on EVERY change: SOLID/seams, sub-second latency, error-handling +
+fail-closed, observability, generic-not-special-cased, root-cause-not-plaster. Don't make
+the owner find the gap. These are the flow — re-derive nothing.
+
+\### Dispatch rule (so agents don't forget)
+
+EVERY build/fix agent dispatch MUST carry G-QA + G-RT in its brief. When you spawn a
+builder, YOU own running the independent red-team (G-RT) after it AND the real-browser
+walk (G-QA) before merge — a dispatched task is NOT complete on the agent's word alone.
+The agent reports code-green; YOU close the gates.
+
+\## ===== EXECUTION POSTURE (bias to action — do NOT be over-cautious; the plan is CLOSED, BUILD it) =====
+
+The STANDING DELIVERY GATES above are about QUALITY (never lower the bar). This is about
+VELOCITY (never stall). The owner's repeated #1 frustration: stopping / parking / waiting for
+approval when the right move is to keep building. Anchored HERE (not memory) so it isn't forgotten.
+
+1. **BIAS HARD TO ACTION.** If something is built + gate-passed (G-RT CLOSED + CI green + G-QA
+   where applicable), MERGE it — do not park it for "final approval." A red-team-CLOSED, CI-green
+   PR has NO open ends; merging it IS the instruction, not a decision to defer to the owner.
+2. **KEEP THE PIPELINE FULL.** Never end a step with "done, awaiting you" when the plan has a next
+   buildable slice. The moment one slice merges, dispatch the next — no idle gaps. A heartbeat tick
+   that finds buildable work BUILDS it; it does not just report status.
+3. **ONLY genuinely-irreversible INFRA/LEGAL/DEPLOY actions wait for the owner:** prod deploy
+   timing, prod data backfills / migrations on live data, KMS / secret provisioning, R2 bucket
+   config, DPO / legal sign-offs, sending real outbound to real recipients. For THOSE: PREPARE
+   everything (runbook, the exact command/PR) so it's one-click for him — don't perform the
+   irreversible act, but never leave it un-prepared either.
+4. **The plan is CLOSED** (`docs/MASTER-PLAN-INDEX.md` — 85/85 + the design-readiness corrections).
+   The job now is to IMPLEMENT it **systematically + thoroughly**, slice by slice in dependency
+   order, running independent tracks **in PARALLEL to shorten total time** — WITHOUT lowering the
+   quality gates. Shorten wall-clock via parallelism + tight pipelines, never via skipped gates.
+5. **Distinguish "over-cautious parking" (forbidden) from "genuinely owner-gated" (#3 only).** When
+   unsure which, default to ACTION for anything reversible/buildable; reserve waiting for the true
+   infra/legal/deploy set. Do NOT invent justifications to wait. If you catch yourself explaining
+   why a merge/build is "probably fine but I'll wait" — that's the bug; proceed.
+
 \## ===== AUTOPILOT PROTOCOL =====
 
 \### Multi-agent heartbeats (per-track, append-only)

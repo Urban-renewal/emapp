@@ -29,9 +29,25 @@ export interface EmailMessage {
   attachments?: readonly EmailAttachment[];
 }
 
+/**
+ * Same exactly-once taxonomy as the SMS provider (#509 re-red-team):
+ *   - `sent` / `queued` — accepted by the provider.
+ *   - `rejected`        — STRUCTURAL decline (provider received the call and
+ *                         refused the message: invalid address, suppressed,
+ *                         malformed). Provably did NOT go out → DEFINITE.
+ *   - `failed`          — TRANSPORT-AMBIGUOUS (5xx / timeout / the call could
+ *                         have dispatched before failing). MAY have gone out →
+ *                         AMBIGUOUS → parked, never auto-resent.
+ *
+ * A provider that cannot tell a 5xx from a structural decline (e.g. the current
+ * `ResendClient` shape only surfaces `{ message }`, no status code) emits
+ * `rejected` for any returned error and relies on the THROW path (caught in the
+ * delivery layer → `*_send_failed`) to cover true transport failures. When a
+ * provider CAN see the status code, it MUST emit `failed` for 5xx/timeouts.
+ */
 export interface EmailDeliveryResult {
   id: string;
-  status: 'sent' | 'queued' | 'rejected';
+  status: 'sent' | 'queued' | 'rejected' | 'failed';
   error?: string;
 }
 

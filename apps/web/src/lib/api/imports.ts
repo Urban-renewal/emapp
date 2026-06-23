@@ -91,18 +91,40 @@ export async function createImport(body: CreateImport): Promise<ImportUploadResp
   return ImportUploadDataSchema.parse({ data: res.data }).data;
 }
 
+/** B7 anti-overwrite/anti-tamper headers the import presigned PUT must carry.
+ *  The BE signs these INTO the URL (`signableHeaders`) in imports.service
+ *  create, mirroring documents (#500), so the PUT MUST send the same values or
+ *  R2 rejects (412 PreconditionFailed / SignatureDoesNotMatch / BadDigest).
+ *  Omitted ⇒ a legacy URL with no header binding. */
+export interface PresignedPutGuards {
+  /** Sends `If-None-Match: '*'` so R2 refuses a PUT to an already-stored key
+   *  (single-shot upload; a leaked URL can't overwrite — anti-דריסה). */
+  createOnly?: boolean;
+  /** base64 of the RAW sha256 digest (NOT hex). Sent as `x-amz-checksum-sha256`
+   *  so R2 verifies the uploaded bytes hash to the create-declared value. */
+  contentSha256Base64?: string;
+}
+
 /**
  * PUT directly to the presigned URL. NOT through the proxy (the URL
  * is bound to R2's origin). `credentials: 'omit'` per v9-post-audit
  * CRITICAL — presigned URL signature IS the credential; sending
  * cookies or Authorization would either corrupt the signature or
  * leak the bearer token.
+ *
+ * B7 — the BE signs `If-None-Match: *` + `x-amz-checksum-sha256` into the URL
+ * (create-only + checksum-bound, mirroring documents #500). When those guards
+ * are supplied the PUT MUST send the exact same header values or R2 rejects the
+ * upload (412 / SignatureDoesNotMatch / BadDigest). The caller passes the SAME
+ * sha256 (base64-of-raw-digest) it declared at create so the bound checksum and
+ * the sent checksum match.
  */
 export async function uploadToPresignedXhr(
   url: string,
   blob: Blob,
   mimeType: string,
   onProgress?: (loaded: number, total: number) => void,
+  guards: PresignedPutGuards = {},
 ): Promise<void> {
   // Use XHR (not fetch) for upload-progress events — fetch doesn't
   // surface per-byte upload progress. R2 honors the standard PUT
@@ -111,6 +133,12 @@ export async function uploadToPresignedXhr(
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', url, true);
     xhr.setRequestHeader('Content-Type', mimeType);
+    // B7 — the presigned URL SIGNS these headers, so they must be present on
+    // the wire for R2 to accept the PUT and enforce create-only + checksum
+    // binding. Omitted ⇒ legacy URL, headers not signed, nothing to send.
+    if (guards.createOnly) xhr.setRequestHeader('If-None-Match', '*');
+    if (guards.contentSha256Base64)
+      xhr.setRequestHeader('x-amz-checksum-sha256', guards.contentSha256Base64);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) onProgress(e.loaded, e.total);
     };
@@ -190,4 +218,22 @@ export async function sha256OfBlob(blob: Blob): Promise<string> {
   return Array.from(new Uint8Array(hash))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+/** B7 — convert a lowercase-hex sha256 digest into the base64-of-RAW-digest
+ *  string the S3/R2 `x-amz-checksum-sha256` header expects. The BE binds the
+ *  SAME conversion into the presigned URL (Buffer.from(hex,'hex').toString('base64')),
+ *  so the sent checksum and the signed checksum match. A non-canonical /
+ *  wrong-length hash returns '' (no valid 32-byte digest) — degrades to a
+ *  checksum-less header, mirroring the BE's safe-degrade; the worker's parse
+ *  + the /start size attestation still catch any real mismatch. (Identical to
+ *  documents.ts hexSha256ToBase64 — kept local so lib/api/imports needs no
+ *  cross-module import for this one helper.) */
+export function hexSha256ToBase64(hex: string): string {
+  if (!/^[0-9a-f]{64}$/i.test(hex)) return '';
+  const bytes = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
 }

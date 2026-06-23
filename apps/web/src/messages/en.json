@@ -141,6 +141,7 @@
   },
   "nav": {
     "home": "Home",
+    "inbox": "Pending decisions",
     "projects": "Projects",
     "owners": "Owners",
     "imports": "Imports",
@@ -167,6 +168,36 @@
     "tagline": "Urban Renewal",
     "navLandmark": "Primary navigation",
     "sectionTools": "Management & Tools"
+  },
+  "inbox": {
+    "title": "Pending decisions",
+    "pendingLead": "{count, plural, one {1 decision is waiting for you} other {# decisions are waiting for you}}",
+    "subtitle": "Per your rules — ready for your approval. Each decision is yours, one click away.",
+    "reject": "Dismiss",
+    "next": "Next",
+    "resetToFirstPage": "Back to first page",
+    "empty": {
+      "title": "No pending decisions — all clear",
+      "hint": "When something needs your approval, it will appear here."
+    },
+    "toast": {
+      "approved": "Approved — the action ran",
+      "rejected": "Suggestion dismissed",
+      "failed": "The action failed — you can try again"
+    },
+    "delivery": {
+      "sentWithRecipient": "Signature renewed — the owner got a new link via {channel} ({recipient})",
+      "sentNoRecipient": "Signature renewed — the owner got a new link via {channel}",
+      "alreadySent": "Already sent — no new link went out",
+      "blocked": "Not sent — blocked per your rules",
+      "noChannel": "No way to reach the owner — nothing was sent",
+      "ambiguous": "May not have been sent — worth checking",
+      "channel": {
+        "email": "email",
+        "sms": "SMS",
+        "whatsapp": "WhatsApp"
+      }
+    }
   },
   "errorBoundary": {
     "title": "Something went wrong",
@@ -832,6 +863,39 @@
       "withMissing": "{count} documents · {missing} required documents missing",
       "allClear": "{count} documents · all required documents present"
     },
+    "board": {
+      "orientation": {
+        "allEmpty": "Nothing collected yet · start by uploading from one of the parties",
+        "allFilled": "All in order — every active party has documents",
+        "someEmpty": "Almost there — no documents yet from {parties}",
+        "someUnmet": "Almost there — required documents not yet received from {parties}",
+        "twoParties": "{first} and {second}",
+        "manyParties": "{first} and {count} more"
+      },
+      "open": "Open {party} documents",
+      "ghost": "No documents yet",
+      "missing": "Missing: {types}",
+      "gist": {
+        "count": "{count} documents",
+        "latest": "{count} documents · latest {when}",
+        "allReceived": "{count} documents · all required received",
+        "someMissing": "{received} of {required} received · missing: {types}"
+      },
+      "complete": "Complete",
+      "completeness": "{received} of {required} required documents received",
+      "back": "Back to parties"
+    },
+    "party": {
+      "owner": "Owners",
+      "appraiser": "Appraiser",
+      "architect": "Architect",
+      "municipality": "Municipality",
+      "contractor": "Contractor",
+      "lawyer": "Lawyer",
+      "supervisor": "Supervisor",
+      "surveyor": "Surveyor",
+      "other": "General / Other"
+    },
     "group": {
       "unassigned": "Not linked to a project",
       "projectFallback": "Project",
@@ -1021,6 +1085,12 @@
       "pending": "Pending",
       "signed": "Signed",
       "cancelled": "Cancelled"
+    },
+    "view": {
+      "label": "View",
+      "attention": "Needs attention",
+      "fleet": "All projects",
+      "all": "All requests"
     },
     "field": {
       "document": "Document",

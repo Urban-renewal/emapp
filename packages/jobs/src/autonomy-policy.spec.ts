@@ -52,6 +52,10 @@ const EXPECTED_AUTO_EXECUTE: readonly AutonomyActionKind[] = [
   'dedup.autoArchive.exactHash',
   'scan.reReject',
   'breach.throttle.autoExpiring',
+  // Phase-1 reissue: INTERNAL re-mint (no send) of a lapsed link — autoExecute-
+  // ELIGIBLE by the boundary (internal+reversible+non-PII+non-outbound). Phase 1
+  // still ships propose-not-execute; the classification is the permission ceiling.
+  'signature_request.reissue',
 ];
 
 describe('AutonomyPolicy — THE ONE BOUNDARY (charter §1)', () => {

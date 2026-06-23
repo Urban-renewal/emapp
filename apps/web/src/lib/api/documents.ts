@@ -19,10 +19,12 @@
  *  - 50 MB hard ceiling (also pre-checked client-side in uploadDocumentFlow).
  */
 import {
+  BoardCompletenessSchema,
   DOCUMENT_MAX_SIZE_BYTES,
   DocumentDownloadResponseSchema,
   DocumentSchema,
   DocumentUploadResponseSchema,
+  type BoardCompleteness,
   type CreateDocument,
   type Document,
   type DocumentMime,
@@ -77,6 +79,18 @@ export async function listDocuments(
   const items = z.array(DocumentSchema).parse(res.data);
   const page = PageSchema.parse(res.page);
   return { items, page };
+}
+
+const BoardCompletenessDataSchema = z.object({ data: BoardCompletenessSchema });
+
+/** GET /documents/board-completeness — per-PARTY required-vs-received over the
+ *  WHOLE board scope, computed server-side (the FE can't: the board is keyset-
+ *  paginated). Defensive Zod parse like every other wrapper (ARCHITECTURE-MAP
+ *  §1). Counts + doc-type keys only — no PII on the wire. */
+export async function getBoardCompleteness(): Promise<BoardCompleteness> {
+  const res = await apiClient.get<unknown>(`/documents/board-completeness`);
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return BoardCompletenessDataSchema.parse({ data: res.data }).data;
 }
 
 export async function getDocument(id: string): Promise<Document> {
@@ -218,7 +232,16 @@ export async function uploadDocumentFlow(args: UploadDocumentArgs): Promise<Docu
     await uploadDocumentContent(plan.contentUploadPath, args.file);
     return created.document;
   }
-  await uploadToPresigned(plan.uploadUrl, args.file, mimeType);
+  // B7 — the presigned PUT is create-only + checksum-bound (the BE signs
+  // `If-None-Match: *` and `x-amz-checksum-sha256` into the URL). The PUT MUST
+  // therefore SEND those exact headers or R2 rejects (412 / SignatureDoesNotMatch).
+  // `contentHash` is the lowercase-hex sha256 we computed above AND declared at
+  // create — convert it to the base64-of-raw-digest the S3 checksum header wants
+  // so the bound checksum and the sent checksum are the same value.
+  await uploadToPresigned(plan.uploadUrl, args.file, mimeType, {
+    createOnly: true,
+    contentSha256Base64: hexSha256ToBase64(contentHash),
+  });
   return finalizeDocument(created.document.id, {
     sizeBytes: args.file.size,
     contentHash,
@@ -362,12 +385,35 @@ export function canonicalMime(raw: string): string {
   return (MIME_CANONICALIZATION as Record<string, string>)[raw] ?? raw;
 }
 
-export async function uploadToPresigned(url: string, blob: Blob, mimeType: string): Promise<void> {
+/** B7 anti-overwrite/anti-tamper headers the presigned PUT must carry. The BE
+ *  signs these INTO the URL (`signableHeaders`), so the PUT must send the same
+ *  values or R2 rejects (412 PreconditionFailed / SignatureDoesNotMatch /
+ *  BadDigest). Omitted ⇒ legacy URL with no header binding. */
+export interface PresignedPutGuards {
+  /** Sends `If-None-Match: '*'` so R2 refuses a PUT to an already-stored key
+   *  (single-shot upload; a leaked URL can't overwrite — anti-דריסה). */
+  createOnly?: boolean;
+  /** base64 of the RAW sha256 digest (NOT hex). Sent as `x-amz-checksum-sha256`
+   *  so R2 verifies the uploaded bytes hash to the create-declared value. */
+  contentSha256Base64?: string;
+}
+
+export async function uploadToPresigned(
+  url: string,
+  blob: Blob,
+  mimeType: string,
+  guards: PresignedPutGuards = {},
+): Promise<void> {
   const canonical = canonicalMime(mimeType);
+  const headers: Record<string, string> = { 'Content-Type': canonical };
+  // B7 — the presigned URL SIGNS these headers, so they must be present on the
+  // wire for R2 to accept the PUT and enforce create-only + checksum binding.
+  if (guards.createOnly) headers['If-None-Match'] = '*';
+  if (guards.contentSha256Base64) headers['x-amz-checksum-sha256'] = guards.contentSha256Base64;
   const res = await fetch(url, {
     method: 'PUT',
     body: blob,
-    headers: { 'Content-Type': canonical },
+    headers,
     // §v9-post-audit-CRITICAL — presigned URLs are signature-bound;
     // sending cookies / Authorization to R2 would (a) corrupt the
     // signature on some configurations, and (b) leak a bearer token
@@ -407,6 +453,22 @@ export function parseDispositionFilename(header: string | null): string | null {
     return (plain[2] ?? plain[3] ?? '').trim() || null;
   }
   return null;
+}
+
+/** B7 — convert a lowercase-hex sha256 digest into the base64-of-RAW-digest
+ *  string the S3/R2 `x-amz-checksum-sha256` header expects. The BE binds the
+ *  SAME conversion into the presigned URL (Buffer.from(hex,'hex').toString('base64')),
+ *  so the sent checksum and the signed checksum match. A non-canonical / wrong-
+ *  length hash returns '' (no valid 32-byte digest) — degrades to a checksum-less
+ *  header, mirroring the BE's safe-degrade; finalize's storage-attested gate
+ *  still catches any real mismatch fail-closed. */
+export function hexSha256ToBase64(hex: string): string {
+  if (!/^[0-9a-f]{64}$/i.test(hex)) return '';
+  const bytes = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
 }
 
 /** Compute SHA-256 of a Blob — used as the document content hash. */

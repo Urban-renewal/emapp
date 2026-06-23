@@ -2,6 +2,7 @@ import {
   apartments,
   AuditService,
   buildings,
+  documents,
   externalShares,
   isOrgSuspended,
   PARTY_PRESET_CEILINGS,
@@ -27,7 +28,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, inArray, isNull, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 
 import {
   decodeCursor,
@@ -36,6 +37,12 @@ import {
   keysetOrderBy,
 } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
+
+import {
+  decideExternalPartyAccess,
+  isDocInShareScope,
+  type ExternalPartyDecision,
+} from './external-party-authz';
 
 export interface ExternalShareListPage {
   data: ExternalShareView[];
@@ -425,6 +432,112 @@ export class ExternalSharesService {
         if (!row) throw NOT_FOUND;
         await this.audit(tx, user, 'external_share.resend', id);
         return toView(row);
+      },
+      { userId: user.sub },
+    );
+  }
+
+  /**
+   * SEC-H1 — the party-share document RETRIEVAL authz path. Given an active
+   * external-share grant + a candidate document id (+ whether the party has
+   * completed the OTP step-up this session), FAIL-CLOSED resolves whether the
+   * party may retrieve the doc and the serve constraints, by:
+   *   1. re-reading the LIVE grant under the org's RLS (revocation + expiry are
+   *      never stale — read at retrieval, not trusted from a mint-time token);
+   *   2. resolving the doc's scope locator (project / building / apartment) +
+   *      its sensitive / encrypted / servable facts in ONE set-based RLS read;
+   *   3. handing both to the ONE shared pure resolver (`decideExternalPartyAccess`).
+   *
+   * RLS does TENANCY (a foreign-org doc is invisible → out-of-scope deny, never
+   * an oracle); the resolver does POLICY (expiry / revocation / scope / sensitive
+   * / OTP / download). Deny reasons are coarse + PII-free.
+   *
+   * NOTE (scope boundary): this is the PARTY (`external_shares`) retrieval path.
+   * It does NOT touch the live contractor `shares` + JWT tier — that cutover onto
+   * this resolver is a deliberate later step.
+   */
+  async resolveDocumentAccess(
+    user: AccessTokenPayload,
+    shareId: string,
+    documentId: string,
+    opts: { otpVerified: boolean } = { otpVerified: false },
+  ): Promise<ExternalPartyDecision> {
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        // A suspended org's grants are INERT — fail-closed (treat as revoked).
+        if (await isOrgSuspended(tx, user.orgId)) {
+          return { allow: false, reason: 'share_revoked' };
+        }
+
+        // (1) LIVE grant re-read under RLS. A missing / cross-org grant is
+        //     invisible (RLS) → fail-closed out-of-scope (no existence oracle).
+        const [share] = await tx
+          .select({
+            scopeType: externalShares.scopeType,
+            scopeIds: externalShares.scopeIds,
+            permissions: externalShares.permissions,
+            allowSensitive: externalShares.allowSensitive,
+            otpRequired: externalShares.otpRequired,
+            expiresAt: externalShares.expiresAt,
+            revokedAt: externalShares.revokedAt,
+            watermarkSubject: externalShares.watermarkSubject,
+          })
+          .from(externalShares)
+          .where(eq(externalShares.id, shareId))
+          .limit(1);
+        if (!share) return { allow: false, reason: 'out_of_scope' };
+
+        // (2) Doc facts + scope locator in ONE set-based read under RLS. The
+        //     apartment→building chain resolves the building locator (documents
+        //     hang off project_id / apartment_id only). A foreign-org or unknown
+        //     doc is invisible under RLS → out-of-scope.
+        const [doc] = await tx
+          .select({
+            sensitive: documents.sensitive,
+            bytesEncrypted: documents.bytesEncrypted,
+            projectId: documents.projectId,
+            apartmentId: documents.apartmentId,
+            buildingId: apartments.buildingId,
+            // Servable iff finalized (uploaded) + scan-clean + not archived —
+            // exactly the org/contractor serve predicate, computed in-SQL so the
+            // resolver gets a single boolean.
+            servable: sql<boolean>`(
+              ${documents.uploadedAt} IS NOT NULL
+              AND ${documents.scanStatus} = 'clean'
+              AND ${documents.archivedAt} IS NULL
+            )`,
+          })
+          .from(documents)
+          .leftJoin(apartments, eq(apartments.id, documents.apartmentId))
+          .where(eq(documents.id, documentId))
+          .limit(1);
+        if (!doc) return { allow: false, reason: 'out_of_scope' };
+
+        const inScope = isDocInShareScope(share.scopeType, share.scopeIds, {
+          projectId: doc.projectId,
+          buildingId: doc.buildingId,
+          apartmentId: doc.apartmentId,
+        });
+
+        // (3) ONE shared pure resolver — the single decision point.
+        return decideExternalPartyAccess(
+          {
+            permissions: share.permissions,
+            allowSensitive: share.allowSensitive,
+            otpRequired: share.otpRequired,
+            expiresAt: share.expiresAt,
+            revokedAt: share.revokedAt,
+            watermarkSubject: share.watermarkSubject,
+          },
+          {
+            sensitive: doc.sensitive,
+            bytesEncrypted: doc.bytesEncrypted,
+            inScope,
+            servable: doc.servable,
+          },
+          { now: new Date(), otpVerified: opts.otpVerified },
+        );
       },
       { userId: user.sub },
     );

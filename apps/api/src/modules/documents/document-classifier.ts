@@ -88,17 +88,135 @@ export const FILENAME_RULES: readonly FilenameRule[] = [
   { test: /שרטוט/u, docType: 'blueprint', confidence: 0.8, reason: 'filename_sirtut' },
   { test: /blueprint/u, docType: 'blueprint', confidence: 0.85, reason: 'filename_blueprint' },
   { test: /\.dwg$/u, docType: 'blueprint', confidence: 0.9, reason: 'filename_dwg' },
-  { test: /floor[\s_-]?plan/u, docType: 'floor_plan', confidence: 0.75, reason: 'filename_floorplan' },
+  {
+    test: /floor[\s_-]?plan/u,
+    docType: 'floor_plan',
+    confidence: 0.75,
+    reason: 'filename_floorplan',
+  },
   { test: /תשריט/u, docType: 'floor_plan', confidence: 0.7, reason: 'filename_tasrit' },
   // id_document — תעודת זהות / national-id scans.
-  { test: /תעודת[\s_-]?זהות/u, docType: 'id_document', confidence: 0.85, reason: 'filename_teudat_zehut' },
-  { test: /\bid[\s_-]?(card|document)\b/u, docType: 'id_document', confidence: 0.6, reason: 'filename_id' },
+  {
+    test: /תעודת[\s_-]?זהות/u,
+    docType: 'id_document',
+    confidence: 0.85,
+    reason: 'filename_teudat_zehut',
+  },
+  {
+    test: /\bid[\s_-]?(card|document)\b/u,
+    docType: 'id_document',
+    confidence: 0.6,
+    reason: 'filename_id',
+  },
   // permit — היתר (building permit).
   { test: /היתר/u, docType: 'permit', confidence: 0.75, reason: 'filename_heter' },
   { test: /permit/u, docType: 'permit', confidence: 0.75, reason: 'filename_permit' },
-  // financial — שומה / financial statements.
-  { test: /שומה/u, docType: 'financial', confidence: 0.65, reason: 'filename_shuma' },
+  // financial — financial statements (the generic money doc).
   { test: /financial/u, docType: 'financial', confidence: 0.6, reason: 'filename_financial' },
+  // שומת מס (tax assessment) is a MONEY doc → keep the SENSITIVE `financial`
+  // suggestion. Placed above + out-ranking the appraiser's bare `שומה → survey`
+  // so an ambiguous money-שומה is never demoted to a non-sensitive type
+  // (red-team #502 regression fix: slice-3 removed the old `שומה → financial`
+  // base rule; this restores the financial-preferring signal for the tax case).
+  {
+    test: /שומת[\s_-]?מס/u,
+    docType: 'financial',
+    confidence: 0.82,
+    reason: 'filename_shumat_mas',
+  },
+  // ── BINDER slice 3 — deal-party taxonomy adds ───────────────────────────────
+  // survey — שומה / הערכת שמאי (the appraiser's valuation). שומה used to map to
+  // `financial`; the more specific `survey` type now wins for the bare appraiser
+  // case (both land in the appraiser party). The `שומת מס` rule above takes the
+  // tax-assessment money doc back to the sensitive `financial` suggestion.
+  { test: /שומה/u, docType: 'survey', confidence: 0.72, reason: 'filename_shuma' },
+  {
+    test: /הערכת[\s_-]?שמאי/u,
+    docType: 'survey',
+    confidence: 0.8,
+    reason: 'filename_haarachat_shamai',
+  },
+  { test: /appraisal/u, docType: 'survey', confidence: 0.7, reason: 'filename_appraisal' },
+  // survey_map — מפת מדידה / תשריט מדידה (the surveyor / מודד map). NOTE: a bare
+  // `תשריט` already weakly suggests floor_plan above; the מדידה qualifier makes
+  // it the surveyor's measurement map, so we require the מדידה token here.
+  {
+    test: /מפת[\s_-]?מדידה/u,
+    docType: 'survey_map',
+    confidence: 0.85,
+    reason: 'filename_mapat_medida',
+  },
+  {
+    test: /תשריט[\s_-]?מדידה/u,
+    docType: 'survey_map',
+    confidence: 0.82,
+    reason: 'filename_tasrit_medida',
+  },
+  {
+    test: /survey[\s_-]?map/u,
+    docType: 'survey_map',
+    confidence: 0.75,
+    reason: 'filename_survey_map',
+  },
+  // guarantee — ערבות / בטוחה (the contractor's bank/performance guarantee).
+  { test: /ערבות/u, docType: 'guarantee', confidence: 0.8, reason: 'filename_arvut' },
+  { test: /בטוחה/u, docType: 'guarantee', confidence: 0.7, reason: 'filename_betucha' },
+  { test: /guarantee/u, docType: 'guarantee', confidence: 0.75, reason: 'filename_guarantee' },
+  // municipal_approval — אישור / היתר עירייה (the authority's approval). The
+  // עירייה qualifier distinguishes it from a generic building `permit`/היתר.
+  {
+    test: /אישור[\s_-]?עירייה/u,
+    docType: 'municipal_approval',
+    confidence: 0.82,
+    reason: 'filename_ishur_iriya',
+  },
+  {
+    test: /היתר[\s_-]?עירייה/u,
+    docType: 'municipal_approval',
+    confidence: 0.82,
+    reason: 'filename_heter_iriya',
+  },
+  {
+    test: /municipal[\s_-]?approval/u,
+    docType: 'municipal_approval',
+    confidence: 0.75,
+    reason: 'filename_municipal_approval',
+  },
+  // schedule — לוח זמנים / תכנית עבודה (the contractor's work timetable).
+  {
+    test: /לוח[\s_-]?זמנים/u,
+    docType: 'schedule',
+    confidence: 0.8,
+    reason: 'filename_luach_zmanim',
+  },
+  // `תכנית עבודה` must out-rank the bare `תכנית`→blueprint rule (0.8): the עבודה
+  // qualifier makes it the contractor's work plan, not an architectural drawing.
+  {
+    test: /תכנית[\s_-]?עבודה/u,
+    docType: 'schedule',
+    confidence: 0.84,
+    reason: 'filename_tochnit_avoda',
+  },
+  { test: /schedule/u, docType: 'schedule', confidence: 0.7, reason: 'filename_schedule' },
+  // legal_opinion — חוות דעת משפטית (the lawyer's / עו״ד opinion).
+  {
+    test: /חוות[\s_-]?דעת[\s_-]?משפטית/u,
+    docType: 'legal_opinion',
+    confidence: 0.85,
+    reason: 'filename_chavat_daat',
+  },
+  {
+    test: /חוות[\s_-]?דעת/u,
+    docType: 'legal_opinion',
+    confidence: 0.7,
+    reason: 'filename_chavat_daat_short',
+  },
+  {
+    test: /legal[\s_-]?opinion/u,
+    docType: 'legal_opinion',
+    confidence: 0.75,
+    reason: 'filename_legal_opinion',
+  },
 ];
 
 /**
@@ -121,10 +239,46 @@ export const CONTENT_RULES: readonly ContentRule[] = [
     confidence: 0.92,
     reason: 'content_lishkat_rishum',
   },
-  { test: /נסח\s+רישום/u, docType: 'land_registry', confidence: 0.9, reason: 'content_nesach_rishum' },
+  {
+    test: /נסח\s+רישום/u,
+    docType: 'land_registry',
+    confidence: 0.9,
+    reason: 'content_nesach_rishum',
+  },
   { test: /גוש[\s:]+\d+/u, docType: 'land_registry', confidence: 0.75, reason: 'content_gush' },
-  { test: /הסכם\s+התחדשות/u, docType: 'agreement', confidence: 0.85, reason: 'content_heskem_hitchadshut' },
-  { test: /תקנון\s+הבית\s+המשותף/u, docType: 'regulation', confidence: 0.88, reason: 'content_takanon_bayit' },
+  {
+    test: /הסכם\s+התחדשות/u,
+    docType: 'agreement',
+    confidence: 0.85,
+    reason: 'content_heskem_hitchadshut',
+  },
+  {
+    test: /תקנון\s+הבית\s+המשותף/u,
+    docType: 'regulation',
+    confidence: 0.88,
+    reason: 'content_takanon_bayit',
+  },
+  // BINDER slice 3 — deal-party content markers.
+  { test: /הערכת\s+שווי/u, docType: 'survey', confidence: 0.82, reason: 'content_haarachat_shovi' },
+  {
+    test: /שמאי\s+מקרקעין/u,
+    docType: 'survey',
+    confidence: 0.8,
+    reason: 'content_shamai_mekarkein',
+  },
+  { test: /מפת\s+מדידה/u, docType: 'survey_map', confidence: 0.85, reason: 'content_mapat_medida' },
+  {
+    test: /ערבות\s+בנקאית/u,
+    docType: 'guarantee',
+    confidence: 0.85,
+    reason: 'content_arvut_bankait',
+  },
+  {
+    test: /חוות\s+דעת\s+משפטית/u,
+    docType: 'legal_opinion',
+    confidence: 0.85,
+    reason: 'content_chavat_daat',
+  },
 ];
 
 /**
@@ -158,7 +312,9 @@ const DWG_MAGIC: MagicRule = {
 /** A PDF mime is a weak prior for an urban-renewal SIGNED doc (agreement) only
  *  when NOTHING else fired — kept very low so it never out-ranks a real signal
  *  and only surfaces as a last-resort hint. */
-const MIME_PRIORS: Readonly<Partial<Record<string, { docType: DocumentType; confidence: number; reason: string }>>> = {
+const MIME_PRIORS: Readonly<
+  Partial<Record<string, { docType: DocumentType; confidence: number; reason: string }>>
+> = {
   'application/pdf': { docType: 'agreement', confidence: 0.2, reason: 'mime_pdf_weak' },
   'image/png': { docType: 'other', confidence: 0.1, reason: 'mime_image_weak' },
   'image/jpeg': { docType: 'other', confidence: 0.1, reason: 'mime_image_weak' },
@@ -186,7 +342,10 @@ interface RawHit {
   reason: string;
 }
 
-function leadingBytesMatch(buf: Buffer, rule: { ascii?: string; bytes?: readonly (number | null)[] }): boolean {
+function leadingBytesMatch(
+  buf: Buffer,
+  rule: { ascii?: string; bytes?: readonly (number | null)[] },
+): boolean {
   if (rule.ascii) {
     const expected = Buffer.from(rule.ascii, 'ascii');
     if (buf.length < expected.length) return false;
@@ -237,7 +396,12 @@ export function classifyDocument(input: ClassifierInput): ClassifyResult {
   // 1) Filename signals.
   for (const rule of FILENAME_RULES) {
     if (rule.test.test(filename)) {
-      hits.push({ docType: rule.docType, confidence: rule.confidence, signal: 'filename', reason: rule.reason });
+      hits.push({
+        docType: rule.docType,
+        confidence: rule.confidence,
+        signal: 'filename',
+        reason: rule.reason,
+      });
     }
   }
 
@@ -262,7 +426,12 @@ export function classifyDocument(input: ClassifierInput): ClassifyResult {
       const text = sample.toString('utf8');
       for (const rule of CONTENT_RULES) {
         if (rule.test.test(text)) {
-          hits.push({ docType: rule.docType, confidence: rule.confidence, signal: 'content_text', reason: rule.reason });
+          hits.push({
+            docType: rule.docType,
+            confidence: rule.confidence,
+            signal: 'content_text',
+            reason: rule.reason,
+          });
         }
       }
     }
@@ -273,7 +442,12 @@ export function classifyDocument(input: ClassifierInput): ClassifyResult {
   //    but it only survives ranking if no stronger hit exists for that type.
   const prior = MIME_PRIORS[input.mimeType];
   if (prior && hits.length === 0) {
-    hits.push({ docType: prior.docType, confidence: prior.confidence, signal: 'mime', reason: prior.reason });
+    hits.push({
+      docType: prior.docType,
+      confidence: prior.confidence,
+      signal: 'mime',
+      reason: prior.reason,
+    });
   }
 
   if (hits.length === 0) {

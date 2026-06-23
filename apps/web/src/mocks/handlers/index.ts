@@ -312,6 +312,30 @@ export const handlers = [
 
   // documents
   http.get(`${API}/documents`, () => HttpResponse.json(listEnvelope(SAMPLE_DOCUMENTS))),
+  // Binder slice 2 — PARTY-BINDER board completeness (server-computed). Declared
+  // BEFORE the `/documents/:id` handler so the literal path isn't matched as :id.
+  // A small, self-consistent offline shape: owner partially met, contractor met,
+  // architect outstanding; counts + type keys only (no PII).
+  http.get(`${API}/documents/board-completeness`, () =>
+    HttpResponse.json(
+      dataEnvelope({
+        byParty: [
+          { party: 'owner', required: 2, received: 1, isComplete: false, hasRequirement: true, missingTypes: [{ type: 'land_registry' }] },
+          { party: 'appraiser', required: 0, received: 0, isComplete: false, hasRequirement: false, missingTypes: [] },
+          { party: 'architect', required: 2, received: 1, isComplete: false, hasRequirement: true, missingTypes: [{ type: 'blueprint' }] },
+          { party: 'municipality', required: 0, received: 0, isComplete: false, hasRequirement: false, missingTypes: [] },
+          { party: 'contractor', required: 2, received: 2, isComplete: true, hasRequirement: true, missingTypes: [] },
+          { party: 'lawyer', required: 1, received: 0, isComplete: false, hasRequirement: true, missingTypes: [{ type: 'regulation' }] },
+          { party: 'supervisor', required: 0, received: 0, isComplete: false, hasRequirement: false, missingTypes: [] },
+          { party: 'surveyor', required: 0, received: 0, isComplete: false, hasRequirement: false, missingTypes: [] },
+          { party: 'other', required: 0, received: 0, isComplete: false, hasRequirement: false, missingTypes: [] },
+        ],
+        unmetParties: ['owner', 'architect', 'lawyer'],
+        hasAnyRequirement: true,
+        allRequirementsMet: false,
+      }),
+    ),
+  ),
   http.post(`${API}/documents`, async ({ request }) => {
     const body = await request.json();
     // v9-post-audit-SOLID-6 closure — parse against the same schema

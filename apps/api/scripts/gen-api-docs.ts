@@ -2524,10 +2524,10 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/signature-requests',
     auth: 'AuthGuard + TenantGuard (signature_requests.read)',
     summary:
-      'List signature requests, cursor-paginated. Underlying-document visibility scoping in the service.',
+      'List signature requests, cursor-paginated. Underlying-document visibility scoping in the service. Optional filters: status, documentId, ownerId, projectId (scopes the flat list to one project; honors agent record-scoping). Rows are enriched SignatureRequestListItems — projectName/apartmentLabel/documentName (non-PII display context) + ownerDisplay, the owner NAME, MASKED-BY-DEFAULT and revealed only behind view_owner_pii (manager always · agent iff the flag · viewer never); national_id/phone never appear.',
     request: ListSignatureRequestsQuery,
     response:
-      '{ "data": [ {SignatureRequest} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+      '{ "data": [ {SignatureRequestListItem} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
     errors: [
       'validation_error',
       'invalid_cursor',

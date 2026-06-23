@@ -43,6 +43,45 @@ export const SignatureRequestSchema = z.object({
 });
 export type SignatureRequest = z.infer<typeof SignatureRequestSchema>;
 
+/**
+ * Slice-2 — the "כל הבקשות" (all-requests) FLAT LIST wire row. It is the base
+ * forensic `SignatureRequestSchema` PLUS optional DISPLAY-CONTEXT fields so the
+ * list reads at scale (project · apartment · document · owner) instead of a wall
+ * of bare timestamps + UUIDs.
+ *
+ * WHY A SEPARATE SCHEMA (do NOT widen the base): `SignatureRequestSchema` is the
+ * detail / forensic contract (`get`, `create`, `cancel`, `resend`, the signed
+ * artifact). Adding display/PII fields there would change every one of those
+ * surfaces and put a PII field on the forensic record. This list-item type is
+ * additive and scoped to the list endpoint ONLY.
+ *
+ * PII BOUNDARY (mirrors B4 holdouts / project-leverage EXACTLY):
+ *   - `ownerDisplay` is the owner NAME and is the ONLY PII here. It is
+ *     MASKED-BY-DEFAULT: `null` unless the caller holds `view_owner_pii`
+ *     (manager always · agent iff the flag · viewer never), resolved through the
+ *     single source `resolveOwnerPiiFidelity`. A Viewer or a PII-less Agent ALWAYS
+ *     gets `null` — never the cleartext name. national_id / phone NEVER appear.
+ *   - `projectName` / `apartmentLabel` / `documentName` are NON-PII display
+ *     context (same-org names the actor can already see on the project/document
+ *     surfaces). They are nullable because a request's document may be scope-less
+ *     or its apartment archived — the FE renders a neutral fallback.
+ * The FE wraps `ownerDisplay` in `<NameDisplay>` exactly like the leverage owner.
+ */
+export const SignatureRequestListItemSchema = SignatureRequestSchema.extend({
+  /** The request's project (document's direct project, or via apartment →
+   *  building → project). `null` when the document is scope-less. NON-PII. */
+  projectName: z.string().nullable(),
+  /** The document's apartment designation (`apartments.number`). `null` for a
+   *  project-scoped (non-apartment) document. NON-PII. */
+  apartmentLabel: z.string().nullable(),
+  /** The document's display name (`documents.name`). NON-PII. */
+  documentName: z.string().nullable(),
+  /** view_owner_pii-gated owner NAME; `null` when the caller lacks the
+   *  capability (name only, NEVER national_id/phone). Masked-default. */
+  ownerDisplay: z.string().nullable(),
+});
+export type SignatureRequestListItem = z.infer<typeof SignatureRequestListItemSchema>;
+
 /** POST /signature-requests body. The Manager picks the (document, owner)
  * pair; the server validates both are visible in the manager's org and
  * mints the token. Delivery channels are server-defaulted (Email always,
@@ -202,7 +241,10 @@ export const BulkSignatureRequestResponseSchema = z.object({
 });
 export type BulkSignatureRequestResponse = z.infer<typeof BulkSignatureRequestResponseSchema>;
 
-/** GET /signature-requests — keyset pagination + optional status filter. */
+/** GET /signature-requests — keyset pagination + optional filters. The
+ *  `projectId` filter scopes the flat list to ONE project (Slice-2); it honors
+ *  the existing agent record-scoping (an agent supplying a `projectId` they are
+ *  not assigned to gets an EMPTY page, never another project's requests). */
 export const ListSignatureRequestsQuery = z
   .object({
     limit: z.coerce.number().int().min(1).max(100).default(25),
@@ -210,6 +252,7 @@ export const ListSignatureRequestsQuery = z
     status: SignatureRequestStatusEnum.optional(),
     documentId: z.string().uuid().optional(),
     ownerId: z.string().uuid().optional(),
+    projectId: z.string().uuid().optional(),
   })
   .strict();
 export type ListSignatureRequestsQueryDto = z.infer<typeof ListSignatureRequestsQuery>;

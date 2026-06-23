@@ -29,6 +29,7 @@ import type {
   SignatureCampaignInput,
   SignatureCampaignResponse,
   SignatureRequest,
+  SignatureRequestListItem,
   SignatureRequestCreateResponse,
   SignatureRequestLinkResponse,
   SignatureDeliveryReport,
@@ -48,7 +49,10 @@ import {
 } from '@nestjs/common';
 import { and, eq, gt, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 
-import { requireAgentCapability } from '../../common/authz/agent-capabilities';
+import {
+  requireAgentCapability,
+  resolveOwnerPiiFidelity,
+} from '../../common/authz/agent-capabilities';
 import {
   decodeCursor,
   encodeCursor,
@@ -69,9 +73,11 @@ import { SignatureTokenService } from './signature-token.service';
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
 
-/** Manager-side list page envelope (D.16 + keyset pagination). */
+/** Manager-side list page envelope (D.16 + keyset pagination). Slice-2: rows
+ *  are enriched `SignatureRequestListItem`s (display context + masked-default
+ *  owner name) rather than the bare forensic `SignatureRequest`. */
 export interface SignatureRequestListPage {
-  data: SignatureRequest[];
+  data: SignatureRequestListItem[];
   page: { limit: number; cursor: string | null; has_more: boolean };
 }
 
@@ -1554,7 +1560,28 @@ export class SignatureRequestsService {
   /** GET /signature-requests — Manager+Viewer see all in org; Agent sees
    *  only requests on documents whose parent project is an active
    *  assignment (record-scoping mirrors documents.list per audit-pass V
-   *  #2). Keyset pagination, optional status/document/owner filters. */
+   *  #2). Keyset pagination, optional status/document/owner/project filters.
+   *
+   *  SLICE-2 ENRICHMENT (legibility at scale): each row is returned as a
+   *  `SignatureRequestListItem` carrying DISPLAY context — `projectName` /
+   *  `apartmentLabel` / `documentName` (non-PII, same-org names the actor can
+   *  already see) and `ownerDisplay`, the owner NAME. The name is MASKED-BY-
+   *  DEFAULT and revealed ONLY behind `view_owner_pii` (manager always · agent
+   *  iff the flag · viewer never), resolved through the SINGLE source
+   *  `resolveOwnerPiiFidelity` — the EXACT gate the B4 holdouts / leverage paths
+   *  use (`projects.service.ts` — `signatureProgressHoldouts` L977 + `leverage`
+   *  L1149). A Viewer / PII-less Agent ALWAYS gets `ownerDisplay: null`;
+   *  national_id / phone are NEVER selected, returned, or logged.
+   *
+   *  TWO-STEP (keyset preserved, then enrich): the keyset PAGE is selected on the
+   *  base `signature_requests` table EXACTLY as before — same filters, same
+   *  `keysetCondition`/`keysetOrderBy` (the D.58 ms-precision helpers), same
+   *  `cur`/`encodeCursor` round-trip — so the cursor cannot regress from added
+   *  joins (the joins are in the SECOND query, never in the ranked/filtered set).
+   *  The enrichment is ONE batched lookup over the page's ≤limit (≤100) ids via
+   *  an `IN (...)` on the PK (no seq-scan) joining documents → apartment →
+   *  building → project + owners, with the name decrypt conditional on the
+   *  resolved fidelity. */
   async list(
     user: AccessTokenPayload,
     query: ListSignatureRequestsQueryDto,
@@ -1565,13 +1592,38 @@ export class SignatureRequestsService {
       throw new BadRequestException({ error: { code: 'invalid_cursor' } });
     }
 
-    const rows = await withTenant(
+    const { rows, enrichment } = await withTenant(
       user.orgId,
       async (tx) => {
         const filters: (SQL | undefined)[] = [];
         if (query.status) filters.push(eq(signatureRequests.status, query.status));
         if (query.documentId) filters.push(eq(signatureRequests.documentId, query.documentId));
         if (query.ownerId) filters.push(eq(signatureRequests.ownerId, query.ownerId));
+
+        // SLICE-2 — optional projectId filter, resolved through the SAME
+        // document→project resolution the agent scoping uses (direct project_id
+        // OR via apartment → building → project). Bound to SQL as an EXISTS on
+        // the request's document. Because it is ANDed with the agent-scoping
+        // EXISTS below, an agent supplying a projectId they are NOT assigned to
+        // simply matches no rows (empty page) — it can NEVER surface another
+        // project's requests (it is an additional restriction, never a widening).
+        if (query.projectId) {
+          const inDirectProject = sql<boolean>`EXISTS (
+            SELECT 1
+            FROM documents d
+            WHERE d.id = ${signatureRequests.documentId}
+              AND d.project_id = ${query.projectId}::uuid
+          )`;
+          const inProjectViaApartment = sql<boolean>`EXISTS (
+            SELECT 1
+            FROM documents d
+            JOIN apartments a ON a.id = d.apartment_id
+            JOIN buildings b ON b.id = a.building_id
+            WHERE d.id = ${signatureRequests.documentId}
+              AND b.project_id = ${query.projectId}::uuid
+          )`;
+          filters.push(or(inDirectProject, inProjectViaApartment));
+        }
 
         // Agent record-scoping via the underlying document. Same shape
         // as documents.service.list (audit-pass V #2): two EXISTS
@@ -1602,12 +1654,22 @@ export class SignatureRequestsService {
           ? keysetCondition(signatureRequests.createdAt, signatureRequests.id, cur)
           : undefined;
 
-        return tx
+        const pageRows = await tx
           .select()
           .from(signatureRequests)
           .where(and(...filters, keyset))
           .orderBy(...keysetOrderBy(signatureRequests.createdAt, signatureRequests.id))
           .limit(limit + 1);
+
+        // The cursor/has_more set is the +1-row window; enrich ONLY the rows we
+        // will actually return (≤ limit) so the join cost is bounded.
+        const returned = pageRows.length > limit ? pageRows.slice(0, limit) : pageRows;
+        const enrichment = await this.enrichListRows(
+          tx,
+          user,
+          returned.map((r) => r.id),
+        );
+        return { rows: pageRows, enrichment };
       },
       { userId: user.sub },
     );
@@ -1616,13 +1678,120 @@ export class SignatureRequestsService {
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
     const last = pageRows[pageRows.length - 1];
     return {
-      data: pageRows.map((r) => this.toWire(r)),
+      data: pageRows.map((r) => {
+        const e = enrichment.get(r.id);
+        return {
+          ...this.toWire(r),
+          projectName: e?.projectName ?? null,
+          apartmentLabel: e?.apartmentLabel ?? null,
+          documentName: e?.documentName ?? null,
+          ownerDisplay: e?.ownerDisplay ?? null,
+        };
+      }),
       page: {
         limit,
         cursor: hasMore && last ? encodeCursor(last) : null,
         has_more: hasMore,
       },
     };
+  }
+
+  /** SLICE-2 — batched display-context enrichment for a page of list rows.
+   *
+   *  ONE query over the page's request ids (an `IN (...)` on the PK — no
+   *  seq-scan) LEFT JOINs the request's document → (apartment → building) →
+   *  project and the owner, returning the display columns:
+   *    - `documentName`   = documents.name (NON-PII)
+   *    - `apartmentLabel` = apartments.number — the doc's apartment, or the
+   *                         project-scoped doc's apartment is null (NON-PII)
+   *    - `projectName`    = projects.name resolved via the doc's DIRECT project,
+   *                         else via apartment → building → project (NON-PII)
+   *    - `ownerDisplay`   = pgp_sym_decrypt(owner name) — ONLY when `reveal`
+   *                         (view_owner_pii); else NULL. national_id / phone are
+   *                         NEVER selected.
+   *
+   *  PII gate: `resolveOwnerPiiFidelity` (the SINGLE source — manager always ·
+   *  agent iff view_owner_pii · viewer/never else). `reveal === false` ⇒ the
+   *  name decrypt is not even emitted into the SQL (a literal NULL), so the
+   *  cleartext never leaves Postgres for a masked caller. LEFT JOINs so a
+   *  scope-less document / archived apartment yields nulls (the row still shows,
+   *  with neutral display context) rather than dropping the request. RLS scopes
+   *  every joined table to the org via the caller's withTenant tx. */
+  private async enrichListRows(
+    tx: TenantTx,
+    user: AccessTokenPayload,
+    requestIds: string[],
+  ): Promise<
+    Map<
+      string,
+      {
+        projectName: string | null;
+        apartmentLabel: string | null;
+        documentName: string | null;
+        ownerDisplay: string | null;
+      }
+    >
+  > {
+    const out = new Map<
+      string,
+      {
+        projectName: string | null;
+        apartmentLabel: string | null;
+        documentName: string | null;
+        ownerDisplay: string | null;
+      }
+    >();
+    if (requestIds.length === 0) return out;
+
+    // PII fidelity decision (mirrors B4 holdouts / leverage). Manager always
+    // unmasked; agent iff view_owner_pii; viewer/anyone-else masked.
+    const fidelity = await resolveOwnerPiiFidelity(tx, user);
+    const reveal = fidelity === 'unmasked';
+
+    // The id-set predicate is built via drizzle's `inArray` (correct per-element
+    // parameterisation — a raw `= ANY(${jsArray})` would render a record tuple,
+    // not a uuid[]). The base table is UN-aliased so `inArray(signatureRequests
+    // .id, …)` renders `"signature_requests"."id"` consistently. `sr.id = ANY`
+    // is replaced by this `IN (...)` form; it is still PK-indexed (no seq-scan).
+    const idIn = inArray(signatureRequests.id, requestIds);
+    const result = await tx.execute<{
+      id: string;
+      project_name: string | null;
+      apartment_label: string | null;
+      document_name: string | null;
+      owner_name: string | null;
+    }>(sql`
+      SELECT
+        ${signatureRequests.id} AS id,
+        COALESCE(dp.name, ap.name) AS project_name,
+        a.number AS apartment_label,
+        d.name AS document_name,
+        ${
+          reveal
+            ? sql`pgp_sym_decrypt(ow.name_encrypted, current_setting('app.encryption_key'))::text`
+            : sql`NULL::text`
+        } AS owner_name
+      FROM ${signatureRequests}
+      LEFT JOIN documents d ON d.id = ${signatureRequests.documentId}
+      LEFT JOIN projects dp ON dp.id = d.project_id
+      LEFT JOIN apartments a ON a.id = d.apartment_id
+      LEFT JOIN buildings b ON b.id = a.building_id
+      LEFT JOIN projects ap ON ap.id = b.project_id
+      LEFT JOIN owners ow ON ow.id = ${signatureRequests.ownerId} AND ow.erased_at IS NULL
+      WHERE ${idIn}
+    `);
+
+    for (const row of result.rows) {
+      out.set(row.id, {
+        projectName: row.project_name,
+        apartmentLabel: row.apartment_label,
+        documentName: row.document_name,
+        // Defensive: only surface the name when revealed AND non-null. For a
+        // masked caller `owner_name` is the SQL literal NULL already.
+        ownerDisplay: reveal ? (row.owner_name ?? null) : null,
+      });
+    }
+    return out;
   }
 
   /** GET /signature-requests/:id — single row.

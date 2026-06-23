@@ -3460,7 +3460,7 @@ _(no body)_
 ### GET /api/v1/signature-requests
 
 - **Auth:** AuthGuard + TenantGuard (signature_requests.read)
-- **Summary:** List signature requests, cursor-paginated. Underlying-document visibility scoping in the service.
+- **Summary:** List signature requests, cursor-paginated. Underlying-document visibility scoping in the service. Optional filters: status, documentId, ownerId, projectId (scopes the flat list to one project; honors agent record-scoping). Rows are enriched SignatureRequestListItems — projectName/apartmentLabel/documentName (non-PII display context) + ownerDisplay, the owner NAME, MASKED-BY-DEFAULT and revealed only behind view_owner_pii (manager always · agent iff the flag · viewer never); national_id/phone never appear.
 
 **Request body**
 
@@ -3470,13 +3470,14 @@ _(no body)_
 | `documentId` | string | no | format="uuid" |
 | `limit` | integer | no | minimum=1, maximum=100 |
 | `ownerId` | string | no | format="uuid" |
+| `projectId` | string | no | format="uuid" |
 | `status` | string | no | enum=["pending","signed","cancelled","expired"] |
 
 
 **Response**
 
 ```json
-{ "data": [ {SignatureRequest} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+{ "data": [ {SignatureRequestListItem} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
 ```
 
 **Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`, `token_expired`

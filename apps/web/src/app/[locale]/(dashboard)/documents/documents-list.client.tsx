@@ -397,29 +397,41 @@ function PartyCard({
 
   const latestLabel = latestType ? (labels[latestType] ?? latestType) : null;
 
-  // Gist line — the user's real state for this party.
-  const gist = (() => {
-    if (total === 0) {
-      return hasRequirement && missingLabels.length > 0
-        ? t('board.missing', { types: missingLabels.join(' · ') })
-        : t('board.ghost');
+  // TWO DISTINCT FACTS (the "0 מתוך X" fix) — these answer DIFFERENT questions
+  // and must NEVER be divided into one another:
+  //   1. docsFiled — how many documents are filed under this party ("{total}
+  //      מסמכים"), the headline. With latest-type context when the party is calm.
+  //   2. coreGauge — the CORE required-slot completeness ("מסמכי-ליבה
+  //      {received}/{required}"), a SEPARATE clause shown only when the party has a
+  //      requirement. A party with docs but no required-type doc reads
+  //      "37 מסמכים · מסמכי-ליבה 0/3", NEVER "0 מתוך 37".
+  const isGhost = total === 0;
+
+  // Fact 1 — docs filed (always leads). Ghost → "טרם התקבלו מסמכים"; otherwise
+  // "{total} מסמכים", enriched with the latest type only when there's nothing more
+  // urgent to say (no unmet core requirement).
+  const docsFiledLine = (() => {
+    if (isGhost) return t('board.ghost');
+    if (latestLabel && !(hasRequirement && !isComplete)) {
+      return t('board.gist.latestType', { count: total, type: latestLabel });
     }
-    if (hasRequirement && !isComplete) {
-      return t('board.gist.someMissing', {
-        received: completeness.received,
-        required: completeness.required,
-        types: missingLabels.join(' · '),
-      });
-    }
-    if (hasRequirement && isComplete) {
-      return t('board.gist.allReceived', { count: total });
-    }
-    return latestLabel
-      ? t('board.gist.latestType', { count: total, type: latestLabel })
-      : t('board.gist.count', { count: total });
+    return t('board.docsFiled', { count: total });
   })();
 
-  const isGhost = total === 0;
+  // Fact 2 — the CORE required-slot gauge, a distinct clause (only when this party
+  // carries a requirement). Never the headline; never a denominator of `total`.
+  const coreLine = hasRequirement
+    ? isComplete
+      ? t('board.core.complete', {
+          received: completeness.received,
+          required: completeness.required,
+        })
+      : t('board.core.missing', {
+          received: completeness.received,
+          required: completeness.required,
+          types: missingLabels.join(' · '),
+        })
+    : null;
   // The missing-type deep-link, shown on an incomplete/ghost card (gated on
   // create). Phase 2d honors `?type=&party=` to pre-fill the upload form.
   const uploadGap =
@@ -456,7 +468,21 @@ function PartyCard({
             </span>
           )}
         </div>
-        <span className="truncate text-xs text-text-soft">{gist}</span>
+        {/* Fact 1 — docs filed (the headline line). */}
+        <span className="truncate text-xs text-text-soft">{docsFiledLine}</span>
+        {/* Fact 2 — the CORE required-slot gauge, on its own line (never merged
+            into the docs-filed count). Tinted by met/unmet, but it is a distinct
+            fact, not "{received} מתוך {total}". */}
+        {coreLine && (
+          <span
+            className="truncate text-[11px]"
+            style={{
+              color: isComplete ? 'var(--success-600)' : 'var(--warning-700, var(--text-muted))',
+            }}
+          >
+            {coreLine}
+          </span>
+        )}
         {latestCreatedAt && total > 0 && (
           <span className="truncate text-[11px] text-text-soft">
             {t('board.gist.latestWhen', { when: formatRelative(latestCreatedAt, locale) })}

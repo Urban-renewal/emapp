@@ -883,8 +883,13 @@
         "allReceived": "{count} documents · all required received",
         "someMissing": "{received} of {required} received · missing: {types}"
       },
+      "docsFiled": "{count} documents",
+      "core": {
+        "missing": "Core docs {received}/{required} · missing: {types}",
+        "complete": "Core docs {received}/{required}"
+      },
       "complete": "Complete",
-      "completeness": "{received} of {required} required documents received",
+      "completeness": "Core docs {received}/{required}",
       "back": "Back to parties",
       "zoomEmpty": "No documents to show right now",
       "uploadMissing": "Upload {type}",

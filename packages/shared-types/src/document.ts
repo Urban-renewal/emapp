@@ -57,6 +57,37 @@ export const DocumentTypeEnum = z.enum([
 ]);
 export type DocumentType = z.infer<typeof DocumentTypeEnum>;
 
+/**
+ * PII-bearing document types that are SENSITIVE BY TYPE (D-P5.7) — the SINGLE
+ * source of truth for "this type always derives sensitive=true". Surfaced HERE
+ * (the FE/BE contract) so:
+ *   - BE: `documents.service.ts` re-exports this set (it owns the create-time
+ *     `sensitive = SENSITIVE_DOC_TYPES.has(type) || input.sensitive` derivation).
+ *   - FE: the generic upload dropzone (S3) knows, WITHOUT a round-trip, which
+ *     classifier suggestions / picked types must PAUSE for the encrypt notice and
+ *     take the content-upload path — even at AUTO confidence a tabu/ID/financial
+ *     is never silently auto-filed.
+ *
+ * TURN-ON ONLY: a type in this set ALWAYS derives sensitive=true; absence does
+ * NOT force a doc non-sensitive (an explicit `sensitive:true` opt-in still wins).
+ *   - id_document — תעודת זהות (national_id on its face).
+ *   - financial   — financial statements / valuations carrying account data.
+ *   - land_registry — נסח טאבו lists EVERY owner's national_id (PII-dense).
+ */
+export const SENSITIVE_DOC_TYPES: ReadonlySet<DocumentType> = new Set<DocumentType>([
+  'id_document',
+  'financial',
+  'land_registry',
+]);
+
+/** True when a (tolerant, free-text) `type` is sensitive-by-type — same rule the
+ *  BE applies at create. Pure + deterministic; case-insensitive trim to mirror
+ *  {@link providerPartyForDocType}. Absence from the set is NOT "definitely
+ *  non-sensitive" (an explicit opt-in can still force it on server-side). */
+export function isSensitiveDocType(docType: string): boolean {
+  return SENSITIVE_DOC_TYPES.has(docType.trim().toLowerCase() as DocumentType);
+}
+
 /** Allow-listed upload MIME types. Executables, text/html and
  * image/svg+xml are intentionally excluded (active-content / XSS). */
 export const DocumentMimeEnum = z.enum([

@@ -25,6 +25,7 @@ import {
   PROJECTS_BEHIND_CAP,
   REMEDIATION_SAMPLE_MAX,
   REQUIRED_DOC_TYPES_BY_TRACK,
+  SENSITIVE_DOC_TYPES,
   docTypesForParty,
   providerPartyForDocType,
   trackForProjectType,
@@ -121,16 +122,12 @@ const TYPE_MISMATCH = new ConflictException({
   error: { code: DOCUMENT_TYPE_MISMATCH_CODE },
 });
 
-/** PII-bearing document types — sensitive-by-type at create (D-P5.7). */
-const SENSITIVE_DOC_TYPES: ReadonlySet<string> = new Set([
-  'id_document',
-  'financial',
-  // נסח טאבו — a land-registry extract lists EVERY owner's national_id, so it
-  // is PII-dense by definition and must derive sensitive=true (turn-ON only):
-  // encrypted at rest, OTP step-up on download, and STRUCTURALLY EXCLUDED from
-  // the non-sensitive contractor share tier (contractor-read.service.ts).
-  'land_registry',
-]);
+// PII-bearing document types — sensitive-by-type at create (D-P5.7). The set is
+// the SINGLE source of truth in `@emapp/shared-types` (re-imported above) so the
+// FE upload dropzone and this create-time derivation can NEVER drift to two
+// different lists. Membership means: derive sensitive=true (turn-ON only),
+// encrypted at rest, OTP step-up on download, and STRUCTURALLY EXCLUDED from the
+// non-sensitive contractor share tier (contractor-read.service.ts).
 
 // ── 7d (D-P5.4 second half) — app-envelope encryption for SENSITIVE bytes ───
 // At-rest layout (self-describing — no migration needed for the format):

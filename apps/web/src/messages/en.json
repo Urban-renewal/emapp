@@ -1017,6 +1017,40 @@
       "type": "Type",
       "file": "File"
     },
+    "dropzone": {
+      "hint": "Pick a file — the system detects the document type, files it under the right party and project, and only asks you to choose a type when it's genuinely unsure.",
+      "pick": "Choose a file",
+      "analyzing": "Detecting the document type…",
+      "uploading": "Uploading…",
+      "autoFiled": "Filed as {type}",
+      "undo": "Undo",
+      "sensitiveNotice": "This is a sensitive document — it will be encrypted and require extra verification to view.",
+      "confirm": {
+        "prompt": "This looks like {type}. Confirm?",
+        "accept": "Confirm",
+        "acceptSensitive": "Confirm and upload encrypted",
+        "change": "Change"
+      },
+      "ask": {
+        "prompt": "We couldn't detect the document type — choose one:",
+        "gapsHere": "Missing here",
+        "other": "Other",
+        "showAll": "Choose another type"
+      },
+      "dedup": {
+        "title": "An identical document already exists.",
+        "link": "Link to existing"
+      },
+      "cancel": "Cancel",
+      "mimeNotAllowed": "This file type is not allowed. Upload PDF / image / Excel / Word.",
+      "tooLarge": "File is larger than allowed (max 50MB).",
+      "sizeMismatch": "Uploaded file size doesn't match the declared size. Try again.",
+      "hashMismatch": "Uploaded file content doesn't match the declared hash. Try again.",
+      "scanRejected": "The file was rejected by the security scan.",
+      "storageUnavailable": "Storage is temporarily unavailable. Retry shortly.",
+      "uploadFailed": "Upload to storage failed.",
+      "createFailed": "Failed to create document."
+    },
     "notSensitive": "This document is not marked sensitive — use the standard upload",
     "tab": {
       "active": "Active",

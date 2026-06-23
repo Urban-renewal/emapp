@@ -9,6 +9,12 @@
  * route integrity-checks, AV-scans, envelope-encrypts and stamps uploaded
  * itself; a finalize after it would 409 `document_already_uploaded`).
  *
+ * S3 redesign: the <select>+submit form is GONE — the page is the generic
+ * dropzone. This spec STUBS classify (suggests `id_document`, a SENSITIVE type →
+ * the band is CONFIRM with the encrypt notice, NEVER silent auto-file) + dedup
+ * (no duplicate). The user picks the file → confirms → the 7d content path runs
+ * UNCHANGED (sensitive bytes go through the API, never to R2).
+ *
  * 4-axis smoke (DoD for interactive-UI slices):
  *   Network  — exactly TWO calls, in order: POST /documents → POST
  *              /documents/<id>/content. ZERO presigned PUTs, ZERO finalize.
@@ -76,6 +82,8 @@ test.describe('§E-J3b — Sensitive document upload (7d content path)', () => {
       const path = new URL(route.request().url()).pathname;
       if (
         path === '/api/v1/documents' ||
+        path === '/api/v1/documents/classify' ||
+        path === '/api/v1/documents/dedup-check' ||
         path === `/api/v1/documents/${NEW_DOC_ID}` ||
         path === `/api/v1/documents/${NEW_DOC_ID}/content` ||
         path === `/api/v1/documents/${NEW_DOC_ID}/finalize`
@@ -87,6 +95,38 @@ test.describe('§E-J3b — Sensitive document upload (7d content path)', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: [], page: { limit: 25, cursor: null, has_more: false } }),
+      });
+    });
+
+    // S3 — DH3 classify: suggest the SENSITIVE type `id_document` at high
+    // confidence. The band logic DOWNGRADES auto → CONFIRM for a sensitive type,
+    // so the encrypt notice is shown and the user confirms (never silent).
+    await page.route('**/api/v1/documents/classify', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            suggestions: [
+              {
+                docType: 'id_document',
+                confidence: 0.95,
+                signal: 'filename',
+                reason: 'filename_id',
+              },
+            ],
+            suggestOnly: true,
+          },
+        }),
+      });
+    });
+
+    // S3 — DH4 dedup-check: no duplicate in scope.
+    await page.route('**/api/v1/documents/dedup-check', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { duplicates: [], hasDuplicate: false } }),
       });
     });
 
@@ -167,19 +207,23 @@ test.describe('§E-J3b — Sensitive document upload (7d content path)', () => {
     await page.goto('/he/documents/new');
     await expect(page).toHaveURL(/\/he\/documents\/new$/);
 
-    // §AXIS-V — method="post" SSR attribute (GET-fallback guard).
-    const form = page.locator('form').first();
-    await expect(form).toBeVisible({ timeout: 10_000 });
-    expect((await form.getAttribute('method'))?.toLowerCase()).toBe('post');
+    // §AXIS-V — the dropzone pick affordance renders.
+    const pick = page.getByTestId('document-dropzone-pick');
+    await expect(pick).toBeVisible({ timeout: 10_000 });
 
-    // Pick the SENSITIVE type + the file.
-    await page.locator('#type').selectOption('id_document');
+    // Pick the file → classify suggests the SENSITIVE id_document → the encrypt
+    // notice + a CONFIRM button appear (never a silent auto-file for a tabu/ID).
     await page.locator('input[type="file"]').setInputFiles({
       name: FILE_NAME,
       mimeType: FILE_MIME,
       buffer: FILE_BYTES,
     });
+    await expect(page.getByTestId('document-dropzone-sensitive-notice')).toBeVisible({
+      timeout: 10_000,
+    });
 
+    const confirm = page.getByTestId('document-dropzone-confirm');
+    await expect(confirm).toBeVisible({ timeout: 10_000 });
     await Promise.all([
       page.waitForResponse(
         (r) =>
@@ -187,7 +231,7 @@ test.describe('§E-J3b — Sensitive document upload (7d content path)', () => {
           r.request().method() === 'POST',
         { timeout: 20_000 },
       ),
-      page.locator('button[type="submit"]').click(),
+      confirm.click(),
     ]);
 
     // §AXIS-Network — exactly two calls, in order; no PUT, no finalize.

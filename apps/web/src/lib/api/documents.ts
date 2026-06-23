@@ -20,12 +20,17 @@
  */
 import {
   BoardCompletenessSchema,
+  CLASSIFY_SAMPLE_MAX_BYTES,
+  ClassifyResultSchema,
   DOCUMENT_MAX_SIZE_BYTES,
+  DedupCheckResponseSchema,
   DocumentDownloadResponseSchema,
   DocumentSchema,
   DocumentUploadResponseSchema,
   type BoardCompleteness,
+  type ClassifyResult,
   type CreateDocument,
+  type DedupCheckResponse,
   type Document,
   type DocumentMime,
   type DocumentParty,
@@ -152,6 +157,65 @@ export async function createDocument(body: CreateDocument): Promise<DocumentUplo
   const res = await apiClient.postIdempotent<unknown>(`/documents`, body);
   if (!isOk(res)) throw new ApiClientError(res.error);
   return UploadResponseDataSchema.parse({ data: res.data }).data;
+}
+
+const ClassifyResultDataSchema = z.object({ data: ClassifyResultSchema });
+const DedupCheckResponseDataSchema = z.object({ data: DedupCheckResponseSchema });
+
+/**
+ * Read the LEADING bytes of a file as base64 for the classifier's optional
+ * content sniff (`sampleBase64`). HARD-CAPPED at CLASSIFY_SAMPLE_MAX_BYTES (8KiB
+ * — all the magic-byte + first-page-marker heuristics need); the server re-checks
+ * the decoded length against the same cap. The raw bytes are NEVER logged/stored
+ * (server contract) and the slice is small, so this never ships a large payload.
+ * Returns `undefined` for an empty file (no sample to send).
+ */
+export async function leadingBytesBase64(file: Blob): Promise<string | undefined> {
+  const slice = file.slice(0, CLASSIFY_SAMPLE_MAX_BYTES);
+  const buf = new Uint8Array(await slice.arrayBuffer());
+  if (buf.length === 0) return undefined;
+  let bin = '';
+  for (const b of buf) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
+export interface ClassifyDocumentArgs {
+  filename: string;
+  mimeType: DocumentMime;
+  /** OPTIONAL leading-bytes sample (base64) for the content sniff. */
+  sampleBase64?: string;
+}
+
+/**
+ * POST /documents/classify (DH3, SUGGEST-ONLY) — given a to-be-uploaded file's
+ * cheap signals (filename, declared mime, optional leading-bytes sample) returns
+ * a RANKED list of suggested doc_types + confidence + a content-free reason key.
+ * NEVER writes/mutates anything (the human confirms separately). Defensive Zod
+ * parse like every other wrapper (ARCHITECTURE-MAP §1). The `mimeType` is the
+ * same allow-list as upload (fail-closed). 0-retry posture is the caller's
+ * (mutation) — a re-pick re-runs explicitly, never silently.
+ */
+export async function classifyDocument(args: ClassifyDocumentArgs): Promise<ClassifyResult> {
+  const res = await apiClient.post<unknown>(`/documents/classify`, {
+    filename: args.filename,
+    mimeType: args.mimeType,
+    ...(args.sampleBase64 ? { sampleBase64: args.sampleBase64 } : {}),
+  });
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return ClassifyResultDataSchema.parse({ data: res.data }).data;
+}
+
+/**
+ * POST /documents/dedup-check (DH4, READ-ONLY) — probes whether the caller's
+ * scope ALREADY holds a non-archived document with the SAME content hash, so the
+ * FE can offer "קשר לקיים" vs "העלה בכל זאת". NEVER a cross-tenant existence
+ * oracle (a hash that exists only in another org returns the same empty result as
+ * a never-seen hash) and never mutates. Defensive Zod parse like every wrapper.
+ */
+export async function dedupCheckDocument(contentHash: string): Promise<DedupCheckResponse> {
+  const res = await apiClient.post<unknown>(`/documents/dedup-check`, { contentHash });
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return DedupCheckResponseDataSchema.parse({ data: res.data }).data;
 }
 
 /** 7d — which leg the freshly-created document's bytes take. */

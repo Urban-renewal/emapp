@@ -33,6 +33,43 @@ export const ProposalSchema = z.object({
 });
 export type ProposalView = z.infer<typeof ProposalSchema>;
 
+/** The outbound OUTCOME of approving a proposal whose apply CONTACTS someone
+ *  (e.g. `signature_request.reissue`, which re-mints AND re-delivers the renewed
+ *  signing link to the apartment owner). The FE renders this so the manager sees
+ *  "renewed + owner re-notified" rather than a vanished card. When the apply is
+ *  purely internal (or the governed send was a no-op/blocked/parked), `delivered`
+ *  is false and `state` explains why.
+ *
+ *  PII CONTRACT (deliberately MINIMAL): this carries ONLY a `delivered` flag, the
+ *  governed-outcome `state`, the `channel`, and a MASKED `recipient`
+ *  (`na***@domain` for email; `null` for sms/whatsapp). It does NOT carry the
+ *  per-channel delivery report — that report's `whatsapp.deepLink` embeds the RAW
+ *  phone + the LIVE signing token, which has no place on the inbox surface (the
+ *  manager tap-sends from the resend screen, not the proposal card). Keeping the
+ *  token-bearing deepLink OFF this wire shape is a hard PII boundary, not an
+ *  oversight. */
+export const ProposalApplyDeliverySchema = z.object({
+  /** Did a channel actually carry the renewed link out (email/SMS sent|queued)? */
+  delivered: z.boolean(),
+  /** Governed-outbound outcome bucket — mirrors the OutboundGovernor verdict so a
+   *  non-`sent` outcome surfaces a DISTINCT state, never a false success. */
+  state: z.enum(['sent', 'already_sent', 'blocked', 'failed', 'ambiguous', 'no_channel']),
+  /** The channel that carried it (when delivered). */
+  channel: z.enum(['email', 'sms', 'whatsapp']).nullable(),
+  /** MASKED recipient (`na***@domain`) for email — never the raw address. `null`
+   *  for sms/whatsapp (no recipient echoed; the phone is PII). */
+  recipient: z.string().nullable(),
+});
+export type ProposalApplyDelivery = z.infer<typeof ProposalApplyDeliverySchema>;
+
+/** POST /api/v1/proposals/:id/approve response. The applied proposal view PLUS,
+ *  for contact-producing kinds, the `delivery` outcome (so the inbox can show
+ *  the owner was re-contacted). `delivery` is omitted for internal-only kinds. */
+export const ProposalApproveResponseSchema = ProposalSchema.extend({
+  delivery: ProposalApplyDeliverySchema.optional(),
+});
+export type ProposalApproveResponse = z.infer<typeof ProposalApproveResponseSchema>;
+
 /** GET /api/v1/proposals query — pending, ranked, keyset-paginated. `kind`
  *  optionally filters to one action kind (e.g. show only reissue proposals). */
 export const ListProposalsQuery = z.object({

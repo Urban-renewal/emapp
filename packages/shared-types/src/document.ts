@@ -295,6 +295,12 @@ export const DocumentSearchQuery = z
      *  additionally matches any UNMAPPED/unknown type (the board's catch-all
      *  bucket). Same value set as `DocumentPartyEnum` (one shared tuple). */
     party: z.enum(DOCUMENT_PARTY_VALUES).optional(),
+    /** S2 (faceted shell) — narrow to ONE project. Matches a doc whose CANONICAL
+     *  project (doc_scope='project' → doc_scope_id, else legacy project_id) is
+     *  this id — the SAME resolver the board's received/required pass uses, so the
+     *  facet count and the board agree. NARROWING only (never widens; the agent
+     *  record-scoping + RLS still bound the result). A doc id, not PII. */
+    projectId: z.string().uuid().optional(),
     scope: DocumentScopeEnum.optional(),
     /** `'true'` searches ARCHIVED docs too (default false — same posture as the
      *  list endpoint). Explicit enum (NOT z.coerce.boolean). */
@@ -687,6 +693,46 @@ export const PartyCompletenessSchema = z.object({
 });
 export type PartyCompleteness = z.infer<typeof PartyCompletenessSchema>;
 
+/**
+ * S2 (org cockpit) — ONE project that is BEHIND on its core required documents.
+ * The project-attention axis the party-only board could not express: a manager
+ * with 100 projects must see WHICH projects are short, worst-first, each naming
+ * the responsible parties + the missing types so the gap is a one-click upload,
+ * not a flat label.
+ *
+ * COUNTS + TYPE/PARTY KEYS + the project NAME only — NO owner PII (national_id /
+ * phone / owner name). The project name is an org-internal LABEL (the same class
+ * of label the signatures situation-picture already returns on its wire); it is
+ * never owner PII. Computed in the SAME aggregate pass as `byParty` (the
+ * per-project required/received slot rollup is already materialized server-side),
+ * so this adds NO query and stays sub-second.
+ */
+export const ProjectBehindSchema = z.object({
+  projectId: z.string().uuid(),
+  /** Org-internal project label (bidi-stripped + <NameDisplay>-wrapped at the FE).
+   *  NOT owner PII — the project's own name. */
+  projectName: z.string().min(1).max(255),
+  /** Core required slots for this project (its track's REQUIRED_DOC_TYPES set). */
+  coreRequired: z.number().int().positive(),
+  /** Core required slots already filled by a received (non-archived) doc. */
+  coreReceived: z.number().int().nonnegative(),
+  /** The required types this project is still missing (deduped), each carrying its
+   *  derived responsible PARTY so the FE can name "מהשמאי / מהאדריכל" + deep-link
+   *  the one-click upload to ?type=&party=&projectId=. Type + party KEYS only. */
+  missing: z.array(
+    z.object({
+      type: DocumentTypeEnum,
+      party: DocumentPartyEnum,
+    }),
+  ),
+});
+export type ProjectBehind = z.infer<typeof ProjectBehindSchema>;
+
+/** S2 — server cap on `projectsBehind` (the cockpit shows the worst N + a "+M"
+ *  tail / "הצג הכל" affordance; rendering hundreds of cards into the surface
+ *  would itself be a flat wall). */
+export const PROJECTS_BEHIND_CAP = 12;
+
 /** GET /api/v1/documents/board-completeness response (under `data`). Board-wide
  *  per-party rollup + the summary the orientation line needs. Counts + type
  *  keys only — NEVER PII, NEVER ids/names. */
@@ -701,6 +747,19 @@ export const BoardCompletenessSchema = z.object({
   hasAnyRequirement: z.boolean(),
   /** True when every party with a requirement has met it (and ≥1 requirement). */
   allRequirementsMet: z.boolean(),
+  // ── S2 (org cockpit) — the PROJECT-attention axis ──────────────────────────
+  /** Projects with an UNMET core required set, ranked WORST-FIRST (fewest core
+   *  slots filled, then most missing). The cockpit's ranked attention cards read
+   *  from this; a manager at 100 projects sees WHICH are behind, not just which
+   *  party. Capped server-side at {@link PROJECTS_BEHIND_CAP}. Empty ⇒ every
+   *  in-scope project with a requirement has met its core set (calm all-clear). */
+  projectsBehind: z.array(ProjectBehindSchema).default([]),
+  /** Total in-scope projects that HAVE a core requirement (the denominator the
+   *  cockpit pulse uses: "{behind} מתוך {withRequirement} פרויקטים מאחור"). */
+  projectsWithRequirement: z.number().int().nonnegative().default(0),
+  /** True when `projectsBehind` was capped (more behind projects exist than the
+   *  cap) → the cockpit shows a "+N" tail / "הצג הכל" affordance. */
+  projectsBehindCapped: z.boolean().default(false),
 });
 export type BoardCompleteness = z.infer<typeof BoardCompletenessSchema>;
 

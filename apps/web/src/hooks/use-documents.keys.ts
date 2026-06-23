@@ -63,6 +63,7 @@ export function documentsSearchQueryKey(
     cursor?: string;
     type?: string;
     party?: string;
+    projectId?: string;
     scope?: 'project' | 'apartment' | 'org';
     archived?: boolean;
   },

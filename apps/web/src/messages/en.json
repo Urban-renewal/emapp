@@ -897,15 +897,81 @@
     },
     "views": {
       "label": "View",
+      "cockpit": "Project status",
       "party": "By party",
       "project": "By project",
       "all": "All documents"
+    },
+    "cockpit": {
+      "heading": "Projects needing attention",
+      "pulse": {
+        "behind": "{behind} of {total} projects missing core documents",
+        "behindCapped": "Over {behind} of {total} projects missing core documents",
+        "allClear": "All {total} projects with a document requirement — core documents complete",
+        "noRequirement": "No projects with a core-document requirement yet",
+        "loading": "Loading project status…"
+      },
+      "allClearTitle": "All in order",
+      "allClearHint": "Every project has its required core documents.",
+      "noProjectsTitle": "No projects yet",
+      "card": {
+        "core": "Core docs {received}/{required}",
+        "missingOne": "Missing {type} — {party}",
+        "missingMany": "Missing {first} +{count} more ({party})",
+        "open": "Open {name} documents",
+        "openAria": "Open {name} documents",
+        "uploadAria": "Upload {type} for {name}"
+      },
+      "fleet": {
+        "heading": "All projects ({count})",
+        "complete": "Core complete",
+        "metTail": "+{count} more projects with core documents complete",
+        "showAll": "Show all",
+        "moreBehind": "+{count} more projects behind"
+      }
     },
     "project": {
       "open": "Open {name} documents",
       "back": "Back to projects",
       "empty": "No projects yet",
       "zoomEmpty": "No documents in this project yet"
+    },
+    "checklistBoard": {
+      "heading": "Project core documents",
+      "received": "{type} — received",
+      "missing": "{type} — missing",
+      "uploadAria": "Upload {type}",
+      "complete": "All core documents received",
+      "summary": "{received} of {required} core documents received",
+      "docsHeading": "All project documents",
+      "noTrack": "This project has no defined core-document requirement"
+    },
+    "grouped": {
+      "attentionBand": "{count} items need attention",
+      "pendingScan": "{count} in security scan",
+      "ghostUploads": "{count} incomplete uploads",
+      "groupCount": "{count} documents",
+      "expandAria": "Expand {name} group",
+      "collapseAria": "Collapse {name} group",
+      "emptyGroup": "No documents in this group"
+    },
+    "facet": {
+      "label": "Filter",
+      "all": "All",
+      "party": "Party",
+      "type": "Type",
+      "scopeLabel": "Scope",
+      "scanStatus": "Scan",
+      "clear": "Clear filters",
+      "scope": {
+        "project": "Project",
+        "apartment": "Apartment",
+        "org": "Org"
+      },
+      "scan": {
+        "pending": "Scanning",
+        "clean": "Clean"
+      }
     },
     "row": {
       "apartment": "Apt {number}",

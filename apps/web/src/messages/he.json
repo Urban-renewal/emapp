@@ -897,15 +897,81 @@
     },
     "views": {
       "label": "תצוגה",
+      "cockpit": "מצב הפרויקטים",
       "party": "לפי גורם",
       "project": "לפי פרויקט",
       "all": "כל המסמכים"
+    },
+    "cockpit": {
+      "heading": "פרויקטים הזקוקים לטיפול",
+      "pulse": {
+        "behind": "{behind} מתוך {total} פרויקטים חסרים מסמכי-ליבה",
+        "behindCapped": "מעל {behind} מתוך {total} פרויקטים חסרים מסמכי-ליבה",
+        "allClear": "כל {total} הפרויקטים עם דרישת מסמכים — מסמכי-הליבה הושלמו",
+        "noRequirement": "אין עדיין פרויקטים עם דרישת מסמכי-ליבה",
+        "loading": "טוען את מצב הפרויקטים…"
+      },
+      "allClearTitle": "הכל מסודר",
+      "allClearHint": "לכל הפרויקטים יש את מסמכי-הליבה הנדרשים.",
+      "noProjectsTitle": "אין עדיין פרויקטים",
+      "card": {
+        "core": "מסמכי-ליבה {received}/{required}",
+        "missingOne": "חסר {type} — {party}",
+        "missingMany": "חסרים {first} ועוד {count} ({party})",
+        "open": "פתיחת המסמכים של {name}",
+        "openAria": "פתיחת המסמכים של {name}",
+        "uploadAria": "העלאת {type} עבור {name}"
+      },
+      "fleet": {
+        "heading": "כל הפרויקטים ({count})",
+        "complete": "ליבה הושלמה",
+        "metTail": "ועוד {count} פרויקטים שהשלימו את מסמכי-הליבה",
+        "showAll": "הצג הכל",
+        "moreBehind": "ועוד {count} פרויקטים מאחור"
+      }
     },
     "project": {
       "open": "פתיחת המסמכים של {name}",
       "back": "חזרה לפרויקטים",
       "empty": "אין עדיין פרויקטים",
       "zoomEmpty": "אין מסמכים בפרויקט זה עדיין"
+    },
+    "checklistBoard": {
+      "heading": "מסמכי-ליבה לפרויקט",
+      "received": "{type} — התקבל",
+      "missing": "{type} — חסר",
+      "uploadAria": "העלאת {type}",
+      "complete": "כל מסמכי-הליבה התקבלו",
+      "summary": "{received} מתוך {required} מסמכי-ליבה התקבלו",
+      "docsHeading": "כל המסמכים של הפרויקט",
+      "noTrack": "לפרויקט זה אין דרישת מסמכי-ליבה מוגדרת"
+    },
+    "grouped": {
+      "attentionBand": "{count} פריטים זקוקים לתשומת לב",
+      "pendingScan": "{count} בסריקת אבטחה",
+      "ghostUploads": "{count} העלאות שלא הושלמו",
+      "groupCount": "{count} מסמכים",
+      "expandAria": "פתיחת קבוצת {name}",
+      "collapseAria": "סגירת קבוצת {name}",
+      "emptyGroup": "אין מסמכים בקבוצה זו"
+    },
+    "facet": {
+      "label": "סינון",
+      "all": "הכל",
+      "party": "גורם",
+      "type": "סוג",
+      "scopeLabel": "שיוך",
+      "scanStatus": "סריקה",
+      "clear": "נקה סינון",
+      "scope": {
+        "project": "פרויקט",
+        "apartment": "דירה",
+        "org": "ארגוני"
+      },
+      "scan": {
+        "pending": "בסריקה",
+        "clean": "תקין"
+      }
     },
     "row": {
       "apartment": "דירה {number}",

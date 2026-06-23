@@ -26,12 +26,12 @@ import { organizations } from './tenancy';
  *
  * ── DURABLE (legal) ──────────────────────────────────────────────────────────
  * An opt-out is a legal record of a withdrawn consent. DELETE is REVOKED from
- * app_user (migration 0082); a re-opt-in (if ever built) is an UPDATE, not a
+ * app_user (migration 0083); a re-opt-in (if ever built) is an UPDATE, not a
  * physical delete.
  *
  * ── RLS posture (mirrors outbound_ledger/0081) ───────────────────────────────
  * FORCE + org-isolation on `app.organization_id`; resolved/written per-tenant
- * inside withTenant. See migration 0082.
+ * inside withTenant. See migration 0083.
  */
 export const recipientOptOuts = pgTable(
   'recipient_opt_outs',

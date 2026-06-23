@@ -1,4 +1,4 @@
--- 0082: recipient_opt_outs — the autonomy outbound CONSENT / OPT-OUT registry
+-- 0083: recipient_opt_outs — the autonomy outbound CONSENT / OPT-OUT registry
 -- (M2; #506 reminder-cadence red-team MEDIUM finding — "ConsentGate input is
 -- hard-coded true").
 --

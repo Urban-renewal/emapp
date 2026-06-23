@@ -2076,10 +2076,14 @@ export class SignatureRequestsService {
    * `applied`). So no double-send from any retry/double-approve path.
    *
    * KILL-SWITCH / CONSENT: resolved here from `CAMPAIGN_SEND_ENABLED` (OPT-OUT)
-   * and handed to the gate — the same posture as `sendGovernedReminder`. A
-   * kill-switch-off / consent-withdrawn org gets `blocked` (NO send, NO ledger
-   * row); the re-mint already happened (reversible) and the manager retries when
-   * the condition lifts.
+   * and the per-owner `recipient_opt_outs` registry (M2) — the same posture as
+   * `sendGovernedReminder`. Consent is the REAL per-channel opt-out picture (no
+   * longer a hard-coded `true`): a recipient who opted out of `all` (or both
+   * channels) gets `blocked` (NO send, NO ledger row); a single-channel opt-out
+   * still delivers on the other channel and SKIPS the suppressed one. FAIL-CLOSED:
+   * an unresolved consent lookup DENIES before the ledger claim. A
+   * kill-switch-off / consent-withdrawn send leaves the re-mint standing
+   * (reversible) and the manager retries when the condition lifts.
    *
    * NOTIFICATION (legibility): after the send result is known, a best-effort
    * in-app notification fans out to the org's managers + the request's project
@@ -2104,6 +2108,41 @@ export class SignatureRequestsService {
     const sendFlag = serverEnv.CAMPAIGN_SEND_ENABLED;
     const killSwitchEnabled = sendFlag !== '0' && sendFlag !== 'false';
 
+    // ── M2: resolve REAL consent from the recipient_opt_outs registry ─────────
+    // The autonomous reissue re-delivery is a GOVERNED OUTBOUND send (email AND/OR
+    // sms via `resend` → `deliverSignatureLink`), so it MUST honor a recorded
+    // per-owner opt-out exactly like `sendGovernedReminder` does. The prior
+    // hard-coded `recipientConsented: true` here was a STALE seam from before the
+    // registry existed — it meant an owner who opted out (`POST /owners/:id/opt-out`,
+    // channel `all`) was still emailed + SMS'd a reissue when a reissue proposal was
+    // approved, ignoring a recorded legal consent withdrawal (red-team HIGH). We now
+    // resolve the FULL per-channel opt-out picture (signature_request → owner_id →
+    // opt-outs): `consented` is FALSE only when EVERY channel (or `all`) is
+    // suppressed → the ConsentGate DENIES (no send at all); a single-channel opt-out
+    // keeps the send for the other channel and SKIPS the suppressed one via the
+    // `suppress` passed to `resend`.
+    //
+    // FAIL-CLOSED on the consent axis: if the lookup THROWS (request not visible,
+    // DB error) we treat the recipient as NOT consented and return `blocked` BEFORE
+    // the Governor's ledger claim — an opted-out recipient must NEVER be sent to, and
+    // "we couldn't check" is, for consent, the same as "don't send". The re-mint
+    // already happened (reversible); a human retries once the lookup is healthy.
+    let suppression: RecipientChannelSuppression;
+    try {
+      suppression = await withTenant(
+        user.orgId,
+        (tx) => resolveRecipientChannelSuppression(tx, user.orgId, input.signatureRequestId),
+        { userId: user.sub },
+      );
+    } catch {
+      // Fail-closed: an unresolved consent DENIES (no send, no ledger claim). The
+      // re-mint stands; the inbox surfaces `blocked` and the manager retries.
+      return {
+        request,
+        delivery: { delivered: false, state: 'blocked', channel: null, recipient: null },
+      };
+    }
+
     let lastReport: SignatureDeliveryReport | null = null;
     const outcome = await governOutboundSend({
       orgId: user.orgId,
@@ -2116,9 +2155,11 @@ export class SignatureRequestsService {
       // retried same-approve collides → already_sent.
       recipientRef: input.proposalId,
       cadenceStep: REISSUE_SEND_CADENCE_STEP,
-      // Consent defaults TRUE — same documented seam as sendGovernedReminder (no
-      // per-owner outbound opt-out registry yet; ConsentGate denies when false).
-      recipientConsented: true,
+      // Resolved from the recipient_opt_outs registry (M2). FALSE only when BOTH
+      // channels (or `all`) are opted out → the ConsentGate DENIES (no send at
+      // all). A single-channel opt-out keeps this TRUE; the suppressed channel is
+      // skipped at delivery via `suppress` below. Fail-closed above.
+      recipientConsented: suppression.consented,
       killSwitchEnabled,
       breakerTripped: false,
       now: new Date(),
@@ -2126,7 +2167,12 @@ export class SignatureRequestsService {
       // an on-demand re-contact, not a cadence reminder. All other gates apply.
       gates: REISSUE_SEND_GATES,
       send: async () => {
-        const res = await this.resend(user, input.signatureRequestId);
+        // Per-channel opt-out suppression (M2): an opted-out channel is NEVER sent
+        // even with an address on file — mirrors `sendGovernedReminder`.
+        const res = await this.resend(user, input.signatureRequestId, {
+          email: suppression.email,
+          sms: suppression.sms,
+        });
         lastReport = res.delivery;
         if (didAnyChannelDeliver(res.delivery)) {
           return { delivered: true, providerMessageId: res.request.id };

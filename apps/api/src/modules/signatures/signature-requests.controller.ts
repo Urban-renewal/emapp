@@ -49,6 +49,13 @@ export class SignatureRequestsController {
     private readonly signedDocuments: SignedDocumentService,
   ) {}
 
+  /** List signature requests (keyset-paginated). Slice-2: the validated query
+   *  carries the optional `projectId` filter (scopes the flat list to one
+   *  project; honors agent record-scoping in the service) alongside the existing
+   *  status/documentId/ownerId filters; the service returns enriched
+   *  `SignatureRequestListItem` rows (display context + masked-default owner
+   *  name behind view_owner_pii). The ZodValidationPipe rejects any unknown
+   *  query key (`.strict()`), so no raw query access. */
   @Get()
   @RequirePermission('signature_requests.read')
   async list(

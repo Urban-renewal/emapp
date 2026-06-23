@@ -30,3 +30,36 @@ export interface ProposalViewModel {
   createdRelative: string;
   createdAtIso: string;
 }
+
+/**
+ * The CONFIRMATION an APPROVE surfaces — derived from the wire `delivery`
+ * outcome (shared-types `ProposalApplyDelivery`) so the manager grasps, at a
+ * glance, the REAL-WORLD result of the click: was the owner re-contacted, and
+ * on which channel — or was nothing sent (and why).
+ *
+ * This is the LEGIBILITY contract (G-QA rule #3): a state-change must visibly
+ * confirm its real-world outcome. A `state: 'sent'` shows a CALM success that
+ * names the channel + masked recipient ("הבעלים קיבל קישור חדש ב<דוא״ל>");
+ * every NON-`sent` state shows an HONEST non-success — never a false "sent".
+ *
+ * VOICE LAW: the copy (composed at the client via next-intl from this neutral
+ * model) frames the owner as the actor of the outcome ("הבעלים קיבל…"), never
+ * the system as a first-person hero.
+ *
+ * `messageKey` is an i18n key under `inbox.delivery.*` (the client interpolates
+ * the channel + recipient). `tone` routes the toast region: `success` /
+ * `neutral` → polite; `warning` → assertive (the manager must NOT mistake a
+ * non-send for a send).
+ */
+export interface ProposalApproveOutcome {
+  /** The governed-outbound state bucket, carried verbatim for the i18n key. */
+  state: 'sent' | 'already_sent' | 'blocked' | 'failed' | 'ambiguous' | 'no_channel';
+  /** i18n key under `inbox.delivery` — the client resolves + interpolates it. */
+  messageKey: string;
+  /** Toast urgency: a non-send is `warning` (assertive) so it can't read as a send. */
+  tone: 'success' | 'neutral' | 'warning';
+  /** The channel that carried it, for interpolation (translated at the client). */
+  channel: 'email' | 'sms' | 'whatsapp' | null;
+  /** MASKED recipient (`na***@domain`) for interpolation; `null` when absent. */
+  recipient: string | null;
+}

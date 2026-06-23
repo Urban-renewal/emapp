@@ -12,13 +12,26 @@ import { organizations } from './tenancy';
  * idempotency key, then flips it to a terminal state (`sent`/`failed`).
  *
  * ── M1 — why a UNIQUE key + state machine, not "ledger before send" ──────────
- * idempotency_key = proposal_id + recipient_ref + cadence_step. The FULL UNIQUE
- * on (org_id, idempotency_key) means a double-approve or a retry-after-ambiguous
- * -failure CLAIMS the SAME key, collides, finds the prior row, and — on a
- * terminal `sent` — NO-OPs the replay rather than blind-resending. "Ledger
- * before send" alone only gives attempt-durability; the UNIQUE key + the
+ * idempotency_key = recipient_ref + cadence_step (org scope comes from the
+ * (org_id, idempotency_key) UNIQUE — proposal_id is DELIBERATELY NOT in the key;
+ * see below). The FULL UNIQUE on (org_id, idempotency_key) means a double-approve,
+ * a retry-after-ambiguous-failure, OR a RE-PROPOSAL of the same recipient+step
+ * CLAIMS the SAME key, collides, finds the prior row, and — on a terminal `sent`
+ * OR a parked `pending_send` — NO-OPs the replay rather than blind-resending.
+ * "Ledger before send" alone only gives attempt-durability; the UNIQUE key + the
  * pending_send→sent→failed state machine is what guarantees exactly-once.
  * Mirrors the proven `import_jobs.idempotency_key` UNIQUE idiom.
+ *
+ * ── Why `proposal_id` is NOT in the key (round-2 cross-proposal red-team) ─────
+ * The exactly-once UNIT is "one send per (org, recipient, cadence-step)", NOT
+ * "per proposal". A parked AMBIGUOUS send leaves a `pending_send` row; if the
+ * triggering proposal then leaves `pending` (REJECT releases the dedup key, or
+ * EXPIRE via recommender TTL), the recommender re-proposes the SAME (recipient,
+ * step) as a NEW proposal. Had proposal_id been in the key, that new proposal's
+ * claim would NOT collide → a SECOND real SMS for a possibly-already-dispatched
+ * message. Keying on (recipient_ref, cadence_step) makes the re-proposal collide
+ * with the parked row → already_sent → no double-send. proposal_id is kept as a
+ * NON-KEY causal column (which proposal drove the send — audit/trace only).
  *
  * Unlike the proposals partial-unique (releases on non-pending), this is a FULL
  * unique across ALL states: a terminal `sent` row MUST keep occupying the key so
@@ -53,8 +66,9 @@ export const outboundLedger = pgTable(
     /** Cadence step (0/+3/+7/+14 → 0,1,2,3). A new step → a new key → a distinct
      *  send; a retry of the same step collides on the UNIQUE key. */
     cadenceStep: integer('cadence_step').notNull(),
-    /** DETERMINISTIC idempotency key = proposalId + recipientRef + cadenceStep.
-     *  UNIQUE per org. The M1 root. */
+    /** DETERMINISTIC idempotency key = recipientRef + cadenceStep (NOT proposalId
+     *  — the exactly-once unit is per recipient+step, stable across re-proposals;
+     *  see the header). UNIQUE per org. The M1 root. */
     idempotencyKey: text('idempotency_key').notNull(),
     /** pending_send | sent | failed (CHECK-pinned). The state machine. */
     status: text('status').notNull().default('pending_send'),

@@ -26,6 +26,10 @@ import {
   setupAndVerifyGucs,
 } from '../scripts/migrate';
 import { pool } from '../src/client';
+import {
+  findWatermarkSkipViolations,
+  type WatermarkSkipEntry,
+} from '../src/migrations/journal-integrity';
 
 describe('v8.5 migrator — assertPiiKeysPresent fail-fast', () => {
   it('1) undefined PII_ENCRYPTION_KEY → throws "refusing to migrate"', () => {
@@ -237,5 +241,92 @@ describe('v12 migrator — assertJournalIntegrity preflight (silent-skip guard)'
     const dir = mkdtempSync(join(tmpdir(), 'journal-guard-empty-'));
     tmpDirs.push(dir);
     expect(() => assertJournalIntegrity(dir)).toThrow(/journal not found/i);
+  });
+});
+
+describe('v12+ migrator — findWatermarkSkipViolations (M-1 watermark-divergence guard)', () => {
+  // Pure, NO db. Pins the variant the static journal guard cannot see: a live
+  // db watermark sitting ABOVE an unapplied journal entry → drizzle would
+  // silently skip it. Real incident 2026-06-23 (watermark 1783586400000 above
+  // 0079_external_share's when 1783500000000).
+  const entry = (idx: number, tag: string, when: number, hash: string): WatermarkSkipEntry => ({
+    idx,
+    tag,
+    when,
+    hash,
+  });
+
+  it('14) entry below watermark + hash NOT applied → violation (the incident case)', () => {
+    const journalEntries = [
+      entry(0, '0078_prior', 1783000000000, 'hash-0078'),
+      entry(1, '0079_external_share', 1783500000000, 'hash-0079'),
+    ];
+    const violations = findWatermarkSkipViolations({
+      // 0078 applied (its when is the live max in real life, but the leftover
+      // pre-renumber watermark is even higher) — model the incident watermark.
+      appliedHashes: new Set(['hash-0078']),
+      watermark: 1783586400000, // leftover pre-renumber when, ABOVE 0079's when
+      journalEntries,
+    });
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toEqual({ idx: 1, tag: '0079_external_share', when: 1783500000000 });
+  });
+
+  it('15) entry below watermark + hash applied → no violation', () => {
+    const journalEntries = [entry(0, '0079_external_share', 1783500000000, 'hash-0079')];
+    const violations = findWatermarkSkipViolations({
+      appliedHashes: new Set(['hash-0079']),
+      watermark: 1783586400000,
+      journalEntries,
+    });
+    expect(violations).toEqual([]);
+  });
+
+  it('16) entry above watermark + not applied → no violation (normal pending migration)', () => {
+    const journalEntries = [entry(0, '0080_new', 1784000000000, 'hash-0080')];
+    const violations = findWatermarkSkipViolations({
+      appliedHashes: new Set(['hash-0078']),
+      watermark: 1783586400000, // below the pending entry's when
+      journalEntries,
+    });
+    expect(violations).toEqual([]);
+  });
+
+  it('17) empty applied set / fresh db (null watermark) → no violation', () => {
+    const journalEntries = [
+      entry(0, '0000_init', 1779000000000, 'hash-0000'),
+      entry(1, '0001_more', 1779031800000, 'hash-0001'),
+    ];
+    expect(
+      findWatermarkSkipViolations({ appliedHashes: new Set(), watermark: null, journalEntries }),
+    ).toEqual([]);
+    expect(
+      findWatermarkSkipViolations({
+        appliedHashes: new Set(),
+        watermark: undefined,
+        journalEntries,
+      }),
+    ).toEqual([]);
+  });
+
+  it('18) entry whose when EQUALS the watermark + not applied → violation (boundary: <= is a skip)', () => {
+    // drizzle applies iff watermark < when; when === watermark is skipped.
+    const journalEntries = [entry(3, '0042_edge', 1783586400000, 'hash-0042')];
+    const violations = findWatermarkSkipViolations({
+      appliedHashes: new Set(['hash-other']),
+      watermark: 1783586400000,
+      journalEntries,
+    });
+    expect(violations).toEqual([{ idx: 3, tag: '0042_edge', when: 1783586400000 }]);
+  });
+
+  it('19) accepts a readonly string[] for appliedHashes (not just a Set)', () => {
+    const journalEntries = [entry(1, '0079_external_share', 1783500000000, 'hash-0079')];
+    const violations = findWatermarkSkipViolations({
+      appliedHashes: ['hash-0079'],
+      watermark: 1783586400000,
+      journalEntries,
+    });
+    expect(violations).toEqual([]);
   });
 });

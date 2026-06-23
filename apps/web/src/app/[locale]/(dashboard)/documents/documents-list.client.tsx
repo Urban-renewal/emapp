@@ -1,5 +1,6 @@
 'use client';
 
+import type { PartyCompleteness } from '@emapp/shared-types';
 import {
   ArrowRight,
   Building2,
@@ -22,10 +23,11 @@ import { useTranslations } from 'next-intl';
 import type { ComponentType } from 'react';
 import { useMemo, useState } from 'react';
 
+import { DOCUMENT_TYPE_LABELS_EN, DOCUMENT_TYPE_LABELS_HE } from '@/adapters/document';
 import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { NameDisplay } from '@/components/ui/name-display';
-import { useDocumentList } from '@/hooks/use-documents';
+import { useBoardCompleteness, useDocumentList } from '@/hooks/use-documents';
 import { useHasPermission } from '@/hooks/use-permissions';
 import { useProjectList } from '@/hooks/use-projects';
 import {
@@ -33,6 +35,7 @@ import {
   type DocumentParty,
   providerPartyForDocType,
 } from '@/lib/document-party';
+import { useDisplayLocale } from '@/lib/locale';
 import type { DocumentViewModel } from '@/models/document.vm';
 
 /**
@@ -109,6 +112,22 @@ export function DocumentsListClient() {
     return map;
   }, [projectsData?.items]);
 
+  // Binder slice 2 — per-party REQUIRED-vs-RECEIVED completeness, computed
+  // SERVER-SIDE over the WHOLE board scope (org / agent's assigned projects).
+  // This REPLACES the earlier client-side `computeBoardCompleteness` over a
+  // single 25-doc page: that compared a partial page against ALL projects'
+  // requirements, so unloaded projects were mis-counted "missing" (bogus
+  // "owners 0/21"). The board is keyset-paginated — only the server sees every
+  // doc. Fail-SOFT: when the query is loading/errored, `completenessByParty` is
+  // null and the cards fall back to the calm slice-1 "present" check.
+  const { data: boardCompleteness } = useBoardCompleteness();
+  const completenessByParty = useMemo<Map<DocumentParty, PartyCompleteness> | null>(() => {
+    if (!boardCompleteness) return null;
+    const map = new Map<DocumentParty, PartyCompleteness>();
+    for (const c of boardCompleteness.byParty) map.set(c.party, c);
+    return map;
+  }, [boardCompleteness]);
+
   const items = useMemo(() => data?.items ?? [], [data?.items]);
   const page = data?.page;
 
@@ -140,14 +159,23 @@ export function DocumentsListClient() {
     });
   }, [filteredItems]);
 
-  // Plain-Hebrew orientation, user-voiced (the user's situation, never
-  // "the system did X"). Names the parties still awaiting their first doc.
+  // Plain-Hebrew orientation, user-voiced (the user's situation, never "the
+  // system did X"). It now reads the SERVER completeness (real unmet REQUIREMENTS
+  // across the whole board scope, NOT a single page). The "ועוד N" is the count
+  // of parties whose required doc-set is incomplete, ordered in the canonical
+  // board order so the named parties read stably. Falls back to the slice-1
+  // presence framing when there is no requirement anywhere, or while the
+  // completeness query is still loading (so the line never flashes wrong).
   const orientation = useMemo(() => {
     const active = buckets.filter((b) => b.docs.length > 0);
     if (active.length === 0) return null; // empty-state copy handles this
-    const empty = buckets.filter((b) => b.docs.length === 0);
-    return { activeCount: active.length, emptyParties: empty.map((b) => b.party) };
-  }, [buckets]);
+    if (boardCompleteness?.hasAnyRequirement) {
+      const unmet = DOCUMENT_PARTIES.filter((p) => boardCompleteness.unmetParties.includes(p));
+      return { kind: 'requirement' as const, parties: unmet };
+    }
+    const empty = buckets.filter((b) => b.docs.length === 0).map((b) => b.party);
+    return { kind: 'presence' as const, parties: empty };
+  }, [buckets, boardCompleteness]);
 
   if (isLoading) return <ListSkeleton rows={6} />;
 
@@ -164,9 +192,7 @@ export function DocumentsListClient() {
     );
   }
 
-  const activeBucket = activeParty
-    ? (buckets.find((b) => b.party === activeParty) ?? null)
-    : null;
+  const activeBucket = activeParty ? (buckets.find((b) => b.party === activeParty) ?? null) : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -247,7 +273,7 @@ export function DocumentsListClient() {
       {/* Plain-Hebrew orientation — states the situation in words, user-voiced. */}
       {orientation && (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-          <OrientationLine emptyParties={orientation.emptyParties} />
+          <OrientationLine kind={orientation.kind} parties={orientation.parties} />
         </p>
       )}
 
@@ -256,7 +282,11 @@ export function DocumentsListClient() {
           {items.length === 0 ? t('empty') : t('noResults')}
         </p>
       ) : activeBucket ? (
-        <PartyZoomIn bucket={activeBucket} projectNames={projectNames} onBack={() => setActiveParty(null)} />
+        <PartyZoomIn
+          bucket={activeBucket}
+          projectNames={projectNames}
+          onBack={() => setActiveParty(null)}
+        />
       ) : (
         <ul
           className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
@@ -264,7 +294,11 @@ export function DocumentsListClient() {
         >
           {buckets.map((bucket) => (
             <li key={bucket.party}>
-              <PartyCard bucket={bucket} onOpen={() => setActiveParty(bucket.party)} />
+              <PartyCard
+                bucket={bucket}
+                completeness={completenessByParty?.get(bucket.party) ?? null}
+                onOpen={() => setActiveParty(bucket.party)}
+              />
             </li>
           ))}
         </ul>
@@ -292,43 +326,87 @@ export function DocumentsListClient() {
 
 /**
  * The plain-Hebrew orientation sentence. User-voiced (the user's situation,
- * never "the system did X"). When every active party has docs → "all in
- * order"; otherwise it names the parties still awaiting a first doc (capping
- * the list at two, then "+N more"), so the read stays calm at scale.
+ * never "the system did X").
+ *
+ * Slice 2 — `kind` selects the framing:
+ *   - `requirement`: the board HAS track-required docs. `parties` are those whose
+ *     REQUIRED set is incomplete. Empty → "all in order" (every requirement met).
+ *     Non-empty → "כמעט הכל מסודר — טרם התקבלו מ{parties}", derived from
+ *     real required-vs-received (NOT mere presence).
+ *   - `presence`: no requirement exists on the board (fallback to the slice-1
+ *     framing). `parties` are those still awaiting a FIRST doc.
+ *
+ * Either way the party list is capped at two names, then "+N", so the read stays
+ * calm at scale.
  */
-function OrientationLine({ emptyParties }: { emptyParties: DocumentParty[] }) {
+function OrientationLine({
+  kind,
+  parties,
+}: {
+  kind: 'requirement' | 'presence';
+  parties: DocumentParty[];
+}) {
   const t = useTranslations('documents');
   const tParty = useTranslations('documents.party');
 
-  if (emptyParties.length === 0) return <>{t('board.orientation.allFilled')}</>;
+  if (parties.length === 0) return <>{t('board.orientation.allFilled')}</>;
 
-  const names = emptyParties.map((p) => tParty(p));
-  let parties: string;
+  const names = parties.map((p) => tParty(p));
+  let partiesText: string;
   if (names.length === 1) {
-    parties = names[0]!;
+    partiesText = names[0]!;
   } else if (names.length === 2) {
-    parties = t('board.orientation.twoParties', { first: names[0]!, second: names[1]! });
+    partiesText = t('board.orientation.twoParties', { first: names[0]!, second: names[1]! });
   } else {
-    parties = t('board.orientation.manyParties', { first: names[0]!, count: names.length - 1 });
+    partiesText = t('board.orientation.manyParties', { first: names[0]!, count: names.length - 1 });
   }
-  return <>{t('board.orientation.someEmpty', { parties })}</>;
+  const key =
+    kind === 'requirement' ? 'board.orientation.someUnmet' : 'board.orientation.someEmpty';
+  return <>{t(key, { parties: partiesText })}</>;
 }
 
 /**
  * One PARTY card on the landing board. Calm by default: a tinted icon tile,
- * the party name, a one-line gist (count + latest), and a quiet completeness
- * mark. A party with zero docs renders as a GHOST card (muted, "טרם התקבלו
- * מסמכים") and is NOT clickable. NO filenames here — those live one zoom in.
+ * the party name, a one-line gist (count + latest), and a REQUIRED-vs-RECEIVED
+ * completeness indicator (binder slice 2).
+ *
+ * Completeness (`completeness`, may be null when no project context):
+ *   - HAS a requirement → an "X/Y" badge + a quiet ring colored by met/unmet
+ *     (success when complete, neutral-amber when still outstanding). Replaces the
+ *     slice-1 binary teal check.
+ *   - NO requirement → just a calm "present" check (this party has docs but no
+ *     track-required set), or nothing extra on a ghost.
+ *
+ * A party with zero docs renders as a GHOST card (muted) and is NOT clickable —
+ * but now it surfaces the GAP: when that party HAS an unmet requirement it shows
+ * "חסר: <types>" / "0/Y" so the user sees what's missing, not a flat "none".
  */
-function PartyCard({ bucket, onOpen }: { bucket: PartyBucket; onOpen: () => void }) {
+function PartyCard({
+  bucket,
+  completeness,
+  onOpen,
+}: {
+  bucket: PartyBucket;
+  completeness: PartyCompleteness | null;
+  onOpen: () => void;
+}) {
   const t = useTranslations('documents');
   const tParty = useTranslations('documents.party');
+  const locale = useDisplayLocale();
   const { party, docs, latest } = bucket;
   const Icon = PARTY_META[party].icon;
   const isEmpty = docs.length === 0;
   const name = tParty(party);
 
+  const hasRequirement = completeness?.hasRequirement ?? false;
+  const isComplete = completeness?.isComplete ?? false;
+  const labels = locale === 'he' ? DOCUMENT_TYPE_LABELS_HE : DOCUMENT_TYPE_LABELS_EN;
+  // The missing required types, label-resolved (no PII — type keys only).
+  const missingLabels = (completeness?.missingTypes ?? []).map((m) => labels[m.type] ?? m.type);
+
   if (isEmpty) {
+    // Ghost: no docs received. If this party HAS an unmet requirement, surface
+    // the GAP ("0/Y · חסר: שומה") so the missing work is visible, not just "none".
     return (
       <div
         className="card flex items-center gap-3 px-4 py-3.5"
@@ -336,14 +414,23 @@ function PartyCard({ bucket, onOpen }: { bucket: PartyBucket; onOpen: () => void
         aria-disabled="true"
       >
         <PartyIconTile Icon={Icon} muted />
-        <div className="flex min-w-0 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-sm font-semibold" style={{ color: 'var(--text-muted)' }}>
             {name}
           </span>
-          <span className="text-xs" style={{ color: 'var(--text-soft)' }}>
-            {t('board.ghost')}
+          <span className="truncate text-xs" style={{ color: 'var(--text-soft)' }}>
+            {hasRequirement && missingLabels.length > 0
+              ? t('board.missing', { types: missingLabels.join(' · ') })
+              : t('board.ghost')}
           </span>
         </div>
+        {hasRequirement && completeness && (
+          <CompletenessBadge
+            received={completeness.received}
+            required={completeness.required}
+            unmet
+          />
+        )}
       </div>
     );
   }
@@ -362,22 +449,72 @@ function PartyCard({ bucket, onOpen }: { bucket: PartyBucket; onOpen: () => void
           {name}
         </span>
         <span className="truncate text-xs" style={{ color: 'var(--text-muted)' }}>
-          {latest
-            ? t('board.gist.latest', { count: docs.length, when: latest.createdRelative })
-            : t('board.gist.count', { count: docs.length })}
+          {hasRequirement && completeness
+            ? // Required-vs-received gist — the user's real state per the checklist.
+              completeness.received >= completeness.required
+              ? t('board.gist.allReceived', { count: docs.length })
+              : t('board.gist.someMissing', {
+                  received: completeness.received,
+                  required: completeness.required,
+                  types: missingLabels.join(' · '),
+                })
+            : latest
+              ? t('board.gist.latest', { count: docs.length, when: latest.createdRelative })
+              : t('board.gist.count', { count: docs.length })}
         </span>
       </div>
-      {/* A quiet teal check — this party has documents (slice-1 completeness =
-          "present". Required-vs-present completeness-per-party is slice 2). */}
-      <span
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
-        style={{ background: 'var(--success-50)' }}
-        title={t('board.complete')}
-        aria-hidden="true"
-      >
-        <Check className="h-3.5 w-3.5" style={{ color: 'var(--success-600)' }} />
-      </span>
+      {hasRequirement && completeness ? (
+        <CompletenessBadge
+          received={completeness.received}
+          required={completeness.required}
+          unmet={!isComplete}
+        />
+      ) : (
+        // No track-required set for this party — keep the calm "present" check.
+        <span
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+          style={{ background: 'var(--success-50)' }}
+          title={t('board.complete')}
+          aria-hidden="true"
+        >
+          <Check className="h-3.5 w-3.5" style={{ color: 'var(--success-600)' }} />
+        </span>
+      )}
     </button>
+  );
+}
+
+/**
+ * The per-party completeness indicator — a quiet "X/Y" count in a soft pill. The
+ * tint is the ONLY color signal (success when met, neutral-amber when unmet) so
+ * the board stays calm: color = attention, reserved for the unmet case. Counts
+ * only — no PII. `aria-label` carries the same fact for assistive tech.
+ */
+function CompletenessBadge({
+  received,
+  required,
+  unmet,
+}: {
+  received: number;
+  required: number;
+  unmet: boolean;
+}) {
+  const t = useTranslations('documents');
+  return (
+    <span
+      className="flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums"
+      style={{
+        background: unmet ? 'var(--warning-50, var(--bg-subtle))' : 'var(--success-50)',
+        color: unmet ? 'var(--warning-700, var(--text-muted))' : 'var(--success-600)',
+      }}
+      title={t('board.completeness', { received, required })}
+      aria-label={t('board.completeness', { received, required })}
+    >
+      {!unmet && <Check className="h-3 w-3" aria-hidden="true" />}
+      <span aria-hidden="true">
+        {received}/{required}
+      </span>
+    </span>
   );
 }
 

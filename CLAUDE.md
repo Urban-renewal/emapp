@@ -153,11 +153,53 @@ per-slice gate table) + `docs/ENGINEERING-CHARTER.md`.
 Before "done"/merge, the change is WALKED in the owner's REAL Chrome (Claude-in-Chrome
 MCP) against the running app, AS the actual role — NOT headless, NOT Playwright, NOT MSW,
 NOT unit-green. Those are "code green" ONLY; they are NOT acceptance. The real-browser
-walk IS the gate: dev-login as the role, exercise the interaction, confirm the 4 axes
-(Network all 2xx / URL / Cookies / Redirect) + the rendered result + console clean
-(dev-HMR noise excepted). A subagent only produces code-green; the real-Chrome walk is
-MANDATORY before merge and is the owner's standard. This SUPERSEDES the "OR Playwright"
-option in the FE DoD above — Playwright is a regression net, not the acceptance gate.
+walk IS the gate: dev-login as the role, exercise the interaction, confirm the 5 axes
+(Network all 2xx / URL / Cookies / Redirect / **Latency <1s warm**), the rendered result,
+and a clean console (dev-HMR noise excepted). A subagent only produces code-green; the
+real-Chrome walk is MANDATORY before merge and is the owner's standard. This SUPERSEDES the
+"OR Playwright" option in the FE DoD above — Playwright is a regression net, not the
+acceptance gate.
+
+**LATENCY IS A FIRST-CLASS ACCEPTANCE AXIS (owner 2026-06-23, anchored — "otherwise we lose
+the customer").** EVERY browser-observable action — navigation, click, submit — MUST complete
+in **under 1 second warm**. MEASURE it on every walk (Chrome Network timing / API
+`responseTime` in the boot log), never by feel. A warm interaction ≥1s is a **FAIL** that
+blocks merge — root-cause it (host disk full → even /health 0.9s; dev→Neon RTT → run
+`DB_TARGET=local`; redundant/duplicate FE fetches; N+1 queries) and fix before merge. ONE
+cold first-hit webpack-compile spike is the only excepted case, and it MUST be explicitly
+distinguished from a warm regression (re-hit the route and confirm the 2nd call is <1s) — do
+NOT wave a slow interaction away as "compile" without re-measuring. Report the measured ms
+per interaction in the walk evidence, not "felt fast". (Backup: memory
+`feedback_sub_second_interaction_budget`.)
+
+**OUTCOME, NOT MECHANICS — acceptance is the real-world EFFECT, end-to-end (owner 2026-06-23,
+anchored).** A 2xx + optimistic UI update + a refetch is the ACTOR's MECHANICAL confirmation;
+it is NOT acceptance. For ANY state-changing action, the walk MUST verify the action's PURPOSE
+actually happened, end-to-end, for EVERY party it affects — generically, for every action:
+
+1. **Propagation to the affected party.** If approving a proposal reissues a signature request
+   to an apartment owner, LOG IN AS that owner (or inspect their real surface) and confirm they
+   ACTUALLY received it. "The actor saw 201" proves the API ran — NOT that the recipient got
+   anything. Verify the downstream artifact exists where the affected party would see it.
+2. **Notifications actually fire.** If an action should alert a party (bell, SMS, email,
+   inbox), confirm the alert REALLY appears for the recipient (check the bell as them; check
+   the outbound/notification record). A silent state change that should have notified is a FAIL.
+3. **Effect legibility — the situation picture must VISIBLY change.** After the action a human
+   must grasp the NEW state AT A GLANCE. If "everything looks the same" and the only evidence
+   the action happened is a network 201, **the UI FAILED — that's a blocker, not a pass.** State
+   changes must be visible, distinguishable, and self-explaining (what changed, why I'm seeing
+   it, what's next), per the per-role situation-picture-at-a-glance north-star.
+4. **Verify the negative / no silent half-apply:** the actor's view, the affected party's view,
+   and the counters/ledgers/notifications all moved CONSISTENTLY — not one without the others.
+
+**SCALE-READY, MODERN COLLECTIONS (owner 2026-06-23, anchored).** Any list/collection of domain
+entities (signatures, projects, owners, documents, proposals) MUST be designed for HIGH SCALE
+from the start — NOT a flat, undifferentiated "wall" of rows/cards that only reads at demo size.
+At hundreds/thousands of items it must stay scannable + prioritized: grouping, what-needs-
+attention-first, at-a-glance status, progressive disclosure / zoom-in, sort/filter — consistent
+with the situation-picture-at-a-glance north-star (calm, system-manages-by-rules, one-click-
+confirm, zoom-in). A "flat wall" that works only at demo scale is a FAIL, even if every row is
+individually correct.
 
 \### G-RT — Red-team THROUGHOUT + loop-until-closed (every security-sensitive change; default-on for any non-trivial implementation)
 

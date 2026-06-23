@@ -18,10 +18,15 @@ import {
 import {
   CLASSIFY_SAMPLE_MAX_BYTES,
   DOCUMENT_MAX_SIZE_BYTES,
+  DOCUMENT_PARTIES,
   DOCUMENT_SCAN_REJECTED_CODE,
   DOCUMENT_TYPE_MISMATCH_CODE,
   DOCUMENT_UPLOAD_INCOMPLETE_CODE,
   REMEDIATION_SAMPLE_MAX,
+  REQUIRED_DOC_TYPES_BY_TRACK,
+  providerPartyForDocType,
+  trackForProjectType,
+  type BoardCompleteness,
   type ClassifyDocument,
   type ClassifyResult,
   type CreateDocument,
@@ -29,8 +34,11 @@ import {
   type DedupCheckResponse,
   type Document,
   type DocumentDownloadResponse,
+  type DocumentParty,
+  type DocumentType,
   type DocumentUploadResponse,
   type FinalizeDocument,
+  type PartyCompleteness,
   type RemediationItem,
   type RemediationSweepInputDto,
   type RemediationSweepResult,
@@ -46,7 +54,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, eq, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import {
@@ -1949,6 +1957,172 @@ export class DocumentsService {
       data: pageRows.map(toDocument),
       page: { limit, cursor: hasMore && last ? encodeCursor(last) : null, has_more: hasMore },
     };
+  }
+
+  /**
+   * PARTY-BINDER board completeness (binder slice 2) — per-PARTY REQUIRED-vs-
+   * RECEIVED across the WHOLE board scope, computed SERVER-SIDE.
+   *
+   * WHY server-side (the bug this closes): the documents board is ORG-WIDE and
+   * keyset-paginated. The FE previously derived completeness client-side from a
+   * single 25-doc page while counting requirements across ALL projects — so the
+   * ~20 projects whose docs were never loaded were auto-counted "missing"
+   * (bogus "owners 0/21"). Completeness over a partial page is unsound; only the
+   * server sees ALL the scope's documents. This method computes it over EVERY
+   * visible project + EVERY non-archived doc in ONE aggregate pass (two index-
+   * bounded queries, no N+1) → accurate + sub-second.
+   *
+   * MODEL (identical to the DH2 checklist + the FE slice-2 math, ONE shared
+   * REQUIRED_DOC_TYPES_BY_TRACK + providerPartyForDocType): a "required slot" is
+   * a (projectId, requiredType) pair per the project's track; a slot is RECEIVED
+   * when a non-archived doc of that type exists FOR THAT PROJECT (DH1 canonical
+   * doc_scope='project'+doc_scope_id, OR legacy project_id). Slots roll up to a
+   * party via providerPartyForDocType.
+   *
+   * SCOPE / RLS (no-leak): withTenant → RLS tenant_isolation (org_id) FORCE on
+   * EVERY table. For an AGENT the project set is further restricted to ACTIVE
+   * assignments (the same predicate assertProjectVisible/list use), and received
+   * docs are matched ONLY for those projects — an agent's completeness reflects
+   * exactly their assigned deals, never the whole org.
+   *
+   * PRIVACY: counts + doc-type KEYS only. NO document id/name, NO owner PII. The
+   * received probe selects DISTINCT (project_id-resolved, type) pairs — never a
+   * row's content, name, or owner. Structural fact about the file set, not people.
+   */
+  async boardCompleteness(user: AccessTokenPayload): Promise<BoardCompleteness> {
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        // 1) The projects IN SCOPE (id + raw type → track). Manager/viewer = all
+        //    org projects (RLS-scoped); agent = active assignments only. Archived
+        //    projects still carry a checklist (a paused deal still "needs" its
+        //    docs), matching the DH2 per-project checklist which does not filter
+        //    on project archive state.
+        const projBase = tx.select({ id: projects.id, type: projects.type }).from(projects).$dynamic();
+        const projectRows =
+          user.role === 'agent'
+            ? await projBase.innerJoin(
+                projectAssignments,
+                and(
+                  eq(projectAssignments.projectId, projects.id),
+                  eq(projectAssignments.userId, user.sub),
+                  isNull(projectAssignments.unassignedAt),
+                ),
+              )
+            : await projBase;
+
+        // Accumulate per-party required/received slot counts + missing-type sets.
+        interface Acc {
+          required: number;
+          received: number;
+          missing: Set<DocumentType>;
+        }
+        const acc = new Map<DocumentParty, Acc>();
+        const bump = (party: DocumentParty): Acc => {
+          let a = acc.get(party);
+          if (!a) {
+            a = { required: 0, received: 0, missing: new Set<DocumentType>() };
+            acc.set(party, a);
+          }
+          return a;
+        };
+
+        if (projectRows.length > 0) {
+          const projectIds = projectRows.map((p) => p.id);
+          // The union of required types across the in-scope tracks — the only
+          // types worth probing for "received" (we never count non-required docs).
+          const requiredUnion = new Set<DocumentType>();
+          for (const p of projectRows) {
+            for (const t of REQUIRED_DOC_TYPES_BY_TRACK[trackForProjectType(p.type)]) {
+              requiredUnion.add(t);
+            }
+          }
+
+          // 2) RECEIVED: distinct (resolved project, type) pairs for non-archived
+          //    docs whose type is in the required union AND whose project is in
+          //    scope. `resolvedProjectId` mirrors the DH2 scope resolution: the
+          //    canonical doc_scope='project' id when set, else the legacy
+          //    project_id column. RLS already org-scopes; the IN-list bounds it to
+          //    the visible projects (so an agent's docs from non-assigned projects
+          //    — there are none under RLS+assignment anyway — cannot leak in).
+          const receivedByProject = new Map<string, Set<string>>();
+          if (requiredUnion.size > 0) {
+            const resolvedProjectId = sql<string>`COALESCE(
+              CASE WHEN ${documents.docScope} = 'project' THEN ${documents.docScopeId} END,
+              ${documents.projectId}
+            )`;
+            const recvRows = await tx
+              .selectDistinct({ projectId: resolvedProjectId, type: documents.type })
+              .from(documents)
+              .where(
+                and(
+                  isNull(documents.archivedAt),
+                  inArray(documents.type, [...requiredUnion] as string[]),
+                  or(
+                    and(
+                      eq(documents.docScope, 'project'),
+                      inArray(documents.docScopeId, projectIds),
+                    ),
+                    inArray(documents.projectId, projectIds),
+                  ),
+                ),
+              );
+            for (const r of recvRows) {
+              if (!r.projectId) continue;
+              let set = receivedByProject.get(r.projectId);
+              if (!set) {
+                set = new Set<string>();
+                receivedByProject.set(r.projectId, set);
+              }
+              set.add(r.type);
+            }
+          }
+
+          // 3) Roll up: every project contributes its track's required types as
+          //    slots; a slot is satisfied iff that project received that type.
+          for (const project of projectRows) {
+            const requiredTypes = REQUIRED_DOC_TYPES_BY_TRACK[trackForProjectType(project.type)];
+            const received = receivedByProject.get(project.id);
+            for (const reqType of requiredTypes) {
+              const a = bump(providerPartyForDocType(reqType));
+              a.required += 1;
+              if (received?.has(reqType)) a.received += 1;
+              else a.missing.add(reqType);
+            }
+          }
+        }
+
+        // Emit ONE entry per canonical party (stable order) so the FE renders a
+        // deterministic board; a party with no requirement is required:0.
+        const byParty: PartyCompleteness[] = DOCUMENT_PARTIES.map((party) => {
+          const a = acc.get(party);
+          const required = a?.required ?? 0;
+          const received = a?.received ?? 0;
+          const hasRequirement = required > 0;
+          return {
+            party,
+            required,
+            received,
+            hasRequirement,
+            isComplete: hasRequirement && received >= required,
+            missingTypes: a ? [...a.missing].map((type) => ({ type })) : [],
+          };
+        });
+
+        const unmetParties = byParty
+          .filter((c) => c.hasRequirement && c.received < c.required)
+          .map((c) => c.party);
+        const hasAnyRequirement = byParty.some((c) => c.hasRequirement);
+
+        return {
+          byParty,
+          unmetParties,
+          hasAnyRequirement,
+          allRequirementsMet: hasAnyRequirement && unmetParties.length === 0,
+        };
+      },
+      { userId: user.sub },
+    );
   }
 
   async update(user: AccessTokenPayload, id: string, input: UpdateDocument): Promise<Document> {

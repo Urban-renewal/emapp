@@ -11,11 +11,13 @@
  *   - manager-only: a non-manager is FORBIDDEN.
  *   - RLS: org B cannot see / action org A's proposal (generic 404).
  *
- * The SignatureRequestsService dependency is faked: its `reissueExpired` records
- * the (user, id) it was called with — so this spec proves the PROPOSALS layer's
- * dispatch + state machine + audit, while the real `reissueExpired` gated path is
- * exercised by the signatures suite. The proposal rows are seeded via the
- * BYPASSRLS pool, then read/mutated through the service under withTenant/RLS.
+ * The SignatureRequestsService dependency is faked: its `reissueAndDeliver`
+ * records the (user, {signatureRequestId, proposalId}) it was called with and
+ * returns a stub delivery — so this spec proves the PROPOSALS layer's dispatch +
+ * state machine + audit + delivery surfacing, while the real `reissueAndDeliver`
+ * (re-mint + governed send + notify) is exercised by the signatures suite
+ * (signature-requests-reissue-delivers.spec.ts). The proposal rows are seeded via
+ * the BYPASSRLS pool, then read/mutated through the service under withTenant/RLS.
  */
 import { randomUUID } from 'node:crypto';
 
@@ -37,12 +39,29 @@ let orgA: TestOrg;
 let orgB: TestOrg;
 let svc: ProposalsService;
 
-/** Fake SignatureRequestsService — records reissueExpired calls. */
-const reissueCalls: Array<{ orgId: string; scopeId: string }> = [];
+/** Fake SignatureRequestsService — records reissueAndDeliver calls + returns a
+ *  stub `delivered` outcome so the approve-response delivery surfacing is asserted
+ *  at the proposals layer (the REAL re-mint+send+notify is the signatures suite). */
+const reissueCalls: Array<{ orgId: string; scopeId: string; proposalId: string }> = [];
 const fakeSignatures = {
-  reissueExpired: async (user: AccessTokenPayload, id: string) => {
-    reissueCalls.push({ orgId: user.orgId, scopeId: id });
-    return { id } as never;
+  reissueAndDeliver: async (
+    user: AccessTokenPayload,
+    input: { signatureRequestId: string; proposalId: string },
+  ) => {
+    reissueCalls.push({
+      orgId: user.orgId,
+      scopeId: input.signatureRequestId,
+      proposalId: input.proposalId,
+    });
+    return {
+      request: { id: input.signatureRequestId } as never,
+      delivery: {
+        delivered: true,
+        state: 'sent' as const,
+        channel: 'email' as const,
+        recipient: 'na***@test.local',
+      },
+    };
   },
 } as unknown as SignatureRequestsService;
 
@@ -189,9 +208,13 @@ describe('ProposalsService.approve', () => {
     const view = await svc.approve(manager(orgA), id);
     expect(view.status).toBe('applied');
     expect(view.appliedAt).toBeTruthy();
-    // The EXISTING gated method was replayed with the proposal's scopeId.
-    expect(reissueCalls).toEqual([{ orgId: orgA.id, scopeId }]);
+    // The EXISTING gated method was replayed with the proposal's scopeId + id.
+    expect(reissueCalls).toEqual([{ orgId: orgA.id, scopeId, proposalId: id }]);
     expect(await readStatus(id)).toBe('applied');
+    // The contact-producing reissue surfaces its delivery OUTCOME on the approve
+    // response (so the FE inbox can render "owner re-notified", not nothing).
+    expect(view.delivery).toMatchObject({ delivered: true, state: 'sent', channel: 'email' });
+    expect(view.delivery?.recipient).toMatch(/\*\*\*@/); // masked, never raw
 
     // A system-attributed audit row was written carrying the proposal id.
     const audit = await providerDb.execute<{ n: number }>(

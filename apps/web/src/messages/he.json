@@ -184,6 +184,19 @@
       "approved": "אושר — הפעולה בוצעה",
       "rejected": "ההצעה נדחתה",
       "failed": "הפעולה נכשלה — אפשר לנסות שוב"
+    },
+    "delivery": {
+      "sentWithRecipient": "החתימה חודשה — הבעלים קיבל קישור חדש ב{channel} ({recipient})",
+      "sentNoRecipient": "החתימה חודשה — הבעלים קיבל קישור חדש ב{channel}",
+      "alreadySent": "כבר נשלח — לא נשלח קישור חדש",
+      "blocked": "לא נשלח — חסום לפי הכללים שלך",
+      "noChannel": "אין ערוץ ליצירת קשר עם הבעלים — לא נשלח",
+      "ambiguous": "ייתכן שלא נשלח — מומלץ לבדוק",
+      "channel": {
+        "email": "דוא״ל",
+        "sms": "SMS",
+        "whatsapp": "וואטסאפ"
+      }
     }
   },
   "errorBoundary": {
@@ -855,16 +868,21 @@
         "allEmpty": "עדיין לא נאסף אף מסמך · התחילו בהעלאה מאחד הגורמים",
         "allFilled": "הכל מסודר — לכל הגורמים הפעילים יש מסמכים",
         "someEmpty": "כמעט הכל מסודר — טרם התקבלו מסמכים מ{parties}",
+        "someUnmet": "כמעט הכל מסודר — טרם התקבלו מסמכי-חובה מ{parties}",
         "twoParties": "{first} ו{second}",
         "manyParties": "{first} ועוד {count}"
       },
       "open": "פתיחת המסמכים של {party}",
       "ghost": "טרם התקבלו מסמכים",
+      "missing": "חסר: {types}",
       "gist": {
         "count": "{count} מסמכים",
-        "latest": "{count} מסמכים · האחרון {when}"
+        "latest": "{count} מסמכים · האחרון {when}",
+        "allReceived": "{count} מסמכים · כל מסמכי החובה התקבלו",
+        "someMissing": "{received} מתוך {required} התקבלו · חסר: {types}"
       },
       "complete": "הושלם",
+      "completeness": "{received} מתוך {required} מסמכי-חובה התקבלו",
       "back": "חזרה לגורמים"
     },
     "party": {
@@ -1067,6 +1085,12 @@
       "pending": "ממתין",
       "signed": "חתום",
       "cancelled": "בוטל"
+    },
+    "view": {
+      "label": "תצוגה",
+      "attention": "צריך טיפול",
+      "fleet": "כל הפרויקטים",
+      "all": "כל הבקשות"
     },
     "field": {
       "document": "מסמך",

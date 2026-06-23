@@ -1072,6 +1072,23 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `document_conflict`, `document_integrity_mismatch`, `document_type_mismatch`, `document_scan_rejected`, `storage_unavailable`, `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/documents/board-completeness
+
+- **Auth:** AuthGuard + TenantGuard (documents.read)
+- **Summary:** PARTY-BINDER board completeness (binder slice 2) — per-BINDER-PARTY REQUIRED-vs-RECEIVED across the WHOLE board scope (the caller's org; for an AGENT restricted to active project assignments), computed SERVER-SIDE over ALL the scope's projects + ALL their non-archived documents in one aggregate pass (two index-bounded queries, no N+1). Closes the FE bug where completeness was derived from a single 25-doc keyset page while counting requirements across every project (bogus "0/21"). A "required slot" is a (project, requiredType) pair per the project's track (REQUIRED_DOC_TYPES_BY_TRACK); a slot is RECEIVED when a non-archived doc of that type exists for that project (canonical doc_scope='project'+doc_scope_id OR legacy project_id); slots roll up to a party via providerPartyForDocType. withTenant→RLS org-isolation + (agent) assigned-project scoping is the boundary. Counts + doc-type KEYS only — NO PII, NO document ids/names.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { "byParty": [ { "party": "owner|appraiser|architect|municipality|contractor|lawyer|supervisor|surveyor|other", "required": int, "received": int, "isComplete": bool, "hasRequirement": bool, "missingTypes": [ { "type": "DocumentType" } ] } ], "unmetParties": ["party"], "hasAnyRequirement": bool, "allRequirementsMet": bool } }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `token_expired`
+
 ### POST /api/v1/documents/classify
 
 - **Auth:** AuthGuard + TenantGuard (documents.read)
@@ -2246,6 +2263,69 @@ _(no body)_
 
 **Errors:** `forbidden`, `not_found`, `parcel_payload_missing`, `parcel_setup_not_draft`, `parcel_skeleton_conflict`, `validation_error`, `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/parked-outbound
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** List the outbound_ledger rows STUCK pending_send needing human attention: PARKED-AMBIGUOUS (failure_code NOT NULL — provider threw/timed out, the SMS MAY have gone out) + STALE-CRASHED (failure_code NULL AND older than ?staleMinutes — a claim that never settled). Newest-first, keyset-paginated. Optional ?reason filter (ambiguous|stale). PII-FREE: ids/channel/failure_code/created_at only, never phone/email/owner. RLS org isolation. These rows are NEVER auto-resent (M1 exactly-once).
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `limit` | integer | no | minimum=1, maximum=100 |
+| `reason` | string | no | enum=["ambiguous","stale"] |
+| `staleMinutes` | integer | no | minimum=1, maximum=1440 |
+
+
+**Response**
+
+```json
+{ "data": [ {ParkedOutbound} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `forbidden`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/parked-outbound/:id/resolve
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** RESOLVE a parked outbound row after the manager checks the provider dashboard. Body { outcome: 'sent' | 'failed' }. 'sent' (it DID go out) → terminal sent: a DELIVERY NO-OP, records the truth, triggers NO send, preserves exactly-once. 'failed' (it did NOT go out) → terminal failed, which is RE-CLAIMABLE so the reminder retries the SAME step through the FULL governed path (never from here). Atomic + audited + status-guarded (WHERE status='pending_send') so it can't race a concurrent governor settle. Non-pending → 409.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `outcome` | string | yes | enum=["sent","failed"] |
+
+
+**Response**
+
+```json
+{ "data": { "id": "uuid", "status": "sent|failed" } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `parked_not_pending`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/parked-outbound/count
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Count the parked outbound rows per bucket (ambiguous + stale + total) for the manager attention badge. ?staleMinutes overrides the stale window (default 15). PII-free. RLS org isolation.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `staleMinutes` | integer | no | minimum=1, maximum=1440 |
+
+
+**Response**
+
+```json
+{ "data": { "ambiguous": int, "stale": int, "total": int } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `missing_token`, `invalid_token`, `token_expired`
+
 ### GET /api/v1/portal/apartment
 
 - **Auth:** TenantAuthGuard
@@ -3380,7 +3460,7 @@ _(no body)_
 ### GET /api/v1/signature-requests
 
 - **Auth:** AuthGuard + TenantGuard (signature_requests.read)
-- **Summary:** List signature requests, cursor-paginated. Underlying-document visibility scoping in the service.
+- **Summary:** List signature requests, cursor-paginated. Underlying-document visibility scoping in the service. Optional filters: status, documentId, ownerId, projectId (scopes the flat list to one project; honors agent record-scoping). Rows are enriched SignatureRequestListItems — projectName/apartmentLabel/documentName (non-PII display context) + ownerDisplay, the owner NAME, MASKED-BY-DEFAULT and revealed only behind view_owner_pii (manager always · agent iff the flag · viewer never); national_id/phone never appear.
 
 **Request body**
 
@@ -3390,13 +3470,14 @@ _(no body)_
 | `documentId` | string | no | format="uuid" |
 | `limit` | integer | no | minimum=1, maximum=100 |
 | `ownerId` | string | no | format="uuid" |
+| `projectId` | string | no | format="uuid" |
 | `status` | string | no | enum=["pending","signed","cancelled","expired"] |
 
 
 **Response**
 
 ```json
-{ "data": [ {SignatureRequest} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+{ "data": [ {SignatureRequestListItem} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
 ```
 
 **Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`, `token_expired`

@@ -375,6 +375,63 @@ export type DedupCheckResponse = z.infer<typeof DedupCheckResponseSchema>;
 export const DocumentChecklistTrackEnum = z.enum(['tama38', 'pinui_binui', 'default']);
 export type DocumentChecklistTrack = z.infer<typeof DocumentChecklistTrackEnum>;
 
+/**
+ * The REQUIRED document-type set per renewal TRACK — the SINGLE source of truth
+ * for "what every project of this track must collect" (the DH2 advisory set).
+ *
+ * Moved here (the FE/BE contract) so BOTH sides read ONE definition:
+ *   - BE: `apps/api/.../document-checklist.config.ts` re-exports this; the
+ *     checklist endpoint probes the `documents` table per required type.
+ *   - FE: the PARTY-BINDER board (binder slice 2) derives per-party
+ *     required-vs-received completeness from this same constant — no second
+ *     copy to drift, no new endpoint. Counts + doc-type keys only; NO PII.
+ *
+ * Required-set rationale (see the BE config header for the full reasoning):
+ *   - agreement / land_registry / blueprint — the baseline every track needs.
+ *   - regulation — added for pinui_binui's multi-building governance.
+ *
+ * These are ADVISORY expectations, deliberately a SMALL set the team can
+ * realistically complete; widening is a one-line edit + a test update here.
+ */
+export const REQUIRED_DOC_TYPES_BY_TRACK: Readonly<
+  Record<DocumentChecklistTrack, readonly DocumentType[]>
+> = {
+  tama38: ['agreement', 'land_registry', 'blueprint'],
+  pinui_binui: ['agreement', 'land_registry', 'blueprint', 'regulation'],
+  default: ['agreement', 'land_registry', 'blueprint'],
+} as const;
+
+/**
+ * Map the raw `project_type` enum value to the checklist TRACK key. Tolerant: an
+ * unknown/future value falls back to 'default' rather than throw, so the
+ * advisory checklist / board completeness NEVER breaks on a new project type.
+ *   - tama38_1, tama38_2 → 'tama38' (both תמ"א-38 variants share one set)
+ *   - pinui_binui        → 'pinui_binui'
+ *   - other / unknown    → 'default'
+ */
+export function trackForProjectType(projectType: string): DocumentChecklistTrack {
+  switch (projectType) {
+    case 'tama38_1':
+    case 'tama38_2':
+      return 'tama38';
+    case 'pinui_binui':
+      return 'pinui_binui';
+    default:
+      return 'default';
+  }
+}
+
+/** All doc TYPES that are required by AT LEAST ONE track — the union across the
+ *  three tracks. Useful when reasoning about completeness without a specific
+ *  project's track in hand. Order follows first appearance across tracks. */
+export function allRequiredDocTypes(): DocumentType[] {
+  const seen = new Set<DocumentType>();
+  for (const track of DocumentChecklistTrackEnum.options) {
+    for (const t of REQUIRED_DOC_TYPES_BY_TRACK[track]) seen.add(t);
+  }
+  return [...seen];
+}
+
 /** One required doc TYPE and whether a matching project-scoped doc exists. NO
  *  PII, NO document ids/names — purely the type key + the present boolean. */
 export const DocumentChecklistItemSchema = z.object({
@@ -402,6 +459,124 @@ export const DocumentChecklistSchema = z.object({
   advisory: z.literal(true),
 });
 export type DocumentChecklist = z.infer<typeof DocumentChecklistSchema>;
+
+// ── PARTY-BINDER board completeness (binder slice 2 — CONTRACT) ──────────────
+// `GET /api/v1/documents/board-completeness` reports, per BINDER PARTY, the
+// REQUIRED-vs-RECEIVED document completeness across the WHOLE board scope (the
+// caller's org, or — for an agent — their assigned projects). The PARTY-BINDER
+// board is ORG-WIDE and the documents list is keyset-paginated, so completeness
+// CANNOT be computed client-side from a single 25-doc page (the bug this fixes:
+// a 25-doc single page was compared against 21 projects' requirements, so every
+// unloaded project's required types were counted "missing" → bogus "0/21"). The
+// server computes it over ALL the scope's projects + ALL their documents in ONE
+// aggregate pass — accurate, sub-second, no N+1.
+//
+// PRIVACY: counts + doc-type KEYS only. NEVER a document id/name, NEVER owner
+// PII (national_id/phone/name). Completeness is a structural fact about the
+// FILE SET, not about people — the same no-PII guarantee the DH2 checklist and
+// the FE slice-2 math already hold.
+
+/** The fixed set of binder PARTIES — the "who is responsible" axis of the
+ *  PARTY-BINDER board. Order here is the canonical board order. SoT for BOTH
+ *  the FE (`apps/web/.../lib/document-party.ts` re-exports) and the BE
+ *  board-completeness endpoint — one definition, no drift. */
+export const DocumentPartyEnum = z.enum([
+  'owner', // בעלים — land registry / id documents
+  'appraiser', // שמאי — financial appraisal + שומה (survey)
+  'architect', // אדריכל — blueprints / floor plans
+  'municipality', // עירייה — permits + אישור/היתר עירייה (municipal_approval)
+  'contractor', // קבלן — agreements / contracts + ערבות (guarantee) + לוח זמנים (schedule)
+  'lawyer', // עו״ד — regulations / תקנון + חוות דעת משפטית (legal_opinion)
+  'supervisor', // מפקח — (no default doc_type yet)
+  'surveyor', // מודד — מפת מדידה / תשריט (survey_map)
+  'other', // כללי / אחר — neutral bucket + unknowns
+]);
+export type DocumentParty = z.infer<typeof DocumentPartyEnum>;
+
+/** Canonical ordered party list (the enum options), for stable board ordering. */
+export const DOCUMENT_PARTIES = DocumentPartyEnum.options;
+
+/**
+ * Default PARTY per curated `DocumentType`. Every value of `DocumentTypeEnum`
+ * MUST map to exactly one party; an unknown free-text `type` falls back to
+ * `other` via {@link providerPartyForDocType}, so the board never silently
+ * drops a document. Pure data mapping — no i18n (labels resolve at the FE).
+ */
+const PARTY_BY_DOC_TYPE: Readonly<Record<string, DocumentParty>> = {
+  // owner — carries owner PII / the registry record
+  land_registry: 'owner', // נסח טאבו
+  id_document: 'owner', // תעודת זהות
+  // appraiser — the financial / valuation file
+  financial: 'appraiser',
+  survey: 'appraiser', // שומה / הערכת שמאי
+  // surveyor — the מודד's measurement map (distinct party from the appraiser)
+  survey_map: 'surveyor', // מפת מדידה / תשריט מדידה
+  // architect — the drawings
+  blueprint: 'architect', // תוכנית / שרטוט
+  floor_plan: 'architect', // תוכנית דירה
+  // municipality — the authority's approvals
+  permit: 'municipality', // היתר
+  municipal_approval: 'municipality', // אישור / היתר עירייה
+  // contractor — the signed renewal deal + the contractor's commitments
+  agreement: 'contractor', // הסכם
+  contract: 'contractor',
+  guarantee: 'contractor', // ערבות / בטוחה
+  schedule: 'contractor', // לוח זמנים — the contractor authors the timetable
+  // lawyer — the legal framework + the עו״ד's opinion
+  regulation: 'lawyer', // תקנון / רגולציה
+  legal_opinion: 'lawyer', // חוות דעת משפטית
+  // neutral
+  other: 'other',
+};
+
+/**
+ * Resolve the default binder PARTY for a document `type`. Accepts the tolerant
+ * wire `type` string (NOT only the curated enum); any unrecognised value falls
+ * back to `other`. Pure + deterministic. SoT shared by FE + BE.
+ */
+export function providerPartyForDocType(docType: string): DocumentParty {
+  const normalised = docType.trim().toLowerCase();
+  return PARTY_BY_DOC_TYPE[normalised] ?? 'other';
+}
+
+/** One required doc-type a party is still missing — type KEY only (no PII, no
+ *  ids/names). The FE resolves the Hebrew/English label. */
+export const MissingRequiredTypeSchema = z.object({ type: DocumentTypeEnum });
+export type MissingRequiredType = z.infer<typeof MissingRequiredTypeSchema>;
+
+/** Per-party REQUIRED-vs-RECEIVED completeness. Counts + type keys only — NO PII. */
+export const PartyCompletenessSchema = z.object({
+  party: DocumentPartyEnum,
+  /** Distinct required (project,type) slots mapped to this party. 0 = no requirement. */
+  required: z.number().int().nonnegative(),
+  /** How many of those required slots have a matching received (non-archived) doc. */
+  received: z.number().int().nonnegative(),
+  /** True only when this party HAS a requirement and every slot is satisfied. */
+  isComplete: z.boolean(),
+  /** True when this party has ≥1 required slot (else don't render "0/0"). */
+  hasRequirement: z.boolean(),
+  /** Distinct required types still missing (deduped across projects), for the
+   *  "חסר: שומה" gap copy. Length ≤ required-received. */
+  missingTypes: z.array(MissingRequiredTypeSchema),
+});
+export type PartyCompleteness = z.infer<typeof PartyCompletenessSchema>;
+
+/** GET /api/v1/documents/board-completeness response (under `data`). Board-wide
+ *  per-party rollup + the summary the orientation line needs. Counts + type
+ *  keys only — NEVER PII, NEVER ids/names. */
+export const BoardCompletenessSchema = z.object({
+  /** Per-party breakdown, ALWAYS one entry per `DOCUMENT_PARTIES` (stable order).
+   *  A party with no requirement has required:0/received:0/hasRequirement:false. */
+  byParty: z.array(PartyCompletenessSchema),
+  /** Distinct parties (canonical order) with an UNMET requirement (received <
+   *  required). The orientation line names the first few and "+N"s the rest. */
+  unmetParties: z.array(DocumentPartyEnum),
+  /** True when ≥1 required slot exists anywhere in the board scope. */
+  hasAnyRequirement: z.boolean(),
+  /** True when every party with a requirement has met it (and ≥1 requirement). */
+  allRequirementsMet: z.boolean(),
+});
+export type BoardCompleteness = z.infer<typeof BoardCompletenessSchema>;
 
 // ── DH3 (V13) — heuristic document-type CLASSIFIER (SUGGEST-ONLY) ────────────
 // `POST /api/v1/documents/classify` returns a RANKED list of suggested

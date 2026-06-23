@@ -1,6 +1,11 @@
 import { AuditService, proposals, withTenant, type Proposal, type TenantTx } from '@emapp/db';
 import { classify, type AutonomyActionKind } from '@emapp/jobs/autonomy-policy';
-import type { ListProposalsQueryDto, ProposalView } from '@emapp/shared-types';
+import type {
+  ListProposalsQueryDto,
+  ProposalApplyDelivery,
+  ProposalApproveResponse,
+  ProposalView,
+} from '@emapp/shared-types';
 import {
   BadRequestException,
   ConflictException,
@@ -55,7 +60,10 @@ export interface ProposalListPage {
  * (fail-closed) — so a proposal can never apply something the engine has no
  * gated path for.
  */
-type KindExecutor = (user: AccessTokenPayload, proposal: Proposal) => Promise<void>;
+type KindExecutor = (
+  user: AccessTokenPayload,
+  proposal: Proposal,
+) => Promise<ProposalApplyDelivery | void>;
 
 /**
  * Approval-Inbox service (Autonomous Master Plan, Phase 1).
@@ -86,11 +94,22 @@ export class ProposalsService {
     private readonly tasks: TasksService,
   ) {
     this.executors = {
-      // Phase-1 first producer: reissue an expired signature request. Replays
-      // the EXISTING gated `reissueExpired` (internal re-mint, no send). The
-      // proposal's scopeId is the signature_request id.
+      // Phase-1 first producer: reissue an EXPIRED signature request AND
+      // re-deliver the renewed signing link to the apartment owner. The old
+      // executor called `reissueExpired` (internal re-mint ONLY, NO send), so the
+      // owner who must sign received a link they NEVER GOT and the manager saw a
+      // vanished card — the renewal was dead-on-arrival. We now call
+      // `reissueAndDeliver`, which re-mints (the same gated internal half) AND
+      // governed-sends the renewed link (M1 exactly-once + gates, the SAME seam
+      // `reminder.send` uses) + emits an "owner re-notified" notification. The
+      // returned `delivery` is surfaced in the approve response so the inbox shows
+      // the outcome. The proposal's scopeId is the signature_request id.
       'signature_request.reissue': async (user, proposal) => {
-        await this.signatureRequests.reissueExpired(user, proposal.scopeId);
+        const { delivery } = await this.signatureRequests.reissueAndDeliver(user, {
+          signatureRequestId: proposal.scopeId,
+          proposalId: proposal.id,
+        });
+        return delivery;
       },
       // Phase-2 first GOVERNED-OUTBOUND producer: send ONE reminder for a pending
       // signature request THROUGH the OutboundGovernor (gates + M1 exactly-once
@@ -110,17 +129,32 @@ export class ProposalsService {
         // consent withdrawn, breaker tripped, ceiling hit, quiet hours) or the
         // provider failed → throw so the apply path leaves the proposal PENDING
         // (it stays actionable; the manager retries when the condition lifts).
-        // `already_sent` is the M1 exactly-once no-op: the send already happened,
-        // so the proposal legitimately flips to `applied`.
+        // `already_sent` is the M1 exactly-once no-op: the send already happened
+        // (a terminal `sent` row), so the proposal legitimately flips to `applied`.
         if (outcome.result === 'sent' || outcome.result === 'already_sent') return;
         if (outcome.result === 'blocked') {
           throw new ConflictException({
             error: { code: 'outbound_blocked', details: { reason: outcome.decision.reason } },
           });
         }
-        // result === 'failed'
+        // result === 'failed' — a DEFINITE non-send (provider rejection / nothing
+        // attempted). The ledger row is `failed` (RE-CLAIMABLE): throwing leaves
+        // the proposal PENDING so the manager retries; the next approve re-claims
+        // the failed row + re-sends the SAME step (#506 H1 fix — a failed step is
+        // no longer permanently dead + falsely "succeeded").
+        if (outcome.result === 'failed') {
+          throw new ConflictException({
+            error: { code: 'outbound_failed', details: { reason: outcome.failureCode } },
+          });
+        }
+        // result === 'ambiguous' — the provider threw / timed out; the SMS MAY
+        // have gone out. NEVER auto-resend. The ledger row is PARKED (`pending_send`)
+        // and is un-resendable by this path. Surface a DISTINCT state so the
+        // manager sees "needs manual check at the provider", NOT a false success
+        // and NOT a clean retry. The proposal stays PENDING (the throw leaves it
+        // un-flipped) — a human resolves it out-of-band.
         throw new ConflictException({
-          error: { code: 'outbound_failed', details: { reason: outcome.failureCode } },
+          error: { code: 'outbound_ambiguous', details: { reason: outcome.failureCode } },
         });
       },
       // G1 TaskWatcher: APPROVE opens a SYSTEM-OWNED task for a detected work
@@ -228,7 +262,7 @@ export class ProposalsService {
    * by hand. A gated-method failure (e.g. the request is no longer expired) leaves
    * the proposal pending (it surfaces a 409) so it can be retried or dismissed.
    */
-  async approve(user: AccessTokenPayload, id: string): Promise<ProposalView> {
+  async approve(user: AccessTokenPayload, id: string): Promise<ProposalApproveResponse> {
     this.requireManager(user);
 
     // Load + lock the pending proposal first (RLS-scoped).
@@ -257,8 +291,11 @@ export class ProposalsService {
     }
     // The gated method enforces its own RLS + capability + state checks. A
     // failure (e.g. signature_request_not_reissuable) propagates as its own
-    // status code; the proposal stays pending.
-    await executor(user, proposal);
+    // status code; the proposal stays pending. A contact-producing kind
+    // (signature_request.reissue) returns the outbound delivery OUTCOME so the
+    // approve response can surface "owner re-notified" (channel + masked
+    // recipient); an internal-only kind returns void → no `delivery` on the wire.
+    const delivery = (await executor(user, proposal)) ?? undefined;
 
     // (4) Flip → applied (only if STILL pending — race-safe) + system audit.
     const updated = await withTenant(
@@ -279,7 +316,7 @@ export class ProposalsService {
       },
       { userId: user.sub },
     );
-    return this.toView(updated);
+    return { ...this.toView(updated), delivery };
   }
 
   /** REJECT — flip → rejected + audit. Idempotent-ish: a non-pending proposal

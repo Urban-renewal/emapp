@@ -1,12 +1,13 @@
 'use client';
 
-import type { PartyCompleteness } from '@emapp/shared-types';
+import type { DocumentParty, PartyCompleteness } from '@emapp/shared-types';
 import {
   ArrowRight,
   Building2,
   Check,
   ClipboardCheck,
   Compass,
+  Download,
   FileSignature,
   FileText,
   Files,
@@ -15,59 +16,73 @@ import {
   Ruler,
   Scale,
   Search,
+  Upload,
   UserCheck,
   Users,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import type { ComponentType } from 'react';
-import { useMemo, useState } from 'react';
+import { type ComponentType, useEffect, useMemo, useState } from 'react';
 
 import { DOCUMENT_TYPE_LABELS_EN, DOCUMENT_TYPE_LABELS_HE } from '@/adapters/document';
+import { isStepUpCancelled, useStepUpUnlock } from '@/components/step-up-unlock';
+import { useToast } from '@/components/ui/action-toast';
 import { Button } from '@/components/ui/button';
-import { ListSkeleton } from '@/components/ui/list-skeleton';
+import { useConfirm } from '@/components/ui/confirm-dialog';
+import { DataState } from '@/components/ui/data-state';
 import { NameDisplay } from '@/components/ui/name-display';
-import { useBoardCompleteness, useDocumentList } from '@/hooks/use-documents';
+import { StatusBadge } from '@/components/ui/status-badge';
+import {
+  useArchiveDocument,
+  useBoardCompleteness,
+  useDocumentList,
+  useDocumentSearch,
+  useDownloadDocument,
+} from '@/hooks/use-documents';
 import { useHasPermission } from '@/hooks/use-permissions';
 import { useProjectList } from '@/hooks/use-projects';
-import {
-  DOCUMENT_PARTIES,
-  type DocumentParty,
-  providerPartyForDocType,
-} from '@/lib/document-party';
+import { DOCUMENT_PARTIES, providerPartyForDocType } from '@/lib/document-party';
+import { formatRelative } from '@/lib/format';
 import { useDisplayLocale } from '@/lib/locale';
 import type { DocumentViewModel } from '@/models/document.vm';
+import type { ProjectViewModel } from '@/models/project.vm';
 
 /**
- * Documents page — PARTY BINDER board (V13 doc-management re-skin, slice 1).
+ * Documents page — server-backed PARTY-BINDER situation-picture board
+ * (DOCUMENTS-REMEDIATION-PLAN Phase 2a). Mirrors the signatures 3-tier board
+ * (`signature-requests-list.client.tsx`), REUSING `<DataState>` for the calm
+ * non-happy states and the same view-toggle UX.
  *
- * Owner complaint this kills: "still מבולגן — a wall of files that doesn't
- * scale and bores the technophobe." The earlier surface grouped docs by
- * project + a per-project required-docs checklist; useful, but the LANDING
- * was still a list of files.
+ * This REPLACES the earlier partial re-skin whose counts/gists/search/zoom-in
+ * all derived from ONE 25-doc keyset page (so counts lied at scale, a party
+ * with >25 docs was silently truncated, search filtered only the loaded 25, and
+ * the surface bore zero actions). Now:
  *
- * This slice re-skins the DEFAULT view into a calm grid of ~8 PARTY cards
- * ("who is responsible": בעלים / שמאי / אדריכל / עירייה / קבלן / עו״ד /
- * מפקח / מודד / כללי). The party axis is DERIVED FE-side from the `doc_type`
- * the read model already carries (`providerPartyForDocType`) — there is NO
- * migration and NO new BE endpoint; this is presentation over data the page
- * already fetches.
+ *   • Tier 1 — the PARTY board ("לפי גורם", default). Cards render from the
+ *     SERVER board-summary (`useBoardCompleteness` → per-party whole-board
+ *     `total` / `latestType` / `latestCreatedAt` + required-vs-received
+ *     completeness), NOT a page slice — the counts are truthful at any scale.
+ *     Parties with an UNMET requirement (or a ghost gap) rank FIRST
+ *     (attention-first); complete/calm parties sit below.
+ *   • Tier 2 — the PROJECT board ("לפי פרויקט"). The multi-project manager's
+ *     mental model: every in-scope project as a zoom-in tile (server order),
+ *     drilling into that project's own documents via `useDocumentList({
+ *     projectId })` — server-paginated, never a truncated bucket.
+ *   • "כל המסמכים" — the flat forensic list of every document, server-
+ *     paginated, legible rows (type + project + apartment + quiet size/date).
  *
- * Two clicks to a file (the calm-at-a-glance contract):
- *   1. Landing = party cards. NO filenames. Each card shows the party name, a
- *      one-line gist (count + the latest doc), and a quiet completeness mark
- *      (teal check when present, neutral ring for empty). A party with zero
- *      docs renders as a quiet GHOST card.
- *   2. Clicking a card ZOOMS IN to that party's actual documents, grouped by
- *      doc_type — this is where filenames appear (in-page; no new route).
+ *   • SERVER SEARCH (`useDocumentSearch`, debounced) — a non-empty query box
+ *     replaces the active view with REAL server-side results across the whole
+ *     board, never a client filter over one loaded page.
  *
- * Search + active/archived + upload affordances are preserved. Per-project
- * completeness (the old checklist) is deferred to slice 2 (completeness-per-
- * party); this slice keeps the gist derived purely from the docs on the page.
+ *   • ACTIONS on the surface — an incomplete/ghost party card carries a one-
+ *     click "העלה {missing}" deep-link to /documents/new?type=&party= (Phase 2d
+ *     honors the params); every file row carries quick download + archive
+ *     (`useDownloadDocument` / `useArchiveDocument`).
  */
 
-/** Per-party icon + accent token. Color is reserved for ATTENTION only —
- *  here the accent tints the small icon tile, never a full card fill. */
+/** Per-party icon. Color is reserved for ATTENTION only — the icon tile is
+ *  tinted, never the whole card. */
 const PARTY_META: Record<
   DocumentParty,
   { icon: ComponentType<{ className?: string; 'aria-hidden'?: boolean }> }
@@ -83,140 +98,54 @@ const PARTY_META: Record<
   other: { icon: Files },
 };
 
-interface PartyBucket {
-  party: DocumentParty;
-  docs: DocumentViewModel[];
-  /** The most-recently-created doc, used for the card gist. */
-  latest: DocumentViewModel | null;
-}
+/** The three situation-picture views. `party` (default) = the binder board
+ *  ranked attention-first; `project` = every project as a zoom-in tile;
+ *  `all` = the flat forensic list of every document. Mirrors the signatures
+ *  `attention | fleet | all` toggle. */
+type DocView = 'party' | 'project' | 'all';
+const DOC_VIEWS: DocView[] = ['party', 'project', 'all'];
+
+const SEARCH_DEBOUNCE_MS = 300;
+const PAGE_LIMIT = 25;
 
 export function DocumentsListClient() {
   const t = useTranslations('documents');
-  const tp = useTranslations('projects');
-  const [cursor, setCursor] = useState<string | undefined>(undefined);
-  const [query, setQuery] = useState('');
+
+  const [view, setView] = useState<DocView>('party');
   // Active (default) vs archived view — soft-archived docs are otherwise
-  // invisible in the cockpit. Switching resets pagination.
+  // invisible in the cockpit. The toggle applies to every view + search.
   const [archived, setArchived] = useState(false);
-  // The zoomed-in party (slice-1 "two clicks deep"). null = the board.
-  const [activeParty, setActiveParty] = useState<DocumentParty | null>(null);
+  // The raw search box value + its debounced counterpart (the actual query
+  // that hits the server). A non-empty debounced query takes over the surface.
+  const [rawQuery, setRawQuery] = useState('');
+  const [query, setQuery] = useState('');
+
+  useEffect(() => {
+    const id = setTimeout(() => setQuery(rawQuery.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [rawQuery]);
+
   // IAM slice 5b — "upload" CTA (creates a document) gated on `documents.create`.
   const canCreate = useHasPermission('documents.create');
-  const { data, isLoading, isError, refetch } = useDocumentList({ limit: 25, cursor, archived });
 
-  // Project id → name, so the zoomed-in file rows can show the owning project.
-  const { data: projectsData } = useProjectList({ limit: 100 });
-  const projectNames = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const p of projectsData?.items ?? []) map.set(p.id, p.name);
-    return map;
-  }, [projectsData?.items]);
-
-  // Binder slice 2 — per-party REQUIRED-vs-RECEIVED completeness, computed
-  // SERVER-SIDE over the WHOLE board scope (org / agent's assigned projects).
-  // This REPLACES the earlier client-side `computeBoardCompleteness` over a
-  // single 25-doc page: that compared a partial page against ALL projects'
-  // requirements, so unloaded projects were mis-counted "missing" (bogus
-  // "owners 0/21"). The board is keyset-paginated — only the server sees every
-  // doc. Fail-SOFT: when the query is loading/errored, `completenessByParty` is
-  // null and the cards fall back to the calm slice-1 "present" check.
-  const { data: boardCompleteness } = useBoardCompleteness();
-  const completenessByParty = useMemo<Map<DocumentParty, PartyCompleteness> | null>(() => {
-    if (!boardCompleteness) return null;
-    const map = new Map<DocumentParty, PartyCompleteness>();
-    for (const c of boardCompleteness.byParty) map.set(c.party, c);
-    return map;
-  }, [boardCompleteness]);
-
-  const items = useMemo(() => data?.items ?? [], [data?.items]);
-  const page = data?.page;
-
-  const filteredItems = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter(
-      (d) => d.name.toLowerCase().includes(q) || d.typeLabel.toLowerCase().includes(q),
-    );
-  }, [items, query]);
-
-  // Derive the party axis: every shown doc → exactly one of the 8 parties,
-  // purely from its `type` (the tolerant wire string). Buckets are keyed in
-  // the canonical `DOCUMENT_PARTIES` order so the board is stable.
-  const buckets = useMemo<PartyBucket[]>(() => {
-    const byParty = new Map<DocumentParty, DocumentViewModel[]>();
-    for (const d of filteredItems) {
-      const party = providerPartyForDocType(d.type);
-      const bucket = byParty.get(party);
-      if (bucket) bucket.push(d);
-      else byParty.set(party, [d]);
-    }
-    return DOCUMENT_PARTIES.map((party) => {
-      const docs = byParty.get(party) ?? [];
-      // "latest" = the most-relevant fact for the gist. The list is keyset-
-      // ordered newest-first, so the first doc in the bucket is the latest.
-      const latest = docs[0] ?? null;
-      return { party, docs, latest };
-    });
-  }, [filteredItems]);
-
-  // Plain-Hebrew orientation, user-voiced (the user's situation, never "the
-  // system did X"). It now reads the SERVER completeness (real unmet REQUIREMENTS
-  // across the whole board scope, NOT a single page). The "ועוד N" is the count
-  // of parties whose required doc-set is incomplete, ordered in the canonical
-  // board order so the named parties read stably. Falls back to the slice-1
-  // presence framing when there is no requirement anywhere, or while the
-  // completeness query is still loading (so the line never flashes wrong).
-  const orientation = useMemo(() => {
-    const active = buckets.filter((b) => b.docs.length > 0);
-    if (active.length === 0) return null; // empty-state copy handles this
-    if (boardCompleteness?.hasAnyRequirement) {
-      const unmet = DOCUMENT_PARTIES.filter((p) => boardCompleteness.unmetParties.includes(p));
-      return { kind: 'requirement' as const, parties: unmet };
-    }
-    const empty = buckets.filter((b) => b.docs.length === 0).map((b) => b.party);
-    return { kind: 'presence' as const, parties: empty };
-  }, [buckets, boardCompleteness]);
-
-  if (isLoading) return <ListSkeleton rows={6} />;
-
-  if (isError) {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm" style={{ color: 'var(--danger-700)' }}>
-          {t('loadFailed')}
-        </p>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
-          {tp('retry')}
-        </Button>
-      </div>
-    );
-  }
-
-  const activeBucket = activeParty ? (buckets.find((b) => b.party === activeParty) ?? null) : null;
+  const searching = query.length > 0;
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Filters bar */}
+    <div className="flex flex-col gap-5">
+      {/* Title + search + archived toggle + primary CTAs. */}
       <div className="flex flex-wrap items-center gap-2.5">
-        <h1 className="me-auto text-lg font-semibold" style={{ color: 'var(--text)' }}>
-          {t('listTitle')}
-        </h1>
+        <h1 className="me-auto text-lg font-semibold text-foreground">{t('listTitle')}</h1>
 
         <div className="relative flex-1" style={{ maxWidth: 400, minWidth: 200 }}>
           <Search
-            className="pointer-events-none absolute h-4 w-4"
-            style={{
-              color: 'var(--text-soft)',
-              insetInlineEnd: 12,
-              top: '50%',
-              transform: 'translateY(-50%)',
-            }}
+            className="pointer-events-none absolute h-4 w-4 text-text-soft"
+            style={{ insetInlineEnd: 12, top: '50%', transform: 'translateY(-50%)' }}
             aria-hidden="true"
           />
           <input
             type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            value={rawQuery}
+            onChange={(e) => setRawQuery(e.target.value)}
             placeholder={t('searchPlaceholder')}
             aria-label={t('searchPlaceholder')}
             className="input"
@@ -225,7 +154,7 @@ export function DocumentsListClient() {
         </div>
 
         {/* Active / archived view toggle — archived docs are reachable here. */}
-        <div role="tablist" aria-label={t('listTitle')} className="flex gap-1.5">
+        <div role="tablist" aria-label={t('tab.active')} className="flex gap-1.5">
           {[
             { key: false, label: t('tab.active') },
             { key: true, label: t('tab.archived') },
@@ -240,8 +169,6 @@ export function DocumentsListClient() {
                 onClick={() => {
                   if (archived === tab.key) return;
                   setArchived(tab.key);
-                  setCursor(undefined);
-                  setActiveParty(null);
                 }}
                 className="rounded-full px-3 py-1 text-xs font-medium transition-colors"
                 style={{
@@ -270,226 +197,321 @@ export function DocumentsListClient() {
         )}
       </div>
 
-      {/* Plain-Hebrew orientation — states the situation in words, user-voiced. */}
-      {orientation && (
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-          <OrientationLine kind={orientation.kind} parties={orientation.parties} />
-        </p>
-      )}
-
-      {filteredItems.length === 0 ? (
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-          {items.length === 0 ? t('empty') : t('noResults')}
-        </p>
-      ) : activeBucket ? (
-        <PartyZoomIn
-          bucket={activeBucket}
-          projectNames={projectNames}
-          onBack={() => setActiveParty(null)}
-        />
+      {/* When the search box is non-empty the surface becomes the server search
+          results (across the whole board), not the view board. */}
+      {searching ? (
+        <SearchResults query={query} archived={archived} canCreate={canCreate} />
       ) : (
-        <ul
-          className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-          aria-label={t('listTitle')}
-        >
-          {buckets.map((bucket) => (
-            <li key={bucket.party}>
-              <PartyCard
-                bucket={bucket}
-                completeness={completenessByParty?.get(bucket.party) ?? null}
-                onOpen={() => setActiveParty(bucket.party)}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
+        <>
+          {/* View toggle: לפי גורם (default) | לפי פרויקט | כל המסמכים. */}
+          <div
+            role="tablist"
+            aria-label={t('views.label')}
+            className="flex flex-wrap items-center gap-2"
+          >
+            {DOC_VIEWS.map((v) => (
+              <Button
+                key={v}
+                type="button"
+                role="tab"
+                aria-selected={view === v}
+                variant={view === v ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setView(v)}
+              >
+                {t(`views.${v}`)}
+              </Button>
+            ))}
+          </div>
 
-      {/* Pagination — only meaningful on the board (the zoom-in is a filter of
-          the current page; loading more docs there would change the board). */}
-      {!activeBucket && (
-        <div className="flex flex-wrap items-center gap-2">
-          {page?.has_more && page.cursor && (
-            <Button variant="outline" size="sm" onClick={() => setCursor(page.cursor ?? undefined)}>
-              {tp('next')}
-            </Button>
-          )}
-          {cursor && (
-            <Button variant="ghost" size="sm" onClick={() => setCursor(undefined)}>
-              {tp('resetToFirstPage')}
-            </Button>
-          )}
-        </div>
+          {view === 'party' && <PartyBoard archived={archived} canCreate={canCreate} />}
+          {view === 'project' && <ProjectBoard archived={archived} canCreate={canCreate} />}
+          {view === 'all' && <FlatDocumentList archived={archived} canCreate={canCreate} />}
+        </>
       )}
     </div>
   );
 }
 
-/**
- * The plain-Hebrew orientation sentence. User-voiced (the user's situation,
- * never "the system did X").
- *
- * Slice 2 — `kind` selects the framing:
- *   - `requirement`: the board HAS track-required docs. `parties` are those whose
- *     REQUIRED set is incomplete. Empty → "all in order" (every requirement met).
- *     Non-empty → "כמעט הכל מסודר — טרם התקבלו מ{parties}", derived from
- *     real required-vs-received (NOT mere presence).
- *   - `presence`: no requirement exists on the board (fallback to the slice-1
- *     framing). `parties` are those still awaiting a FIRST doc.
- *
- * Either way the party list is capped at two names, then "+N", so the read stays
- * calm at scale.
- */
-function OrientationLine({
-  kind,
-  parties,
-}: {
-  kind: 'requirement' | 'presence';
-  parties: DocumentParty[];
-}) {
-  const t = useTranslations('documents');
-  const tParty = useTranslations('documents.party');
-
-  if (parties.length === 0) return <>{t('board.orientation.allFilled')}</>;
-
-  const names = parties.map((p) => tParty(p));
-  let partiesText: string;
-  if (names.length === 1) {
-    partiesText = names[0]!;
-  } else if (names.length === 2) {
-    partiesText = t('board.orientation.twoParties', { first: names[0]!, second: names[1]! });
-  } else {
-    partiesText = t('board.orientation.manyParties', { first: names[0]!, count: names.length - 1 });
-  }
-  const key =
-    kind === 'requirement' ? 'board.orientation.someUnmet' : 'board.orientation.someEmpty';
-  return <>{t(key, { parties: partiesText })}</>;
-}
+// ── Tier 1 — the PARTY board ────────────────────────────────────────────────
 
 /**
- * One PARTY card on the landing board. Calm by default: a tinted icon tile,
- * the party name, a one-line gist (count + latest), and a REQUIRED-vs-RECEIVED
- * completeness indicator (binder slice 2).
- *
- * Completeness (`completeness`, may be null when no project context):
- *   - HAS a requirement → an "X/Y" badge + a quiet ring colored by met/unmet
- *     (success when complete, neutral-amber when still outstanding). Replaces the
- *     slice-1 binary teal check.
- *   - NO requirement → just a calm "present" check (this party has docs but no
- *     track-required set), or nothing extra on a ghost.
- *
- * A party with zero docs renders as a GHOST card (muted) and is NOT clickable —
- * but now it surfaces the GAP: when that party HAS an unmet requirement it shows
- * "חסר: <types>" / "0/Y" so the user sees what's missing, not a flat "none".
+ * The party board — cards from the SERVER board-summary, ranked attention-first.
+ * Each card's headline count is the whole-board `total` (truthful at scale), its
+ * gist is the latest doc + completeness, and an incomplete/ghost party surfaces a
+ * one-click "העלה {missing}" deep-link. Clicking a party with documents zooms in
+ * (server-paginated). A loading/errored summary routes through `<DataState>`.
  */
-function PartyCard({
-  bucket,
-  completeness,
-  onOpen,
-}: {
-  bucket: PartyBucket;
-  completeness: PartyCompleteness | null;
-  onOpen: () => void;
-}) {
+function PartyBoard({ archived, canCreate }: { archived: boolean; canCreate: boolean }) {
   const t = useTranslations('documents');
   const tParty = useTranslations('documents.party');
-  const locale = useDisplayLocale();
-  const { party, docs, latest } = bucket;
-  const Icon = PARTY_META[party].icon;
-  const isEmpty = docs.length === 0;
-  const name = tParty(party);
+  const { data, isLoading, isError, refetch } = useBoardCompleteness();
+  // The zoomed-in party (null = the board). Archived flips reset the zoom.
+  const [activeParty, setActiveParty] = useState<DocumentParty | null>(null);
+  useEffect(() => setActiveParty(null), [archived]);
 
-  const hasRequirement = completeness?.hasRequirement ?? false;
-  const isComplete = completeness?.isComplete ?? false;
-  const labels = locale === 'he' ? DOCUMENT_TYPE_LABELS_HE : DOCUMENT_TYPE_LABELS_EN;
-  // The missing required types, label-resolved (no PII — type keys only).
-  const missingLabels = (completeness?.missingTypes ?? []).map((m) => labels[m.type] ?? m.type);
+  // Rank: attention-first. A party "needs attention" when it has an UNMET
+  // requirement OR is a ghost (zero docs). Within each band, keep the canonical
+  // board order (stable read). Complete / calm parties sit below.
+  const ranked = useMemo<PartyCompleteness[]>(() => {
+    const byParty = new Map<DocumentParty, PartyCompleteness>();
+    for (const c of data?.byParty ?? []) byParty.set(c.party, c);
+    const ordered = DOCUMENT_PARTIES.map((p) => byParty.get(p)).filter(
+      (c): c is PartyCompleteness => Boolean(c),
+    );
+    const needsAttention = (c: PartyCompleteness) =>
+      (c.hasRequirement && !c.isComplete) || c.total === 0;
+    return [...ordered].sort((a, b) => Number(needsAttention(b)) - Number(needsAttention(a)));
+  }, [data?.byParty]);
 
-  if (isEmpty) {
-    // Ghost: no docs received. If this party HAS an unmet requirement, surface
-    // the GAP ("0/Y · חסר: שומה") so the missing work is visible, not just "none".
+  const active = activeParty ? (data?.byParty.find((c) => c.party === activeParty) ?? null) : null;
+
+  if (active) {
     return (
-      <div
-        className="card flex items-center gap-3 px-4 py-3.5"
-        style={{ opacity: 0.7 }}
-        aria-disabled="true"
-      >
-        <PartyIconTile Icon={Icon} muted />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-sm font-semibold" style={{ color: 'var(--text-muted)' }}>
-            {name}
-          </span>
-          <span className="truncate text-xs" style={{ color: 'var(--text-soft)' }}>
-            {hasRequirement && missingLabels.length > 0
-              ? t('board.missing', { types: missingLabels.join(' · ') })
-              : t('board.ghost')}
-          </span>
-        </div>
-        {hasRequirement && completeness && (
-          <CompletenessBadge
-            received={completeness.received}
-            required={completeness.required}
-            unmet
-          />
-        )}
-      </div>
+      <PartyZoomIn
+        completeness={active}
+        archived={archived}
+        canCreate={canCreate}
+        onBack={() => setActiveParty(null)}
+      />
     );
   }
 
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      aria-label={t('board.open', { party: name })}
-      className="card flex w-full items-center gap-3 px-4 py-3.5 text-start transition-colors hover:bg-[var(--bg-subtle)] focus:outline-none focus-visible:bg-[var(--bg-subtle)]"
-      style={{ cursor: 'pointer' }}
+    <DataState
+      isLoading={isLoading}
+      isError={isError}
+      error={undefined}
+      isEmpty={Boolean(data && ranked.every((c) => c.total === 0 && !c.hasRequirement))}
+      onRetry={() => void refetch()}
+      skeleton="list"
+      emptyTitle={t('empty')}
+      emptyAction={
+        canCreate ? (
+          <Link href="/documents/new" className="btn btn-primary btn-sm">
+            <Plus className="h-[15px] w-[15px]" aria-hidden="true" />
+            <span>{t('upload')}</span>
+          </Link>
+        ) : undefined
+      }
     >
-      <PartyIconTile Icon={Icon} />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-semibold" style={{ color: 'var(--text)' }}>
-          {name}
+      {data && (
+        <>
+          {/* Calm orientation: what still needs attention, in plain Hebrew. */}
+          <BoardOrientation
+            unmet={data.unmetParties}
+            hasAnyRequirement={data.hasAnyRequirement}
+            tParty={tParty}
+          />
+          <ul
+            className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+            aria-label={t('views.party')}
+          >
+            {ranked.map((c) => (
+              <li key={c.party}>
+                <PartyCard
+                  completeness={c}
+                  canCreate={canCreate}
+                  onOpen={c.total > 0 ? () => setActiveParty(c.party) : undefined}
+                />
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </DataState>
+  );
+}
+
+/** Plain-Hebrew orientation — names the first two parties whose required set is
+ *  still unmet, "+N" the rest, "all in order" when none. User-voiced (the user's
+ *  situation, never "the system did X"). Suppressed when the board has no
+ *  requirement anywhere (nothing to orient against). */
+function BoardOrientation({
+  unmet,
+  hasAnyRequirement,
+  tParty,
+}: {
+  unmet: DocumentParty[];
+  hasAnyRequirement: boolean;
+  tParty: ReturnType<typeof useTranslations>;
+}) {
+  const t = useTranslations('documents');
+  if (!hasAnyRequirement) return null;
+
+  let body: string;
+  if (unmet.length === 0) {
+    body = t('board.orientation.allFilled');
+  } else {
+    const names = unmet.map((p) => tParty(p));
+    let partiesText: string;
+    if (names.length === 1) {
+      partiesText = names[0]!;
+    } else if (names.length === 2) {
+      partiesText = t('board.orientation.twoParties', { first: names[0]!, second: names[1]! });
+    } else {
+      partiesText = t('board.orientation.manyParties', {
+        first: names[0]!,
+        count: names.length - 1,
+      });
+    }
+    body = t('board.orientation.someUnmet', { parties: partiesText });
+  }
+  return (
+    <p className="mb-3 text-sm text-text-muted" role="status">
+      {body}
+    </p>
+  );
+}
+
+/**
+ * One PARTY card. Calm by default; the SERVER `total` is the headline count
+ * (truthful at scale), the gist reads completeness or the latest doc, and the
+ * completeness badge is the ONLY color signal (success when met, warning when
+ * unmet). A ghost (zero docs) card is muted; when it has an unmet requirement it
+ * surfaces the GAP ("חסר: …") + a one-click "העלה {missing}" deep-link so the
+ * missing work is an ACTION, not a flat label.
+ */
+function PartyCard({
+  completeness,
+  canCreate,
+  onOpen,
+}: {
+  completeness: PartyCompleteness;
+  canCreate: boolean;
+  onOpen?: () => void;
+}) {
+  const t = useTranslations('documents');
+  const tParty = useTranslations('documents.party');
+  const locale = useDisplayLocale();
+  const { party, total, latestType, latestCreatedAt } = completeness;
+  const Icon = PARTY_META[party].icon;
+  const name = tParty(party);
+  const labels = locale === 'he' ? DOCUMENT_TYPE_LABELS_HE : DOCUMENT_TYPE_LABELS_EN;
+
+  const hasRequirement = completeness.hasRequirement;
+  const isComplete = completeness.isComplete;
+  const missingLabels = completeness.missingTypes.map((m) => labels[m.type] ?? m.type);
+  // The first missing required type drives the one-click upload deep-link.
+  const firstMissingType = completeness.missingTypes[0]?.type ?? null;
+
+  const latestLabel = latestType ? (labels[latestType] ?? latestType) : null;
+
+  // Gist line — the user's real state for this party.
+  const gist = (() => {
+    if (total === 0) {
+      return hasRequirement && missingLabels.length > 0
+        ? t('board.missing', { types: missingLabels.join(' · ') })
+        : t('board.ghost');
+    }
+    if (hasRequirement && !isComplete) {
+      return t('board.gist.someMissing', {
+        received: completeness.received,
+        required: completeness.required,
+        types: missingLabels.join(' · '),
+      });
+    }
+    if (hasRequirement && isComplete) {
+      return t('board.gist.allReceived', { count: total });
+    }
+    return latestLabel
+      ? t('board.gist.latestType', { count: total, type: latestLabel })
+      : t('board.gist.count', { count: total });
+  })();
+
+  const isGhost = total === 0;
+  // The missing-type deep-link, shown on an incomplete/ghost card (gated on
+  // create). Phase 2d honors `?type=&party=` to pre-fill the upload form.
+  const uploadGap =
+    canCreate && hasRequirement && !isComplete && firstMissingType ? (
+      <Link
+        href={`/documents/new?type=${encodeURIComponent(firstMissingType)}&party=${party}`}
+        onClick={(e) => e.stopPropagation()}
+        className="btn btn-secondary btn-sm shrink-0"
+        aria-label={t('board.uploadMissingAria', {
+          type: labels[firstMissingType] ?? firstMissingType,
+          party: name,
+        })}
+      >
+        <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+        <span>
+          {t('board.uploadMissing', { type: labels[firstMissingType] ?? firstMissingType })}
         </span>
-        <span className="truncate text-xs" style={{ color: 'var(--text-muted)' }}>
-          {hasRequirement && completeness
-            ? // Required-vs-received gist — the user's real state per the checklist.
-              completeness.received >= completeness.required
-              ? t('board.gist.allReceived', { count: docs.length })
-              : t('board.gist.someMissing', {
-                  received: completeness.received,
-                  required: completeness.required,
-                  types: missingLabels.join(' · '),
-                })
-            : latest
-              ? t('board.gist.latest', { count: docs.length, when: latest.createdRelative })
-              : t('board.gist.count', { count: docs.length })}
-        </span>
+      </Link>
+    ) : null;
+
+  const inner = (
+    <>
+      <PartyIconTile Icon={Icon} muted={isGhost} />
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex items-center gap-2">
+          <span
+            className={`truncate text-sm font-semibold ${isGhost ? 'text-text-muted' : 'text-foreground'}`}
+          >
+            {name}
+          </span>
+          {total > 0 && (
+            <span className="shrink-0 rounded-full bg-surface-subtle px-1.5 text-xs tabular-nums text-text-muted">
+              {total}
+            </span>
+          )}
+        </div>
+        <span className="truncate text-xs text-text-soft">{gist}</span>
+        {latestCreatedAt && total > 0 && (
+          <span className="truncate text-[11px] text-text-soft">
+            {t('board.gist.latestWhen', { when: formatRelative(latestCreatedAt, locale) })}
+          </span>
+        )}
       </div>
-      {hasRequirement && completeness ? (
+      {hasRequirement ? (
         <CompletenessBadge
           received={completeness.received}
           required={completeness.required}
           unmet={!isComplete}
         />
       ) : (
-        // No track-required set for this party — keep the calm "present" check.
-        <span
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
-          style={{ background: 'var(--success-50)' }}
-          title={t('board.complete')}
-          aria-hidden="true"
-        >
-          <Check className="h-3.5 w-3.5" style={{ color: 'var(--success-600)' }} />
-        </span>
+        total > 0 && (
+          <span
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+            style={{ background: 'var(--success-50)' }}
+            title={t('board.complete')}
+            aria-hidden="true"
+          >
+            <Check className="h-3.5 w-3.5" style={{ color: 'var(--success-600)' }} />
+          </span>
+        )
       )}
-    </button>
+    </>
+  );
+
+  return (
+    <div className="flex flex-col gap-2">
+      {onOpen ? (
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={t('board.open', { party: name })}
+          className="card flex w-full items-center gap-3 px-4 py-3.5 text-start transition-colors hover:bg-surface-subtle focus:outline-none focus-visible:bg-surface-subtle"
+          style={{ cursor: 'pointer' }}
+        >
+          {inner}
+        </button>
+      ) : (
+        <div
+          className="card flex items-center gap-3 px-4 py-3.5"
+          style={{ opacity: isGhost ? 0.75 : 1 }}
+          aria-disabled={isGhost ? 'true' : undefined}
+        >
+          {inner}
+        </div>
+      )}
+      {uploadGap && <div className="ps-1">{uploadGap}</div>}
+    </div>
   );
 }
 
-/**
- * The per-party completeness indicator — a quiet "X/Y" count in a soft pill. The
- * tint is the ONLY color signal (success when met, neutral-amber when unmet) so
- * the board stays calm: color = attention, reserved for the unmet case. Counts
- * only — no PII. `aria-label` carries the same fact for assistive tech.
- */
+/** The per-party completeness pill — a quiet "X/Y" count. Tint is the ONLY
+ *  color signal (success met, warning unmet). Counts only, no PII. */
 function CompletenessBadge({
   received,
   required,
@@ -518,8 +540,7 @@ function CompletenessBadge({
   );
 }
 
-/** The small rounded icon tile inside a party card. Teal accent when active,
- *  muted for a ghost (empty) party. */
+/** The small rounded icon tile inside a party card. */
 function PartyIconTile({
   Icon,
   muted = false,
@@ -542,110 +563,590 @@ function PartyIconTile({
 }
 
 /**
- * The zoomed-in view of ONE party's documents — two clicks deep, where the
- * actual files appear. Reuses the EXISTING file-row rendering, sub-grouped by
- * doc_type (typeLabel) for a stable read. A back affordance returns to the
- * board. No new route — this is in-page state.
+ * Server-paginated party zoom-in. The card's headline `total` (from the server
+ * summary) is the AUTHORITATIVE count; the rows materialize by paging the
+ * documents list and accumulating ONLY this party's docs (`providerPartyForDoc
+ * Type`), with a "load more" that fetches the next keyset page until the board
+ * is exhausted — never a single truncated bucket. Each row carries quick
+ * download + archive.
  */
 function PartyZoomIn({
-  bucket,
-  projectNames,
+  completeness,
+  archived,
+  canCreate,
   onBack,
 }: {
-  bucket: PartyBucket;
-  projectNames: Map<string, string>;
+  completeness: PartyCompleteness;
+  archived: boolean;
+  canCreate: boolean;
   onBack: () => void;
 }) {
   const t = useTranslations('documents');
-  const tp = useTranslations('projects');
   const tParty = useTranslations('documents.party');
-  const name = tParty(bucket.party);
+  const name = tParty(completeness.party);
 
-  // Sub-group by doc_type label, ordered alphabetically (Hebrew collation).
-  const byType = useMemo(() => {
-    const map = new Map<string, DocumentViewModel[]>();
-    for (const d of bucket.docs) {
-      const key = d.typeLabel;
-      const list = map.get(key);
-      if (list) list.push(d);
-      else map.set(key, [d]);
-    }
-    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'he'));
-  }, [bucket.docs]);
+  const acc = usePartyDocuments(completeness.party, archived);
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2.5">
+      <div className="flex flex-wrap items-center gap-2.5">
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex items-center gap-1.5 text-sm font-medium"
-          style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-text-muted"
+          style={{ cursor: 'pointer' }}
         >
           <ArrowRight className="h-4 w-4" aria-hidden="true" />
           {t('board.back')}
         </button>
-        <span className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
-          {name}
-        </span>
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          {t('board.gist.count', { count: bucket.docs.length })}
+        <span className="text-sm font-semibold text-foreground">{name}</span>
+        {/* Server-truthful headline count — NEVER the loaded page size. */}
+        <span className="text-xs text-text-muted">
+          {t('board.gist.count', { count: completeness.total })}
         </span>
       </div>
 
-      <div className="card flex flex-col gap-3 px-4 py-3">
-        {byType.map(([typeLabel, typeDocs]) => (
-          <div key={typeLabel} className="flex flex-col gap-1.5">
-            <div
-              className="text-[11px] font-medium uppercase tracking-wide"
-              style={{ color: 'var(--text-soft)' }}
-            >
-              {typeLabel}
-            </div>
-            <div className="flex flex-col gap-1.5">
-              {typeDocs.map((d) => {
-                const projectName = d.projectId ? projectNames.get(d.projectId) : null;
-                return (
-                  <Link
-                    key={d.id}
-                    href={`/documents/${d.id}`}
-                    className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--bg-subtle)] focus:outline-none focus-visible:bg-[var(--bg-subtle)]"
-                  >
-                    <FileText
-                      className="h-4 w-4 shrink-0"
-                      style={{ color: 'var(--navy-700)' }}
-                      aria-hidden="true"
-                    />
-                    <span
-                      className="min-w-0 flex-1 truncate text-sm"
-                      style={{ color: 'var(--text)' }}
-                    >
-                      <NameDisplay name={d.name} />
-                    </span>
-                    {projectName && (
-                      <span
-                        className="hidden shrink-0 text-[11px] sm:inline"
-                        style={{ color: 'var(--text-soft)' }}
-                      >
-                        <NameDisplay name={projectName} />
-                      </span>
-                    )}
-                    <span className="shrink-0 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                      {d.sizeLabel} · {d.createdRelative}
-                    </span>
-                    {d.isArchived && (
-                      <span className="badge badge-neutral shrink-0">
-                        <span className="badge-dot" aria-hidden="true" />
-                        <span>{tp('archived')}</span>
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
+      <DataState
+        isLoading={acc.isLoading}
+        isError={acc.isError}
+        onRetry={acc.retry}
+        skeleton="list"
+        isEmpty={acc.isDone && acc.items.length === 0}
+        emptyTitle={t('board.zoomEmpty')}
+      >
+        <ul className="flex flex-col gap-1.5">
+          {acc.items.map((d) => (
+            <li key={d.id}>
+              <DocumentRow doc={d} canCreate={canCreate} onArchived={acc.onArchived} />
+            </li>
+          ))}
+        </ul>
+        <LoadMore
+          canLoadMore={acc.canLoadMore}
+          isFetching={acc.isFetchingMore}
+          onClick={acc.loadMore}
+        />
+      </DataState>
     </div>
   );
+}
+
+// ── Tier 2 — the PROJECT board ──────────────────────────────────────────────
+
+/** The project board — every in-scope project as a zoom-in tile (server order),
+ *  drilling into that project's own documents (server-paginated). The multi-
+ *  project manager's mental model the party axis alone can't express. */
+function ProjectBoard({ archived, canCreate }: { archived: boolean; canCreate: boolean }) {
+  const t = useTranslations('documents');
+  const { data, isLoading, isError, refetch } = useProjectList({ limit: 100 });
+  const [activeProject, setActiveProject] = useState<ProjectViewModel | null>(null);
+  useEffect(() => setActiveProject(null), [archived]);
+
+  if (activeProject) {
+    return (
+      <ProjectZoomIn
+        project={activeProject}
+        archived={archived}
+        canCreate={canCreate}
+        onBack={() => setActiveProject(null)}
+      />
+    );
+  }
+
+  const projects = data?.items ?? [];
+
+  return (
+    <DataState
+      isLoading={isLoading}
+      isError={isError}
+      error={undefined}
+      isEmpty={projects.length === 0}
+      onRetry={() => void refetch()}
+      skeleton="list"
+      emptyTitle={t('project.empty')}
+    >
+      <ul
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+        aria-label={t('views.project')}
+      >
+        {projects.map((p) => (
+          <li key={p.id}>
+            <button
+              type="button"
+              onClick={() => setActiveProject(p)}
+              aria-label={t('project.open', { name: p.name })}
+              className="card flex w-full items-center gap-3 px-4 py-3.5 text-start transition-colors hover:bg-surface-subtle focus:outline-none focus-visible:bg-surface-subtle"
+              style={{ cursor: 'pointer' }}
+            >
+              <PartyIconTile Icon={Building2} />
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="truncate text-sm font-semibold text-foreground">
+                  <NameDisplay name={p.name} />
+                </span>
+                <span className="truncate text-xs text-text-soft">{p.typeLabel}</span>
+              </div>
+              <StatusBadge intent={p.intent} className="shrink-0">
+                {p.statusLabel}
+              </StatusBadge>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </DataState>
+  );
+}
+
+/** Server-paginated project zoom-in — the project's own documents via the
+ *  list endpoint's `projectId` filter (no client truncation), each row with
+ *  quick download + archive. */
+function ProjectZoomIn({
+  project,
+  archived,
+  canCreate,
+  onBack,
+}: {
+  project: ProjectViewModel;
+  archived: boolean;
+  canCreate: boolean;
+  onBack: () => void;
+}) {
+  const t = useTranslations('documents');
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  useEffect(() => setCursor(undefined), [archived]);
+  const { data, isLoading, isError, refetch } = useDocumentList({
+    limit: PAGE_LIMIT,
+    cursor,
+    projectId: project.id,
+    archived,
+  });
+  const items = data?.items ?? [];
+  const page = data?.page;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-text-muted"
+          style={{ cursor: 'pointer' }}
+        >
+          <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          {t('project.back')}
+        </button>
+        <span className="text-sm font-semibold text-foreground">
+          <NameDisplay name={project.name} />
+        </span>
+      </div>
+
+      <DataState
+        isLoading={isLoading}
+        isError={isError}
+        onRetry={() => void refetch()}
+        skeleton="list"
+        isEmpty={items.length === 0}
+        emptyTitle={t('project.zoomEmpty')}
+        emptyAction={
+          canCreate ? (
+            <Link
+              href={`/documents/new?projectId=${project.id}`}
+              className="btn btn-primary btn-sm"
+            >
+              <Plus className="h-[15px] w-[15px]" aria-hidden="true" />
+              <span>{t('upload')}</span>
+            </Link>
+          ) : undefined
+        }
+      >
+        <ul className="flex flex-col gap-1.5">
+          {items.map((d) => (
+            <li key={d.id}>
+              <DocumentRow doc={d} canCreate={canCreate} onArchived={() => void refetch()} />
+            </li>
+          ))}
+        </ul>
+        <div className="flex flex-wrap items-center gap-2">
+          {page?.has_more && page.cursor && (
+            <Button variant="outline" size="sm" onClick={() => setCursor(page.cursor ?? undefined)}>
+              {t('loadMore')}
+            </Button>
+          )}
+          {cursor && (
+            <Button variant="ghost" size="sm" onClick={() => setCursor(undefined)}>
+              {t('resetPage')}
+            </Button>
+          )}
+        </div>
+      </DataState>
+    </div>
+  );
+}
+
+// ── "כל המסמכים" — flat forensic list ───────────────────────────────────────
+
+/** The flat forensic list — every document, server-paginated, legible rows. The
+ *  "find one document" path; preserved as the secondary view. */
+function FlatDocumentList({ archived, canCreate }: { archived: boolean; canCreate: boolean }) {
+  const t = useTranslations('documents');
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  useEffect(() => setCursor(undefined), [archived]);
+  const { data, isLoading, isError, refetch } = useDocumentList({
+    limit: PAGE_LIMIT,
+    cursor,
+    archived,
+  });
+  const items = data?.items ?? [];
+  const page = data?.page;
+
+  return (
+    <DataState
+      isLoading={isLoading}
+      isError={isError}
+      onRetry={() => void refetch()}
+      skeleton="list"
+      isEmpty={items.length === 0}
+      emptyTitle={archived ? t('archivedEmpty') : t('empty')}
+      emptyAction={
+        canCreate && !archived ? (
+          <Link href="/documents/new" className="btn btn-primary btn-sm">
+            <Plus className="h-[15px] w-[15px]" aria-hidden="true" />
+            <span>{t('upload')}</span>
+          </Link>
+        ) : undefined
+      }
+    >
+      <ul className="flex flex-col gap-1.5" aria-label={t('views.all')}>
+        {items.map((d) => (
+          <li key={d.id}>
+            <DocumentRow doc={d} canCreate={canCreate} onArchived={() => void refetch()} />
+          </li>
+        ))}
+      </ul>
+      <div className="flex flex-wrap items-center gap-2">
+        {page?.has_more && page.cursor && (
+          <Button variant="outline" size="sm" onClick={() => setCursor(page.cursor ?? undefined)}>
+            {t('loadMore')}
+          </Button>
+        )}
+        {cursor && (
+          <Button variant="ghost" size="sm" onClick={() => setCursor(undefined)}>
+            {t('resetPage')}
+          </Button>
+        )}
+      </div>
+    </DataState>
+  );
+}
+
+// ── Server search results ───────────────────────────────────────────────────
+
+/** Server-side search results (across the whole board, debounced). Flat legible
+ *  rows; replaces the active view while the search box is non-empty. */
+function SearchResults({
+  query,
+  archived,
+  canCreate,
+}: {
+  query: string;
+  archived: boolean;
+  canCreate: boolean;
+}) {
+  const t = useTranslations('documents');
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  // A changed query / archived flip resets pagination to the first page.
+  useEffect(() => setCursor(undefined), [query, archived]);
+  const { data, isLoading, isError, refetch } = useDocumentSearch({
+    q: query,
+    limit: PAGE_LIMIT,
+    cursor,
+    archived,
+  });
+  const items = data?.items ?? [];
+  const page = data?.page;
+
+  return (
+    <DataState
+      isLoading={isLoading}
+      isError={isError}
+      onRetry={() => void refetch()}
+      skeleton="list"
+      isEmpty={items.length === 0}
+      emptyTitle={t('noResults')}
+    >
+      <ul className="flex flex-col gap-1.5" aria-label={t('searchPlaceholder')}>
+        {items.map((d) => (
+          <li key={d.id}>
+            <DocumentRow doc={d} canCreate={canCreate} onArchived={() => void refetch()} />
+          </li>
+        ))}
+      </ul>
+      <div className="flex flex-wrap items-center gap-2">
+        {page?.has_more && page.cursor && (
+          <Button variant="outline" size="sm" onClick={() => setCursor(page.cursor ?? undefined)}>
+            {t('loadMore')}
+          </Button>
+        )}
+        {cursor && (
+          <Button variant="ghost" size="sm" onClick={() => setCursor(undefined)}>
+            {t('resetPage')}
+          </Button>
+        )}
+      </div>
+    </DataState>
+  );
+}
+
+// ── A single legible document row + its quick actions ───────────────────────
+
+/**
+ * One document row — legible at a glance: the icon + name, the type + project
+ * (+ apartment when present) always visible, a SENSITIVE/scan marker when
+ * relevant, a de-emphasized size/date, and quick actions (download + archive).
+ * The whole row links to the detail page; the actions are buttons inside it.
+ */
+function DocumentRow({
+  doc,
+  canCreate,
+  onArchived,
+}: {
+  doc: DocumentViewModel;
+  canCreate: boolean;
+  onArchived: () => void;
+}) {
+  const t = useTranslations('documents');
+  const tp = useTranslations('projects');
+  const canDownload = useHasPermission('documents.download');
+  const canArchive = useHasPermission('documents.archive');
+
+  // The row card is a plain container; the NAME + metadata is the navigation
+  // <Link>, and the quick-action buttons are SIBLINGS (never nested inside the
+  // anchor — that would be invalid HTML / a hydration warning).
+  return (
+    <div className="card flex items-center gap-2.5 px-3 py-2 transition-colors hover:bg-surface-subtle">
+      <FileText className="h-4 w-4 shrink-0 text-navy-700" aria-hidden="true" />
+      <Link
+        href={`/documents/${doc.id}`}
+        className="flex min-w-0 flex-1 flex-col gap-0.5 focus:outline-none focus-visible:underline"
+      >
+        <span className="truncate text-sm text-foreground">
+          <NameDisplay name={doc.name} />
+        </span>
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-text-soft">
+          <span>{doc.typeLabel}</span>
+          {doc.projectName && (
+            <span>
+              · <NameDisplay name={doc.projectName} />
+            </span>
+          )}
+          {doc.apartmentName && <span>· {t('row.apartment', { number: doc.apartmentName })}</span>}
+          {doc.isSensitive && (
+            <span className="badge badge-warning shrink-0">{t('row.sensitive')}</span>
+          )}
+          {!doc.isScanClean && (
+            <span className="badge badge-neutral shrink-0">{doc.scanStatusLabel}</span>
+          )}
+        </span>
+      </Link>
+      <span className="hidden shrink-0 text-[11px] text-text-soft sm:inline" dir="ltr">
+        {doc.sizeLabel} · {doc.createdRelative}
+      </span>
+      {doc.isArchived ? (
+        <span className="badge badge-neutral shrink-0">
+          <span className="badge-dot" aria-hidden="true" />
+          <span>{tp('archived')}</span>
+        </span>
+      ) : (
+        <div className="flex shrink-0 items-center gap-1">
+          {canDownload && doc.isScanClean && <DownloadButton doc={doc} />}
+          {canArchive && canCreate && <ArchiveButton doc={doc} onArchived={onArchived} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Quick download — reuses `useDownloadDocument` (dual-mode) + the step-up
+ *  unlock for sensitive docs + the same safe new-tab open as the detail page,
+ *  with a popup-blocked toast. The button stops the row's <Link> navigation. */
+function DownloadButton({ doc }: { doc: DocumentViewModel }) {
+  const t = useTranslations('documents');
+  const toast = useToast();
+  const download = useDownloadDocument();
+  const stepUp = useStepUpUnlock();
+
+  async function onDownload() {
+    try {
+      const result = await stepUp.withStepUp(() =>
+        download.mutateAsync({ id: doc.id, disposition: 'attachment' }),
+      );
+      if (result.kind === 'presign') {
+        if (!/^https:\/\//i.test(result.url)) {
+          toast.show({ message: t('downloadFailed'), variant: 'assertive' });
+          return;
+        }
+        const win = window.open(result.url, '_blank', 'noopener,noreferrer');
+        if (!win) toast.show({ message: t('popupBlocked'), variant: 'assertive' });
+        return;
+      }
+      // Bytes leg — local object URL (sensitive decrypt-streamed doc).
+      const objectUrl = URL.createObjectURL(result.blob);
+      const win = window.open(objectUrl, '_blank', 'noopener,noreferrer');
+      if (!win) toast.show({ message: t('popupBlocked'), variant: 'assertive' });
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (e) {
+      if (isStepUpCancelled(e)) return;
+      toast.show({ message: t('downloadFailed'), variant: 'assertive' });
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="btn btn-ghost btn-sm"
+      disabled={download.isPending}
+      aria-busy={download.isPending}
+      aria-label={t('row.downloadAria', { name: doc.name })}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (download.isPending) return;
+        void onDownload();
+      }}
+    >
+      <Download className="h-3.5 w-3.5" aria-hidden="true" />
+      <span className="sr-only">{t('download')}</span>
+    </button>
+  );
+}
+
+/** Quick archive — confirm, then `useArchiveDocument`; refreshes the surface
+ *  on success and shows a calm toast. Stops the row's <Link> navigation. */
+function ArchiveButton({ doc, onArchived }: { doc: DocumentViewModel; onArchived: () => void }) {
+  const t = useTranslations('documents');
+  const tp = useTranslations('projects');
+  const toast = useToast();
+  const archive = useArchiveDocument();
+  const { confirm, dialog } = useConfirm();
+
+  async function onArchive() {
+    if (!(await confirm({ message: t('archiveConfirm'), destructive: true }))) return;
+    try {
+      await archive.mutateAsync(doc.id);
+      toast.show({ message: t('archiveDone') });
+      onArchived();
+    } catch {
+      toast.show({ message: t('archiveFailed'), variant: 'assertive' });
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        disabled={archive.isPending}
+        aria-busy={archive.isPending}
+        aria-label={t('row.archiveAria', { name: doc.name })}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (archive.isPending) return;
+          void onArchive();
+        }}
+      >
+        <span className="text-xs">{tp('archive')}</span>
+      </button>
+      {dialog}
+    </>
+  );
+}
+
+/** A shared "load more" footer for the accumulating zoom-in. */
+function LoadMore({
+  canLoadMore,
+  isFetching,
+  onClick,
+}: {
+  canLoadMore: boolean;
+  isFetching: boolean;
+  onClick: () => void;
+}) {
+  const t = useTranslations('documents');
+  if (!canLoadMore) return null;
+  return (
+    <Button variant="outline" size="sm" onClick={onClick} disabled={isFetching}>
+      {isFetching ? t('loadingMore') : t('loadMore')}
+    </Button>
+  );
+}
+
+// ── Party-document accumulator (server-paginated, party-bucketed) ───────────
+
+/**
+ * Accumulate ONE party's documents by paging the documents LIST endpoint and
+ * keeping only the rows that roll up to this party (`providerPartyForDocType`).
+ * The party board's headline count comes from the SERVER summary (never this);
+ * this only materializes the rows on demand, paging until the board is exhausted
+ * (progressive disclosure). Each page is a real keyset page, so this never
+ * silently truncates — "load more" fetches the next page and appends.
+ *
+ * The documents list endpoint has no server-side `party` filter (only `/search`
+ * does, and that requires a name query), so the party narrowing is applied to
+ * each fetched page here. The count shown to the user is always the server
+ * `total`, so the count is truthful regardless of how many pages are loaded.
+ */
+function usePartyDocuments(party: DocumentParty, archived: boolean) {
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const [acc, setAcc] = useState<DocumentViewModel[]>([]);
+  const [exhausted, setExhausted] = useState(false);
+
+  // Reset the accumulator when the party or archived scope changes.
+  useEffect(() => {
+    setCursor(undefined);
+    setAcc([]);
+    setExhausted(false);
+  }, [party, archived]);
+
+  const { data, isLoading, isError, isFetching, refetch } = useDocumentList({
+    limit: PAGE_LIMIT,
+    cursor,
+    archived,
+  });
+
+  // Fold each fetched page into the accumulator (dedup by id so a refetch of the
+  // same cursor never double-appends), keeping only this party's docs.
+  useEffect(() => {
+    if (!data) return;
+    const partyDocs = data.items.filter((d) => providerPartyForDocType(d.type) === party);
+    setAcc((prev) => {
+      const seen = new Set(prev.map((d) => d.id));
+      const next = [...prev];
+      for (const d of partyDocs) if (!seen.has(d.id)) next.push(d);
+      return next;
+    });
+    if (!data.page.has_more) setExhausted(true);
+  }, [data, party]);
+
+  const canLoadMore = !exhausted && Boolean(data?.page.has_more);
+  // First-load only when nothing has accumulated yet (later pages keep the list).
+  const isLoadingFirst = isLoading && acc.length === 0 && cursor === undefined;
+  const isFetchingMore = isFetching && cursor !== undefined;
+
+  return {
+    items: acc,
+    isLoading: isLoadingFirst,
+    isError,
+    isFetchingMore,
+    canLoadMore,
+    isDone: exhausted,
+    loadMore: () => {
+      if (data?.page.has_more && data.page.cursor) setCursor(data.page.cursor);
+    },
+    retry: () => void refetch(),
+    onArchived: () => {
+      // Drop the archived doc from the accumulator immediately; the underlying
+      // list query is also invalidated by the mutation so the next page is fresh.
+      void refetch();
+    },
+  };
 }

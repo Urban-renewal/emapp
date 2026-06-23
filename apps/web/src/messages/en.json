@@ -878,13 +878,42 @@
       "gist": {
         "count": "{count} documents",
         "latest": "{count} documents · latest {when}",
+        "latestType": "{count} documents · latest: {type}",
+        "latestWhen": "Latest received {when}",
         "allReceived": "{count} documents · all required received",
         "someMissing": "{received} of {required} received · missing: {types}"
       },
       "complete": "Complete",
       "completeness": "{received} of {required} required documents received",
-      "back": "Back to parties"
+      "back": "Back to parties",
+      "zoomEmpty": "No documents to show right now",
+      "uploadMissing": "Upload {type}",
+      "uploadMissingAria": "Upload {type} for {party}"
     },
+    "views": {
+      "label": "View",
+      "party": "By party",
+      "project": "By project",
+      "all": "All documents"
+    },
+    "project": {
+      "open": "Open {name} documents",
+      "back": "Back to projects",
+      "empty": "No projects yet",
+      "zoomEmpty": "No documents in this project yet"
+    },
+    "row": {
+      "apartment": "Apt {number}",
+      "sensitive": "Sensitive",
+      "downloadAria": "Download {name}",
+      "archiveAria": "Archive {name}"
+    },
+    "loadMore": "Load more",
+    "loadingMore": "Loading more…",
+    "resetPage": "Back to first page",
+    "popupBlocked": "Your browser blocked opening the file — allow pop-ups and try again.",
+    "archiveDone": "Document moved to archive.",
+    "archivedEmpty": "No archived documents.",
     "party": {
       "owner": "Owners",
       "appraiser": "Appraiser",
@@ -921,6 +950,22 @@
     "tab": {
       "active": "Active",
       "archived": "Archived"
+    },
+    "detail": {
+      "metaTitle": "Document details",
+      "sensitive": "Sensitive — contains personal data",
+      "sensitiveHint": "Viewing and downloading require additional verification (one-time code)",
+      "scanLabel": "Security scan",
+      "parentProject": "Project",
+      "parentApartment": "Apartment",
+      "noParent": "Not linked to a project",
+      "stepUpHint": "Viewing requires verification",
+      "openedNewTab": "The document opened in a new tab",
+      "downloadStarted": "Download started",
+      "popupBlocked": "Allow pop-ups to view the document",
+      "archivedTitle": "Archived document",
+      "archivedBody": "This document was archived and is not available to view or download. You can restore it from the archived documents list.",
+      "archivedToList": "Go to documents list"
     }
   },
   "ownerships": {

@@ -61,13 +61,31 @@ const scanStub = {} as never;
 const notificationsStub = {} as never;
 
 function managerA(): AccessTokenPayload {
-  return { sub: mgrAId, orgId: orgA.id, role: 'manager', sid: randomUUID(), type: 'access' } as unknown as AccessTokenPayload;
+  return {
+    sub: mgrAId,
+    orgId: orgA.id,
+    role: 'manager',
+    sid: randomUUID(),
+    type: 'access',
+  } as unknown as AccessTokenPayload;
 }
 function managerB(): AccessTokenPayload {
-  return { sub: mgrBId, orgId: orgB.id, role: 'manager', sid: randomUUID(), type: 'access' } as unknown as AccessTokenPayload;
+  return {
+    sub: mgrBId,
+    orgId: orgB.id,
+    role: 'manager',
+    sid: randomUUID(),
+    type: 'access',
+  } as unknown as AccessTokenPayload;
 }
 function agentA(): AccessTokenPayload {
-  return { sub: agentAId, orgId: orgA.id, role: 'agent', sid: randomUUID(), type: 'access' } as unknown as AccessTokenPayload;
+  return {
+    sub: agentAId,
+    orgId: orgA.id,
+    role: 'agent',
+    sid: randomUUID(),
+    type: 'access',
+  } as unknown as AccessTokenPayload;
 }
 
 interface SeedDocOpts {
@@ -120,7 +138,9 @@ async function seedAgent(orgId: string): Promise<string> {
     .insert(users)
     .values({ email: `ag-${randomUUID()}@test.local`, name: 'Ag', passwordHash: '$2b$12$x' })
     .returning({ id: users.id });
-  await db.insert(memberships).values({ userId: u!.id, orgId, role: 'agent', acceptedAt: new Date() });
+  await db
+    .insert(memberships)
+    .values({ userId: u!.id, orgId, role: 'agent', acceptedAt: new Date() });
   return u!.id;
 }
 
@@ -225,7 +245,11 @@ describe('NS1 documents search', () => {
     expect(page1.data).toHaveLength(1);
     expect(page1.page.has_more).toBe(true);
     expect(page1.page.cursor).toBeTruthy();
-    const page2 = await svc.searchDocuments(managerA(), { q: ks, limit: 1, cursor: page1.page.cursor! });
+    const page2 = await svc.searchDocuments(managerA(), {
+      q: ks,
+      limit: 1,
+      cursor: page1.page.cursor!,
+    });
     expect(page2.data).toHaveLength(1);
     expect(page2.data[0]!.id).not.toBe(page1.data[0]!.id);
   });
@@ -256,5 +280,86 @@ describe('NS1 documents search', () => {
     expect(res.data).toHaveLength(0);
     expect(res.page.has_more).toBe(false);
     expect(res.page.cursor).toBeNull();
+  });
+
+  // ── Phase 1 (DOCUMENTS-REMEDIATION-PLAN) — party filter + parent labels + PII
+  it("party filter narrows to that binder party's doc types", async () => {
+    const projId = orgA.projects[0]!.id;
+    const s = `Party ${TAG}-${randomUUID().slice(0, 6)}`;
+    // land_registry → owner; agreement → contractor; blueprint → architect.
+    const ownerDoc = await seedDoc(orgA.id, `${s} owner`, {
+      projectId: projId,
+      type: 'land_registry',
+    });
+    const contractorDoc = await seedDoc(orgA.id, `${s} contr`, {
+      projectId: projId,
+      type: 'agreement',
+    });
+    const architectDoc = await seedDoc(orgA.id, `${s} arch`, {
+      projectId: projId,
+      type: 'blueprint',
+    });
+
+    const owner = await svc.searchDocuments(managerA(), { q: s, limit: 100, party: 'owner' });
+    const ownerIds = owner.data.map((d) => d.id);
+    expect(ownerIds).toContain(ownerDoc);
+    expect(ownerIds).not.toContain(contractorDoc);
+    expect(ownerIds).not.toContain(architectDoc);
+
+    const contractor = await svc.searchDocuments(managerA(), {
+      q: s,
+      limit: 100,
+      party: 'contractor',
+    });
+    expect(contractor.data.map((d) => d.id)).toContain(contractorDoc);
+    expect(contractor.data.map((d) => d.id)).not.toContain(ownerDoc);
+  });
+
+  it('party=other matches an UNMAPPED free-text type but not a mapped one', async () => {
+    const projId = orgA.projects[0]!.id;
+    const s = `POther ${TAG}-${randomUUID().slice(0, 6)}`;
+    const weirdDoc = await seedDoc(orgA.id, `${s} weird`, {
+      projectId: projId,
+      type: `xyz-${TAG}`,
+    });
+    const mappedDoc = await seedDoc(orgA.id, `${s} mapped`, {
+      projectId: projId,
+      type: 'agreement',
+    });
+
+    const other = await svc.searchDocuments(managerA(), { q: s, limit: 100, party: 'other' });
+    const ids = other.data.map((d) => d.id);
+    expect(ids).toContain(weirdDoc); // unmapped → other bucket
+    expect(ids).not.toContain(mappedDoc); // agreement → contractor, not other
+  });
+
+  it('party with no curated types (supervisor) returns empty (fail-closed narrow, never widens)', async () => {
+    const projId = orgA.projects[0]!.id;
+    const s = `PSup ${TAG}-${randomUUID().slice(0, 6)}`;
+    await seedDoc(orgA.id, `${s} a`, { projectId: projId, type: 'agreement' });
+    await seedDoc(orgA.id, `${s} b`, { projectId: projId, type: 'land_registry' });
+    const res = await svc.searchDocuments(managerA(), { q: s, limit: 100, party: 'supervisor' });
+    // supervisor has no default doc_type → an empty result, NOT every doc.
+    expect(res.data).toHaveLength(0);
+  });
+
+  it('results carry the resolved parent labels (projectName) — NOT owner PII', async () => {
+    const projId = orgA.projects[0]!.id;
+    const projName = orgA.projects[0]!.name;
+    const name = `Parent ${TAG}-${randomUUID().slice(0, 6)}`;
+    await seedDoc(orgA.id, name, { projectId: projId });
+    const res = await svc.searchDocuments(managerA(), { q: name, limit: 10 });
+    expect(res.data.length).toBeGreaterThan(0);
+    const doc = res.data[0]!;
+    // The parent project NAME is resolved (org-internal label) + the new non-PII
+    // processing flags are present on the wire.
+    expect(doc.projectName).toBe(projName);
+    expect(doc.apartmentName).toBeNull();
+    expect(typeof doc.sensitive).toBe('boolean');
+    expect(doc.scanStatus).toBe('clean');
+    // No owner PII / storage pointer leaks via the new fields.
+    const serialized = JSON.stringify(res.data);
+    expect(serialized).not.toMatch(/r2[_-]?key/i);
+    expect(serialized).not.toMatch(/national_id|"phone"/i);
   });
 });

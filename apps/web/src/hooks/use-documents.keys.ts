@@ -36,3 +36,37 @@ export function documentsListQueryKey(
 ) {
   return [...DOCUMENTS_KEY, 'list', query, locale] as const;
 }
+
+/**
+ * Board-summary / board-completeness key (Phase 1). NO locale segment — the
+ * response is counts + doc-type KEYS only (labels resolved at the component), so
+ * it is identical across locales. A SINGLE-source builder (was an inline literal
+ * in the hook) so the upload mutation can invalidate it by the exact same key.
+ * Shape: `['documents', 'board-completeness']`.
+ */
+export function documentsBoardCompletenessQueryKey() {
+  return [...DOCUMENTS_KEY, 'board-completeness'] as const;
+}
+
+/**
+ * Server-side search key (Phase 1) — `['documents', 'search', args, locale]`.
+ * `args` is the LITERAL search params object (`{ q, limit?, cursor?, type?,
+ * party?, scope?, archived? }`); `locale` keys the adapter's localized labels in
+ * `select` (the VM resolves typeLabel/parent labels per locale). Distinct queries
+ * (different q/party/type) cache independently. `hashKey` JSON-drops `undefined`,
+ * so unset filters never split the cache.
+ */
+export function documentsSearchQueryKey(
+  args: {
+    q: string;
+    limit?: number;
+    cursor?: string;
+    type?: string;
+    party?: string;
+    scope?: 'project' | 'apartment' | 'org';
+    archived?: boolean;
+  },
+  locale: 'he' | 'en',
+) {
+  return [...DOCUMENTS_KEY, 'search', args, locale] as const;
+}

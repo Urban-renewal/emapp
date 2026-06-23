@@ -911,7 +911,7 @@ _(no body)_
 ### GET /api/v1/documents
 
 - **Auth:** AuthGuard + TenantGuard (documents.read)
-- **Summary:** List org documents, cursor-paginated. Doc/project visibility scoping in the service; r2Key never returned.
+- **Summary:** List org documents, cursor-paginated. Doc/project visibility scoping in the service; r2Key never returned. Each doc carries the non-PII processing flags sensitive + scanStatus and the resolved parent labels projectName/apartmentName (project name / apartment number — org-internal labels, NOT owner PII), batch-resolved under RLS.
 
 **Request body**
 
@@ -979,7 +979,7 @@ _(no body)_
 ### GET /api/v1/documents/:id
 
 - **Auth:** AuthGuard + TenantGuard (documents.read)
-- **Summary:** Get one document by id (org-scoped; visibility-scoped in the service).
+- **Summary:** Get one document by id (org-scoped; visibility-scoped in the service). The Document carries the non-PII processing flags sensitive + scanStatus and the resolved parent labels projectName/apartmentName (project name / apartment number — org-internal labels, NOT owner PII) so the detail card can show + link the parent.
 
 **Request body**
 
@@ -1075,7 +1075,7 @@ _(no body)_
 ### GET /api/v1/documents/board-completeness
 
 - **Auth:** AuthGuard + TenantGuard (documents.read)
-- **Summary:** PARTY-BINDER board completeness (binder slice 2) — per-BINDER-PARTY REQUIRED-vs-RECEIVED across the WHOLE board scope (the caller's org; for an AGENT restricted to active project assignments), computed SERVER-SIDE over ALL the scope's projects + ALL their non-archived documents in one aggregate pass (two index-bounded queries, no N+1). Closes the FE bug where completeness was derived from a single 25-doc keyset page while counting requirements across every project (bogus "0/21"). A "required slot" is a (project, requiredType) pair per the project's track (REQUIRED_DOC_TYPES_BY_TRACK); a slot is RECEIVED when a non-archived doc of that type exists for that project (canonical doc_scope='project'+doc_scope_id OR legacy project_id); slots roll up to a party via providerPartyForDocType. withTenant→RLS org-isolation + (agent) assigned-project scoping is the boundary. Counts + doc-type KEYS only — NO PII, NO document ids/names.
+- **Summary:** PARTY-BINDER board completeness (binder slice 2 + Phase 1 board-summary) — per-BINDER-PARTY REQUIRED-vs-RECEIVED + the WHOLE-BOARD document rollup, across the board scope (the caller's org; for an AGENT restricted to active project assignments), computed SERVER-SIDE over ALL the scope's projects + ALL their non-archived documents in one aggregate pass (index-bounded queries, no N+1). Closes the FE bug where counts/completeness were derived from a single 25-doc keyset page while counting requirements across every project (bogus "0/21"; a >25-doc party truncated). A "required slot" is a (project, requiredType) pair per the project's track (REQUIRED_DOC_TYPES_BY_TRACK); a slot is RECEIVED when a non-archived doc of that type exists for that project (canonical doc_scope='project'+doc_scope_id OR legacy project_id); slots roll up to a party via providerPartyForDocType. Phase 1 board-summary: per party `total` (whole-board count of non-archived docs that roll up to the party, via the doc's actual type), `latestType` (most-recent such doc's type key, or null) and `latestCreatedAt` (its createdAt, or null). withTenant→RLS org-isolation + (agent) assigned-project/record scoping is the boundary. Counts + doc-type KEYS + a timestamp only — NO PII, NO document ids/names.
 
 **Request body**
 
@@ -1084,7 +1084,7 @@ _(no body)_
 **Response**
 
 ```json
-{ "data": { "byParty": [ { "party": "owner|appraiser|architect|municipality|contractor|lawyer|supervisor|surveyor|other", "required": int, "received": int, "isComplete": bool, "hasRequirement": bool, "missingTypes": [ { "type": "DocumentType" } ] } ], "unmetParties": ["party"], "hasAnyRequirement": bool, "allRequirementsMet": bool } }
+{ "data": { "byParty": [ { "party": "owner|appraiser|architect|municipality|contractor|lawyer|supervisor|surveyor|other", "required": int, "received": int, "isComplete": bool, "hasRequirement": bool, "missingTypes": [ { "type": "DocumentType" } ], "total": int, "latestType": "DocumentType|null", "latestCreatedAt": "iso|null" } ], "unmetParties": ["party"], "hasAnyRequirement": bool, "allRequirementsMet": bool } }
 ```
 
 **Errors:** `missing_token`, `invalid_token`, `token_expired`
@@ -1155,7 +1155,7 @@ _(no body)_
 ### GET /api/v1/documents/search
 
 - **Auth:** AuthGuard + TenantGuard (documents.read)
-- **Summary:** NS1 — document NAME substring search (trigram ILIKE) + optional `type` (DocumentTypeEnum) and `scope` (project|apartment|org) filters, cursor-paginated. SAME visibility as list (agent record-scoping, archived excluded by default) — search never widens what a caller can see; r2Key never returned.
+- **Summary:** NS1 — document NAME substring search (trigram ILIKE) + optional `type` (DocumentTypeEnum, one exact type), `party` (board zoom-in — expands to the binder party's doc types via providerPartyForDocType; `other` also matches any unmapped type) and `scope` (project|apartment|org) filters, cursor-paginated. Every filter only NARROWS (added AND) — SAME visibility as list (agent record-scoping, archived excluded by default); search never widens what a caller can see. Each doc carries the resolved parent labels projectName/apartmentName (project name / apartment number — org-internal labels, NOT owner PII), batch-resolved under RLS. r2Key never returned.
 
 **Request body**
 
@@ -1164,6 +1164,7 @@ _(no body)_
 | `archived` | string | no | enum=["true","false"] |
 | `cursor` | string | no | minLength=1 |
 | `limit` | integer | no | minimum=1, maximum=100 |
+| `party` | string | no | enum=["owner","appraiser","architect","municipality","contractor","lawyer","supervisor","surveyor","other"] |
 | `q` | string | yes | minLength=1, maxLength=255 |
 | `scope` | string | no | enum=["project","apartment","org"] |
 | `type` | string | no | enum=["agreement","land_registry","blueprint","regulation","survey","survey_map","guarantee","municipal_approval","schedule","legal_opinion","contract","permit","id_document","floor_plan","financial","other"] |

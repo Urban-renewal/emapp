@@ -252,6 +252,24 @@ approval when the right move is to keep building. Anchored HERE (not memory) so 
    infra/legal/deploy set. Do NOT invent justifications to wait. If you catch yourself explaining
    why a merge/build is "probably fine but I'll wait" — that's the bug; proceed.
 
+6. **A PR PROCESS IS NOT DONE UNTIL IT IS MERGED (owner 2026-06-23, anchored — recurring failure).**
+   Opening a PR + walking away is the SAME bug as parking. When you open a PR, you OWN it to a
+   terminal state: drive it to MERGE (rebase/update-branch when BEHIND, FIX it when CI fails — a
+   failing PR is never "ignore it", it's "fix or close it"), or deliberately CLOSE it with a reason,
+   or — only for the genuinely deploy-gated #3 set — leave it open with an explicit "owner-gated
+   because X" note. NEVER leave a PR open-and-failing-and-ignored. A backgrounded merge-watcher is
+   NOT a terminal state — CONFIRM the merge landed (the detached `( … ) &` subshell pattern dies
+   with its parent and silently fails to merge; poll until `state==MERGED` or merge inline). Sweep
+   open PRs (`gh pr list`) at the start of an autopilot stretch and resolve every stale one.
+
+7. **FEWER, COARSER PRs (owner 2026-06-23) — the merge UNIT is coarser than the BUILD unit.** One PR
+   per coherent, independently-shippable feature; build a BE contract + its FE consumer on ONE branch
+   → ONE PR (also dodges the stale-main dependency). Parallel agents still build in worktrees; combine
+   their cohesive output. CONDITION: gates stay per-CHANGE (G-RT every security-sensitive change,
+   G-QA real-Chrome walk every browser-observable change, CI green) — a coarser PR = one thorough pass
+   over more, never a skipped pass. Only batch COHESIVE work (never couple an unrelated/independently-
+   risky change); if a change is too big to red-team well, split it. Quality > raw PR-count.
+
 \## ===== AUTOPILOT PROTOCOL =====
 
 \### Multi-agent heartbeats (per-track, append-only)

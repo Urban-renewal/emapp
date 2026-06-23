@@ -22,6 +22,7 @@ import {
   DOCUMENT_SCAN_REJECTED_CODE,
   DOCUMENT_TYPE_MISMATCH_CODE,
   DOCUMENT_UPLOAD_INCOMPLETE_CODE,
+  PROJECTS_BEHIND_CAP,
   REMEDIATION_SAMPLE_MAX,
   REQUIRED_DOC_TYPES_BY_TRACK,
   SENSITIVE_DOC_TYPES,
@@ -2010,6 +2011,7 @@ export class DocumentsService {
       cursor?: string;
       type?: string;
       party?: DocumentParty;
+      projectId?: string;
       scope?: 'project' | 'apartment' | 'org';
       archived?: boolean;
     },
@@ -2033,6 +2035,20 @@ export class DocumentsService {
         // Phase 1 — `party` narrows to that party's doc types (AND with `type`
         // if both given). Pure type-set predicate; never widens.
         if (query.party) filters.push(this.partyTypeFilter(query.party));
+        // S2 (faceted shell) — `projectId` narrows to ONE project, resolved via the
+        // CANONICAL scope (doc_scope='project' → doc_scope_id, else legacy
+        // project_id) — the SAME resolver the board's received/required pass uses,
+        // so a canonically-filed doc is found and the facet count agrees with the
+        // board. NARROWING only (an extra AND; RLS + agent-scoping still bound it).
+        if (query.projectId) {
+          const pid = query.projectId;
+          filters.push(
+            or(
+              and(eq(documents.docScope, 'project'), eq(documents.docScopeId, pid)),
+              eq(documents.projectId, pid),
+            ),
+          );
+        }
         // `scope` NARROWS by parent linkage (never widens — it only adds an AND).
         if (query.scope === 'project') filters.push(isNotNull(documents.projectId));
         else if (query.scope === 'apartment') filters.push(isNotNull(documents.apartmentId));
@@ -2168,7 +2184,7 @@ export class DocumentsService {
         //    docs), matching the DH2 per-project checklist which does not filter
         //    on project archive state.
         const projBase = tx
-          .select({ id: projects.id, type: projects.type })
+          .select({ id: projects.id, type: projects.type, name: projects.name })
           .from(projects)
           .$dynamic();
         const projectRows =
@@ -2198,6 +2214,19 @@ export class DocumentsService {
           }
           return a;
         };
+
+        // S2 (org cockpit) — per-PROJECT core-required rollup, populated in the
+        // SAME loop as the per-party slots (no extra query). A project's `missing`
+        // carries each missing required TYPE + its derived responsible PARTY so the
+        // cockpit can name the party + deep-link the one-click upload. Counts +
+        // type/party keys + the project NAME only — no owner PII.
+        interface ProjAcc {
+          name: string;
+          coreRequired: number;
+          coreReceived: number;
+          missing: { type: DocumentType; party: DocumentParty }[];
+        }
+        const projAcc = new Map<string, ProjAcc>();
 
         if (projectRows.length > 0) {
           const projectIds = projectRows.map((p) => p.id);
@@ -2255,12 +2284,28 @@ export class DocumentsService {
           for (const project of projectRows) {
             const requiredTypes = REQUIRED_DOC_TYPES_BY_TRACK[trackForProjectType(project.type)];
             const received = receivedByProject.get(project.id);
+            // S2 — start this project's per-project core rollup (every required
+            // type is one core slot for the project, mapped to its responsible party).
+            const pa: ProjAcc = {
+              name: project.name,
+              coreRequired: 0,
+              coreReceived: 0,
+              missing: [],
+            };
             for (const reqType of requiredTypes) {
-              const a = bump(providerPartyForDocType(reqType));
+              const party = providerPartyForDocType(reqType);
+              const a = bump(party);
               a.required += 1;
-              if (received?.has(reqType)) a.received += 1;
-              else a.missing.add(reqType);
+              pa.coreRequired += 1;
+              if (received?.has(reqType)) {
+                a.received += 1;
+                pa.coreReceived += 1;
+              } else {
+                a.missing.add(reqType);
+                pa.missing.push({ type: reqType, party });
+              }
             }
+            if (pa.coreRequired > 0) projAcc.set(project.id, pa);
           }
         }
 
@@ -2342,11 +2387,39 @@ export class DocumentsService {
           .map((c) => c.party);
         const hasAnyRequirement = byParty.some((c) => c.hasRequirement);
 
+        // S2 (org cockpit) — the PROJECT-attention axis. From the per-project core
+        // rollup: every project WITH a requirement is the denominator; those whose
+        // core set is UNMET (coreReceived < coreRequired) are ranked WORST-FIRST
+        // (fewest filled first, then most missing), capped so the cockpit stays a
+        // calm situation-picture rather than a wall. Counts + type/party keys + the
+        // project name only — no owner PII.
+        const projectsWithRequirement = projAcc.size;
+        const behindAll = [...projAcc.entries()]
+          .filter(([, p]) => p.coreReceived < p.coreRequired)
+          .sort(([, a], [, b]) => {
+            // Worst-first: fewer core slots filled ranks higher; tie-break on more
+            // missing types, then a stable name sort for determinism.
+            if (a.coreReceived !== b.coreReceived) return a.coreReceived - b.coreReceived;
+            if (a.missing.length !== b.missing.length) return b.missing.length - a.missing.length;
+            return a.name.localeCompare(b.name);
+          });
+        const projectsBehind = behindAll.slice(0, PROJECTS_BEHIND_CAP).map(([projectId, p]) => ({
+          projectId,
+          projectName: p.name,
+          coreRequired: p.coreRequired,
+          coreReceived: p.coreReceived,
+          missing: p.missing,
+        }));
+
         return {
           byParty,
           unmetParties,
           hasAnyRequirement,
           allRequirementsMet: hasAnyRequirement && unmetParties.length === 0,
+          // S2 — project-attention axis.
+          projectsBehind,
+          projectsWithRequirement,
+          projectsBehindCapped: behindAll.length > PROJECTS_BEHIND_CAP,
         };
       },
       { userId: user.sub },

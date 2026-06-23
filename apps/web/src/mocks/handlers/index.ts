@@ -191,6 +191,48 @@ export const handlers = [
     HttpResponse.json(dataEnvelope(SAMPLE_SIGNATURE_PROGRESS)),
   ),
 
+  // DH2 (V13) — ADVISORY project document-checklist (S2 surfaces it in the
+  // project zoom-in). Self-consistent with SAMPLE_DOCUMENTS + the cockpit
+  // board-completeness stub: PROJECT_A ("מתחם הרצל 12", tama38) has agreement +
+  // land_registry but no blueprint → blueprint missing; PROJECT_B ("רוטשילד 8",
+  // pinui_binui) has only a blueprint → agreement+land_registry+regulation
+  // missing. NO PII — doc-type keys + present booleans + counts only.
+  http.get(`${API}/projects/:id/document-checklist`, ({ params }) => {
+    const id = String(params['id']);
+    let items: { type: string; present: boolean }[];
+    let meta: { projectType: string; track: 'tama38' | 'pinui_binui' | 'default' };
+    if (id === 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2') {
+      meta = { projectType: 'pinui_binui', track: 'pinui_binui' };
+      items = [
+        { type: 'agreement', present: false },
+        { type: 'land_registry', present: false },
+        { type: 'blueprint', present: true },
+        { type: 'regulation', present: false },
+      ];
+    } else {
+      meta = { projectType: 'tama38_2', track: 'tama38' };
+      items = [
+        { type: 'agreement', present: true },
+        { type: 'land_registry', present: true },
+        { type: 'blueprint', present: false },
+      ];
+    }
+    const totalCount = items.length;
+    const presentCount = items.filter((i) => i.present).length;
+    return HttpResponse.json(
+      dataEnvelope({
+        projectId: id,
+        projectType: meta.projectType,
+        track: meta.track,
+        items,
+        presentCount,
+        totalCount,
+        completionPct: totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0,
+        advisory: true,
+      }),
+    );
+  }),
+
   // buildings (nested under project)
   http.get(`${API}/projects/:projectId/buildings`, ({ params }) => {
     const items = SAMPLE_BUILDINGS.filter((b) => b.projectId === params['projectId']);
@@ -441,23 +483,51 @@ export const handlers = [
         unmetParties: ['owner', 'architect', 'lawyer'],
         hasAnyRequirement: true,
         allRequirementsMet: false,
+        // S2 (org cockpit) — the project-attention axis. Self-consistent with
+        // SAMPLE_DOCUMENTS: PROJECT_A ("מתחם הרצל 12") has agreement+land_registry
+        // but no blueprint → missing blueprint (architect); PROJECT_B
+        // ("רוטשילד 8") has only a blueprint → missing agreement+land_registry.
+        // Counts + type/party keys + the project NAME only (no owner PII).
+        projectsBehind: [
+          {
+            projectId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2',
+            projectName: 'רוטשילד 8',
+            coreRequired: 3,
+            coreReceived: 1,
+            missing: [
+              { type: 'agreement', party: 'contractor' },
+              { type: 'land_registry', party: 'owner' },
+            ],
+          },
+          {
+            projectId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1',
+            projectName: 'מתחם הרצל 12',
+            coreRequired: 3,
+            coreReceived: 2,
+            missing: [{ type: 'blueprint', party: 'architect' }],
+          },
+        ],
+        projectsWithRequirement: 2,
+        projectsBehindCapped: false,
       }),
     ),
   ),
   // Phase 2a — server-side document search. Filters SAMPLE_DOCUMENTS by the name
   // substring `q` (required) + optional `party` (via providerPartyForDocType) +
-  // `archived`. Declared BEFORE `/documents/:id` so the literal "search" path is
-  // not captured as :id. Returns the same { data, page } list envelope.
+  // `projectId` + `archived`. Declared BEFORE `/documents/:id` so the literal
+  // "search" path is not captured as :id. Returns the same { data, page } envelope.
   http.get(`${API}/documents/search`, ({ request }) => {
     const url = new URL(request.url);
     const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
     const party = url.searchParams.get('party');
+    const projectId = url.searchParams.get('projectId');
     const archived = url.searchParams.get('archived') === 'true';
     let items = SAMPLE_DOCUMENTS.filter((d) =>
       archived ? d.archivedAt !== null : d.archivedAt === null,
     );
     if (q) items = items.filter((d) => d.name.toLowerCase().includes(q));
     if (party) items = items.filter((d) => providerPartyForDocType(d.type) === party);
+    if (projectId) items = items.filter((d) => d.projectId === projectId);
     return HttpResponse.json(listEnvelope(items));
   }),
   // S3 — DH3 classify (suggest-only). A tiny offline heuristic over the filename

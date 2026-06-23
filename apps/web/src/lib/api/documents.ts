@@ -105,6 +105,8 @@ export interface DocumentSearchArgs {
   type?: DocumentType;
   /** Binder party (board zoom-in) — narrows to that party's doc types server-side. */
   party?: DocumentParty;
+  /** S2 (faceted shell) — narrow to ONE project (canonical-scope resolved server-side). */
+  projectId?: string;
   scope?: 'project' | 'apartment' | 'org';
   archived?: boolean;
 }
@@ -116,6 +118,7 @@ export async function searchDocuments(args: DocumentSearchArgs): Promise<Documen
   if (args.cursor) params.set('cursor', args.cursor);
   if (args.type) params.set('type', args.type);
   if (args.party) params.set('party', args.party);
+  if (args.projectId) params.set('projectId', args.projectId);
   if (args.scope) params.set('scope', args.scope);
   // Only send when true — the BE defaults to the active (non-archived) view.
   if (args.archived) params.set('archived', 'true');

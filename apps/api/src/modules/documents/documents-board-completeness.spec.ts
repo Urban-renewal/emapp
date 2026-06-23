@@ -448,6 +448,94 @@ describe('boardCompleteness — agent record-scoping', () => {
   });
 });
 
+// ── S2 — the PROJECT-attention axis (org cockpit) ───────────────────────────
+// The cockpit ranks WHICH projects are behind on their core required docs,
+// worst-first, each naming the missing types + their responsible party. The same
+// per-project required/received rollup the byParty pass already computes, surfaced
+// per-project so a 100-project manager sees the behind projects, not just parties.
+describe('boardCompleteness — S2 projectsBehind (project-attention axis)', () => {
+  it('ranks behind projects worst-first; names missing type+party; carries the project NAME; complete projects excluded; NO owner PII', async () => {
+    const org = await createTestOrg(`Behind-${TAG}`);
+    const mgrId = org.users[0]!.id;
+    const mgr = manager(org.id, mgrId);
+
+    // p1 — FULLY complete tama set (agreement+land_registry+blueprint) → NOT behind.
+    const p1 = await seedProject(org.id, mgrId, 'tama38_1');
+    await seedDoc(org.id, mgrId, p1, 'agreement');
+    await seedDoc(org.id, mgrId, p1, 'land_registry');
+    await seedDoc(org.id, mgrId, p1, 'blueprint');
+
+    // p2 — PARTIAL (2 of 3): missing blueprint (architect). coreReceived=2.
+    const p2 = await seedProject(org.id, mgrId, 'tama38_1');
+    await seedDoc(org.id, mgrId, p2, 'agreement');
+    await seedDoc(org.id, mgrId, p2, 'land_registry');
+
+    // p3 — EMPTY tama project: 0 of 3 → the WORST, ranks first. coreReceived=0.
+    const p3 = await seedProject(org.id, mgrId, 'tama38_1');
+
+    const res = await svc.boardCompleteness(mgr);
+
+    // Every project WITH a requirement is the denominator (factory 2 + our 3).
+    expect(res.projectsWithRequirement).toBe(org.projects.length + 3);
+
+    const behindIds = res.projectsBehind.map((p) => p.projectId);
+    // p1 (complete) is NOT behind; p2 + p3 ARE.
+    expect(behindIds).not.toContain(p1);
+    expect(behindIds).toContain(p2);
+    expect(behindIds).toContain(p3);
+
+    // WORST-FIRST: p3 (0 filled) ranks before p2 (2 filled).
+    expect(behindIds.indexOf(p3)).toBeLessThan(behindIds.indexOf(p2));
+
+    // p2 names exactly its missing slot — blueprint → architect.
+    const p2Behind = res.projectsBehind.find((p) => p.projectId === p2)!;
+    expect(p2Behind.coreReceived).toBe(2);
+    expect(p2Behind.coreRequired).toBe(3);
+    expect(p2Behind.missing).toEqual([{ type: 'blueprint', party: 'architect' }]);
+    // The project NAME is carried (an org-internal label, not owner PII).
+    // substring match (toMatch accepts a string) — avoids a dynamic RegExp.
+    expect(p2Behind.projectName).toContain(`P-${TAG}`);
+
+    // NO owner PII anywhere in the projectsBehind payload (project name aside).
+    const serialized = JSON.stringify(res.projectsBehind);
+    expect(serialized).not.toMatch(/national_id|"phone"|r2[_-]?key|content_?hash/i);
+  });
+
+  it('all-clear: when every project has met its core set, projectsBehind is empty', async () => {
+    const org = await createTestOrg(`BehindClear-${TAG}`);
+    const mgrId = org.users[0]!.id;
+    const mgr = manager(org.id, mgrId);
+    // Satisfy the factory projects' core sets + our own. Factory: tama38_1 (3
+    // required) + pinui_binui (4 required incl. regulation). Give each EVERYTHING.
+    for (const fp of org.projects) {
+      await seedDoc(org.id, mgrId, fp.id, 'agreement');
+      await seedDoc(org.id, mgrId, fp.id, 'land_registry');
+      await seedDoc(org.id, mgrId, fp.id, 'blueprint');
+      await seedDoc(org.id, mgrId, fp.id, 'regulation'); // harmless for tama, needed for pinui
+    }
+    const res = await svc.boardCompleteness(mgr);
+    expect(res.projectsBehind).toEqual([]);
+    expect(res.projectsBehindCapped).toBe(false);
+    expect(res.allRequirementsMet).toBe(true);
+  });
+
+  it('agent record-scoping: projectsBehind covers ONLY assigned projects', async () => {
+    const org = await createTestOrg(`BehindAgent-${TAG}`);
+    const mgrId = org.users[0]!.id;
+    const agId = await seedAgent(org.id);
+    const assigned = await seedProject(org.id, mgrId, 'tama38_1'); // empty → behind
+    const unassigned = await seedProject(org.id, mgrId, 'tama38_1'); // empty → behind for mgr only
+    await assign(org.id, assigned, agId, mgrId);
+
+    const agRes = await svc.boardCompleteness(agent(org.id, agId));
+    const agBehindIds = agRes.projectsBehind.map((p) => p.projectId);
+    expect(agBehindIds).toContain(assigned);
+    expect(agBehindIds).not.toContain(unassigned);
+    // The agent's denominator counts ONLY the assigned project (1).
+    expect(agRes.projectsWithRequirement).toBe(1);
+  });
+});
+
 describe('boardCompleteness — cross-org isolation (RLS)', () => {
   it('org-A completeness never reflects org-B documents', async () => {
     // Seed an org-B-only fully-satisfied project; org-A must not see its receipts.

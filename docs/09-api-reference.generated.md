@@ -1165,6 +1165,7 @@ _(no body)_
 | `cursor` | string | no | minLength=1 |
 | `limit` | integer | no | minimum=1, maximum=100 |
 | `party` | string | no | enum=["owner","appraiser","architect","municipality","contractor","lawyer","supervisor","surveyor","other"] |
+| `projectId` | string | no | format="uuid" |
 | `q` | string | yes | minLength=1, maxLength=255 |
 | `scope` | string | no | enum=["project","apartment","org"] |
 | `type` | string | no | enum=["agreement","land_registry","blueprint","regulation","survey","survey_map","guarantee","municipal_approval","schedule","legal_opinion","contract","permit","id_document","floor_plan","financial","other"] |

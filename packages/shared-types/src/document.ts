@@ -627,13 +627,34 @@ export function docTypesForParty(party: DocumentParty): {
 export const MissingRequiredTypeSchema = z.object({ type: DocumentTypeEnum });
 export type MissingRequiredType = z.infer<typeof MissingRequiredTypeSchema>;
 
-/** Per-party REQUIRED-vs-RECEIVED completeness + the whole-board document
- *  rollup the board tiles need. Counts + type keys only — NO PII, NO ids/names. */
+/**
+ * Per-party completeness — TWO DISTINCT, NEVER-CONFLATED facts about one party
+ * (counts + type keys only; NO PII, NO ids/names):
+ *
+ *   1. CORE-REQUIRED-SLOT gauge — `received` / `required` (+ `missingTypes`,
+ *      `isComplete`, `hasRequirement`). "How many of the party's CORE required
+ *      document slots are filled" (the `REQUIRED_DOC_TYPES_BY_TRACK` set, one
+ *      slot per (project, requiredType)). A SMALL denominator (≈ project count),
+ *      computed over the canonical project-scoped required types.
+ *   2. DOCS-FILED rollup — `total` (+ `latestType`, `latestCreatedAt`). "How many
+ *      documents of ANY type are filed under this party", the tile's headline.
+ *
+ * THESE ANSWER DIFFERENT QUESTIONS — the FE MUST render them as two separate
+ * facts ("{total} מסמכים · מסמכי-ליבה {received}/{required}") and MUST NEVER
+ * divide one by the other (the "0 מתוך 37" bug: a party with 37 filed docs but 0
+ * of a required TYPE is "37 מסמכים · מסמכי-ליבה 0/3", never "0 מתוך 37"). The BE
+ * computes BOTH over ONE aligned population (the same canonical scope resolver),
+ * so the two numbers are coherent even though they count different things.
+ */
 export const PartyCompletenessSchema = z.object({
   party: DocumentPartyEnum,
-  /** Distinct required (project,type) slots mapped to this party. 0 = no requirement. */
+  /** CORE-required gauge — distinct required (project,type) slots mapped to this
+   *  party per REQUIRED_DOC_TYPES_BY_TRACK. 0 = no requirement. The DENOMINATOR of
+   *  the "מסמכי-ליבה X/Y" gauge — NOT a doc count; never the denominator of `total`. */
   required: z.number().int().nonnegative(),
-  /** How many of those required slots have a matching received (non-archived) doc. */
+  /** CORE-required gauge — how many of those required slots have a matching
+   *  received (non-archived) doc. The NUMERATOR of "מסמכי-ליבה X/Y". Bounded by
+   *  `required`; UNRELATED to `total` (a party can have total≫0 yet received=0). */
   received: z.number().int().nonnegative(),
   /** True only when this party HAS a requirement and every slot is satisfied. */
   isComplete: z.boolean(),
@@ -655,7 +676,9 @@ export const PartyCompletenessSchema = z.object({
   //     (label resolved at the FE), or null when the party has no documents.
   //   • `latestCreatedAt` — that most-recent doc's createdAt, or null. A
   //     timestamp is NOT PII (it is when a file was filed, not about any person).
-  /** Whole-board count of non-archived docs that roll up to this party. */
+  /** DOCS-FILED headline — whole-board count of non-archived docs that roll up to
+   *  this party (ANY type). The card's "{total} מסמכים" fact. NEVER divided into /
+   *  by `received`/`required` — it is a separate question from the core-slot gauge. */
   total: z.number().int().nonnegative().default(0),
   /** Most-recent such doc's TYPE KEY (no id/name), or null when total === 0. */
   latestType: z.string().min(1).max(64).nullable().default(null),

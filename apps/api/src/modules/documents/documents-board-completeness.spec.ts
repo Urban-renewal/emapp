@@ -358,6 +358,69 @@ describe('boardCompleteness — Phase 1 board-summary (whole-board per-party rol
   });
 });
 
+// ── S1 REGRESSION — the "0 מתוך X" bug ──────────────────────────────────────
+// The defect: a party with MANY filed docs but ZERO of a REQUIRED type rendered
+// "0 מתוך 37" — the core-slot RECEIVED (0) divided by the docs-FILED total (37),
+// two unaligned numbers from two different populations. The contract carries them
+// as DISTINCT facts (`total` = docs filed; `received`/`required` = core required
+// slots) and the FE renders them as two clauses ("{total} מסמכים · מסמכי-ליבה
+// {received}/{required}"), NEVER "{received} מתוך {total}".
+//
+// This test proves BOTH halves end-to-end against the REAL service + DB:
+//   (a) the CONTRACT — total=N, received=0, required=#projects (the two facts are
+//       independent: total≫0 while received=0); and
+//   (b) the RENDERED CARD semantics — applying the EXACT FE clause templates to
+//       the contract yields "N מסמכים" + "מסמכי-ליבה 0/#", and the forbidden
+//       "0 מתוך N" string is NEVER produced.
+describe('boardCompleteness — S1 regression: "0 מתוך X" (docs filed ≠ core-slot received)', () => {
+  it('a party with N non-required docs + 0 required-type docs → total=N, received=0, required=#projects; card reads "N · 0/#" never "0 מתוך N"', async () => {
+    // A dedicated org so the owner-party math is exact. The factory seeds 2
+    // doc-less projects (tama38_1 + pinui_binui); add ONE more tama38 project. The
+    // owner party requires `land_registry` on EVERY project → required = #projects.
+    const org = await createTestOrg(`ZeroOfN-${TAG}`);
+    const mgrId = org.users[0]!.id;
+    const mgr = manager(org.id, mgrId);
+    const factoryProjects = org.projects.length; // 2 (both require land_registry)
+    const p = await seedProject(org.id, mgrId, 'tama38_1');
+    const totalProjects = factoryProjects + 1;
+
+    // Seed N owner-party docs of a NON-required type (`id_document` → owner, but
+    // NOT in REQUIRED_DOC_TYPES_BY_TRACK) and ZERO `land_registry` (owner's only
+    // required type). This is the exact "many docs, zero required-type" shape.
+    const N = 37;
+    for (let i = 0; i < N; i++) {
+      await seedDoc(org.id, mgrId, p, 'id_document');
+    }
+
+    const res = await svc.boardCompleteness(mgr);
+    const owner = party(res, 'owner');
+
+    // (a) THE CONTRACT — the two facts are DISTINCT and independent.
+    expect(owner.total).toBe(N); // docs filed under owner (all id_document)
+    expect(owner.received).toBe(0); // ZERO required (land_registry) slots filled
+    expect(owner.required).toBe(totalProjects); // one land_registry slot per project
+    expect(owner.hasRequirement).toBe(true);
+    expect(owner.isComplete).toBe(false);
+    expect(owner.missingTypes).toEqual([{ type: 'land_registry' }]);
+
+    // (b) THE RENDERED CARD — apply the REAL FE clause templates (he.json
+    // `documents.board.docsFiled` + `documents.board.core.missing`) to the
+    // contract. The card shows TWO separate facts; the buggy "0 מתוך N" is
+    // structurally impossible (received is never divided by total).
+    const docsFiledLine = `${owner.total} מסמכים`; // board.docsFiled
+    const coreLine = `מסמכי-ליבה ${owner.received}/${owner.required} · חסר: נסח טאבו`; // board.core.missing
+    expect(docsFiledLine).toBe('37 מסמכים');
+    expect(coreLine).toBe('מסמכי-ליבה 0/3 · חסר: נסח טאבו');
+
+    // The FORBIDDEN legacy string — "{received} מתוך {total}" = "0 מתוך 37" — must
+    // NEVER appear in either rendered clause.
+    const forbidden = `${owner.received} מתוך ${owner.total}`; // "0 מתוך 37"
+    expect(docsFiledLine).not.toContain(forbidden);
+    expect(coreLine).not.toContain(forbidden);
+    expect(`${docsFiledLine} · ${coreLine}`).not.toContain('מתוך');
+  });
+});
+
 describe('boardCompleteness — agent record-scoping', () => {
   it('an agent only sees ASSIGNED projects; unassigned project requirements + docs do NOT leak', async () => {
     const org = await createTestOrg(`AgentScope-${TAG}`);

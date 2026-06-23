@@ -1,154 +1,79 @@
 'use client';
 
-import {
-  DOCUMENT_SCAN_REJECTED_CODE,
-  DocumentMimeEnum,
-  DocumentTypeEnum,
-  type DocumentMime,
-  type DocumentType,
-} from '@emapp/shared-types';
-import { useRouter } from 'next/navigation';
+import { DocumentTypeEnum, type DocumentType } from '@emapp/shared-types';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useMemo } from 'react';
 
-import { DOCUMENT_TYPE_LABELS_HE } from '@/adapters/document';
+import { DocumentDropzone } from '@/components/documents/document-dropzone';
 import { Button } from '@/components/ui/button';
-import { useUploadDocument } from '@/hooks/use-documents';
-import { integrityMismatchField } from '@/lib/api/documents';
-import { ApiClientError } from '@/lib/api/projects';
+import { useBoardCompleteness } from '@/hooks/use-documents';
 
-const DOC_TYPES: DocumentType[] = [...DocumentTypeEnum.options];
-const ALLOWED_MIMES = new Set<DocumentMime>(DocumentMimeEnum.options);
+/**
+ * S3 — generic scope-aware upload. The flat 19-option `<select>` defaulting to
+ * `agreement` is GONE: the human picks a FILE and the system classifies it
+ * (DH3) + dedups it (DH4) + derives the party, asking for a category only on
+ * genuine ambiguity.
+ *
+ * This page is the ORG-scope entry (no project/apartment in the route). It still
+ * honors the S2 board deep-links:
+ *   - `?type=` pre-selects a type (board "העלה {missing}" → straight to confirm),
+ *   - `?projectId=` scopes the upload to that project (board project card link).
+ * The "gaps here" list (org scope) is the union of the board's per-party missing
+ * required types — so even the ASK band leads with what the org actually needs.
+ */
+const TYPE_SET = new Set<string>(DocumentTypeEnum.options);
+
+function parseType(raw: string | null): DocumentType | null {
+  return raw && TYPE_SET.has(raw) ? (raw as DocumentType) : null;
+}
 
 export default function NewDocumentPage() {
   const t = useTranslations('documents');
   const tp = useTranslations('projects');
   const router = useRouter();
-  const upload = useUploadDocument();
-  const [type, setType] = useState<DocumentType>('agreement');
-  const [file, setFile] = useState<File | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const params = useSearchParams();
 
-  function onPick(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0] ?? null;
-    setError(null);
-    setFile(f);
-    if (!f) return;
-    if (!ALLOWED_MIMES.has(f.type as DocumentMime)) {
-      setError(t('mimeNotAllowed'));
-      setFile(null);
-      if (inputRef.current) inputRef.current.value = '';
-      return;
-    }
-    if (f.size > 52_428_800) {
-      setError(t('tooLarge'));
-      setFile(null);
-      if (inputRef.current) inputRef.current.value = '';
-    }
-  }
+  const prefillType = parseType(params.get('type'));
+  // `?projectId=` deep-link → scope the upload to that project (board links here).
+  const projectId = params.get('projectId') ?? undefined;
+  const scope = projectId ? 'project' : 'org';
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!file) {
-      setError(t('pickFile'));
-      return;
-    }
-    if (!ALLOWED_MIMES.has(file.type as DocumentMime)) {
-      setError(t('mimeNotAllowed'));
-      return;
-    }
-    setError(null);
-    try {
-      const doc = await upload.mutateAsync({
-        file,
-        type,
-        mimeType: file.type as DocumentMime,
-      });
-      router.push(`/documents/${doc.id}`);
-    } catch (e) {
-      if (e instanceof ApiClientError) {
-        if (e.code === 'storage_unavailable') setError(t('storageUnavailable'));
-        else if (e.code === 'upload_size_mismatch') setError(t('sizeMismatch'));
-        // 7d — the API content path (and finalize) name the offending
-        // integrity check in details.field: size → גודל, hash → תוכן.
-        else if (e.code === 'document_integrity_mismatch')
-          setError(
-            integrityMismatchField(e.details) === 'size' ? t('sizeMismatch') : t('hashMismatch'),
-          );
-        // 7d — AV gate rejected the bytes (409, fail-closed, actionable).
-        else if (e.code === DOCUMENT_SCAN_REJECTED_CODE) setError(t('scanRejected'));
-        // 7d — client-side 50MB ceiling (thrown before any network).
-        else if (e.code === 'document_too_large') setError(t('fileTooLarge'));
-        // 7d — the content route is sensitive-only; the normal flow can't
-        // trigger this (resolveUploadPlan routes by the BE response), but map
-        // it actionably rather than falling to the generic failure.
-        else if (e.code === 'document_not_sensitive') setError(t('notSensitive'));
-        else if (e.code === 'upload_failed') setError(t('uploadFailed'));
-        else setError(t('createFailed'));
-      } else {
-        setError(t('createFailed'));
+  const board = useBoardCompleteness();
+
+  // Org "gaps here" — the union of every party's still-missing required types.
+  const gapTypes = useMemo<DocumentType[]>(() => {
+    const seen = new Set<DocumentType>();
+    const out: DocumentType[] = [];
+    for (const party of board.data?.byParty ?? []) {
+      for (const m of party.missingTypes) {
+        if (!seen.has(m.type)) {
+          seen.add(m.type);
+          out.push(m.type);
+        }
       }
     }
-  }
+    return out;
+  }, [board.data]);
 
   return (
     <div className="mx-auto max-w-xl space-y-6" dir="rtl">
       <h1 className="text-2xl font-bold">{t('upload')}</h1>
-      <p className="text-xs text-muted-foreground">{t('uploadHint')}</p>
-      {/* §S5-SEC1 — method="post" defense in depth (see login/page.tsx).
-          File uploads use FormData/XHR so the URL stays clean even
-          without JS, but the attribute prevents URL-encoded fallback
-          on browsers that downgrade. */}
-      <form method="post" action="" onSubmit={onSubmit} className="space-y-4">
-        <div className="space-y-1">
-          <label htmlFor="type" className="text-sm font-medium">
-            {t('field.type')}
-          </label>
-          <select
-            id="type"
-            value={type}
-            onChange={(e) => setType(e.target.value as DocumentType)}
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-          >
-            {DOC_TYPES.map((dt) => (
-              <option key={dt} value={dt}>
-                {DOCUMENT_TYPE_LABELS_HE[dt]}
-              </option>
-            ))}
-          </select>
-        </div>
+      <p className="text-xs text-text-muted">{t('dropzone.hint')}</p>
 
-        <div className="space-y-1">
-          <label htmlFor="file" className="text-sm font-medium">
-            {t('field.file')}
-          </label>
-          <input
-            ref={inputRef}
-            id="file"
-            type="file"
-            onChange={onPick}
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-            accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.xlsx,.xls,.csv,.docx,.doc,.txt"
-          />
-          {file && (
-            <p className="text-xs text-muted-foreground">
-              {file.name} · {(file.size / 1024).toFixed(0)} KB
-            </p>
-          )}
-        </div>
+      <DocumentDropzone
+        scope={scope}
+        projectId={projectId}
+        gapTypes={gapTypes}
+        prefillType={prefillType}
+        onUploaded={({ id }) => router.push(`/documents/${id}`)}
+      />
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
-
-        <div className="flex items-center justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={() => router.back()}>
-            {tp('cancel')}
-          </Button>
-          <Button type="submit" disabled={!file || upload.isPending}>
-            {upload.isPending ? t('uploading') : t('upload')}
-          </Button>
-        </div>
-      </form>
+      <div className="flex items-center justify-end">
+        <Button type="button" variant="ghost" onClick={() => router.back()}>
+          {tp('cancel')}
+        </Button>
+      </div>
     </div>
   );
 }

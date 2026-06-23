@@ -184,6 +184,19 @@
       "approved": "אושר — הפעולה בוצעה",
       "rejected": "ההצעה נדחתה",
       "failed": "הפעולה נכשלה — אפשר לנסות שוב"
+    },
+    "delivery": {
+      "sentWithRecipient": "החתימה חודשה — הבעלים קיבל קישור חדש ב{channel} ({recipient})",
+      "sentNoRecipient": "החתימה חודשה — הבעלים קיבל קישור חדש ב{channel}",
+      "alreadySent": "כבר נשלח — לא נשלח קישור חדש",
+      "blocked": "לא נשלח — חסום לפי הכללים שלך",
+      "noChannel": "אין ערוץ ליצירת קשר עם הבעלים — לא נשלח",
+      "ambiguous": "ייתכן שלא נשלח — מומלץ לבדוק",
+      "channel": {
+        "email": "דוא״ל",
+        "sms": "SMS",
+        "whatsapp": "וואטסאפ"
+      }
     }
   },
   "errorBoundary": {

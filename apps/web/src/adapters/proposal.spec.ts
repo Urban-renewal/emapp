@@ -13,10 +13,13 @@
  *     ("מוצע להנפיק מחדש"), NEVER system-hero voice ("הנפקתי / טיפלתי").
  *     A regression that reintroduces first-person system voice fails here.
  */
-import type { ProposalView } from '@emapp/shared-types';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+import type { ProposalApplyDelivery, ProposalView } from '@emapp/shared-types';
 import { describe, expect, it } from 'vitest';
 
-import { toProposalViewModel, toProposalViewModels } from './proposal';
+import { toApproveOutcome, toProposalViewModel, toProposalViewModels } from './proposal';
 
 const PLANTED_NATIONAL_ID = '040000018';
 const PLANTED_PHONE = '0501234567';
@@ -112,5 +115,150 @@ describe('toProposalViewModel — Approval-Inbox adapter', () => {
       '11111111-1111-4111-8111-111111111111',
       '44444444-4444-4444-8444-444444444444',
     ]);
+  });
+});
+
+/**
+ * `toApproveOutcome` — the APPROVE legibility contract (G-QA rule #3). Pins the
+ * delivery-state → confirmation mapping so a future refactor can't silently let
+ * a non-send read as a send.
+ *
+ * The mapping is honest-by-construction: ONLY `state:'sent'` (with a channel) is
+ * a `success` tone; every non-send is `neutral` (already_sent) or `warning`
+ * (blocked / failed / ambiguous / no_channel). These tests also pin the i18n
+ * keys against BOTH locale JSONs — the inbox resolves these keys via TEMPLATE
+ * LITERALS (`t(\`delivery.${messageKey}\`)`), which the static §i18n-key-coverage
+ * scanner deliberately skips, so this is the coverage that proves they exist.
+ */
+function delivery(over: Partial<ProposalApplyDelivery> = {}): ProposalApplyDelivery {
+  return { delivered: true, state: 'sent', channel: 'email', recipient: 'na***@x.com', ...over };
+}
+
+/** Flatten a nested message JSON to a Set of dotted keys (mirrors the scanner). */
+function flattenKeys(obj: unknown, prefix = ''): Set<string> {
+  const out = new Set<string>();
+  if (obj == null || typeof obj !== 'object') return out;
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    const path = prefix ? `${prefix}.${k}` : k;
+    if (v != null && typeof v === 'object' && !Array.isArray(v)) {
+      for (const child of flattenKeys(v, path)) out.add(child);
+    } else {
+      out.add(path);
+    }
+  }
+  return out;
+}
+
+function localeKeys(file: 'he.json' | 'en.json'): Set<string> {
+  const raw = readFileSync(join(__dirname, '..', 'messages', file), 'utf8');
+  return flattenKeys(JSON.parse(raw));
+}
+
+describe('toApproveOutcome — APPROVE delivery legibility', () => {
+  it('1) sent + channel + recipient → success, names channel + masked recipient', () => {
+    const o = toApproveOutcome(
+      delivery({ state: 'sent', channel: 'email', recipient: 'na***@x.com' }),
+    );
+    expect(o.tone).toBe('success');
+    expect(o.messageKey).toBe('sentWithRecipient');
+    expect(o.channel).toBe('email');
+    expect(o.recipient).toBe('na***@x.com');
+  });
+
+  it('2) sent on sms/whatsapp (no recipient) → success, no-recipient copy', () => {
+    const sms = toApproveOutcome(delivery({ state: 'sent', channel: 'sms', recipient: null }));
+    expect(sms.tone).toBe('success');
+    expect(sms.messageKey).toBe('sentNoRecipient');
+    const wa = toApproveOutcome(delivery({ state: 'sent', channel: 'whatsapp', recipient: null }));
+    expect(wa.messageKey).toBe('sentNoRecipient');
+  });
+
+  it('3) sent with NO channel is incoherent → warning/ambiguous, never a false success', () => {
+    const o = toApproveOutcome(delivery({ state: 'sent', channel: null, recipient: null }));
+    expect(o.tone).toBe('warning');
+    expect(o.messageKey).toBe('ambiguous');
+  });
+
+  it('4) every non-sent state maps HONESTLY (never success)', () => {
+    expect(
+      toApproveOutcome(
+        delivery({ delivered: false, state: 'already_sent', channel: null, recipient: null }),
+      ),
+    ).toMatchObject({ tone: 'neutral', messageKey: 'alreadySent' });
+    expect(
+      toApproveOutcome(
+        delivery({ delivered: false, state: 'blocked', channel: null, recipient: null }),
+      ),
+    ).toMatchObject({ tone: 'warning', messageKey: 'blocked' });
+    expect(
+      toApproveOutcome(
+        delivery({ delivered: false, state: 'no_channel', channel: null, recipient: null }),
+      ),
+    ).toMatchObject({ tone: 'warning', messageKey: 'noChannel' });
+    expect(
+      toApproveOutcome(
+        delivery({ delivered: false, state: 'failed', channel: null, recipient: null }),
+      ),
+    ).toMatchObject({ tone: 'warning', messageKey: 'ambiguous' });
+    expect(
+      toApproveOutcome(
+        delivery({ delivered: false, state: 'ambiguous', channel: null, recipient: null }),
+      ),
+    ).toMatchObject({ tone: 'warning', messageKey: 'ambiguous' });
+  });
+
+  it('5) NO non-sent state is ever a success tone', () => {
+    const nonSent: ProposalApplyDelivery['state'][] = [
+      'already_sent',
+      'blocked',
+      'failed',
+      'ambiguous',
+      'no_channel',
+    ];
+    for (const state of nonSent) {
+      expect(
+        toApproveOutcome(delivery({ delivered: false, state, channel: null, recipient: null }))
+          .tone,
+      ).not.toBe('success');
+    }
+  });
+
+  it('6) every produced messageKey exists under inbox.delivery in BOTH locales', () => {
+    const he = localeKeys('he.json');
+    const en = localeKeys('en.json');
+    const states: ProposalApplyDelivery['state'][] = [
+      'sent',
+      'already_sent',
+      'blocked',
+      'failed',
+      'ambiguous',
+      'no_channel',
+    ];
+    const keys = new Set<string>();
+    for (const state of states) {
+      keys.add(
+        toApproveOutcome(
+          delivery({
+            state,
+            channel: state === 'sent' ? 'email' : null,
+            recipient: state === 'sent' ? 'na***@x.com' : null,
+          }),
+        ).messageKey,
+      );
+      keys.add(
+        toApproveOutcome(
+          delivery({ state, channel: state === 'sent' ? 'sms' : null, recipient: null }),
+        ).messageKey,
+      );
+    }
+    for (const key of keys) {
+      expect(he.has(`inbox.delivery.${key}`), `he missing inbox.delivery.${key}`).toBe(true);
+      expect(en.has(`inbox.delivery.${key}`), `en missing inbox.delivery.${key}`).toBe(true);
+    }
+    // The channel labels the inbox interpolates also resolve in both locales.
+    for (const ch of ['email', 'sms', 'whatsapp']) {
+      expect(he.has(`inbox.delivery.channel.${ch}`)).toBe(true);
+      expect(en.has(`inbox.delivery.channel.${ch}`)).toBe(true);
+    }
   });
 });

@@ -3,12 +3,17 @@
 import { useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 
+import { toApproveOutcome } from '@/adapters/proposal';
 import { useToast } from '@/components/ui/action-toast';
 import { Button } from '@/components/ui/button';
 import { DataState } from '@/components/ui/data-state';
 import { useApproveProposal, useProposalList, useRejectProposal } from '@/hooks/use-proposals';
+import type { ProposalApproveOutcome } from '@/models/proposal.vm';
 
 import { ProposalCard } from './_components/proposal-card';
+
+/** How long the outcome confirmation lingers (long enough to read; calm). */
+const OUTCOME_TOAST_MS = 4000;
 
 /**
  * Approval Inbox (Autonomous Master Plan, Phase 1) — the autonomy engine's
@@ -43,12 +48,40 @@ export function InboxListClient() {
   const items = useMemo(() => list.data?.items ?? [], [list.data?.items]);
   const pendingCount = items.length;
 
+  /**
+   * Render the delivery OUTCOME confirmation (legibility, G-QA rule #3). Resolves
+   * the neutral outcome model → next-intl copy: names the channel + masked
+   * recipient on a real send, and stays HONEST (a non-`success` tone routes to the
+   * assertive region) so a blocked/failed/no-channel result NEVER reads as "sent".
+   */
+  function showDeliveryOutcome(outcome: ProposalApproveOutcome) {
+    const channelLabel = outcome.channel ? t(`delivery.channel.${outcome.channel}`) : '';
+    const message = t(`delivery.${outcome.messageKey}`, {
+      channel: channelLabel,
+      recipient: outcome.recipient ?? '',
+    });
+    toast.show({
+      message,
+      // Only a real send is 'polite' success; every non-send is 'assertive' so
+      // the manager can't mistake "nothing went out" for a send.
+      variant: outcome.tone === 'warning' ? 'assertive' : 'polite',
+      timeoutMs: OUTCOME_TOAST_MS,
+    });
+  }
+
   async function onApprove(id: string) {
     if (busyId) return;
     setBusyId(id);
     try {
-      await approve.mutateAsync(id);
-      toast.show({ message: t('toast.approved') });
+      const result = await approve.mutateAsync(id);
+      // Contact-producing kinds carry a `delivery` OUTCOME — confirm the real-world
+      // result (owner re-contacted, on which channel — or why nothing went out).
+      // Internal-only kinds carry no `delivery`; keep the calm generic confirm.
+      if (result.delivery) {
+        showDeliveryOutcome(toApproveOutcome(result.delivery));
+      } else {
+        toast.show({ message: t('toast.approved') });
+      }
     } catch {
       // The hook rolled the row back into the list; surface the failure.
       toast.show({ message: t('toast.failed'), variant: 'assertive' });

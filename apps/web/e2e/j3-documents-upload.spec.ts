@@ -18,13 +18,18 @@
  *   3. Browser POSTs /documents/:id/finalize with `sizeBytes` +
  *      `contentHash` — the server re-checks against R2 metadata.
  *
+ * S3 redesign: the flat 19-option <select>+submit form is GONE. The page is now
+ * the generic scope-aware DROPZONE — pick a file → it classifies (DH3) + dedups
+ * (DH4) → confidence-band UI → upload. This spec STUBS classify (CONFIRM band:
+ * suggests `contract` at 0.7 → the user clicks "confirm") + dedup (no duplicate),
+ * then the SAME presigned create→PUT→finalize path runs UNCHANGED.
+ *
  * 5-axis TUVAS:
- *   T — pre-seed Manager cookies; set a small file via setInputFiles;
- *       submit.
+ *   T — pre-seed Manager cookies; set a small file via setInputFiles; confirm
+ *       the suggested type.
  *   U — URL stays on /he/documents/new during upload; redirects to
  *       /he/documents/<id> after.
- *   V — `<form method="post">` SSR attribute; success state lands on
- *       the detail page with the document name.
+ *   V — the dropzone pick affordance renders; success lands on the detail page.
  *   A — three sequential calls in order:
  *         POST /documents → PUT <presigned> → POST /documents/:id/finalize.
  *       PUT carries the file body and Content-Type; PUT MUST NOT
@@ -83,6 +88,8 @@ test.describe('§E-J3 — Documents upload (presigned PUT)', () => {
       const path = url.pathname;
       if (
         path === '/api/v1/documents' ||
+        path === '/api/v1/documents/classify' ||
+        path === '/api/v1/documents/dedup-check' ||
         path === `/api/v1/documents/${NEW_DOC_ID}` ||
         path === `/api/v1/documents/${NEW_DOC_ID}/finalize`
       ) {
@@ -93,6 +100,37 @@ test.describe('§E-J3 — Documents upload (presigned PUT)', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: [], page: { limit: 25, cursor: null, has_more: false } }),
+      });
+    });
+
+    // S3 — DH3 classify (suggest-only): CONFIRM band → suggest `contract` at 0.7
+    // so the user is shown a single suggestion to confirm.
+    await page.route('**/api/v1/documents/classify', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            suggestions: [
+              {
+                docType: 'contract',
+                confidence: 0.7,
+                signal: 'filename',
+                reason: 'filename_contract',
+              },
+            ],
+            suggestOnly: true,
+          },
+        }),
+      });
+    });
+
+    // S3 — DH4 dedup-check: no duplicate in scope.
+    await page.route('**/api/v1/documents/dedup-check', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { duplicates: [], hasDuplicate: false } }),
       });
     });
 
@@ -213,22 +251,23 @@ test.describe('§E-J3 — Documents upload (presigned PUT)', () => {
     await page.goto('/he/documents/new');
     await expect(page).toHaveURL(/\/he\/documents\/new$/);
 
-    // §AXIS-V — method="post" SSR attribute.
-    const form = page.locator('form').first();
-    await expect(form).toBeVisible({ timeout: 10_000 });
-    expect((await form.getAttribute('method'))?.toLowerCase()).toBe('post');
+    // §AXIS-V — the dropzone pick affordance renders.
+    const pick = page.getByTestId('document-dropzone-pick');
+    await expect(pick).toBeVisible({ timeout: 10_000 });
 
-    // §AXIS-T — set the file via Playwright's setInputFiles (drives
-    // the native <input type="file"> change event, which the FE's
-    // onPick callback consumes).
+    // §AXIS-T — set the file via Playwright's setInputFiles (drives the native
+    // <input type="file"> change event, which the dropzone's onPick consumes →
+    // classify + dedup → the CONFIRM-band decision panel).
     await page.locator('input[type="file"]').setInputFiles({
       name: FILE_NAME,
       mimeType: FILE_MIME,
       buffer: FILE_BYTES,
     });
 
-    // Submit. The flow involves THREE network round-trips; wait for
-    // the final one (finalize) before asserting.
+    // Confirm the suggested type. The flow involves THREE network round-trips;
+    // wait for the final one (finalize) before asserting.
+    const confirm = page.getByTestId('document-dropzone-confirm');
+    await expect(confirm).toBeVisible({ timeout: 10_000 });
     await Promise.all([
       page.waitForResponse(
         (r) =>
@@ -236,7 +275,7 @@ test.describe('§E-J3 — Documents upload (presigned PUT)', () => {
           r.request().method() === 'POST',
         { timeout: 20_000 },
       ),
-      page.locator('button[type="submit"]').click(),
+      confirm.click(),
     ]);
 
     // §AXIS-A — three calls, in order.

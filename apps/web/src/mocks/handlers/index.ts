@@ -460,6 +460,40 @@ export const handlers = [
     if (party) items = items.filter((d) => providerPartyForDocType(d.type) === party);
     return HttpResponse.json(listEnvelope(items));
   }),
+  // S3 — DH3 classify (suggest-only). A tiny offline heuristic over the filename
+  // so the generic dropzone gets a realistic suggestion in MSW mode. Declared
+  // BEFORE `/documents` POST + `/documents/:id` (literal path, no :id capture).
+  http.post(`${API}/documents/classify`, async ({ request }) => {
+    const body = (await request.json()) as { filename?: string };
+    const name = (body.filename ?? '').toLowerCase();
+    let docType: string | null = null;
+    let confidence = 0;
+    let reason = 'none';
+    if (/(נסח|טאבו|tabu|land)/.test(name)) {
+      docType = 'land_registry';
+      confidence = 0.92;
+      reason = 'filename_tabu';
+    } else if (/(הסכם|agreement|contract|חוזה)/.test(name)) {
+      docType = 'agreement';
+      confidence = 0.7;
+      reason = 'filename_agreement';
+    } else if (/(תקנון|regulation)/.test(name)) {
+      docType = 'regulation';
+      confidence = 0.6;
+      reason = 'filename_regulation';
+    }
+    return HttpResponse.json(
+      dataEnvelope({
+        suggestions: docType ? [{ docType, confidence, signal: 'filename', reason }] : [],
+        suggestOnly: true,
+      }),
+    );
+  }),
+  // S3 — DH4 dedup-check (read-only). Offline: never a duplicate (the FE then
+  // proceeds with the normal upload path).
+  http.post(`${API}/documents/dedup-check`, () =>
+    HttpResponse.json(dataEnvelope({ duplicates: [], hasDuplicate: false })),
+  ),
   http.post(`${API}/documents`, async ({ request }) => {
     const body = await request.json();
     // v9-post-audit-SOLID-6 closure — parse against the same schema

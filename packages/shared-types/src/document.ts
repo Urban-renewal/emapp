@@ -117,6 +117,19 @@ export const DOCUMENT_SCAN_REJECTED_CODE = 'document_scan_rejected' as const;
  */
 export const DOCUMENT_TYPE_MISMATCH_CODE = 'document_type_mismatch' as const;
 
+/**
+ * Anti-malware scan verdict surfaced on the document READ shape (DOCUMENTS-
+ * REMEDIATION-PLAN Phase 1). The BE owns EVERY write (default 'pending' at
+ * create; 'clean' after the AV gate passes; 'infected'/'error' on a non-clean
+ * verdict — those rows are also archived). TOLERANT parse (`.catch`) so a
+ * future/unknown verdict value never throws the whole list `.parse` (the same
+ * DV-MGR-DOCS posture as `type`): an unrecognised verdict degrades to
+ * 'pending' (fail-safe: the FE shows "not yet servable", never a false
+ * "clean"). NON-PII — purely a processing-state flag about the FILE.
+ */
+export const DocumentScanStatusEnum = z.enum(['pending', 'clean', 'infected', 'error']);
+export type DocumentScanStatus = z.infer<typeof DocumentScanStatusEnum>;
+
 /** Wire representation — NEVER includes r2Key. */
 export const DocumentSchema = z.object({
   id: z.string().uuid(),
@@ -137,6 +150,26 @@ export const DocumentSchema = z.object({
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
   archivedAt: z.coerce.date().nullable(),
+  // ── DOCUMENTS-REMEDIATION-PLAN Phase 1 (foundation) — fields the detail card
+  // already needs but the wire shape omitted (the near-blank-card bug). All
+  // NON-PII:
+  //   • `sensitive` — the PII-bearing-by-type / opt-in step-up flag (a structural
+  //     fact about the FILE; drives the badge + the step-up download path). It is
+  //     NOT owner PII — the boolean itself reveals nothing about any person.
+  //   • `scanStatus` — the AV processing state (drives the scan indicator).
+  //   • `projectName` / `apartmentName` — the RESOLVED parent LABELS (project
+  //     name / apartment number) so the detail card can show + link the parent
+  //     instead of a bare uuid. These are project/apartment labels, NEVER owner
+  //     PII (national_id / phone / owner name). Nullable: org-level docs have no
+  //     parent. `.optional()` because producers that do NOT join (the create /
+  //     finalize / update responses, built from `toDocument` alone) omit them —
+  //     only the get / list / search mappers LEFT JOIN to resolve them. A future
+  //     reader must NOT treat their absence as "no parent" (that's `projectId ==
+  //     null`); absence means "this producer didn't resolve the label".
+  sensitive: z.boolean().default(false),
+  scanStatus: DocumentScanStatusEnum.catch('pending').default('pending'),
+  projectName: z.string().min(1).max(255).nullable().optional(),
+  apartmentName: z.string().min(1).max(255).nullable().optional(),
 });
 export type Document = z.infer<typeof DocumentSchema>;
 
@@ -219,12 +252,37 @@ export const DocumentScopeEnum = z.enum(['project', 'apartment', 'org']);
 export type DocumentScope = z.infer<typeof DocumentScopeEnum>;
 
 /**
- * GET /documents/search — name substring search + type/scope filters, keyset-
- * paginated (D.16; never offset). `q` is required (the search verb). `type`
- * filters by the curated DocumentTypeEnum; `scope` by parent linkage. Respects
- * the SAME visibility rules as the list endpoint (agent record-scoping,
- * archived excluded by default, scan/sensitive gates on download unchanged) —
- * it never widens what a caller can see.
+ * The canonical PARTY tuple — the SINGLE source of truth for the binder
+ * "who is responsible" axis. Declared HERE (above `DocumentSearchQuery`) so the
+ * search `party` filter and the binder-board `DocumentPartyEnum` (built from
+ * this tuple further down) can NEVER drift to two different party sets. Order is
+ * the canonical board order.
+ */
+export const DOCUMENT_PARTY_VALUES = [
+  'owner', // בעלים — land registry / id documents
+  'appraiser', // שמאי — financial appraisal + שומה (survey)
+  'architect', // אדריכל — blueprints / floor plans
+  'municipality', // עירייה — permits + אישור/היתר עירייה (municipal_approval)
+  'contractor', // קבלן — agreements / contracts + ערבות (guarantee) + לוח זמנים (schedule)
+  'lawyer', // עו״ד — regulations / תקנון + חוות דעת משפטית (legal_opinion)
+  'supervisor', // מפקח — (no default doc_type yet)
+  'surveyor', // מודד — מפת מדידה / תשריט (survey_map)
+  'other', // כללי / אחר — neutral bucket + unknowns
+] as const;
+
+/**
+ * GET /documents/search — name substring search + type/party/scope filters,
+ * keyset-paginated (D.16; never offset). `q` is required (the search verb).
+ * `type` filters by the curated DocumentTypeEnum (one exact type); `party`
+ * (Phase 1 — board zoom-in) narrows to the doc types that roll up to that
+ * binder party (the SAME providerPartyForDocType mapping the board uses), so
+ * the FE can drill into a party's documents via the real server-side search
+ * instead of filtering one loaded page; `scope` by parent linkage. Respects the
+ * SAME visibility rules as the list endpoint (agent record-scoping, archived
+ * excluded by default, scan/sensitive gates on download unchanged) — every
+ * filter can only NARROW the result, never widen what a caller can see. If both
+ * `type` and `party` are given, BOTH apply (AND) — `type` must also belong to
+ * `party` or the result is empty (the service does not special-case this).
  */
 export const DocumentSearchQuery = z
   .object({
@@ -232,6 +290,11 @@ export const DocumentSearchQuery = z
     limit: z.coerce.number().int().min(1).max(100).default(25),
     cursor: z.string().min(1).optional(),
     type: DocumentTypeEnum.optional(),
+    /** Phase 1 — narrow to a binder PARTY's doc types (board zoom-in). The
+     *  service expands this to the type set via providerPartyForDocType; `other`
+     *  additionally matches any UNMAPPED/unknown type (the board's catch-all
+     *  bucket). Same value set as `DocumentPartyEnum` (one shared tuple). */
+    party: z.enum(DOCUMENT_PARTY_VALUES).optional(),
     scope: DocumentScopeEnum.optional(),
     /** `'true'` searches ARCHIVED docs too (default false — same posture as the
      *  list endpoint). Explicit enum (NOT z.coerce.boolean). */
@@ -477,20 +540,12 @@ export type DocumentChecklist = z.infer<typeof DocumentChecklistSchema>;
 // the FE slice-2 math already hold.
 
 /** The fixed set of binder PARTIES — the "who is responsible" axis of the
- *  PARTY-BINDER board. Order here is the canonical board order. SoT for BOTH
- *  the FE (`apps/web/.../lib/document-party.ts` re-exports) and the BE
- *  board-completeness endpoint — one definition, no drift. */
-export const DocumentPartyEnum = z.enum([
-  'owner', // בעלים — land registry / id documents
-  'appraiser', // שמאי — financial appraisal + שומה (survey)
-  'architect', // אדריכל — blueprints / floor plans
-  'municipality', // עירייה — permits + אישור/היתר עירייה (municipal_approval)
-  'contractor', // קבלן — agreements / contracts + ערבות (guarantee) + לוח זמנים (schedule)
-  'lawyer', // עו״ד — regulations / תקנון + חוות דעת משפטית (legal_opinion)
-  'supervisor', // מפקח — (no default doc_type yet)
-  'surveyor', // מודד — מפת מדידה / תשריט (survey_map)
-  'other', // כללי / אחר — neutral bucket + unknowns
-]);
+ *  PARTY-BINDER board. Built from the canonical {@link DOCUMENT_PARTY_VALUES}
+ *  tuple (declared above the search query) so the search `party` filter and this
+ *  enum can NEVER drift. Order is the canonical board order. SoT for BOTH the FE
+ *  (`apps/web/.../lib/document-party.ts` re-exports) and the BE board-
+ *  completeness endpoint — one definition, no drift. */
+export const DocumentPartyEnum = z.enum(DOCUMENT_PARTY_VALUES);
 export type DocumentParty = z.infer<typeof DocumentPartyEnum>;
 
 /** Canonical ordered party list (the enum options), for stable board ordering. */
@@ -539,12 +594,41 @@ export function providerPartyForDocType(docType: string): DocumentParty {
   return PARTY_BY_DOC_TYPE[normalised] ?? 'other';
 }
 
+/**
+ * Phase 1 (board zoom-in / search `party` filter) — the curated doc TYPES that
+ * roll up to a binder party (the inverse of {@link providerPartyForDocType} over
+ * the curated map), plus whether the party is the `other` CATCH-ALL.
+ *
+ *  - `types` — the curated types whose default party === `party`.
+ *  - `includesUnmapped` — true ONLY for `other`: the board's `other` bucket also
+ *    holds any UNKNOWN / free-text type not in the curated map (so a party-filter
+ *    on `other` must match `type NOT IN <all mapped types>` too, not just the
+ *    literal `'other'`). For every named party it is false (an exact type IN-list
+ *    is exhaustive). A party with no curated types (e.g. `supervisor`) returns an
+ *    EMPTY `types` + `includesUnmapped:false`, so the service can short-circuit
+ *    to an empty result rather than emit a `type IN ()` that matches everything.
+ *
+ * Pure + deterministic; shared by FE + BE so the search filter and the board use
+ * ONE mapping (no drift). NO PII — type keys only.
+ */
+export function docTypesForParty(party: DocumentParty): {
+  types: DocumentType[];
+  includesUnmapped: boolean;
+} {
+  const types: DocumentType[] = [];
+  for (const [type, p] of Object.entries(PARTY_BY_DOC_TYPE)) {
+    if (p === party) types.push(type as DocumentType);
+  }
+  return { types, includesUnmapped: party === 'other' };
+}
+
 /** One required doc-type a party is still missing — type KEY only (no PII, no
  *  ids/names). The FE resolves the Hebrew/English label. */
 export const MissingRequiredTypeSchema = z.object({ type: DocumentTypeEnum });
 export type MissingRequiredType = z.infer<typeof MissingRequiredTypeSchema>;
 
-/** Per-party REQUIRED-vs-RECEIVED completeness. Counts + type keys only — NO PII. */
+/** Per-party REQUIRED-vs-RECEIVED completeness + the whole-board document
+ *  rollup the board tiles need. Counts + type keys only — NO PII, NO ids/names. */
 export const PartyCompletenessSchema = z.object({
   party: DocumentPartyEnum,
   /** Distinct required (project,type) slots mapped to this party. 0 = no requirement. */
@@ -558,6 +642,25 @@ export const PartyCompletenessSchema = z.object({
   /** Distinct required types still missing (deduped across projects), for the
    *  "חסר: שומה" gap copy. Length ≤ required-received. */
   missingTypes: z.array(MissingRequiredTypeSchema),
+  // ── Phase 1 (board-summary) — the WHOLE-BOARD per-party document rollup. The
+  // board previously derived its tile counts from ONE 25-doc keyset page (the
+  // "counts lie" bug); these are computed SERVER-SIDE over EVERY non-archived doc
+  // in scope so a party with >25 docs is no longer silently truncated. COUNTS +
+  // TYPE KEYS ONLY — never a document id/name, never owner PII.
+  //   • `total` — how many non-archived documents in scope roll up to this party
+  //     (via providerPartyForDocType over the doc's actual type). DISTINCT from
+  //     `received` (which counts satisfied REQUIRED slots): `total` is "how many
+  //     docs are filed under this party", the tile's headline number.
+  //   • `latestType` — the curated/wire TYPE KEY of the most-recent such doc
+  //     (label resolved at the FE), or null when the party has no documents.
+  //   • `latestCreatedAt` — that most-recent doc's createdAt, or null. A
+  //     timestamp is NOT PII (it is when a file was filed, not about any person).
+  /** Whole-board count of non-archived docs that roll up to this party. */
+  total: z.number().int().nonnegative().default(0),
+  /** Most-recent such doc's TYPE KEY (no id/name), or null when total === 0. */
+  latestType: z.string().min(1).max(64).nullable().default(null),
+  /** Most-recent such doc's createdAt, or null when total === 0. */
+  latestCreatedAt: z.coerce.date().nullable().default(null),
 });
 export type PartyCompleteness = z.infer<typeof PartyCompletenessSchema>;
 

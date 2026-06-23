@@ -64,20 +64,28 @@ const scanStub = {} as never;
 const notificationsStub = {} as never;
 
 function manager(orgId: string, sub: string): AccessTokenPayload {
-  return { sub, orgId, role: 'manager', sid: randomUUID(), type: 'access' } as unknown as AccessTokenPayload;
+  return {
+    sub,
+    orgId,
+    role: 'manager',
+    sid: randomUUID(),
+    type: 'access',
+  } as unknown as AccessTokenPayload;
 }
 function agent(orgId: string, sub: string): AccessTokenPayload {
-  return { sub, orgId, role: 'agent', sid: randomUUID(), type: 'access' } as unknown as AccessTokenPayload;
+  return {
+    sub,
+    orgId,
+    role: 'agent',
+    sid: randomUUID(),
+    type: 'access',
+  } as unknown as AccessTokenPayload;
 }
 
 type ProjectType = 'tama38_1' | 'tama38_2' | 'pinui_binui' | 'other';
 
 /** Seed a project of an explicit type; returns its id. */
-async function seedProject(
-  orgId: string,
-  createdBy: string,
-  type: ProjectType,
-): Promise<string> {
+async function seedProject(orgId: string, createdBy: string, type: ProjectType): Promise<string> {
   return withTenant(orgId, async (tx) => {
     const [row] = await tx
       .insert(projects)
@@ -125,7 +133,9 @@ async function seedAgent(orgId: string): Promise<string> {
     .insert(users)
     .values({ email: `ag-${randomUUID()}@test.local`, name: 'Ag', passwordHash: '$2b$12$x' })
     .returning({ id: users.id });
-  await db.insert(memberships).values({ userId: u!.id, orgId, role: 'agent', acceptedAt: new Date() });
+  await db
+    .insert(memberships)
+    .values({ userId: u!.id, orgId, role: 'agent', acceptedAt: new Date() });
   return u!.id;
 }
 
@@ -284,6 +294,67 @@ describe('boardCompleteness — privacy + parties shape', () => {
       // missingTypes carries ONLY a `type` key.
       for (const m of c.missingTypes) expect(Object.keys(m)).toEqual(['type']);
     }
+  });
+});
+
+describe('boardCompleteness — Phase 1 board-summary (whole-board per-party rollup)', () => {
+  it('total counts the WHOLE board (not a page); latestType is the newest doc; archived excluded; NO PII', async () => {
+    const org = await createTestOrg(`Summary-${TAG}`);
+    const mgrId = org.users[0]!.id;
+    const mgr = manager(org.id, mgrId);
+    const p = await seedProject(org.id, mgrId, 'tama38_1');
+
+    // Seed MANY contractor docs (agreement → contractor) — MORE than one keyset
+    // page (>25) to prove the count is server-side over the WHOLE board, not a
+    // truncated 25-doc page (the "counts lie" bug this closes).
+    const CONTRACTOR_DOCS = 30;
+    for (let i = 0; i < CONTRACTOR_DOCS; i++) {
+      await seedDoc(org.id, mgrId, p, 'agreement');
+    }
+    // One ARCHIVED contractor doc — must NOT count toward total.
+    await seedDoc(org.id, mgrId, p, 'agreement', { archived: true });
+    // A single owner doc (land_registry → owner) seeded LAST, so it is the most
+    // recent owner doc → owner.latestType === 'land_registry'.
+    await seedDoc(org.id, mgrId, p, 'land_registry');
+
+    const res = await svc.boardCompleteness(mgr);
+    const contractor = party(res, 'contractor');
+    // WHOLE-BOARD count — all 30 active agreements, NOT a 25-page; archived excluded.
+    expect(contractor.total).toBe(CONTRACTOR_DOCS);
+    expect(contractor.latestType).toBe('agreement');
+    expect(contractor.latestCreatedAt).toBeInstanceOf(Date);
+
+    const owner = party(res, 'owner');
+    expect(owner.total).toBe(1);
+    expect(owner.latestType).toBe('land_registry');
+
+    // A party with no docs has total 0 + null latest (never a fabricated value).
+    const supervisor = party(res, 'supervisor');
+    expect(supervisor.total).toBe(0);
+    expect(supervisor.latestType).toBeNull();
+    expect(supervisor.latestCreatedAt).toBeNull();
+
+    // NO-PII on the summary fields — counts + a type key + a timestamp only.
+    const serialized = JSON.stringify(res);
+    expect(serialized).not.toMatch(/r2[_-]?key/i);
+    expect(serialized).not.toMatch(/national_id|"name"|"phone"|content_?hash|"r2"/i);
+    // latestType is always a string type-key or null (never an id/name).
+    for (const c of res.byParty) {
+      expect(typeof c.total).toBe('number');
+      if (c.latestType !== null) expect(typeof c.latestType).toBe('string');
+    }
+  });
+
+  it('an UNMAPPED free-text type rolls up to the `other` party total', async () => {
+    const org = await createTestOrg(`SummaryOther-${TAG}`);
+    const mgrId = org.users[0]!.id;
+    const mgr = manager(org.id, mgrId);
+    const p = await seedProject(org.id, mgrId, 'tama38_1');
+    // A type not in the curated party map → providerPartyForDocType → 'other'.
+    await seedDoc(org.id, mgrId, p, `weird-type-${TAG}`);
+
+    const res = await svc.boardCompleteness(mgr);
+    expect(party(res, 'other').total).toBeGreaterThanOrEqual(1);
   });
 });
 

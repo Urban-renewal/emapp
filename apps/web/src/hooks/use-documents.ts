@@ -11,15 +11,23 @@ import {
   getBoardCompleteness,
   getDocument,
   listDocuments,
+  searchDocuments,
   uploadDocumentFlow,
   type DocumentDownloadResult,
   type DocumentListPage,
+  type DocumentSearchArgs,
   type UploadDocumentArgs,
 } from '@/lib/api/documents';
 import { useDisplayLocale } from '@/lib/locale';
 import type { DocumentViewModel } from '@/models/document.vm';
 
-import { DOCUMENTS_KEY, documentsListQueryKey } from './use-documents.keys';
+import {
+  DOCUMENTS_KEY,
+  documentsBoardCompletenessQueryKey,
+  documentsListQueryKey,
+  documentsSearchQueryKey,
+} from './use-documents.keys';
+import { PROJECTS_KEY } from './use-projects.keys';
 
 export { documentsListQueryKey };
 
@@ -64,9 +72,41 @@ export function useDocumentList(
  */
 export function useBoardCompleteness() {
   return useQuery({
-    queryKey: [...DOCUMENTS_KEY, 'board-completeness'],
+    queryKey: documentsBoardCompletenessQueryKey(),
     queryFn: getBoardCompleteness,
     staleTime: 30_000,
+  });
+}
+
+/**
+ * NS1 server-side document search (Phase 1) — the board search box + the
+ * per-party board zoom-in hit `GET /documents/search` directly (not a filter
+ * over one loaded page). `q` is required; `enabled` gates the query off until
+ * the caller has a non-empty `q` (a board zoom-in by `party` alone still needs a
+ * `q` — pass the search term or a board-wide token the caller controls). The
+ * VM-mapped `select` resolves localized labels exactly like `useDocumentList`,
+ * so the board renders the same card shape for list + search results.
+ */
+export function useDocumentSearch(args: DocumentSearchArgs, options?: { enabled?: boolean }) {
+  const locale = useDisplayLocale();
+  const select = useCallback(
+    (data: DocumentListPage) => ({
+      items: toDocumentViewModels(data.items, locale),
+      page: data.page,
+    }),
+    [locale],
+  );
+  const hasQuery = args.q.trim().length > 0;
+  return useQuery<
+    DocumentListPage,
+    Error,
+    { items: DocumentViewModel[]; page: DocumentListPage['page'] }
+  >({
+    queryKey: documentsSearchQueryKey(args, locale),
+    queryFn: () => searchDocuments({ limit: args.limit ?? 25, ...args }),
+    enabled: hasQuery && (options?.enabled ?? true),
+    staleTime: 30_000,
+    select,
   });
 }
 
@@ -94,8 +134,25 @@ export function useUploadDocument() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (args: UploadDocumentArgs) => uploadDocumentFlow(args),
-    onSuccess: () => {
+    onSuccess: (_doc, args) => {
+      // The new doc changes (a) every documents list/search page, (b) the board
+      // SUMMARY (per-party total + latest), and (c) the per-project advisory
+      // CHECKLIST (a freshly-uploaded required type flips present:false→true).
+      // Pre-Phase-1 only (a) was invalidated, so the project docs-tab checklist
+      // + the board tiles went stale after an upload (the "dead/ stale" bug).
+      // All three are invalidated here by their canonical keys.
       qc.invalidateQueries({ queryKey: DOCUMENTS_KEY });
+      qc.invalidateQueries({ queryKey: documentsBoardCompletenessQueryKey() });
+      // Checklist is locale-keyed AND per-project. Prefix-invalidate the
+      // document-checklist family so EVERY locale variant refreshes; scope to the
+      // uploaded doc's project when known (else the whole checklist family).
+      if (args.projectId) {
+        qc.invalidateQueries({
+          queryKey: [...PROJECTS_KEY, 'document-checklist', args.projectId],
+        });
+      } else {
+        qc.invalidateQueries({ queryKey: [...PROJECTS_KEY, 'document-checklist'] });
+      }
     },
   });
 }
@@ -105,7 +162,13 @@ export function useArchiveDocument() {
   return useMutation({
     mutationFn: (id: string) => archiveDocument(id),
     onSuccess: () => {
+      // Archiving removes a doc from the board → the board SUMMARY counts + a
+      // per-project checklist slot can flip present:true→false. Invalidate all
+      // three families (the archive mutation only has the id, not the project,
+      // so the checklist is invalidated family-wide).
       qc.invalidateQueries({ queryKey: DOCUMENTS_KEY });
+      qc.invalidateQueries({ queryKey: documentsBoardCompletenessQueryKey() });
+      qc.invalidateQueries({ queryKey: [...PROJECTS_KEY, 'document-checklist'] });
     },
   });
 }

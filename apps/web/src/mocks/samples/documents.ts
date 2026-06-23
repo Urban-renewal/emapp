@@ -15,5 +15,11 @@ export const SAMPLE_DOCUMENTS: Document[] = [
     createdAt: new Date('2026-04-15T10:00:00Z'),
     updatedAt: new Date('2026-04-15T10:00:00Z'),
     archivedAt: null,
+    // Phase 1 (DOCUMENTS-REMEDIATION-PLAN) — the wire shape now carries the
+    // non-PII processing flags + resolved parent labels.
+    sensitive: false,
+    scanStatus: 'clean',
+    projectName: 'מתחם הרצל 12',
+    apartmentName: null,
   },
 ];

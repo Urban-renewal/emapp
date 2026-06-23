@@ -2011,7 +2011,7 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/documents',
     auth: 'AuthGuard + TenantGuard (documents.read)',
     summary:
-      'List org documents, cursor-paginated. Doc/project visibility scoping in the service; r2Key never returned.',
+      'List org documents, cursor-paginated. Doc/project visibility scoping in the service; r2Key never returned. Each doc carries the non-PII processing flags sensitive + scanStatus and the resolved parent labels projectName/apartmentName (project name / apartment number — org-internal labels, NOT owner PII), batch-resolved under RLS.',
     request: ListDocumentsQuery,
     response:
       '{ "data": [ {Document} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
@@ -2028,7 +2028,7 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/documents/search',
     auth: 'AuthGuard + TenantGuard (documents.read)',
     summary:
-      'NS1 — document NAME substring search (trigram ILIKE) + optional `type` (DocumentTypeEnum) and `scope` (project|apartment|org) filters, cursor-paginated. SAME visibility as list (agent record-scoping, archived excluded by default) — search never widens what a caller can see; r2Key never returned.',
+      "NS1 — document NAME substring search (trigram ILIKE) + optional `type` (DocumentTypeEnum, one exact type), `party` (board zoom-in — expands to the binder party's doc types via providerPartyForDocType; `other` also matches any unmapped type) and `scope` (project|apartment|org) filters, cursor-paginated. Every filter only NARROWS (added AND) — SAME visibility as list (agent record-scoping, archived excluded by default); search never widens what a caller can see. Each doc carries the resolved parent labels projectName/apartmentName (project name / apartment number — org-internal labels, NOT owner PII), batch-resolved under RLS. r2Key never returned.",
     request: DocumentSearchQuery,
     response:
       '{ "data": [ {Document} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
@@ -2099,16 +2099,17 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/documents/board-completeness',
     auth: 'AuthGuard + TenantGuard (documents.read)',
     summary:
-      "PARTY-BINDER board completeness (binder slice 2) — per-BINDER-PARTY REQUIRED-vs-RECEIVED across the WHOLE board scope (the caller's org; for an AGENT restricted to active project assignments), computed SERVER-SIDE over ALL the scope's projects + ALL their non-archived documents in one aggregate pass (two index-bounded queries, no N+1). Closes the FE bug where completeness was derived from a single 25-doc keyset page while counting requirements across every project (bogus \"0/21\"). A \"required slot\" is a (project, requiredType) pair per the project's track (REQUIRED_DOC_TYPES_BY_TRACK); a slot is RECEIVED when a non-archived doc of that type exists for that project (canonical doc_scope='project'+doc_scope_id OR legacy project_id); slots roll up to a party via providerPartyForDocType. withTenant→RLS org-isolation + (agent) assigned-project scoping is the boundary. Counts + doc-type KEYS only — NO PII, NO document ids/names.",
+      "PARTY-BINDER board completeness (binder slice 2 + Phase 1 board-summary) — per-BINDER-PARTY REQUIRED-vs-RECEIVED + the WHOLE-BOARD document rollup, across the board scope (the caller's org; for an AGENT restricted to active project assignments), computed SERVER-SIDE over ALL the scope's projects + ALL their non-archived documents in one aggregate pass (index-bounded queries, no N+1). Closes the FE bug where counts/completeness were derived from a single 25-doc keyset page while counting requirements across every project (bogus \"0/21\"; a >25-doc party truncated). A \"required slot\" is a (project, requiredType) pair per the project's track (REQUIRED_DOC_TYPES_BY_TRACK); a slot is RECEIVED when a non-archived doc of that type exists for that project (canonical doc_scope='project'+doc_scope_id OR legacy project_id); slots roll up to a party via providerPartyForDocType. Phase 1 board-summary: per party `total` (whole-board count of non-archived docs that roll up to the party, via the doc's actual type), `latestType` (most-recent such doc's type key, or null) and `latestCreatedAt` (its createdAt, or null). withTenant→RLS org-isolation + (agent) assigned-project/record scoping is the boundary. Counts + doc-type KEYS + a timestamp only — NO PII, NO document ids/names.",
     response:
-      '{ "data": { "byParty": [ { "party": "owner|appraiser|architect|municipality|contractor|lawyer|supervisor|surveyor|other", "required": int, "received": int, "isComplete": bool, "hasRequirement": bool, "missingTypes": [ { "type": "DocumentType" } ] } ], "unmetParties": ["party"], "hasAnyRequirement": bool, "allRequirementsMet": bool } }',
+      '{ "data": { "byParty": [ { "party": "owner|appraiser|architect|municipality|contractor|lawyer|supervisor|surveyor|other", "required": int, "received": int, "isComplete": bool, "hasRequirement": bool, "missingTypes": [ { "type": "DocumentType" } ], "total": int, "latestType": "DocumentType|null", "latestCreatedAt": "iso|null" } ], "unmetParties": ["party"], "hasAnyRequirement": bool, "allRequirementsMet": bool } }',
     errors: ['missing_token', 'invalid_token', 'token_expired'],
   },
   {
     method: 'GET',
     path: '/api/v1/documents/:id',
     auth: 'AuthGuard + TenantGuard (documents.read)',
-    summary: 'Get one document by id (org-scoped; visibility-scoped in the service).',
+    summary:
+      'Get one document by id (org-scoped; visibility-scoped in the service). The Document carries the non-PII processing flags sensitive + scanStatus and the resolved parent labels projectName/apartmentName (project name / apartment number — org-internal labels, NOT owner PII) so the detail card can show + link the parent.',
     response: '{ "data": { ...Document } }',
     errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },

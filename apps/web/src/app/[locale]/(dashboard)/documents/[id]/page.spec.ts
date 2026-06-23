@@ -28,7 +28,7 @@ const DOC = (heMessages as { documents: Record<string, unknown> }).documents as 
   view: string;
   download: string;
 };
-const PROJ = (heMessages as { projects: Record<string, string> }).projects;
+const PROJ = (heMessages as unknown as { projects: Record<string, string> }).projects;
 
 vi.mock('next-intl', () => ({
   useTranslations: (ns: string) => (key: string) => {

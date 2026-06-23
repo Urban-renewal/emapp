@@ -67,6 +67,11 @@ const BASE_DOCUMENT = {
   createdAt: new Date('2026-05-25T10:00:00Z'),
   updatedAt: new Date('2026-05-25T10:00:00Z'),
   archivedAt: null,
+  // Phase 1 — non-PII processing flags + resolved parent labels.
+  sensitive: false,
+  scanStatus: 'clean' as const,
+  projectName: null,
+  apartmentName: null,
 };
 
 const BASE_PROJECT = {

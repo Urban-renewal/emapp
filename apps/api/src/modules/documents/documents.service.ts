@@ -24,6 +24,7 @@ import {
   DOCUMENT_UPLOAD_INCOMPLETE_CODE,
   REMEDIATION_SAMPLE_MAX,
   REQUIRED_DOC_TYPES_BY_TRACK,
+  docTypesForParty,
   providerPartyForDocType,
   trackForProjectType,
   type BoardCompleteness,
@@ -54,7 +55,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
 
 import { requireAgentCapability } from '../../common/authz/agent-capabilities';
 import {
@@ -337,9 +338,27 @@ export function buildDedupResponse(rows: DedupCandidateRow[]): DedupCheckRespons
   return { duplicates, hasDuplicate: duplicates.length > 0 };
 }
 
+/**
+ * The RESOLVED parent labels a doc-read mapper may carry (Phase 1). NON-PII:
+ * a project NAME and an apartment NUMBER are org-internal labels, never owner
+ * PII (national_id/phone/owner name). LEFT-joined (nullable) — an org-level doc
+ * has no parent; a producer that does not join passes neither.
+ */
+interface ResolvedParentNames {
+  projectName?: string | null;
+  apartmentName?: string | null;
+}
+
 /** Map a row → wire shape. r2Key is DELIBERATELY omitted (never on the
- * wire — confidentiality: the storage pointer must not leak). */
-function toDocument(r: DocumentRow): Document {
+ * wire — confidentiality: the storage pointer must not leak).
+ *
+ * Phase 1: `sensitive` + `scanStatus` are projected straight from the row
+ * (non-PII processing flags). `parents` carries the OPTIONAL LEFT-joined parent
+ * labels (project name / apartment number) — present only on the get/list/search
+ * mappers that join; create/finalize/update omit them (the field is absent, NOT
+ * a falsy "no parent"). `scanStatus` is parsed tolerantly on the wire, but the
+ * row value is one of the four BE-written states. */
+function toDocument(r: DocumentRow, parents: ResolvedParentNames = {}): Document {
   return {
     id: r.id,
     organizationId: r.orgId,
@@ -354,6 +373,12 @@ function toDocument(r: DocumentRow): Document {
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     archivedAt: r.archivedAt,
+    // Phase 1 — non-PII processing flags straight off the row.
+    sensitive: r.sensitive,
+    scanStatus: r.scanStatus as Document['scanStatus'],
+    // Phase 1 — resolved parent labels (only when the mapper joined them).
+    ...(parents.projectName !== undefined ? { projectName: parents.projectName } : {}),
+    ...(parents.apartmentName !== undefined ? { apartmentName: parents.apartmentName } : {}),
   };
 }
 
@@ -708,8 +733,7 @@ export class DocumentsService {
     row: DocumentRow,
     input: FinalizeDocument,
   ): { row: DocumentRow; mismatch: false; mismatchField: null; idempotent: true } {
-    const sameValues =
-      input.sizeBytes === row.sizeBytes && input.contentHash === row.contentHash;
+    const sameValues = input.sizeBytes === row.sizeBytes && input.contentHash === row.contentHash;
     if (!sameValues) {
       throw new ConflictException({ error: { code: 'document_already_uploaded' } });
     }
@@ -1101,10 +1125,71 @@ export class DocumentsService {
   }
 
   async get(user: AccessTokenPayload, id: string): Promise<Document> {
-    const row = await withTenant(user.orgId, async (tx) => this.loadVisible(tx, user, id), {
-      userId: user.sub,
-    });
-    return toDocument(row);
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        const row = await this.loadVisible(tx, user, id);
+        // Phase 1 — resolve the parent LABELS (project name / apartment number)
+        // so the detail card can show + link the parent instead of a bare uuid.
+        // ONE small read each, inside the SAME tenant tx (RLS-scoped). NON-PII.
+        const [names] = await this.resolveParentNames(tx, [row]);
+        return toDocument(row, names ?? {});
+      },
+      { userId: user.sub },
+    );
+  }
+
+  /**
+   * Phase 1 — batch-resolve the parent LABELS (project NAME / apartment NUMBER)
+   * for a page of document rows, returning ONE {@link ResolvedParentNames} per
+   * input row IN ORDER. Two index-bounded IN-list reads (projects, apartments)
+   * over the DISTINCT parent ids on the page — NOT an N+1 per row. Runs inside
+   * the caller's tenant tx, so RLS org-isolation applies: a parent the caller
+   * cannot see resolves to `null` (never another org's label). NON-PII: a
+   * project name and an apartment number are org-internal labels, never owner
+   * national_id/phone/name.
+   *
+   * `projectName` resolves from the doc's `projectId` (the legacy column the
+   * board + visibility checks already use). `apartmentName` resolves from
+   * `apartmentId` → the apartment `number`. A doc with neither parent (org-level)
+   * gets `{ projectName: null, apartmentName: null }`.
+   */
+  private async resolveParentNames(
+    tx: TenantTx,
+    rows: Pick<DocumentRow, 'projectId' | 'apartmentId'>[],
+  ): Promise<ResolvedParentNames[]> {
+    const projectIds = [...new Set(rows.map((r) => r.projectId).filter((v): v is string => !!v))];
+    const apartmentIds = [
+      ...new Set(rows.map((r) => r.apartmentId).filter((v): v is string => !!v)),
+    ];
+
+    const projectNameById = new Map<string, string>();
+    if (projectIds.length > 0) {
+      const pr = await tx
+        .select({ id: projects.id, name: projects.name })
+        .from(projects)
+        .where(inArray(projects.id, projectIds));
+      for (const p of pr) projectNameById.set(p.id, p.name);
+    }
+
+    const apartmentNameById = new Map<string, string>();
+    if (apartmentIds.length > 0) {
+      const ar = await tx
+        .select({ id: apartments.id, number: apartments.number })
+        .from(apartments)
+        .where(inArray(apartments.id, apartmentIds));
+      for (const a of ar) apartmentNameById.set(a.id, a.number);
+    }
+
+    return rows.map((r) => ({
+      // null (not undefined) when the doc HAS a parent we resolved no name for
+      // (RLS-hidden / deleted) OR when there is no such parent — the wire field
+      // is then explicitly null. A doc with no projectId at all also yields null
+      // here, which the mapper still emits (present-but-null), distinguishing
+      // "resolved, none" from "producer didn't join" (field absent).
+      projectName: r.projectId ? (projectNameById.get(r.projectId) ?? null) : null,
+      apartmentName: r.apartmentId ? (apartmentNameById.get(r.apartmentId) ?? null) : null,
+    }));
   }
 
   /**
@@ -1826,10 +1911,46 @@ export class DocumentsService {
   }
 
   /**
+   * Phase 1 — translate a binder `party` filter into a SQL predicate over the
+   * doc `type`. A named party expands to an exact `type IN (<its curated types>)`
+   * (via the shared {@link docTypesForParty}); a party with NO curated types
+   * (e.g. supervisor) becomes `FALSE` (an empty result — never a missing AND that
+   * would silently widen). The `other` party additionally matches any UNMAPPED /
+   * unknown free-text type — `type NOT IN (<every mapped type>)` OR `type IN
+   * (<other's own types>)` — exactly mirroring providerPartyForDocType's
+   * fall-through so the board's catch-all bucket and the search filter agree.
+   * Pure SQL on the indexed `type` column; can only NARROW (always an added AND).
+   */
+  private partyTypeFilter(party: DocumentParty): SQL {
+    const { types, includesUnmapped } = docTypesForParty(party);
+    if (includesUnmapped) {
+      // `other` = its own explicit types OR anything not mapped to a NAMED party.
+      const allMapped = new Set<string>();
+      for (const p of DOCUMENT_PARTIES) {
+        if (p === 'other') continue;
+        for (const t of docTypesForParty(p).types) allMapped.add(t);
+      }
+      const mappedList = [...allMapped];
+      const notMapped: SQL =
+        mappedList.length > 0 ? notInArray(documents.type, mappedList) : sql`TRUE`;
+      if (types.length > 0) {
+        const either = or(inArray(documents.type, types), notMapped);
+        // `or` over two defined predicates is always defined; assert for the type.
+        return either ?? notMapped;
+      }
+      return notMapped;
+    }
+    // A named party with no curated types → match nothing (fail-closed narrow).
+    if (types.length === 0) return sql`FALSE`;
+    return inArray(documents.type, types);
+  }
+
+  /**
    * NS1 (server-side search, MASTER-PLAN-V13 Wave B) — document NAME substring
-   * search + type/scope filters, keyset-paginated. This is `list` with a
+   * search + type/party/scope filters, keyset-paginated. This is `list` with a
    * required `q` (name ILIKE, trigram-index served) plus the optional `type`
-   * (exact) and `scope` (parent linkage) filters.
+   * (exact), `party` (Phase 1 board zoom-in — expands to the party's doc types)
+   * and `scope` (parent linkage) filters.
    *
    * VISIBILITY IS UNCHANGED (never widened): the SAME archived-exclusion (unless
    * `archived:true`), the SAME agent record-scoping (agentDocScope) and the SAME
@@ -1837,8 +1958,11 @@ export class DocumentsService {
    * step-up) are unaffected — search returns METADATA only (toDocument never
    * carries r2Key), so a row appearing here grants no extra content access. `q`
    * is bound as a PARAMETER with LIKE metacharacters escaped (no injection,
-   * literal substring). The `scope` filter is pure SQL on project_id/
-   * apartment_id NULL-ness — it can only NARROW the result, never widen it.
+   * literal substring). The `scope`/`party`/`type` filters are pure SQL — each
+   * can only NARROW the result (an added AND), never widen it.
+   *
+   * Phase 1: the returned docs carry the resolved parent LABELS (project name /
+   * apartment number), batch-resolved INSIDE the same tenant tx (RLS-scoped).
    */
   async searchDocuments(
     user: AccessTokenPayload,
@@ -1847,6 +1971,7 @@ export class DocumentsService {
       limit: number;
       cursor?: string;
       type?: string;
+      party?: DocumentParty;
       scope?: 'project' | 'apartment' | 'org';
       archived?: boolean;
     },
@@ -1859,7 +1984,7 @@ export class DocumentsService {
     const escaped = query.q.replace(/[\\%_]/g, (c) => `\\${c}`);
     const pattern = `%${escaped}%`;
 
-    const rows = await withTenant(
+    return withTenant(
       user.orgId,
       async (tx) => {
         const filters: (SQL | undefined)[] = [
@@ -1867,6 +1992,9 @@ export class DocumentsService {
           sql`${documents.name} ILIKE ${pattern}`,
         ];
         if (query.type) filters.push(eq(documents.type, query.type));
+        // Phase 1 — `party` narrows to that party's doc types (AND with `type`
+        // if both given). Pure type-set predicate; never widens.
+        if (query.party) filters.push(this.partyTypeFilter(query.party));
         // `scope` NARROWS by parent linkage (never widens — it only adds an AND).
         if (query.scope === 'project') filters.push(isNotNull(documents.projectId));
         else if (query.scope === 'apartment') filters.push(isNotNull(documents.apartmentId));
@@ -1880,23 +2008,24 @@ export class DocumentsService {
           ? keysetCondition(documents.createdAt, documents.id, cur)
           : undefined;
 
-        return tx
+        const rows = await tx
           .select()
           .from(documents)
           .where(and(...filters, keyset))
           .orderBy(...keysetOrderBy(documents.createdAt, documents.id))
           .limit(limit + 1);
+
+        const hasMore = rows.length > limit;
+        const pageRows = hasMore ? rows.slice(0, limit) : rows;
+        const last = pageRows[pageRows.length - 1];
+        const names = await this.resolveParentNames(tx, pageRows);
+        return {
+          data: pageRows.map((r, i) => toDocument(r, names[i])),
+          page: { limit, cursor: hasMore && last ? encodeCursor(last) : null, has_more: hasMore },
+        };
       },
       { userId: user.sub },
     );
-
-    const hasMore = rows.length > limit;
-    const pageRows = hasMore ? rows.slice(0, limit) : rows;
-    const last = pageRows[pageRows.length - 1];
-    return {
-      data: pageRows.map(toDocument),
-      page: { limit, cursor: hasMore && last ? encodeCursor(last) : null, has_more: hasMore },
-    };
   }
 
   async list(
@@ -1915,7 +2044,7 @@ export class DocumentsService {
       throw new BadRequestException({ error: { code: 'invalid_cursor' } });
     }
 
-    const rows = await withTenant(
+    return withTenant(
       user.orgId,
       async (tx) => {
         if (query.projectId) await this.assertProjectVisible(tx, user, query.projectId);
@@ -1940,23 +2069,25 @@ export class DocumentsService {
           ? keysetCondition(documents.createdAt, documents.id, cur)
           : undefined;
 
-        return tx
+        const rows = await tx
           .select()
           .from(documents)
           .where(and(...filters, keyset))
           .orderBy(...keysetOrderBy(documents.createdAt, documents.id))
           .limit(limit + 1);
+
+        const hasMore = rows.length > limit;
+        const pageRows = hasMore ? rows.slice(0, limit) : rows;
+        const last = pageRows[pageRows.length - 1];
+        // Phase 1 — batch-resolve parent LABELS inside the SAME tenant tx (RLS).
+        const names = await this.resolveParentNames(tx, pageRows);
+        return {
+          data: pageRows.map((r, i) => toDocument(r, names[i])),
+          page: { limit, cursor: hasMore && last ? encodeCursor(last) : null, has_more: hasMore },
+        };
       },
       { userId: user.sub },
     );
-
-    const hasMore = rows.length > limit;
-    const pageRows = hasMore ? rows.slice(0, limit) : rows;
-    const last = pageRows[pageRows.length - 1];
-    return {
-      data: pageRows.map(toDocument),
-      page: { limit, cursor: hasMore && last ? encodeCursor(last) : null, has_more: hasMore },
-    };
   }
 
   /**
@@ -1998,7 +2129,10 @@ export class DocumentsService {
         //    projects still carry a checklist (a paused deal still "needs" its
         //    docs), matching the DH2 per-project checklist which does not filter
         //    on project archive state.
-        const projBase = tx.select({ id: projects.id, type: projects.type }).from(projects).$dynamic();
+        const projBase = tx
+          .select({ id: projects.id, type: projects.type })
+          .from(projects)
+          .$dynamic();
         const projectRows =
           user.role === 'agent'
             ? await projBase.innerJoin(
@@ -2092,6 +2226,46 @@ export class DocumentsService {
           }
         }
 
+        // ── Phase 1 (board-summary) — the WHOLE-BOARD per-party document rollup.
+        // ONE aggregate pass over EVERY non-archived doc the caller can SEE
+        // (the SAME agentDocScope record-scoping as `list`, so a manager gets all
+        // org docs via RLS and an agent only their assigned projects' docs).
+        // Grouped by the doc's ACTUAL type → party (providerPartyForDocType),
+        // carrying the per-type count + the most-recent createdAt so we can derive
+        // each party's `total`, `latestType`, `latestCreatedAt`. COUNTS + TYPE
+        // KEYS only — no id, no name, no owner PII. This fixes the "counts lie"
+        // board bug (the FE counted a single 25-doc keyset page; a party with
+        // >25 docs was truncated). Sub-second: a GROUP BY type over the indexed,
+        // org-scoped, non-archived rows — no N+1, no per-doc fetch.
+        interface PartyRollup {
+          total: number;
+          latestType: string | null;
+          latestCreatedAt: Date | null;
+        }
+        const rollup = new Map<DocumentParty, PartyRollup>();
+        const typeAgg = await tx
+          .select({
+            type: documents.type,
+            count: sql<number>`COUNT(*)::int`,
+            latest: sql<Date>`MAX(${documents.createdAt})`,
+          })
+          .from(documents)
+          .where(and(isNull(documents.archivedAt), this.agentDocScope(user)))
+          .groupBy(documents.type);
+        for (const row of typeAgg) {
+          const party = providerPartyForDocType(row.type);
+          const cur2 = rollup.get(party) ?? { total: 0, latestType: null, latestCreatedAt: null };
+          cur2.total += row.count;
+          // The party's latestType is the type of its most-recent doc. `latest`
+          // is a Date (MAX over a timestamptz column); compare and keep the newest.
+          const latest = row.latest instanceof Date ? row.latest : new Date(row.latest);
+          if (cur2.latestCreatedAt === null || latest > cur2.latestCreatedAt) {
+            cur2.latestCreatedAt = latest;
+            cur2.latestType = row.type;
+          }
+          rollup.set(party, cur2);
+        }
+
         // Emit ONE entry per canonical party (stable order) so the FE renders a
         // deterministic board; a party with no requirement is required:0.
         const byParty: PartyCompleteness[] = DOCUMENT_PARTIES.map((party) => {
@@ -2099,6 +2273,7 @@ export class DocumentsService {
           const required = a?.required ?? 0;
           const received = a?.received ?? 0;
           const hasRequirement = required > 0;
+          const r = rollup.get(party);
           return {
             party,
             required,
@@ -2106,6 +2281,10 @@ export class DocumentsService {
             hasRequirement,
             isComplete: hasRequirement && received >= required,
             missingTypes: a ? [...a.missing].map((type) => ({ type })) : [],
+            // Phase 1 board-summary fields (whole-board; counts + type key only).
+            total: r?.total ?? 0,
+            latestType: r?.latestType ?? null,
+            latestCreatedAt: r?.latestCreatedAt ?? null,
           };
         });
 

@@ -28,6 +28,7 @@ import {
   type CreateDocument,
   type Document,
   type DocumentMime,
+  type DocumentParty,
   type DocumentType,
   type DocumentUploadResponse,
   type FinalizeDocument,
@@ -75,6 +76,45 @@ export async function listDocuments(
   if (query.archived) params.set('archived', 'true');
   const qs = params.toString();
   const res = await apiClient.getList<unknown>(`/documents${qs ? `?${qs}` : ''}`);
+  if (!isList<unknown>(res)) throw new ApiClientError(res.error);
+  const items = z.array(DocumentSchema).parse(res.data);
+  const page = PageSchema.parse(res.page);
+  return { items, page };
+}
+
+/**
+ * NS1 server-side document search (Phase 1) — GET /documents/search. The board
+ * + the search box hit the REAL endpoint (not a filter over one loaded page —
+ * the bug this fixes). `q` is required (the search verb); `type`/`party`/`scope`/
+ * `archived` are optional NARROWING filters (each only restricts, never widens).
+ * PII posture: `q` is a document NAME substring (an org-internal label), never
+ * national_id/phone — same GET-search shape the projects list already uses
+ * (Doc 07 §7.10 bans PII in query params; a doc name is not PII). The response
+ * is the SAME `{ items, page }` shape as `listDocuments`, defensively Zod-parsed
+ * (ARCHITECTURE-MAP §1; r2Key never on the wire).
+ */
+export interface DocumentSearchArgs {
+  q: string;
+  limit?: number;
+  cursor?: string;
+  type?: DocumentType;
+  /** Binder party (board zoom-in) — narrows to that party's doc types server-side. */
+  party?: DocumentParty;
+  scope?: 'project' | 'apartment' | 'org';
+  archived?: boolean;
+}
+
+export async function searchDocuments(args: DocumentSearchArgs): Promise<DocumentListPage> {
+  const params = new URLSearchParams();
+  params.set('q', args.q);
+  if (args.limit !== undefined) params.set('limit', String(args.limit));
+  if (args.cursor) params.set('cursor', args.cursor);
+  if (args.type) params.set('type', args.type);
+  if (args.party) params.set('party', args.party);
+  if (args.scope) params.set('scope', args.scope);
+  // Only send when true — the BE defaults to the active (non-archived) view.
+  if (args.archived) params.set('archived', 'true');
+  const res = await apiClient.getList<unknown>(`/documents/search?${params.toString()}`);
   if (!isList<unknown>(res)) throw new ApiClientError(res.error);
   const items = z.array(DocumentSchema).parse(res.data);
   const page = PageSchema.parse(res.page);

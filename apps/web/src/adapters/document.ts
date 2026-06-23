@@ -51,8 +51,34 @@ const TYPE_LABELS_EN: Record<string, string> = {
 };
 const FALLBACK_LABEL_EN = 'Document';
 
+// Phase 1 — AV scan-status display labels. The four BE-written states; the wire
+// schema tolerantly degrades any unknown verdict to 'pending', so this map is
+// total over `DocumentScanStatus`. NON-PII (a processing-state label).
+const SCAN_STATUS_LABELS_HE: Record<string, string> = {
+  pending: 'בסריקה',
+  clean: 'נסרק — תקין',
+  infected: 'נחסם — זוהתה תוכנה זדונית',
+  error: 'הסריקה נכשלה',
+};
+const SCAN_STATUS_LABELS_EN: Record<string, string> = {
+  pending: 'Scanning',
+  clean: 'Scanned — clean',
+  infected: 'Blocked — malware detected',
+  error: 'Scan failed',
+};
+
+/** Resolve a parent label (project name / apartment number) for display:
+ *  bidi-strip it (an org-internal label can still carry an RTL-spoof mark) and
+ *  normalise the absent case to null. Never owner PII. */
+function parentLabel(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const stripped = stripBidiOverrides(value);
+  return stripped.length > 0 ? stripped : null;
+}
+
 export function toDocumentViewModel(d: Document, locale: 'he' | 'en' = 'he'): DocumentViewModel {
   const labels = locale === 'he' ? TYPE_LABELS_HE : TYPE_LABELS_EN;
+  const scanLabels = locale === 'he' ? SCAN_STATUS_LABELS_HE : SCAN_STATUS_LABELS_EN;
   return {
     id: d.id,
     // §SEC-M4 — strip bidi-override codepoints. Document name is shown
@@ -69,6 +95,13 @@ export function toDocumentViewModel(d: Document, locale: 'he' | 'en' = 'he'): Do
     createdRelative: formatRelative(d.createdAt, locale),
     projectId: d.projectId,
     apartmentId: d.apartmentId,
+    // Phase 1 — non-PII processing flags + resolved parent labels.
+    isSensitive: d.sensitive,
+    scanStatus: d.scanStatus,
+    scanStatusLabel: scanLabels[d.scanStatus] ?? scanLabels.pending!,
+    isScanClean: d.scanStatus === 'clean',
+    projectName: parentLabel(d.projectName),
+    apartmentName: parentLabel(d.apartmentName),
   };
 }
 

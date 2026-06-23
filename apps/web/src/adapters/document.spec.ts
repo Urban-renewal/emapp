@@ -98,4 +98,50 @@ describe('toDocumentViewModel', () => {
     ]);
     expect(arr.map((d) => d.name)).toEqual(['A.pdf', 'B.pdf']);
   });
+
+  // ── Phase 1 (DOCUMENTS-REMEDIATION-PLAN) — new non-PII fields surface in the VM
+  it('9) sensitive flag surfaces as isSensitive', () => {
+    expect(toDocumentViewModel(baseDoc({ sensitive: true })).isSensitive).toBe(true);
+    expect(toDocumentViewModel(baseDoc({ sensitive: false })).isSensitive).toBe(false);
+  });
+
+  it('10) scanStatus + localized label + isScanClean', () => {
+    const cleanHe = toDocumentViewModel(baseDoc({ scanStatus: 'clean' }), 'he');
+    expect(cleanHe.scanStatus).toBe('clean');
+    expect(cleanHe.isScanClean).toBe(true);
+    expect(cleanHe.scanStatusLabel).toBeTruthy();
+
+    const pendingEn = toDocumentViewModel(baseDoc({ scanStatus: 'pending' }), 'en');
+    expect(pendingEn.scanStatus).toBe('pending');
+    expect(pendingEn.isScanClean).toBe(false);
+    expect(pendingEn.scanStatusLabel).toBe('Scanning');
+
+    // Every scan state has a non-blank label in both locales.
+    for (const s of ['pending', 'clean', 'infected', 'error'] as const) {
+      expect(toDocumentViewModel(baseDoc({ scanStatus: s }), 'he').scanStatusLabel).toBeTruthy();
+      expect(toDocumentViewModel(baseDoc({ scanStatus: s }), 'en').scanStatusLabel).toBeTruthy();
+    }
+  });
+
+  it('11) resolved parent labels (projectName / apartmentName) surface; absent → null', () => {
+    const withParents = toDocumentViewModel(
+      baseDoc({ projectName: 'מתחם הרצל', apartmentName: '4' }),
+    );
+    expect(withParents.projectName).toBe('מתחם הרצל');
+    expect(withParents.apartmentName).toBe('4');
+
+    // A producer that didn't resolve the labels (field absent) → null in the VM.
+    const noParents = toDocumentViewModel(baseDoc());
+    expect(noParents.projectName).toBeNull();
+    expect(noParents.apartmentName).toBeNull();
+  });
+
+  it('12) parent labels are bidi-stripped (RTL-spoof defense, like name)', () => {
+    // U+202E (RLO) embedded in a parent project name must be stripped. Built via
+    // fromCharCode so the source file carries no literal bidi-override codepoint.
+    const RLO = String.fromCharCode(0x202e);
+    const vm = toDocumentViewModel(baseDoc({ projectName: `proj${RLO}evil` }));
+    expect(vm.projectName).toBe('projevil');
+    expect(vm.projectName).not.toContain(RLO);
+  });
 });

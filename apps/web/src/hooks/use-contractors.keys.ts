@@ -23,7 +23,7 @@ export const CONTRACTORS_KEY = ['contractors'] as const;
  * first render) hash identically.
  */
 export function contractorsListQueryKey(
-  query: { limit?: number; cursor?: string },
+  query: { limit?: number; cursor?: string; q?: string; specialty?: string },
   locale: 'he' | 'en',
 ) {
   return [...CONTRACTORS_KEY, 'list', query, locale] as const;

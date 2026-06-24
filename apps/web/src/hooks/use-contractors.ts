@@ -20,11 +20,14 @@ import { CONTRACTORS_KEY, contractorsListQueryKey } from './use-contractors.keys
 
 export { contractorsListQueryKey };
 
-export function useContractorList(query: { limit?: number; cursor?: string } = {}) {
+export function useContractorList(
+  query: { limit?: number; cursor?: string; q?: string; specialty?: string } = {},
+) {
   const locale = useDisplayLocale();
   const select = useCallback(
     (data: ContractorListPage) => ({
       items: toContractorViewModels(data.items, locale),
+      facets: data.facets,
       page: data.page,
     }),
     [locale],
@@ -32,7 +35,11 @@ export function useContractorList(query: { limit?: number; cursor?: string } = {
   return useQuery<
     ContractorListPage,
     Error,
-    { items: ContractorViewModel[]; page: ContractorListPage['page'] }
+    {
+      items: ContractorViewModel[];
+      facets: ContractorListPage['facets'];
+      page: ContractorListPage['page'];
+    }
   >({
     queryKey: contractorsListQueryKey(query, locale),
     queryFn: () => listContractors(query),

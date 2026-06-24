@@ -14,6 +14,7 @@ import {
   ApartmentSchema,
   ApartmentSignatureProgressSchema,
   BuildingSchema,
+  ContractorSchema,
   DocumentSchema,
   ImportErrorSchema,
   ImportJobSchema,
@@ -30,6 +31,7 @@ import { describe, expect, it } from 'vitest';
 
 import { SAMPLE_APARTMENTS } from './apartments';
 import { SAMPLE_BUILDINGS } from './buildings';
+import { SAMPLE_CONTRACTORS, SAMPLE_CONTRACTOR_SPECIALTIES } from './contractors';
 import { SAMPLE_DOCUMENTS } from './documents';
 import { SAMPLE_IMPORT_ERRORS, SAMPLE_IMPORTS } from './imports';
 import { SAMPLE_OWNERS } from './owners';
@@ -74,6 +76,17 @@ describe('SAMPLE_* — schema-parse gate (drift detector)', () => {
   });
   it('7) SAMPLE_DOCUMENTS parse against DocumentSchema', () => {
     SAMPLE_DOCUMENTS.forEach((d) => expect(() => DocumentSchema.parse(d)).not.toThrow());
+  });
+  it('7b) SAMPLE_CONTRACTORS parse against ContractorSchema + facet is DISTINCT/derived', () => {
+    SAMPLE_CONTRACTORS.forEach((c) => expect(() => ContractorSchema.parse(c)).not.toThrow());
+    // The data-derived specialty facet must be the DISTINCT non-null specialties
+    // of the sample (so the offline chips match what the BE would compute), and
+    // varied enough that the filter is meaningfully exercisable offline.
+    const expected = Array.from(
+      new Set(SAMPLE_CONTRACTORS.map((c) => c.specialty).filter((s): s is string => s !== null)),
+    );
+    expect([...SAMPLE_CONTRACTOR_SPECIALTIES].sort()).toEqual([...expected].sort());
+    expect(SAMPLE_CONTRACTOR_SPECIALTIES.length).toBeGreaterThan(1);
   });
 
   it('8) SAMPLE_IMPORTS parse against ImportJobSchema (D.34 — 8-state enum)', () => {

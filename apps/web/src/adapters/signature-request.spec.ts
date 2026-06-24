@@ -12,7 +12,11 @@
  *  - signedRelative / cancelledRelative null when timestamps null.
  *  - Locale switching produces distinct strings.
  */
-import { SignatureRequestSchema, SignatureRequestStatusEnum } from '@emapp/shared-types';
+import {
+  SignatureRequestListItemSchema,
+  SignatureRequestSchema,
+  SignatureRequestStatusEnum,
+} from '@emapp/shared-types';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -155,5 +159,72 @@ describe('toSignatureRequestViewModel — D.12 3-state machine', () => {
       'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
       'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa',
     ]);
+  });
+
+  it('16) createdAtMs is the raw created_at epoch-ms (sort key)', () => {
+    const vm = toSignatureRequestViewModel(
+      baseReq({ createdAt: new Date('2026-05-25T10:00:00Z') }),
+    );
+    expect(vm.createdAtMs).toBe(new Date('2026-05-25T10:00:00Z').getTime());
+  });
+});
+
+/**
+ * Slice-3 — the LIST-ITEM display context (project / apartment / document /
+ * masked-default owner). G-RT focus: the adapter passes the SERVER's value
+ * through verbatim and NEVER fabricates a name — a masked caller's `null`
+ * `ownerDisplay` stays `null`.
+ */
+function listItem(over: Partial<import('@emapp/shared-types').SignatureRequestListItem> = {}) {
+  return SignatureRequestListItemSchema.parse({
+    id: 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+    organizationId: '22222222-2222-4222-8222-222222222222',
+    documentId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    ownerId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    status: 'pending',
+    expiresAt: new Date('2026-06-01T10:00:00Z'),
+    createdBy: '11111111-1111-4111-8111-111111111111',
+    createdAt: new Date('2026-05-25T10:00:00Z'),
+    signedAt: null,
+    signedSignatureId: null,
+    cancelledAt: null,
+    cancelledBy: null,
+    projectName: 'מתחם הרצל 12',
+    apartmentLabel: '4',
+    documentName: 'הסכם התקשרות',
+    ownerDisplay: 'דנה כהן',
+    ...over,
+  });
+}
+
+describe('toSignatureRequestViewModel — Slice-3 display context + PII masking', () => {
+  it('17) surfaces project / apartment / document / owner from the list-item wire', () => {
+    const vm = toSignatureRequestViewModel(listItem());
+    expect(vm.projectName).toBe('מתחם הרצל 12');
+    expect(vm.apartmentLabel).toBe('4');
+    expect(vm.documentName).toBe('הסכם התקשרות');
+    expect(vm.ownerDisplay).toBe('דנה כהן');
+  });
+
+  it('18) MASKED caller — server-null ownerDisplay stays null (adapter never fabricates a name)', () => {
+    const vm = toSignatureRequestViewModel(listItem({ ownerDisplay: null }));
+    expect(vm.ownerDisplay).toBeNull();
+  });
+
+  it('19) nullable non-PII context (scope-less doc / archived apartment) maps to null', () => {
+    const vm = toSignatureRequestViewModel(
+      listItem({ projectName: null, apartmentLabel: null, documentName: null }),
+    );
+    expect(vm.projectName).toBeNull();
+    expect(vm.apartmentLabel).toBeNull();
+    expect(vm.documentName).toBeNull();
+  });
+
+  it('20) the BASE (detail) wire shape resolves all display context to null (no second adapter)', () => {
+    const vm = toSignatureRequestViewModel(baseReq());
+    expect(vm.projectName).toBeNull();
+    expect(vm.apartmentLabel).toBeNull();
+    expect(vm.documentName).toBeNull();
+    expect(vm.ownerDisplay).toBeNull();
   });
 });

@@ -2,16 +2,22 @@
 
 import type { NotificationType } from '@emapp/shared-types';
 import {
+  ArrowLeft,
   AtSign,
   Bell,
+  BellRing,
   CheckSquare,
+  Eye,
   FileSignature,
   FileText,
   Home,
   MessageSquare,
   ShieldOff,
   StickyNote,
+  Upload,
 } from 'lucide-react';
+
+import type { NotificationActionKind } from '@/models/notification.vm';
 
 /**
  * V11 A.S11 — per-NotificationType icon + tone mapping.
@@ -25,6 +31,12 @@ import {
  *
  * Shared between bell popover + full-page list to keep the visual
  * vocabulary consistent.
+ *
+ * It ALSO owns the ACTION vocabulary (icon + i18n-key per
+ * `NotificationActionKind`) so the bell + the list render the SAME action
+ * affordance from ONE source — `actionVisual()` below. The work-surface change
+ * (open → upload / remind / review / open-thread) is keyed on the VM's
+ * type-derived `actionKind`, never re-derived per surface.
  */
 
 type Tone = 'success' | 'warning' | 'navy' | 'danger';
@@ -85,4 +97,35 @@ export function NotificationIconTile({ type, size = 32 }: Props) {
       <Icon style={{ width: iconSize, height: iconSize }} aria-hidden="true" />
     </div>
   );
+}
+
+/**
+ * The ACTION affordance for a notification's `actionKind` — its icon + the
+ * `notifications.action.*` i18n key. ONE source of truth shared by the list row
+ * and the bell row so the verb the user sees ("העלה כאן" / "שלח תזכורת" / …) is
+ * identical on both surfaces. `primary` marks the action as a high-intent
+ * filled button (upload/remind) vs a quiet ghost (review/open/open-thread).
+ *
+ * The action is a NAVIGATION to the entity's canonical surface (via the row's
+ * deep-link) — never a direct mutation from the notification. That keeps the
+ * one-source-of-truth contract (each action runs through its OWN surface's
+ * gated seam) and means the notification never needs send/upload capability.
+ */
+interface ActionVisual {
+  icon: IconCmp;
+  /** Key under the `notifications.action` namespace. */
+  labelKey: 'open' | 'upload' | 'remind' | 'review' | 'openThread';
+  primary: boolean;
+}
+
+const ACTION_VISUAL: Record<NotificationActionKind, ActionVisual> = {
+  open: { icon: ArrowLeft, labelKey: 'open', primary: false },
+  upload: { icon: Upload, labelKey: 'upload', primary: true },
+  remind: { icon: BellRing, labelKey: 'remind', primary: true },
+  review: { icon: Eye, labelKey: 'review', primary: false },
+  'open-thread': { icon: MessageSquare, labelKey: 'openThread', primary: false },
+};
+
+export function actionVisual(kind: NotificationActionKind): ActionVisual {
+  return ACTION_VISUAL[kind];
 }

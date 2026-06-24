@@ -134,6 +134,26 @@ principle fire reflexively instead of being a rule you forget under pressure.
   observability, generic-not-special-cased. Don't make the owner find the gap. A fix addresses the root, not
   the symptom (D.51). When something fails, diagnose — don't retry-in-a-loop or paper over it.
 
+### P9 — The technophobe lens; you are the MANAGER who dispatches + verifies (owner 2026-06-24)
+
+- **Case:** the owner stressed that "the functionality works" was never the bar. The customer is an ordinary
+  org manager with TECHNOPHOBIA — and the manual QA must be done through HIS eyes, BEFORE the red-team, or the
+  whole gate is mis-ordered.
+- **The generalization (technophobe lens — a named G-QA sub-axis, runs FIRST):** on every browser walk ask, as
+  a non-technical user at 100× scale: (1) **at a glance**, do I grasp the WHOLE state — what's fine / what needs
+  me / what's next — without hunting? (2) can I make each pending decision and act in **ONE click**, with the
+  state + what's happening + what the action does spelled out plainly (zero jargon, zero prior context)? (3) are
+  **errors / empty / loading** states legible to a non-technical person? A surface that "works" but fails this is
+  a BLOCKER, fixed before it reaches G-RT.
+- **The generalization (manager operating model):** you are the MANAGER, not a solo coder. DISPATCH specialized
+  agents (experts skill/plugin + subagents) with briefs carrying the canonical seam + G-QA(technophobe) + G-RT +
+  SOLID/latency/fail-closed + the isolation contract. They SELF-VERIFY (incl. themselves) to code-green; YOU then
+  VERIFY them — unbounded G-RT loop, then the technophobe browser walk in the owner's real Chrome. MINIMAL PRs
+  (each CI cycle is costly — batch cohesive work). RUN AUTONOMOUSLY, document decisions for later review, never
+  stop for routine calls. Anchored in `CLAUDE.md` §G-QA (technophobe lens) + §Dispatch rule (manager model).
+- **Decision question (reflex):** _"Would a technophobe grasp this at a glance at 100× and act in one click? And:
+  am I dispatching + verifying as the manager, or quietly doing it all myself / parking for the owner?"_
+
 ---
 
 ## 2. Failure-mode playbook (symptom → early sign → fix)
@@ -170,7 +190,9 @@ builder (+ distinct he.json namespace)? · brief NAMES the canonical seam to reu
 
 **Before declaring a walk PASS:** verified the numbers against the DB? · entered the sub-surfaces? · confirmed
 the affected party actually received the effect + notification? · measured latency <1s warm (ms, not "felt")? ·
-situation visibly changed (legibility)? · reads at 100× scale? Any "no" → not a pass.
+situation visibly changed (legibility)? · reads at 100× scale? · **TECHNOPHOBE LENS (P9, runs before G-RT):**
+at a glance at 100× would a non-technical user grasp the whole state? · can he decide + act in ONE click, with
+the action's effect spelled out plainly? · are errors/empty/loading states legible? Any "no" → not a pass.
 
 **Before merging:** CI green? · independent red-team closed (security-sensitive)? · deep walk done (browser-
 observable)? · is it reversible (if not → owner-gate, prepare one-click)? · update-branch if BEHIND.

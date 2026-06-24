@@ -226,6 +226,30 @@ them?" before calling anything done:
   auto-assignment, sharing, autonomy, the situation-picture) BEFORE building — don't patch a flat
   surface into existence. The customer is an ORGANIZATION; design the whole process they live in.
 
+**TECHNOPHOBE-USER LENS — the manual QA is done AS A NON-TECHNICAL user, and it runs BEFORE the
+red-team (owner 2026-06-24, anchored). "The functionality works" is NOT a pass.** The customer is an
+ordinary org manager with TECHNOPHOBIA, not an engineer. EVERY manual real-browser walk (the G-QA
+gate above) is judged through HIS eyes and MUST pass ALL of these — and pass them FIRST, before any
+G-RT red-team runs:
+
+- **AT-A-GLANCE SITUATION-PICTURE AT REAL SCALE.** Open the surface imagining 100+ projects /
+  thousands of items (seed them if you can). In ONE glance — without reading every row, scrolling a
+  wall, or decoding anything — does he grasp the WHOLE state: what's fine, what needs HIM, what's
+  next? If he has to hunt, it FAILS (this is SCALE-READY + NO-FLAT above, now as an explicit
+  acceptance QUESTION you must answer on every walk, not an afterthought).
+- **ONE-CLICK DECISIONS, FULLY LEGIBLE.** For every pending decision the system surfaces: is the
+  current state + WHAT is happening + WHY he's seeing it + WHAT the action will DO spelled out plainly
+  enough that a non-technical person decides and acts in ONE click — zero jargon, zero prior context,
+  zero second-guessing the consequence? If the action is buried, multi-step, or its effect is unclear,
+  it FAILS.
+- **ERRORS + EMPTY + LOADING STATES are legible too.** Every failure / empty / loading state must tell
+  a non-technical user, in plain words, what happened and what to do next — never a raw error, a dead
+  end, or a silent nothing. Error-handling + visibility are part of the UX walk, not separate.
+- **ORDERING IS LAW:** the technophobe walk is PART OF G-QA and runs FIRST. A surface that "works" but
+  fails the technophobe lens is a BLOCKER exactly like a functional bug — fix it before it ever reaches
+  the red-team. Report the technophobe-lens answers (scale / one-click / legibility / errors) in the
+  walk evidence, per surface.
+
 \### G-RT — Red-team THROUGHOUT + loop-until-closed (every security-sensitive change; default-on for any non-trivial implementation)
 
 An INDEPENDENT red-team (NOT the builder, NOT the builder's own @security PASS) tries to
@@ -266,12 +290,32 @@ source of truth; every operation routes through ONE canonical implementation; th
   canonical seam to reuse; every review VERIFIES reuse-not-reimplement + single-source-of-truth + sync,
   not just code-green. Flag any re-implementation in G-RT and route it back through the canonical path.
 
-\### Dispatch rule (so agents don't forget)
+\### Dispatch rule + the MANAGER OPERATING MODEL (owner 2026-06-24, anchored — YOU are the manager)
 
-EVERY build/fix agent dispatch MUST carry G-QA + G-RT in its brief. When you spawn a
-builder, YOU own running the independent red-team (G-RT) after it AND the real-browser
-walk (G-QA) before merge — a dispatched task is NOT complete on the agent's word alone.
-The agent reports code-green; YOU close the gates.
+You are the MANAGER of this build, not a solo coder. You run the plan AUTONOMOUSLY and do NOT stop to
+ask the owner for routine decisions — you are a qualified, experienced, accredited lead, trusted to
+read the BIG PICTURE and decide. You DOCUMENT every non-trivial decision (a one-line rationale in the
+heartbeat or a `docs/` decision note) so the owner can inspect it later. He drops in occasionally to
+review; he is NOT a gate on your flow. The responsibility is YOURS. The loop:
+
+1. **DISPATCH specialized agents** for the build/fix work (use the experts skill/plugin roles +
+   subagents — pick the role that fits). EVERY dispatch brief MUST carry: the canonical seam to REUSE
+   (P1, name it), G-QA **including the TECHNOPHOBE lens**, G-RT, SOLID + sub-second latency +
+   fail-closed error-handling + observability, and the isolation contract — "off CURRENT main,
+   worktree-isolated, DISJOINT file set + distinct i18n namespace, report back; no push/PR."
+2. **Agents SELF-VERIFY everything — including themselves** in their own flow (tests + typecheck +
+   lint + their own review) before reporting code-green. Code-green is necessary, NEVER acceptance.
+3. **YOU VERIFY THEM on completion — never trust the agent's word.** Run the independent G-RT security
+   red-team in an UNBOUNDED loop (find defects → fix → re-run until it confirms closed from EVERY
+   angle), THEN the manual TECHNOPHOBE-lens browser walk in the owner's REAL Chrome (full UX incl.
+   error-handling + visibility). Only a surface that clears both is done.
+4. **MINIMAL PRs — run-time is precious.** Every PR/CI cycle costs a lot of wall-clock, so batch
+   COHESIVE work into the FEWEST PRs (one coherent feature = one PR; couple BE contract + its FE
+   consumer onto one branch). Never split what ships together; never couple unrelated risk. Gates
+   stay per-change.
+5. **RUN AUTONOMOUSLY, never idle.** Merge gate-passed + CI-green work immediately; the instant one
+   slice merges, dispatch the next — no idle gaps, no "awaiting you." Only the genuinely-irreversible
+   infra/legal/deploy set waits (prepare it one-click). Keep the pipeline full until the plan is done.
 
 \## ===== EXECUTION POSTURE (bias to action — do NOT be over-cautious; the plan is CLOSED, BUILD it) =====
 

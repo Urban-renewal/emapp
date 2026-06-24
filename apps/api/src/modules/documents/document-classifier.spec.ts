@@ -71,6 +71,14 @@ describe('DH3 classifier · filename signals → docType', () => {
     ['לוח זמנים לביצוע.pdf', 'schedule'],
     ['תכנית עבודה.pdf', 'schedule'],
     ['חוות דעת משפטית.pdf', 'legal_opinion'],
+    // S4-taxonomy — supervisor + power-of-attorney party adds.
+    ['דוח פיקוח חודש מאי.pdf', 'inspection_report'],
+    ['דו״ח מפקח.pdf', 'inspection_report'],
+    ['inspection-report-2026.pdf', 'inspection_report'],
+    ['ייפוי כוח נוטריוני.pdf', 'power_of_attorney'],
+    ['יפוי כח.pdf', 'power_of_attorney'],
+    ['power-of-attorney.pdf', 'power_of_attorney'],
+    ['signed_poa.pdf', 'power_of_attorney'],
   ];
   for (const [filename, expected] of cases) {
     it(`'${filename}' → top suggestion ${expected}`, () => {
@@ -145,6 +153,9 @@ describe('DH3 classifier · content-text markers', () => {
     ['מפת מדידה מצבית', 'survey_map'],
     ['ערבות בנקאית אוטונומית', 'guarantee'],
     ['חוות דעת משפטית מטעם', 'legal_opinion'],
+    // S4-taxonomy — supervisor + power-of-attorney content markers.
+    ['דוח פיקוח על הביצוע', 'inspection_report'],
+    ['ייפוי כוח בלתי חוזר', 'power_of_attorney'],
   ];
   for (const [phrase, expected] of partyMarkers) {
     it(`content "${phrase}" → ${expected}`, () => {

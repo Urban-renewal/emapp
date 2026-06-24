@@ -962,6 +962,10 @@
       "collapseAria": "Collapse {name} group",
       "emptyGroup": "No documents in this group"
     },
+    "allDocs": {
+      "loadedPartial": "Showing {count} loaded documents — narrow with search or filters to find a specific document",
+      "loadedAll": "Showing all {count} documents — search or filter to find a specific document"
+    },
     "facet": {
       "label": "Filter",
       "all": "All",

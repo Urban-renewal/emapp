@@ -47,6 +47,19 @@ export const DocumentTypeEnum = z.enum([
   'municipal_approval', // היתר / אישור עירייה — the municipality's approval
   'schedule', // לוח זמנים / תכנית עבודה — the contractor's (קבלן) work schedule
   'legal_opinion', // חוות דעת משפטית — the lawyer's (עו״ד) legal opinion
+  // S4-taxonomy (party-gap closure) — APPEND-ONLY. Two more deal-party docs that
+  // had no curated type, so they fell to "כללי / אחר" on the binder board:
+  //   • inspection_report — the מפקח's (supervisor) site/works inspection report.
+  //     This is the ONLY type for the `supervisor` party (previously empty — the
+  //     board showed a מפקח card with zero possible documents). NON-sensitive: a
+  //     works report is not national_id-dense (kept OUT of SENSITIVE_DOC_TYPES).
+  //   • power_of_attorney — ייפוי כוח. PII-DENSE: it authorises someone to act FOR
+  //     an owner and carries the owner's national_id on its face, so unlike the
+  //     other party docs it IS sensitive-by-type — added to SENSITIVE_DOC_TYPES
+  //     below so it derives sensitive=true end-to-end (at-rest envelope + step-up
+  //     gate). Maps → lawyer (עו״ד), the party that drafts/holds the POA.
+  'inspection_report', // דו״ח פיקוח / דו״ח מפקח — the supervisor's (מפקח) report
+  'power_of_attorney', // ייפוי כוח — PII-dense (national_id); → lawyer; SENSITIVE
   // legacy generic types (kept for back-compat with existing data + uploads):
   'contract',
   'permit',
@@ -73,11 +86,15 @@ export type DocumentType = z.infer<typeof DocumentTypeEnum>;
  *   - id_document — תעודת זהות (national_id on its face).
  *   - financial   — financial statements / valuations carrying account data.
  *   - land_registry — נסח טאבו lists EVERY owner's national_id (PII-dense).
+ *   - power_of_attorney — ייפוי כוח authorises acting FOR an owner and carries
+ *     the owner's national_id on its face (S4-taxonomy); sensitive-by-type so it
+ *     takes the at-rest-encryption content path + the step-up download gate.
  */
 export const SENSITIVE_DOC_TYPES: ReadonlySet<DocumentType> = new Set<DocumentType>([
   'id_document',
   'financial',
   'land_registry',
+  'power_of_attorney',
 ]);
 
 /** True when a (tolerant, free-text) `type` is sensitive-by-type — same rule the
@@ -295,8 +312,8 @@ export const DOCUMENT_PARTY_VALUES = [
   'architect', // אדריכל — blueprints / floor plans
   'municipality', // עירייה — permits + אישור/היתר עירייה (municipal_approval)
   'contractor', // קבלן — agreements / contracts + ערבות (guarantee) + לוח זמנים (schedule)
-  'lawyer', // עו״ד — regulations / תקנון + חוות דעת משפטית (legal_opinion)
-  'supervisor', // מפקח — (no default doc_type yet)
+  'lawyer', // עו״ד — regulations / תקנון + חוות דעת משפטית + ייפוי כוח (power_of_attorney)
+  'supervisor', // מפקח — דו״ח פיקוח (inspection_report)
   'surveyor', // מודד — מפת מדידה / תשריט (survey_map)
   'other', // כללי / אחר — neutral bucket + unknowns
 ] as const;
@@ -614,9 +631,13 @@ const PARTY_BY_DOC_TYPE: Readonly<Record<string, DocumentParty>> = {
   contract: 'contractor',
   guarantee: 'contractor', // ערבות / בטוחה
   schedule: 'contractor', // לוח זמנים — the contractor authors the timetable
-  // lawyer — the legal framework + the עו״ד's opinion
+  // lawyer — the legal framework + the עו״ד's opinion + the POA they hold
   regulation: 'lawyer', // תקנון / רגולציה
   legal_opinion: 'lawyer', // חוות דעת משפטית
+  power_of_attorney: 'lawyer', // ייפוי כוח — drafted/held by the עו״ד (SENSITIVE)
+  // supervisor — the מפקח's inspection report (S4-taxonomy: previously the
+  // supervisor party had NO mapped type, so מפקח docs fell to "other").
+  inspection_report: 'supervisor', // דו״ח פיקוח / דו״ח מפקח
   // neutral
   other: 'other',
 };
@@ -641,7 +662,8 @@ export function providerPartyForDocType(docType: string): DocumentParty {
  *    holds any UNKNOWN / free-text type not in the curated map (so a party-filter
  *    on `other` must match `type NOT IN <all mapped types>` too, not just the
  *    literal `'other'`). For every named party it is false (an exact type IN-list
- *    is exhaustive). A party with no curated types (e.g. `supervisor`) returns an
+ *    is exhaustive). A party with no curated types (should that ever arise — every
+ *    DOCUMENT_PARTY_VALUES party now maps ≥1 type as of S4-taxonomy) returns an
  *    EMPTY `types` + `includesUnmapped:false`, so the service can short-circuit
  *    to an empty result rather than emit a `type IN ()` that matches everything.
  *

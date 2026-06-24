@@ -27,6 +27,8 @@ import { useTranslations } from 'next-intl';
 import { type ComponentType, useEffect, useMemo, useState } from 'react';
 
 import { DOCUMENT_TYPE_LABELS_EN, DOCUMENT_TYPE_LABELS_HE } from '@/adapters/document';
+import { ShareActivityPanel } from '@/app/[locale]/(dashboard)/_components/share-activity-panel';
+import { useShareSheet } from '@/app/[locale]/(dashboard)/_components/share-sheet';
 import { isStepUpCancelled, useStepUpUnlock } from '@/components/step-up-unlock';
 import { useToast } from '@/components/ui/action-toast';
 import { Button } from '@/components/ui/button';
@@ -1250,6 +1252,8 @@ function ProjectZoomIn({
         <span className="text-sm font-semibold text-foreground">
           <NameDisplay name={project.name} />
         </span>
+        {/* X-S6/X-S7 — "invite a party" SHARE-TO verb (additive). */}
+        <ProjectShareControls project={project} />
       </div>
 
       {/* LEAD — the core-document checklist (required-vs-received), missing = upload. */}
@@ -1297,6 +1301,57 @@ function ProjectZoomIn({
         </div>
       </DataState>
     </div>
+  );
+}
+
+/**
+ * X-S6/X-S7 — the "invite a party" (SHARE-TO) controls for a project zoom-in.
+ * Self-contained + ADDITIVE (composes the shared share-sheet + activity panel —
+ * does NOT re-implement sharing; reuses the `external_share` canonical seam). The
+ * "invite a party" button is gated on `shares.create` (the BE create permission;
+ * the service further enforces manager-only). The active-shares panel is a
+ * collapsible disclosure so the zoom-in stays calm by default.
+ */
+function ProjectShareControls({ project }: { project: ProjectRef }) {
+  const tShare = useTranslations('externalShare');
+  const canShare = useHasPermission('shares.create');
+  const { open, sheet } = useShareSheet();
+  const [showPanel, setShowPanel] = useState(false);
+
+  if (!canShare) return null;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => open({ scopeType: 'project', scopeIds: [project.id], label: project.name })}
+        className="btn btn-secondary btn-sm"
+        data-testid="project-invite-party"
+      >
+        <Users className="h-3.5 w-3.5" aria-hidden="true" />
+        <span>{tShare('openButton')}</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => setShowPanel((v) => !v)}
+        aria-expanded={showPanel}
+        className="inline-flex items-center gap-1 text-xs font-medium text-text-muted"
+        style={{ cursor: 'pointer' }}
+      >
+        {showPanel ? (
+          <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+        ) : (
+          <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+        )}
+        <span>{tShare('activity.heading')}</span>
+      </button>
+      {showPanel && (
+        <div className="w-full">
+          <ShareActivityPanel enabled={showPanel} />
+        </div>
+      )}
+      {sheet}
+    </>
   );
 }
 

@@ -23,6 +23,7 @@ import {
   DOCUMENT_TYPE_MISMATCH_CODE,
   DOCUMENT_UPLOAD_INCOMPLETE_CODE,
   PROJECTS_BEHIND_CAP,
+  PROJECT_TERMINAL_STATUSES,
   REMEDIATION_SAMPLE_MAX,
   REQUIRED_DOC_TYPES_BY_TRACK,
   SENSITIVE_DOC_TYPES,
@@ -2183,9 +2184,17 @@ export class DocumentsService {
         //    projects still carry a checklist (a paused deal still "needs" its
         //    docs), matching the DH2 per-project checklist which does not filter
         //    on project archive state.
+        //    EXCLUDE TERMINAL projects (`completed`/`cancelled`): a dead/finished
+        //    deal needs no further doc collection, so it must NOT inflate the
+        //    cockpit "needs attention" rollup (it surfaced cancelled projects with
+        //    an "upload contract" CTA — noise that grows with scale). The set is
+        //    DERIVED from the canonical PROJECT_STATUS_TRANSITIONS map (one source
+        //    of truth), and stays consistent with the autonomy detector, which is
+        //    even narrower (gathering_signatures ⊂ non-terminal).
         const projBase = tx
           .select({ id: projects.id, type: projects.type, name: projects.name })
           .from(projects)
+          .where(notInArray(projects.status, [...PROJECT_TERMINAL_STATUSES]))
           .$dynamic();
         const projectRows =
           user.role === 'agent'

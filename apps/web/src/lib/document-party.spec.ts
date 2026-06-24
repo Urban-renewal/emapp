@@ -31,6 +31,9 @@ describe('providerPartyForDocType — known doc types', () => {
     ['municipal_approval', 'municipality'], // אישור / היתר עירייה
     ['schedule', 'contractor'], // לוח זמנים / תכנית עבודה
     ['legal_opinion', 'lawyer'], // חוות דעת משפטית
+    // S4-taxonomy — supervisor + power-of-attorney party-gap closure.
+    ['inspection_report', 'supervisor'], // דו״ח פיקוח (the previously-empty party)
+    ['power_of_attorney', 'lawyer'], // ייפוי כוח (SENSITIVE)
   ];
 
   it.each(cases)('maps %s → %s', (docType, party) => {

@@ -41,7 +41,7 @@ import {
   users,
   withTenant,
 } from '@emapp/db';
-import { type DocumentParty } from '@emapp/shared-types';
+import { type DocumentParty, type ProjectStatus } from '@emapp/shared-types';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createTestOrg, type TestOrg } from '../../../../../packages/db/test/factories';
@@ -84,12 +84,25 @@ function agent(orgId: string, sub: string): AccessTokenPayload {
 
 type ProjectType = 'tama38_1' | 'tama38_2' | 'pinui_binui' | 'other';
 
-/** Seed a project of an explicit type; returns its id. */
-async function seedProject(orgId: string, createdBy: string, type: ProjectType): Promise<string> {
+/** Seed a project of an explicit type (default status `planning`); returns its
+ *  id. An optional `status` seeds a project in a non-default state — used to
+ *  prove TERMINAL (`completed`/`cancelled`) projects are excluded from the board. */
+async function seedProject(
+  orgId: string,
+  createdBy: string,
+  type: ProjectType,
+  status?: ProjectStatus,
+): Promise<string> {
   return withTenant(orgId, async (tx) => {
     const [row] = await tx
       .insert(projects)
-      .values({ orgId, name: `P-${TAG}-${randomUUID().slice(0, 6)}`, type, createdBy })
+      .values({
+        orgId,
+        name: `P-${TAG}-${randomUUID().slice(0, 6)}`,
+        type,
+        createdBy,
+        ...(status ? { status } : {}),
+      })
       .returning({ id: projects.id });
     return row!.id;
   });
@@ -499,6 +512,44 @@ describe('boardCompleteness — S2 projectsBehind (project-attention axis)', () 
     // NO owner PII anywhere in the projectsBehind payload (project name aside).
     const serialized = JSON.stringify(res.projectsBehind);
     expect(serialized).not.toMatch(/national_id|"phone"|r2[_-]?key|content_?hash/i);
+  });
+
+  it('TERMINAL projects (completed/cancelled) are EXCLUDED — a dead deal never inflates the denominator nor appears as "behind"', async () => {
+    // Regression: boardCompleteness used its OWN project query (ALL org projects,
+    // no status filter) while the autonomy detector scoped to
+    // gathering_signatures+non-archived — two sources of truth for "which projects
+    // need their docs". A cancelled project surfaced as "behind on core docs" with
+    // an upload CTA. The fix excludes the canonical PROJECT_TERMINAL_STATUSES.
+    const org = await createTestOrg(`Terminal-${TAG}`);
+    const mgrId = org.users[0]!.id;
+    const mgr = manager(org.id, mgrId);
+
+    // Baseline denominator with ONLY the factory projects (both non-terminal).
+    const baseDenom = (await svc.boardCompleteness(mgr)).projectsWithRequirement;
+
+    // An EMPTY tama project that WOULD be worst-first behind (0 of 3) — but
+    // cancelled. It must contribute NOTHING to the board.
+    const cancelled = await seedProject(org.id, mgrId, 'tama38_1', 'cancelled');
+    // A completed project, likewise excluded.
+    const completed = await seedProject(org.id, mgrId, 'tama38_1', 'completed');
+
+    const res = await svc.boardCompleteness(mgr);
+    // Neither terminal project inflates the requirement denominator…
+    expect(res.projectsWithRequirement).toBe(baseDenom);
+    // …nor appears in the needs-attention list, despite having zero core docs.
+    const behindIds = res.projectsBehind.map((p) => p.projectId);
+    expect(behindIds).not.toContain(cancelled);
+    expect(behindIds).not.toContain(completed);
+    // …nor inflates any party's required slot count (owner requires land_registry
+    // per non-terminal project only).
+    expect(party(res, 'owner').required).toBe(baseDenom);
+
+    // A non-terminal project (planning) DOES count — proving the filter is the
+    // status, not a blanket suppression.
+    const live = await seedProject(org.id, mgrId, 'tama38_1', 'planning');
+    const after = await svc.boardCompleteness(mgr);
+    expect(after.projectsWithRequirement).toBe(baseDenom + 1);
+    expect(after.projectsBehind.map((p) => p.projectId)).toContain(live);
   });
 
   it('all-clear: when every project has met its core set, projectsBehind is empty', async () => {

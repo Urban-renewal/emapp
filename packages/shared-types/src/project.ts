@@ -160,6 +160,24 @@ export const PROJECT_STATUS_TRANSITIONS: Readonly<Record<ProjectStatus, readonly
   } as const;
 
 /**
+ * The TERMINAL project statuses — the deal is over and the state never
+ * transitions out (its `PROJECT_STATUS_TRANSITIONS` edge-set is empty). Derived
+ * FROM that canonical map so the two can never drift (one source of truth): if
+ * a future state machine adds/removes a terminal state, this follows for free.
+ *
+ * SEMANTIC USE — a terminal project needs NO further document collection or
+ * chasing: it is excluded from the document-requirement universe (the cockpit
+ * board-completeness rollup that powers "פרויקטים הזקוקים לטיפול"). Surfacing a
+ * `cancelled`/`completed` deal as "behind on core docs" with an upload CTA is
+ * noise that grows with scale. The autonomy detector (`detectMissingRequiredDocs`)
+ * is even narrower — `gathering_signatures` only, a strict subset of non-terminal
+ * — so the cockpit and the engine stay consistent by construction.
+ */
+export const PROJECT_TERMINAL_STATUSES: readonly ProjectStatus[] = ProjectStatusEnum.options.filter(
+  (s) => PROJECT_STATUS_TRANSITIONS[s].length === 0,
+);
+
+/**
  * True iff `next` is reachable from `current` per the state machine. A same→same
  * write is always allowed (no-op). Used by the BE update() gate and the FE to
  * disable impossible status options. Does NOT enforce the `approved`

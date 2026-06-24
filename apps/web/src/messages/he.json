@@ -2005,6 +2005,83 @@
       "notes": "הערות"
     }
   },
+  "externalShare": {
+    "title": "הזמנת גורם",
+    "subtitle": "שתף את {scope} עם גורם חיצוני — גישה מצומצמת לפי תפקיד, פגה מאליה.",
+    "partyLegend": "סוג הגורם",
+    "scopeLine": "היקף: {scope} ({type})",
+    "scopeType": {
+      "project": "פרויקט",
+      "building": "בניין",
+      "apartment": "דירה"
+    },
+    "permsLegend": "הרשאות גישה (אפשר רק לצמצם מתחת לתקרה)",
+    "perm": {
+      "overview": "סקירת פרויקט",
+      "documents": "מסמכים",
+      "download": "הורדת מסמכים",
+      "signatures": "התקדמות חתימות"
+    },
+    "sensitive": {
+      "blockedTitle": "מסמכים רגישים — לא בשיתוף זה",
+      "blockedHint": "שיתוף מסמכים רגישים (תעודות זהות, נסחים) לגורם חיצוני יופעל בהמשך. כרגע השיתוף כולל מסמכים לא-רגישים בלבד."
+    },
+    "ttlLabel": "תוקף הגישה",
+    "ttlDays": "{count} ימים",
+    "cancel": "ביטול",
+    "createSend": "שתף ושלח",
+    "sending": "שולח...",
+    "createdSent": "השיתוף נוצר — {party} קיבל גישה.",
+    "error": {
+      "ceiling": "ההרשאות שביקשת חורגות מהמותר לגורם זה. צמצם ונסה שוב.",
+      "forbidden": "אין הרשאה לשתף (מנהל בלבד).",
+      "generic": "יצירת השיתוף נכשלה. נסה שוב."
+    },
+    "party": {
+      "developer": "יזם",
+      "developer_lawyer": "עו״ד היזם",
+      "tenant_lawyer": "עו״ד הדיירים",
+      "bank": "בנק מלווה",
+      "supervisor": "מפקח",
+      "appraiser": "שמאי",
+      "surveyor": "מודד",
+      "committee": "נציגות",
+      "special_admin": "כונס / מנהל מיוחד"
+    },
+    "openButton": "הזמן גורם",
+    "activity": {
+      "heading": "שיתופים פעילים",
+      "empty": "אין שיתופים פעילים",
+      "emptyHint": "הזמן גורם כדי לשתף איתו פרויקט או דירה."
+    },
+    "countdown": {
+      "noExpiry": "ללא תפוגה",
+      "expired": "פג תוקף",
+      "remaining": "נותרו {duration}",
+      "days": "{count} ימים",
+      "hours": "{count} שעות",
+      "minutes": "{count} דקות"
+    },
+    "row": {
+      "scope": "{count} {type}",
+      "perms": "{summary} הרשאות",
+      "lastActivity": "עדכון אחרון {when}",
+      "resend": "שלח שוב",
+      "resendAria": "שלח שוב את הקישור ל{party}",
+      "extend": "הארך",
+      "extendAria": "הארך את תוקף הגישה של {party}",
+      "revoke": "בטל",
+      "revokeAria": "בטל את הגישה של {party}"
+    },
+    "revokeConfirm": "לבטל את הגישה של {party}? הגישה תיחסם מיידית.",
+    "revokeDone": "השיתוף בוטל — הגישה נחסמה.",
+    "revokeFailed": "ביטול השיתוף נכשל. נסה שוב.",
+    "extendConfirm": "להאריך את תוקף הגישה ב-{days} ימים?",
+    "extendDone": "תוקף הגישה הוארך.",
+    "extendFailed": "הארכת התוקף נכשלה (ייתכן שחרגת מהמותר).",
+    "resendDone": "הקישור נשלח שוב ל{party}.",
+    "resendFailed": "שליחת הקישור נכשלה. נסה שוב."
+  },
   "shares": {
     "title": "שיתופי קבלנים",
     "backToProject": "חזרה לפרויקט",

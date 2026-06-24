@@ -2005,6 +2005,83 @@
       "notes": "Notes"
     }
   },
+  "externalShare": {
+    "title": "Invite a party",
+    "subtitle": "Share {scope} with an external party — role-scoped access that expires on its own.",
+    "partyLegend": "Party type",
+    "scopeLine": "Scope: {scope} ({type})",
+    "scopeType": {
+      "project": "project",
+      "building": "building",
+      "apartment": "apartment"
+    },
+    "permsLegend": "Access (you can only narrow below the ceiling)",
+    "perm": {
+      "overview": "Project overview",
+      "documents": "Documents",
+      "download": "Download documents",
+      "signatures": "Signature progress"
+    },
+    "sensitive": {
+      "blockedTitle": "Sensitive documents — not in this share",
+      "blockedHint": "Sharing sensitive documents (national IDs, title deeds) with an external party is coming later. For now this share covers non-sensitive documents only."
+    },
+    "ttlLabel": "Access validity",
+    "ttlDays": "{count} days",
+    "cancel": "Cancel",
+    "createSend": "Share & send",
+    "sending": "Sending...",
+    "createdSent": "Share created — {party} was granted access.",
+    "error": {
+      "ceiling": "The access you requested exceeds what this party is allowed. Narrow it and try again.",
+      "forbidden": "You don't have permission to share (manager only).",
+      "generic": "Creating the share failed. Try again."
+    },
+    "party": {
+      "developer": "Developer",
+      "developer_lawyer": "Developer's lawyer",
+      "tenant_lawyer": "Residents' lawyer",
+      "bank": "Financing bank",
+      "supervisor": "Supervisor",
+      "appraiser": "Appraiser",
+      "surveyor": "Surveyor",
+      "committee": "Residents' committee",
+      "special_admin": "Receiver / special administrator"
+    },
+    "openButton": "Invite a party",
+    "activity": {
+      "heading": "Active shares",
+      "empty": "No active shares",
+      "emptyHint": "Invite a party to share a project or apartment with them."
+    },
+    "countdown": {
+      "noExpiry": "No expiry",
+      "expired": "Expired",
+      "remaining": "{duration} left",
+      "days": "{count} days",
+      "hours": "{count} hours",
+      "minutes": "{count} min"
+    },
+    "row": {
+      "scope": "{count} {type}",
+      "perms": "{summary} permissions",
+      "lastActivity": "Last update {when}",
+      "resend": "Resend",
+      "resendAria": "Resend the link to {party}",
+      "extend": "Extend",
+      "extendAria": "Extend {party}'s access validity",
+      "revoke": "Revoke",
+      "revokeAria": "Revoke {party}'s access"
+    },
+    "revokeConfirm": "Revoke {party}'s access? Access is blocked immediately.",
+    "revokeDone": "Share revoked — access blocked.",
+    "revokeFailed": "Revoking the share failed. Try again.",
+    "extendConfirm": "Extend access validity by {days} days?",
+    "extendDone": "Access validity extended.",
+    "extendFailed": "Extending the validity failed (you may have exceeded the allowed cap).",
+    "resendDone": "The link was resent to {party}.",
+    "resendFailed": "Resending the link failed. Try again."
+  },
   "shares": {
     "title": "Contractor shares",
     "backToProject": "Back to project",

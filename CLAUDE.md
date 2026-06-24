@@ -303,6 +303,18 @@ review; he is NOT a gate on your flow. The responsibility is YOURS. The loop:
    (P1, name it), G-QA **including the TECHNOPHOBE lens**, G-RT, SOLID + sub-second latency +
    fail-closed error-handling + observability, and the isolation contract — "off CURRENT main,
    worktree-isolated, DISJOINT file set + distinct i18n namespace, report back; no push/PR."
+   **DEFAULT TO PARALLEL — serializing disjoint work wastes the owner's wall-clock (owner 2026-06-25,
+   anchored). DISPATCH CONCURRENTLY whenever the work is provably disjoint AND it won't harm quality:**
+   - **Read-only agents (audits, scouts, G-RT red-teams) are FREE — no disk, no worktree, no merge
+     collision — so fan them out WITHOUT limit and ALWAYS in parallel.** A scale-audit of N surfaces
+     = N agents at once, not one-by-one.
+   - **Builders parallelize across worktrees ONLY on DISJOINT file sets** (partition by file ownership
+     - distinct i18n namespace, or they collide at merge — P6). Cap to what the host SAFELY bears:
+       run `scripts/dev/preflight.sh`; ~2–3 builders with disk headroom, FEWER when it's tight (<15GB /
+       a crash-prone host). Over-spawning crashed the machine repeatedly — that HARMS quality + loses
+       time, so it is NOT the parallelism the owner wants.
+   - Send the concurrent dispatches in ONE message (multiple Agent calls) so they actually run at once.
+   - The VERIFY half stays serial + yours (P6): fan out builds → barrier → ONE combined deep walk.
 2. **Agents SELF-VERIFY everything — including themselves** in their own flow (tests + typecheck +
    lint + their own review) before reporting code-green. Code-green is necessary, NEVER acceptance.
 3. **YOU VERIFY THEM on completion — never trust the agent's word.** Run the independent G-RT security

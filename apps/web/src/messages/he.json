@@ -2152,6 +2152,13 @@
     "bellAria": "התראות",
     "viewAll": "הצג הכל",
     "showAll": "הצג את כל ההתראות",
+    "allClearTitle": "הכל מטופל",
+    "allClearHint": "אין התראות שדורשות את תשומת לבך כרגע.",
+    "allClearForFilterTitle": "אין מה לטפל כאן",
+    "allClearForFilterHint": "אין התראות בקטגוריה זו.",
+    "needsAttention": "דורש טיפול",
+    "needsAttentionCount": "{count} דורשות טיפול",
+    "markRowReadAria": "סמן התראה זו כנקראה",
     "filter": {
       "all": "הכל",
       "unread": "לא נקראו",
@@ -2162,6 +2169,19 @@
       "mentions": "אזכורים",
       "apartments": "סטטוס דירות",
       "shareRevoked": "ביטולים"
+    },
+    "group": {
+      "today": "היום",
+      "week": "השבוע",
+      "earlier": "קודם לכן"
+    },
+    "action": {
+      "open": "פתח",
+      "upload": "העלה כאן",
+      "remind": "שלח תזכורת",
+      "review": "בדוק",
+      "openThread": "פתח שיחה",
+      "ariaSuffix": "— {title}"
     }
   },
   "assignments": {

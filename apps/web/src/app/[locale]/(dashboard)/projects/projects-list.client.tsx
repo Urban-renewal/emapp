@@ -1,6 +1,11 @@
 'use client';
 
-import { ProjectStatusEnum, type ProjectSegment, type ProjectStatus } from '@emapp/shared-types';
+import {
+  PROJECT_TERMINAL_STATUSES,
+  ProjectStatusEnum,
+  type ProjectSegment,
+  type ProjectStatus,
+} from '@emapp/shared-types';
 import {
   AlertTriangle,
   Clock,
@@ -446,7 +451,11 @@ export function ProjectsListClient() {
                     }
                     const signed = p.signaturesSignedCount;
                     const total = p.signaturesSignedCount + p.signaturesPendingCount;
-                    const outstanding = p.signaturesPendingCount > 0;
+                    // Warn ONLY for a LIVE deal — a terminal (cancelled/completed)
+                    // project with leftover pending signatures is NOT "needs work"
+                    // (the terminal-vs-active divergence class, here as a colour cue).
+                    const outstanding =
+                      p.signaturesPendingCount > 0 && !PROJECT_TERMINAL_STATUSES.includes(p.status);
                     return (
                       <div
                         className="tabular mt-0.5 text-[13px] font-medium"

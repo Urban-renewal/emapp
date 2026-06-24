@@ -38,6 +38,30 @@
   reissue proposals). Deep walk of detail/upload/notifications/signatures/external-share/
   taxonomy deferred — host disk at 99% (web OOM-crashed mid-walk; parallel builds held).
 
+## Technophobe-at-scale audit (owner directive — lens BEFORE red-team + manager dispatch model)
+
+- **Anchored the standards** (CLAUDE.md §G-QA technophobe lens + §Dispatch manager model +
+  doctrine P9): manual QA AS A NON-TECHNICAL user at 100× (at-a-glance / one-click-legible /
+  legible errors) runs FIRST, before G-RT; the lead DISPATCHES builders who self-verify, then
+  the lead verifies (unbounded G-RT + technophobe Chrome walk); minimal PRs; run autonomously.
+- Seeded local dev to 117 projects → the scale data EXPOSED 3 gaps invisible at demo size.
+  Decision record: `docs/TECHNOPHOBE-SCALE-AUDIT-2026-06-24.md`.
+- **#536 MERGED (G1):** board exposed only the CAPPED projectsBehind so the FE computed
+  `met = withRequirement − cappedLength` → "103 completed" at 115 projects while ~all behind &
+  0 complete. Fix: `projectsBehindTotal` (pre-cap, one source). G-RT PASS + real-Chrome.
+- **#537 + #538 MERGED (G3):** projects fleet dashed-wall. Dispatched builder CORRECTLY refused
+  my root-cause — the BE wire already carried the stats (no N+1); the gap was stale FE copy +
+  no attention-first default. Fix FE-only: one-click chips on existing `ProjectSegment` + real
+  metrics. Walked at 117: רסקו "6 יח״ד · 5/6", `?segment=stalled` 200 @ 0.24s. Nits #538:
+  terminal-status warn-cue gate + orphaned-key cleanup + ratchet `#NNN` false-positive fix.
+- **#539 (auto-merging) (G2):** "כל המסמכים" per-page grouping illusion → `useAllDocumentsFeed`
+  accumulates pages (reuses canonical `usePartyDocuments`) + honesty line. Walk: 25→50 loaded,
+  one combined group. G-RT PASS (7 axes).
+- **G4 QUEUED (non-blocking perf):** `signaturePulse` sequential per-project consent — parallelize
+  with BOUNDED concurrency (~8; unbounded exhausts the pg pool). Warm passes; only cold benefits.
+  Deliberately NOT rushed on a crash-prone host (machine shut down 3× this session; all work
+  survived via commit→push). G5/G6 minor (resolved by G3); api-docs board example stale (follow-up).
+
 ### 2026-06-22 · Track B · BE Specialist
 
 # Track B — 2026-06-22 (autonomous — autonomy engine producers)

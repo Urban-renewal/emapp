@@ -1844,7 +1844,7 @@ _(no body)_
 ### GET /api/v1/notifications
 
 - **Auth:** AuthGuard + TenantGuard
-- **Summary:** List the CALLER’S OWN notifications, cursor-paginated (locked RLS: user_id = app.user_id).
+- **Summary:** List the CALLER’S OWN notifications, cursor-paginated (locked RLS: user_id = app.user_id). Optional `type` narrows the whole feed server-side before pagination.
 
 **Request body**
 
@@ -1852,6 +1852,7 @@ _(no body)_
 |---|---|---|---|
 | `cursor` | string | no | minLength=1 |
 | `limit` | integer | no | minimum=1, maximum=100 |
+| `type` | string | no | enum=["task_assigned","apartment_status_changed","document_uploaded","signature_received","note_added","share_revoked","mention","message_received"] |
 
 
 **Response**

@@ -32,6 +32,7 @@ import { SAMPLE_APARTMENTS } from '../samples/apartments';
 import { SAMPLE_BUILDINGS } from '../samples/buildings';
 import { SAMPLE_DOCUMENTS } from '../samples/documents';
 import { SAMPLE_IMPORT_ERRORS, SAMPLE_IMPORTS } from '../samples/imports';
+import { SAMPLE_NOTIFICATIONS } from '../samples/notifications';
 import { SAMPLE_OWNERS } from '../samples/owners';
 import { SAMPLE_APARTMENT_OWNERS } from '../samples/ownerships';
 import { SAMPLE_PROJECTS } from '../samples/projects';
@@ -800,5 +801,56 @@ export const handlers = [
       return errorEnvelope('invalid_token', 401);
     }
     return HttpResponse.json(dataEnvelope({ signedAt: new Date() }));
+  }),
+
+  // notifications (Phase 4c S3 + whole-set-view slice) — self-scoped by RLS on
+  // the BE; offline we return the SAMPLE feed. The list honours `limit` + an
+  // index-based `cursor` (so "load more" ACCUMULATES across pages) + the additive
+  // server-side `type` filter (so a filtered feed narrows the WHOLE set, not a
+  // 25-row client slice). `unread-count` is the dedicated constant-time total.
+  // Declared BEFORE `:id/read` so the literal `unread-count` / `read-all` paths
+  // are not captured as an id.
+  http.get(`${API}/notifications/unread-count`, () =>
+    HttpResponse.json(
+      dataEnvelope({ count: SAMPLE_NOTIFICATIONS.filter((n) => !n.readAt).length }),
+    ),
+  ),
+  http.get(`${API}/notifications`, ({ request }) => {
+    const url = new URL(request.url);
+    const limit = Math.max(1, Math.min(100, Number(url.searchParams.get('limit') ?? '25')));
+    const type = url.searchParams.get('type');
+    const cursor = url.searchParams.get('cursor');
+    // Server-side TYPE narrowing BEFORE pagination (mirrors the BE WHERE clause).
+    const filtered = type
+      ? SAMPLE_NOTIFICATIONS.filter((n) => n.type === type)
+      : SAMPLE_NOTIFICATIONS;
+    // Opaque-ish cursor: the index of the first row of the next page. Offline-only
+    // shape; the real BE uses a keyset cursor. Bad cursor → 400 invalid_cursor
+    // (mirrors the BE contract the FE surfaces).
+    let start = 0;
+    if (cursor !== null) {
+      const parsed = Number(cursor);
+      if (!Number.isInteger(parsed) || parsed < 0) {
+        return errorEnvelope('invalid_cursor', 400);
+      }
+      start = parsed;
+    }
+    const slice = filtered.slice(start, start + limit);
+    const nextStart = start + limit;
+    const hasMore = nextStart < filtered.length;
+    return HttpResponse.json({
+      data: slice,
+      page: { limit, cursor: hasMore ? String(nextStart) : null, has_more: hasMore },
+    });
+  }),
+  http.post(`${API}/notifications/read-all`, () =>
+    HttpResponse.json(
+      dataEnvelope({ updated: SAMPLE_NOTIFICATIONS.filter((n) => !n.readAt).length }),
+    ),
+  ),
+  http.post(`${API}/notifications/:id/read`, ({ params }) => {
+    const n = SAMPLE_NOTIFICATIONS.find((x) => x.id === params['id']);
+    if (!n) return errorEnvelope('not_found', 404);
+    return HttpResponse.json(dataEnvelope({ ...n, readAt: n.readAt ?? new Date() }));
   }),
 ];

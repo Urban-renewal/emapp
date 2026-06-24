@@ -11,7 +11,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { listNotifications, markAllNotificationsRead, markNotificationRead } from './notifications';
+import {
+  getUnreadCount,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from './notifications';
 
 interface StubResponse {
   status: number;
@@ -79,6 +84,35 @@ describe('listNotifications', () => {
       },
     })) as unknown as typeof fetch;
     await expect(listNotifications()).rejects.toThrow();
+  });
+
+  it('T-4c-S3-API.7) pushes the `type` filter to the SERVER query string', async () => {
+    const fetchSpy = stubFetch(() => ({
+      status: 200,
+      body: { data: [NOTIF], page: { limit: 25, cursor: null, has_more: false } },
+    }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    await listNotifications({ limit: 25, type: 'signature_received' });
+    // The filter must hit the BE (`?type=`), NOT be a 25-row client-side filter.
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain('type=signature_received');
+  });
+});
+
+describe('getUnreadCount', () => {
+  it('T-4c-S3-API.8) GET /notifications/unread-count returns the TRUE count (not page-local)', async () => {
+    const fetchSpy = stubFetch(() => ({ status: 200, body: { data: { count: 137 } } }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const count = await getUnreadCount();
+    expect(count).toBe(137);
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain('/api/v1/notifications/unread-count');
+  });
+
+  it('T-4c-S3-API.9) Zod rejects a mis-shaped count (string)', async () => {
+    globalThis.fetch = stubFetch(() => ({
+      status: 200,
+      body: { data: { count: 'many' } },
+    })) as unknown as typeof fetch;
+    await expect(getUnreadCount()).rejects.toThrow();
   });
 });
 

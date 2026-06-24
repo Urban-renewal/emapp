@@ -168,6 +168,7 @@ describe('AutonomyPolicy — classify() over the real action table', () => {
       'share.renew.send',
       'invite.chase.send',
       'tenant.onboard.smsOtp',
+      'document.chase.send',
     ];
     for (const kind of outbound) {
       const r = classify({ kind });
@@ -175,6 +176,16 @@ describe('AutonomyPolicy — classify() over the real action table', () => {
       expect(r.consentRequired).toBe(true);
       expect(r.decision).toBe('proposeConfirm');
     }
+  });
+
+  it('S5 document.chase.send is outbound + consent-required → proposeConfirm, NEVER autoExecute', () => {
+    const r = classify({ kind: 'document.chase.send' });
+    expect(r.outbound).toBe(true);
+    expect(r.consentRequired).toBe(true);
+    expect(r.decision).toBe('proposeConfirm');
+    expect(r.decision).not.toBe('autoExecute');
+    // It must NOT be in the autoExecute-eligible set (a chase is a send).
+    expect(EXPECTED_AUTO_EXECUTE).not.toContain('document.chase.send' as AutonomyActionKind);
   });
 
   it('the autoExecute set is EXACTLY the boundary-eligible actions — no leakage', () => {

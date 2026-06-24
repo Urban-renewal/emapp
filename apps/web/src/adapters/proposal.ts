@@ -39,12 +39,24 @@ const KIND_COPY_HE: Record<string, KindCopy> = {
     whyTitle: 'בקשת חתימה שפגה — מוצע להנפיק מחדש',
     approveLabel: 'אשר הנפקה מחדש',
   },
+  // S5 DocumentChase — user-control voice ("לפי הכללים שלך"), NOT system-hero. The
+  // specific missing type + responsible party are surfaced on the documents board's
+  // behind-project card (which derives them from the same missingDocType via the
+  // canonical party map); the inbox line stays calm + PII-free (reads only the kind).
+  'document.chase.send': {
+    whyTitle: 'לפי הכללים שלך — חסר מסמך נדרש; מוצע לבקש אותו מהגורם האחראי',
+    approveLabel: 'אשר בקשת מסמך',
+  },
 };
 
 const KIND_COPY_EN: Record<string, KindCopy> = {
   'signature_request.reissue': {
     whyTitle: 'A signature request expired — re-issue suggested',
     approveLabel: 'Approve re-issue',
+  },
+  'document.chase.send': {
+    whyTitle: 'Per your rules — a required document is missing; request it from the responsible party',
+    approveLabel: 'Approve document request',
   },
 };
 

@@ -1,10 +1,11 @@
 'use client';
 
-import type { Document } from '@emapp/shared-types';
+import type { BoardCompleteness, Document } from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
 import { toDocumentViewModel, toDocumentViewModels } from '@/adapters/document';
+import { toDocumentsBoardViewModel } from '@/adapters/documents-board';
 import {
   archiveDocument,
   fetchDownload,
@@ -20,6 +21,7 @@ import {
 } from '@/lib/api/documents';
 import { useDisplayLocale } from '@/lib/locale';
 import type { DocumentViewModel } from '@/models/document.vm';
+import type { DocumentsBoardViewModel } from '@/models/documents-board.vm';
 
 import {
   DOCUMENTS_KEY,
@@ -75,6 +77,29 @@ export function useBoardCompleteness() {
     queryKey: documentsBoardCompletenessQueryKey(),
     queryFn: getBoardCompleteness,
     staleTime: 30_000,
+  });
+}
+
+/**
+ * S2 (org cockpit) — the documents board as a SITUATION-PICTURE VM. Reuses the
+ * SAME `board-completeness` query (one cache, the upload/archive mutations
+ * already invalidate it) but maps the wire through `toDocumentsBoardViewModel`
+ * so the cockpit gets the project-attention axis (ranked behind projects +
+ * pulse + completeness-aware tiles) pre-derived. The locale-aware `select`
+ * resolves the missing-type labels exactly like the other documents hooks; the
+ * shared (locale-less) query key keeps ONE cache + the existing invalidation.
+ */
+export function useDocumentsBoard() {
+  const locale = useDisplayLocale();
+  const select = useCallback(
+    (data: BoardCompleteness): DocumentsBoardViewModel => toDocumentsBoardViewModel(data, locale),
+    [locale],
+  );
+  return useQuery<BoardCompleteness, Error, DocumentsBoardViewModel>({
+    queryKey: documentsBoardCompletenessQueryKey(),
+    queryFn: getBoardCompleteness,
+    staleTime: 30_000,
+    select,
   });
 }
 

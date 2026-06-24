@@ -47,6 +47,19 @@ export const DocumentTypeEnum = z.enum([
   'municipal_approval', // היתר / אישור עירייה — the municipality's approval
   'schedule', // לוח זמנים / תכנית עבודה — the contractor's (קבלן) work schedule
   'legal_opinion', // חוות דעת משפטית — the lawyer's (עו״ד) legal opinion
+  // S4-taxonomy (party-gap closure) — APPEND-ONLY. Two more deal-party docs that
+  // had no curated type, so they fell to "כללי / אחר" on the binder board:
+  //   • inspection_report — the מפקח's (supervisor) site/works inspection report.
+  //     This is the ONLY type for the `supervisor` party (previously empty — the
+  //     board showed a מפקח card with zero possible documents). NON-sensitive: a
+  //     works report is not national_id-dense (kept OUT of SENSITIVE_DOC_TYPES).
+  //   • power_of_attorney — ייפוי כוח. PII-DENSE: it authorises someone to act FOR
+  //     an owner and carries the owner's national_id on its face, so unlike the
+  //     other party docs it IS sensitive-by-type — added to SENSITIVE_DOC_TYPES
+  //     below so it derives sensitive=true end-to-end (at-rest envelope + step-up
+  //     gate). Maps → lawyer (עו״ד), the party that drafts/holds the POA.
+  'inspection_report', // דו״ח פיקוח / דו״ח מפקח — the supervisor's (מפקח) report
+  'power_of_attorney', // ייפוי כוח — PII-dense (national_id); → lawyer; SENSITIVE
   // legacy generic types (kept for back-compat with existing data + uploads):
   'contract',
   'permit',
@@ -56,6 +69,41 @@ export const DocumentTypeEnum = z.enum([
   'other',
 ]);
 export type DocumentType = z.infer<typeof DocumentTypeEnum>;
+
+/**
+ * PII-bearing document types that are SENSITIVE BY TYPE (D-P5.7) — the SINGLE
+ * source of truth for "this type always derives sensitive=true". Surfaced HERE
+ * (the FE/BE contract) so:
+ *   - BE: `documents.service.ts` re-exports this set (it owns the create-time
+ *     `sensitive = SENSITIVE_DOC_TYPES.has(type) || input.sensitive` derivation).
+ *   - FE: the generic upload dropzone (S3) knows, WITHOUT a round-trip, which
+ *     classifier suggestions / picked types must PAUSE for the encrypt notice and
+ *     take the content-upload path — even at AUTO confidence a tabu/ID/financial
+ *     is never silently auto-filed.
+ *
+ * TURN-ON ONLY: a type in this set ALWAYS derives sensitive=true; absence does
+ * NOT force a doc non-sensitive (an explicit `sensitive:true` opt-in still wins).
+ *   - id_document — תעודת זהות (national_id on its face).
+ *   - financial   — financial statements / valuations carrying account data.
+ *   - land_registry — נסח טאבו lists EVERY owner's national_id (PII-dense).
+ *   - power_of_attorney — ייפוי כוח authorises acting FOR an owner and carries
+ *     the owner's national_id on its face (S4-taxonomy); sensitive-by-type so it
+ *     takes the at-rest-encryption content path + the step-up download gate.
+ */
+export const SENSITIVE_DOC_TYPES: ReadonlySet<DocumentType> = new Set<DocumentType>([
+  'id_document',
+  'financial',
+  'land_registry',
+  'power_of_attorney',
+]);
+
+/** True when a (tolerant, free-text) `type` is sensitive-by-type — same rule the
+ *  BE applies at create. Pure + deterministic; case-insensitive trim to mirror
+ *  {@link providerPartyForDocType}. Absence from the set is NOT "definitely
+ *  non-sensitive" (an explicit opt-in can still force it on server-side). */
+export function isSensitiveDocType(docType: string): boolean {
+  return SENSITIVE_DOC_TYPES.has(docType.trim().toLowerCase() as DocumentType);
+}
 
 /** Allow-listed upload MIME types. Executables, text/html and
  * image/svg+xml are intentionally excluded (active-content / XSS). */
@@ -264,8 +312,8 @@ export const DOCUMENT_PARTY_VALUES = [
   'architect', // אדריכל — blueprints / floor plans
   'municipality', // עירייה — permits + אישור/היתר עירייה (municipal_approval)
   'contractor', // קבלן — agreements / contracts + ערבות (guarantee) + לוח זמנים (schedule)
-  'lawyer', // עו״ד — regulations / תקנון + חוות דעת משפטית (legal_opinion)
-  'supervisor', // מפקח — (no default doc_type yet)
+  'lawyer', // עו״ד — regulations / תקנון + חוות דעת משפטית + ייפוי כוח (power_of_attorney)
+  'supervisor', // מפקח — דו״ח פיקוח (inspection_report)
   'surveyor', // מודד — מפת מדידה / תשריט (survey_map)
   'other', // כללי / אחר — neutral bucket + unknowns
 ] as const;
@@ -295,6 +343,12 @@ export const DocumentSearchQuery = z
      *  additionally matches any UNMAPPED/unknown type (the board's catch-all
      *  bucket). Same value set as `DocumentPartyEnum` (one shared tuple). */
     party: z.enum(DOCUMENT_PARTY_VALUES).optional(),
+    /** S2 (faceted shell) — narrow to ONE project. Matches a doc whose CANONICAL
+     *  project (doc_scope='project' → doc_scope_id, else legacy project_id) is
+     *  this id — the SAME resolver the board's received/required pass uses, so the
+     *  facet count and the board agree. NARROWING only (never widens; the agent
+     *  record-scoping + RLS still bound the result). A doc id, not PII. */
+    projectId: z.string().uuid().optional(),
     scope: DocumentScopeEnum.optional(),
     /** `'true'` searches ARCHIVED docs too (default false — same posture as the
      *  list endpoint). Explicit enum (NOT z.coerce.boolean). */
@@ -577,9 +631,13 @@ const PARTY_BY_DOC_TYPE: Readonly<Record<string, DocumentParty>> = {
   contract: 'contractor',
   guarantee: 'contractor', // ערבות / בטוחה
   schedule: 'contractor', // לוח זמנים — the contractor authors the timetable
-  // lawyer — the legal framework + the עו״ד's opinion
+  // lawyer — the legal framework + the עו״ד's opinion + the POA they hold
   regulation: 'lawyer', // תקנון / רגולציה
   legal_opinion: 'lawyer', // חוות דעת משפטית
+  power_of_attorney: 'lawyer', // ייפוי כוח — drafted/held by the עו״ד (SENSITIVE)
+  // supervisor — the מפקח's inspection report (S4-taxonomy: previously the
+  // supervisor party had NO mapped type, so מפקח docs fell to "other").
+  inspection_report: 'supervisor', // דו״ח פיקוח / דו״ח מפקח
   // neutral
   other: 'other',
 };
@@ -604,7 +662,8 @@ export function providerPartyForDocType(docType: string): DocumentParty {
  *    holds any UNKNOWN / free-text type not in the curated map (so a party-filter
  *    on `other` must match `type NOT IN <all mapped types>` too, not just the
  *    literal `'other'`). For every named party it is false (an exact type IN-list
- *    is exhaustive). A party with no curated types (e.g. `supervisor`) returns an
+ *    is exhaustive). A party with no curated types (should that ever arise — every
+ *    DOCUMENT_PARTY_VALUES party now maps ≥1 type as of S4-taxonomy) returns an
  *    EMPTY `types` + `includesUnmapped:false`, so the service can short-circuit
  *    to an empty result rather than emit a `type IN ()` that matches everything.
  *
@@ -627,13 +686,34 @@ export function docTypesForParty(party: DocumentParty): {
 export const MissingRequiredTypeSchema = z.object({ type: DocumentTypeEnum });
 export type MissingRequiredType = z.infer<typeof MissingRequiredTypeSchema>;
 
-/** Per-party REQUIRED-vs-RECEIVED completeness + the whole-board document
- *  rollup the board tiles need. Counts + type keys only — NO PII, NO ids/names. */
+/**
+ * Per-party completeness — TWO DISTINCT, NEVER-CONFLATED facts about one party
+ * (counts + type keys only; NO PII, NO ids/names):
+ *
+ *   1. CORE-REQUIRED-SLOT gauge — `received` / `required` (+ `missingTypes`,
+ *      `isComplete`, `hasRequirement`). "How many of the party's CORE required
+ *      document slots are filled" (the `REQUIRED_DOC_TYPES_BY_TRACK` set, one
+ *      slot per (project, requiredType)). A SMALL denominator (≈ project count),
+ *      computed over the canonical project-scoped required types.
+ *   2. DOCS-FILED rollup — `total` (+ `latestType`, `latestCreatedAt`). "How many
+ *      documents of ANY type are filed under this party", the tile's headline.
+ *
+ * THESE ANSWER DIFFERENT QUESTIONS — the FE MUST render them as two separate
+ * facts ("{total} מסמכים · מסמכי-ליבה {received}/{required}") and MUST NEVER
+ * divide one by the other (the "0 מתוך 37" bug: a party with 37 filed docs but 0
+ * of a required TYPE is "37 מסמכים · מסמכי-ליבה 0/3", never "0 מתוך 37"). The BE
+ * computes BOTH over ONE aligned population (the same canonical scope resolver),
+ * so the two numbers are coherent even though they count different things.
+ */
 export const PartyCompletenessSchema = z.object({
   party: DocumentPartyEnum,
-  /** Distinct required (project,type) slots mapped to this party. 0 = no requirement. */
+  /** CORE-required gauge — distinct required (project,type) slots mapped to this
+   *  party per REQUIRED_DOC_TYPES_BY_TRACK. 0 = no requirement. The DENOMINATOR of
+   *  the "מסמכי-ליבה X/Y" gauge — NOT a doc count; never the denominator of `total`. */
   required: z.number().int().nonnegative(),
-  /** How many of those required slots have a matching received (non-archived) doc. */
+  /** CORE-required gauge — how many of those required slots have a matching
+   *  received (non-archived) doc. The NUMERATOR of "מסמכי-ליבה X/Y". Bounded by
+   *  `required`; UNRELATED to `total` (a party can have total≫0 yet received=0). */
   received: z.number().int().nonnegative(),
   /** True only when this party HAS a requirement and every slot is satisfied. */
   isComplete: z.boolean(),
@@ -655,7 +735,9 @@ export const PartyCompletenessSchema = z.object({
   //     (label resolved at the FE), or null when the party has no documents.
   //   • `latestCreatedAt` — that most-recent doc's createdAt, or null. A
   //     timestamp is NOT PII (it is when a file was filed, not about any person).
-  /** Whole-board count of non-archived docs that roll up to this party. */
+  /** DOCS-FILED headline — whole-board count of non-archived docs that roll up to
+   *  this party (ANY type). The card's "{total} מסמכים" fact. NEVER divided into /
+   *  by `received`/`required` — it is a separate question from the core-slot gauge. */
   total: z.number().int().nonnegative().default(0),
   /** Most-recent such doc's TYPE KEY (no id/name), or null when total === 0. */
   latestType: z.string().min(1).max(64).nullable().default(null),
@@ -663,6 +745,46 @@ export const PartyCompletenessSchema = z.object({
   latestCreatedAt: z.coerce.date().nullable().default(null),
 });
 export type PartyCompleteness = z.infer<typeof PartyCompletenessSchema>;
+
+/**
+ * S2 (org cockpit) — ONE project that is BEHIND on its core required documents.
+ * The project-attention axis the party-only board could not express: a manager
+ * with 100 projects must see WHICH projects are short, worst-first, each naming
+ * the responsible parties + the missing types so the gap is a one-click upload,
+ * not a flat label.
+ *
+ * COUNTS + TYPE/PARTY KEYS + the project NAME only — NO owner PII (national_id /
+ * phone / owner name). The project name is an org-internal LABEL (the same class
+ * of label the signatures situation-picture already returns on its wire); it is
+ * never owner PII. Computed in the SAME aggregate pass as `byParty` (the
+ * per-project required/received slot rollup is already materialized server-side),
+ * so this adds NO query and stays sub-second.
+ */
+export const ProjectBehindSchema = z.object({
+  projectId: z.string().uuid(),
+  /** Org-internal project label (bidi-stripped + <NameDisplay>-wrapped at the FE).
+   *  NOT owner PII — the project's own name. */
+  projectName: z.string().min(1).max(255),
+  /** Core required slots for this project (its track's REQUIRED_DOC_TYPES set). */
+  coreRequired: z.number().int().positive(),
+  /** Core required slots already filled by a received (non-archived) doc. */
+  coreReceived: z.number().int().nonnegative(),
+  /** The required types this project is still missing (deduped), each carrying its
+   *  derived responsible PARTY so the FE can name "מהשמאי / מהאדריכל" + deep-link
+   *  the one-click upload to ?type=&party=&projectId=. Type + party KEYS only. */
+  missing: z.array(
+    z.object({
+      type: DocumentTypeEnum,
+      party: DocumentPartyEnum,
+    }),
+  ),
+});
+export type ProjectBehind = z.infer<typeof ProjectBehindSchema>;
+
+/** S2 — server cap on `projectsBehind` (the cockpit shows the worst N + a "+M"
+ *  tail / "הצג הכל" affordance; rendering hundreds of cards into the surface
+ *  would itself be a flat wall). */
+export const PROJECTS_BEHIND_CAP = 12;
 
 /** GET /api/v1/documents/board-completeness response (under `data`). Board-wide
  *  per-party rollup + the summary the orientation line needs. Counts + type
@@ -678,6 +800,19 @@ export const BoardCompletenessSchema = z.object({
   hasAnyRequirement: z.boolean(),
   /** True when every party with a requirement has met it (and ≥1 requirement). */
   allRequirementsMet: z.boolean(),
+  // ── S2 (org cockpit) — the PROJECT-attention axis ──────────────────────────
+  /** Projects with an UNMET core required set, ranked WORST-FIRST (fewest core
+   *  slots filled, then most missing). The cockpit's ranked attention cards read
+   *  from this; a manager at 100 projects sees WHICH are behind, not just which
+   *  party. Capped server-side at {@link PROJECTS_BEHIND_CAP}. Empty ⇒ every
+   *  in-scope project with a requirement has met its core set (calm all-clear). */
+  projectsBehind: z.array(ProjectBehindSchema).default([]),
+  /** Total in-scope projects that HAVE a core requirement (the denominator the
+   *  cockpit pulse uses: "{behind} מתוך {withRequirement} פרויקטים מאחור"). */
+  projectsWithRequirement: z.number().int().nonnegative().default(0),
+  /** True when `projectsBehind` was capped (more behind projects exist than the
+   *  cap) → the cockpit shows a "+N" tail / "הצג הכל" affordance. */
+  projectsBehindCapped: z.boolean().default(false),
 });
 export type BoardCompleteness = z.infer<typeof BoardCompletenessSchema>;
 

@@ -21,6 +21,7 @@ import {
   ImportJobSchema,
   OwnerSchema,
   ProjectSchema,
+  providerPartyForDocType,
   SetOwnershipsInput,
   SignatureRequestSchema,
   SubmitMappingInput,
@@ -190,6 +191,48 @@ export const handlers = [
     HttpResponse.json(dataEnvelope(SAMPLE_SIGNATURE_PROGRESS)),
   ),
 
+  // DH2 (V13) — ADVISORY project document-checklist (S2 surfaces it in the
+  // project zoom-in). Self-consistent with SAMPLE_DOCUMENTS + the cockpit
+  // board-completeness stub: PROJECT_A ("מתחם הרצל 12", tama38) has agreement +
+  // land_registry but no blueprint → blueprint missing; PROJECT_B ("רוטשילד 8",
+  // pinui_binui) has only a blueprint → agreement+land_registry+regulation
+  // missing. NO PII — doc-type keys + present booleans + counts only.
+  http.get(`${API}/projects/:id/document-checklist`, ({ params }) => {
+    const id = String(params['id']);
+    let items: { type: string; present: boolean }[];
+    let meta: { projectType: string; track: 'tama38' | 'pinui_binui' | 'default' };
+    if (id === 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2') {
+      meta = { projectType: 'pinui_binui', track: 'pinui_binui' };
+      items = [
+        { type: 'agreement', present: false },
+        { type: 'land_registry', present: false },
+        { type: 'blueprint', present: true },
+        { type: 'regulation', present: false },
+      ];
+    } else {
+      meta = { projectType: 'tama38_2', track: 'tama38' };
+      items = [
+        { type: 'agreement', present: true },
+        { type: 'land_registry', present: true },
+        { type: 'blueprint', present: false },
+      ];
+    }
+    const totalCount = items.length;
+    const presentCount = items.filter((i) => i.present).length;
+    return HttpResponse.json(
+      dataEnvelope({
+        projectId: id,
+        projectType: meta.projectType,
+        track: meta.track,
+        items,
+        presentCount,
+        totalCount,
+        completionPct: totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0,
+        advisory: true,
+      }),
+    );
+  }),
+
   // buildings (nested under project)
   http.get(`${API}/projects/:projectId/buildings`, ({ params }) => {
     const items = SAMPLE_BUILDINGS.filter((b) => b.projectId === params['projectId']);
@@ -310,31 +353,216 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 });
   }),
 
-  // documents
-  http.get(`${API}/documents`, () => HttpResponse.json(listEnvelope(SAMPLE_DOCUMENTS))),
+  // documents — honor projectId / apartmentId / archived so the project zoom-in
+  // and the active/archived toggle behave faithfully offline (Phase 2a).
+  http.get(`${API}/documents`, ({ request }) => {
+    const url = new URL(request.url);
+    const projectId = url.searchParams.get('projectId');
+    const apartmentId = url.searchParams.get('apartmentId');
+    const archived = url.searchParams.get('archived') === 'true';
+    let items = SAMPLE_DOCUMENTS.filter((d) =>
+      archived ? d.archivedAt !== null : d.archivedAt === null,
+    );
+    if (projectId) items = items.filter((d) => d.projectId === projectId);
+    if (apartmentId) items = items.filter((d) => d.apartmentId === apartmentId);
+    return HttpResponse.json(listEnvelope(items));
+  }),
   // Binder slice 2 — PARTY-BINDER board completeness (server-computed). Declared
   // BEFORE the `/documents/:id` handler so the literal path isn't matched as :id.
   // A small, self-consistent offline shape: owner partially met, contractor met,
   // architect outstanding; counts + type keys only (no PII).
+  // Phase 2a — the per-party rollup carries the WHOLE-BOARD `total` / `latestType`
+  // / `latestCreatedAt` so the board cards show truthful counts offline (not a
+  // page slice). Self-consistent with SAMPLE_DOCUMENTS (owner has a land_registry,
+  // contractor 2 agreements, architect a blueprint, appraiser a survey). Counts +
+  // type keys only — no PII.
   http.get(`${API}/documents/board-completeness`, () =>
     HttpResponse.json(
       dataEnvelope({
         byParty: [
-          { party: 'owner', required: 2, received: 1, isComplete: false, hasRequirement: true, missingTypes: [{ type: 'land_registry' }] },
-          { party: 'appraiser', required: 0, received: 0, isComplete: false, hasRequirement: false, missingTypes: [] },
-          { party: 'architect', required: 2, received: 1, isComplete: false, hasRequirement: true, missingTypes: [{ type: 'blueprint' }] },
-          { party: 'municipality', required: 0, received: 0, isComplete: false, hasRequirement: false, missingTypes: [] },
-          { party: 'contractor', required: 2, received: 2, isComplete: true, hasRequirement: true, missingTypes: [] },
-          { party: 'lawyer', required: 1, received: 0, isComplete: false, hasRequirement: true, missingTypes: [{ type: 'regulation' }] },
-          { party: 'supervisor', required: 0, received: 0, isComplete: false, hasRequirement: false, missingTypes: [] },
-          { party: 'surveyor', required: 0, received: 0, isComplete: false, hasRequirement: false, missingTypes: [] },
-          { party: 'other', required: 0, received: 0, isComplete: false, hasRequirement: false, missingTypes: [] },
+          {
+            party: 'owner',
+            required: 2,
+            received: 1,
+            isComplete: false,
+            hasRequirement: true,
+            missingTypes: [{ type: 'id_document' }],
+            total: 1,
+            latestType: 'land_registry',
+            latestCreatedAt: new Date('2026-05-10T08:00:00Z'),
+          },
+          {
+            party: 'appraiser',
+            required: 0,
+            received: 0,
+            isComplete: false,
+            hasRequirement: false,
+            missingTypes: [],
+            total: 1,
+            latestType: 'survey',
+            latestCreatedAt: new Date('2026-05-14T12:00:00Z'),
+          },
+          {
+            party: 'architect',
+            required: 2,
+            received: 1,
+            isComplete: false,
+            hasRequirement: true,
+            missingTypes: [{ type: 'floor_plan' }],
+            total: 1,
+            latestType: 'blueprint',
+            latestCreatedAt: new Date('2026-05-12T11:00:00Z'),
+          },
+          {
+            party: 'municipality',
+            required: 0,
+            received: 0,
+            isComplete: false,
+            hasRequirement: false,
+            missingTypes: [],
+            total: 0,
+            latestType: null,
+            latestCreatedAt: null,
+          },
+          {
+            party: 'contractor',
+            required: 2,
+            received: 2,
+            isComplete: true,
+            hasRequirement: true,
+            missingTypes: [],
+            total: 2,
+            latestType: 'agreement',
+            latestCreatedAt: new Date('2026-05-02T09:00:00Z'),
+          },
+          {
+            party: 'lawyer',
+            required: 1,
+            received: 0,
+            isComplete: false,
+            hasRequirement: true,
+            missingTypes: [{ type: 'regulation' }],
+            total: 0,
+            latestType: null,
+            latestCreatedAt: null,
+          },
+          {
+            party: 'supervisor',
+            required: 0,
+            received: 0,
+            isComplete: false,
+            hasRequirement: false,
+            missingTypes: [],
+            total: 0,
+            latestType: null,
+            latestCreatedAt: null,
+          },
+          {
+            party: 'surveyor',
+            required: 0,
+            received: 0,
+            isComplete: false,
+            hasRequirement: false,
+            missingTypes: [],
+            total: 0,
+            latestType: null,
+            latestCreatedAt: null,
+          },
+          {
+            party: 'other',
+            required: 0,
+            received: 0,
+            isComplete: false,
+            hasRequirement: false,
+            missingTypes: [],
+            total: 0,
+            latestType: null,
+            latestCreatedAt: null,
+          },
         ],
         unmetParties: ['owner', 'architect', 'lawyer'],
         hasAnyRequirement: true,
         allRequirementsMet: false,
+        // S2 (org cockpit) — the project-attention axis. Self-consistent with
+        // SAMPLE_DOCUMENTS: PROJECT_A ("מתחם הרצל 12") has agreement+land_registry
+        // but no blueprint → missing blueprint (architect); PROJECT_B
+        // ("רוטשילד 8") has only a blueprint → missing agreement+land_registry.
+        // Counts + type/party keys + the project NAME only (no owner PII).
+        projectsBehind: [
+          {
+            projectId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2',
+            projectName: 'רוטשילד 8',
+            coreRequired: 3,
+            coreReceived: 1,
+            missing: [
+              { type: 'agreement', party: 'contractor' },
+              { type: 'land_registry', party: 'owner' },
+            ],
+          },
+          {
+            projectId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1',
+            projectName: 'מתחם הרצל 12',
+            coreRequired: 3,
+            coreReceived: 2,
+            missing: [{ type: 'blueprint', party: 'architect' }],
+          },
+        ],
+        projectsWithRequirement: 2,
+        projectsBehindCapped: false,
       }),
     ),
+  ),
+  // Phase 2a — server-side document search. Filters SAMPLE_DOCUMENTS by the name
+  // substring `q` (required) + optional `party` (via providerPartyForDocType) +
+  // `projectId` + `archived`. Declared BEFORE `/documents/:id` so the literal
+  // "search" path is not captured as :id. Returns the same { data, page } envelope.
+  http.get(`${API}/documents/search`, ({ request }) => {
+    const url = new URL(request.url);
+    const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
+    const party = url.searchParams.get('party');
+    const projectId = url.searchParams.get('projectId');
+    const archived = url.searchParams.get('archived') === 'true';
+    let items = SAMPLE_DOCUMENTS.filter((d) =>
+      archived ? d.archivedAt !== null : d.archivedAt === null,
+    );
+    if (q) items = items.filter((d) => d.name.toLowerCase().includes(q));
+    if (party) items = items.filter((d) => providerPartyForDocType(d.type) === party);
+    if (projectId) items = items.filter((d) => d.projectId === projectId);
+    return HttpResponse.json(listEnvelope(items));
+  }),
+  // S3 — DH3 classify (suggest-only). A tiny offline heuristic over the filename
+  // so the generic dropzone gets a realistic suggestion in MSW mode. Declared
+  // BEFORE `/documents` POST + `/documents/:id` (literal path, no :id capture).
+  http.post(`${API}/documents/classify`, async ({ request }) => {
+    const body = (await request.json()) as { filename?: string };
+    const name = (body.filename ?? '').toLowerCase();
+    let docType: string | null = null;
+    let confidence = 0;
+    let reason = 'none';
+    if (/(נסח|טאבו|tabu|land)/.test(name)) {
+      docType = 'land_registry';
+      confidence = 0.92;
+      reason = 'filename_tabu';
+    } else if (/(הסכם|agreement|contract|חוזה)/.test(name)) {
+      docType = 'agreement';
+      confidence = 0.7;
+      reason = 'filename_agreement';
+    } else if (/(תקנון|regulation)/.test(name)) {
+      docType = 'regulation';
+      confidence = 0.6;
+      reason = 'filename_regulation';
+    }
+    return HttpResponse.json(
+      dataEnvelope({
+        suggestions: docType ? [{ docType, confidence, signal: 'filename', reason }] : [],
+        suggestOnly: true,
+      }),
+    );
+  }),
+  // S3 — DH4 dedup-check (read-only). Offline: never a duplicate (the FE then
+  // proceeds with the normal upload path).
+  http.post(`${API}/documents/dedup-check`, () =>
+    HttpResponse.json(dataEnvelope({ duplicates: [], hasDuplicate: false })),
   ),
   http.post(`${API}/documents`, async ({ request }) => {
     const body = await request.json();

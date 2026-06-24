@@ -22,6 +22,9 @@ const TYPE_LABELS_HE: Record<string, string> = {
   municipal_approval: 'אישור / היתר עירייה',
   schedule: 'לוח זמנים / תכנית עבודה',
   legal_opinion: 'חוות דעת משפטית',
+  // S4-taxonomy — supervisor + power-of-attorney party adds
+  inspection_report: 'דו״ח פיקוח',
+  power_of_attorney: 'ייפוי כוח',
   other: 'אחר',
   // legacy generic types (back-compat display)
   contract: 'חוזה',
@@ -44,6 +47,9 @@ const TYPE_LABELS_EN: Record<string, string> = {
   municipal_approval: 'Municipal approval',
   schedule: 'Schedule',
   legal_opinion: 'Legal opinion',
+  // S4-taxonomy — supervisor + power-of-attorney party adds
+  inspection_report: 'Inspection report',
+  power_of_attorney: 'Power of attorney',
   other: 'Other',
   contract: 'Contract',
   id_document: 'ID Document',

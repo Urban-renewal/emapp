@@ -201,6 +201,31 @@ with the situation-picture-at-a-glance north-star (calm, system-manages-by-rules
 confirm, zoom-in). A "flat wall" that works only at demo scale is a FAIL, even if every row is
 individually correct.
 
+**NO FLAT/STATIC SURFACE ANYWHERE — EVERY flow is a situation-picture (owner 2026-06-23,
+hardened). The era of flat/static is OVER, for documents AND every other process in the system.**
+Generalizes the rule above to ALL flows. Design EVERY surface for the org-customer at REAL scale —
+100 projects, 100 contractors, thousands of items — and ask "what does this look like with 100 of
+them?" before calling anything done:
+
+- **NO secondary flat-list escape hatch.** An "all items / forensic" view that is itself a flat wall
+  (e.g. the documents "כל המסמכים" tab) is a FAIL — it too must be a situation-picture (grouped,
+  attention-first, searchable, drill-down), never a dumb scroll.
+- **AUTONOMOUS-MINIMUM-ACTIONS.** The system PROPOSES, AUTO-ASSIGNS, and CHASES; the user confirms in
+  one click. An uploaded document MUST auto-associate to the exact relevant party/project/entity (the
+  system knows the category → it knows where it belongs); actions are GENERIC or SMART-tailored
+  ("upload what's missing here"), never rigid per-file/per-type buttons. Minimize manual steps to
+  near zero — that IS "autonomous managing system."
+- **COLLABORATION is first-class.** Work/documents flow BETWEEN parties (owner ↔ עו״ד ↔ קבלן ↔ עירייה
+  ↔ שמאי): sharing, hand-off, who-needs-what-from-whom. Design the cross-party flow, not one silo.
+- **WALK DEEPLY, never shallowly.** A real-Chrome "PASS" requires: test at SCALE (seed/imagine 100s),
+  ENTER the sub-surfaces (open files, drill into entities, switch every view), and VERIFY THE
+  NUMBERS/DATA ARE CORRECT — a "0 מתוך X" while documents exist is a FAIL the render-check missed.
+  "It rendered" is NOT "it passes"; declaring PASS on a shallow render is a logged mistake.
+- **DESIGN CUSTOMER PROCESSES WITH A COUNCIL FIRST.** For any org-customer-facing process, convene a
+  multi-agent COUNCIL to design the holistic full experience (scale, parties/entities, categorization,
+  auto-assignment, sharing, autonomy, the situation-picture) BEFORE building — don't patch a flat
+  surface into existence. The customer is an ORGANIZATION; design the whole process they live in.
+
 \### G-RT — Red-team THROUGHOUT + loop-until-closed (every security-sensitive change; default-on for any non-trivial implementation)
 
 An INDEPENDENT red-team (NOT the builder, NOT the builder's own @security PASS) tries to
@@ -218,6 +243,28 @@ the attack matrix tried-and-failed, not just "fixed".
 Own holistic quality on EVERY change: SOLID/seams, sub-second latency, error-handling +
 fail-closed, observability, generic-not-special-cased, root-cause-not-plaster. Don't make
 the owner find the gap. These are the flow — re-derive nothing.
+
+**ONE SOURCE OF TRUTH + REUSE THE CANONICAL FLOW, NEVER RE-IMPLEMENT (owner 2026-06-23, hardened —
+this is the ROOT of the bugs we keep hitting). SOLID makes this not-hard.** Every concept has ONE
+source of truth; every operation routes through ONE canonical implementation; the lead VERIFIES it.
+
+- **Divergent parallel implementations of the same thing are THE recurring defect.** The "0 מתוך X"
+  board bug = TWO unaligned queries computing the same party's numbers (no single source of truth).
+  The reissue consent-bypass = `reissueAndDeliver` RE-IMPLEMENTED the send instead of routing through
+  the consent seam `sendGovernedReminder` uses. Both are the SAME mistake: a second implementation
+  that drifted from the canonical one. Stop creating second implementations.
+- **A new capability that RESEMBLES an existing one MUST be built ON the existing generic flow
+  (compose/extend), not re-coded.** Document sharing → reuse `external_share` + `decideExternalPartyAccess`
+  - `OutboundGovernor` (NOT a new share path). Any new outbound → `governOutboundSend`. Any new
+    autonomous behavior → register a recommender on the existing engine (no new engine part). Any new
+    list/board → the situation-picture primitives. Any new auth/token → the existing token-tier pattern.
+    If you find yourself writing logic that already exists elsewhere, STOP and route through the existing
+    seam — that IS the SOLID design.
+- **Operations stay SYNCHRONIZED to the one source.** A read and the action that changes it, or two
+  surfaces showing the same fact, must derive from ONE computation/seam — never two that can drift.
+- **LEAD DUTY (owner: "כמנהל אתה חייב לוודא מימוש נכון ותקין"):** every dispatch brief NAMES the
+  canonical seam to reuse; every review VERIFIES reuse-not-reimplement + single-source-of-truth + sync,
+  not just code-green. Flag any re-implementation in G-RT and route it back through the canonical path.
 
 \### Dispatch rule (so agents don't forget)
 
@@ -269,6 +316,23 @@ approval when the right move is to keep building. Anchored HERE (not memory) so 
    G-QA real-Chrome walk every browser-observable change, CI green) — a coarser PR = one thorough pass
    over more, never a skipped pass. Only batch COHESIVE work (never couple an unrelated/independently-
    risky change); if a change is too big to red-team well, split it. Quality > raw PR-count.
+
+8. **ANTI-PARK MECHANISM (owner 2026-06-23, after repeated park-then-apologize — the #1 recurring
+   failure). This is MECHANICAL, not aspirational — it removes the discretion that keeps getting abused:**
+   - **The phrases "I'll do it next turn" / "on fresh context" / "later" / "deferring to" for work that
+     is ALREADY code-green are BANNED.** Ready work is driven to MERGE in the SAME turn it becomes ready.
+     Context-thinness is NEVER a defer-reason — if genuinely near the limit, the FINAL action of the turn
+     is the merge (or the next concrete step), never a PROMISE to act next turn.
+   - **STOP APOLOGIZING. "You're right, I apologize" / "you're right, that's the bug" is FORBIDDEN as a
+     response** — it costs a turn, signals contrition instead of change, and is exactly what frustrates
+     the owner. Replace every would-be apology with the executed action (the merged PR, the dispatched
+     builder). SHOW, don't say. If you catch yourself typing an apology, delete it and run the command.
+   - **TURN-START RITUAL (every heartbeat + every post-builder turn): DRAIN FIRST.** Before any analysis
+     or status report, the FIRST actions are: `gh pr list` → merge every green PR, collect every finished
+     builder → commit/walk/merge it. Only THEN start or report new work. NEVER write a status update while
+     a green PR sits unmerged or a finished builder sits uncommitted.
+   - Reports are for EVIDENCE of action taken (merged #X, walked Y), never for narrating what you WILL do.
+     Wall-clock spent reporting/analyzing instead of merging IS the bug.
 
 \## ===== AUTOPILOT PROTOCOL =====
 

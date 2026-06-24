@@ -22,8 +22,10 @@ import {
   DOCUMENT_SCAN_REJECTED_CODE,
   DOCUMENT_TYPE_MISMATCH_CODE,
   DOCUMENT_UPLOAD_INCOMPLETE_CODE,
+  PROJECTS_BEHIND_CAP,
   REMEDIATION_SAMPLE_MAX,
   REQUIRED_DOC_TYPES_BY_TRACK,
+  SENSITIVE_DOC_TYPES,
   docTypesForParty,
   providerPartyForDocType,
   trackForProjectType,
@@ -120,16 +122,12 @@ const TYPE_MISMATCH = new ConflictException({
   error: { code: DOCUMENT_TYPE_MISMATCH_CODE },
 });
 
-/** PII-bearing document types — sensitive-by-type at create (D-P5.7). */
-const SENSITIVE_DOC_TYPES: ReadonlySet<string> = new Set([
-  'id_document',
-  'financial',
-  // נסח טאבו — a land-registry extract lists EVERY owner's national_id, so it
-  // is PII-dense by definition and must derive sensitive=true (turn-ON only):
-  // encrypted at rest, OTP step-up on download, and STRUCTURALLY EXCLUDED from
-  // the non-sensitive contractor share tier (contractor-read.service.ts).
-  'land_registry',
-]);
+// PII-bearing document types — sensitive-by-type at create (D-P5.7). The set is
+// the SINGLE source of truth in `@emapp/shared-types` (re-imported above) so the
+// FE upload dropzone and this create-time derivation can NEVER drift to two
+// different lists. Membership means: derive sensitive=true (turn-ON only),
+// encrypted at rest, OTP step-up on download, and STRUCTURALLY EXCLUDED from the
+// non-sensitive contractor share tier (contractor-read.service.ts).
 
 // ── 7d (D-P5.4 second half) — app-envelope encryption for SENSITIVE bytes ───
 // At-rest layout (self-describing — no migration needed for the format):
@@ -1848,6 +1846,47 @@ export class DocumentsService {
   }
 
   /**
+   * Agent record-scoping for the board-completeness `total` rollup. IDENTICAL in
+   * intent to {@link agentDocScope} but the project leg resolves via the SAME
+   * CANONICAL scope as the board's `received`/`required` pass: a doc is in an
+   * agent's scope when its CANONICAL project — COALESCE(doc_scope='project' →
+   * doc_scope_id, project_id) — is an active assignment, OR (the apartment leg,
+   * unchanged) it hangs off an apartment in an assigned project.
+   *
+   * WHY a dedicated helper (the S1 bug): `agentDocScope` keys the project leg on
+   * the LEGACY `documents.project_id` column ONLY. The `received` pass resolves
+   * the canonical doc_scope. So a doc filed canonically with project_id=NULL
+   * satisfied a `received` slot yet was INVISIBLE to the `total` rollup — the
+   * two numbers behind one party card measured two different populations. This
+   * predicate makes `total` use the canonical resolver too, so the two passes can
+   * never diverge on scope. Returns `undefined` for non-agents (managers/viewers
+   * are RLS-org-bound on both passes, so they were never divergent).
+   */
+  private agentBoardScope(user: AccessTokenPayload): SQL | undefined {
+    if (user.role !== 'agent') return undefined;
+    // Canonical resolved project id — the SAME COALESCE the received pass uses.
+    const resolvedProjectId = sql`COALESCE(
+      CASE WHEN ${documents.docScope} = 'project' THEN ${documents.docScopeId} END,
+      ${documents.projectId}
+    )`;
+    const directProjectAssigned = sql<boolean>`EXISTS (
+      SELECT 1 FROM project_assignments pa
+      WHERE pa.user_id = ${user.sub}::uuid
+        AND pa.unassigned_at IS NULL
+        AND pa.project_id = ${resolvedProjectId}
+    )`;
+    const viaApartment = sql<boolean>`EXISTS (
+      SELECT 1 FROM apartments a
+      JOIN buildings b ON b.id = a.building_id
+      JOIN project_assignments pa ON pa.project_id = b.project_id
+      WHERE pa.user_id = ${user.sub}::uuid
+        AND pa.unassigned_at IS NULL
+        AND a.id = ${documents.apartmentId}
+    )`;
+    return or(directProjectAssigned, viaApartment);
+  }
+
+  /**
    * DH4 (MASTER-PLAN-V13 Wave B) — document DEDUP probe ("link to existing, not
    * duplicate"). The client hashes the file it is about to upload (the SAME
    * sha256 hex `content_hash` everywhere else) and asks whether the caller's
@@ -1972,6 +2011,7 @@ export class DocumentsService {
       cursor?: string;
       type?: string;
       party?: DocumentParty;
+      projectId?: string;
       scope?: 'project' | 'apartment' | 'org';
       archived?: boolean;
     },
@@ -1995,6 +2035,20 @@ export class DocumentsService {
         // Phase 1 — `party` narrows to that party's doc types (AND with `type`
         // if both given). Pure type-set predicate; never widens.
         if (query.party) filters.push(this.partyTypeFilter(query.party));
+        // S2 (faceted shell) — `projectId` narrows to ONE project, resolved via the
+        // CANONICAL scope (doc_scope='project' → doc_scope_id, else legacy
+        // project_id) — the SAME resolver the board's received/required pass uses,
+        // so a canonically-filed doc is found and the facet count agrees with the
+        // board. NARROWING only (an extra AND; RLS + agent-scoping still bound it).
+        if (query.projectId) {
+          const pid = query.projectId;
+          filters.push(
+            or(
+              and(eq(documents.docScope, 'project'), eq(documents.docScopeId, pid)),
+              eq(documents.projectId, pid),
+            ),
+          );
+        }
         // `scope` NARROWS by parent linkage (never widens — it only adds an AND).
         if (query.scope === 'project') filters.push(isNotNull(documents.projectId));
         else if (query.scope === 'apartment') filters.push(isNotNull(documents.apartmentId));
@@ -2130,7 +2184,7 @@ export class DocumentsService {
         //    docs), matching the DH2 per-project checklist which does not filter
         //    on project archive state.
         const projBase = tx
-          .select({ id: projects.id, type: projects.type })
+          .select({ id: projects.id, type: projects.type, name: projects.name })
           .from(projects)
           .$dynamic();
         const projectRows =
@@ -2160,6 +2214,19 @@ export class DocumentsService {
           }
           return a;
         };
+
+        // S2 (org cockpit) — per-PROJECT core-required rollup, populated in the
+        // SAME loop as the per-party slots (no extra query). A project's `missing`
+        // carries each missing required TYPE + its derived responsible PARTY so the
+        // cockpit can name the party + deep-link the one-click upload. Counts +
+        // type/party keys + the project NAME only — no owner PII.
+        interface ProjAcc {
+          name: string;
+          coreRequired: number;
+          coreReceived: number;
+          missing: { type: DocumentType; party: DocumentParty }[];
+        }
+        const projAcc = new Map<string, ProjAcc>();
 
         if (projectRows.length > 0) {
           const projectIds = projectRows.map((p) => p.id);
@@ -2217,26 +2284,53 @@ export class DocumentsService {
           for (const project of projectRows) {
             const requiredTypes = REQUIRED_DOC_TYPES_BY_TRACK[trackForProjectType(project.type)];
             const received = receivedByProject.get(project.id);
+            // S2 — start this project's per-project core rollup (every required
+            // type is one core slot for the project, mapped to its responsible party).
+            const pa: ProjAcc = {
+              name: project.name,
+              coreRequired: 0,
+              coreReceived: 0,
+              missing: [],
+            };
             for (const reqType of requiredTypes) {
-              const a = bump(providerPartyForDocType(reqType));
+              const party = providerPartyForDocType(reqType);
+              const a = bump(party);
               a.required += 1;
-              if (received?.has(reqType)) a.received += 1;
-              else a.missing.add(reqType);
+              pa.coreRequired += 1;
+              if (received?.has(reqType)) {
+                a.received += 1;
+                pa.coreReceived += 1;
+              } else {
+                a.missing.add(reqType);
+                pa.missing.push({ type: reqType, party });
+              }
             }
+            if (pa.coreRequired > 0) projAcc.set(project.id, pa);
           }
         }
 
         // ── Phase 1 (board-summary) — the WHOLE-BOARD per-party document rollup.
-        // ONE aggregate pass over EVERY non-archived doc the caller can SEE
-        // (the SAME agentDocScope record-scoping as `list`, so a manager gets all
-        // org docs via RLS and an agent only their assigned projects' docs).
-        // Grouped by the doc's ACTUAL type → party (providerPartyForDocType),
+        // ONE aggregate pass over EVERY non-archived doc the caller can SEE,
+        // grouped by the doc's ACTUAL type → party (providerPartyForDocType),
         // carrying the per-type count + the most-recent createdAt so we can derive
-        // each party's `total`, `latestType`, `latestCreatedAt`. COUNTS + TYPE
-        // KEYS only — no id, no name, no owner PII. This fixes the "counts lie"
-        // board bug (the FE counted a single 25-doc keyset page; a party with
-        // >25 docs was truncated). Sub-second: a GROUP BY type over the indexed,
-        // org-scoped, non-archived rows — no N+1, no per-doc fetch.
+        // each party's `total` (docs filed), `latestType`, `latestCreatedAt`.
+        // COUNTS + TYPE KEYS only — no id, no name, no owner PII. Fixes the
+        // "counts lie" board bug (the FE counted a single 25-doc keyset page; a
+        // party with >25 docs was truncated). Sub-second: a GROUP BY type over the
+        // indexed, org-scoped, non-archived rows — no N+1, no per-doc fetch.
+        //
+        // SCOPE-ALIGNMENT (the S1 fix — the two passes must NOT diverge on which
+        // docs are "in scope"): the `received`/`required` slot pass above resolves
+        // a doc's project via the CANONICAL COALESCE(doc_scope='project' →
+        // doc_scope_id, project_id) resolver, bounded to the in-scope project set.
+        // The earlier `total` pass keyed an AGENT's visibility on the LEGACY
+        // `documents.project_id` column alone (`agentDocScope`), so a doc filed
+        // canonically (doc_scope='project'/doc_scope_id=X, legacy project_id NULL)
+        // counted toward `received` but NOT toward `total` — two unaligned
+        // populations behind ONE card. `agentBoardScope` resolves the agent's
+        // project leg via the SAME canonical COALESCE (plus the apartment leg,
+        // unchanged), so an agent's `total` and `received` now cover ONE
+        // population. A manager is RLS-only on both passes (all org docs).
         interface PartyRollup {
           total: number;
           latestType: string | null;
@@ -2250,7 +2344,7 @@ export class DocumentsService {
             latest: sql<Date>`MAX(${documents.createdAt})`,
           })
           .from(documents)
-          .where(and(isNull(documents.archivedAt), this.agentDocScope(user)))
+          .where(and(isNull(documents.archivedAt), this.agentBoardScope(user)))
           .groupBy(documents.type);
         for (const row of typeAgg) {
           const party = providerPartyForDocType(row.type);
@@ -2293,11 +2387,39 @@ export class DocumentsService {
           .map((c) => c.party);
         const hasAnyRequirement = byParty.some((c) => c.hasRequirement);
 
+        // S2 (org cockpit) — the PROJECT-attention axis. From the per-project core
+        // rollup: every project WITH a requirement is the denominator; those whose
+        // core set is UNMET (coreReceived < coreRequired) are ranked WORST-FIRST
+        // (fewest filled first, then most missing), capped so the cockpit stays a
+        // calm situation-picture rather than a wall. Counts + type/party keys + the
+        // project name only — no owner PII.
+        const projectsWithRequirement = projAcc.size;
+        const behindAll = [...projAcc.entries()]
+          .filter(([, p]) => p.coreReceived < p.coreRequired)
+          .sort(([, a], [, b]) => {
+            // Worst-first: fewer core slots filled ranks higher; tie-break on more
+            // missing types, then a stable name sort for determinism.
+            if (a.coreReceived !== b.coreReceived) return a.coreReceived - b.coreReceived;
+            if (a.missing.length !== b.missing.length) return b.missing.length - a.missing.length;
+            return a.name.localeCompare(b.name);
+          });
+        const projectsBehind = behindAll.slice(0, PROJECTS_BEHIND_CAP).map(([projectId, p]) => ({
+          projectId,
+          projectName: p.name,
+          coreRequired: p.coreRequired,
+          coreReceived: p.coreReceived,
+          missing: p.missing,
+        }));
+
         return {
           byParty,
           unmetParties,
           hasAnyRequirement,
           allRequirementsMet: hasAnyRequirement && unmetParties.length === 0,
+          // S2 — project-attention axis.
+          projectsBehind,
+          projectsWithRequirement,
+          projectsBehindCapped: behindAll.length > PROJECTS_BEHIND_CAP,
         };
       },
       { userId: user.sub },

@@ -878,13 +878,113 @@
       "gist": {
         "count": "{count} documents",
         "latest": "{count} documents · latest {when}",
+        "latestType": "{count} documents · latest: {type}",
+        "latestWhen": "Latest received {when}",
         "allReceived": "{count} documents · all required received",
         "someMissing": "{received} of {required} received · missing: {types}"
       },
+      "docsFiled": "{count} documents",
+      "core": {
+        "missing": "Core docs {received}/{required} · missing: {types}",
+        "complete": "Core docs {received}/{required}"
+      },
       "complete": "Complete",
-      "completeness": "{received} of {required} required documents received",
-      "back": "Back to parties"
+      "completeness": "Core docs {received}/{required}",
+      "back": "Back to parties",
+      "zoomEmpty": "No documents to show right now",
+      "uploadMissing": "Upload {type}",
+      "uploadMissingAria": "Upload {type} for {party}"
     },
+    "views": {
+      "label": "View",
+      "cockpit": "Project status",
+      "party": "By party",
+      "project": "By project",
+      "all": "All documents"
+    },
+    "cockpit": {
+      "heading": "Projects needing attention",
+      "pulse": {
+        "behind": "{behind} of {total} projects missing core documents",
+        "behindCapped": "Over {behind} of {total} projects missing core documents",
+        "allClear": "All {total} projects with a document requirement — core documents complete",
+        "noRequirement": "No projects with a core-document requirement yet",
+        "loading": "Loading project status…"
+      },
+      "allClearTitle": "All in order",
+      "allClearHint": "Every project has its required core documents.",
+      "noProjectsTitle": "No projects yet",
+      "card": {
+        "core": "Core docs {received}/{required}",
+        "missingOne": "Missing {type} — {party}",
+        "missingMany": "Missing {first} +{count} more ({party})",
+        "open": "Open {name} documents",
+        "openAria": "Open {name} documents",
+        "uploadAria": "Upload {type} for {name}"
+      },
+      "fleet": {
+        "heading": "All projects ({count})",
+        "complete": "Core complete",
+        "metTail": "+{count} more projects with core documents complete",
+        "showAll": "Show all",
+        "moreBehind": "+{count} more projects behind"
+      }
+    },
+    "project": {
+      "open": "Open {name} documents",
+      "back": "Back to projects",
+      "empty": "No projects yet",
+      "zoomEmpty": "No documents in this project yet"
+    },
+    "checklistBoard": {
+      "heading": "Project core documents",
+      "received": "{type} — received",
+      "missing": "{type} — missing",
+      "uploadAria": "Upload {type}",
+      "complete": "All core documents received",
+      "summary": "{received} of {required} core documents received",
+      "docsHeading": "All project documents",
+      "noTrack": "This project has no defined core-document requirement"
+    },
+    "grouped": {
+      "attentionBand": "{count} items need attention",
+      "pendingScan": "{count} in security scan",
+      "ghostUploads": "{count} incomplete uploads",
+      "groupCount": "{count} documents",
+      "expandAria": "Expand {name} group",
+      "collapseAria": "Collapse {name} group",
+      "emptyGroup": "No documents in this group"
+    },
+    "facet": {
+      "label": "Filter",
+      "all": "All",
+      "party": "Party",
+      "type": "Type",
+      "scopeLabel": "Scope",
+      "scanStatus": "Scan",
+      "clear": "Clear filters",
+      "scope": {
+        "project": "Project",
+        "apartment": "Apartment",
+        "org": "Org"
+      },
+      "scan": {
+        "pending": "Scanning",
+        "clean": "Clean"
+      }
+    },
+    "row": {
+      "apartment": "Apt {number}",
+      "sensitive": "Sensitive",
+      "downloadAria": "Download {name}",
+      "archiveAria": "Archive {name}"
+    },
+    "loadMore": "Load more",
+    "loadingMore": "Loading more…",
+    "resetPage": "Back to first page",
+    "popupBlocked": "Your browser blocked opening the file — allow pop-ups and try again.",
+    "archiveDone": "Document moved to archive.",
+    "archivedEmpty": "No archived documents.",
     "party": {
       "owner": "Owners",
       "appraiser": "Appraiser",
@@ -917,10 +1017,60 @@
       "type": "Type",
       "file": "File"
     },
+    "dropzone": {
+      "hint": "Pick a file — the system detects the document type, files it under the right party and project, and only asks you to choose a type when it's genuinely unsure.",
+      "pick": "Choose a file",
+      "analyzing": "Detecting the document type…",
+      "uploading": "Uploading…",
+      "autoFiled": "Filed as {type}",
+      "undo": "Undo",
+      "sensitiveNotice": "This is a sensitive document — it will be encrypted and require extra verification to view.",
+      "confirm": {
+        "prompt": "This looks like {type}. Confirm?",
+        "accept": "Confirm",
+        "acceptSensitive": "Confirm and upload encrypted",
+        "change": "Change"
+      },
+      "ask": {
+        "prompt": "We couldn't detect the document type — choose one:",
+        "gapsHere": "Missing here",
+        "other": "Other",
+        "showAll": "Choose another type"
+      },
+      "dedup": {
+        "title": "An identical document already exists.",
+        "link": "Link to existing"
+      },
+      "cancel": "Cancel",
+      "mimeNotAllowed": "This file type is not allowed. Upload PDF / image / Excel / Word.",
+      "tooLarge": "File is larger than allowed (max 50MB).",
+      "sizeMismatch": "Uploaded file size doesn't match the declared size. Try again.",
+      "hashMismatch": "Uploaded file content doesn't match the declared hash. Try again.",
+      "scanRejected": "The file was rejected by the security scan.",
+      "storageUnavailable": "Storage is temporarily unavailable. Retry shortly.",
+      "uploadFailed": "Upload to storage failed.",
+      "createFailed": "Failed to create document."
+    },
     "notSensitive": "This document is not marked sensitive — use the standard upload",
     "tab": {
       "active": "Active",
       "archived": "Archived"
+    },
+    "detail": {
+      "metaTitle": "Document details",
+      "sensitive": "Sensitive — contains personal data",
+      "sensitiveHint": "Viewing and downloading require additional verification (one-time code)",
+      "scanLabel": "Security scan",
+      "parentProject": "Project",
+      "parentApartment": "Apartment",
+      "noParent": "Not linked to a project",
+      "stepUpHint": "Viewing requires verification",
+      "openedNewTab": "The document opened in a new tab",
+      "downloadStarted": "Download started",
+      "popupBlocked": "Allow pop-ups to view the document",
+      "archivedTitle": "Archived document",
+      "archivedBody": "This document was archived and is not available to view or download. You can restore it from the archived documents list.",
+      "archivedToList": "Go to documents list"
     }
   },
   "ownerships": {
@@ -1855,6 +2005,83 @@
       "notes": "Notes"
     }
   },
+  "externalShare": {
+    "title": "Invite a party",
+    "subtitle": "Share {scope} with an external party — role-scoped access that expires on its own.",
+    "partyLegend": "Party type",
+    "scopeLine": "Scope: {scope} ({type})",
+    "scopeType": {
+      "project": "project",
+      "building": "building",
+      "apartment": "apartment"
+    },
+    "permsLegend": "Access (you can only narrow below the ceiling)",
+    "perm": {
+      "overview": "Project overview",
+      "documents": "Documents",
+      "download": "Download documents",
+      "signatures": "Signature progress"
+    },
+    "sensitive": {
+      "blockedTitle": "Sensitive documents — not in this share",
+      "blockedHint": "Sharing sensitive documents (national IDs, title deeds) with an external party is coming later. For now this share covers non-sensitive documents only."
+    },
+    "ttlLabel": "Access validity",
+    "ttlDays": "{count} days",
+    "cancel": "Cancel",
+    "createSend": "Share & send",
+    "sending": "Sending...",
+    "createdSent": "Share created — {party} was granted access.",
+    "error": {
+      "ceiling": "The access you requested exceeds what this party is allowed. Narrow it and try again.",
+      "forbidden": "You don't have permission to share (manager only).",
+      "generic": "Creating the share failed. Try again."
+    },
+    "party": {
+      "developer": "Developer",
+      "developer_lawyer": "Developer's lawyer",
+      "tenant_lawyer": "Residents' lawyer",
+      "bank": "Financing bank",
+      "supervisor": "Supervisor",
+      "appraiser": "Appraiser",
+      "surveyor": "Surveyor",
+      "committee": "Residents' committee",
+      "special_admin": "Receiver / special administrator"
+    },
+    "openButton": "Invite a party",
+    "activity": {
+      "heading": "Active shares",
+      "empty": "No active shares",
+      "emptyHint": "Invite a party to share a project or apartment with them."
+    },
+    "countdown": {
+      "noExpiry": "No expiry",
+      "expired": "Expired",
+      "remaining": "{duration} left",
+      "days": "{count} days",
+      "hours": "{count} hours",
+      "minutes": "{count} min"
+    },
+    "row": {
+      "scope": "{count} {type}",
+      "perms": "{summary} permissions",
+      "lastActivity": "Last update {when}",
+      "resend": "Resend",
+      "resendAria": "Resend the link to {party}",
+      "extend": "Extend",
+      "extendAria": "Extend {party}'s access validity",
+      "revoke": "Revoke",
+      "revokeAria": "Revoke {party}'s access"
+    },
+    "revokeConfirm": "Revoke {party}'s access? Access is blocked immediately.",
+    "revokeDone": "Share revoked — access blocked.",
+    "revokeFailed": "Revoking the share failed. Try again.",
+    "extendConfirm": "Extend access validity by {days} days?",
+    "extendDone": "Access validity extended.",
+    "extendFailed": "Extending the validity failed (you may have exceeded the allowed cap).",
+    "resendDone": "The link was resent to {party}.",
+    "resendFailed": "Resending the link failed. Try again."
+  },
   "shares": {
     "title": "Contractor shares",
     "backToProject": "Back to project",
@@ -1983,6 +2210,13 @@
     "bellAria": "Notifications",
     "viewAll": "View all",
     "showAll": "Show all notifications",
+    "allClearTitle": "All clear",
+    "allClearHint": "Nothing needs your attention right now.",
+    "allClearForFilterTitle": "Nothing to handle here",
+    "allClearForFilterHint": "No notifications in this category.",
+    "needsAttention": "Needs attention",
+    "needsAttentionCount": "{count} need attention",
+    "markRowReadAria": "Mark this notification as read",
     "filter": {
       "all": "All",
       "unread": "Unread",
@@ -1993,6 +2227,19 @@
       "mentions": "Mentions",
       "apartments": "Apartment status",
       "shareRevoked": "Access revoked"
+    },
+    "group": {
+      "today": "Today",
+      "week": "This week",
+      "earlier": "Earlier"
+    },
+    "action": {
+      "open": "Open",
+      "upload": "Upload here",
+      "remind": "Send reminder",
+      "review": "Review",
+      "openThread": "Open conversation",
+      "ariaSuffix": "— {title}"
     }
   },
   "assignments": {

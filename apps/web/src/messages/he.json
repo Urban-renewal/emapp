@@ -878,13 +878,113 @@
       "gist": {
         "count": "{count} מסמכים",
         "latest": "{count} מסמכים · האחרון {when}",
+        "latestType": "{count} מסמכים · אחרון: {type}",
+        "latestWhen": "האחרון התקבל {when}",
         "allReceived": "{count} מסמכים · כל מסמכי החובה התקבלו",
         "someMissing": "{received} מתוך {required} התקבלו · חסר: {types}"
       },
+      "docsFiled": "{count} מסמכים",
+      "core": {
+        "missing": "מסמכי-ליבה {received}/{required} · חסר: {types}",
+        "complete": "מסמכי-ליבה {received}/{required}"
+      },
       "complete": "הושלם",
-      "completeness": "{received} מתוך {required} מסמכי-חובה התקבלו",
-      "back": "חזרה לגורמים"
+      "completeness": "מסמכי-ליבה {received}/{required}",
+      "back": "חזרה לגורמים",
+      "zoomEmpty": "אין מסמכים להצגה כרגע",
+      "uploadMissing": "העלה {type}",
+      "uploadMissingAria": "העלאת {type} עבור {party}"
     },
+    "views": {
+      "label": "תצוגה",
+      "cockpit": "מצב הפרויקטים",
+      "party": "לפי גורם",
+      "project": "לפי פרויקט",
+      "all": "כל המסמכים"
+    },
+    "cockpit": {
+      "heading": "פרויקטים הזקוקים לטיפול",
+      "pulse": {
+        "behind": "{behind} מתוך {total} פרויקטים חסרים מסמכי-ליבה",
+        "behindCapped": "מעל {behind} מתוך {total} פרויקטים חסרים מסמכי-ליבה",
+        "allClear": "כל {total} הפרויקטים עם דרישת מסמכים — מסמכי-הליבה הושלמו",
+        "noRequirement": "אין עדיין פרויקטים עם דרישת מסמכי-ליבה",
+        "loading": "טוען את מצב הפרויקטים…"
+      },
+      "allClearTitle": "הכל מסודר",
+      "allClearHint": "לכל הפרויקטים יש את מסמכי-הליבה הנדרשים.",
+      "noProjectsTitle": "אין עדיין פרויקטים",
+      "card": {
+        "core": "מסמכי-ליבה {received}/{required}",
+        "missingOne": "חסר {type} — {party}",
+        "missingMany": "חסרים {first} ועוד {count} ({party})",
+        "open": "פתיחת המסמכים של {name}",
+        "openAria": "פתיחת המסמכים של {name}",
+        "uploadAria": "העלאת {type} עבור {name}"
+      },
+      "fleet": {
+        "heading": "כל הפרויקטים ({count})",
+        "complete": "ליבה הושלמה",
+        "metTail": "ועוד {count} פרויקטים שהשלימו את מסמכי-הליבה",
+        "showAll": "הצג הכל",
+        "moreBehind": "ועוד {count} פרויקטים מאחור"
+      }
+    },
+    "project": {
+      "open": "פתיחת המסמכים של {name}",
+      "back": "חזרה לפרויקטים",
+      "empty": "אין עדיין פרויקטים",
+      "zoomEmpty": "אין מסמכים בפרויקט זה עדיין"
+    },
+    "checklistBoard": {
+      "heading": "מסמכי-ליבה לפרויקט",
+      "received": "{type} — התקבל",
+      "missing": "{type} — חסר",
+      "uploadAria": "העלאת {type}",
+      "complete": "כל מסמכי-הליבה התקבלו",
+      "summary": "{received} מתוך {required} מסמכי-ליבה התקבלו",
+      "docsHeading": "כל המסמכים של הפרויקט",
+      "noTrack": "לפרויקט זה אין דרישת מסמכי-ליבה מוגדרת"
+    },
+    "grouped": {
+      "attentionBand": "{count} פריטים זקוקים לתשומת לב",
+      "pendingScan": "{count} בסריקת אבטחה",
+      "ghostUploads": "{count} העלאות שלא הושלמו",
+      "groupCount": "{count} מסמכים",
+      "expandAria": "פתיחת קבוצת {name}",
+      "collapseAria": "סגירת קבוצת {name}",
+      "emptyGroup": "אין מסמכים בקבוצה זו"
+    },
+    "facet": {
+      "label": "סינון",
+      "all": "הכל",
+      "party": "גורם",
+      "type": "סוג",
+      "scopeLabel": "שיוך",
+      "scanStatus": "סריקה",
+      "clear": "נקה סינון",
+      "scope": {
+        "project": "פרויקט",
+        "apartment": "דירה",
+        "org": "ארגוני"
+      },
+      "scan": {
+        "pending": "בסריקה",
+        "clean": "תקין"
+      }
+    },
+    "row": {
+      "apartment": "דירה {number}",
+      "sensitive": "רגיש",
+      "downloadAria": "הורדת {name}",
+      "archiveAria": "ארכוב {name}"
+    },
+    "loadMore": "טען עוד",
+    "loadingMore": "טוען עוד…",
+    "resetPage": "חזרה לדף הראשון",
+    "popupBlocked": "הדפדפן חסם את פתיחת הקובץ — אפשר חלונות קופצים ונסה שוב.",
+    "archiveDone": "המסמך הועבר לארכיון.",
+    "archivedEmpty": "אין מסמכים בארכיון.",
     "party": {
       "owner": "בעלים",
       "appraiser": "שמאי",
@@ -917,10 +1017,60 @@
       "type": "סוג",
       "file": "קובץ"
     },
+    "dropzone": {
+      "hint": "בחרו קובץ — המערכת מזהה את סוג המסמך, משייכת לגורם ולפרויקט הנכונים, ומבקשת לבחור סוג רק כשיש אי-ודאות.",
+      "pick": "בחירת קובץ",
+      "analyzing": "מזהה את סוג המסמך…",
+      "uploading": "מעלה…",
+      "autoFiled": "שויך כ-{type}",
+      "undo": "בטל",
+      "sensitiveNotice": "זה מסמך רגיש — הוא יוצפן ויידרש אימות נוסף לצפייה בו.",
+      "confirm": {
+        "prompt": "נראה שזה {type}. לאשר?",
+        "accept": "אישור",
+        "acceptSensitive": "אישור והעלאה מוצפנת",
+        "change": "שינוי"
+      },
+      "ask": {
+        "prompt": "לא הצלחנו לזהות את סוג המסמך — בחרו סוג:",
+        "gapsHere": "חסר כאן",
+        "other": "אחר",
+        "showAll": "בחירת סוג אחר"
+      },
+      "dedup": {
+        "title": "מסמך זהה כבר קיים במערכת.",
+        "link": "קשר לקיים"
+      },
+      "cancel": "ביטול",
+      "mimeNotAllowed": "סוג קובץ זה אינו מורשה. נא להעלות PDF / תמונה / Excel / Word.",
+      "tooLarge": "הקובץ גדול מהמותר (מקסימום 50MB).",
+      "sizeMismatch": "גודל הקובץ שהועלה אינו תואם להצהרה. נסה שוב.",
+      "hashMismatch": "תוכן הקובץ שהועלה אינו תואם להצהרה. נסה שוב.",
+      "scanRejected": "הקובץ נדחה בסריקת אבטחה.",
+      "storageUnavailable": "האחסון אינו זמין כרגע. נסה שוב מאוחר יותר.",
+      "uploadFailed": "ההעלאה לאחסון נכשלה.",
+      "createFailed": "יצירת המסמך נכשלה."
+    },
     "notSensitive": "המסמך אינו מסומן כרגיש — יש להעלות בנתיב הרגיל",
     "tab": {
       "active": "פעילים",
       "archived": "בארכיון"
+    },
+    "detail": {
+      "metaTitle": "פרטי המסמך",
+      "sensitive": "רגיש — מכיל מידע אישי",
+      "sensitiveHint": "צפייה והורדה דורשות אימות נוסף (קוד חד-פעמי)",
+      "scanLabel": "סריקת אבטחה",
+      "parentProject": "פרויקט",
+      "parentApartment": "דירה",
+      "noParent": "לא משויך לפרויקט",
+      "stepUpHint": "צפייה דורשת אימות",
+      "openedNewTab": "המסמך נפתח בכרטיסייה חדשה",
+      "downloadStarted": "ההורדה החלה",
+      "popupBlocked": "אפשרו חלונות קופצים כדי לצפות במסמך",
+      "archivedTitle": "מסמך מאורכב",
+      "archivedBody": "המסמך הועבר לארכיון ואינו זמין לצפייה או להורדה. ניתן לשחזר אותו דרך רשימת המסמכים המאורכבים.",
+      "archivedToList": "לרשימת המסמכים"
     }
   },
   "ownerships": {
@@ -1855,6 +2005,83 @@
       "notes": "הערות"
     }
   },
+  "externalShare": {
+    "title": "הזמנת גורם",
+    "subtitle": "שתף את {scope} עם גורם חיצוני — גישה מצומצמת לפי תפקיד, פגה מאליה.",
+    "partyLegend": "סוג הגורם",
+    "scopeLine": "היקף: {scope} ({type})",
+    "scopeType": {
+      "project": "פרויקט",
+      "building": "בניין",
+      "apartment": "דירה"
+    },
+    "permsLegend": "הרשאות גישה (אפשר רק לצמצם מתחת לתקרה)",
+    "perm": {
+      "overview": "סקירת פרויקט",
+      "documents": "מסמכים",
+      "download": "הורדת מסמכים",
+      "signatures": "התקדמות חתימות"
+    },
+    "sensitive": {
+      "blockedTitle": "מסמכים רגישים — לא בשיתוף זה",
+      "blockedHint": "שיתוף מסמכים רגישים (תעודות זהות, נסחים) לגורם חיצוני יופעל בהמשך. כרגע השיתוף כולל מסמכים לא-רגישים בלבד."
+    },
+    "ttlLabel": "תוקף הגישה",
+    "ttlDays": "{count} ימים",
+    "cancel": "ביטול",
+    "createSend": "שתף ושלח",
+    "sending": "שולח...",
+    "createdSent": "השיתוף נוצר — {party} קיבל גישה.",
+    "error": {
+      "ceiling": "ההרשאות שביקשת חורגות מהמותר לגורם זה. צמצם ונסה שוב.",
+      "forbidden": "אין הרשאה לשתף (מנהל בלבד).",
+      "generic": "יצירת השיתוף נכשלה. נסה שוב."
+    },
+    "party": {
+      "developer": "יזם",
+      "developer_lawyer": "עו״ד היזם",
+      "tenant_lawyer": "עו״ד הדיירים",
+      "bank": "בנק מלווה",
+      "supervisor": "מפקח",
+      "appraiser": "שמאי",
+      "surveyor": "מודד",
+      "committee": "נציגות",
+      "special_admin": "כונס / מנהל מיוחד"
+    },
+    "openButton": "הזמן גורם",
+    "activity": {
+      "heading": "שיתופים פעילים",
+      "empty": "אין שיתופים פעילים",
+      "emptyHint": "הזמן גורם כדי לשתף איתו פרויקט או דירה."
+    },
+    "countdown": {
+      "noExpiry": "ללא תפוגה",
+      "expired": "פג תוקף",
+      "remaining": "נותרו {duration}",
+      "days": "{count} ימים",
+      "hours": "{count} שעות",
+      "minutes": "{count} דקות"
+    },
+    "row": {
+      "scope": "{count} {type}",
+      "perms": "{summary} הרשאות",
+      "lastActivity": "עדכון אחרון {when}",
+      "resend": "שלח שוב",
+      "resendAria": "שלח שוב את הקישור ל{party}",
+      "extend": "הארך",
+      "extendAria": "הארך את תוקף הגישה של {party}",
+      "revoke": "בטל",
+      "revokeAria": "בטל את הגישה של {party}"
+    },
+    "revokeConfirm": "לבטל את הגישה של {party}? הגישה תיחסם מיידית.",
+    "revokeDone": "השיתוף בוטל — הגישה נחסמה.",
+    "revokeFailed": "ביטול השיתוף נכשל. נסה שוב.",
+    "extendConfirm": "להאריך את תוקף הגישה ב-{days} ימים?",
+    "extendDone": "תוקף הגישה הוארך.",
+    "extendFailed": "הארכת התוקף נכשלה (ייתכן שחרגת מהמותר).",
+    "resendDone": "הקישור נשלח שוב ל{party}.",
+    "resendFailed": "שליחת הקישור נכשלה. נסה שוב."
+  },
   "shares": {
     "title": "שיתופי קבלנים",
     "backToProject": "חזרה לפרויקט",
@@ -1983,6 +2210,13 @@
     "bellAria": "התראות",
     "viewAll": "הצג הכל",
     "showAll": "הצג את כל ההתראות",
+    "allClearTitle": "הכל מטופל",
+    "allClearHint": "אין התראות שדורשות את תשומת לבך כרגע.",
+    "allClearForFilterTitle": "אין מה לטפל כאן",
+    "allClearForFilterHint": "אין התראות בקטגוריה זו.",
+    "needsAttention": "דורש טיפול",
+    "needsAttentionCount": "{count} דורשות טיפול",
+    "markRowReadAria": "סמן התראה זו כנקראה",
     "filter": {
       "all": "הכל",
       "unread": "לא נקראו",
@@ -1993,6 +2227,19 @@
       "mentions": "אזכורים",
       "apartments": "סטטוס דירות",
       "shareRevoked": "ביטולים"
+    },
+    "group": {
+      "today": "היום",
+      "week": "השבוע",
+      "earlier": "קודם לכן"
+    },
+    "action": {
+      "open": "פתח",
+      "upload": "העלה כאן",
+      "remind": "שלח תזכורת",
+      "review": "בדוק",
+      "openThread": "פתח שיחה",
+      "ariaSuffix": "— {title}"
     }
   },
   "assignments": {

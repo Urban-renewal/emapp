@@ -100,12 +100,20 @@ describe('NS6 — projects-list server-search filters render', () => {
     }
   });
 
-  it('2) segment <select> renders the "all" option + the 3 NS1 system segments', () => {
+  it('2) G3 — attention quick-filter chips render all 3 NS1 system segments + "all", urgent first', () => {
     const html = renderToStaticMarkup(createElement(ProjectsListClient));
-    expect(html).toContain(resolveKey('filter.segmentAll'));
-    for (const s of ['stalled', 'expiring', 'mine']) {
-      expect(html).toContain(resolveKey(`filter.segment.${s}`));
+    // The segment <select> was replaced by one-click ATTENTION chips driving the
+    // SAME `ProjectSegment` state. Assert the chip labels (real he.json) render
+    // and the group is exposed to assistive tech.
+    expect(html).toContain(resolveKey('attention.groupLabel'));
+    for (const s of ['stalled', 'expiring', 'mine', 'all']) {
+      expect(html).toContain(resolveKey(`attention.chip.${s}`));
     }
+    // The default (unfiltered) summary line states what the view shows — a plain
+    // sentence for the technophobe manager, not a wall. `{count}` is interpolated
+    // by the real next-intl in the app; our stub returns the raw template, so
+    // assert on the quote-free prefix.
+    expect(html).toContain('מציג את כל הפרויקטים');
   });
 
   it('3) the search box is a controlled <input type="search"> with NO <form> (no GET-fallback)', () => {
@@ -124,5 +132,42 @@ describe('NS6 — projects-list server-search filters render', () => {
     // chars, so a direct `not.toContain` is a clean negative.
     expect(html).toContain('אין עדיין פרויקטים');
     expect(html).not.toContain(resolveKey('noResults'));
+  });
+
+  it('5) G3 — card renders REAL units + signature progress from the list stats (no dashes)', () => {
+    // Drive the list hook with a VM that carries the BE stats (the adapter maps
+    // them from ProjectListItem; the BE list ALREADY populates them). The card
+    // must render the real numbers, NOT the old `—` placeholder.
+    listState.data = {
+      items: [
+        {
+          id: 'p1',
+          name: 'Pilot',
+          type: 'tama38_2',
+          typeLabel: 'תמ"א 38/2',
+          status: 'gathering_signatures',
+          statusLabel: 'איסוף חתימות',
+          intent: 'warning',
+          isArchived: false,
+          createdRelative: 'לפני יום',
+          createdAtIso: '2026-06-23T00:00:00Z',
+          // The stats under test — 5 signed of 8 total (3 pending), 8 units.
+          unitsCount: 8,
+          signaturesSignedCount: 5,
+          signaturesPendingCount: 3,
+          buildingsCount: 2,
+          agentsCount: 1,
+        },
+      ] as unknown[],
+      page: { limit: 25, cursor: null, has_more: false },
+    };
+    const html = renderToStaticMarkup(createElement(ProjectsListClient));
+    // Units cell shows the real count.
+    expect(html).toContain('>8<');
+    // Signature progress uses the `column.signaturesProgress` template (our stub
+    // returns the raw template; the app interpolates {signed}/{total}). The key
+    // must resolve (no MISSING) and the units count proves stats flowed through.
+    expect(html).not.toContain('MISSING:');
+    expect(html).toContain(resolveKey('column.signaturesProgress'));
   });
 });

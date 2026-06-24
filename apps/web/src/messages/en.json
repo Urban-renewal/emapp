@@ -349,8 +349,21 @@
     },
     "viewCards": "Cards view",
     "viewTable": "Table view",
-    "dataPendingHint": "Extended details — block/parcel, units, signatures, agents — will appear here soon",
-    "headerHint": "Extended details — contractor, signatures, agents, units — will appear here soon",
+    "attention": {
+      "groupLabel": "Quick filter by urgency",
+      "chip": {
+        "stalled": "Stalled",
+        "expiring": "Expiring soon",
+        "mine": "Assigned to me",
+        "all": "All projects"
+      },
+      "summary": {
+        "all": "Showing all projects, most urgent first ({count})",
+        "stalled": "Stalled projects that need attention — no recent signature ({count})",
+        "expiring": "Projects with signature requests expiring soon ({count})",
+        "mine": "Projects assigned to you ({count})"
+      }
+    },
     "kpi": {
       "contractor": "Linked contractor",
       "signatures": "Signatures received",
@@ -611,8 +624,10 @@
       "status": "Status",
       "updated": "Updated",
       "gushHelka": "Block / Parcel",
+      "gushHelkaPending": "Block/parcel details will be added later",
       "units": "Units",
-      "signatures": "Signatures"
+      "signatures": "Signatures",
+      "signaturesProgress": "{signed} of {total}"
     },
     "field": {
       "name": "Project name",

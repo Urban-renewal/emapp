@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { NameDisplay } from '@/components/ui/name-display';
 import { useNotificationBell } from '@/hooks/use-notifications';
 
-import { NotificationIconTile } from './notification-icon';
+import { actionVisual, NotificationIconTile } from './notification-icon';
 
 /**
  * Topbar bell — Phase 4c S3; V11 A.S11 reskin.
@@ -150,6 +150,13 @@ export function NotificationsBell() {
                     ? 'transparent'
                     : 'color-mix(in oklab, var(--navy-50) 50%, transparent)',
                 };
+                // The typed action affordance — same vocabulary as the full page
+                // (one source of truth: notification-icon.tsx::actionVisual). On
+                // the compact bell it reads as a quiet labelled chip telling the
+                // user WHAT the click will let them do (upload / remind / …),
+                // not just "a new thing happened".
+                const action = actionVisual(n.actionKind);
+                const ActionIcon = action.icon;
                 const content = (
                   <div className="flex items-start gap-3" style={rowStyle}>
                     <NotificationIconTile type={n.type} size={32} />
@@ -165,8 +172,17 @@ export function NotificationsBell() {
                           <NameDisplay name={n.body} />
                         </div>
                       )}
-                      <div className="mt-1 text-[11px]" style={{ color: 'var(--text-soft)' }}>
-                        {n.createdRelative}
+                      <div className="mt-1 flex items-center gap-2 text-[11px]">
+                        <span style={{ color: 'var(--text-soft)' }}>{n.createdRelative}</span>
+                        {n.link && (
+                          <span
+                            className="inline-flex items-center gap-1 font-medium"
+                            style={{ color: 'var(--navy-700)' }}
+                          >
+                            <ActionIcon className="h-3 w-3" aria-hidden="true" />
+                            {t(`action.${action.labelKey}`)}
+                          </span>
+                        )}
                       </div>
                     </div>
                     {!n.isRead && (

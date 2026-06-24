@@ -2210,6 +2210,13 @@
     "bellAria": "Notifications",
     "viewAll": "View all",
     "showAll": "Show all notifications",
+    "allClearTitle": "All clear",
+    "allClearHint": "Nothing needs your attention right now.",
+    "allClearForFilterTitle": "Nothing to handle here",
+    "allClearForFilterHint": "No notifications in this category.",
+    "needsAttention": "Needs attention",
+    "needsAttentionCount": "{count} need attention",
+    "markRowReadAria": "Mark this notification as read",
     "filter": {
       "all": "All",
       "unread": "Unread",
@@ -2220,6 +2227,19 @@
       "mentions": "Mentions",
       "apartments": "Apartment status",
       "shareRevoked": "Access revoked"
+    },
+    "group": {
+      "today": "Today",
+      "week": "This week",
+      "earlier": "Earlier"
+    },
+    "action": {
+      "open": "Open",
+      "upload": "Upload here",
+      "remind": "Send reminder",
+      "review": "Review",
+      "openThread": "Open conversation",
+      "ariaSuffix": "— {title}"
     }
   },
   "assignments": {

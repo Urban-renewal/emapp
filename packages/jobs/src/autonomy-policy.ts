@@ -130,6 +130,14 @@ export const AutonomyActionKindSchema = z.enum([
   'share.renew.send', //            renew + notify an external (contractor) share
   'invite.chase.send', //           chase an unaccepted org-user invite
   'tenant.onboard.smsOtp', //       tenant self-onboard SMS OTP
+  'document.chase.send', //         S5 DocumentChase: chase the responsible PARTY
+  //                                (שמאי/אדריכל/עו״ד/…) for a project's MISSING
+  //                                required document. OUTBOUND (a request leaves the
+  //                                system to a person) + CONSENT-REQUIRED → by THE ONE
+  //                                BOUNDARY this is proposeConfirm, NEVER auto-execute
+  //                                (a chase is a send; autoExecute requires
+  //                                non-outbound). The executor routes the send through
+  //                                governOutboundSend with the REAL recipient consent.
 
   // ── Human-confirm FLOORS (charter §7 — humanOnly, pinned literals) ────────
   'status.toApproved', //           project status → approved (legal threshold)
@@ -316,6 +324,23 @@ const ACTION_TABLE: Record<AutonomyActionKind, ActionSpec> = {
     outbound: true,
     consentRequired: true,
     rateBucket: 'outbound:sms',
+  },
+  'document.chase.send': {
+    // S5 DocumentChase: chase the responsible PARTY for a project's MISSING
+    // required document. OUTBOUND (a request — and, when wired, an upload-link
+    // share — leaves the system to a person) → by THE ONE BOUNDARY this can NEVER
+    // autoExecute (autoExecute requires non-outbound). CONSENT-REQUIRED: the
+    // ConsentGate denies if the recipient opted out — the executor resolves the
+    // REAL consent state (fail-closed until the opt-out registry + party-recipient
+    // resolver land; NEVER hardcoded true — that was the #516 consent-bypass). The
+    // chase goes out over email + (X-S6) an external_share upload link, so the rate
+    // bucket is the share bucket.
+    internal: false,
+    reversible: false,
+    pii: false, // the proposal/evidence is PII-free (party + type keys only)
+    outbound: true,
+    consentRequired: true,
+    rateBucket: 'outbound:share',
   },
 
   // ── Human-confirm FLOORS → humanOnly, pinned (charter §7) ─────────────────

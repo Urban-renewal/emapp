@@ -19,7 +19,11 @@
 import { randomUUID } from 'node:crypto';
 
 import { documents, withTenant } from '@emapp/db';
-import { ClassifyResultSchema } from '@emapp/shared-types';
+import {
+  ClassifyResultSchema,
+  isSensitiveDocType,
+  providerPartyForDocType,
+} from '@emapp/shared-types';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createTestOrg, type TestOrg } from '../../../../../packages/db/test/factories';
@@ -67,7 +71,10 @@ afterAll(async () => {
 
 describe('DH3 · DocumentsService.classify (suggest-only)', () => {
   it('returns a ClassifyResultSchema-valid, suggest-only payload', async () => {
-    const r = await svc.classify(manager(), { filename: 'נסח טאבו.pdf', mimeType: 'application/pdf' });
+    const r = await svc.classify(manager(), {
+      filename: 'נסח טאבו.pdf',
+      mimeType: 'application/pdf',
+    });
     expect(ClassifyResultSchema.safeParse(r).success).toBe(true);
     expect(r.suggestOnly).toBe(true);
     expect(r.suggestions[0]?.docType).toBe('land_registry');
@@ -113,5 +120,50 @@ describe('DH3 · DocumentsService.classify (suggest-only)', () => {
     const r2 = await svc.classify(manager(), input);
     expect(r1).toEqual(r2);
     expect(r1.suggestions[0]?.docType).toBe('blueprint');
+  });
+});
+
+describe('S4-taxonomy · supervisor + power-of-attorney party-gap closure', () => {
+  // The two new curated types + the representative Hebrew filename that should
+  // classify to each, and the party they roll up to on the binder board.
+  const cases: Array<{ filename: string; docType: string; party: string }> = [
+    { filename: 'דוח פיקוח חודש מאי.pdf', docType: 'inspection_report', party: 'supervisor' },
+    { filename: 'ייפוי כוח נוטריוני.pdf', docType: 'power_of_attorney', party: 'lawyer' },
+  ];
+
+  for (const { filename, docType, party } of cases) {
+    it(`classifier suggests '${docType}' for '${filename}' and it maps → ${party}`, async () => {
+      const r = await svc.classify(manager(), { filename, mimeType: 'application/pdf' });
+      expect(ClassifyResultSchema.safeParse(r).success).toBe(true);
+      expect(r.suggestOnly).toBe(true);
+      // the new type is the top suggestion for its representative filename
+      expect(r.suggestions[0]?.docType).toBe(docType);
+      // and providerPartyForDocType (the ONE party-derivation map the board uses)
+      // routes it to the intended party — the gap (supervisor empty) is closed.
+      expect(providerPartyForDocType(docType)).toBe(party);
+    });
+  }
+
+  it('G-RT: power_of_attorney derives sensitive=true (at-rest envelope + step-up gate)', () => {
+    // The single source of truth the BE create-path consults
+    // (`sensitive = SENSITIVE_DOC_TYPES.has(type) || input.sensitive`). Because
+    // power_of_attorney is in the set, an upload of it ALWAYS derives sensitive —
+    // it can never take the plain presigned-PUT path nor be plain-served.
+    expect(isSensitiveDocType('power_of_attorney')).toBe(true);
+    // its node — inspection_report — is a non-PII works report → NOT sensitive.
+    expect(isSensitiveDocType('inspection_report')).toBe(false);
+  });
+
+  it('G-RT: a ייפוי-כוח classify response is PII-free (content-free reason keys)', async () => {
+    const r = await svc.classify(manager(), {
+      filename: 'ייפוי כוח של דוד כהן ת.ז. 123456789.pdf',
+      mimeType: 'application/pdf',
+    });
+    for (const s of r.suggestions) {
+      // reason keys are stable lowercase constants — never echo the filename/PII
+      expect(s.reason).toMatch(/^[a-z0-9_]+$/);
+      expect(s.reason).not.toContain('כהן');
+      expect(s.reason).not.toContain('123456789');
+    }
   });
 });

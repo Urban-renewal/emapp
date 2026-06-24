@@ -217,6 +217,59 @@ export const FILENAME_RULES: readonly FilenameRule[] = [
     confidence: 0.75,
     reason: 'filename_legal_opinion',
   },
+  // ── S4-taxonomy — supervisor + power-of-attorney party adds ──────────────────
+  // inspection_report — דו״ח פיקוח / דו״ח מפקח (the supervisor / מפקח report). The
+  // פיקוח / מפקח token is what makes a generic דו״ח the supervisor's report.
+  // `דו״ח` admits the gershayim ״ (U+05F4), geresh ׳ (U+05F3), ASCII quotes, or
+  // the bare `דוח` spelling — all five normalise to the same inspection report.
+  {
+    test: /דו["'׳״]?ח[\s_-]?פיקוח/u,
+    docType: 'inspection_report',
+    confidence: 0.85,
+    reason: 'filename_doch_pikuach',
+  },
+  {
+    test: /דו["'׳״]?ח[\s_-]?מפקח/u,
+    docType: 'inspection_report',
+    confidence: 0.84,
+    reason: 'filename_doch_mefakeach',
+  },
+  // bare פיקוח is a strong-but-slightly-less signal (a filename can mention פיקוח
+  // in other ways); still well above the 0.5 floor so it wins for `דוח_פיקוח`.
+  { test: /פיקוח/u, docType: 'inspection_report', confidence: 0.72, reason: 'filename_pikuach' },
+  {
+    test: /inspection[\s_-]?report/u,
+    docType: 'inspection_report',
+    confidence: 0.78,
+    reason: 'filename_inspection_report',
+  },
+  // power_of_attorney — ייפוי כוח (PII-DENSE → SENSITIVE). The ייפוי-כוח /
+  // יפוי-כח spelling variants + the latin `power of attorney` / `poa` token.
+  {
+    test: /ייפוי[\s_-]?כו?ח/u,
+    docType: 'power_of_attorney',
+    confidence: 0.88,
+    reason: 'filename_yipuy_koach',
+  },
+  {
+    test: /יפוי[\s_-]?כו?ח/u,
+    docType: 'power_of_attorney',
+    confidence: 0.85,
+    reason: 'filename_yipuy_koach_alt',
+  },
+  {
+    test: /power[\s_-]?of[\s_-]?attorney/u,
+    docType: 'power_of_attorney',
+    confidence: 0.82,
+    reason: 'filename_power_of_attorney',
+  },
+  // `poa` as a whole token (bounded so it never matches inside another word).
+  {
+    test: /(?:^|[\s_-])poa(?:[\s_.-]|$)/u,
+    docType: 'power_of_attorney',
+    confidence: 0.7,
+    reason: 'filename_poa',
+  },
 ];
 
 /**
@@ -278,6 +331,19 @@ export const CONTENT_RULES: readonly ContentRule[] = [
     docType: 'legal_opinion',
     confidence: 0.85,
     reason: 'content_chavat_daat',
+  },
+  // S4-taxonomy — supervisor + power-of-attorney content markers.
+  {
+    test: /דו["'׳״]?ח\s+פיקוח/u,
+    docType: 'inspection_report',
+    confidence: 0.85,
+    reason: 'content_doch_pikuach',
+  },
+  {
+    test: /ייפוי\s+כו?ח/u,
+    docType: 'power_of_attorney',
+    confidence: 0.88,
+    reason: 'content_yipuy_koach',
   },
 ];
 

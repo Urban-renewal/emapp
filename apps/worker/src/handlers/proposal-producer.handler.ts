@@ -23,6 +23,7 @@
  * reaper/retention/expiry no-PII convention).
  */
 import {
+  createDocumentChaseRecommender,
   createReminderCadenceRecommender,
   createSignatureReissueRecommender,
   createTaskWatcherRecommender,
@@ -60,11 +61,16 @@ export class ProposalProducerHandler implements IJobHandler<ProposalProducerJobP
    *      OutboundGovernor + the M1 exactly-once ledger).
    *    - task-watcher      (G1):      gathering-signatures project missing a
    *      required doc type → task.create (internal, reversible; APPROVE opens a
-   *      SYSTEM-OWNED task via the existing gated tasks.create). */
+   *      SYSTEM-OWNED task via the existing gated tasks.create).
+   *    - document-chase    (S5):      the SAME missing-required-doc gap → an
+   *      OUTBOUND document.chase.send (chase the responsible party). Reuses the
+   *      SHARED detectMissingRequiredDocs (no second query) + providerPartyForDocType;
+   *      APPROVE routes the send through governOutboundSend (consent-gated). */
   private readonly recommenders: IRecommender[] = [
     createSignatureReissueRecommender(),
     createReminderCadenceRecommender(),
     createTaskWatcherRecommender(),
+    createDocumentChaseRecommender(),
   ];
 
   async handle(_payload: ProposalProducerJobPayload, ctx: JobContext): Promise<void> {

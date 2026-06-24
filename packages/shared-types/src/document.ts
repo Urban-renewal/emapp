@@ -810,6 +810,14 @@ export const BoardCompletenessSchema = z.object({
   /** Total in-scope projects that HAVE a core requirement (the denominator the
    *  cockpit pulse uses: "{behind} מתוך {withRequirement} פרויקטים מאחור"). */
   projectsWithRequirement: z.number().int().nonnegative().default(0),
+  /** TRUE count of projects BEHIND on their core set — the full magnitude BEFORE
+   *  the {@link PROJECTS_BEHIND_CAP} slice. `projectsBehind` is the capped DISPLAY
+   *  list (≤ cap); THIS is the number the cockpit must show ("{behindTotal} מתוך
+   *  {withRequirement} מאחור") and the one "met" is derived from
+   *  ({withRequirement} − {behindTotal}). NEVER derive "met"/"behind" from the
+   *  capped array length — at scale that over-states "completed" (12 shown out of
+   *  97 behind ⇒ a false "85 are done"). */
+  projectsBehindTotal: z.number().int().nonnegative().default(0),
   /** True when `projectsBehind` was capped (more behind projects exist than the
    *  cap) → the cockpit shows a "+N" tail / "הצג הכל" affordance. */
   projectsBehindCapped: z.boolean().default(false),

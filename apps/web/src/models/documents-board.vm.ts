@@ -73,9 +73,13 @@ export interface DocumentsBoardViewModel {
   attention: DocumentProjectAttentionViewModel[];
   /** Total in-scope projects that HAVE a core requirement (the pulse denominator). */
   projectsWithRequirement: number;
-  /** Count of behind projects = `attention.length` unless capped server-side; the
-   *  pulse uses the REAL behind count (capped + tail). */
+  /** The TRUE count of behind projects (server `projectsBehindTotal`, pre-cap). The
+   *  pulse + the "met" derivation (withRequirement − this) MUST use it — never
+   *  `attention.length`, which is only the capped DISPLAY count. */
   projectsBehindCount: number;
+  /** How many behind projects are actually RENDERED (= `attention.length`, ≤ cap).
+   *  The "+N more behind" tail is `projectsBehindCount − projectsBehindShown`. */
+  projectsBehindShown: number;
   /** True when the server capped `projectsBehind` → the cockpit shows a "+N" tail. */
   projectsBehindCapped: boolean;
   /** True when ≥1 in-scope project carries a core requirement (else the board has

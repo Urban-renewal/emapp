@@ -508,6 +508,7 @@ export const handlers = [
           },
         ],
         projectsWithRequirement: 2,
+        projectsBehindTotal: 2,
         projectsBehindCapped: false,
       }),
     ),

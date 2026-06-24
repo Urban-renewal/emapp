@@ -50,18 +50,21 @@ export function toDocumentsBoardViewModel(
     };
   });
 
-  // The behind COUNT for the pulse: the server caps `projectsBehind`, so when
-  // capped the displayed list under-counts — but `projectsWithRequirement` minus
-  // the met projects is not on the wire. We surface the capped flag so the pulse
-  // can read "{shown}+ פרויקטים מאחור" honestly rather than a wrong exact count.
-  const projectsBehindCount = attention.length;
+  // The TRUE behind count is now on the wire (`projectsBehindTotal`). The pulse +
+  // the "met" derivation MUST use it, NEVER the capped display length (which at
+  // scale under-counts → a false "the rest are completed"). `attention` stays the
+  // capped DISPLAY list; `projectsBehindShown` is how many of the total we render,
+  // so the "+N more behind" tail is the real overflow, not a hard-coded number.
+  const projectsBehindCount = data.projectsBehindTotal;
+  const projectsBehindShown = attention.length;
   const hasAnyRequirement = data.hasAnyRequirement;
-  const isAllClear = hasAnyRequirement && projectsBehindCount === 0 && !data.projectsBehindCapped;
+  const isAllClear = hasAnyRequirement && projectsBehindCount === 0;
 
   return {
     attention,
     projectsWithRequirement: data.projectsWithRequirement,
     projectsBehindCount,
+    projectsBehindShown,
     projectsBehindCapped: data.projectsBehindCapped,
     hasAnyRequirement,
     isAllClear,

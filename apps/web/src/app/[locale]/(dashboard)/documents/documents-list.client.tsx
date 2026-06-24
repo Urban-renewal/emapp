@@ -332,15 +332,13 @@ function CockpitPulse({ vm }: { vm: DocumentsBoardViewModel | undefined }) {
     if (vm.projectsBehindCount === 0) {
       return t('cockpit.pulse.allClear', { total: vm.projectsWithRequirement });
     }
-    return vm.projectsBehindCapped
-      ? t('cockpit.pulse.behindCapped', {
-          behind: vm.projectsBehindCount,
-          total: vm.projectsWithRequirement,
-        })
-      : t('cockpit.pulse.behind', {
-          behind: vm.projectsBehindCount,
-          total: vm.projectsWithRequirement,
-        });
+    // `projectsBehindCount` is the TRUE behind total (pre-cap), so the pulse states
+    // the EXACT magnitude — never the "מעל {shown}" capped framing (which masked
+    // the real number at scale: "מעל 12" while 97 were behind).
+    return t('cockpit.pulse.behind', {
+      behind: vm.projectsBehindCount,
+      total: vm.projectsWithRequirement,
+    });
   })();
   return (
     <p className="text-sm text-text-muted" role="status">
@@ -485,7 +483,10 @@ function CockpitFleet({
         )}
         {vm.projectsBehindCapped && (
           <p className="text-xs text-text-muted" role="status">
-            {t('cockpit.fleet.moreBehind', { count: '12+' })}
+            {/* The REAL overflow (true behind − shown), never a hard-coded "12+". */}
+            {t('cockpit.fleet.moreBehind', {
+              count: vm.projectsBehindCount - vm.projectsBehindShown,
+            })}
           </p>
         )}
       </div>

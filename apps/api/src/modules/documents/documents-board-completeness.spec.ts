@@ -41,7 +41,7 @@ import {
   users,
   withTenant,
 } from '@emapp/db';
-import { type DocumentParty, type ProjectStatus } from '@emapp/shared-types';
+import { PROJECTS_BEHIND_CAP, type DocumentParty, type ProjectStatus } from '@emapp/shared-types';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createTestOrg, type TestOrg } from '../../../../../packages/db/test/factories';
@@ -512,6 +512,36 @@ describe('boardCompleteness — S2 projectsBehind (project-attention axis)', () 
     // NO owner PII anywhere in the projectsBehind payload (project name aside).
     const serialized = JSON.stringify(res.projectsBehind);
     expect(serialized).not.toMatch(/national_id|"phone"|r2[_-]?key|content_?hash/i);
+  });
+
+  it('projectsBehindTotal is the TRUE pre-cap behind count — never the capped display length (the "103 שהשלימו at scale" lie)', async () => {
+    // Regression: the board exposed only the CAPPED `projectsBehind` array + a
+    // boolean `capped` flag, so the FE derived met = withRequirement − cappedLength
+    // → at scale it claimed "103 completed" while ~97 were behind (12 shown). The
+    // BE now exposes `projectsBehindTotal` (the real count before the cap), the one
+    // source for both "behind" and "met".
+    const org = await createTestOrg(`BehindTotal-${TAG}`);
+    const mgrId = org.users[0]!.id;
+    const mgr = manager(org.id, mgrId);
+
+    // Seed MORE behind projects than the cap — each an EMPTY tama project (0 core).
+    const extra = PROJECTS_BEHIND_CAP + 3;
+    for (let i = 0; i < extra; i++) await seedProject(org.id, mgrId, 'tama38_1');
+
+    const res = await svc.boardCompleteness(mgr);
+    // factory seeds 2 doc-less (behind) projects + our `extra` → all behind.
+    const trueBehind = org.projects.length + extra;
+    expect(res.projectsWithRequirement).toBe(trueBehind);
+    // The DISPLAY list is capped…
+    expect(res.projectsBehind.length).toBe(PROJECTS_BEHIND_CAP);
+    expect(res.projectsBehindCapped).toBe(true);
+    // …but the TRUE total is exposed (NOT the capped length) — the number the
+    // cockpit shows + derives "met" from.
+    expect(res.projectsBehindTotal).toBe(trueBehind);
+    expect(res.projectsBehindTotal).toBeGreaterThan(res.projectsBehind.length);
+    // The "met" derivation the FE does (withRequirement − behindTotal) is honest:
+    // every project here is behind, so met = 0 — NOT withRequirement − 12.
+    expect(res.projectsWithRequirement - res.projectsBehindTotal).toBe(0);
   });
 
   it('TERMINAL projects (completed/cancelled) are EXCLUDED — a dead deal never inflates the denominator nor appears as "behind"', async () => {

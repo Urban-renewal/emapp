@@ -84,6 +84,7 @@ export * from './helpers/recommenders/reminder-cadence.recommender';
 export * from './helpers/recommenders/task-watcher.recommender';
 export * from './helpers/recommenders/document-chase.recommender';
 export * from './helpers/outbound-governor';
+export * from './helpers/recipient-consent';
 export * from './helpers/org-suspension';
 export * from './helpers/notifications';
 export * from './helpers/idempotency';

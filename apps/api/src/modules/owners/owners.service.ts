@@ -12,6 +12,7 @@ import {
   ownerships,
   projectAssignments,
   projects,
+  recipientOptOuts,
   withTenant,
   type TenantTx,
 } from '@emapp/db';
@@ -46,7 +47,7 @@ import {
 } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
-import type { CreateOwner, OwnerSearch, UpdateOwner } from './owner.dto';
+import type { CreateOwner, OwnerOptOut, OwnerSearch, UpdateOwner } from './owner.dto';
 
 export interface OwnerListPage {
   data: OwnerListItem[];
@@ -659,9 +660,7 @@ export class OwnersService {
         return tx
           .select({ ...ownerCols, ...this.listAggregateCols(user) })
           .from(owners)
-          .where(
-            and(isNull(owners.archivedAt), isNull(owners.erasedAt), nameMatch, scope, keyset),
-          )
+          .where(and(isNull(owners.archivedAt), isNull(owners.erasedAt), nameMatch, scope, keyset))
           .orderBy(...keysetOrderBy(owners.createdAt, owners.id))
           .limit(limit + 1);
       },
@@ -852,6 +851,68 @@ export class OwnersService {
       }
       throw e;
     }
+  }
+
+  /**
+   * M2 — mark an owner OPTED OUT of autonomous outbound (the recipient_opt_outs
+   * registry the ConsentGate reads). The MANAGER/ADMIN ingestion path (the
+   * cleanest, most secure ONE for MVP — no public token, no PII-in-URL, reuses
+   * the proven owner-scope + agent-capability machinery). An unsubscribe-link
+   * endpoint (an unguessable, recipient-scoped token a reminder can carry) and a
+   * provider STOP webhook are the noted follow-ups; both write the SAME registry.
+   *
+   * Scope mirrors `update`: an agent must have the owner in an assigned project
+   * (no-oracle 404) + the `edit_project_data` capability; a manager passes both.
+   * IDEMPOTENT: a re-opt-out for the same (owner, channel) UPSERTs (refreshes
+   * `opted_out_at`/`source`) — never a duplicate. Durable (no DELETE). Audited
+   * (NO PII — only the owner id + channel). RLS scopes the write to the org.
+   */
+  async optOut(user: AccessTokenPayload, id: string, input: OwnerOptOut): Promise<void> {
+    await withTenant(
+      user.orgId,
+      async (tx) => {
+        // Visibility presence-check (RLS already org-scopes; this gives the
+        // no-oracle 404 for a foreign/absent id BEFORE the capability gate).
+        const [before] = await tx
+          .select({ id: owners.id })
+          .from(owners)
+          .where(eq(owners.id, id))
+          .limit(1);
+        if (!before) throw NOT_FOUND;
+        await this.assertOwnerInAssignedProject(tx, user, id);
+        await requireAgentCapability(tx, user, 'edit_project_data');
+
+        // Durable, idempotent UPSERT on (org, owner, channel). A repeated opt-out
+        // refreshes the timestamp/source; it NEVER duplicates. The row's mere
+        // existence IS the opt-out the ConsentGate denies on.
+        await tx
+          .insert(recipientOptOuts)
+          .values({
+            orgId: user.orgId,
+            ownerId: id,
+            channel: input.channel,
+            source: input.source,
+            optedOutAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: [recipientOptOuts.orgId, recipientOptOuts.ownerId, recipientOptOuts.channel],
+            set: { optedOutAt: new Date(), source: input.source },
+          });
+
+        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+          orgId: user.orgId,
+          actorId: user.sub,
+          actorType: 'user',
+          action: 'owner.outbound_opt_out',
+          targetTable: 'recipient_opt_outs',
+          targetId: id,
+          // NO PII — only the channel + provenance.
+          afterState: { channel: input.channel, source: input.source },
+          sessionId: user.sid,
+        });
+      },
+      { userId: user.sub },
+    );
   }
 
   async archive(user: AccessTokenPayload, id: string): Promise<void> {

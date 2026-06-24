@@ -245,10 +245,20 @@ export async function deliverSignatureLink(
    *  `buildEmailFrom` at the call site (single source — this file never
    *  hand-rolls a From). When omitted, the provider default From is used. */
   from?: string,
+  /** M2 (consent/opt-out) — per-channel SUPPRESSION. The AUTONOMOUS reminder
+   *  path resolves the recipient's outbound opt-outs and passes a suppressed
+   *  channel here so it is NEVER sent, even when an address is on file. A
+   *  suppressed channel reports `{ available:false, reason:'opted_out' }` (NOT a
+   *  delivery). The MANUAL manager-resend path passes nothing (a deliberate
+   *  manager action is not consent-gated). WhatsApp is a deep-link the FE
+   *  renders, not an autonomous send, so it is not suppressed here. */
+  suppress?: { email?: boolean; sms?: boolean },
 ): Promise<SignatureLinkReport> {
-  const emailRes: ChannelResult = ctx.ownerEmail
-    ? await sendInviteEmail(email, ctx, logger, from)
-    : { available: false, reason: 'no_email_on_file' };
+  const emailRes: ChannelResult = suppress?.email
+    ? { available: false, reason: 'opted_out' }
+    : ctx.ownerEmail
+      ? await sendInviteEmail(email, ctx, logger, from)
+      : { available: false, reason: 'no_email_on_file' };
 
   const waLink = ctx.ownerPhone
     ? buildWhatsappDeepLink({
@@ -262,9 +272,11 @@ export async function deliverSignatureLink(
     ? { available: true, status: 'ready', deepLink: waLink }
     : { available: false, reason: 'no_phone_on_file_or_unparseable' };
 
-  const smsRes: ChannelResult = ctx.ownerPhone
-    ? await sendInviteSms(sms, ctx, logger)
-    : { available: false, reason: 'no_phone_on_file' };
+  const smsRes: ChannelResult = suppress?.sms
+    ? { available: false, reason: 'opted_out' }
+    : ctx.ownerPhone
+      ? await sendInviteSms(sms, ctx, logger)
+      : { available: false, reason: 'no_phone_on_file' };
 
   return { email: emailRes, whatsapp: whatsappRes, sms: smsRes };
 }

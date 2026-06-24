@@ -7,6 +7,7 @@ import {
   type UpdateOwner,
 } from '@emapp/shared-types';
 import { isValidIsraeliId, isValidIsraeliPhone } from '@emapp/validators';
+import { z } from 'zod';
 
 // shared-types stays PURE (no @emapp deps). The Israeli-ID MOD-10 checksum
 // and phone validity are layered HERE so a bad national_id/phone fails at
@@ -44,5 +45,19 @@ export const OwnerSearchDto = OwnerSearchInput.refine((d) => checkId(d.national_
   path: ['phone'],
   message: 'phone is not a valid Israeli number',
 });
+
+// M2 — manager/admin action: mark an owner OPTED OUT of autonomous outbound
+// (the recipient_opt_outs registry the ConsentGate reads). NO PII in the body —
+// the recipient is the path :id (an owner UUID); the body carries only the
+// channel + an optional provenance override. `channel` defaults to `all` (the
+// safest opt-out — suppress every channel). `source` defaults to `manager`
+// (this is the manager action); the enum also admits the future ingestion paths.
+export const OwnerOptOutDto = z
+  .object({
+    channel: z.enum(['email', 'sms', 'all']).default('all'),
+    source: z.enum(['unsubscribe_link', 'manager', 'provider_stop']).default('manager'),
+  })
+  .strict();
+export type OwnerOptOut = z.infer<typeof OwnerOptOutDto>;
 
 export type { CreateOwner, UpdateOwner, OwnerSearch };

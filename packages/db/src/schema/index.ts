@@ -8,6 +8,7 @@ export * from './collaboration';
 export * from './external-share';
 export * from './proposals';
 export * from './outbound-ledger';
+export * from './recipient-opt-outs';
 export * from './artifacts';
 export * from './iam';
 export * from './imports';

@@ -31,9 +31,11 @@ import { OwnerEraseDto, type OwnerEraseBody } from './data-subject.dto';
 import { DataSubjectService } from './data-subject.service';
 import {
   CreateOwnerDto,
+  OwnerOptOutDto,
   OwnerSearchDto,
   UpdateOwnerDto,
   type CreateOwner,
+  type OwnerOptOut,
   type OwnerSearch,
   type UpdateOwner,
 } from './owner.dto';
@@ -174,6 +176,23 @@ export class OwnersController {
     @Body(new ZodValidationPipe(OwnerEraseDto)) body: OwnerEraseBody,
   ) {
     return { data: await this.dataSubject.erase(user, id, body) };
+  }
+
+  // M2 — manager/admin marks an owner OPTED OUT of autonomous outbound (the
+  // recipient_opt_outs registry the ConsentGate reads). POST (state change),
+  // 204. Coarse gate `owners.update` (a write to the owner's comms preferences);
+  // the FINE agent scope (assigned-project) + `edit_project_data` capability live
+  // in the service. NO PII in the URL or body — the recipient is the opaque
+  // owner UUID; the body is only { channel, source }. Idempotent + durable.
+  @Post(':id/opt-out')
+  @HttpCode(204)
+  @RequirePermission('owners.update')
+  async optOut(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', UuidParam) id: string,
+    @Body(new ZodValidationPipe(OwnerOptOutDto)) body: OwnerOptOut,
+  ) {
+    await this.owners.optOut(user, id, body);
   }
 
   @Patch(':id')

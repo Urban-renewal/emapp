@@ -1,4 +1,8 @@
-import type { SignatureRequest, SignatureRequestStatus } from '@emapp/shared-types';
+import type {
+  SignatureRequest,
+  SignatureRequestListItem,
+  SignatureRequestStatus,
+} from '@emapp/shared-types';
 
 import { formatRelative } from '@/lib/format';
 import type { SignatureRequestViewModel } from '@/models/signature-request.vm';
@@ -11,6 +15,16 @@ import type { SignatureRequestViewModel } from '@/models/signature-request.vm';
  * 1:1 from a locked enum to product-specific Hebrew terminology —
  * splitting the label set across i18n + the schema would let a future
  * enum change silently bypass the UI.
+ *
+ * ONE adapter, TWO wire shapes (Slice 3): the base `SignatureRequest`
+ * (detail / create / cancel surfaces) and the LIST row
+ * `SignatureRequestListItem`, which ADDS the display-context fields
+ * (`projectName` / `apartmentLabel` / `documentName` / `ownerDisplay`). The
+ * adapter reads those fields when present and defaults them to `null` for the
+ * base shape — so the list legibility data and the detail path share ONE
+ * mapping (no second implementation), and a base-shape row simply carries the
+ * neutral fallbacks. `ownerDisplay` is whatever the SERVER returned (masked =
+ * already `null`); the adapter NEVER unmasks.
  */
 
 const STATUS_LABELS_HE: Record<SignatureRequestStatus, string> = {
@@ -40,8 +54,20 @@ const TERMINAL_STATES = new Set<SignatureRequestStatus>(['signed', 'cancelled'])
  *  on cancelled-signed; cancelled→cancelled is idempotent (200). */
 const CANCELLABLE_STATES = new Set<SignatureRequestStatus>(['pending']);
 
+/** The base shape OR the enriched list-item shape. Using a union (not a second
+ *  adapter) keeps ONE mapping for both surfaces; the optional reads below pull
+ *  the display context only when the list endpoint provided it. */
+type SignatureRequestWire = SignatureRequest | SignatureRequestListItem;
+
+/** Pull a nullable display-context field if the wire row carried it (list item),
+ *  else `null` (base detail row). Pure read — never derives PII. */
+function displayField(r: SignatureRequestWire, key: keyof SignatureRequestListItem): string | null {
+  const v = (r as Partial<SignatureRequestListItem>)[key];
+  return typeof v === 'string' ? v : null;
+}
+
 export function toSignatureRequestViewModel(
-  r: SignatureRequest,
+  r: SignatureRequestWire,
   locale: 'he' | 'en' = 'he',
   now: Date = new Date(),
 ): SignatureRequestViewModel {
@@ -58,15 +84,24 @@ export function toSignatureRequestViewModel(
     isTerminal: TERMINAL_STATES.has(r.status),
     isExpired,
     expiresAtIso: r.expiresAt.toISOString(),
+    createdAtMs: r.createdAt.getTime(),
     expiresRelative: formatRelative(r.expiresAt, locale),
     createdRelative: formatRelative(r.createdAt, locale),
     signedRelative: r.signedAt ? formatRelative(r.signedAt, locale) : null,
     cancelledRelative: r.cancelledAt ? formatRelative(r.cancelledAt, locale) : null,
+    // Slice-3 display context — present only on the list-item wire shape; the
+    // base detail row falls through to `null`. `ownerDisplay` is the server's
+    // already-masked value (null for a caller lacking `view_owner_pii`); the
+    // adapter passes it through verbatim and NEVER reconstructs a name.
+    projectName: displayField(r, 'projectName'),
+    apartmentLabel: displayField(r, 'apartmentLabel'),
+    documentName: displayField(r, 'documentName'),
+    ownerDisplay: displayField(r, 'ownerDisplay'),
   };
 }
 
 export function toSignatureRequestViewModels(
-  items: SignatureRequest[],
+  items: SignatureRequestWire[],
   locale: 'he' | 'en' = 'he',
   now: Date = new Date(),
 ): SignatureRequestViewModel[] {

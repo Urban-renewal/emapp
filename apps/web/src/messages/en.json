@@ -1236,6 +1236,25 @@
       "signed": "Signed",
       "cancelled": "Cancelled"
     },
+    "statusFilterLabel": "Filter by status",
+    "projectFilterLabel": "Project",
+    "projectFilterAll": "All projects",
+    "sortLabel": "Sort",
+    "sort": {
+      "newest": "Newest first",
+      "oldest": "Oldest first"
+    },
+    "noProject": "No project",
+    "noDocument": "No document",
+    "ownerMasked": "Owner (masked)",
+    "apartmentLabel": "Apt {label}",
+    "emptyFilteredTitle": "No requests for this filter",
+    "emptyFilteredHint": "Try a different filter or reset to all requests.",
+    "allClear": {
+      "title": "No pending requests",
+      "hint": "Every signature request is handled — nothing to chase right now.",
+      "badge": "All handled"
+    },
     "view": {
       "label": "View",
       "attention": "Needs attention",

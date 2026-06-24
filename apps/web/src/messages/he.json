@@ -1236,6 +1236,25 @@
       "signed": "חתום",
       "cancelled": "בוטל"
     },
+    "statusFilterLabel": "סינון לפי סטטוס",
+    "projectFilterLabel": "פרויקט",
+    "projectFilterAll": "כל הפרויקטים",
+    "sortLabel": "מיון",
+    "sort": {
+      "newest": "החדשות תחילה",
+      "oldest": "הישנות תחילה"
+    },
+    "noProject": "ללא פרויקט",
+    "noDocument": "ללא מסמך",
+    "ownerMasked": "בעל דירה (מוסתר)",
+    "apartmentLabel": "דירה {label}",
+    "emptyFilteredTitle": "אין בקשות בסינון הזה",
+    "emptyFilteredHint": "נסו לשנות את הסינון או לאפס לכל הבקשות.",
+    "allClear": {
+      "title": "אין בקשות ממתינות",
+      "hint": "כל בקשות החתימה טופלו — אין כרגע מה לתזכר.",
+      "badge": "הכל מטופל"
+    },
     "view": {
       "label": "תצוגה",
       "attention": "צריך טיפול",

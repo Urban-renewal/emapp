@@ -210,6 +210,20 @@ function collectDuplicateNumbers(nums: readonly string[]): string[] {
  * Tenant org-isolation itself is enforced by RLS inside withTenant; a
  * cross-org id therefore returns zero rows → 404 (no oracle).
  */
+
+/**
+ * Bounded concurrency for `signaturePulse`'s per-project consent aggregates.
+ * Each in-flight aggregate holds ONE pg pool connection for its short
+ * `withTenant` tx, so the cap MUST stay well under the pool ceiling
+ * (default ~10–20) to avoid connection starvation — an UNBOUNDED Promise.all
+ * over 100+ projects would exhaust the pool and be WORSE than sequential. 8 is
+ * the SAME value + idiom already proven on the bulk-delivery path
+ * (`signature-requests.service.ts` `DELIVERY_CONCURRENCY`): enough parallelism
+ * to collapse the cold-path latency wall, few enough connections to never
+ * starve the pool.
+ */
+const PULSE_CONSENT_CONCURRENCY = 8;
+
 @Injectable()
 export class ProjectsService {
   /**
@@ -1050,9 +1064,8 @@ export class ProjectsService {
                LIMIT 1)
           ) AS signable_document_id
         `);
-        const signableRows = (
-          signableResult as unknown as { rows: Array<Record<string, unknown>> }
-        ).rows;
+        const signableRows = (signableResult as unknown as { rows: Array<Record<string, unknown>> })
+          .rows;
         const signableRaw = signableRows[0]?.['signable_document_id'];
         const signableDocumentId =
           signableRaw === null || signableRaw === undefined ? null : String(signableRaw);
@@ -1529,16 +1542,50 @@ export class ProjectsService {
     );
 
     // 2) For each visible project, fetch the SINGLE-SOURCE share-weighted
-    //    consent (cached, tenant-scoped key — same as the board). Sequential
-    //    cache reads keep the warm path one-round-trip-per-project; at MVP
-    //    project counts this is well within the sub-second budget the cache
-    //    layer guards. We compute consent ONLY for projects already proven
-    //    visible by step 1, so there is no extra visibility surface here.
+    //    consent (cached, tenant-scoped key — same as the board). Each
+    //    per-project aggregate is INDEPENDENT, so we resolve them with BOUNDED
+    //    concurrency instead of one-at-a-time: the COLD path (after a consent
+    //    write bumps the org epoch and invalidates every project's cached
+    //    aggregate) would otherwise run N SEQUENTIAL aggregate queries → a
+    //    latency wall at 100+ projects. We bound the fan-out to
+    //    PULSE_CONSENT_CONCURRENCY (each in-flight aggregate holds ONE pg pool
+    //    connection for its short `withTenant` tx) so we never exceed the pool
+    //    ceiling — an unbounded Promise.all would STARVE the pool and be worse
+    //    than sequential. Cache semantics are UNCHANGED: still `readThrough`
+    //    per project under the same `pulseConsentKey` (distinct keys → no
+    //    stampede), same per-org epoch invalidation; only the await pattern
+    //    changed. We compute consent ONLY for projects already proven visible
+    //    by step 1, so there is no extra visibility surface here.
     const now = Date.now();
     const expiringSoonMs = PULSE_EXPIRING_SOON_DAYS * 24 * 60 * 60 * 1000;
 
-    const rows: ProjectPulseRow[] = [];
-    for (const f of facts) {
+    type ConsentAgg = Awaited<ReturnType<ProjectsService['computeConsentAggregates']>>;
+    const resolveAgg = (projectId: string): Promise<ConsentAgg> =>
+      this.statsCache
+        ? this.statsCache.readThrough(user.orgId, this.statsCache.pulseConsentKey(projectId), () =>
+            withTenant(user.orgId, (tx) => this.computeConsentAggregates(tx, projectId), {
+              userId: user.sub,
+            }),
+          )
+        : withTenant(user.orgId, (tx) => this.computeConsentAggregates(tx, projectId), {
+            userId: user.sub,
+          });
+
+    // Index-preserving aggregate resolution: `aggs[i]` is the consent for
+    // `facts[i]`. Building via slice + Promise.all (NOT push-as-it-resolves)
+    // keeps `aggs` byte-identical to the sequential order the downstream
+    // ranking depends on — parallelism changes only WHEN each agg resolves,
+    // never its slot.
+    const aggs: ConsentAgg[] = new Array<ConsentAgg>(facts.length);
+    for (let i = 0; i < facts.length; i += PULSE_CONSENT_CONCURRENCY) {
+      const chunk = facts.slice(i, i + PULSE_CONSENT_CONCURRENCY);
+      const chunkAggs = await Promise.all(chunk.map((f) => resolveAgg(String(f['project_id']))));
+      for (let j = 0; j < chunkAggs.length; j += 1) {
+        aggs[i + j] = chunkAggs[j]!;
+      }
+    }
+
+    const rows: ProjectPulseRow[] = facts.map((f, i): ProjectPulseRow => {
       const projectId = String(f['project_id']);
       const projectName = String(f['project_name']);
       const lastSig = f['last_signature_at'];
@@ -1573,22 +1620,11 @@ export class ProjectsService {
       // caches the ASSEMBLED SignatureProgress under sigProgress:p:<id>; we cache
       // the raw aggregates under pulseConsent:p:<id> to avoid an envelope-shape
       // clash. The SAME per-org epoch invalidates both on any consent write.
-      const agg = this.statsCache
-        ? await this.statsCache.readThrough(
-            user.orgId,
-            this.statsCache.pulseConsentKey(projectId),
-            () =>
-              withTenant(user.orgId, (tx) => this.computeConsentAggregates(tx, projectId), {
-                userId: user.sub,
-              }),
-          )
-        : await withTenant(user.orgId, (tx) => this.computeConsentAggregates(tx, projectId), {
-            userId: user.sub,
-          });
+      const agg = aggs[i]!;
       const metThreshold =
         agg.targetSignaturePct !== null && agg.consentedPct >= agg.targetSignaturePct;
 
-      rows.push({
+      return {
         projectId,
         projectName,
         lastSignatureAt,
@@ -1601,8 +1637,8 @@ export class ProjectsService {
         basis: 'share' as const,
         campaignDocumentId,
         hasCampaign: campaignDocumentId !== null,
-      });
-    }
+      };
+    });
 
     // 3) Order most-urgent-first via the pure A2 scorer.
     const attention = rankAttention(rows);

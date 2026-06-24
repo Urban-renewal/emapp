@@ -15,6 +15,7 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  PostgresCacheProvider,
   apartments,
   buildings,
   documents,
@@ -37,6 +38,7 @@ import { setupTestDatabase } from '../../../../../packages/db/test/setup';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 import { ProjectsService } from './projects.service';
+import { StatsCacheService } from './stats-cache.service';
 
 let svc: ProjectsService;
 let org: TestOrg;
@@ -420,4 +422,221 @@ describe('signaturePulse — HB-5 campaign document (one-click holdout chase)', 
     expect(p5.campaignDocumentId).toBe(P.p5agreement);
     expect(p5.hasCampaign).toBe(true);
   });
+});
+
+/**
+ * G4 — BOUNDED-CONCURRENCY per-project consent.
+ *
+ * The pulse's per-project consent aggregates were SEQUENTIAL (`await` inside a
+ * `for`); at 100+ projects the COLD path (after a consent write bumps the org
+ * epoch, invalidating every cached aggregate) did N sequential aggregate
+ * queries → a latency wall. They are now resolved with BOUNDED concurrency
+ * (chunks of PULSE_CONSENT_CONCURRENCY). These tests prove, against the REAL DB
+ * + REAL cache, at SCALE (SCALE_N projects in a dedicated org):
+ *
+ *   SP-14 — CORRECTNESS: the parallel cached pulse is BYTE-IDENTICAL (rows in
+ *           the same order, same consentedPct/metThreshold) to the sequential
+ *           fresh-compute ground truth. This is the share-weighted consent law;
+ *           a drift here would be a correctness bug, not just perf.
+ *   SP-15 — POOL SAFETY + PERF: a COLD pulse over SCALE_N projects (every
+ *           aggregate a cache MISS after invalidateOrg) completes WITHOUT a
+ *           pool-exhaustion / connection-timeout error, and we record the
+ *           cold-vs-warm latency so the parallelisation is measured, not felt.
+ */
+describe('signaturePulse — G4 bounded-concurrency consent (scale + correctness)', () => {
+  const SCALE_N = 40;
+  let scaleOrg: TestOrg;
+  let scaleMgrId: string;
+  let cache: StatsCacheService;
+  let cachedSvc: ProjectsService; // parallel path, real cache
+  let freshSvc: ProjectsService; // ground truth, no cache (still sequential-equivalent output)
+
+  function scaleManager(): AccessTokenPayload {
+    return {
+      sub: scaleMgrId,
+      orgId: scaleOrg.id,
+      role: 'manager',
+      sid: '00000000-0000-4000-8000-0000000000c9',
+      type: 'access',
+    } as unknown as AccessTokenPayload;
+  }
+
+  // Seed one self-contained project: 2 apartments (1 owner each), a project
+  // doc, and a signed request on the FIRST apartment's owner → a KNOWN, varied
+  // consent (≈50% share on a 2-apt project) so the assertion is meaningful, not
+  // all-zero. A per-project target makes metThreshold assertable + varied.
+  async function seedScaleProject(idx: number): Promise<string> {
+    const projectId = await withTenant(scaleOrg.id, async (tx) => {
+      const [p] = await tx
+        .insert(projects)
+        .values({
+          orgId: scaleOrg.id,
+          name: `scale-${idx}-${randomUUID().slice(0, 4)}`,
+          type: 'tama38_1',
+          createdBy: scaleMgrId,
+          // Alternate the target so metThreshold flips across the set: even idx
+          // targets 40 (≈50% consent MEETS), odd targets 60 (does NOT meet).
+          targetSignaturePct: idx % 2 === 0 ? '40.00' : '60.00',
+        })
+        .returning({ id: projects.id });
+      return p!.id;
+    });
+    const a1 = await seedApartmentScale(projectId);
+    const o1 = await seedOwnerScale(a1);
+    const a2 = await seedApartmentScale(projectId);
+    await seedOwnerScale(a2); // unsigned → drives consent below 100%
+    const doc = await seedProjectDocScale(projectId);
+    await seedSigScale(doc, o1);
+    return projectId;
+  }
+
+  async function seedApartmentScale(projectId: string): Promise<string> {
+    return withTenant(scaleOrg.id, async (tx) => {
+      const [b] = await tx
+        .insert(buildings)
+        .values({ projectId, address: `Sokolov ${randomUUID().slice(0, 4)}`, city: 'Tel Aviv' })
+        .returning({ id: buildings.id });
+      const [a] = await tx
+        .insert(apartments)
+        .values({
+          buildingId: b!.id,
+          number: String(Math.floor(Math.random() * 9000) + 1000),
+          floor: 1,
+        })
+        .returning({ id: apartments.id });
+      return a!.id;
+    });
+  }
+
+  async function seedOwnerScale(aptId: string): Promise<string> {
+    const nid = String(nidCounter++);
+    return withTenant(scaleOrg.id, async (tx) => {
+      const enc = await encryptOwnerPii(tx as never, {
+        name: `בעלים ${nid}`,
+        nationalId: nid,
+        phone: '050' + nid.slice(2),
+      });
+      const [own] = await tx
+        .insert(owners)
+        .values({
+          orgId: scaleOrg.id,
+          nameEncrypted: enc.nameEncrypted,
+          nameHash: enc.nameHash,
+          nationalIdEncrypted: enc.nationalIdEncrypted,
+          nationalIdHash: enc.nationalIdHash,
+          phoneEncrypted: enc.phoneEncrypted,
+          phoneHash: enc.phoneHash,
+        })
+        .returning({ id: owners.id });
+      await tx
+        .insert(ownerships)
+        .values({ apartmentId: aptId, ownerId: own!.id, ownershipPct: '100', role: 'owner' });
+      return own!.id;
+    });
+  }
+
+  async function seedProjectDocScale(projectId: string): Promise<string> {
+    return withTenant(scaleOrg.id, async (tx) => {
+      const [d] = await tx
+        .insert(documents)
+        .values({
+          orgId: scaleOrg.id,
+          projectId,
+          name: 'Scale Plan',
+          type: 'agreement',
+          mimeType: 'application/pdf',
+          sizeBytes: 1024,
+          r2Key: `org/${scaleOrg.id}/doc/${randomUUID()}.pdf`,
+          contentHash: 'sha256:' + 'e'.repeat(64),
+          uploadedBy: scaleMgrId,
+          uploadedAt: new Date(),
+        })
+        .returning({ id: documents.id });
+      return d!.id;
+    });
+  }
+
+  async function seedSigScale(documentId: string, ownerId: string): Promise<void> {
+    await withTenant(scaleOrg.id, async (tx) => {
+      await tx.insert(signatureRequests).values({
+        orgId: scaleOrg.id,
+        documentId,
+        ownerId,
+        jti: `jti-${randomUUID()}`,
+        status: 'signed',
+        signedAt: new Date(Date.now() - 3 * DAY),
+        expiresAt: new Date(Date.now() + 30 * DAY),
+        createdBy: scaleMgrId,
+      });
+    });
+  }
+
+  beforeAll(async () => {
+    const tag = `pulse-scale-${Date.now()}`;
+    scaleOrg = await createTestOrg(tag, tag);
+    scaleMgrId = scaleOrg.users[0]!.id;
+    cache = new StatsCacheService(new PostgresCacheProvider());
+    cachedSvc = new ProjectsService(cache);
+    freshSvc = new ProjectsService();
+    // createTestOrg seeds 2 projects already; top up to SCALE_N total.
+    const existing = scaleOrg.projects.length;
+    for (let i = existing; i < SCALE_N; i += 1) {
+      await seedScaleProject(i);
+    }
+  }, 300_000);
+
+  it('SP-14) the bounded-parallel cached pulse is byte-identical to the sequential fresh compute', async () => {
+    const u = scaleManager();
+    // Ground truth: the no-cache service computes every aggregate fresh. The
+    // output shape (rows, order, consent) is what the SEQUENTIAL loop produced.
+    const fresh = await freshSvc.signaturePulse(u);
+    // Parallel path: cold then warm — both must equal the ground truth.
+    await cache.invalidateOrg(scaleOrg.id); // force every aggregate to MISS
+    const coldParallel = await cachedSvc.signaturePulse(u);
+    const warmParallel = await cachedSvc.signaturePulse(u);
+
+    // EVERY project the manager seeded is present (SCALE_N rows, no drops).
+    expect(coldParallel.attention.length).toBe(fresh.attention.length);
+    expect(coldParallel.attention.length).toBeGreaterThanOrEqual(SCALE_N);
+
+    // Order + per-project consent are IDENTICAL across all three. rankAttention
+    // is a pure function of the rows, so identical rows ⇒ identical order ⇒ a
+    // byte-identical `attention` array.
+    expect(coldParallel.attention).toStrictEqual(fresh.attention);
+    expect(warmParallel.attention).toStrictEqual(fresh.attention);
+    expect(coldParallel.buckets).toStrictEqual(fresh.buckets);
+    expect(coldParallel.needsHuman).toStrictEqual(fresh.needsHuman);
+
+    // The seeded consent really IS varied (not a degenerate all-equal set that
+    // would make the deep-equal trivially pass): both met + unmet thresholds.
+    const metFlags = new Set(coldParallel.attention.map((r) => r.metThreshold));
+    expect(metFlags.has(true)).toBe(true);
+    expect(metFlags.has(false)).toBe(true);
+  }, 120_000);
+
+  it('SP-15) a COLD pulse over the scaled org does not exhaust the pool + cold/warm is measured', async () => {
+    const u = scaleManager();
+    // COLD: every per-project aggregate is a cache MISS → the bounded-parallel
+    // fan-out runs against the DB. If the fan-out were unbounded this is where
+    // the pool would starve (connection-timeout); bounded, it must complete.
+    await cache.invalidateOrg(scaleOrg.id);
+    const t0 = Date.now();
+    const cold = await cachedSvc.signaturePulse(u);
+    const coldMs = Date.now() - t0;
+
+    // WARM: every aggregate is a HIT.
+    const t1 = Date.now();
+    const warm = await cachedSvc.signaturePulse(u);
+    const warmMs = Date.now() - t1;
+
+    // Surface the measurement in the test log (perf is a first-class axis).
+    // eslint-disable-next-line no-console
+    console.info(
+      `[SP-15] signaturePulse over ${cold.attention.length} projects — cold(parallel,MISS)=${coldMs}ms warm(HIT)=${warmMs}ms`,
+    );
+
+    // The run COMPLETED (no pool-exhaustion throw) and returned the full set.
+    expect(cold.attention.length).toBeGreaterThanOrEqual(SCALE_N);
+    expect(warm.attention).toStrictEqual(cold.attention);
+  }, 120_000);
 });

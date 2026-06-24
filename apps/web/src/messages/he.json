@@ -338,13 +338,6 @@
         "in_construction": "בבנייה",
         "completed": "הושלם",
         "cancelled": "בוטל"
-      },
-      "segmentLabel": "סינון לפי מקטע",
-      "segmentAll": "כל הפרויקטים",
-      "segment": {
-        "stalled": "תקועים",
-        "expiring": "מתקרבים לפקיעה",
-        "mine": "המשויכים אליי"
       }
     },
     "viewCards": "תצוגת כרטיסים",

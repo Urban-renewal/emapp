@@ -338,13 +338,6 @@
         "in_construction": "In construction",
         "completed": "Completed",
         "cancelled": "Cancelled"
-      },
-      "segmentLabel": "Filter by segment",
-      "segmentAll": "All projects",
-      "segment": {
-        "stalled": "Stalled",
-        "expiring": "Expiring soon",
-        "mine": "Assigned to me"
       }
     },
     "viewCards": "Cards view",

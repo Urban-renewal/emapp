@@ -612,6 +612,24 @@ describe('signaturePulse — G4 bounded-concurrency consent (scale + correctness
     const metFlags = new Set(coldParallel.attention.map((r) => r.metThreshold));
     expect(metFlags.has(true)).toBe(true);
     expect(metFlags.has(false)).toBe(true);
+
+    // INDEPENDENT slot↔projectId guard at SCALE (closes the bounded-parallel
+    // chunk-offset risk): the deep-equal above compares the parallel path to
+    // freshSvc, which runs the SAME bounded-parallel code — so a CONSISTENT
+    // mis-slot in the `aggs[i+j]` chunk arithmetic would corrupt both and still
+    // pass. Cross-check a few rows spanning chunk boundaries (first / middle /
+    // last) against the per-project board computed by id via `signatureProgress`
+    // (NOT the fan-out loop) — the row's consent MUST belong to ITS projectId.
+    const probeRows = [
+      coldParallel.attention[0]!,
+      coldParallel.attention[Math.floor(coldParallel.attention.length / 2)]!,
+      coldParallel.attention.at(-1)!,
+    ];
+    for (const row of probeRows) {
+      const board = await freshSvc.signatureProgress(u, row.projectId);
+      expect(row.consentedPct).toBe(board.consentedPct);
+      expect(row.metThreshold).toBe(board.metThreshold);
+    }
   }, 120_000);
 
   it('SP-15) a COLD pulse over the scaled org does not exhaust the pool + cold/warm is measured', async () => {

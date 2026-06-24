@@ -25,6 +25,7 @@ import {
   SignatureCampaignResponseSchema,
   SignatureRequestCreateResponseSchema,
   SignatureRequestLinkResponseSchema,
+  SignatureRequestListItemSchema,
   SignatureRequestSchema,
   type CreateSignatureRequest,
   type ListSignatureRequestsQueryDto,
@@ -33,6 +34,7 @@ import {
   type SignatureRequest,
   type SignatureRequestCreateResponse,
   type SignatureRequestLinkResponse,
+  type SignatureRequestListItem,
 } from '@emapp/shared-types';
 import { z } from 'zod';
 
@@ -47,7 +49,12 @@ const LinkResponseDataSchema = z.object({ data: SignatureRequestLinkResponseSche
 const CampaignResponseDataSchema = z.object({ data: SignatureCampaignResponseSchema });
 
 export interface SignatureRequestListPage {
-  items: SignatureRequest[];
+  /** Slice-3 — the LIST endpoint returns the ENRICHED row
+   *  (`SignatureRequestListItem`: base + projectName / apartmentLabel /
+   *  documentName / masked-by-default ownerDisplay). Parsing with the list-item
+   *  schema is what surfaces those display fields to the adapter; a masked
+   *  caller already gets `ownerDisplay: null` from the server. */
+  items: SignatureRequestListItem[];
   page: { limit: number; cursor: string | null; has_more: boolean };
 }
 
@@ -60,10 +67,14 @@ export async function listSignatureRequests(
   if (query.status) params.set('status', query.status);
   if (query.documentId) params.set('documentId', query.documentId);
   if (query.ownerId) params.set('ownerId', query.ownerId);
+  // Slice-3 — the projectId filter (#519). The BE honors agent record-scoping:
+  // a projectId the agent is not assigned to yields an EMPTY page, never another
+  // project's rows.
+  if (query.projectId) params.set('projectId', query.projectId);
   const qs = params.toString();
   const res = await apiClient.getList<unknown>(`/signature-requests${qs ? `?${qs}` : ''}`);
   if (!isList<unknown>(res)) throw new ApiClientError(res.error);
-  const items = z.array(SignatureRequestSchema).parse(res.data);
+  const items = z.array(SignatureRequestListItemSchema).parse(res.data);
   const page = PageSchema.parse(res.page);
   return { items, page };
 }

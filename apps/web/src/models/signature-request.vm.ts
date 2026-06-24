@@ -29,8 +29,33 @@ export interface SignatureRequestViewModel {
   isTerminal: boolean;
   isExpired: boolean;
   expiresAtIso: string;
+  /** Raw `created_at` epoch-ms — load-bearing for the flat list's client-side
+   *  sort (newest / oldest first). `createdRelative` is display-only and cannot
+   *  be ordered reliably (localized relative strings). */
+  createdAtMs: number;
   expiresRelative: string;
   createdRelative: string;
   signedRelative: string | null;
   cancelledRelative: string | null;
+
+  /**
+   * Slice-3 DISPLAY CONTEXT — populated ONLY from the LIST endpoint's
+   * `SignatureRequestListItem` wire row (BE #519). The detail / forensic
+   * surfaces use the base `SignatureRequest` and resolve these to `null` (the
+   * adapter's safe default), so a row that came through the detail path simply
+   * renders the neutral fallbacks.
+   *
+   * - `projectName` / `apartmentLabel` / `documentName` — NON-PII same-org names
+   *   the actor can already see. Nullable: a scope-less document or an archived
+   *   apartment yields `null` and the row shows a neutral placeholder.
+   * - `ownerDisplay` — the ONLY PII. MASKED-BY-DEFAULT: the SERVER returns `null`
+   *   unless the caller holds `view_owner_pii` (it emits a literal SQL NULL for a
+   *   masked caller, so cleartext never crosses the wire). The FE NEVER unmasks;
+   *   it renders only what the server sent, wrapped in `<NameDisplay>`.
+   *   national_id / phone NEVER appear here.
+   */
+  projectName: string | null;
+  apartmentLabel: string | null;
+  documentName: string | null;
+  ownerDisplay: string | null;
 }

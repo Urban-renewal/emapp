@@ -1,11 +1,21 @@
-import type { SignatureDeliveryReport, SignatureRequest } from '@emapp/shared-types';
+import type { SignatureDeliveryReport, SignatureRequestListItem } from '@emapp/shared-types';
 
 /** SAMPLE_SIGNATURE_REQUESTS — pending + signed + cancelled, one row
  *  each (D.12 LAW). UUIDs are valid hex-only shapes — `o`/`s` are
  *  not [0-9a-f] so we use `aaaaaaaa-…`-style hex prefixes instead.
  *  The wire shape never carries `jti` or the raw JWT; these fixtures
- *  match the wire surface exactly. */
-export const SAMPLE_SIGNATURE_REQUESTS: SignatureRequest[] = [
+ *  match the wire surface exactly.
+ *
+ *  Slice-3 — typed as the ENRICHED `SignatureRequestListItem` (the LIST
+ *  endpoint's row): the base fields PLUS the display context
+ *  (`projectName` / `apartmentLabel` / `documentName` / `ownerDisplay`) so the
+ *  offline list reads legibly. `ownerDisplay` is the UNMASKED owner name on the
+ *  first two rows — these fixtures stand in for a `view_owner_pii`-holding
+ *  caller; the third sets it `null` to exercise the masked-default placeholder
+ *  the FE shows when the BE withholds the name. The base
+ *  `SignatureRequestSchema.parse` in the samples spec strips the extra keys, so
+ *  the D.12 3-state contract check still holds. */
+export const SAMPLE_SIGNATURE_REQUESTS: SignatureRequestListItem[] = [
   {
     id: 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
     organizationId: '22222222-2222-4222-8222-222222222222',
@@ -19,6 +29,10 @@ export const SAMPLE_SIGNATURE_REQUESTS: SignatureRequest[] = [
     signedSignatureId: null,
     cancelledAt: null,
     cancelledBy: null,
+    projectName: 'מתחם הרצל 12',
+    apartmentLabel: '4',
+    documentName: 'הסכם התקשרות',
+    ownerDisplay: 'דנה כהן',
   },
   {
     id: 'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa',
@@ -33,6 +47,10 @@ export const SAMPLE_SIGNATURE_REQUESTS: SignatureRequest[] = [
     signedSignatureId: 'dddddddd-2222-4222-8222-dddddddddddd',
     cancelledAt: null,
     cancelledBy: null,
+    projectName: 'מתחם הרצל 12',
+    apartmentLabel: '7',
+    documentName: 'הסכם התקשרות',
+    ownerDisplay: 'יוסי לוי',
   },
   {
     id: 'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa',
@@ -47,6 +65,10 @@ export const SAMPLE_SIGNATURE_REQUESTS: SignatureRequest[] = [
     signedSignatureId: null,
     cancelledAt: new Date('2026-05-21T12:00:00Z'),
     cancelledBy: '11111111-1111-4111-8111-111111111111',
+    projectName: 'פינוי-בינוי רוטשילד',
+    apartmentLabel: null,
+    documentName: 'נספח כתב שיפוי',
+    ownerDisplay: null,
   },
 ];
 

@@ -17,6 +17,8 @@ import { describe, expect, it } from 'vitest';
 import {
   NOTIFICATION_TYPE_LABELS_EN,
   NOTIFICATION_TYPE_LABELS_HE,
+  NOTIFICATION_TYPE_TO_ACTION,
+  notificationRecencyBucket,
   toNotificationViewModel,
 } from './notification';
 
@@ -109,5 +111,97 @@ describe('toNotificationViewModel — locale + surface', () => {
 
   it('T-4c-S3-VM.8b) title passes through verbatim', () => {
     expect(toNotificationViewModel(baseNotification({ title: 'X' })).title).toBe('X');
+  });
+});
+
+describe('toNotificationViewModel — actionKind (work-surface affordance)', () => {
+  it('NA.1) the action map is exhaustive over every NotificationType (no drift)', () => {
+    expect(Object.keys(NOTIFICATION_TYPE_TO_ACTION).sort()).toEqual(
+      [...NotificationTypeEnum.options].sort(),
+    );
+  });
+
+  it('NA.2) each type maps to its intended primary action', () => {
+    const expected: Record<string, string> = {
+      document_uploaded: 'upload',
+      signature_received: 'remind',
+      task_assigned: 'review',
+      apartment_status_changed: 'review',
+      note_added: 'review',
+      mention: 'open-thread',
+      message_received: 'open-thread',
+      share_revoked: 'open',
+    };
+    for (const type of NotificationTypeEnum.options) {
+      expect(toNotificationViewModel(baseNotification({ type })).actionKind).toBe(expected[type]);
+    }
+  });
+});
+
+describe('toNotificationViewModel — recencyBucket grouping', () => {
+  // Anchor "now" mid-day Israel time so civil-day math is unambiguous.
+  const NOW = new Date('2026-06-24T09:00:00Z');
+
+  it('NR.1) same Israel civil day → today', () => {
+    const vm = toNotificationViewModel(
+      baseNotification({ createdAt: new Date('2026-06-24T05:00:00Z') }),
+      'he',
+      NOW,
+    );
+    expect(vm.recencyBucket).toBe('today');
+  });
+
+  it('NR.2) 3 days ago → week', () => {
+    const vm = toNotificationViewModel(
+      baseNotification({ createdAt: new Date('2026-06-21T09:00:00Z') }),
+      'he',
+      NOW,
+    );
+    expect(vm.recencyBucket).toBe('week');
+  });
+
+  it('NR.3) 10 days ago → earlier', () => {
+    const vm = toNotificationViewModel(
+      baseNotification({ createdAt: new Date('2026-06-14T09:00:00Z') }),
+      'he',
+      NOW,
+    );
+    expect(vm.recencyBucket).toBe('earlier');
+  });
+
+  it('NR.4) bucket helper boundary: exactly 6 days = week, 7 = earlier', () => {
+    const day = (iso: string) => new Date(iso);
+    expect(notificationRecencyBucket(day('2026-06-18T09:00:00Z'), NOW)).toBe('week'); // 6 days
+    expect(notificationRecencyBucket(day('2026-06-17T09:00:00Z'), NOW)).toBe('earlier'); // 7 days
+  });
+
+  it('NR.5) a future timestamp (clock skew) clamps to today, never negative', () => {
+    expect(notificationRecencyBucket(new Date('2026-06-25T09:00:00Z'), NOW)).toBe('today');
+  });
+});
+
+describe('toNotificationViewModel — PII boundary (G-RT)', () => {
+  it('PII.1) the VM never carries the wire `metadata` (no PII oracle surface)', () => {
+    const vm = toNotificationViewModel(
+      baseNotification({ metadata: { national_id: '123456789', ownerId: 'secret-owner' } }),
+    );
+    // The VM shape is a fixed allowlist — metadata is structurally absent.
+    expect(Object.keys(vm).sort()).toEqual(
+      [
+        'actionKind',
+        'body',
+        'createdAtIso',
+        'createdRelative',
+        'id',
+        'isRead',
+        'link',
+        'recencyBucket',
+        'title',
+        'type',
+        'typeLabel',
+      ].sort(),
+    );
+    expect(JSON.stringify(vm)).not.toContain('123456789');
+    expect(JSON.stringify(vm)).not.toContain('secret-owner');
   });
 });

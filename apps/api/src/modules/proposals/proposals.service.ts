@@ -1,4 +1,11 @@
-import { AuditService, proposals, withTenant, type Proposal, type TenantTx } from '@emapp/db';
+import {
+  AuditService,
+  proposals,
+  withTenant,
+  type GovernedSendOutcome,
+  type Proposal,
+  type TenantTx,
+} from '@emapp/db';
 import { classify, type AutonomyActionKind } from '@emapp/jobs/autonomy-policy';
 import type {
   ListProposalsQueryDto,
@@ -26,6 +33,7 @@ import type { AccessTokenPayload } from '../auth/auth.service';
 import { SignatureRequestsService } from '../signatures/signature-requests.service';
 import { TasksService } from '../tasks/tasks.service';
 
+import { executeDocumentChase } from './document-chase-executor';
 import { composeMissingDocTask } from './task-watcher-copy';
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
@@ -124,38 +132,23 @@ export class ProposalsService {
           signatureRequestId: proposal.scopeId,
           cadenceStep,
         });
-        // Per-item independence (design correction M2): a non-`sent` outcome does
-        // NOT silently "succeed". A gate denied/deferred it (kill-switch off,
-        // consent withdrawn, breaker tripped, ceiling hit, quiet hours) or the
-        // provider failed → throw so the apply path leaves the proposal PENDING
-        // (it stays actionable; the manager retries when the condition lifts).
-        // `already_sent` is the M1 exactly-once no-op: the send already happened
-        // (a terminal `sent` row), so the proposal legitimately flips to `applied`.
-        if (outcome.result === 'sent' || outcome.result === 'already_sent') return;
-        if (outcome.result === 'blocked') {
-          throw new ConflictException({
-            error: { code: 'outbound_blocked', details: { reason: outcome.decision.reason } },
-          });
-        }
-        // result === 'failed' — a DEFINITE non-send (provider rejection / nothing
-        // attempted). The ledger row is `failed` (RE-CLAIMABLE): throwing leaves
-        // the proposal PENDING so the manager retries; the next approve re-claims
-        // the failed row + re-sends the SAME step (#506 H1 fix — a failed step is
-        // no longer permanently dead + falsely "succeeded").
-        if (outcome.result === 'failed') {
-          throw new ConflictException({
-            error: { code: 'outbound_failed', details: { reason: outcome.failureCode } },
-          });
-        }
-        // result === 'ambiguous' — the provider threw / timed out; the SMS MAY
-        // have gone out. NEVER auto-resend. The ledger row is PARKED (`pending_send`)
-        // and is un-resendable by this path. Surface a DISTINCT state so the
-        // manager sees "needs manual check at the provider", NOT a false success
-        // and NOT a clean retry. The proposal stays PENDING (the throw leaves it
-        // un-flipped) — a human resolves it out-of-band.
-        throw new ConflictException({
-          error: { code: 'outbound_ambiguous', details: { reason: outcome.failureCode } },
-        });
+        // The governed-outcome → keep-pending/throw mapping is ONE canonical
+        // implementation (`assertGovernedSent`), shared with the S5
+        // `document.chase.send` executor — never re-implemented per kind.
+        this.assertGovernedSent(outcome);
+      },
+      // S5 DocumentChase: APPROVE chases the responsible PARTY for a project's
+      // MISSING required document, THROUGH the SAME canonical `governOutboundSend`
+      // seam the reminder uses (gates + M1 exactly-once). The executor resolves the
+      // REAL recipient consent FAIL-CLOSED (no opt-out registry / party-recipient
+      // resolver merged yet → consent unconfirmable → the ConsentGate denies →
+      // `blocked`, nothing is sent, the proposal stays pending). NEVER a hardcoded
+      // `recipientConsented:true` (the #516 consent-bypass). The proposal's scopeId
+      // is the project id; the missing type + party come from the PII-free evidence.
+      'document.chase.send': async (_user, proposal) => {
+        const outcome = await executeDocumentChase(proposal.orgId, proposal);
+        // SAME canonical outcome mapping as the reminder executor.
+        this.assertGovernedSent(outcome);
       },
       // G1 TaskWatcher: APPROVE opens a SYSTEM-OWNED task for a detected work
       // condition (a gathering-signatures project missing a required doc type).
@@ -182,6 +175,36 @@ export class ProposalsService {
         );
       },
     };
+  }
+
+  /**
+   * The ONE canonical governed-outbound outcome → keep-pending/throw mapping,
+   * shared by EVERY governed-send executor (`reminder.send`, `document.chase.send`,
+   * …) so the per-item-independence semantics (design correction M2) are NEVER
+   * re-implemented per kind:
+   *   - `sent` / `already_sent` → success (the proposal flips to `applied`).
+   *   - `blocked` → a gate denied/deferred (kill-switch off, CONSENT withdrawn,
+   *     breaker tripped, ceiling, quiet hours). Throw → proposal stays PENDING.
+   *   - `failed` → a DEFINITE non-send (re-claimable next approve). Throw → pending.
+   *   - `ambiguous` → the provider threw/timed out; the send MAY have gone out.
+   *     NEVER auto-resend (parked `pending_send`). Throw a DISTINCT state → pending.
+   */
+  private assertGovernedSent(outcome: GovernedSendOutcome): void {
+    if (outcome.result === 'sent' || outcome.result === 'already_sent') return;
+    if (outcome.result === 'blocked') {
+      throw new ConflictException({
+        error: { code: 'outbound_blocked', details: { reason: outcome.decision.reason } },
+      });
+    }
+    if (outcome.result === 'failed') {
+      throw new ConflictException({
+        error: { code: 'outbound_failed', details: { reason: outcome.failureCode } },
+      });
+    }
+    // result === 'ambiguous' — parked, never auto-resent; surface a distinct state.
+    throw new ConflictException({
+      error: { code: 'outbound_ambiguous', details: { reason: outcome.failureCode } },
+    });
   }
 
   private requireManager(user: AccessTokenPayload): void {

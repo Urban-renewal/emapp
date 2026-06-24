@@ -103,6 +103,37 @@ describe('toProposalViewModel — Approval-Inbox adapter', () => {
     expect(vm.whyTitle).not.toContain('some.future.kind');
   });
 
+  it('6b) S5 document.chase.send — user-control voice ("לפי הכללים שלך"), PII-free, no system-hero verb', () => {
+    const vm = toProposalViewModel(
+      proposal({
+        kind: 'document.chase.send' as ProposalView['kind'],
+        scopeType: 'project',
+        evidence: {
+          condition: 'missing_required_doc',
+          projectId: '33333333-3333-4333-8333-333333333333',
+          projectType: 'tama38_1',
+          track: 'tama38',
+          missingDocType: 'survey',
+        },
+      }),
+      'he',
+    );
+    expect(vm.kind).toBe('document.chase.send');
+    expect(vm.whyTitle).toContain('לפי הכללים שלך');
+    expect(vm.scopeLabel).toBe('פרויקט');
+    // VOICE LAW — no first-person system-hero verb.
+    for (const banned of FORBIDDEN_SYSTEM_VOICE) {
+      expect(vm.whyTitle).not.toContain(banned);
+      expect(vm.approveLabel).not.toContain(banned);
+    }
+    // The English copy resolves too.
+    const en = toProposalViewModel(
+      proposal({ kind: 'document.chase.send' as ProposalView['kind'], scopeType: 'project' }),
+      'en',
+    );
+    expect(en.whyTitle).toContain('Per your rules');
+  });
+
   it('6) toProposalViewModels maps a list preserving order', () => {
     const vms = toProposalViewModels(
       [

@@ -2428,6 +2428,11 @@ export class DocumentsService {
           // S2 — project-attention axis.
           projectsBehind,
           projectsWithRequirement,
+          // The TRUE behind count (pre-cap) — the cockpit derives "behind" + "met"
+          // from THIS, never from the capped `projectsBehind` length (which would
+          // over-state "completed" at scale). Same `behindAll` that produced the
+          // capped display list — one source of truth.
+          projectsBehindTotal: behindAll.length,
           projectsBehindCapped: behindAll.length > PROJECTS_BEHIND_CAP,
         };
       },

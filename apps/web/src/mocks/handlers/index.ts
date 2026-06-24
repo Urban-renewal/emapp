@@ -300,7 +300,16 @@ export const handlers = [
   http.delete(`${API}/apartments/:id`, () => new HttpResponse(null, { status: 204 })),
 
   // owners
-  http.get(`${API}/owners`, () => HttpResponse.json(listEnvelope(SAMPLE_OWNERS))),
+  http.get(`${API}/owners`, ({ request }) => {
+    // B2 — honor the `needsAttention` flag offline so the chip narrows the
+    // sample list too (pendingSignatureCount > 0), faithful to the BE WHERE.
+    const url = new URL(request.url);
+    const needsAttention = url.searchParams.get('needsAttention') === 'true';
+    const rows = needsAttention
+      ? SAMPLE_OWNERS.filter((o) => o.pendingSignatureCount > 0)
+      : SAMPLE_OWNERS;
+    return HttpResponse.json(listEnvelope(rows));
+  }),
   http.post(`${API}/owners`, async ({ request }) => {
     const body = await request.json();
     const parsed = CreateOwnerInput.safeParse(body);
@@ -325,6 +334,22 @@ export const handlers = [
     return HttpResponse.json(dataEnvelope(o), { status: 201 });
   }),
   http.post(`${API}/owners/search`, () => HttpResponse.json(dataEnvelope(SAMPLE_OWNERS[0]))),
+  // B1 — owner NAME search (GET /owners/search). Faithfully filters the masked
+  // SAMPLE_OWNERS by the `q` name substring (case-insensitive) + the B2
+  // `needsAttention` flag (pendingSignatureCount > 0), returning the SAME
+  // {data,page} list envelope as GET /owners so offline + samples stay green.
+  // Registered BEFORE `/owners/:id` (more-specific path wins).
+  http.get(`${API}/owners/search`, ({ request }) => {
+    const url = new URL(request.url);
+    const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
+    const needsAttention = url.searchParams.get('needsAttention') === 'true';
+    const rows = SAMPLE_OWNERS.filter((o) => {
+      const nameHit = q.length === 0 || (o.name ?? '').toLowerCase().includes(q);
+      const attentionHit = !needsAttention || o.pendingSignatureCount > 0;
+      return nameHit && attentionHit;
+    });
+    return HttpResponse.json(listEnvelope(rows));
+  }),
   // S3d — owner → projects surfacing. Lean PROJECT summaries (id/name/type/
   // status), no owner PII. Registered BEFORE `/owners/:id` (more-specific path).
   http.get(`${API}/owners/:id/projects`, () =>

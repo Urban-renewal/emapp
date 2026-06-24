@@ -27,11 +27,13 @@ import {
   apartments,
   buildings,
   db,
+  documents,
   encryptOwnerPii,
   memberships,
   owners,
   ownerships,
   projectAssignments,
+  signatureRequests,
   users,
   withTenant,
 } from '@emapp/db';
@@ -53,13 +55,31 @@ let agentAId: string;
 const TAG = randomUUID().slice(0, 8);
 
 function managerA(): AccessTokenPayload {
-  return { sub: mgrAId, orgId: orgA.id, role: 'manager', sid: randomUUID(), type: 'access' } as unknown as AccessTokenPayload;
+  return {
+    sub: mgrAId,
+    orgId: orgA.id,
+    role: 'manager',
+    sid: randomUUID(),
+    type: 'access',
+  } as unknown as AccessTokenPayload;
 }
 function managerB(): AccessTokenPayload {
-  return { sub: mgrBId, orgId: orgB.id, role: 'manager', sid: randomUUID(), type: 'access' } as unknown as AccessTokenPayload;
+  return {
+    sub: mgrBId,
+    orgId: orgB.id,
+    role: 'manager',
+    sid: randomUUID(),
+    type: 'access',
+  } as unknown as AccessTokenPayload;
 }
 function agentA(): AccessTokenPayload {
-  return { sub: agentAId, orgId: orgA.id, role: 'agent', sid: randomUUID(), type: 'access' } as unknown as AccessTokenPayload;
+  return {
+    sub: agentAId,
+    orgId: orgA.id,
+    role: 'agent',
+    sid: randomUUID(),
+    type: 'access',
+  } as unknown as AccessTokenPayload;
 }
 
 function natId(): string {
@@ -95,12 +115,18 @@ async function seedAgent(orgId: string): Promise<string> {
     .insert(users)
     .values({ email: `ag-${randomUUID()}@test.local`, name: 'Ag', passwordHash: '$2b$12$x' })
     .returning({ id: users.id });
-  await db.insert(memberships).values({ userId: u!.id, orgId, role: 'agent', acceptedAt: new Date() });
+  await db
+    .insert(memberships)
+    .values({ userId: u!.id, orgId, role: 'agent', acceptedAt: new Date() });
   return u!.id;
 }
 
 /** Link an owner to a project via a NEW building+apartment+active ownership. */
-async function linkOwnerToProject(orgId: string, projectId: string, ownerId: string): Promise<void> {
+async function linkOwnerToProject(
+  orgId: string,
+  projectId: string,
+  ownerId: string,
+): Promise<void> {
   await withTenant(orgId, async (tx) => {
     const [b] = await tx
       .insert(buildings)
@@ -181,9 +207,72 @@ describe('NS1 owners search-by-name', () => {
     expect(page1.data).toHaveLength(1);
     expect(page1.page.has_more).toBe(true);
     expect(page1.page.cursor).toBeTruthy();
-    const page2 = await svc.searchByName(managerA(), { q: ks, limit: 1, cursor: page1.page.cursor! });
+    const page2 = await svc.searchByName(managerA(), {
+      q: ks,
+      limit: 1,
+      cursor: page1.page.cursor!,
+    });
     expect(page2.data).toHaveLength(1);
     expect(page2.data[0]!.id).not.toBe(page1.data[0]!.id);
+  });
+
+  it('B2: needsAttention narrows a name search to owners with ≥1 pending signature', async () => {
+    // Two owners share a search token; only ONE has a pending signature.
+    const tok = `Attn${TAG}${randomUUID().slice(0, 6)}`;
+    const withPending = await seedOwner(orgA.id, `${tok} Pending`);
+    const noPending = await seedOwner(orgA.id, `${tok} Calm`);
+
+    // Link `withPending` to a project + a pending signature_request.
+    const proj = orgA.projects[0]!.id;
+    await withTenant(orgA.id, async (tx) => {
+      const [b] = await tx
+        .insert(buildings)
+        .values({ projectId: proj, address: `attn ${randomUUID()}`, city: 'TLV' })
+        .returning({ id: buildings.id });
+      const [a] = await tx
+        .insert(apartments)
+        .values({ buildingId: b!.id, number: `AT-${randomUUID().slice(0, 8)}` })
+        .returning({ id: apartments.id });
+      await tx.insert(ownerships).values({
+        apartmentId: a!.id,
+        ownerId: withPending,
+        relationship: 'owner',
+        ownershipPct: '100',
+        shareNumerator: 10_000,
+        shareDenominator: 10_000,
+      });
+      const [doc] = await tx
+        .insert(documents)
+        .values({
+          orgId: orgA.id,
+          apartmentId: a!.id,
+          name: `attn-doc-${randomUUID()}`,
+          type: 'consent_form',
+          mimeType: 'application/pdf',
+          sizeBytes: 1024,
+          r2Key: `test/${randomUUID()}.pdf`,
+          contentHash: randomUUID().replace(/-/g, ''),
+          uploadedBy: mgrAId,
+        })
+        .returning({ id: documents.id });
+      await tx.insert(signatureRequests).values({
+        orgId: orgA.id,
+        documentId: doc!.id,
+        ownerId: withPending,
+        jti: randomUUID(),
+        status: 'pending',
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        createdBy: mgrAId,
+      });
+    });
+
+    // Without the flag BOTH match the name token.
+    const all = await svc.searchByName(managerA(), { q: tok, limit: 100 });
+    expect(all.data.map((o) => o.id)).toEqual(expect.arrayContaining([withPending, noPending]));
+    // With needsAttention: only the owner with a pending signature survives.
+    const attn = await svc.searchByName(managerA(), { q: tok, limit: 100, needsAttention: true });
+    expect(attn.data.map((o) => o.id)).toContain(withPending);
+    expect(attn.data.map((o) => o.id)).not.toContain(noPending);
   });
 
   it('agent scope: sees only owners in assigned-project apartments', async () => {

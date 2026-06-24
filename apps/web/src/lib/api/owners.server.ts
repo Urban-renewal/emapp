@@ -44,11 +44,15 @@ export async function serverListOwners(query: {
   limit?: number;
   cursor?: string;
   archived?: boolean;
+  needsAttention?: boolean;
 }): Promise<OwnerListPage> {
   const params = new URLSearchParams();
   if (query.limit !== undefined) params.set('limit', String(query.limit));
   if (query.cursor) params.set('cursor', query.cursor);
   if (query.archived) params.set('archived', 'true');
+  // Parity with the client `listOwners` — only set when on (default view omits
+  // it, so the prefetch URL stays identical to the client's first fetch).
+  if (query.needsAttention) params.set('needsAttention', 'true');
   const qs = params.toString();
 
   const body = await serverApiGet(`/owners${qs ? `?${qs}` : ''}`);

@@ -35,8 +35,13 @@ export default async function OwnersPage() {
   const rawLocale = await getLocale();
   const locale: 'he' | 'en' = rawLocale === 'en' ? 'en' : 'he';
 
-  // The page mounts in the ACTIVE view (archived: false) — match the client.
-  const query = { limit: 25, archived: false };
+  // The page mounts in the ACTIVE view (archived: false, needsAttention: false)
+  // — these MUST match the client's first-render `useOwnerList` query object
+  // EXACTLY. `archived`/`needsAttention` are literal `false` (not undefined), so
+  // they DO serialize into the TanStack key (`hashKey` only drops `undefined`);
+  // omitting `needsAttention` here would change the key hash and silently miss
+  // the prefetched cache → a wasted server fetch + a client refetch waterfall.
+  const query = { limit: 25, archived: false, needsAttention: false };
 
   const dehydratedState = await prefetchToDehydratedState([
     (qc) =>

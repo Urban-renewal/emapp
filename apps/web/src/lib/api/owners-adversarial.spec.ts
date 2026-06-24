@@ -8,7 +8,7 @@
 import { OwnerSchema } from '@emapp/shared-types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { revealOwnerPii, searchOwner } from './owners';
+import { revealOwnerPii, searchOwner, searchOwnersByName } from './owners';
 
 const originalFetch = globalThis.fetch;
 const originalWindow = (globalThis as { window?: unknown }).window;
@@ -185,5 +185,72 @@ describe('Owner wire shape — adversarial schema probes', () => {
     expect(OwnerSchema.safeParse({ ...SAMPLE_OWNER, nationalIdMasked: '12345678' }).success).toBe(
       false,
     );
+  });
+});
+
+// B1/B2 — server-side name search wrapper. A NAME is not PII (unlike
+// national_id/phone), so it rides the query string; the wrapper must hit the
+// EXISTING `GET /owners/search` endpoint (NOT a new BE), keep the masked-PII
+// projection, and forward the `needsAttention` flag.
+const SAMPLE_LIST_ITEM = {
+  ...SAMPLE_OWNER,
+  apartmentCount: 2,
+  pendingSignatureCount: 1,
+};
+const LIST_PAGE = { limit: 25, cursor: null, has_more: false };
+
+describe('searchOwnersByName — server-side name search (B1) + needs-attention (B2)', () => {
+  it('S1) hits GET /owners/search with `q` in the URL (name is not PII) — method GET, no POST body', async () => {
+    const spy = vi.fn(() =>
+      Promise.resolve(jsonResp(200, { data: [SAMPLE_LIST_ITEM], page: LIST_PAGE })),
+    ) as unknown as typeof fetch;
+    globalThis.fetch = spy as unknown as typeof fetch;
+
+    await searchOwnersByName({ q: 'דנה', limit: 25 });
+
+    const calls = (spy as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls;
+    const url = String(calls[0]?.[0]);
+    const init = calls[0]?.[1];
+    // The EXISTING search endpoint — not a new path, not the list endpoint.
+    expect(url).toContain('/owners/search');
+    expect(url).toContain('q=');
+    // GET (a name is safe in the URL); no request body.
+    expect(init?.method ?? 'GET').toBe('GET');
+    expect(init?.body).toBeFalsy();
+  });
+
+  it('S2) forwards needsAttention=true to the URL only when on', async () => {
+    const spy = vi.fn(() =>
+      Promise.resolve(jsonResp(200, { data: [SAMPLE_LIST_ITEM], page: LIST_PAGE })),
+    ) as unknown as typeof fetch;
+    globalThis.fetch = spy as unknown as typeof fetch;
+
+    await searchOwnersByName({ q: 'דנה', needsAttention: true });
+    const onUrl = String(
+      (spy as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0]?.[0],
+    );
+    expect(onUrl).toContain('needsAttention=true');
+
+    // And omitted when off.
+    const spy2 = vi.fn(() =>
+      Promise.resolve(jsonResp(200, { data: [SAMPLE_LIST_ITEM], page: LIST_PAGE })),
+    ) as unknown as typeof fetch;
+    globalThis.fetch = spy2 as unknown as typeof fetch;
+    await searchOwnersByName({ q: 'דנה' });
+    const offUrl = String(
+      (spy2 as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0]?.[0],
+    );
+    expect(offUrl).not.toContain('needsAttention');
+  });
+
+  it('S3) returns the MASKED list projection (national_id/phone never cleartext)', async () => {
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve(jsonResp(200, { data: [SAMPLE_LIST_ITEM], page: LIST_PAGE })),
+    ) as unknown as typeof fetch;
+    const out = await searchOwnersByName({ q: 'דנה' });
+    expect(out.items).toHaveLength(1);
+    expect(out.items[0]?.nationalIdMasked).toBe('•••••••11');
+    expect(out.items[0]).not.toHaveProperty('nationalId');
+    expect(out.items[0]).not.toHaveProperty('phone');
   });
 });

@@ -37,15 +37,50 @@ export interface OwnerListPage {
 }
 
 export async function listOwners(
-  query: { limit?: number; cursor?: string; archived?: boolean } = {},
+  query: { limit?: number; cursor?: string; archived?: boolean; needsAttention?: boolean } = {},
 ): Promise<OwnerListPage> {
   const params = new URLSearchParams();
   if (query.limit !== undefined) params.set('limit', String(query.limit));
   if (query.cursor) params.set('cursor', query.cursor);
   // Only send when true — the BE defaults to the active view.
   if (query.archived) params.set('archived', 'true');
+  // B2 — only send when on; BE defaults to 'false' (no attention filter).
+  if (query.needsAttention) params.set('needsAttention', 'true');
   const qs = params.toString();
   const res = await apiClient.getList<unknown>(`/owners${qs ? `?${qs}` : ''}`);
+  if (!isList<unknown>(res)) throw new ApiClientError(res.error);
+  const items = z.array(OwnerListItemSchema).parse(res.data);
+  const page = PageSchema.parse(res.page);
+  return { items, page };
+}
+
+/**
+ * B1 (findable-at-scale) — server-side owner NAME search via the EXISTING
+ * `GET /owners/search` endpoint (`OwnersService.searchByName`). Mirrors
+ * {@link listOwners} EXACTLY — same `{data,page}` envelope, same
+ * `OwnerListItemSchema` + `PageSchema` parse, same keyset cursor
+ * (`createdAt desc, id desc`), same masked PII — so the owners list can SWAP its
+ * query source to this when there's a search term and pagination still works.
+ *
+ * `q` is a NAME (not PII national_id/phone), so it rides the query string — it
+ * never leaks a national_id/phone into access logs (the by-PII lookup stays the
+ * POST `searchOwner` below, value in the body). The BE decrypts the name IN-SQL
+ * and ILIKEs it; national_id/phone come back MASKED, same as the list. `q` is
+ * trimmed + bounded server-side; we trim here too so the caller can
+ * short-circuit an all-whitespace box. `needsAttention` composes (B2).
+ */
+export async function searchOwnersByName(query: {
+  q: string;
+  limit?: number;
+  cursor?: string;
+  needsAttention?: boolean;
+}): Promise<OwnerListPage> {
+  const params = new URLSearchParams();
+  params.set('q', query.q.trim());
+  if (query.limit !== undefined) params.set('limit', String(query.limit));
+  if (query.cursor) params.set('cursor', query.cursor);
+  if (query.needsAttention) params.set('needsAttention', 'true');
+  const res = await apiClient.getList<unknown>(`/owners/search?${params.toString()}`);
   if (!isList<unknown>(res)) throw new ApiClientError(res.error);
   const items = z.array(OwnerListItemSchema).parse(res.data);
   const page = PageSchema.parse(res.page);

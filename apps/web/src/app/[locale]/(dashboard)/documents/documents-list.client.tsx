@@ -947,37 +947,14 @@ function GroupedAllDocuments({
   const t = useTranslations('documents');
   const [partyFacet, setPartyFacet] = useState<DocumentParty | null>(null);
   const [scopeFacet, setScopeFacet] = useState<ScopeFacet | null>(null);
-  const [cursor, setCursor] = useState<string | undefined>(undefined);
-
-  useEffect(() => setCursor(undefined), [partyFacet, scopeFacet, searchQuery, archived]);
 
   const searching = Boolean(searchQuery && searchQuery.length > 0);
 
-  const search = useDocumentSearch(
-    {
-      q: searchQuery ?? '',
-      limit: PAGE_LIMIT,
-      cursor,
-      ...(partyFacet ? { party: partyFacet } : {}),
-      ...(scopeFacet ? { scope: scopeFacet } : {}),
-      archived,
-    },
-    { enabled: searching },
-  );
-  const list = useDocumentList({ limit: PAGE_LIMIT, cursor, archived });
-
-  const active = searching ? search : list;
-  const activeItems = active.data?.items;
-  const page = active.data?.page;
-
-  const items = useMemo(() => {
-    const raw = activeItems ?? [];
-    if (searching) return raw;
-    let out = raw;
-    if (partyFacet) out = out.filter((d) => providerPartyForDocType(d.type) === partyFacet);
-    if (scopeFacet) out = out.filter((d) => documentScope(d) === scopeFacet);
-    return out;
-  }, [activeItems, searching, partyFacet, scopeFacet]);
+  // ONE accumulator across pages — the grouping/facets/attention-band all act on
+  // the ACCUMULATED set, so a project's docs no longer fracture across page
+  // boundaries and "attention-first" orders everything loaded (not just 25).
+  const feed = useAllDocumentsFeed({ archived, searchQuery, partyFacet, scopeFacet });
+  const items = feed.items;
 
   const pendingScan = items.filter((d) => d.scanStatus === 'pending').length;
   const ghostUploads = items.filter((d) => !d.isScanClean && d.scanStatus !== 'pending').length;
@@ -1009,9 +986,9 @@ function GroupedAllDocuments({
       )}
 
       <DataState
-        isLoading={active.isLoading}
-        isError={active.isError}
-        onRetry={() => void active.refetch()}
+        isLoading={feed.isLoading}
+        isError={feed.isError}
+        onRetry={feed.retry}
         skeleton="list"
         isEmpty={items.length === 0}
         emptyTitle={searching ? t('noResults') : archived ? t('archivedEmpty') : t('empty')}
@@ -1024,29 +1001,29 @@ function GroupedAllDocuments({
           ) : undefined
         }
       >
+        {/* HONESTY LINE — a non-technical user must never read this grouping as
+            "the whole org". Tells him how many docs are loaded and that
+            search/filter is the way to PIN a specific party's or project's
+            documents at scale (the search path narrows server-side, org-wide). */}
+        {items.length > 0 && (
+          <p className="text-xs text-text-muted" role="status">
+            {feed.isExhausted
+              ? t('allDocs.loadedAll', { count: items.length })
+              : t('allDocs.loadedPartial', { count: items.length })}
+          </p>
+        )}
         <ul className="flex flex-col gap-3">
           {groups.map((g) => (
             <li key={g.key}>
-              <ProjectGroup
-                group={g}
-                canCreate={canCreate}
-                onArchived={() => void active.refetch()}
-              />
+              <ProjectGroup group={g} canCreate={canCreate} onArchived={feed.onArchived} />
             </li>
           ))}
         </ul>
-        <div className="flex flex-wrap items-center gap-2">
-          {page?.has_more && page.cursor && (
-            <Button variant="outline" size="sm" onClick={() => setCursor(page.cursor ?? undefined)}>
-              {t('loadMore')}
-            </Button>
-          )}
-          {cursor && (
-            <Button variant="ghost" size="sm" onClick={() => setCursor(undefined)}>
-              {t('resetPage')}
-            </Button>
-          )}
-        </div>
+        <LoadMore
+          canLoadMore={feed.canLoadMore}
+          isFetching={feed.isFetchingMore}
+          onClick={feed.loadMore}
+        />
       </DataState>
     </div>
   );
@@ -1641,7 +1618,7 @@ function LoadMore({
 // ── Pure helpers (grouping + scope) ─────────────────────────────────────────
 
 /** Resolve a document's SCOPE facet from its parent linkage. */
-function documentScope(d: DocumentViewModel): ScopeFacet {
+export function documentScope(d: DocumentViewModel): ScopeFacet {
   if (d.apartmentId) return 'apartment';
   if (d.projectId) return 'project';
   return 'org';
@@ -1651,8 +1628,12 @@ function documentScope(d: DocumentViewModel): ScopeFacet {
  * Group documents by project → party (party subgroups in canonical order). The
  * project header uses the resolved `projectName` label; org-level docs (no
  * project) fall into one "unassigned" group LAST. Pure + deterministic.
+ *
+ * Exported so the "כל המסמכים" accumulate-across-pages invariant is unit-tested
+ * directly: grouping the CONCATENATION of two keyset pages must yield ONE group
+ * per project with combined counts (the per-page-grouping illusion this fixes).
  */
-function groupByProjectParty(
+export function groupByProjectParty(
   docs: DocumentViewModel[],
   unassignedLabel: string,
 ): ProjectGroupModel[] {
@@ -1745,6 +1726,115 @@ function usePartyDocuments(party: DocumentParty, archived: boolean) {
     retry: () => void refetch(),
     onArchived: () => {
       void refetch();
+    },
+  };
+}
+
+// ── "כל המסמכים" feed accumulator (server-paginated, ACROSS pages) ───────────
+
+/**
+ * Accumulate the "all documents" feed ACROSS keyset pages so the project→party
+ * grouping reflects EVERY loaded doc — not just the current 25-row page (the
+ * per-page-grouping illusion this fixes: a project's docs split over a page
+ * boundary used to land in different page-groups, and "attention-first" only
+ * ordered within a page). Same accumulate-then-dedup shape as
+ * {@link usePartyDocuments}: append each page into `acc` keyed by id, track
+ * `exhausted`, reset whenever the inputs (facets / search / archived) change.
+ *
+ * Two source paths, ONE accumulator:
+ *  - SEARCH (a non-empty `q`): the facets (party/scope) pass SERVER-side via the
+ *    search args, so accumulation walks the whole-org filtered result.
+ *  - LIST (no `q`): the list endpoint has no party param, so the facets filter
+ *    the ACCUMULATED set client-side (never widening visibility). The caller
+ *    shows the honesty line + count so a non-technical user knows this grows as
+ *    they load and that SEARCH is the way to pin a specific doc org-wide.
+ */
+function useAllDocumentsFeed({
+  archived,
+  searchQuery,
+  partyFacet,
+  scopeFacet,
+}: {
+  archived: boolean;
+  searchQuery?: string;
+  partyFacet: DocumentParty | null;
+  scopeFacet: ScopeFacet | null;
+}) {
+  const searching = Boolean(searchQuery && searchQuery.length > 0);
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const [acc, setAcc] = useState<DocumentViewModel[]>([]);
+  const [exhausted, setExhausted] = useState(false);
+
+  // Reset the accumulation whenever the QUERY changes (facets are server-side on
+  // the search path; on the list path they re-filter `acc` below — but resetting
+  // on every facet keeps the two paths uniform and the loaded-count honest).
+  useEffect(() => {
+    setCursor(undefined);
+    setAcc([]);
+    setExhausted(false);
+  }, [searching, searchQuery, archived, partyFacet, scopeFacet]);
+
+  const search = useDocumentSearch(
+    {
+      q: searchQuery ?? '',
+      limit: PAGE_LIMIT,
+      cursor,
+      ...(partyFacet ? { party: partyFacet } : {}),
+      ...(scopeFacet ? { scope: scopeFacet } : {}),
+      archived,
+    },
+    { enabled: searching },
+  );
+  const list = useDocumentList({ limit: PAGE_LIMIT, cursor, archived });
+  const active = searching ? search : list;
+  const data = active.data;
+
+  useEffect(() => {
+    if (!data) return;
+    setAcc((prev) => {
+      const seen = new Set(prev.map((d) => d.id));
+      const next = [...prev];
+      for (const d of data.items) if (!seen.has(d.id)) next.push(d);
+      return next;
+    });
+    if (!data.page.has_more) setExhausted(true);
+  }, [data]);
+
+  // List path only: the facets have no server param, so narrow the ACCUMULATED
+  // set client-side (search already narrowed server-side). Never widens.
+  const items = useMemo(() => {
+    if (searching) return acc;
+    let out = acc;
+    if (partyFacet) out = out.filter((d) => providerPartyForDocType(d.type) === partyFacet);
+    if (scopeFacet) out = out.filter((d) => documentScope(d) === scopeFacet);
+    return out;
+  }, [acc, searching, partyFacet, scopeFacet]);
+
+  const canLoadMore = !exhausted && Boolean(data?.page.has_more);
+  const isLoadingFirst = active.isLoading && acc.length === 0 && cursor === undefined;
+  const isFetchingMore = active.isFetching && cursor !== undefined;
+
+  return {
+    items,
+    /** Whether ALL pages of the underlying feed have been loaded. */
+    isExhausted: exhausted,
+    isLoading: isLoadingFirst,
+    isError: active.isError,
+    isFetchingMore,
+    canLoadMore,
+    loadMore: () => {
+      if (data?.page.has_more && data.page.cursor) setCursor(data.page.cursor);
+    },
+    retry: () => void active.refetch(),
+    // On archive, RESET the accumulation (not just refetch): the accumulator is
+    // append-only, so a bare refetch of page 1 would re-append the survivors but
+    // leave the just-archived doc lingering in `acc`. Resetting reloads the feed
+    // from the first page so the archived doc actually disappears — the
+    // technophobe expects the row he archived to be GONE at a glance.
+    onArchived: () => {
+      setCursor(undefined);
+      setAcc([]);
+      setExhausted(false);
     },
   };
 }

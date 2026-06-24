@@ -453,7 +453,7 @@ export function ProjectsListClient() {
                     const total = p.signaturesSignedCount + p.signaturesPendingCount;
                     // Warn ONLY for a LIVE deal — a terminal (cancelled/completed)
                     // project with leftover pending signatures is NOT "needs work"
-                    // (the #535 terminal-vs-active class, here as a colour cue).
+                    // (the terminal-vs-active divergence class, here as a colour cue).
                     const outstanding =
                       p.signaturesPendingCount > 0 && !PROJECT_TERMINAL_STATUSES.includes(p.status);
                     return (

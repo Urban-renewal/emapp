@@ -906,7 +906,6 @@
       "heading": "Projects needing attention",
       "pulse": {
         "behind": "{behind} of {total} projects missing core documents",
-        "behindCapped": "Over {behind} of {total} projects missing core documents",
         "allClear": "All {total} projects with a document requirement — core documents complete",
         "noRequirement": "No projects with a core-document requirement yet",
         "loading": "Loading project status…"

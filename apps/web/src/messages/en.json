@@ -167,7 +167,12 @@
     "providerConsole": "EMAPP Provider Console",
     "tagline": "Urban Renewal",
     "navLandmark": "Primary navigation",
-    "sectionTools": "Management & Tools"
+    "sectionTools": "Management & Tools",
+    "badge": {
+      "pendingDecisions": "{count} decisions awaiting you",
+      "unreadNotifications": "{count} unread notifications",
+      "unreadMessages": "{count} unread messages"
+    }
   },
   "inbox": {
     "title": "Pending decisions",

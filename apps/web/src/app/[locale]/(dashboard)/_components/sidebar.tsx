@@ -21,13 +21,16 @@ import {
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 
 import { NameDisplay } from '@/components/ui/name-display';
+import { useConversationsUnreadCount } from '@/hooks/use-conversations';
+import { useUnreadCount } from '@/hooks/use-notifications';
 import { useHasPermission } from '@/hooks/use-permissions';
 import { cn } from '@/lib/utils';
 
 import { LogoutButton } from './logout-button';
+import { InboxNavBadge, NavBadge } from './nav-badge';
 
 interface NavItem {
   href: string;
@@ -52,6 +55,9 @@ interface NavItem {
     | 'sectionTools';
   icon: typeof Home;
   enabled: boolean;
+  /** Optional trailing ambient badge (e.g. unread/pending count pill). Rendered
+   *  at the row's inline-end; absent (and so invisible) for rows without one. */
+  badge?: ReactNode;
 }
 
 interface Props {
@@ -130,6 +136,22 @@ export function Sidebar({ userName, userRole, tier }: Props) {
   // proposals.* permission family flagged in PR 503/505 will replace both with a
   // manager-only permission.) UX only; the BE `requireManager` stays authoritative.
   const canSeeInbox = userRole === 'manager';
+
+  // Ambient "what needs you" counts — the SAME constant-time hooks the surfaces
+  // themselves read (single source of truth; the nav signal can never drift from
+  // the bell / Messages page). Each is a cheap indexed aggregate, polled on the
+  // workspace cadence; the badge hides at 0 (calm). `useUnreadCount` already
+  // fires for the topbar bell and `useConversationsUnreadCount` for the messages
+  // surface, so these reuse the SAME query cache (no extra request — TanStack
+  // dedups by key). The org-scoped count endpoints are safe for every org role.
+  // The manager-only proposals count is read inside <InboxNavBadge> (mounted ONLY
+  // when the manager's inbox row renders) so non-managers never fire its
+  // requireManager-gated request.
+  const unreadNotifications = useUnreadCount();
+  const unreadMessages = useConversationsUnreadCount();
+  const notificationsCount = unreadNotifications.data ?? 0;
+  const messagesCount = unreadMessages.data ?? 0;
+
   const rawPath = usePathname() ?? '/';
   // Strip the `/he` or `/en` locale prefix so item.href can be compared
   // against the unprefixed app paths.
@@ -146,7 +168,18 @@ export function Sidebar({ userName, userRole, tier }: Props) {
   const primaryItems: NavItem[] = [
     { href: '/', labelKey: 'home', icon: Home, enabled: true },
     ...(canSeeInbox
-      ? [{ href: '/inbox', labelKey: 'inbox', icon: Inbox, enabled: true } as NavItem]
+      ? [
+          {
+            href: '/inbox',
+            labelKey: 'inbox',
+            icon: Inbox,
+            enabled: true,
+            // Pending-decisions count. The badge component reads the manager-only
+            // count hook itself (mounted only here), so the request fires only for
+            // the manager whose inbox row this is.
+            badge: <InboxNavBadge ariaLabel={(count) => t('badge.pendingDecisions', { count })} />,
+          } as NavItem,
+        ]
       : []),
     { href: '/projects', labelKey: 'projects', icon: FileText, enabled: true },
     ...(canReadOwners
@@ -169,9 +202,31 @@ export function Sidebar({ userName, userRole, tier }: Props) {
     { href: '/imports', labelKey: 'imports', icon: FileSpreadsheet, enabled: true },
     { href: '/contractors', labelKey: 'contractors', icon: HardHat, enabled: true },
     { href: '/notes', labelKey: 'notes', icon: StickyNote, enabled: true },
-    { href: '/messages', labelKey: 'messages', icon: MessageSquare, enabled: true },
+    {
+      href: '/messages',
+      labelKey: 'messages',
+      icon: MessageSquare,
+      enabled: true,
+      badge: (
+        <NavBadge
+          count={messagesCount}
+          ariaLabel={t('badge.unreadMessages', { count: messagesCount })}
+        />
+      ),
+    },
     { href: '/tasks', labelKey: 'tasks', icon: CheckSquare, enabled: true },
-    { href: '/notifications', labelKey: 'notifications', icon: Bell, enabled: true },
+    {
+      href: '/notifications',
+      labelKey: 'notifications',
+      icon: Bell,
+      enabled: true,
+      badge: (
+        <NavBadge
+          count={notificationsCount}
+          ariaLabel={t('badge.unreadNotifications', { count: notificationsCount })}
+        />
+      ),
+    },
   ];
 
   if (canReadMembers) {
@@ -247,6 +302,9 @@ export function Sidebar({ userName, userRole, tier }: Props) {
         )}
         <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
         <span>{t(item.labelKey)}</span>
+        {/* Ambient count pill (unread/pending). Self-hides at 0; its `ms-auto`
+         *  pushes it to the row's inline-end. */}
+        {item.badge}
       </Link>
     );
   }
@@ -257,6 +315,23 @@ export function Sidebar({ userName, userRole, tier }: Props) {
   // once from the path; the user can then toggle it freely.
   const secondaryHasActive = secondaryItems.some((item) => isActive(item.href));
   const [toolsOpen, setToolsOpen] = useState(secondaryHasActive);
+
+  // Also auto-expand ONCE when a secondary row first gains an ambient signal
+  // (unread notifications / messages) — so the badge isn't hidden behind the
+  // collapse. Counts arrive async (the hooks resolve after first paint), so a
+  // `useState` initialiser would miss them; a guarded effect opens the group the
+  // first time unread appears. CALM: it fires at most once (the ref latches), so
+  // a user who then collapses the group keeps it collapsed — we never re-force it
+  // open on every render / poll. (`inboxCount` lives in the always-visible
+  // primary group, so it does not drive this.)
+  const secondaryHasUnread = notificationsCount > 0 || messagesCount > 0;
+  const didAutoOpenForUnread = useRef(false);
+  useEffect(() => {
+    if (secondaryHasUnread && !didAutoOpenForUnread.current) {
+      didAutoOpenForUnread.current = true;
+      setToolsOpen(true);
+    }
+  }, [secondaryHasUnread]);
 
   return (
     <aside

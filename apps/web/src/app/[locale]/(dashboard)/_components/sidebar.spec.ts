@@ -32,10 +32,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 //     signal, not noise — these are the strings a real user sees. ---
 const NAV_LABEL: Record<string, string> = {
   home: 'ראשי',
+  inbox: 'החלטות ממתינות',
   projects: 'פרויקטים',
   owners: 'בעלי דירות',
   imports: 'ייבוא',
   documents: 'מסמכים',
+  messages: 'הודעות',
   signatureRequests: 'בקשות חתימה',
   notifications: 'התראות',
   tasks: 'משימות',
@@ -90,6 +92,27 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/he/imports',
 }));
 
+// The sidebar's ambient unread/pending badges read three TanStack-Query count
+// hooks. This spec renders the Sidebar via `renderToStaticMarkup` with NO
+// QueryClientProvider (it's a pure nav-gate probe), so the real hooks would throw
+// "No QueryClient set". Stub them to mutable counts (default 0 → the badges
+// self-hide, leaving the nav markup the gate assertions read unchanged). The
+// pure display rule is unit-tested in nav-badge.helpers.spec.ts; the
+// badge-wiring block below seeds non-zero counts to prove the hook→badge→row
+// wiring + the secondary-group auto-expand.
+let inboxCount = 0;
+let notificationsCount = 0;
+let messagesCount = 0;
+vi.mock('@/hooks/use-notifications', () => ({
+  useUnreadCount: () => ({ data: notificationsCount }),
+}));
+vi.mock('@/hooks/use-conversations', () => ({
+  useConversationsUnreadCount: () => ({ data: messagesCount }),
+}));
+vi.mock('@/hooks/use-proposals', () => ({
+  useProposalsPendingCount: () => ({ data: { count: inboxCount } }),
+}));
+
 // LogoutButton pulls in Server-Action / cookie machinery we don't exercise
 // here — stub to an inert marker so the render stays a pure nav-gate probe.
 vi.mock('./logout-button', () => ({
@@ -142,6 +165,9 @@ const ALWAYS_ON_BASE = [
 
 beforeEach(() => {
   currentPerms = new Set();
+  inboxCount = 0;
+  notificationsCount = 0;
+  messagesCount = 0;
 });
 afterEach(() => {
   vi.clearAllMocks();
@@ -220,5 +246,71 @@ describe('Sidebar — Owners capability-gate (P4 #11)', () => {
       const html = renderSidebar([near]);
       expect(hasOwnersNav(html), `near-miss "${near}" must NOT open the gate`).toBe(false);
     }
+  });
+});
+
+/**
+ * M2 — nav ambient unread/pending badges. The badges read the three constant-time
+ * count hooks (mocked above to mutable counts). The default `usePathname` mock is
+ * `/he/imports`, a SECONDARY route, so the "ניהול וכלים" group is auto-expanded
+ * and the Notifications/Messages rows (and their badges) render in this SSR probe.
+ * (The unread-driven auto-expand is effect-driven and so browser-only — it is
+ * verified in the real-Chrome walk, not in `renderToStaticMarkup`, which skips
+ * effects.) The pure cap/hidden rule lives in nav-badge.helpers.spec.ts; here we
+ * prove the hook→badge→row WIRING: the right count lands on the right row,
+ * self-hides at 0, and shows "99+" above the cap.
+ */
+describe('Sidebar — M2 ambient nav badges', () => {
+  // Extract the pill text (the count digit / "99+") that follows a given nav
+  // label in the rendered markup — proves the badge sits ON that row.
+  function badgeAfter(html: string, href: string): string | null {
+    // The row is an <a href="..."> … and the pill is a <span role="status"> with
+    // the count as its text. Find the row, then the first role="status" span
+    // within a short window after it.
+    const rowIdx = html.indexOf(`href="${href}"`);
+    if (rowIdx === -1) return null;
+    const after = html.slice(rowIdx);
+    const m = after.match(/role="status"[^>]*>([^<]+)</);
+    return m ? m[1]!.trim() : null;
+  }
+
+  it('1) inbox row shows the manager pending-decisions count', () => {
+    inboxCount = 3;
+    const html = renderSidebar(['owners.read'], { userRole: 'manager' });
+    expect(html).toMatch(/href="\/inbox"/);
+    expect(badgeAfter(html, '/inbox')).toBe('3');
+  });
+
+  it('2) notifications + messages rows show their unread counts', () => {
+    notificationsCount = 5;
+    messagesCount = 2;
+    const html = renderSidebar(['owners.read'], { userRole: 'manager' });
+    expect(badgeAfter(html, '/notifications')).toBe('5');
+    expect(badgeAfter(html, '/messages')).toBe('2');
+  });
+
+  it('3) NO badge at 0 on any row (calm — no "0" pill)', () => {
+    inboxCount = 0;
+    notificationsCount = 0;
+    messagesCount = 0;
+    const html = renderSidebar(['owners.read'], { userRole: 'manager' });
+    expect(badgeAfter(html, '/inbox')).toBeNull();
+    expect(badgeAfter(html, '/notifications')).toBeNull();
+    expect(badgeAfter(html, '/messages')).toBeNull();
+    // No status pill anywhere in the nav when everything is zero.
+    expect(html).not.toMatch(/role="status"/);
+  });
+
+  it('4) applies the "99+" display ceiling above the cap', () => {
+    inboxCount = 150;
+    const html = renderSidebar(['owners.read'], { userRole: 'manager' });
+    expect(badgeAfter(html, '/inbox')).toBe('99+');
+  });
+
+  it('5) non-manager: NO inbox row + NO inbox badge (manager-only request never fires)', () => {
+    inboxCount = 9; // even if the mock had a value, the row/badge must not render
+    const html = renderSidebar(['owners.read'], { userRole: 'agent' });
+    expect(html).not.toMatch(/href="\/inbox"/);
+    expect(badgeAfter(html, '/inbox')).toBeNull();
   });
 });

@@ -381,16 +381,17 @@ describe('signaturePulse — rankAttention + buckets', () => {
     expect(pulse.attention[0]!.projectId).toBe(P.p3);
   });
 
-  it('SP-10) buckets + needsHuman derive from the rows (counts only, no PII)', async () => {
+  it('SP-10) buckets derive from the rows; needsHuman = stalled + expiringSoon (overlay count)', async () => {
     const pulse = await svc.signaturePulse(manager());
     const total = pulse.buckets.stalled + pulse.buckets.expiringSoon + pulse.buckets.onTrack;
     expect(total).toBe(pulse.attention.length);
     // stalled bucket: P1 (40d) + P3 (90d) = 2.
     expect(pulse.buckets.stalled).toBeGreaterThanOrEqual(2);
-    // needsHuman entries carry ONLY projectId/name/reasons/count — no PII keys.
-    for (const nh of pulse.needsHuman) {
-      expect(Object.keys(nh).sort()).toEqual(['count', 'projectId', 'projectName', 'reasons']);
-    }
+    // needsHuman is the overlay COUNT of projects carrying a human-actionable
+    // signal (stalled OR expiring), derived from the SAME ranked rows — every
+    // stalled project plus every non-stalled expiring one, i.e. the non-onTrack
+    // rows. The per-project A8 array was removed (redundant with `attention`).
+    expect(pulse.buckets.needsHuman).toBe(pulse.buckets.stalled + pulse.buckets.expiringSoon);
   });
 });
 
@@ -605,7 +606,6 @@ describe('signaturePulse — G4 bounded-concurrency consent (scale + correctness
     expect(coldParallel.attention).toStrictEqual(fresh.attention);
     expect(warmParallel.attention).toStrictEqual(fresh.attention);
     expect(coldParallel.buckets).toStrictEqual(fresh.buckets);
-    expect(coldParallel.needsHuman).toStrictEqual(fresh.needsHuman);
 
     // The seeded consent really IS varied (not a degenerate all-equal set that
     // would make the deep-equal trivially pass): both met + unmet thresholds.

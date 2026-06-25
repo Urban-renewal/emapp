@@ -198,6 +198,52 @@ export class MessagingService {
     }));
   }
 
+  /**
+   * The TRUE org-wide unread total for the caller — the count of messages, across
+   * EVERY conversation the caller participates in, that are NOT theirs and are
+   * newer than their per-conversation `last_read_at` watermark (NULL = never
+   * opened → all the OTHER party's messages count).
+   *
+   * Mirrors `NotificationsService.unreadCount`: a single set-based aggregate, NOT
+   * a per-conversation N+1 sum. It is the SAME watermark predicate `enrich` uses
+   * for the per-row badge (ONE source of truth for "unread"), just unscoped to a
+   * page — so the future nav badge shows the real org-wide total at scale, never
+   * the page-local sum of the ≤25 rows the list happened to load.
+   *
+   * Constant work per caller: the `messages` RLS policy already participant-scopes
+   * the scan to the caller's threads, the INNER JOIN onto their own participant
+   * row (unique index `(conversation_id, user_id)`) supplies the watermark, and
+   * `idx_messages_conversation_created` covers the per-conversation recency filter.
+   * No `inArray(ids)` page restriction — it counts the whole participated set.
+   */
+  async unreadCount(user: AccessTokenPayload): Promise<{ count: number }> {
+    const result = await withTenant(
+      user.orgId,
+      async (tx) =>
+        tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(messages)
+          .innerJoin(
+            conversationParticipants,
+            and(
+              eq(conversationParticipants.conversationId, messages.conversationId),
+              eq(conversationParticipants.userId, user.sub),
+            ),
+          )
+          .where(
+            and(
+              ne(messages.senderId, user.sub),
+              or(
+                isNull(conversationParticipants.lastReadAt),
+                gt(messages.createdAt, conversationParticipants.lastReadAt),
+              ),
+            ),
+          ),
+      { userId: user.sub },
+    );
+    return { count: result[0]?.count ?? 0 };
+  }
+
   async list(
     user: AccessTokenPayload,
     query: { limit: number; cursor?: string },

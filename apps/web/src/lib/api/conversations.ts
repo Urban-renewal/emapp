@@ -3,6 +3,7 @@
  *
  * Routes (org-scoped, participation-gated):
  *   GET  /api/v1/conversations                 → { data: Conversation[], page }
+ *   GET  /api/v1/conversations/unread-count    → { data: { count } }
  *   POST /api/v1/conversations                 → { data: Conversation }   (Manager/Agent)
  *   GET  /api/v1/conversations/:id             → { data: Conversation }
  *   GET  /api/v1/conversations/:id/messages    → { data: Message[], page }
@@ -27,6 +28,9 @@ import { PageSchema } from './paging';
 
 const ConversationDataSchema = z.object({ data: ConversationSchema });
 const MessageDataSchema = z.object({ data: MessageSchema });
+const UnreadCountDataSchema = z.object({
+  data: z.object({ count: z.number().int().nonnegative() }),
+});
 
 export interface ConversationListPage {
   items: Conversation[];
@@ -50,6 +54,18 @@ export async function listConversations(
   const items = z.array(ConversationSchema).parse(res.data);
   const page = PageSchema.parse(res.page);
   return { items, page };
+}
+
+/**
+ * The TRUE org-wide unread total across ALL the caller's conversations — the
+ * dedicated constant-time endpoint (mirrors notifications `getUnreadCount`),
+ * NOT a page-local `sum(unreadCount)` over the ≤50 rows the list happened to
+ * load. Unblocks a future nav badge that must show the real total at scale.
+ */
+export async function getConversationsUnreadCount(): Promise<number> {
+  const res = await apiClient.get<unknown>(`/conversations/unread-count`);
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return UnreadCountDataSchema.parse({ data: res.data }).data.count;
 }
 
 export async function getConversation(id: string): Promise<Conversation> {

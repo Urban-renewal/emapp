@@ -30,6 +30,7 @@ import { http, HttpResponse } from 'msw';
 
 import { SAMPLE_APARTMENTS } from '../samples/apartments';
 import { SAMPLE_BUILDINGS } from '../samples/buildings';
+import { SAMPLE_CONTRACTORS, SAMPLE_CONTRACTOR_SPECIALTIES } from '../samples/contractors';
 import { SAMPLE_DOCUMENTS } from '../samples/documents';
 import { SAMPLE_IMPORT_ERRORS, SAMPLE_IMPORTS } from '../samples/imports';
 import { SAMPLE_NOTIFICATIONS } from '../samples/notifications';
@@ -366,6 +367,37 @@ export const handlers = [
     return o ? HttpResponse.json(dataEnvelope(o)) : errorEnvelope('not_found', 404);
   }),
   http.delete(`${API}/owners/:id`, () => new HttpResponse(null, { status: 204 })),
+
+  // contractors — C-1 "findable at scale". The list honors the server-side
+  // `q` (name substring, case-insensitive) + `specialty` (exact) filters so the
+  // offline FE exercises the SAME find-by-name + filter-by-specialty flow as
+  // live, and returns the `facets.specialties` field (whole-org distinct
+  // specialties) the FE's data-derived chips read. The facet is NOT page/filter
+  // scoped (mirrors the BE) — it always reflects every active specialty.
+  http.get(`${API}/contractors`, ({ request }) => {
+    const url = new URL(request.url);
+    const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
+    const specialty = url.searchParams.get('specialty');
+    let items = SAMPLE_CONTRACTORS.filter((c) => c.archivedAt === null);
+    if (q) items = items.filter((c) => c.name.toLowerCase().includes(q));
+    if (specialty) items = items.filter((c) => c.specialty === specialty);
+    return HttpResponse.json({
+      data: items,
+      facets: { specialties: SAMPLE_CONTRACTOR_SPECIALTIES },
+      page: PAGE_25,
+    });
+  }),
+  http.get(`${API}/contractors/:id`, ({ params }) => {
+    const c = SAMPLE_CONTRACTORS.find((x) => x.id === params['id']);
+    return c ? HttpResponse.json(dataEnvelope(c)) : errorEnvelope('not_found', 404);
+  }),
+  http.patch(`${API}/contractors/:id`, async ({ request, params }) => {
+    const c = SAMPLE_CONTRACTORS.find((x) => x.id === params['id']);
+    if (!c) return errorEnvelope('not_found', 404);
+    const body = (await request.json()) as Partial<typeof c>;
+    return HttpResponse.json(dataEnvelope({ ...c, ...body, updatedAt: new Date() }));
+  }),
+  http.delete(`${API}/contractors/:id`, () => new HttpResponse(null, { status: 204 })),
 
   // ownerships
   http.get(`${API}/apartments/:apartmentId/owners`, () =>

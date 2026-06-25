@@ -19,7 +19,7 @@ import { z } from 'zod';
 
 import { serverApiGet } from '../server-api';
 
-import { type ContractorListPage } from './contractors';
+import { ContractorFacetsSchema, type ContractorListPage } from './contractors';
 import { ApiClientError } from './errors';
 import { PageSchema } from './paging';
 
@@ -47,8 +47,12 @@ export async function serverListContractors(query: {
   if (!body || typeof body !== 'object' || !('data' in body) || !('page' in body)) {
     throw new ApiClientError({ code: 'invalid_response', message: 'server prefetch failed' });
   }
-  const { data, page } = body as { data: unknown; page: unknown };
-  // SAME parse as the client `listContractors` — the wire is the source of truth.
+  const { data, page, facets } = body as { data: unknown; page: unknown; facets?: unknown };
+  // SAME parse as the client `listContractors` — the wire is the source of truth,
+  // INCLUDING the `facets` field, so the dehydrated cache entry is byte-identical
+  // to what the client queryFn would produce (the hook's `select` then runs the
+  // same way on the seeded cache).
   const items = z.array(ContractorSchema).parse(data);
-  return { items, page: PageSchema.parse(page) };
+  const parsedFacets = ContractorFacetsSchema.parse(facets ?? undefined);
+  return { items, facets: parsedFacets, page: PageSchema.parse(page) };
 }

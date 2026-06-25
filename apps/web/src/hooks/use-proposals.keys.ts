@@ -18,10 +18,13 @@ export function proposalsListQueryKey(
   return [...PROPOSALS_KEY, 'list', query, locale] as const;
 }
 
-/** Shape: `['proposals', 'pending-count']` — the constant-time inbox-header
- *  count (locale-independent; it's a number). Nested under `PROPOSALS_KEY` so an
- *  approve/reject `invalidateQueries({ queryKey: PROPOSALS_KEY })` refreshes the
- *  count too (one source of truth: the count + the list move together). */
-export function proposalsPendingCountQueryKey() {
-  return [...PROPOSALS_KEY, 'pending-count'] as const;
+/** Shape: `['proposals', 'pending-count', { kind }]` — the constant-time
+ *  inbox-header count (locale-independent; it's a number). `kind` mirrors the
+ *  active list facet so the count + feed stay kind-aligned (TanStack `hashKey`
+ *  drops `undefined`, so the no-filter key hashes as `{}`). Nested under
+ *  `PROPOSALS_KEY` so an approve/reject `invalidateQueries({ queryKey:
+ *  PROPOSALS_KEY })` refreshes every count variant too (one source of truth: the
+ *  count + the list move together). */
+export function proposalsPendingCountQueryKey(query: { kind?: string } = {}) {
+  return [...PROPOSALS_KEY, 'pending-count', query] as const;
 }

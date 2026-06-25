@@ -47,6 +47,15 @@ export class MessagingController {
     return { data: await this.messaging.create(user, body) };
   }
 
+  // Org-wide unread total across the caller's conversations — the constant-time
+  // aggregate for a future nav badge (mirrors GET /notifications/unread-count).
+  // Declared BEFORE any `:id` route so the static `unread-count` segment is not
+  // captured as a conversation id (cf. the notifications controller ordering).
+  @Get('unread-count')
+  async unreadCount(@CurrentUser() user: AccessTokenPayload) {
+    return { data: await this.messaging.unreadCount(user) };
+  }
+
   @Get(':id')
   async get(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     return { data: await this.messaging.get(user, id) };

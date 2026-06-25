@@ -8,10 +8,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { NameDisplay } from '@/components/ui/name-display';
 import {
-  useConversationList,
+  useConversationsFeed,
   useCreateConversation,
   useMarkConversationRead,
-  useMessages,
+  useMessagesFeed,
   useSendMessage,
 } from '@/hooks/use-conversations';
 import { useSessionProfile } from '@/hooks/use-session';
@@ -56,16 +56,15 @@ export default function MessagesPage() {
     [membersQuery.data],
   );
 
-  const convQuery = useConversationList({ limit: 50 });
-  const conversations = convQuery.data?.items ?? [];
+  // The conversation list, ACCUMULATED across keyset pages (reach thread #51+).
+  const convFeed = useConversationsFeed();
+  const conversations = convFeed.items;
   const selected = conversations.find((c) => c.id === selectedId) ?? null;
 
-  const messagesQuery = useMessages(selectedId ?? undefined);
-  // The API returns newest-first; render chronological (oldest → newest).
-  const messages = useMemo(
-    () => [...(messagesQuery.data?.items ?? [])].reverse(),
-    [messagesQuery.data],
-  );
+  // The open thread's messages, ACCUMULATED (newest window + "load older").
+  const messagesFeed = useMessagesFeed(selectedId ?? undefined);
+  // The feed is newest-first (server order); render chronological (oldest → newest).
+  const messages = useMemo(() => [...messagesFeed.items].reverse(), [messagesFeed.items]);
 
   // Mark the open thread read whenever it has unread messages.
   const markRead = useMarkConversationRead();
@@ -113,11 +112,14 @@ export default function MessagesPage() {
     [me?.id, nameOf, t],
   );
 
-  // Auto-scroll to the latest message.
+  // Auto-scroll to the latest message — keyed on the NEWEST message id (and the
+  // thread switch), NOT on messages.length: "load older" prepends history and
+  // grows the length, but must NOT yank the reader back to the bottom.
   const bottomRef = useRef<HTMLDivElement>(null);
+  const newestId = messages.length > 0 ? messages[messages.length - 1]!.id : null;
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length, selectedId]);
+  }, [newestId, selectedId]);
 
   // Only ACCEPTED members can be added to a thread (the BE rejects pending
   // invitees with 400) — so the picker offers active teammates only.
@@ -184,11 +186,11 @@ export default function MessagesPage() {
           </div>
 
           <div className="min-h-0 flex-1 overflow-auto">
-            {convQuery.isLoading ? (
+            {convFeed.isLoading ? (
               <p className="p-4 text-sm" style={{ color: 'var(--text-muted)' }}>
                 {t('loading')}
               </p>
-            ) : convQuery.isError ? (
+            ) : convFeed.isError ? (
               <p className="p-4 text-sm" style={{ color: 'var(--danger-700)' }} role="alert">
                 {t('loadFailed')}
               </p>
@@ -255,6 +257,19 @@ export default function MessagesPage() {
                     </li>
                   );
                 })}
+                {convFeed.canLoadMore && (
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => convFeed.loadMore()}
+                      disabled={convFeed.isFetchingMore}
+                      className="w-full px-4 py-3 text-center text-xs font-medium hover:bg-black/[.03] disabled:opacity-60"
+                      style={{ color: 'var(--navy-700)' }}
+                    >
+                      {convFeed.isFetchingMore ? t('loading') : t('loadMoreThreads')}
+                    </button>
+                  </li>
+                )}
               </ul>
             )}
           </div>
@@ -282,7 +297,7 @@ export default function MessagesPage() {
               </div>
 
               <div className="min-h-0 flex-1 space-y-2 overflow-auto p-4">
-                {messagesQuery.isLoading ? (
+                {messagesFeed.isLoading ? (
                   <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                     {t('loading')}
                   </p>
@@ -291,42 +306,57 @@ export default function MessagesPage() {
                     {t('threadEmpty')}
                   </p>
                 ) : (
-                  messages.map((m) => {
-                    const mine = m.senderId === me?.id;
-                    return (
-                      <div
-                        key={m.id}
-                        className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}
-                      >
-                        {!mine && (
-                          <span
-                            className="mb-0.5 px-1 text-[11px]"
-                            style={{ color: 'var(--text-muted)' }}
-                          >
-                            <NameDisplay name={nameOf(m.senderId)} />
-                          </span>
-                        )}
-                        <div
-                          className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${
-                            mine ? 'text-white' : 'bg-black/[.05]'
-                          }`}
-                          style={
-                            mine ? { background: 'var(--navy-700)' } : { color: 'var(--text)' }
-                          }
+                  <>
+                    {messagesFeed.canLoadMore && (
+                      <div className="flex justify-center pb-1">
+                        <button
+                          type="button"
+                          onClick={() => messagesFeed.loadOlder()}
+                          disabled={messagesFeed.isFetchingOlder}
+                          className="rounded-full px-3 py-1 text-xs font-medium hover:bg-black/[.04] disabled:opacity-60"
+                          style={{ color: 'var(--navy-700)' }}
                         >
-                          <span className="whitespace-pre-wrap break-words">
-                            <NameDisplay name={m.body} />
+                          {messagesFeed.isFetchingOlder ? t('loading') : t('loadOlderMessages')}
+                        </button>
+                      </div>
+                    )}
+                    {messages.map((m) => {
+                      const mine = m.senderId === me?.id;
+                      return (
+                        <div
+                          key={m.id}
+                          className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}
+                        >
+                          {!mine && (
+                            <span
+                              className="mb-0.5 px-1 text-[11px]"
+                              style={{ color: 'var(--text-muted)' }}
+                            >
+                              <NameDisplay name={nameOf(m.senderId)} />
+                            </span>
+                          )}
+                          <div
+                            className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${
+                              mine ? 'text-white' : 'bg-black/[.05]'
+                            }`}
+                            style={
+                              mine ? { background: 'var(--navy-700)' } : { color: 'var(--text)' }
+                            }
+                          >
+                            <span className="whitespace-pre-wrap break-words">
+                              <NameDisplay name={m.body} />
+                            </span>
+                          </div>
+                          <span
+                            className="mt-0.5 px-1 text-[10px]"
+                            style={{ color: 'var(--text-soft)' }}
+                          >
+                            {formatRelative(m.createdAt, locale)}
                           </span>
                         </div>
-                        <span
-                          className="mt-0.5 px-1 text-[10px]"
-                          style={{ color: 'var(--text-soft)' }}
-                        >
-                          {formatRelative(m.createdAt, locale)}
-                        </span>
-                      </div>
-                    );
-                  })
+                      );
+                    })}
+                  </>
                 )}
                 <div ref={bottomRef} />
               </div>

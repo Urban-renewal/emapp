@@ -889,6 +889,23 @@ _(no body)_
 
 **Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/conversations/unread-count
+
+- **Auth:** AuthGuard + TenantGuard (RLS participant-scoped)
+- **Summary:** Org-wide unread total across ALL the caller's conversations — constant-time aggregate (NOT a page-local sum) for a future nav badge. Mirrors GET /notifications/unread-count. Own messages excluded; per-thread last_read_at watermark applied.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { "count": int } }
+```
+
+**Errors:** `missing_token`, `invalid_token`, `token_expired`
+
 ### PATCH /api/v1/discovery-records/:id
 
 - **Auth:** AuthGuard + TenantGuard (apartments.update; agent fine gate edit_project_data)

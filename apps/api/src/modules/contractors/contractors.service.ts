@@ -8,7 +8,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql, type SQL } from 'drizzle-orm';
 
 import {
   decodeCursor,
@@ -20,6 +20,14 @@ import type { AccessTokenPayload } from '../auth/auth.service';
 
 export interface ContractorListPage {
   data: Contractor[];
+  /**
+   * DATA-DERIVED specialty facet — the DISTINCT non-null specialties present in
+   * the org's active contractors, Hebrew-collated. `specialty` is free text (not
+   * an enum), so the FE's filter chips MUST come from the data, not a hardcoded
+   * list. Whole-org (NOT page-scoped) so the facet is stable across pagination,
+   * and computed in ONE extra set-based read under the SAME RLS tx (no N+1).
+   */
+  facets: { specialties: string[] };
   page: { limit: number; cursor: string | null; has_more: boolean };
 }
 
@@ -53,29 +61,89 @@ export class ContractorsService {
     if (user.role !== 'manager') throw FORBIDDEN;
   }
 
+  /**
+   * The optional contractor-list search/filter predicates, additive on top of
+   * the existing archived-exclusion + keyset. Mirrors `ProjectsService
+   * .projectSearchFilters` (the canonical idiom) + the `external_shares`
+   * `partyType` filter — no new mechanism:
+   *
+   *  - `q`         → name substring ILIKE (case-insensitive). The value is bound
+   *                  as a PARAMETER (never concatenated) and the LIKE
+   *                  metacharacters %/_/\ are escaped so a user typing "50%"
+   *                  searches the literal text, not a wildcard. No injection
+   *                  surface (drizzle `sql` parameterises ${...}).
+   *  - `specialty` → EXACT equality (free-text value, chosen from the facet).
+   *
+   * Returns the array of predicates (possibly empty); the caller ANDs them into
+   * the existing WHERE. When the query carries neither, behaviour is
+   * byte-identical to the pre-filter list.
+   */
+  private contractorSearchFilters(query: { q?: string; specialty?: string }): SQL[] {
+    const filters: SQL[] = [];
+    if (query.q) {
+      const escaped = query.q.replace(/[\\%_]/g, (c) => `\\${c}`);
+      filters.push(sql`${contractors.name} ILIKE ${'%' + escaped + '%'}`);
+    }
+    if (query.specialty) {
+      filters.push(eq(contractors.specialty, query.specialty));
+    }
+    return filters;
+  }
+
   async list(
     user: AccessTokenPayload,
-    query: { limit: number; cursor?: string },
+    query: { limit: number; cursor?: string; q?: string; specialty?: string },
   ): Promise<ContractorListPage> {
     const { limit } = query;
     const cur = query.cursor ? decodeCursor(query.cursor) : null;
     if (query.cursor && !cur) {
       throw new BadRequestException({ error: { code: 'invalid_cursor' } });
     }
-    const rows = await withTenant(
+    const { rows, specialties } = await withTenant(
       user.orgId,
-      async (tx) =>
-        tx
+      async (tx) => {
+        // Additive search/filter predicates (empty ⇒ unchanged behaviour).
+        const search = this.contractorSearchFilters(query);
+        const page = await tx
           .select()
           .from(contractors)
           .where(
             and(
               isNull(contractors.archivedAt),
               cur ? keysetCondition(contractors.createdAt, contractors.id, cur) : undefined,
+              ...search,
             ),
           )
           .orderBy(...keysetOrderBy(contractors.createdAt, contractors.id))
-          .limit(limit + 1),
+          .limit(limit + 1);
+        // DATA-DERIVED specialty facet — DISTINCT non-null specialties across the
+        // org's ACTIVE contractors (whole-org, NOT the page slice nor the active
+        // filter, so the chips stay stable while paginating/filtering).
+        // Hebrew-collated so the chip order reads naturally. ONE extra set-based
+        // read in the SAME tx — no N+1.
+        //
+        // DISTINCT inner / collate-order outer (a subquery): Postgres 42P10
+        // forbids `SELECT DISTINCT x ORDER BY x COLLATE …` (the collated expr
+        // isn't literally in the select list), so we DISTINCT first, then order
+        // the result by the Hebrew collation. RLS still scopes the read (org
+        // isolation on `contractors`).
+        const facetResult = await tx.execute(sql`
+          SELECT specialty
+          FROM (
+            SELECT DISTINCT ${contractors.specialty} AS specialty
+            FROM ${contractors}
+            WHERE ${contractors.archivedAt} IS NULL
+              AND ${contractors.specialty} IS NOT NULL
+          ) s
+          ORDER BY specialty COLLATE he_il_icu ASC
+        `);
+        const facetRows = (facetResult as unknown as { rows: Array<{ specialty: string | null }> })
+          .rows;
+        return {
+          rows: page,
+          specialties: facetRows.map((r) => r.specialty).filter((s): s is string => s !== null),
+        };
+      },
       { userId: user.sub },
     );
     const hasMore = rows.length > limit;
@@ -83,6 +151,7 @@ export class ContractorsService {
     const last = pageRows[pageRows.length - 1];
     return {
       data: pageRows.map(toContractor),
+      facets: { specialties },
       page: { limit, cursor: hasMore && last ? encodeCursor(last) : null, has_more: hasMore },
     };
   }

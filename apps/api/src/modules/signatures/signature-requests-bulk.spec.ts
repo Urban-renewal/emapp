@@ -148,7 +148,10 @@ function natId(): string {
   return String(Math.floor(100000000 + Math.random() * 899999999));
 }
 
-async function seedOwner(orgId: string, opts?: { email?: string | null }): Promise<string> {
+async function seedOwner(
+  orgId: string,
+  opts?: { email?: string | null; noPhone?: boolean },
+): Promise<string> {
   return withTenant(orgId, async (tx) => {
     const pii = await encryptOwnerPii(tx as never, {
       nationalId: natId(),
@@ -164,8 +167,11 @@ async function seedOwner(orgId: string, opts?: { email?: string | null }): Promi
         email: opts && 'email' in opts ? (opts.email ?? null) : `owner-${randomUUID()}@test.local`,
         nationalIdEncrypted: pii.nationalIdEncrypted,
         nationalIdHash: pii.nationalIdHash,
-        phoneEncrypted: pii.phoneEncrypted,
-        phoneHash: pii.phoneHash,
+        // `noPhone` seeds a NO-CHANNEL owner (no email + no phone) — every
+        // delivery channel is unavailable, so the request is created but nothing
+        // is sent (the `delivered` vs `noChannel` split under test).
+        phoneEncrypted: opts?.noPhone ? null : pii.phoneEncrypted,
+        phoneHash: opts?.noPhone ? null : pii.phoneHash,
       })
       .returning({ id: owners.id });
     return row!.id;
@@ -204,7 +210,7 @@ async function associateOwnerWithProject(ownerId: string, projectId: string): Pr
 async function seedAssociatedOwner(
   orgId: string,
   projectId: string,
-  opts?: { email?: string | null },
+  opts?: { email?: string | null; noPhone?: boolean },
 ): Promise<string> {
   const id = await seedOwner(orgId, opts);
   await associateOwnerWithProject(id, projectId);
@@ -289,7 +295,7 @@ describe('createBulk — happy path', () => {
       ownerIds: [a, b, cOwner],
     });
 
-    expect(res.summary).toEqual({ created: 3, skipped: 0, failed: 0 });
+    expect(res.summary).toEqual({ created: 3, delivered: 3, noChannel: 0, skipped: 0, failed: 0 });
     expect(res.results).toHaveLength(3);
     for (const r of res.results) {
       expect(r.outcome).toBe('created');
@@ -366,6 +372,32 @@ describe('createBulk — happy path', () => {
     // design. So we DON'T assert it's absent from the deepLink; we asserted
     // above it's absent from the top-level results/requestId path.
   }, 30_000);
+
+  it('BULK-NC) a NO-CHANNEL owner (no email + no phone) → request CREATED but NOT delivered (delivered=0, noChannel=1)', async () => {
+    const noCh = await seedAssociatedOwner(org.id, assignedProjectId, {
+      email: null,
+      noPhone: true,
+    });
+    const res = await svc.createBulk(manager(), { documentId: docAssigned, ownerIds: [noCh] });
+    // The request ROW is created…
+    expect(res.summary.created).toBe(1);
+    expect(res.results[0]!.outcome).toBe('created');
+    expect(res.results[0]!.requestId).toBeTruthy();
+    // …but EVERY channel is unavailable, so NOTHING was delivered. It is counted
+    // as `noChannel`, NEVER as `delivered` — so the campaign/bulk toast can't
+    // overclaim "{created} sent" when this owner got nothing (the OUTCOME-honesty
+    // fix; `delivered` is reported to the manager, not `created`).
+    expect(res.summary.delivered).toBe(0);
+    expect(res.summary.noChannel).toBe(1);
+    // created === delivered + noChannel (the honest split is exhaustive).
+    expect(res.summary.created).toBe(res.summary.delivered + res.summary.noChannel);
+    // The SAME predicate the remind tally uses (didAnyChannelDeliver): no channel
+    // is available, so none went.
+    const d = res.results[0]!.delivery!;
+    expect(d.email.available).toBe(false);
+    expect(d.sms.available).toBe(false);
+    expect(d.whatsapp.available).toBe(false);
+  }, 30_000);
 });
 
 describe('createBulk — skipped_existing', () => {
@@ -376,7 +408,7 @@ describe('createBulk — skipped_existing', () => {
 
     const res = await svc.createBulk(manager(), { documentId: docAssigned, ownerIds: [a, b] });
 
-    expect(res.summary).toEqual({ created: 1, skipped: 1, failed: 0 });
+    expect(res.summary).toEqual({ created: 1, delivered: 1, noChannel: 0, skipped: 1, failed: 0 });
     const aRes = res.results.find((r) => r.ownerId === a)!;
     const bRes = res.results.find((r) => r.ownerId === b)!;
     expect(aRes.outcome).toBe('skipped_existing');
@@ -399,7 +431,7 @@ describe('createBulk — failed owner does NOT abort the batch', () => {
       ownerIds: [valid, bogus],
     });
 
-    expect(res.summary).toEqual({ created: 1, skipped: 0, failed: 1 });
+    expect(res.summary).toEqual({ created: 1, delivered: 1, noChannel: 0, skipped: 0, failed: 1 });
     const vRes = res.results.find((r) => r.ownerId === valid)!;
     const bRes = res.results.find((r) => r.ownerId === bogus)!;
     expect(vRes.outcome).toBe('created');
@@ -430,7 +462,7 @@ describe('createBulk — failed owner does NOT abort the batch', () => {
       documentId: docAssigned,
       ownerIds: [local, foreignOwner],
     });
-    expect(res.summary).toEqual({ created: 1, skipped: 0, failed: 1 });
+    expect(res.summary).toEqual({ created: 1, delivered: 1, noChannel: 0, skipped: 0, failed: 1 });
     expect(res.results.find((r) => r.ownerId === foreignOwner)!.outcome).toBe('failed');
     expect(await countRows(docAssigned, foreignOwner)).toBe(0);
   }, 30_000);
@@ -446,7 +478,7 @@ describe('createBulk — dedup', () => {
     expect(res.results).toHaveLength(1);
     expect(res.results[0]!.ownerId).toBe(a);
     expect(res.results[0]!.outcome).toBe('created');
-    expect(res.summary).toEqual({ created: 1, skipped: 0, failed: 0 });
+    expect(res.summary).toEqual({ created: 1, delivered: 1, noChannel: 0, skipped: 0, failed: 0 });
     expect(await countRows(docAssigned, a)).toBe(1);
   }, 30_000);
 });
@@ -470,7 +502,7 @@ describe('createBulk — AUTHZ (gate fires ONCE, BEFORE any insert)', () => {
     await setCap(true);
     const a = await seedAssociatedOwner(org.id, assignedProjectId);
     const res = await svc.createBulk(agent(), { documentId: docAssigned, ownerIds: [a] });
-    expect(res.summary).toEqual({ created: 1, skipped: 0, failed: 0 });
+    expect(res.summary).toEqual({ created: 1, delivered: 1, noChannel: 0, skipped: 0, failed: 0 });
     expect(res.results[0]!.outcome).toBe('created');
     expect(await countRows(docAssigned, a)).toBe(1);
     await setCap(false);
@@ -514,7 +546,7 @@ describe('createBulk — mixed batch (all three outcomes at once)', () => {
       ownerIds: [created, skipped, bogus],
     });
 
-    expect(res.summary).toEqual({ created: 1, skipped: 1, failed: 1 });
+    expect(res.summary).toEqual({ created: 1, delivered: 1, noChannel: 0, skipped: 1, failed: 1 });
     expect(res.results.find((r) => r.ownerId === created)!.outcome).toBe('created');
     expect(res.results.find((r) => r.ownerId === skipped)!.outcome).toBe('skipped_existing');
     expect(res.results.find((r) => r.ownerId === bogus)!.outcome).toBe('failed');
@@ -530,7 +562,7 @@ describe('createBulk — concurrency / chunking (>8 owners crosses a chunk bound
     const ids: string[] = [];
     for (let i = 0; i < 9; i += 1) ids.push(await seedAssociatedOwner(org.id, assignedProjectId));
     const res = await svc.createBulk(manager(), { documentId: docAssigned, ownerIds: ids });
-    expect(res.summary).toEqual({ created: 9, skipped: 0, failed: 0 });
+    expect(res.summary).toEqual({ created: 9, delivered: 9, noChannel: 0, skipped: 0, failed: 0 });
     expect(res.results).toHaveLength(9);
     for (const id of ids) expect(await countRows(docAssigned, id)).toBe(1);
   }, 60_000);
@@ -559,7 +591,10 @@ describe('createBulk — decrypt isolation (sec-review HIGH: a corrupt owner mus
     // Both requests created (both owners exist + are visible); the batch survived.
     expect(badRes?.outcome).toBe('created');
     expect(goodRes?.outcome).toBe('created');
-    expect(res.summary).toEqual({ created: 2, skipped: 0, failed: 0 });
+    // The corrupt owner's PII could not decrypt → NO delivery attempted → it is
+    // counted as `noChannel`, NEVER `delivered` (the honesty fix correctly treats
+    // a decrypt-failure as undeliverable, not "sent").
+    expect(res.summary).toEqual({ created: 2, delivered: 1, noChannel: 1, skipped: 0, failed: 0 });
     expect(await countRows(docAssigned, good)).toBe(1);
     expect(await countRows(docAssigned, bad)).toBe(1);
     // Corrupt owner's PII could not decrypt → NO delivery report; the valid one HAS one.

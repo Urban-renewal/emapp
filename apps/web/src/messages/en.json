@@ -465,7 +465,7 @@
       "confirm": "Send to all owners",
       "sending": "Sending…",
       "cancel": "Cancel",
-      "result": "{created} sent · {skipped} skipped",
+      "result": "{delivered, plural, =0 {No links sent} one {1 link sent} other {# links sent}}{noChannel, plural, =0 {} other { · # with no email/phone — created but not sent, send manually}}{skipped, plural, =0 {} other { · # already active}}",
       "failed": "Send failed. Try again."
     },
     "docUpload": {

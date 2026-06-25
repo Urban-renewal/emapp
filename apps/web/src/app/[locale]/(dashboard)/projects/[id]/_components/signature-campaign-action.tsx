@@ -13,8 +13,10 @@ import { useCreateSignatureCampaign } from '@/hooks/use-signature-requests';
  * to ALL active owners of the project.
  *
  * Flow: button → an inline panel to pick a PROJECT-scoped document → confirm →
- * `POST /api/v1/projects/:id/signature-campaign` → an aria-live toast
- * "{created} נשלחו · {skipped} דולגו". The hook invalidates the signature-
+ * `POST /api/v1/projects/:id/signature-campaign` → an aria-live toast that
+ * reports DELIVERED links honestly ("{delivered} נשלחו"), warns about owners
+ * with no channel ("{noChannel} ללא ערוץ — שלח ידנית"), and notes skipped. The
+ * hook invalidates the signature-
  * requests queries AND the projects queries (so the S5a board + KPI counts
  * refetch).
  *
@@ -45,7 +47,17 @@ export function SignatureCampaignAction({ projectId }: { projectId: string }) {
     setErrored(false);
     try {
       const res = await campaign.mutateAsync({ documentId: selectedDocId });
-      setToast(t('result', { created: res.created, skipped: res.skipped }));
+      // HONEST: report `delivered` (links that actually reached a channel), NOT
+      // `created` (rows inserted) — a `noChannel` owner (no email+phone / PII
+      // decrypt failed) has a request but got NOTHING, and the copy says so +
+      // "send manually". Mirrors the inbox delivery-OUTCOME honesty.
+      setToast(
+        t('result', {
+          delivered: res.delivered,
+          noChannel: res.noChannel,
+          skipped: res.skipped,
+        }),
+      );
       setErrored(false);
       setOpen(false);
       setSelectedDocId('');

@@ -48,6 +48,18 @@ export class ProposalsController {
     return this.proposals.list(user, query);
   }
 
+  // Constant-time pending-count for the inbox's HONEST lead line — MIRRORS
+  // `GET /notifications/unread-count`. The FE polls this so the "N החלטות
+  // ממתינות לך" header states the TRUE org-wide total, never the ≤25 page size.
+  // Declared as a STATIC `pending-count` segment (no `:id` GET exists on this
+  // controller, so no capture conflict). Read-class gate (a count is a read);
+  // the service additionally enforces `requireManager`.
+  @Get('pending-count')
+  @RequirePermission('signature_requests.read')
+  async pendingCount(@CurrentUser() user: AccessTokenPayload) {
+    return { data: await this.proposals.pendingCount(user) };
+  }
+
   @Post(':id/approve')
   @RequirePermission('signature_requests.send')
   async approve(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {

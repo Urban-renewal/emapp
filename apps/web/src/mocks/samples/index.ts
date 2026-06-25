@@ -21,3 +21,4 @@ export * from './signature-requests';
 export * from './signature-progress';
 export * from './signature-pulse';
 export * from './notifications';
+export * from './proposals';

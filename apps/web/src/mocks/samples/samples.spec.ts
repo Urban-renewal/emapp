@@ -21,6 +21,7 @@ import {
   OwnerListItemSchema,
   OwnerSchema,
   ProjectSchema,
+  ProposalSchema,
   SignatureDeliveryReportSchema,
   SignatureProgressSchema,
   SignaturePulseSchema,
@@ -37,6 +38,7 @@ import { SAMPLE_NOTIFICATIONS, SAMPLE_NOTIFICATIONS_UNREAD_COUNT } from './notif
 import { SAMPLE_OWNERS } from './owners';
 import { SAMPLE_APARTMENT_OWNERS } from './ownerships';
 import { SAMPLE_PROJECTS } from './projects';
+import { SAMPLE_PROPOSALS } from './proposals';
 import {
   SAMPLE_APARTMENT_HOLDOUTS,
   SAMPLE_APARTMENT_SIGNATURE_PROGRESS,
@@ -148,6 +150,22 @@ describe('SAMPLE_* — schema-parse gate (drift detector)', () => {
     SAMPLE_NOTIFICATIONS.forEach((n) => {
       expect(n).not.toHaveProperty('national_id');
       expect(n).not.toHaveProperty('phone');
+    });
+  });
+
+  it('19) SAMPLE_PROPOSALS parse against ProposalSchema (Approval Inbox — PII-free, pending)', () => {
+    SAMPLE_PROPOSALS.forEach((p) => expect(() => ProposalSchema.parse(p)).not.toThrow());
+    // Every offline proposal is PENDING (the only actionable state) + system-authored.
+    expect(SAMPLE_PROPOSALS.every((p) => p.status === 'pending')).toBe(true);
+    expect(SAMPLE_PROPOSALS.every((p) => p.actorType === 'system')).toBe(true);
+    // Several KINDS are present so the offline inbox renders the per-kind grouping
+    // (not a single flat group). PII invariant: evidence carries no name/phone/id-PII.
+    expect(new Set(SAMPLE_PROPOSALS.map((p) => p.kind)).size).toBeGreaterThan(1);
+    SAMPLE_PROPOSALS.forEach((p) => {
+      expect(p).not.toHaveProperty('nationalId');
+      expect(p).not.toHaveProperty('phone');
+      const ev = JSON.stringify(p.evidence);
+      expect(ev).not.toMatch(/national_id|phone/i);
     });
   });
 

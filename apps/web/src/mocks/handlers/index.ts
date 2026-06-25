@@ -36,6 +36,7 @@ import { SAMPLE_NOTIFICATIONS } from '../samples/notifications';
 import { SAMPLE_OWNERS } from '../samples/owners';
 import { SAMPLE_APARTMENT_OWNERS } from '../samples/ownerships';
 import { SAMPLE_PROJECTS } from '../samples/projects';
+import { SAMPLE_PROPOSALS } from '../samples/proposals';
 import {
   SAMPLE_APARTMENT_HOLDOUTS,
   SAMPLE_APARTMENT_SIGNATURE_PROGRESS,
@@ -790,6 +791,50 @@ export const handlers = [
     if (r.status === 'signed') return errorEnvelope('signature_request_already_signed', 409);
     const cancelled = { ...r, status: 'cancelled' as const, cancelledAt: new Date() };
     return HttpResponse.json(dataEnvelope(cancelled));
+  }),
+
+  // Autonomous Master Plan, Phase 1 — Approval Inbox (proposals). Manager-only
+  // (BE requireManager). The offline inbox needs: the HONEST pending-count
+  // (constant-time on the BE), the keyset list (with the ?kind filter), and the
+  // approve/reject state flips. PII-FREE by contract — the wire carries only the
+  // kind + a PII-free evidence snapshot + ids/timestamps. The `pending-count`
+  // STATIC path is declared BEFORE the `:id` approve/reject so it is not captured.
+  http.get(`${API}/proposals/pending-count`, () =>
+    HttpResponse.json(dataEnvelope({ count: SAMPLE_PROPOSALS.length })),
+  ),
+  http.get(`${API}/proposals`, ({ request }) => {
+    const url = new URL(request.url);
+    const kind = url.searchParams.get('kind');
+    const items = kind ? SAMPLE_PROPOSALS.filter((p) => p.kind === kind) : SAMPLE_PROPOSALS;
+    return HttpResponse.json(listEnvelope(items));
+  }),
+  http.post(`${API}/proposals/:id/approve`, ({ params }) => {
+    const p = SAMPLE_PROPOSALS.find((x) => x.id === params['id']);
+    if (!p) return errorEnvelope('not_found', 404);
+    // The reissue kind carries a `delivery` OUTCOME (owner re-contacted); other
+    // kinds are internal-only (no delivery). Mirrors the BE approve response.
+    const delivery =
+      p.kind === 'signature_request.reissue'
+        ? {
+            delivered: true,
+            state: 'sent' as const,
+            channel: 'email' as const,
+            recipient: 'da***@example.com',
+          }
+        : undefined;
+    return HttpResponse.json(
+      dataEnvelope({
+        ...p,
+        status: 'applied' as const,
+        appliedAt: new Date(),
+        ...(delivery ? { delivery } : {}),
+      }),
+    );
+  }),
+  http.post(`${API}/proposals/:id/reject`, ({ params }) => {
+    const p = SAMPLE_PROPOSALS.find((x) => x.id === params['id']);
+    if (!p) return errorEnvelope('not_found', 404);
+    return HttpResponse.json(dataEnvelope({ ...p, status: 'rejected' as const }));
   }),
 
   // S10 — public sign endpoints (D.12 LAW). Anti-enumeration: every

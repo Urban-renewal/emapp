@@ -1275,6 +1275,15 @@ const ENDPOINTS: Endpoint[] = [
   },
   {
     method: 'GET',
+    path: '/api/v1/conversations/unread-count',
+    auth: 'AuthGuard + TenantGuard (RLS participant-scoped)',
+    summary:
+      "Org-wide unread total across ALL the caller's conversations — constant-time aggregate (NOT a page-local sum) for a future nav badge. Mirrors GET /notifications/unread-count. Own messages excluded; per-thread last_read_at watermark applied.",
+    response: '{ "data": { "count": int } }',
+    errors: ['missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'GET',
     path: '/api/v1/audit',
     auth: 'AuthGuard + TenantGuard (Manager)',
     summary:

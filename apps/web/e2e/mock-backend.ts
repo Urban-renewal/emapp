@@ -363,6 +363,13 @@ function installDefaultHandlers(): void {
       page: { limit: 25, cursor: null, has_more: false },
     },
   }));
+  // Org-wide conversations unread total (constant-time aggregate). A future nav
+  // badge polls this; default to zero so any SERVER-side path never 404s and the
+  // §P0-3 console guardrail stays green. Per-test page.route() can override.
+  setMockHandler('GET', '/api/v1/conversations/unread-count', () => ({
+    status: 200,
+    body: { data: { count: 0 } },
+  }));
   setMockHandler('GET', '/api/v1/members', () => ({
     status: 200,
     body: {

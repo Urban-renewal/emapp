@@ -2216,7 +2216,9 @@
     "send": "Send",
     "justYou": "Just you",
     "viewAll": "All messages",
-    "openMessages": "Open messages"
+    "openMessages": "Open messages",
+    "loadMoreThreads": "Load more conversations",
+    "loadOlderMessages": "Load older messages"
   },
   "notes": {
     "listTitle": "Notes",

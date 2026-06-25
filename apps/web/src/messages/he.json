@@ -2216,7 +2216,9 @@
     "send": "שלח",
     "justYou": "רק אתה",
     "viewAll": "כל ההודעות",
-    "openMessages": "פתח הודעות"
+    "openMessages": "פתח הודעות",
+    "loadMoreThreads": "טען עוד שיחות",
+    "loadOlderMessages": "טען הודעות קודמות"
   },
   "notes": {
     "listTitle": "הערות",

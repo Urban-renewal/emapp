@@ -347,8 +347,9 @@ describe('(a) phone-less owner — send is graceful, never throws', () => {
       ownerIds: [noPhone, phoned], // no-phone FIRST so a throw would poison the phoned sibling
     });
 
-    // The batch survived: BOTH owners committed a request.
-    expect(res.summary).toEqual({ created: 2, skipped: 0, failed: 0 });
+    // The batch survived: BOTH owners committed a request. BOTH have email
+    // (only the phone differs), so both delivered via email → delivered=2.
+    expect(res.summary).toEqual({ created: 2, delivered: 2, noChannel: 0, skipped: 0, failed: 0 });
     expect(await countRows(docAssigned, noPhone)).toBe(1);
     expect(await countRows(docAssigned, phoned)).toBe(1);
 

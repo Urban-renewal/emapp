@@ -2691,7 +2691,7 @@ _(no body)_
 **Response**
 
 ```json
-{ "data": { ...CampaignResult (created/skipped counts) } }
+{ "data": { "created", "delivered", "noChannel", "skipped", "total" } } — created = pending rows inserted; delivered = of those, how many reached a channel (didAnyChannelDeliver); noChannel = created-but-undeliverable (no email+phone); created === delivered + noChannel
 ```
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `document_not_in_project`, `missing_token`, `invalid_token`, `token_expired`, `429`

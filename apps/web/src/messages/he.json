@@ -465,7 +465,7 @@
       "confirm": "שלח לכל הבעלים",
       "sending": "שולח…",
       "cancel": "ביטול",
-      "result": "{created} נשלחו · {skipped} דולגו",
+      "result": "{delivered, plural, =0 {לא נשלחו קישורים} one {קישור אחד נשלח} other {# קישורים נשלחו}}{noChannel, plural, =0 {} other { · # ללא דוא״ל/טלפון — נוצרו ולא נשלחו, שלח ידנית}}{skipped, plural, =0 {} other { · # כבר פעילים}}",
       "failed": "השליחה נכשלה. נסה שוב."
     },
     "docUpload": {

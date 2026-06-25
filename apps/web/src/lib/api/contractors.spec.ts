@@ -72,6 +72,29 @@ describe('contractors api', () => {
     expect(String(fetchSpy.mock.calls[0]?.[0])).toContain(
       '/api/v1/contractors?limit=25&cursor=OPAQUE',
     );
+    // Older BE with no `facets` field → defensive default (no thrown parse).
+    expect(r.facets).toEqual({ specialties: [] });
+  });
+
+  it('C-1) listContractors — q + specialty hit the SERVER + facets parse', async () => {
+    const fetchSpy = stubFetch(() => ({
+      status: 200,
+      body: {
+        data: [SAMPLE],
+        facets: { specialties: ['חשמל', 'אדריכלות'] },
+        page: { limit: 25, cursor: null, has_more: false },
+      },
+    }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const r = await listContractors({ limit: 25, q: '  אלקטרה  ', specialty: 'חשמל' });
+    // The search + facet filter go to the SERVER (not a client filter over the
+    // page): the query string carries the trimmed `q` + the exact `specialty`.
+    const calledUrl = String(fetchSpy.mock.calls[0]?.[0]);
+    expect(calledUrl).toContain('q=');
+    expect(decodeURIComponent(calledUrl)).toContain('q=אלקטרה');
+    expect(decodeURIComponent(calledUrl)).toContain('specialty=חשמל');
+    // The data-derived facet survives the defensive parse.
+    expect(r.facets.specialties).toEqual(['חשמל', 'אדריכלות']);
   });
 
   it('T-4f-API.C2) createContractor — Idempotency-Key + body', async () => {

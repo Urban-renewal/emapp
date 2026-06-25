@@ -35,8 +35,26 @@ export type CreateContractor = z.infer<typeof CreateContractorInput>;
 export const UpdateContractorInput = z.object(contractorWriteShape).partial().strict();
 export type UpdateContractor = z.infer<typeof UpdateContractorInput>;
 
+/**
+ * GET list query — cursor pagination + additive server-side search/filter.
+ *
+ * Mirrors `ListProjectsQuery` (the canonical list-filter idiom) and the
+ * `external_shares` `partyType` filter: ALL filter params are optional, and
+ * when ALL are absent the endpoint behaves EXACTLY as before (same rows, same
+ * keyset order). The BE returns only the matching page — there is NO
+ * client-filter-over-one-page (a flat wall at scale).
+ *
+ *  - `q`         → contractor NAME substring (case-insensitive ILIKE). Trimmed,
+ *                  bounded; an empty / all-whitespace value is "no filter".
+ *  - `specialty` → EXACT specialty match. `specialty` is free text (not an
+ *                  enum), so the FE facet chips are DATA-DERIVED from the
+ *                  `facets.specialties` the list response carries — the chips
+ *                  reflect what actually exists in the org, never a hardcoded set.
+ */
 export const ListContractorsQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   cursor: z.string().min(1).optional(),
+  q: z.string().trim().min(1).max(120).optional(),
+  specialty: z.string().trim().min(1).max(200).optional(),
 });
 export type ListContractorsQueryDto = z.infer<typeof ListContractorsQuery>;

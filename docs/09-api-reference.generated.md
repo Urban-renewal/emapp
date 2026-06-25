@@ -676,6 +676,8 @@ _(no body)_
 |---|---|---|---|
 | `cursor` | string | no | minLength=1 |
 | `limit` | integer | no | minimum=1, maximum=100 |
+| `q` | string | no | minLength=1, maxLength=120 |
+| `specialty` | string | no | minLength=1, maxLength=200 |
 
 
 **Response**

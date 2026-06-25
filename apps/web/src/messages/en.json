@@ -2038,6 +2038,12 @@
     "addGenericError": "Could not add the contractor — check the details and try again.",
     "loading": "Loading...",
     "empty": "No contractors yet. Click \"Add contractor\".",
+    "noResults": "No contractors match your search. Try a different name or clear the filter.",
+    "searchPlaceholder": "Search by contractor name...",
+    "filter": {
+      "specialtyLabel": "Filter by specialty",
+      "specialtyAll": "All specialties"
+    },
     "loadFailed": "Failed to load contractors",
     "notFound": "Contractor not found",
     "backToList": "Back to list",

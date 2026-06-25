@@ -187,6 +187,53 @@ describe('CONTRACT · contractors', () => {
     expect(bad.status).toBe(400);
     expect((bad.body['error'] as Json)?.['code']).toBe('invalid_cursor');
   });
+
+  ct('CN11 list — server-side q (name) + specialty filter + derived facet', async () => {
+    const at = await manager('flt');
+    const tag = uniq('s');
+    // Two contractors with DISTINCT names + specialties so the filter is provable.
+    const elName = `Electric-${tag}`;
+    const archName = `Architect-${tag}`;
+    const elSpec = `electrical-${tag}`;
+    const archSpec = `architecture-${tag}`;
+    await createContractor(at, {
+      name: elName,
+      contactEmail: `el_${tag}@x.com`,
+      specialty: elSpec,
+    });
+    await createContractor(at, {
+      name: archName,
+      contactEmail: `ar_${tag}@x.com`,
+      specialty: archSpec,
+    });
+
+    // q matches ONLY the electrician (server-side ILIKE, case-insensitive).
+    const byName = await call(`/contractors?q=${encodeURIComponent('electric-' + tag)}`, {
+      cookie: `access_token=${at}`,
+    });
+    expect(byName.status).toBe(200);
+    const names = (byName.body['data'] as Json[]).map((x) => x['name']);
+    expect(names).toContain(elName);
+    expect(names).not.toContain(archName);
+
+    // specialty filters to the EXACT value.
+    const bySpec = await call(`/contractors?specialty=${encodeURIComponent(archSpec)}`, {
+      cookie: `access_token=${at}`,
+    });
+    expect(bySpec.status).toBe(200);
+    const specNames = (bySpec.body['data'] as Json[]).map((x) => x['name']);
+    expect(specNames).toContain(archName);
+    expect(specNames).not.toContain(elName);
+
+    // The list carries the data-derived specialty facet (whole-org distinct),
+    // which includes BOTH specialties even when a filter narrowed the page.
+    const facet = (bySpec.body['facets'] as Json | undefined)?.['specialties'] as
+      | string[]
+      | undefined;
+    expect(Array.isArray(facet)).toBe(true);
+    expect(facet).toContain(elSpec);
+    expect(facet).toContain(archSpec);
+  });
 });
 
 afterAll(() => {

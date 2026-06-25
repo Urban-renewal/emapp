@@ -1082,7 +1082,7 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/notifications',
     auth: 'AuthGuard + TenantGuard',
     summary:
-      'List the CALLER’S OWN notifications, cursor-paginated (locked RLS: user_id = app.user_id).',
+      'List the CALLER’S OWN notifications, cursor-paginated (locked RLS: user_id = app.user_id). Optional `type` narrows the whole feed server-side before pagination.',
     request: ListNotificationsQuery,
     response:
       '{ "data": [ {Notification} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',

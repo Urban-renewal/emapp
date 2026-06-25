@@ -340,6 +340,15 @@ function installDefaultHandlers(): void {
     },
   }));
 
+  // The bell ALSO calls the constant-time unread-count endpoint on every
+  // dashboard render (apps/web/src/hooks/use-notifications.ts useUnreadCount).
+  // Same reason as the list above: without this default handler /he/ navigation
+  // 404s on every E2E test and the §P0-3 console guardrail fires. Zero unread.
+  setMockHandler('GET', '/api/v1/notifications/unread-count', () => ({
+    status: 200,
+    body: { data: { count: 0 } },
+  }));
+
   // Team messaging (Slice 3) — the dashboard "Recent conversations" card
   // (HomeConversations island) polls /api/v1/conversations and side-loads
   // /api/v1/members on every dashboard render. Like the notifications bell

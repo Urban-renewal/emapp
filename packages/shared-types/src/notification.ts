@@ -39,5 +39,10 @@ export type Notification = z.infer<typeof NotificationSchema>;
 export const ListNotificationsQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   cursor: z.string().min(1).optional(),
+  // Additive server-side TYPE filter (the whole-set view). When present the list
+  // narrows org-wide to this notification type BEFORE pagination, so a filtered
+  // "load more" walks every matching row — not just the 25 a client chip could
+  // see on one page. Omitted = the full feed (back-compat).
+  type: NotificationTypeEnum.optional(),
 });
 export type ListNotificationsQueryDto = z.infer<typeof ListNotificationsQuery>;

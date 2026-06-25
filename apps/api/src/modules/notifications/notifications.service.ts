@@ -1,7 +1,7 @@
 import { notifications, withTenant } from '@emapp/db';
-import type { Notification } from '@emapp/shared-types';
+import type { Notification, NotificationType } from '@emapp/shared-types';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { eq, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, eq, isNull, sql, type SQL } from 'drizzle-orm';
 
 import {
   decodeCursor,
@@ -67,9 +67,9 @@ export class NotificationsService {
 
   async list(
     user: AccessTokenPayload,
-    query: { limit: number; cursor?: string },
+    query: { limit: number; cursor?: string; type?: NotificationType },
   ): Promise<NotificationListPage> {
-    const { limit } = query;
+    const { limit, type } = query;
     const cur = query.cursor ? decodeCursor(query.cursor) : null;
     if (query.cursor && !cur) {
       throw new BadRequestException({ error: { code: 'invalid_cursor' } });
@@ -80,10 +80,16 @@ export class NotificationsService {
         const keyset: SQL | undefined = cur
           ? keysetCondition(notifications.createdAt, notifications.id, cur)
           : undefined;
+        // The optional TYPE filter narrows the WHOLE feed server-side (composes
+        // with the keyset cursor via AND), so a filtered "load more" walks every
+        // matching row org-wide — not the 25-row page-local client filter. RLS
+        // still scopes to the caller's own rows; this only narrows by type.
+        const typeFilter: SQL | undefined = type ? eq(notifications.type, type) : undefined;
+        const where = and(keyset, typeFilter);
         return tx
           .select()
           .from(notifications)
-          .where(keyset)
+          .where(where)
           .orderBy(...keysetOrderBy(notifications.createdAt, notifications.id))
           .limit(limit + 1);
       },

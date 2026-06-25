@@ -1,14 +1,21 @@
 'use client';
 
+import { AlertTriangle, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { ListPageShell } from '@/components/ui/list-page-shell';
 import { NameDisplay } from '@/components/ui/name-display';
-import { useOwnerList } from '@/hooks/use-owners';
+import { useOwnerList, useOwnerSearch } from '@/hooks/use-owners';
 import { useHasPermission } from '@/hooks/use-permissions';
+
+/** B1 — debounce window (ms) for the search box → server query. Keeps a fast
+ *  typist from firing a `GET /owners/search?q=` per keystroke. The box is a
+ *  controlled input (no native submit, so no GET-fallback credential-leak
+ *  class — per the DOD-BROWSER-SMOKE trigger). Mirrors the projects list. */
+const SEARCH_DEBOUNCE_MS = 300;
 
 /**
  * RSC prefetch fan-out (perf-research/01-rsc-waterfall.md §2.2): the
@@ -18,6 +25,17 @@ import { useHasPermission } from '@/hooks/use-permissions';
  * `isLoading` is `false` on first render and NO client `GET /owners` fires.
  * If the server prefetch failed (empty cache), this falls back to its
  * existing loading/error path — the branches below are intact.
+ *
+ * B1 (findable-at-scale) + B2 (attention-first): at 1000+ owners a flat,
+ * creation-ordered wall is unusable. Two additions, both keyset-safe:
+ *  - A debounced NAME search box SWAPS the data source to the EXISTING
+ *    `GET /owners/search` endpoint (`useOwnerSearch`) when there's a term;
+ *    empty box → the normal `useOwnerList`. The search cursor is the same
+ *    `createdAt desc, id desc` keyset, so "next page" still works.
+ *  - A one-click "צריך טיפול" (needs-attention) chip narrows BOTH the list and
+ *    the search to owners with ≥1 pending signature (a BE WHERE predicate, not
+ *    a reorder — single round-trip, no N+1), so the manager reaches "who needs
+ *    me" without scrolling.
  */
 export function OwnersListClient() {
   const t = useTranslations('owners');
@@ -26,13 +44,45 @@ export function OwnersListClient() {
   // Active (default) vs archived view — soft-archived owners are otherwise
   // invisible in the cockpit. Switching resets pagination.
   const [archived, setArchived] = useState(false);
+  // B2 — "needs attention" filter (≥1 pending signature). Drives both the list
+  // and the search query; toggling resets pagination (a cursor minted under one
+  // filter set is meaningless under another).
+  const [needsAttention, setNeedsAttention] = useState(false);
+  // B1 — `query` is the LIVE controlled-box value; `debouncedQuery` is what
+  // drives the server fetch. They diverge only during the debounce window.
+  const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+
+  // B1 — debounce the search box → server query; reset the cursor when the term
+  // changes (a keyset cursor minted for the old term/view is meaningless).
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setDebouncedQuery(query.trim());
+      setCursor(undefined);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [query]);
+
+  // The trimmed term actually searched (empty → list mode). When searching we
+  // drop the archived tab (search targets active owners — the BE `searchByName`
+  // excludes archived, matching the design that search finds live holdouts).
+  const searchTerm = debouncedQuery;
+  const isSearching = searchTerm.length > 0;
+
   // IAM slice 5b — create CTA gated on `owners.create` (UX; BE is authoritative).
   const canCreate = useHasPermission('owners.create');
-  const { data, isLoading, isError, error, refetch } = useOwnerList({
-    limit: 25,
-    cursor,
-    archived,
-  });
+
+  // B1 — SWAP the data source: search endpoint when there's a term, else the
+  // list. Only ONE query is enabled at a time (the other is `enabled:false`),
+  // so exactly one network call fires per state. Both carry VALID params
+  // regardless of which is active (the disabled one just never runs).
+  const listQuery = useOwnerList({ limit: 25, cursor, archived, needsAttention }, !isSearching);
+  const searchQuery = useOwnerSearch(
+    { q: searchTerm, limit: 25, cursor, needsAttention },
+    isSearching,
+  );
+  const active = isSearching ? searchQuery : listQuery;
+  const { data, isLoading, isError, error, refetch } = active;
   const items = data?.items ?? [];
 
   const tabs: { key: boolean; label: string }[] = [
@@ -51,32 +101,87 @@ export function OwnersListClient() {
         )}
       </div>
 
-      {/* Active / archived view toggle — archived owners are reachable here. */}
-      <div className="flex gap-1.5" role="tablist" aria-label={t('listTitle')}>
-        {tabs.map((tab) => {
-          const active = archived === tab.key;
-          return (
-            <button
-              key={String(tab.key)}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => {
-                if (archived === tab.key) return;
-                setArchived(tab.key);
-                setCursor(undefined);
-              }}
-              className={
-                active
-                  ? 'rounded-full bg-foreground px-3 py-1 text-xs font-medium text-background'
-                  : 'rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted'
-              }
-            >
-              {tab.label}
-            </button>
-          );
-        })}
+      {/* B1 — debounced NAME search box. Controlled input (no native submit →
+          no GET-fallback credential-leak class). When it has a term the data
+          source swaps to GET /owners/search; empty → the normal list. */}
+      <div className="relative max-w-md">
+        <Search
+          className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+          style={{ insetInlineEnd: 12 }}
+          aria-hidden="true"
+        />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t('searchPlaceholder')}
+          aria-label={t('searchPlaceholder')}
+          className="w-full rounded-md border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          style={{ paddingInlineEnd: 38 }}
+        />
       </div>
+
+      {/* Filter row: active/archived tabs (hidden while searching — search
+          targets ACTIVE owners) + the one-click "needs attention" chip. */}
+      <div className="flex flex-wrap items-center gap-2">
+        {!isSearching && (
+          <div className="flex gap-1.5" role="tablist" aria-label={t('listTitle')}>
+            {tabs.map((tab) => {
+              const tabActive = archived === tab.key;
+              return (
+                <button
+                  key={String(tab.key)}
+                  type="button"
+                  role="tab"
+                  aria-selected={tabActive}
+                  onClick={() => {
+                    if (archived === tab.key) return;
+                    setArchived(tab.key);
+                    setCursor(undefined);
+                  }}
+                  className={
+                    tabActive
+                      ? 'rounded-full bg-foreground px-3 py-1 text-xs font-medium text-background'
+                      : 'rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted'
+                  }
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* B2 — attention-first chip. One click narrows the view to owners with
+            ≥1 pending signature (the holdouts that need the manager). Pressed =
+            filled amber; reset of the cursor mirrors the tabs. */}
+        <button
+          type="button"
+          aria-pressed={needsAttention}
+          onClick={() => {
+            setNeedsAttention((v) => !v);
+            setCursor(undefined);
+          }}
+          className={
+            needsAttention
+              ? 'inline-flex items-center gap-1.5 rounded-full bg-status-warning-bg px-3 py-1 text-xs font-medium text-status-warning-fg'
+              : 'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted'
+          }
+        >
+          <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+          <span>{t('attention.chip')}</span>
+        </button>
+      </div>
+
+      {/* At-a-glance summary — in plain words, WHAT the current view shows, so a
+          technophobe manager reads one sentence instead of decoding a table. */}
+      <p className="text-xs text-muted-foreground" role="status">
+        {isSearching
+          ? t('attention.summary.search', { count: items.length, term: searchTerm })
+          : needsAttention
+            ? t('attention.summary.needsAttention', { count: items.length })
+            : t('attention.summary.all', { count: items.length })}
+      </p>
 
       <ListPageShell
         isLoading={isLoading}
@@ -86,7 +191,15 @@ export function OwnersListClient() {
         page={data?.page}
         cursor={cursor}
         loadFailedLabel={t('loadFailed')}
-        emptyLabel={archived ? t('emptyArchived') : t('empty')}
+        emptyLabel={
+          isSearching
+            ? t('noResults')
+            : needsAttention
+              ? t('emptyNeedsAttention')
+              : archived
+                ? t('emptyArchived')
+                : t('empty')
+        }
         accessDeniedTitle={tp('accessDeniedTitle')}
         accessDeniedBody={tp('accessDeniedBody')}
         retryLabel={tp('retry')}

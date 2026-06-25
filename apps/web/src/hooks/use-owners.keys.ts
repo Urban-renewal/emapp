@@ -24,10 +24,25 @@ export const OWNERS_KEY = ['owners'] as const;
  * hash identically.
  */
 export function ownersListQueryKey(
-  query: { limit?: number; cursor?: string; archived?: boolean },
+  query: { limit?: number; cursor?: string; archived?: boolean; needsAttention?: boolean },
   locale: 'he' | 'en',
 ) {
   return [...OWNERS_KEY, 'list', query, locale] as const;
+}
+
+/**
+ * B1 — the search key the name-search query reads. Shape is
+ * `['owners', 'search', query, locale]` — a SEPARATE namespace from 'list' so a
+ * search page caches independently of the unfiltered list (and is invalidated
+ * by the same `OWNERS_KEY` prefix on a create/archive). `query` is the literal
+ * object (`{ q, limit, cursor, needsAttention }`); TanStack `hashKey` drops
+ * `undefined`, so distinct searches cache distinctly.
+ */
+export function ownersSearchQueryKey(
+  query: { q: string; limit?: number; cursor?: string; needsAttention?: boolean },
+  locale: 'he' | 'en',
+) {
+  return [...OWNERS_KEY, 'search', query, locale] as const;
 }
 
 /**

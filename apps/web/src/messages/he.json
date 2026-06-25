@@ -825,7 +825,18 @@
       "active": "פעילים",
       "archived": "בארכיון"
     },
-    "emptyArchived": "אין בעלי דירות בארכיון."
+    "emptyArchived": "אין בעלי דירות בארכיון.",
+    "searchPlaceholder": "חיפוש בעל דירה לפי שם…",
+    "noResults": "לא נמצאו בעלי דירות התואמים לחיפוש.",
+    "emptyNeedsAttention": "אין כרגע בעלי דירות עם חתימות ממתינות. הכול מטופל.",
+    "attention": {
+      "chip": "צריך טיפול",
+      "summary": {
+        "all": "{count, plural, =0 {אין בעלי דירות בתצוגה זו} one {בעל דירה אחד} other {# בעלי דירות}}",
+        "needsAttention": "{count, plural, =0 {אין בעלי דירות עם חתימות ממתינות} one {בעל דירה אחד עם חתימות ממתינות} other {# בעלי דירות עם חתימות ממתינות}}",
+        "search": "{count, plural, =0 {אין תוצאות לחיפוש ״{term}״} one {תוצאה אחת לחיפוש ״{term}״} other {# תוצאות לחיפוש ״{term}״}}"
+      }
+    }
   },
   "dataState": {
     "loading": "טוען...",

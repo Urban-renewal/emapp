@@ -2006,6 +2006,7 @@ _(no body)_
 | `archived` | string | no | enum=["true","false"] |
 | `cursor` | string | no | minLength=1 |
 | `limit` | integer | no | minimum=1, maximum=100 |
+| `needsAttention` | string | no | enum=["true","false"] |
 
 
 **Response**
@@ -2180,6 +2181,7 @@ _(no body)_
 |---|---|---|---|
 | `cursor` | string | no | minLength=1 |
 | `limit` | integer | no | minimum=1, maximum=100 |
+| `needsAttention` | string | no | enum=["true","false"] |
 | `q` | string | yes | minLength=1, maxLength=100 |
 
 

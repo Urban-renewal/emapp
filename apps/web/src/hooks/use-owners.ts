@@ -13,6 +13,7 @@ import {
   getOwnerProjects,
   listOwners,
   revealOwnerPii,
+  searchOwnersByName,
   type OwnerListPage,
 } from '@/lib/api/owners';
 import { useDisplayLocale } from '@/lib/locale';
@@ -24,11 +25,15 @@ import {
   ownerProjectsQueryKey,
   ownerQueryKey,
   ownersListQueryKey,
+  ownersSearchQueryKey,
 } from './use-owners.keys';
 
-export { ownerProjectsQueryKey, ownerQueryKey, ownersListQueryKey };
+export { ownerProjectsQueryKey, ownerQueryKey, ownersListQueryKey, ownersSearchQueryKey };
 
-export function useOwnerList(query: { limit?: number; cursor?: string; archived?: boolean } = {}) {
+export function useOwnerList(
+  query: { limit?: number; cursor?: string; archived?: boolean; needsAttention?: boolean } = {},
+  enabled = true,
+) {
   const locale = useDisplayLocale();
   const select = useCallback(
     (data: OwnerListPage) => ({
@@ -44,6 +49,47 @@ export function useOwnerList(query: { limit?: number; cursor?: string; archived?
   >({
     queryKey: ownersListQueryKey(query, locale),
     queryFn: () => listOwners(query),
+    // B1 — gated off while a name search is active so exactly ONE query
+    // (list OR search) fetches at a time; defaults to on (unchanged behaviour).
+    enabled,
+    staleTime: 30_000,
+    select,
+  });
+}
+
+/**
+ * B1 — server-side owner NAME search (`GET /owners/search`). Mirrors
+ * {@link useOwnerList} exactly — same `OwnerListPage` shape, same
+ * `toOwnerListItemViewModels` select, same keyset cursor — so the owners list
+ * can SWAP its data source to this when the search box has a term and the
+ * "next page" button keeps working unchanged.
+ *
+ * `enabled` gates on a non-empty trimmed `q`: with an empty box the list page
+ * uses `useOwnerList` instead, so this query simply never runs (and never fires
+ * a `GET /owners/search?q=`). The masked-PII discipline is identical to the
+ * list (national_id/phone arrive masked from the BE).
+ */
+export function useOwnerSearch(
+  query: { q: string; limit?: number; cursor?: string; needsAttention?: boolean },
+  enabled = true,
+) {
+  const locale = useDisplayLocale();
+  const select = useCallback(
+    (data: OwnerListPage) => ({
+      items: toOwnerListItemViewModels(data.items, locale),
+      page: data.page,
+    }),
+    [locale],
+  );
+  const q = query.q.trim();
+  return useQuery<
+    OwnerListPage,
+    Error,
+    { items: OwnerListItemViewModel[]; page: OwnerListPage['page'] }
+  >({
+    queryKey: ownersSearchQueryKey(query, locale),
+    queryFn: () => searchOwnersByName(query),
+    enabled: enabled && q.length > 0,
     staleTime: 30_000,
     select,
   });

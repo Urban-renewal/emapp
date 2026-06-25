@@ -825,7 +825,18 @@
       "active": "Active",
       "archived": "Archived"
     },
-    "emptyArchived": "No archived owners."
+    "emptyArchived": "No archived owners.",
+    "searchPlaceholder": "Search owners by name…",
+    "noResults": "No owners match your search.",
+    "emptyNeedsAttention": "No owners with pending signatures right now. All handled.",
+    "attention": {
+      "chip": "Needs attention",
+      "summary": {
+        "all": "{count, plural, =0 {No owners in this view} one {1 owner} other {# owners}}",
+        "needsAttention": "{count, plural, =0 {No owners with pending signatures} one {1 owner with pending signatures} other {# owners with pending signatures}}",
+        "search": "{count, plural, =0 {No results for “{term}”} one {1 result for “{term}”} other {# results for “{term}”}}"
+      }
+    }
   },
   "dataState": {
     "loading": "Loading...",

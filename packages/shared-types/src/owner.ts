@@ -146,6 +146,22 @@ export const OwnerSearchInput = z
   });
 export type OwnerSearch = z.infer<typeof OwnerSearchInput>;
 
+/**
+ * B2 (attention-first) — `'true'` narrows the result to owners who NEED
+ * ATTENTION: those with ≥1 PENDING signature request (the holdouts a manager
+ * must chase). It is an ADDITIVE keyset-safe WHERE predicate, NOT a reorder —
+ * the cursor stays `(createdAt desc, id desc)`, so pagination is unchanged and
+ * an owner with zero pending signatures is simply filtered out. The SAME enum
+ * guard as `archived` (z.coerce.boolean would coerce the *string* 'false' to
+ * `true`). Inferred type is boolean. Shared by GET /owners and GET
+ * /owners/search so "needs attention" composes with a name search too.
+ */
+const NeedsAttentionFlag = z
+  .enum(['true', 'false'])
+  .optional()
+  .default('false')
+  .transform((v) => v === 'true');
+
 /** GET list query — cursor pagination only (D.16; never offset). */
 export const ListOwnersQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
@@ -161,6 +177,7 @@ export const ListOwnersQuery = z.object({
     .optional()
     .default('false')
     .transform((v) => v === 'true'),
+  needsAttention: NeedsAttentionFlag,
 });
 export type ListOwnersQueryDto = z.infer<typeof ListOwnersQuery>;
 
@@ -181,5 +198,8 @@ export const OwnerNameSearchQuery = z.object({
   q: z.string().trim().min(1).max(100),
   limit: z.coerce.number().int().min(1).max(100).default(25),
   cursor: z.string().min(1).optional(),
+  /** B2 — same attention narrowing as the list (≥1 pending signature). Lets a
+   *  manager search a name AND keep only the holdouts; keyset-safe WHERE. */
+  needsAttention: NeedsAttentionFlag,
 });
 export type OwnerNameSearchQueryDto = z.infer<typeof OwnerNameSearchQuery>;

@@ -13,7 +13,8 @@ import { NameDisplay } from '@/components/ui/name-display';
 import {
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
-  useNotificationList,
+  useNotificationsFeed,
+  useUnreadCount,
 } from '@/hooks/use-notifications';
 import type { NotificationRecencyBucket, NotificationViewModel } from '@/models/notification.vm';
 
@@ -35,13 +36,25 @@ import { actionVisual, NotificationIconTile } from '../_components/notification-
  *     mutates directly, and is never a PII oracle).
  *   - EMPTY → a calm all-clear `<DataState>` reward, not a bare "אין התראות".
  *
+ * SCALE (the whole-set view): the list ACCUMULATES keyset pages via
+ * `useNotificationsFeed` (the canonical documents `useAllDocumentsFeed` accumulate
+ * pattern, reused), so the recency grouping + the unread float run over the WHOLE
+ * loaded set — not one ≤25-row page. The TYPE filter chips push `?type=` to the
+ * SERVER, so a filtered feed narrows the whole org and "load more" walks every
+ * match — never a 25-row client slice that silently dropped matches on later
+ * pages. The header badge is the TRUE org-wide unread total from the dedicated
+ * indexed endpoint (`useUnreadCount`), never a page-local count. An honesty line
+ * tells the technophobe how many rows are loaded + whether the feed is exhausted.
+ *
+ * The "לא נקראו" (unread) chip is the one read-state filter — there is no server
+ * unread param, so it narrows the LOADED set; the true total still drives the
+ * header badge + the mark-all-read affordance, so the user always sees the real
+ * unread magnitude regardless of how much is loaded.
+ *
  * Reuse (one source of truth): the action vocabulary lives in
  * `notification-icon.tsx::actionVisual` (shared with the bell); the mark-read
  * optimistic mutation is the EXISTING `useMarkNotificationRead` (unchanged); the
  * recency bucket + actionKind are derived ONCE in the adapter, never per surface.
- *
- * Filtering is client-side over the current page (server-side `?type=` is a BE
- * slice). The filter chips collapse wire types into user-facing categories.
  *
  * RLS: self-scoped — every row belongs to the current user; the BE guard is
  * authoritative and the FE pattern is identical across roles.
@@ -104,22 +117,31 @@ function groupByRecency(items: NotificationViewModel[]): RecencyGroup[] {
 export function NotificationsListClient() {
   const t = useTranslations('notifications');
   const tp = useTranslations('projects');
-  const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [filter, setFilter] = useState<FilterKey>('all');
 
-  const list = useNotificationList({ limit: 25, cursor });
+  // The TYPE filters narrow server-side (`?type=`); `all`/`unread` carry no
+  // server type param (`unread` is a read-state filter, narrowed client-side over
+  // the loaded set). Resetting the accumulator on `serverType` change lives in
+  // the feed hook.
+  const serverType = filter === 'all' || filter === 'unread' ? undefined : FILTER_TO_TYPE[filter];
+
+  const feed = useNotificationsFeed(serverType);
+  const trueUnread = useUnreadCount();
   const markRead = useMarkNotificationRead();
   const markAll = useMarkAllNotificationsRead();
 
-  const items = useMemo(() => list.data?.items ?? [], [list.data?.items]);
-  const unreadCount = useMemo(() => items.filter((n) => !n.isRead).length, [items]);
+  const items = feed.items;
+  // The header badge + mark-all affordance use the TRUE org-wide unread total
+  // (indexed endpoint), never a count of the loaded set — so the magnitude is
+  // honest no matter how few pages are loaded.
+  const unreadCount = trueUnread.data ?? 0;
 
-  const filteredItems = useMemo(() => {
-    if (filter === 'all') return items;
-    if (filter === 'unread') return items.filter((n) => !n.isRead);
-    const targetType = FILTER_TO_TYPE[filter];
-    return items.filter((n) => n.type === targetType);
-  }, [items, filter]);
+  // The `unread` chip is the lone read-state filter — narrow the LOADED set.
+  // Type filters already narrowed server-side, so the feed items ARE the set.
+  const filteredItems = useMemo(
+    () => (filter === 'unread' ? items.filter((n) => !n.isRead) : items),
+    [items, filter],
+  );
 
   const groups = useMemo(() => groupByRecency(filteredItems), [filteredItems]);
 
@@ -139,15 +161,15 @@ export function NotificationsListClient() {
     }
   }
 
-  if (list.isLoading) return <ListSkeleton rows={6} />;
+  if (feed.isLoading) return <ListSkeleton rows={6} />;
 
-  if (list.isError) {
+  if (feed.isError) {
     return (
       <div className="space-y-3">
         <p className="text-sm" style={{ color: 'var(--danger-700)' }}>
           {t('loadFailed')}
         </p>
-        <Button variant="outline" size="sm" onClick={() => list.refetch()}>
+        <Button variant="outline" size="sm" onClick={() => feed.retry()}>
           {tp('retry')}
         </Button>
       </div>
@@ -228,18 +250,30 @@ export function NotificationsListClient() {
         })}
       </div>
 
-      {/* Grouped, attention-first list — or the calm all-clear reward. */}
+      {/* Grouped, attention-first list — or the calm all-clear reward. The
+          "all-clear" reward is the unfiltered empty; a filtered empty reads as
+          "nothing of this kind (yet) loaded", which is a different message. */}
       <DataState
         isLoading={false}
         isEmpty={groups.length === 0}
-        emptyTitle={items.length === 0 ? t('allClearTitle') : t('allClearForFilterTitle')}
-        emptyHint={items.length === 0 ? t('allClearHint') : t('allClearForFilterHint')}
+        emptyTitle={filter === 'all' ? t('allClearTitle') : t('allClearForFilterTitle')}
+        emptyHint={filter === 'all' ? t('allClearHint') : t('allClearForFilterHint')}
         emptyAction={
-          items.length === 0 ? (
+          filter === 'all' ? (
             <CheckCircle2 className="h-6 w-6" style={{ color: 'var(--success-600)' }} aria-hidden />
           ) : undefined
         }
       >
+        {/* HONESTY LINE — a non-technical user must know how much is loaded vs the
+            whole feed, so the recency grouping never reads as "this is all there
+            is". Filtered counts narrow server-side org-wide; "load more" grows it. */}
+        {filteredItems.length > 0 && (
+          <p className="mb-1 text-xs" style={{ color: 'var(--text-muted)' }} role="status">
+            {feed.isExhausted
+              ? t('loadedAll', { count: filteredItems.length })
+              : t('loadedPartial', { count: filteredItems.length })}
+          </p>
+        )}
         <div className="flex flex-col gap-4">
           {groups.map((group) => (
             <section key={group.bucket} aria-labelledby={`notif-group-${group.bucket}`}>
@@ -280,23 +314,21 @@ export function NotificationsListClient() {
         </div>
       </DataState>
 
-      {/* Pagination */}
-      <div className="flex flex-wrap items-center gap-2">
-        {list.data?.page?.has_more && list.data.page.cursor && (
+      {/* Load more — ACCUMULATES the next keyset page into the grouped set (the
+          recency grouping + unread float then re-run over the whole loaded set),
+          NOT a replace-page. Disabled while a page is in flight. */}
+      {feed.canLoadMore && (
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setCursor(list.data?.page?.cursor ?? undefined)}
+            onClick={feed.loadMore}
+            disabled={feed.isFetchingMore}
           >
-            {tp('next')}
+            {feed.isFetchingMore ? t('loadingMore') : t('loadMore')}
           </Button>
-        )}
-        {cursor && (
-          <Button variant="ghost" size="sm" onClick={() => setCursor(undefined)}>
-            {tp('resetToFirstPage')}
-          </Button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

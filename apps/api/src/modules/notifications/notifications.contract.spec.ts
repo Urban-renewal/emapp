@@ -137,6 +137,34 @@ describe('CONTRACT · notifications (self-scoped)', () => {
     expect(r.status).toBe(400);
     expect((r.body['error'] as Json)?.['code']).toBe('invalid_cursor');
   });
+
+  ct('NT6 valid ?type= is ACCEPTED (server-side filter) → 200 {data:[],page}', async () => {
+    const at = await manager('t');
+    const r = await call('/notifications?type=signature_received', {
+      cookie: `access_token=${at}`,
+    });
+    expect(r.status).toBe(200);
+    expect(Array.isArray(r.body['data'])).toBe(true);
+    // Fresh user: zero rows, but the param is honoured (no validation error) —
+    // proves the additive server-side `type` filter is wired end-to-end.
+    expect((r.body['data'] as Json[]).length).toBe(0);
+  });
+
+  ct('NT7 unknown ?type= → 400 validation_error (DTO-rejected)', async () => {
+    const at = await manager('u');
+    const r = await call('/notifications?type=not_a_real_type', {
+      cookie: `access_token=${at}`,
+    });
+    expect(r.status).toBe(400);
+    expect((r.body['error'] as Json)?.['code']).toBe('validation_error');
+  });
+
+  ct('NT8 unread-count → {data:{count:0}} for a fresh user', async () => {
+    const at = await manager('uc');
+    const r = await call('/notifications/unread-count', { cookie: `access_token=${at}` });
+    expect(r.status).toBe(200);
+    expect((r.body['data'] as Json)['count']).toBe(0);
+  });
 });
 
 afterAll(() => {

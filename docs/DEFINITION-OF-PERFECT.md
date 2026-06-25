@@ -47,6 +47,24 @@ no "WEAK"; WEAK = NO (that's what forces convergence):
    hunt or do manual per-item steps. [Y/N]
 8. **C8 Outcome visible** — after an action the situation visibly changes for every affected party (not just a
    2xx). [Y/N]
+9. **C9 Action matches the STATE** — the one-click action offered is the CORRECT next step for the entity's
+   ACTUAL current state (from the situation model below), NOT a generic per-feature button. A "send reminder"
+   CTA when the real blocker is a missing נסח / an opted-out owner / an unsigned co-owner FAILS. [Y/N]
+10. **C10 COMPLETE situation** — the picture captures the WHOLE state across ALL dimensions that define the
+    entity (signatures · documents · tasks · parties + who-blocks-whom · timeline/stage · consent), not one axis.
+    A single-axis "picture" (e.g. signatures only) FAILS — it looks like a situation picture but isn't. [Y/N]
+11. **C11 One focal point / calm order (anti-מבולגן)** — a single clear "the most important thing now," with
+    everything else progressively disclosed; NOT N equal-weight stacked sections competing for attention. [Y/N]
+12. **C12 Sub-second (anti-איטי)** — every interaction (nav/click/submit) is <1s warm, measured in ms. [Y/N]
+
+**Why C9–C12 were missing — the root cause of "still מבולגן / לא-מלא / מתסכל" (v2, 2026-06-25):** C1–C8 are
+component-level; a page passes them and still feels wrong because the picture and the action are assembled
+**per-axis, not derived from ONE model.** The structural fix: every entity (project · owner · the org · each
+role's world) has a **SITUATION MODEL** that computes its COMPLETE state across all dimensions AND the single
+right-next-action for that state. The at-a-glance picture (C10) and the matched one-click action (C9) both
+render from that ONE model — this is the autonomous-system vision (the system KNOWS the situation + the right
+move). C11/C12 make the result calm + fast. So "frustrating" is no longer a vibe — it decomposes into the
+measurable failures C9 (mismatch) / C10 (partial) / C11 (clutter) / C12 (slow).
 
 A page × role is **DONE** when every applicable criterion is YES. The product is **DONE** when every cell in the
 coverage matrix is DONE. That is the definition of "perfect" — finite, exhaustive, and binary.

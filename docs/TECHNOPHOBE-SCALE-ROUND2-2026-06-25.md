@@ -57,3 +57,37 @@ Each module = one cohesive PR; modules are disjoint file sets → parallelizable
   (CLAUDE.md "design customer processes with a council first"); owner decides delivery/timing. The SMALL X-2
   honesty-copy fix (stop claiming "sent") is buildable now and should land regardless.
 - **M2 (project-level apartment rollup):** new aggregated read — council-design item, larger than a patch.
+
+## CLOSURE — 2026-06-25 (all buildable-now items shipped + walked)
+
+Every buildable-now gap in this ledger is MERGED to `main`, each independently red-teamed (G-RT) + walked in the
+owner's real Chrome through the technophobe lens (G-QA) before merge:
+
+| PR   | Module        | Gap(s) closed           | Walk evidence (technophobe lens)                                                                                                              |
+| ---- | ------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| #541 | owners        | B1+B2 search/attention  | findable at scale; needs-attention chip; debounced `/owners/search`                                                                           |
+| #542 | notifications | H3+H2 true-count/whole  | bell shows TRUE count (not "5+"); accumulate-dedup feed                                                                                       |
+| #543 | contractors   | C-1 search/specialty    | name search + data-derived specialty facet (fixed a live 42P10 on the way)                                                                    |
+| #544 | apartments    | M1a status filter       | additive server-side `status` where + chips; keyset intact                                                                                    |
+| #545 | inbox         | H1 count + H2 group     | honest `/proposals/pending-count` (not page-length); per-`kind` grouping                                                                      |
+| #546 | messages      | M1m accumulate + M3 agg | conversation list + thread accumulate; honest org-wide `/conversations/unread-count`                                                          |
+| #547 | nav/sidebar   | **M2 capstone**         | ambient inbox/notif/messages badges; **role-safe** (manager-gated count never fires for agent); hidden-at-0; auto-expand; counts 0.21s direct |
+
+**Walk-confirmed on #547 (the capstone):** as MANAGER — inbox "3" + notifications "5" (= bell, shared cache) +
+messages hidden-at-0, tools group auto-expands, 3 counts 200, console clean. As AGENT — no inbox row, manager-gated
+`proposals/pending-count` NEVER fired (no 403), notifications+conversations 200, group stays collapsed, console clean.
+
+**Builder-misses caught by lead-verify before merge** (the gate working): stale api-reference on owners/contractors/
+apartments (regen+commit); missing e2e `/notifications/unread-count` mock handler (the §P0-3 console trap); inbox
+dotted-i18n-key bug (next-intl splits on `.`) caught by the WALK, not specs/G-RT. Folded into subsequent briefs.
+
+### Still OPEN (intentionally — not buildable-now)
+
+- **External-share full redesign (X-1/X-2-real/X-3/X-4/X-5):** designed in
+  `docs/DESIGN-external-share-collaboration-redesign.md`. Real delivery (X-2) routes through `governOutboundSend` +
+  the unbuilt party-token tier, and sending real outbound to real external parties is in the genuine-owner-gated set
+  (P5) → owner decides delivery/timing. The SMALL X-2 honesty-copy fix (stop claiming "נשלח" when nothing ships) is
+  buildable now and should land regardless.
+- **Cleanup (low):** delete `home-conversations.tsx` orphan; L2 `needsHuman[]` surface-or-document decision.
+- **Owner-gated prepared (not performed):** #498 (sensitive-doc prod backfill, runbook ready, "DO NOT MERGE until
+  backfill") · #512 (consent/opt-out registry — Gate-6 schema on the outbound path).

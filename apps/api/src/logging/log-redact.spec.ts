@@ -72,7 +72,9 @@ describe('log-redact — pino request-log redaction policy', () => {
       // The exact leak: the public-sign route is called as /api/v1/sign/<jwt>;
       // pino serialized the FULL path into req.url. The path-aware censor must
       // mask the token segment but leave the route visible.
-      const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJvd25lciJ9.SiGnAtUrEpLaCeHoLdEr';
+      // Placeholder that matches the JWT-shape regex (header.payload.signature)
+      // WITHOUT being a real-looking base64url JWT (avoids tripping secret scanners).
+      const jwt = 'HEADERseg.PAYLOADseg.SIGNATUREseg';
       const out = logRedactCensor(`/api/v1/sign/${jwt}`, ['req', 'url']);
       expect(out).toBe('/api/v1/sign/[REDACTED]');
       expect(String(out)).not.toContain(jwt);

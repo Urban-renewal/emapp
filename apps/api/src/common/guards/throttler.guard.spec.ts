@@ -26,10 +26,11 @@ class TestGuard extends ConfigurableThrottlerGuard {
   // bypass logic is the only thing under test.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   protected override async shouldSkip(_ctx: ExecutionContext): Promise<boolean> {
-    // Re-run the production-gate + secret check the real class implements,
-    // then delegate the unmatched-fallback to a fixed `false` so we're not
-    // hitting the real ThrottlerGuard chain.
-    if (process.env['NODE_ENV'] === 'production') return false;
+    // Re-run the fail-closed env allowlist + secret check the real class
+    // implements, then delegate the unmatched-fallback to a fixed `false` so
+    // we're not hitting the real ThrottlerGuard chain.
+    const nodeEnv = process.env['NODE_ENV'];
+    if (nodeEnv !== 'development' && nodeEnv !== 'test') return false;
     const secret = process.env['THROTTLE_TEST_BYPASS'];
     if (secret) {
       const req = _ctx.switchToHttp().getRequest<{ headers: Record<string, unknown> }>();
@@ -60,8 +61,8 @@ describe('F1 · ConfigurableThrottlerGuard prod-safety', () => {
     else process.env['THROTTLE_TEST_BYPASS'] = prevSecret;
   });
 
-  it('allows bypass when NODE_ENV is not production AND header+secret match', async () => {
-    delete process.env['NODE_ENV'];
+  it('allows bypass in an EXPLICIT test env AND header+secret match', async () => {
+    process.env['NODE_ENV'] = 'test';
     process.env['THROTTLE_TEST_BYPASS'] = 'contract-suite';
     const ok = await g.run(fakeCtx({ 'x-throttle-bypass': 'contract-suite' }));
     expect(ok).toBe(true);
@@ -74,15 +75,32 @@ describe('F1 · ConfigurableThrottlerGuard prod-safety', () => {
     expect(ok, 'production MUST never honour the bypass — ops-typo defence').toBe(false);
   });
 
-  it('refuses bypass when header is wrong even outside prod', async () => {
+  it('FAIL-CLOSED (#14): REFUSES bypass when NODE_ENV is UNSET even with header+secret', async () => {
+    // The residual the red-team flagged: a deployed image that forgot
+    // `ENV NODE_ENV=production` runs with NODE_ENV unset — the OLD positive
+    // `=== 'production'` gate did not block the bypass there. The allowlist does.
     delete process.env['NODE_ENV'];
+    process.env['THROTTLE_TEST_BYPASS'] = 'contract-suite';
+    const ok = await g.run(fakeCtx({ 'x-throttle-bypass': 'contract-suite' }));
+    expect(ok, 'unset NODE_ENV MUST never honour the bypass — fail-closed').toBe(false);
+  });
+
+  it("FAIL-CLOSED: REFUSES bypass for a typo'd NODE_ENV (e.g. 'prod')", async () => {
+    process.env['NODE_ENV'] = 'prod';
+    process.env['THROTTLE_TEST_BYPASS'] = 'contract-suite';
+    const ok = await g.run(fakeCtx({ 'x-throttle-bypass': 'contract-suite' }));
+    expect(ok).toBe(false);
+  });
+
+  it('refuses bypass when header is wrong even in test env', async () => {
+    process.env['NODE_ENV'] = 'test';
     process.env['THROTTLE_TEST_BYPASS'] = 'real-secret';
     const ok = await g.run(fakeCtx({ 'x-throttle-bypass': 'guessed-wrong' }));
     expect(ok).toBe(false);
   });
 
-  it('refuses bypass when env not set, regardless of header', async () => {
-    delete process.env['NODE_ENV'];
+  it('refuses bypass when secret env not set, regardless of header (test env)', async () => {
+    process.env['NODE_ENV'] = 'test';
     delete process.env['THROTTLE_TEST_BYPASS'];
     const ok = await g.run(fakeCtx({ 'x-throttle-bypass': 'anything' }));
     expect(ok).toBe(false);

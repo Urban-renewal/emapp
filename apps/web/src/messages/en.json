@@ -2264,6 +2264,10 @@
     "needsAttention": "Needs attention",
     "needsAttentionCount": "{count} need attention",
     "markRowReadAria": "Mark this notification as read",
+    "loadMore": "Load more",
+    "loadingMore": "Loading...",
+    "loadedAll": "Showing all notifications ({count})",
+    "loadedPartial": "Loaded {count} notifications. Filter by category or load more to see everything.",
     "filter": {
       "all": "All",
       "unread": "Unread",

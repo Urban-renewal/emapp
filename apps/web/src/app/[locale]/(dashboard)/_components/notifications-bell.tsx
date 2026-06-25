@@ -6,17 +6,23 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 
 import { NameDisplay } from '@/components/ui/name-display';
-import { useNotificationBell } from '@/hooks/use-notifications';
+import { useNotificationBell, useUnreadCount } from '@/hooks/use-notifications';
 
 import { actionVisual, NotificationIconTile } from './notification-icon';
+
+/** Visual display ceiling for the badge — a render cap, NOT a lie about whether
+ *  more exist. 100 unread shows "99+", but the value behind it is the TRUE
+ *  org-wide count from the indexed endpoint (never the old page-local "5+"). */
+const BADGE_DISPLAY_CAP = 99;
 
 /**
  * Topbar bell — Phase 4c S3; V11 A.S11 reskin.
  *
- * Shows 5 most-recent notifications in a click-toggle popover. The
- * unread badge counts only the rows visible in the popover (BE pagination
- * caps at limit=5 here, so the badge says "5+" if all 5 are unread; the
- * precise org-wide unread count lives on the /notifications page).
+ * Shows 5 most-recent notifications in a click-toggle popover. The unread badge
+ * is the TRUE org-wide unread total from the dedicated constant-time endpoint
+ * (`GET /notifications/unread-count`, indexed) — NOT a count of the ≤5 rows in
+ * the popover. At scale it shows the real number (capped visually at "99+" as a
+ * display ceiling, never the old "5+" that lied about magnitude).
  *
  * V11 A.S11 — adopts the partner `NotificationsPanel` (shell.jsx line
  * 179) visual:
@@ -37,13 +43,17 @@ export function NotificationsBell() {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const { data, isError } = useNotificationBell();
+  // The badge + popover sub-count use the TRUE org-wide unread total (indexed
+  // endpoint), not a count of the ≤5 popover rows. The per-row unread DOTS still
+  // come from the loaded rows (those 5 are real + their read-state is known).
+  const { data: trueUnread } = useUnreadCount();
   const items = data?.items ?? [];
-  const unreadCount = items.filter((n) => !n.isRead).length;
+  const unreadCount = trueUnread ?? 0;
   const unreadLabel =
     unreadCount === 0
       ? ''
-      : data?.page?.has_more && unreadCount === items.length
-        ? '5+'
+      : unreadCount > BADGE_DISPLAY_CAP
+        ? `${BADGE_DISPLAY_CAP}+`
         : String(unreadCount);
 
   useEffect(() => {

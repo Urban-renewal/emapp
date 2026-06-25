@@ -18,6 +18,7 @@ import {
   DocumentSchema,
   ImportErrorSchema,
   ImportJobSchema,
+  NotificationSchema,
   OwnerListItemSchema,
   OwnerSchema,
   ProjectSchema,
@@ -34,6 +35,7 @@ import { SAMPLE_BUILDINGS } from './buildings';
 import { SAMPLE_CONTRACTORS, SAMPLE_CONTRACTOR_SPECIALTIES } from './contractors';
 import { SAMPLE_DOCUMENTS } from './documents';
 import { SAMPLE_IMPORT_ERRORS, SAMPLE_IMPORTS } from './imports';
+import { SAMPLE_NOTIFICATIONS, SAMPLE_NOTIFICATIONS_UNREAD_COUNT } from './notifications';
 import { SAMPLE_OWNERS } from './owners';
 import { SAMPLE_APARTMENT_OWNERS } from './ownerships';
 import { SAMPLE_PROJECTS } from './projects';
@@ -146,6 +148,20 @@ describe('SAMPLE_* — schema-parse gate (drift detector)', () => {
     expect(SAMPLE_SIGNATURE_PULSE.attention.length).toBeGreaterThan(0);
     // All-clear fixture must be empty so it drives the reward empty-state.
     expect(SAMPLE_SIGNATURE_PULSE_ALL_CLEAR.attention).toHaveLength(0);
+  });
+
+  it('18) SAMPLE_NOTIFICATIONS parse against NotificationSchema (bell + page offline)', () => {
+    SAMPLE_NOTIFICATIONS.forEach((n) => expect(() => NotificationSchema.parse(n)).not.toThrow());
+    // Authored at scale — spans >1 keyset page (25) so "load more" accumulates.
+    expect(SAMPLE_NOTIFICATIONS.length).toBeGreaterThan(25);
+    // The true unread total must EXCEED the legacy bell "5+" page-local cap so the
+    // offline bell badge proves it shows the real number, not a 5-row count.
+    expect(SAMPLE_NOTIFICATIONS_UNREAD_COUNT).toBeGreaterThan(5);
+    // No PII leaks onto the notification wire (title/body are doc/apt/task only).
+    SAMPLE_NOTIFICATIONS.forEach((n) => {
+      expect(n).not.toHaveProperty('national_id');
+      expect(n).not.toHaveProperty('phone');
+    });
   });
 
   it('13) SAMPLE_OWNERS pass the new MaskedPii regex (closes §v9-M-4 + §v9-P0-1)', () => {

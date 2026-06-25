@@ -2264,6 +2264,10 @@
     "needsAttention": "דורש טיפול",
     "needsAttentionCount": "{count} דורשות טיפול",
     "markRowReadAria": "סמן התראה זו כנקראה",
+    "loadMore": "טען עוד",
+    "loadingMore": "טוען...",
+    "loadedAll": "מוצגות כל ההתראות ({count})",
+    "loadedPartial": "נטענו {count} התראות. סננו לפי קטגוריה או טענו עוד כדי לראות הכל.",
     "filter": {
       "all": "הכל",
       "unread": "לא נקראו",

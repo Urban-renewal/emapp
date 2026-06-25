@@ -24,6 +24,7 @@ vi.mock('@/lib/api/proposals', () => ({
   approveProposal: (...args: unknown[]) => approveProposal(...args),
   rejectProposal: (...args: unknown[]) => rejectProposal(...args),
   listProposals: vi.fn(),
+  proposalsPendingCount: vi.fn(),
 }));
 
 vi.mock('@/lib/locale', () => ({ useDisplayLocale: () => 'he' }));

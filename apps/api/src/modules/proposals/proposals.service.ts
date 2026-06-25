@@ -20,7 +20,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, type SQL } from 'drizzle-orm';
+import { and, eq, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 
 import {
@@ -225,6 +225,30 @@ export class ProposalsService {
       createdAt: r.createdAt,
       appliedAt: r.appliedAt,
     };
+  }
+
+  /**
+   * Constant-time count of the org's PENDING proposals — the inbox's HONEST
+   * lead line ("N החלטות ממתינות לך"). MIRRORS `NotificationsService.unreadCount`
+   * exactly (the canonical pattern): a single `count(*)` under withTenant/RLS,
+   * NOT a page payload counted client-side. The list header used to read
+   * `items.length` over a ≤25-row page, so at 80 pending it lied "25"; this is
+   * the single source of truth for the magnitude. Served by the partial index
+   * `idx_proposals_org_pending` (WHERE status = 'pending') — no full scan, no
+   * N+1. Manager-only (every proposals op is `requireManager`); RLS org-isolates.
+   */
+  async pendingCount(user: AccessTokenPayload): Promise<{ count: number }> {
+    this.requireManager(user);
+    const result = await withTenant(
+      user.orgId,
+      async (tx) =>
+        tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(proposals)
+          .where(eq(proposals.status, 'pending')),
+      { userId: user.sub },
+    );
+    return { count: result[0]?.count ?? 0 };
   }
 
   /** Pending proposals, newest-first, keyset-paginated. The FE inbox renders

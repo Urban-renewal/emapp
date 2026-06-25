@@ -171,11 +171,28 @@
   },
   "inbox": {
     "title": "החלטות ממתינות",
-    "pendingLead": "{count, plural, one {החלטה אחת ממתינה לך} two {שתי החלטות ממתינות לך} other {# החלטות ממתינות לך}}",
+    "pendingLead": "{count, plural, one {החלטה אחת ממתינה לך} two {שתי החלטות ממתינות לך} other {{countLabel} החלטות ממתינות לך}}",
     "subtitle": "לפי הכללים שלך — מוכן לאישורך. כל החלטה היא שלך, בלחיצה אחת.",
     "reject": "דחה",
     "next": "הבא",
     "resetToFirstPage": "חזרה לתחילת הרשימה",
+    "loadMore": "הצג עוד",
+    "loadingMore": "טוען…",
+    "loadedAll": "נטענו כל {count} ההחלטות הממתינות.",
+    "loadedPartial": "נטענו {count} מתוך {total} ההחלטות — לחיצה על ״הצג עוד״ מציגה את היתר.",
+    "loadedPartialNoTotal": "נטענו {count} החלטות — לחיצה על ״הצג עוד״ מציגה עוד.",
+    "filter": {
+      "label": "סינון לפי סוג החלטה",
+      "all": "הכל"
+    },
+    "group": {
+      "generic": "החלטות נוספות",
+      "count": "{count, plural, one {החלטה אחת} two {שתי החלטות} other {# החלטות}}",
+      "signature_request_reissue": "חתימות שפגו — להנפיק מחדש",
+      "reminder_send": "תזכורות חתימה",
+      "document_chase_send": "מסמכים חסרים — לבקש מהגורם",
+      "task_create": "משימות מוצעות"
+    },
     "empty": {
       "title": "אין החלטות ממתינות — הכל מסודר",
       "hint": "כשתוכן יידרש לאישורך, הוא יופיע כאן."

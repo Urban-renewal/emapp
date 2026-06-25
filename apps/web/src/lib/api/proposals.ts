@@ -44,6 +44,23 @@ export interface ListProposalsQuery {
   kind?: string;
 }
 
+const PendingCountDataSchema = z.object({
+  data: z.object({ count: z.number().int().nonnegative() }),
+});
+
+/**
+ * GET /api/v1/proposals/pending-count → the org-wide count of PENDING proposals.
+ * Constant-time on the BE (partial index), so the inbox header states the TRUE
+ * magnitude — NOT the ≤25-row page length it counted before. Mirrors the
+ * notifications unread-count client call. Defensive Zod parse (ARCHITECTURE-MAP
+ * §1): a drift surfaces as a parse error, never a silently-wrong header.
+ */
+export async function proposalsPendingCount(): Promise<{ count: number }> {
+  const res = await apiClient.get<unknown>('/proposals/pending-count');
+  if (!isOk(res)) throw new ApiClientError(res.error);
+  return PendingCountDataSchema.parse({ data: res.data }).data;
+}
+
 export async function listProposals(query: ListProposalsQuery = {}): Promise<ProposalListPage> {
   const params = new URLSearchParams();
   if (query.limit !== undefined) params.set('limit', String(query.limit));

@@ -1,12 +1,13 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { toProposalViewModels } from '@/adapters/proposal';
 import {
   approveProposal,
   listProposals,
+  proposalsPendingCount,
   rejectProposal,
   type ListProposalsQuery,
   type ProposalListPage,
@@ -14,9 +15,17 @@ import {
 import { useDisplayLocale } from '@/lib/locale';
 import type { ProposalViewModel } from '@/models/proposal.vm';
 
-import { PROPOSALS_KEY, proposalsListQueryKey } from './use-proposals.keys';
+import {
+  PROPOSALS_KEY,
+  proposalsListQueryKey,
+  proposalsPendingCountQueryKey,
+} from './use-proposals.keys';
 
 export { proposalsListQueryKey, PROPOSALS_KEY };
+
+/** The page size the inbox feed pages at (keyset). One source of truth so the
+ *  list hook + the accumulate feed never drift. */
+const INBOX_PAGE_LIMIT = 25;
 
 /** Snapshot of every proposals-list cache entry, for optimistic rollback. */
 type ProposalCacheSnapshot = [readonly unknown[], ProposalListPage | undefined][];
@@ -62,6 +71,92 @@ export function useProposalList(query: ListProposalsQuery = {}) {
     staleTime: 30_000,
     select,
   });
+}
+
+/**
+ * The HONEST inbox lead-line count — the org-wide PENDING total. Reads the
+ * constant-time `GET /proposals/pending-count` endpoint (mirrors the
+ * notifications unread-count pattern), NOT `items.length` over a ≤25 page (which
+ * lied "25" at 80 pending). Nested under `PROPOSALS_KEY`, so the approve/reject
+ * mutations' `invalidateQueries({ queryKey: PROPOSALS_KEY })` refreshes it in
+ * lockstep with the list (one source of truth — the count + the feed move
+ * together; no drift). 30s staleTime + window-focus refetch, like the list.
+ */
+export function useProposalsPendingCount() {
+  return useQuery<{ count: number }, Error>({
+    queryKey: proposalsPendingCountQueryKey(),
+    queryFn: () => proposalsPendingCount(),
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Accumulate the inbox feed ACROSS keyset pages so the kind-grouping reflects
+ * EVERY loaded proposal — not just the current 25-row page (the per-page-grouping
+ * illusion: a kind's proposals split over a page boundary used to land in
+ * different page-groups). SAME accumulate-then-dedup shape as the canonical
+ * `useAllDocumentsFeed` (documents-list.client.tsx): append each page into `acc`
+ * keyed by id, track `exhausted`, reset when the inputs change. The grouping +
+ * the honesty line run over the ACCUMULATED set.
+ *
+ * `kind` optionally narrows server-side (the list endpoint's `?kind` filter), so
+ * switching the kind facet resets + re-walks the filtered feed.
+ */
+export function useInboxFeed(opts: { kind?: string } = {}) {
+  const locale = useDisplayLocale();
+  const kind = opts.kind;
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const [acc, setAcc] = useState<ProposalViewModel[]>([]);
+  const [exhausted, setExhausted] = useState(false);
+
+  // Reset the accumulation whenever the QUERY (kind / locale) changes.
+  useEffect(() => {
+    setCursor(undefined);
+    setAcc([]);
+    setExhausted(false);
+  }, [kind, locale]);
+
+  const list = useProposalList({ limit: INBOX_PAGE_LIMIT, cursor, ...(kind ? { kind } : {}) });
+  const data = list.data;
+
+  useEffect(() => {
+    if (!data) return;
+    setAcc((prev) => {
+      const seen = new Set(prev.map((p) => p.id));
+      const next = [...prev];
+      for (const p of data.items) if (!seen.has(p.id)) next.push(p);
+      return next;
+    });
+    if (!data.page.has_more) setExhausted(true);
+  }, [data]);
+
+  const canLoadMore = !exhausted && Boolean(data?.page.has_more);
+  const isLoadingFirst = list.isLoading && acc.length === 0 && cursor === undefined;
+  const isFetchingMore = list.isFetching && cursor !== undefined;
+
+  return {
+    items: acc,
+    /** Whether ALL pages of the underlying feed have been loaded. */
+    isExhausted: exhausted,
+    isLoading: isLoadingFirst,
+    isError: list.isError,
+    error: list.error,
+    isFetchingMore,
+    canLoadMore,
+    loadMore: () => {
+      if (data?.page.has_more && data.page.cursor) setCursor(data.page.cursor);
+    },
+    retry: () => void list.refetch(),
+    // After an approve/reject optimistically removes a row, RESET the
+    // accumulation so the feed re-walks from page 1 (the accumulator is
+    // append-only; a bare refetch would leave the actioned row lingering in
+    // `acc`). Matches the documents feed's `onArchived` discipline.
+    reset: () => {
+      setCursor(undefined);
+      setAcc([]);
+      setExhausted(false);
+    },
+  };
 }
 
 /** Shared optimistic-remove mutation factory — APPROVE + REJECT both remove the

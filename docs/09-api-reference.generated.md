@@ -2994,6 +2994,23 @@ _(no body)_
 
 **Errors:** `forbidden`, `not_found`, `proposal_not_pending`, `missing_token`, `invalid_token`, `token_expired`
 
+### GET /api/v1/proposals/pending-count
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Constant-time count of the org's PENDING proposals — the inbox's HONEST lead line. Mirrors GET /notifications/unread-count (partial index idx_proposals_org_pending WHERE status='pending'; no full scan). Manager-only (service requireManager). RLS org isolation.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { "count": int } }
+```
+
+**Errors:** `forbidden`, `missing_token`, `invalid_token`, `token_expired`
+
 ### GET /api/v1/provider/audit
 
 - **Auth:** ProviderAuthGuard + ProviderAuthorizationGuard

@@ -199,6 +199,66 @@ describe('ProposalsService.list', () => {
   });
 });
 
+describe('ProposalsService.pendingCount', () => {
+  it('counts ONLY pending proposals (mirrors notifications.unreadCount), org-isolated', async () => {
+    // A dedicated org so the count is exact (no bleed from other tests).
+    const org = await createTestOrg(`propc-${Date.now()}`, `propc-${Date.now()}`);
+    for (let i = 0; i < 3; i++) {
+      await seedProposal({ orgId: org.id, kind: 'signature_request.reissue' });
+    }
+    // A non-pending one must NOT be counted.
+    const appliedId = await seedProposal({ orgId: org.id, kind: 'signature_request.reissue' });
+    await providerDb.execute(sql`UPDATE proposals SET status = 'applied' WHERE id = ${appliedId}`);
+
+    const { count } = await svc.pendingCount(manager(org));
+    expect(count).toBe(3);
+    await providerDb
+      .execute(sql`DELETE FROM proposals WHERE org_id = ${org.id}`)
+      .catch(() => undefined);
+  });
+
+  it('is the TRUE total — NOT capped to the list page size (the page-local lie)', async () => {
+    // Seed MORE than one page (the FE list pages at 25). The count must report
+    // the full magnitude, never the page slice.
+    const org = await createTestOrg(`propd-${Date.now()}`, `propd-${Date.now()}`);
+    const TOTAL = 30;
+    for (let i = 0; i < TOTAL; i++) {
+      await seedProposal({ orgId: org.id, kind: 'signature_request.reissue' });
+    }
+    const firstPage = await svc.list(manager(org), { limit: 25 });
+    expect(firstPage.data).toHaveLength(25); // the page is capped …
+    const { count } = await svc.pendingCount(manager(org));
+    expect(count).toBe(TOTAL); // … but the count is honest.
+    await providerDb
+      .execute(sql`DELETE FROM proposals WHERE org_id = ${org.id}`)
+      .catch(() => undefined);
+  });
+
+  it('decrements when a proposal leaves pending (approve / reject)', async () => {
+    const org = await createTestOrg(`prope-${Date.now()}`, `prope-${Date.now()}`);
+    const a = await seedProposal({ orgId: org.id, kind: 'signature_request.reissue' });
+    await seedProposal({ orgId: org.id, kind: 'signature_request.reissue' });
+    expect((await svc.pendingCount(manager(org))).count).toBe(2);
+    await svc.reject(manager(org), a);
+    expect((await svc.pendingCount(manager(org))).count).toBe(1);
+    await providerDb
+      .execute(sql`DELETE FROM proposals WHERE org_id = ${org.id}`)
+      .catch(() => undefined);
+  });
+
+  it('is RLS-isolated: org B does not count org A pending proposals', async () => {
+    await seedProposal({ orgId: orgA.id, kind: 'signature_request.reissue' });
+    const before = (await svc.pendingCount(manager(orgB))).count;
+    await seedProposal({ orgId: orgA.id, kind: 'signature_request.reissue' });
+    const after = (await svc.pendingCount(manager(orgB))).count;
+    expect(after).toBe(before); // org A's new proposal does not move org B's count
+  });
+
+  it('a non-manager is FORBIDDEN', async () => {
+    await expect(svc.pendingCount(viewer(orgA))).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
 describe('ProposalsService.approve', () => {
   it('re-asserts classify, dispatches to the gated executor, flips → applied + audits', async () => {
     reissueCalls.length = 0;

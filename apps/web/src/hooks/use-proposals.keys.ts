@@ -17,3 +17,11 @@ export function proposalsListQueryKey(
 ) {
   return [...PROPOSALS_KEY, 'list', query, locale] as const;
 }
+
+/** Shape: `['proposals', 'pending-count']` — the constant-time inbox-header
+ *  count (locale-independent; it's a number). Nested under `PROPOSALS_KEY` so an
+ *  approve/reject `invalidateQueries({ queryKey: PROPOSALS_KEY })` refreshes the
+ *  count too (one source of truth: the count + the list move together). */
+export function proposalsPendingCountQueryKey() {
+  return [...PROPOSALS_KEY, 'pending-count'] as const;
+}

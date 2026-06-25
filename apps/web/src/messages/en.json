@@ -171,11 +171,28 @@
   },
   "inbox": {
     "title": "Pending decisions",
-    "pendingLead": "{count, plural, one {1 decision is waiting for you} other {# decisions are waiting for you}}",
+    "pendingLead": "{count, plural, one {1 decision is waiting for you} other {{countLabel} decisions are waiting for you}}",
     "subtitle": "Per your rules — ready for your approval. Each decision is yours, one click away.",
     "reject": "Dismiss",
     "next": "Next",
     "resetToFirstPage": "Back to first page",
+    "loadMore": "Show more",
+    "loadingMore": "Loading…",
+    "loadedAll": "All {count} pending decisions are loaded.",
+    "loadedPartial": "{count} of {total} decisions loaded — “Show more” loads the rest.",
+    "loadedPartialNoTotal": "{count} decisions loaded — “Show more” loads more.",
+    "filter": {
+      "label": "Filter by decision type",
+      "all": "All"
+    },
+    "group": {
+      "generic": "Other decisions",
+      "count": "{count, plural, one {1 decision} other {# decisions}}",
+      "signature_request_reissue": "Expired signatures — re-issue",
+      "reminder_send": "Signature reminders",
+      "document_chase_send": "Missing documents — request from party",
+      "task_create": "Suggested tasks"
+    },
     "empty": {
       "title": "No pending decisions — all clear",
       "hint": "When something needs your approval, it will appear here."

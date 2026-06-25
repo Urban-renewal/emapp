@@ -910,4 +910,12 @@ export const handlers = [
     if (!n) return errorEnvelope('not_found', 404);
     return HttpResponse.json(dataEnvelope({ ...n, readAt: n.readAt ?? new Date() }));
   }),
+
+  // conversations: org-wide unread total — the dedicated constant-time endpoint
+  // (mirrors notifications `unread-count`). Offline there are no SAMPLE
+  // conversations, so the honest offline total is 0. Drives a future nav badge;
+  // kept here so that surface never 404s in MSW mode.
+  http.get(`${API}/conversations/unread-count`, () =>
+    HttpResponse.json(dataEnvelope({ count: 0 })),
+  ),
 ];

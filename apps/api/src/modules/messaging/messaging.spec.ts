@@ -376,6 +376,84 @@ describe('messaging · notification fan-out', () => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────
+// U) org-wide unread count (mirrors notifications.unreadCount — constant-time,
+//    participation-scoped, the TRUE total across ALL the caller's threads, NOT a
+//    page-local sum). Uses dedicated members for a clean per-user baseline (the
+//    shared org accrues threads from the A–E blocks).
+// ───────────────────────────────────────────────────────────────────────────
+describe('messaging · org-wide unread count', () => {
+  it('U1) counts unread across MANY threads (true total > one page), excludes the caller’s own messages, and respects the per-thread read watermark', async () => {
+    const alice = await seedMember(org.id, 'manager');
+    const bob = await seedMember(org.id, 'agent');
+
+    // Baselines: a brand-new member has zero unread anywhere.
+    expect((await svc.unreadCount(actor(alice, org.id, 'manager'))).count).toBe(0);
+    expect((await svc.unreadCount(actor(bob, org.id, 'agent'))).count).toBe(0);
+
+    // Bob opens THREE threads with Alice, each with a first message → Alice has
+    // 3 unread total spread across 3 conversations (NOT one page-row's count).
+    const t1 = await svc.create(actor(bob, org.id, 'agent'), {
+      participantIds: [alice],
+      body: 'a',
+    });
+    const t2 = await svc.create(actor(bob, org.id, 'agent'), {
+      participantIds: [alice],
+      body: 'b',
+    });
+    // t3 = a third thread; its one message contributes to Alice's org-wide total
+    // (it is never read in this test, only counted).
+    await svc.create(actor(bob, org.id, 'agent'), { participantIds: [alice], body: 'c' });
+    // Bob piles two more onto t1 → Alice's org-wide total is now 5 across 3 threads.
+    await svc.sendMessage(actor(bob, org.id, 'agent'), t1.id, 'a2');
+    await svc.sendMessage(actor(bob, org.id, 'agent'), t1.id, 'a3');
+
+    expect((await svc.unreadCount(actor(alice, org.id, 'manager'))).count).toBe(5);
+    // The author (Bob) never counts his OWN messages as unread.
+    expect((await svc.unreadCount(actor(bob, org.id, 'agent'))).count).toBe(0);
+
+    // Alice reads t1 → only t1's 3 clear; t2 + t3 (1 each) remain → 2.
+    await svc.markRead(actor(alice, org.id, 'manager'), t1.id);
+    expect((await svc.unreadCount(actor(alice, org.id, 'manager'))).count).toBe(2);
+
+    // Alice replies in t2 → Bob now has 1 unread (her reply), Alice's own reply
+    // does not inflate her count; t2 is read for her (sendMessage bumps her
+    // watermark), so Alice drops to t3 only → 1.
+    await svc.sendMessage(actor(alice, org.id, 'manager'), t2.id, 'reply');
+    expect((await svc.unreadCount(actor(bob, org.id, 'agent'))).count).toBe(1);
+    expect((await svc.unreadCount(actor(alice, org.id, 'manager'))).count).toBe(1);
+  }, 30_000);
+
+  it('U2) a NON-participant’s unread is unaffected by a thread they are not in (RLS participation scope)', async () => {
+    const carol = await seedMember(org.id, 'agent');
+    const dave = await seedMember(org.id, 'agent');
+    const erin = await seedMember(org.id, 'agent'); // never a participant
+
+    const before = (await svc.unreadCount(actor(erin, org.id, 'agent'))).count;
+    const t = await svc.create(actor(carol, org.id, 'agent'), {
+      participantIds: [dave],
+      body: 'private to carol+dave',
+    });
+    await svc.sendMessage(actor(carol, org.id, 'agent'), t.id, 'more');
+    // Dave (a participant) sees the unread; Erin (not in the thread) is unchanged.
+    expect((await svc.unreadCount(actor(dave, org.id, 'agent'))).count).toBeGreaterThanOrEqual(2);
+    expect((await svc.unreadCount(actor(erin, org.id, 'agent'))).count).toBe(before);
+  }, 30_000);
+
+  it('U3) cross-org isolation: a message in org A never counts toward an org-B member’s unread', async () => {
+    const before = (await svc.unreadCount(actor(otherOrgUserId, otherOrg.id, 'manager'))).count;
+    const local = await seedMember(org.id, 'agent');
+    const t = await svc.create(actor(managerId, org.id, 'manager'), {
+      participantIds: [local],
+      body: 'org A only',
+    });
+    await svc.sendMessage(actor(managerId, org.id, 'manager'), t.id, 'again');
+    expect((await svc.unreadCount(actor(otherOrgUserId, otherOrg.id, 'manager'))).count).toBe(
+      before,
+    );
+  }, 30_000);
+});
+
+// ───────────────────────────────────────────────────────────────────────────
 // F) schema + RLS + migration-journal pins
 // ───────────────────────────────────────────────────────────────────────────
 describe('messaging · schema + RLS + journal pins', () => {

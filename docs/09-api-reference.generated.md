@@ -2997,7 +2997,7 @@ _(no body)_
 ### GET /api/v1/proposals/pending-count
 
 - **Auth:** AuthGuard + TenantGuard (Manager)
-- **Summary:** Constant-time count of the org's PENDING proposals — the inbox's HONEST lead line. Mirrors GET /notifications/unread-count (partial index idx_proposals_org_pending WHERE status='pending'; no full scan). Manager-only (service requireManager). RLS org isolation.
+- **Summary:** Constant-time count of the org's PENDING proposals — the inbox's HONEST lead line. Optional ?kind narrows IDENTICALLY to GET /proposals (so the count + feed are one kind-aware source; no "X of Y" drift under a facet). Mirrors GET /notifications/unread-count (partial index idx_proposals_org_pending WHERE status='pending'; no full scan). Manager-only (service requireManager). RLS org isolation.
 
 **Request body**
 

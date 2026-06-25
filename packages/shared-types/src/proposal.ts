@@ -78,3 +78,10 @@ export const ListProposalsQuery = z.object({
   kind: z.string().min(1).max(120).optional(),
 });
 export type ListProposalsQueryDto = z.infer<typeof ListProposalsQuery>;
+
+/** GET /api/v1/proposals/pending-count query. Reuses the list's `kind` field
+ *  (`.pick`) so the count and the feed narrow through the IDENTICAL filter —
+ *  one kind-aware source, so the lead-line + honesty-line + feed can never drift
+ *  ("X מתוך Y" stays consistent when a kind facet is active). */
+export const ProposalPendingCountQuery = ListProposalsQuery.pick({ kind: true });
+export type ProposalPendingCountQueryDto = z.infer<typeof ProposalPendingCountQuery>;

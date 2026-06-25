@@ -51,6 +51,26 @@ export function mergeLiveThenOlder<T extends { id: string }>(live: T[], older: T
 }
 
 /**
+ * Newest → oldest, matching the BE messaging keyset exactly (`messaging.service`
+ * `ORDER BY created_at DESC, id DESC`). The live-merge accumulator in
+ * `useMessagesFeed` can hold page-1 rows that fell out of the live window once
+ * older history is loaded (the window keeps advancing as new messages arrive), so
+ * the merged set is NOT guaranteed to be a single contiguous descending run.
+ * Re-sorting on the canonical key restores the one true chronological order before
+ * the thread is reversed for render — and guarantees no message is dropped between
+ * the shifting live window and the older pages. Pure + total-order (id breaks any
+ * same-instant tie), so the sort is stable and deterministic.
+ */
+export function sortMessagesNewestFirst(messages: Message[]): Message[] {
+  return [...messages].sort((a, b) => {
+    const at = new Date(a.createdAt).getTime();
+    const bt = new Date(b.createdAt).getTime();
+    if (at !== bt) return bt - at; // created_at DESC
+    return a.id < b.id ? 1 : a.id > b.id ? -1 : 0; // id DESC (keyset tiebreak)
+  });
+}
+
+/**
  * The conversation list — ONE page. No WebSocket infra in this MVP (no Redis),
  * so near-real-time = polling: refetch every 15s (and on window focus) so a new
  * thread / incoming message + its unread badge surface without a manual reload.
@@ -192,10 +212,29 @@ export function useMessagesFeed(conversationId: string | undefined) {
     if (!data.page.has_more) setExhausted(true);
   }, [cursor, olderPage.data]);
 
-  // Live newest window first, then older history (page-1 ids removed so a
-  // message can't appear twice). One copy per message; page 1's is authoritative.
+  // Window-shift guard. The live page-1 query is the NEWEST THREAD_LIMIT messages,
+  // a window that ADVANCES as new messages arrive. Once older history is loaded,
+  // a message that falls off page-1's tail (e.g. 3 new arrivals push the newest-50
+  // window forward) would otherwise belong to NEITHER the live window NOR the
+  // fixed-boundary `olderAcc` — and vanish from the thread until reopen. Absorbing
+  // the live rows into the accumulator on every poll keeps every message we've
+  // shown; `mergeLiveThenOlder` de-dups the overlap (live copy wins) and the final
+  // sort restores order. Gated on `cursor` so it's inert until "load older": before
+  // that, page 1 IS the rendered set and older messages are simply not loaded yet.
+  useEffect(() => {
+    if (cursor === undefined) return;
+    const live = page1.data?.items;
+    if (!live) return;
+    setOlderAcc((prev) => accumulateById(prev, live));
+  }, [cursor, page1.data]);
+
+  // Live newest window first (authoritative copy), then older history with page-1
+  // ids removed (a message can't appear twice) — then re-sort on the canonical
+  // keyset, because once older is loaded the accumulator absorbs fallen-off page-1
+  // rows and is no longer a single contiguous run. One copy per message, page 1's
+  // is authoritative, nothing between the shifting window and older pages is lost.
   const items = useMemo<Message[]>(
-    () => mergeLiveThenOlder(page1.data?.items ?? [], olderAcc),
+    () => sortMessagesNewestFirst(mergeLiveThenOlder(page1.data?.items ?? [], olderAcc)),
     [page1.data, olderAcc],
   );
 

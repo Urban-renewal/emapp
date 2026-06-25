@@ -400,7 +400,6 @@ function installDefaultHandlers(): void {
       data: {
         buckets: { stalled: 0, expiringSoon: 0, needsHuman: 0, onTrack: 0 },
         attention: [],
-        needsHuman: [],
         // HB-1 — the campaign-send kill-switch state (required by the schema as
         // of #470). Default-on so the board renders the live remind action.
         sendEnabled: true,

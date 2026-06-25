@@ -278,7 +278,7 @@ async function installStubs(page: import('@playwright/test').Page): Promise<Chai
   // client island that fetches /org/signature-pulse on mount. The benign
   // catch-all above answers every GET with `{ data: [] }`, which FAILS the
   // home's SignaturePulseSchema parse (it expects { buckets, attention,
-  // needsHuman }) → the home would render its DataState error panel. Stub a
+  // sendEnabled }) → the home would render its DataState error panel. Stub a
   // valid (all-clear) pulse so the home renders its calm content cleanly and
   // the §P0-3 console guard stays green. attention:[] → the reward empty-state.
   await page.route('**/api/v1/org/signature-pulse', async (route) => {
@@ -293,7 +293,6 @@ async function installStubs(page: import('@playwright/test').Page): Promise<Chai
         data: {
           buckets: { stalled: 0, expiringSoon: 0, needsHuman: 0, onTrack: 0 },
           attention: [],
-          needsHuman: [],
           // HB-1 — kill-switch state; required by SignaturePulseSchema as of #470.
           sendEnabled: true,
         },

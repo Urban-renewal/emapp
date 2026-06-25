@@ -36,8 +36,8 @@ export class OrgStatsController {
 
   /**
    * E2 Wave-2 B1 — the org-wide "signature pulse" feed for the board-first home
-   * (E2.1): per-project attention rows (ordered by urgency), the `needsHuman`
-   * bucket, and header `buckets` counts. Same `projects.read` gate as `stats`
+   * (E2.1): per-project attention rows (ordered by urgency) and header `buckets`
+   * counts (including the `needsHuman` overlay count). Same `projects.read` gate as `stats`
    * (all org roles); agent-scope (assigned projects only) + RLS org-isolation
    * are enforced INSIDE the service. No PII — counts/percentages/timestamps only.
    */

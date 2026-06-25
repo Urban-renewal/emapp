@@ -37,7 +37,6 @@ function pulse(
   return {
     buckets: { stalled: 0, expiringSoon: 0, needsHuman: 0, onTrack: 0, ...buckets },
     attention,
-    needsHuman: [],
     sendEnabled,
   };
 }

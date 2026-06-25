@@ -1629,7 +1629,7 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/org/signature-pulse',
     auth: 'AuthGuard + TenantGuard (projects.read)',
     summary:
-      'E2 Wave-2 B1 — org-wide signature-pulse feed for the board-first home: per-project attention rows (rankAttention-ordered), needsHuman bucket, header buckets. Agent → assigned projects only; manager/viewer → whole org. Single-source share-weighted consent (matches the board). No PII (counts/%/timestamps only).',
+      'E2 Wave-2 B1 — org-wide signature-pulse feed for the board-first home: per-project attention rows (rankAttention-ordered) + header buckets (incl. the needsHuman overlay count). Agent → assigned projects only; manager/viewer → whole org. Single-source share-weighted consent (matches the board). No PII (counts/%/timestamps only).',
     response: '{ "data": { ...SignaturePulse } }',
     errors: ['missing_token', 'invalid_token', 'token_expired'],
   },

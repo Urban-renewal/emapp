@@ -25,7 +25,7 @@ type ApartmentCacheSnapshot = [readonly unknown[], ApartmentCache | undefined][]
 
 export function useApartmentList(
   buildingId: string | undefined,
-  query: { limit?: number; cursor?: string } = {},
+  query: { limit?: number; cursor?: string; status?: ApartmentStatus } = {},
 ) {
   const locale = useDisplayLocale();
   const select = useCallback(

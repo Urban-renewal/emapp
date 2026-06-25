@@ -8,7 +8,12 @@ import {
   type Apartment as ApartmentRow,
   type TenantTx,
 } from '@emapp/db';
-import type { CreateApartment, Apartment, UpdateApartment } from '@emapp/shared-types';
+import type {
+  CreateApartment,
+  Apartment,
+  ApartmentStatus,
+  UpdateApartment,
+} from '@emapp/shared-types';
 import {
   BadRequestException,
   Injectable,
@@ -119,7 +124,7 @@ export class ApartmentsService {
   async list(
     user: AccessTokenPayload,
     buildingId: string,
-    query: { limit: number; cursor?: string },
+    query: { limit: number; cursor?: string; status?: ApartmentStatus },
   ): Promise<ApartmentListPage> {
     const { limit } = query;
     const cur = query.cursor ? decodeCursor(query.cursor) : null;
@@ -134,10 +139,24 @@ export class ApartmentsService {
         const keyset: SQL | undefined = cur
           ? keysetCondition(apartments.createdAt, apartments.id, cur)
           : undefined;
+        // Additive status filter — a pure PREDICATE ANDed into the existing
+        // WHERE (NOT a reorder), so the keyset cursor/order stay intact; absent
+        // ⇒ byte-identical to the pre-filter list. Mirrors the NS1
+        // `projectSearchFilters` idiom (eq(projects.status, ...)).
+        const statusFilter: SQL | undefined = query.status
+          ? eq(apartments.status, query.status)
+          : undefined;
         return tx
           .select()
           .from(apartments)
-          .where(and(eq(apartments.buildingId, buildingId), isNull(apartments.archivedAt), keyset))
+          .where(
+            and(
+              eq(apartments.buildingId, buildingId),
+              isNull(apartments.archivedAt),
+              statusFilter,
+              keyset,
+            ),
+          )
           .orderBy(...keysetOrderBy(apartments.createdAt, apartments.id))
           .limit(limit + 1);
       },

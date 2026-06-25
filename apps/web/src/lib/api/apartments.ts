@@ -25,11 +25,14 @@ export interface ApartmentListPage {
 
 export async function listApartments(
   buildingId: string,
-  query: { limit?: number; cursor?: string } = {},
+  query: { limit?: number; cursor?: string; status?: ApartmentStatus } = {},
 ): Promise<ApartmentListPage> {
   const params = new URLSearchParams();
   if (query.limit !== undefined) params.set('limit', String(query.limit));
   if (query.cursor) params.set('cursor', query.cursor);
+  // Additive server-side status filter — omitted ⇒ same rows/order as before.
+  // Status is an org-scoped enum label (NOT owner PII), so it may ride the URL.
+  if (query.status) params.set('status', query.status);
   const qs = params.toString();
   const res = await apiClient.getList<unknown>(
     `/buildings/${buildingId}/apartments${qs ? `?${qs}` : ''}`,

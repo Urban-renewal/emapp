@@ -1135,6 +1135,18 @@
     "creating": "Adding...",
     "loading": "Loading...",
     "empty": "No apartments in this building yet. Click \"Add Apartment\".",
+    "emptyFiltered": "No apartments with status \"{status}\".",
+    "clearFilter": "Show all apartments",
+    "statusFilterLabel": "Filter by status",
+    "statusFilter": {
+      "all": "All",
+      "pending": "Pending",
+      "contacted": "Contacted",
+      "meeting": "Meeting",
+      "signed": "Signed",
+      "refused": "Refused",
+      "unreachable": "Unreachable"
+    },
     "loadFailed": "Failed to load apartments",
     "createFailed": "Failed to create apartment",
     "notFound": "Apartment not found",

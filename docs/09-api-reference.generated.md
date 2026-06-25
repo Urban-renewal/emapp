@@ -492,7 +492,7 @@ _(no body)_
 ### GET /api/v1/buildings/:buildingId/apartments
 
 - **Auth:** AuthGuard + TenantGuard
-- **Summary:** List apartments of a building, cursor-paginated. Via-parent isolation; Agent → assigned projects only.
+- **Summary:** List apartments of a building, cursor-paginated (keyset). Via-parent isolation; Agent → assigned projects only. Additive server-side `status` filter (apartment_status enum, optional, absent ⇒ unchanged) — ANDed as a predicate, keyset order/cursor intact.
 
 **Request body**
 
@@ -500,6 +500,7 @@ _(no body)_
 |---|---|---|---|
 | `cursor` | string | no | minLength=1 |
 | `limit` | integer | no | minimum=1, maximum=100 |
+| `status` | string | no | enum=["pending","contacted","meeting","signed","refused","unreachable"] |
 
 
 **Response**

@@ -390,7 +390,7 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/buildings/:buildingId/apartments',
     auth: 'AuthGuard + TenantGuard',
     summary:
-      'List apartments of a building, cursor-paginated. Via-parent isolation; Agent → assigned projects only.',
+      'List apartments of a building, cursor-paginated (keyset). Via-parent isolation; Agent → assigned projects only. Additive server-side `status` filter (apartment_status enum, optional, absent ⇒ unchanged) — ANDed as a predicate, keyset order/cursor intact.',
     request: ListApartmentsQuery,
     response:
       '{ "data": [ {Apartment} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',

@@ -21,7 +21,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { CreateApartmentInput, UpdateApartmentInput } from './apartment';
+import { CreateApartmentInput, ListApartmentsQuery, UpdateApartmentInput } from './apartment';
 
 const VALID_UNIT_TYPES = ['apt', 'shop', 'office', 'mixed'] as const;
 
@@ -110,6 +110,44 @@ describe('D.39 unitType WRITE contract — UpdateApartmentInput (PATCH, all opti
     expect(r.success).toBe(false);
     if (!r.success) {
       expect(r.error.issues.some((i) => i.code === 'unrecognized_keys')).toBe(true);
+    }
+  });
+});
+
+describe('ListApartmentsQuery — additive status filter (keyset list query)', () => {
+  it('is OPTIONAL — an empty query parses, default limit applied, status undefined', () => {
+    const r = ListApartmentsQuery.safeParse({});
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.limit).toBe(25);
+      expect(r.data.status).toBeUndefined();
+    }
+  });
+
+  it('ACCEPTS each of the 6 apartment_status values and round-trips it', () => {
+    for (const s of ['pending', 'contacted', 'meeting', 'signed', 'refused', 'unreachable']) {
+      const r = ListApartmentsQuery.safeParse({ status: s });
+      expect(r.success, `valid status '${s}' was rejected`).toBe(true);
+      if (r.success) expect(r.data.status).toBe(s);
+    }
+  });
+
+  it('REJECTS an out-of-enum status (no silent match-all; → validation error at the edge)', () => {
+    const r = ListApartmentsQuery.safeParse({ status: 'sold' });
+    expect(r.success, "'sold' was accepted — status widened to z.string()?").toBe(false);
+    if (!r.success) {
+      const issue = r.error.issues.find((i) => i.path.join('.') === 'status');
+      expect(issue?.code).toBe('invalid_enum_value');
+    }
+  });
+
+  it('coerces limit + keeps cursor alongside the status filter', () => {
+    const r = ListApartmentsQuery.safeParse({ limit: '10', cursor: 'abc', status: 'pending' });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.limit).toBe(10);
+      expect(r.data.cursor).toBe('abc');
+      expect(r.data.status).toBe('pending');
     }
   });
 });

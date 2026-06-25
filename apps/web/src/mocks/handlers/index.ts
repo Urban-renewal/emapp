@@ -269,9 +269,14 @@ export const handlers = [
   }),
   http.delete(`${API}/buildings/:id`, () => new HttpResponse(null, { status: 204 })),
 
-  // apartments (nested under building)
-  http.get(`${API}/buildings/:buildingId/apartments`, ({ params }) => {
-    const items = SAMPLE_APARTMENTS.filter((a) => a.buildingId === params['buildingId']);
+  // apartments (nested under building). Honors the additive server-side
+  // `?status=` filter (the BE ANDs `apartments.status = $status`) so offline
+  // dev + FE specs exercise the same filter the live endpoint applies.
+  http.get(`${API}/buildings/:buildingId/apartments`, ({ params, request }) => {
+    const status = new URL(request.url).searchParams.get('status');
+    const items = SAMPLE_APARTMENTS.filter(
+      (a) => a.buildingId === params['buildingId'] && (!status || a.status === status),
+    );
     return HttpResponse.json(listEnvelope(items));
   }),
   http.post(`${API}/buildings/:buildingId/apartments`, async ({ request, params }) => {

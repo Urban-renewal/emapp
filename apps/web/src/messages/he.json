@@ -1135,6 +1135,18 @@
     "creating": "מוסיף...",
     "loading": "טוען...",
     "empty": "אין עדיין דירות בבניין. הקלק על \"הוספת דירה\".",
+    "emptyFiltered": "אין דירות בסטטוס \"{status}\".",
+    "clearFilter": "הצג את כל הדירות",
+    "statusFilterLabel": "סינון לפי סטטוס",
+    "statusFilter": {
+      "all": "הכל",
+      "pending": "בהמתנה",
+      "contacted": "נוצר קשר",
+      "meeting": "בפגישה",
+      "signed": "חתום",
+      "refused": "סירב",
+      "unreachable": "לא נגיש"
+    },
     "loadFailed": "טעינת הדירות נכשלה",
     "createFailed": "יצירת הדירה נכשלה",
     "notFound": "הדירה לא נמצאה",

@@ -95,9 +95,22 @@ export type CreateApartment = z.infer<typeof CreateApartmentInput>;
 export const UpdateApartmentInput = z.object(apartmentWriteShape).partial().strict();
 export type UpdateApartment = z.infer<typeof UpdateApartmentInput>;
 
-/** GET list query — cursor pagination only (D.16; never offset). */
+/**
+ * GET list query — cursor pagination only (D.16; never offset).
+ *
+ * Additive server-side `status` filter (mirrors the NS1 `ListProjectsQuery`
+ * idiom in ./project): OPTIONAL + a pure PREDICATE — when absent the endpoint
+ * behaves EXACTLY as before (same rows, same keyset order). When present it is
+ * ANDed into the existing WHERE (`apartments.status = $status`), so the keyset
+ * cursor/order are untouched; the FE resets the cursor on a filter change. At a
+ * תמ"א-38 building's real scale (100-200 apartments) this lets the manager ask
+ * "which apartments are still PENDING" server-side, without paging the whole
+ * building. `status` is the locked `apartment_status` enum, Zod-validated at the
+ * edge (an out-of-enum value → 400, never a silent match-all).
+ */
 export const ListApartmentsQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   cursor: z.string().min(1).optional(),
+  status: ApartmentStatusEnum.optional(),
 });
 export type ListApartmentsQueryDto = z.infer<typeof ListApartmentsQuery>;

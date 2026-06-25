@@ -335,6 +335,34 @@ The STANDING DELIVERY GATES above are about QUALITY (never lower the bar). This 
 VELOCITY (never stall). The owner's repeated #1 frustration: stopping / parking / waiting for
 approval when the right move is to keep building. Anchored HERE (not memory) so it isn't forgotten.
 
+### ⛔ RUN TO COMPLETION — NEVER STOP (owner 2026-06-25, HARD ANCHOR — "אין מצב שאני חוזר מחר ואני מגלה שעצרת")
+
+From this point the build runs to COMPLETION without stopping. Absolute, anchored here (not only
+memory) so no agent — including future ones — re-derives or forgets it:
+
+- **Never end a turn waiting on the owner — for ANY reason.** Unsure / need a decision → proceed with
+  your RECOMMENDATION and DOCUMENT it (one-line rationale in the ledger/heartbeat). If you genuinely
+  need him → SKIP that item and keep going on everything else; never wait.
+- **Single source of truth = `docs/BUILD-LEDGER.md`** (merge of the council catalog
+  `docs/SYSTEM-CATALOG.html` + the autonomous-managing blueprint). Run it in dependency order,
+  slice-by-slice, until every slice is green. Never create a second parallel plan — one ledger.
+- **TURN LOOP (every turn):** DRAIN FIRST (`gh pr list` → merge every green → collect finished
+  builders) → then advance the next slice. Green → merge immediately → dispatch the next immediately.
+  No idle gaps. No "next turn / next session / later."
+- **Crash recovery:** recover from git + gh + the ledger, re-dispatch dead agents, continue. NEVER
+  end a turn with a green un-merged PR.
+- **Per-slice gates still hold (no פאדיחות at speed):** reuse-canonical-seam → the technophobe Chrome
+  walk YOU perform (5 axes, sub-second, empty/error/loading) → INDEPENDENT red-team agent (not the
+  builder) looped until clean → C1–C12 vs the catalog → CI green + drift-guard. Without the independent
+  red-team + harness, don't merge.
+- **Speed:** disjoint work → parallel agents in worktrees (`scripts/dev/preflight.sh` first; ~2–3
+  builders, fewer if disk tight); coherent unified PRs (BE+FE on one branch, fewest PRs); never
+  re-implement a seam.
+- **ONLY owner-gated set** (prepare one-click + document, do NOT perform, keep going on everything
+  else): real migrations on live data · real outbound to real recipients · prod deploy · secrets/KMS/R2
+  · legal/DPO. These do NOT stop the pipeline.
+  Backup memory: [[feedback_run_to_completion_never_wait]] + [[feedback_execution_posture_build_dont_park]].
+
 1. **BIAS HARD TO ACTION.** If something is built + gate-passed (G-RT CLOSED + CI green + G-QA
    where applicable), MERGE it — do not park it for "final approval." A red-team-CLOSED, CI-green
    PR has NO open ends; merging it IS the instruction, not a decision to defer to the owner.

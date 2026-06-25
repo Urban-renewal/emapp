@@ -2110,9 +2110,9 @@
     "ttlLabel": "תוקף הגישה",
     "ttlDays": "{count} ימים",
     "cancel": "ביטול",
-    "createSend": "שתף ושלח",
-    "sending": "שולח...",
-    "createdSent": "השיתוף נוצר — {party} קיבל גישה.",
+    "createSend": "צור שיתוף",
+    "sending": "יוצר...",
+    "createdSent": "השיתוף נוצר עבור {party}. הזמנת הגורם לגישה תופעל בהמשך.",
     "error": {
       "ceiling": "ההרשאות שביקשת חורגות מהמותר לגורם זה. צמצם ונסה שוב.",
       "forbidden": "אין הרשאה לשתף (מנהל בלבד).",
@@ -2147,8 +2147,8 @@
       "scope": "{count} {type}",
       "perms": "{summary} הרשאות",
       "lastActivity": "עדכון אחרון {when}",
-      "resend": "שלח שוב",
-      "resendAria": "שלח שוב את הקישור ל{party}",
+      "resend": "הנפק מחדש",
+      "resendAria": "הנפק מחדש את הגישה של {party}",
       "extend": "הארך",
       "extendAria": "הארך את תוקף הגישה של {party}",
       "revoke": "בטל",
@@ -2160,8 +2160,8 @@
     "extendConfirm": "להאריך את תוקף הגישה ב-{days} ימים?",
     "extendDone": "תוקף הגישה הוארך.",
     "extendFailed": "הארכת התוקף נכשלה (ייתכן שחרגת מהמותר).",
-    "resendDone": "הקישור נשלח שוב ל{party}.",
-    "resendFailed": "שליחת הקישור נכשלה. נסה שוב."
+    "resendDone": "הגישה של {party} הונפקה מחדש.",
+    "resendFailed": "הנפקת הגישה מחדש נכשלה. נסה שוב."
   },
   "shares": {
     "title": "שיתופי קבלנים",

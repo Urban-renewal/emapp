@@ -2110,9 +2110,9 @@
     "ttlLabel": "Access validity",
     "ttlDays": "{count} days",
     "cancel": "Cancel",
-    "createSend": "Share & send",
-    "sending": "Sending...",
-    "createdSent": "Share created — {party} was granted access.",
+    "createSend": "Create share",
+    "sending": "Creating...",
+    "createdSent": "Share created for {party}. Inviting the party will be enabled soon.",
     "error": {
       "ceiling": "The access you requested exceeds what this party is allowed. Narrow it and try again.",
       "forbidden": "You don't have permission to share (manager only).",
@@ -2147,8 +2147,8 @@
       "scope": "{count} {type}",
       "perms": "{summary} permissions",
       "lastActivity": "Last update {when}",
-      "resend": "Resend",
-      "resendAria": "Resend the link to {party}",
+      "resend": "Re-issue",
+      "resendAria": "Re-issue access for {party}",
       "extend": "Extend",
       "extendAria": "Extend {party}'s access validity",
       "revoke": "Revoke",
@@ -2160,8 +2160,8 @@
     "extendConfirm": "Extend access validity by {days} days?",
     "extendDone": "Access validity extended.",
     "extendFailed": "Extending the validity failed (you may have exceeded the allowed cap).",
-    "resendDone": "The link was resent to {party}.",
-    "resendFailed": "Resending the link failed. Try again."
+    "resendDone": "Access for {party} was re-issued.",
+    "resendFailed": "Re-issuing access failed. Try again."
   },
   "shares": {
     "title": "Contractor shares",

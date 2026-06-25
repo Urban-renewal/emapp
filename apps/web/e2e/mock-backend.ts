@@ -378,6 +378,17 @@ function installDefaultHandlers(): void {
     },
   }));
 
+  // Approval-Inbox pending-decisions count. The sidebar's manager-only inbox row
+  // now polls this constant-time aggregate (apps/web/src/hooks/use-proposals.ts
+  // useProposalsPendingCount) on EVERY dashboard render, so — like the
+  // notifications/conversations unread-count handlers above — without this default
+  // /he/ navigation would 404 on every E2E test as the manager and the §P0-3
+  // console guardrail would fire. Zero pending. Per-test page.route() can override.
+  setMockHandler('GET', '/api/v1/proposals/pending-count', () => ({
+    status: 200,
+    body: { data: { count: 0 } },
+  }));
+
   // E2 Wave-2 B1 — the board-first home (the post-login landing) reads
   // /api/v1/org/signature-pulse. The home is a CLIENT island so browser-side
   // page.route() normally answers it; this default handler covers any SERVER-

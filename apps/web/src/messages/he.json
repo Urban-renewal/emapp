@@ -167,7 +167,12 @@
     "providerConsole": "מסוף Provider EMAPP",
     "tagline": "התחדשות עירונית",
     "navLandmark": "ניווט ראשי",
-    "sectionTools": "ניהול וכלים"
+    "sectionTools": "ניהול וכלים",
+    "badge": {
+      "pendingDecisions": "{count} החלטות ממתינות להחלטתך",
+      "unreadNotifications": "{count} התראות שלא נקראו",
+      "unreadMessages": "{count} הודעות שלא נקראו"
+    }
   },
   "inbox": {
     "title": "החלטות ממתינות",

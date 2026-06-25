@@ -439,3 +439,79 @@ describe('(c) owners-list archived filter (show-archived view)', () => {
     expect(ids.has(active), 'active owner NOT in archived view').toBe(false);
   }, 30_000);
 });
+
+// ---- (d) B2 needs-attention filter (≥1 pending signature) ------------------
+// Additive WHERE predicate, keyset-safe: an owner with a PENDING signature is
+// kept; one with none is filtered out. For an AGENT the predicate is project-
+// scoped (mirrors the agent-scoped pendingSignatureCount), so a pending
+// signature in an UNASSIGNED project must NOT make the owner "need attention".
+async function listAllIdsAttention(
+  user: AccessTokenPayload,
+  needsAttention: boolean,
+): Promise<Set<string>> {
+  const ids = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const page = await ownersSvc.list(user, { limit: 100, cursor, needsAttention });
+    for (const o of page.data) ids.add(o.id);
+    cursor = page.page.cursor ?? undefined;
+  } while (cursor);
+  return ids;
+}
+
+describe('(d) owners-list needs-attention filter', () => {
+  it('needsAttention keeps owners with a PENDING signature, drops those without', async () => {
+    const projectP = org.projects[0]!.id;
+    const withPending = await seedOwner(org.id);
+    const apt = await seedApartment(org.id, projectP);
+    await insertOwnership(apt, withPending);
+    await seedSignatureRequest(org.id, apt, withPending, 'pending');
+
+    // An owner whose only signature is SIGNED (not pending) must be dropped.
+    const noPending = await seedOwner(org.id);
+    const apt2 = await seedApartment(org.id, projectP);
+    await insertOwnership(apt2, noPending);
+    await seedSignatureRequest(org.id, apt2, noPending, 'signed');
+
+    const filtered = await listAllIdsAttention(manager(), true);
+    expect(filtered.has(withPending), 'pending owner present in attention view').toBe(true);
+    expect(filtered.has(noPending), 'signed-only owner ABSENT in attention view').toBe(false);
+
+    // And without the flag BOTH are visible (the filter is purely additive).
+    const all = await listAllIdsAttention(manager(), false);
+    expect(all.has(withPending)).toBe(true);
+    expect(all.has(noPending)).toBe(true);
+  }, 30_000);
+
+  it('agent: a PENDING signature in an UNASSIGNED project does NOT mark the owner as needing attention', async () => {
+    const assignedProj = org.projects[0]!.id; // agent assigned
+    const unassignedProj = org.projects[1]!.id; // agent NOT assigned
+    const owner = await seedOwner(org.id);
+
+    // ONLY pending signature is in the UNASSIGNED project → invisible to agent.
+    const aptUnassigned = await seedApartment(org.id, unassignedProj);
+    await insertOwnership(aptUnassigned, owner);
+    await seedSignatureRequest(org.id, aptUnassigned, owner, 'pending');
+    // Give the owner an apartment in the assigned project so the agent CAN see
+    // the row (scope), but with NO pending signature there.
+    const aptAssigned = await seedApartment(org.id, assignedProj);
+    await insertOwnership(aptAssigned, owner);
+
+    await assignAgentToProject(assignedProj);
+    try {
+      // Manager baseline: the owner DOES have a pending signature org-wide.
+      const mgr = await listAllIdsAttention(manager(), true);
+      expect(mgr.has(owner), 'manager sees the owner needs attention (org-wide pending)').toBe(
+        true,
+      );
+
+      // SECURITY: the agent's pending signature is in an unassigned project, so
+      // the attention filter must EXCLUDE this owner for the agent (no leak of a
+      // pending signature in a project the agent can't see).
+      const ag = await listAllIdsAttention(agent(), true);
+      expect(ag.has(owner), 'agent does NOT see the owner as needing attention').toBe(false);
+    } finally {
+      await unassignAgentFromProject(assignedProj);
+    }
+  }, 30_000);
+});

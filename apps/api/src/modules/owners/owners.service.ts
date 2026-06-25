@@ -290,9 +290,44 @@ export class OwnersService {
     };
   }
 
+  /**
+   * B2 (attention-first) — the WHERE predicate for "owner NEEDS ATTENTION":
+   * EXISTS ≥1 PENDING signature request for them. This is the BOOLEAN twin of
+   * `listAggregateCols.pendingSignatureCount > 0`, derived from the SAME join
+   * chain so the row's amber pill and this filter can never drift (single source
+   * of truth). It is purely ADDITIVE — ANDed into the existing WHERE — so keyset
+   * order (createdAt desc, id desc) and the cursor are untouched (no reorder),
+   * and the page stays ONE round-trip (correlated EXISTS, no N+1).
+   *
+   * AGENT SCOPE (security): for an agent the EXISTS is project-scoped exactly
+   * like the agent branch of `listAggregateCols.pendingSignatureCount`
+   * (signature_requests → documents → apartments → buildings →
+   * project_assignments). So an agent's "needs attention" filter only counts
+   * pending signatures in their actively-assigned projects — it never reveals
+   * that an owner has a pending signature in a project they can't see.
+   * Manager/viewer roles match org-wide (RLS-bound).
+   */
+  private pendingSignatureFilter(user: AccessTokenPayload): SQL {
+    if (user.role === 'agent') {
+      return sql`EXISTS (
+        SELECT 1 FROM signature_requests sr
+        JOIN documents d ON d.id = sr.document_id
+        JOIN apartments a ON a.id = d.apartment_id
+        JOIN buildings b ON b.id = a.building_id
+        JOIN project_assignments pa ON pa.project_id = b.project_id
+          AND pa.user_id = ${user.sub} AND pa.unassigned_at IS NULL
+        WHERE sr.owner_id = owners.id AND sr.status = 'pending'
+      )`;
+    }
+    return sql`EXISTS (
+      SELECT 1 FROM signature_requests sr
+      WHERE sr.owner_id = owners.id AND sr.status = 'pending'
+    )`;
+  }
+
   async list(
     user: AccessTokenPayload,
-    query: { limit: number; cursor?: string; archived?: boolean },
+    query: { limit: number; cursor?: string; archived?: boolean; needsAttention?: boolean },
   ): Promise<OwnerListPage> {
     const { limit } = query;
     const cur = query.cursor ? decodeCursor(query.cursor) : null;
@@ -305,6 +340,9 @@ export class OwnersService {
     const archivedFilter = query.archived
       ? isNotNull(owners.archivedAt)
       : isNull(owners.archivedAt);
+    // B2 — additive "needs attention" predicate (≥1 pending signature). Empty
+    // when off ⇒ byte-identical to the pre-B2 list. Keyset order is untouched.
+    const attentionFilter = query.needsAttention ? this.pendingSignatureFilter(user) : undefined;
     const rows = await withTenant(
       user.orgId,
       async (tx) => {
@@ -318,7 +356,7 @@ export class OwnersService {
         return tx
           .select({ ...ownerCols, ...this.listAggregateCols(user) })
           .from(owners)
-          .where(and(archivedFilter, isNull(owners.erasedAt), scope, keyset))
+          .where(and(archivedFilter, isNull(owners.erasedAt), scope, attentionFilter, keyset))
           .orderBy(...keysetOrderBy(owners.createdAt, owners.id))
           .limit(limit + 1);
       },
@@ -632,7 +670,7 @@ export class OwnersService {
    */
   async searchByName(
     user: AccessTokenPayload,
-    query: { q: string; limit: number; cursor?: string },
+    query: { q: string; limit: number; cursor?: string; needsAttention?: boolean },
   ): Promise<OwnerListPage> {
     const { limit } = query;
     const cur = query.cursor ? decodeCursor(query.cursor) : null;
@@ -642,6 +680,9 @@ export class OwnersService {
     // Escape LIKE metacharacters → literal substring (no user-driven wildcards).
     const escaped = query.q.replace(/[\\%_]/g, (c) => `\\${c}`);
     const pattern = `%${escaped}%`;
+    // B2 — "needs attention" composes with the name search (same predicate as
+    // list). Off ⇒ undefined ⇒ identical to the pre-B2 name search.
+    const attentionFilter = query.needsAttention ? this.pendingSignatureFilter(user) : undefined;
 
     const rows = await withTenant(
       user.orgId,
@@ -660,7 +701,14 @@ export class OwnersService {
           .select({ ...ownerCols, ...this.listAggregateCols(user) })
           .from(owners)
           .where(
-            and(isNull(owners.archivedAt), isNull(owners.erasedAt), nameMatch, scope, keyset),
+            and(
+              isNull(owners.archivedAt),
+              isNull(owners.erasedAt),
+              nameMatch,
+              scope,
+              attentionFilter,
+              keyset,
+            ),
           )
           .orderBy(...keysetOrderBy(owners.createdAt, owners.id))
           .limit(limit + 1);

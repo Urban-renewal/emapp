@@ -186,12 +186,12 @@
       "all": "הכל"
     },
     "group": {
-      "signature_request.reissue": "חתימות שפגו — להנפיק מחדש",
-      "reminder.send": "תזכורות חתימה",
-      "document.chase.send": "מסמכים חסרים — לבקש מהגורם",
-      "task.create": "משימות מוצעות",
       "generic": "החלטות נוספות",
-      "count": "{count, plural, one {החלטה אחת} two {שתי החלטות} other {# החלטות}}"
+      "count": "{count, plural, one {החלטה אחת} two {שתי החלטות} other {# החלטות}}",
+      "signature_request_reissue": "חתימות שפגו — להנפיק מחדש",
+      "reminder_send": "תזכורות חתימה",
+      "document_chase_send": "מסמכים חסרים — לבקש מהגורם",
+      "task_create": "משימות מוצעות"
     },
     "empty": {
       "title": "אין החלטות ממתינות — הכל מסודר",

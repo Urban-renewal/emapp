@@ -304,7 +304,7 @@ function KindFilter({
           key={k}
           active={active === k}
           onClick={() => onChange(active === k ? null : k)}
-          label={t(`group.${k}`)}
+          label={t(`group.${k.replaceAll('.', '_')}`)}
         />
       ))}
     </div>
@@ -353,7 +353,11 @@ function InboxGroupSection({
   busyId: string | null;
 }) {
   const t = useTranslations('inbox');
-  const heading = group.isGeneric ? t('group.generic') : t(`group.${group.kind}`);
+  // kinds contain dots (signature_request.reissue); next-intl splits keys on
+  // dots, so underscore them to hit the flat i18n key (not a nested path).
+  const heading = group.isGeneric
+    ? t('group.generic')
+    : t(`group.${group.kind.replaceAll('.', '_')}`);
 
   return (
     <section aria-label={heading} className="flex flex-col gap-2">

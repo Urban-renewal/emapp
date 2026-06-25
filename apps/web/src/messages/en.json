@@ -186,12 +186,12 @@
       "all": "All"
     },
     "group": {
-      "signature_request.reissue": "Expired signatures — re-issue",
-      "reminder.send": "Signature reminders",
-      "document.chase.send": "Missing documents — request from party",
-      "task.create": "Suggested tasks",
       "generic": "Other decisions",
-      "count": "{count, plural, one {1 decision} other {# decisions}}"
+      "count": "{count, plural, one {1 decision} other {# decisions}}",
+      "signature_request_reissue": "Expired signatures — re-issue",
+      "reminder_send": "Signature reminders",
+      "document_chase_send": "Missing documents — request from party",
+      "task_create": "Suggested tasks"
     },
     "empty": {
       "title": "No pending decisions — all clear",

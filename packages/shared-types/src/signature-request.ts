@@ -186,12 +186,19 @@ export type SignatureCampaignInput = z.infer<typeof SignatureCampaignInput>;
 
 /** POST /projects/:id/signature-campaign response — the rolled-up fan-out
  * tallies. `total` is the count of DISTINCT active owners derived for the
- * project; `created` is how many got a fresh pending request; `skipped` is how
- * many already had a LIVE pending request (the #3 dedup). created+skipped may be
- * < total when a derived owner fails the #2 association gate (should not happen
- * for project-derived owners, but kept honest). */
+ * project; `created` is how many got a fresh pending request ROW. Of those
+ * created, `delivered` is how many ACTUALLY reached a channel (email/SMS/WhatsApp
+ * — the SAME `didAnyChannelDeliver` predicate the `remind` tally uses), and
+ * `noChannel` is how many reached NO channel (owner has no email+phone, or PII
+ * decrypt failed) — those rows exist but delivered NOTHING and must NEVER be
+ * reported as "sent". `created === delivered + noChannel`. `skipped` is how many
+ * already had a LIVE pending request (the #3 dedup). created+skipped may be <
+ * total when a derived owner fails the #2 association gate (should not happen for
+ * project-derived owners, but kept honest). */
 export const SignatureCampaignResponseSchema = z.object({
   created: z.number().int().nonnegative(),
+  delivered: z.number().int().nonnegative(),
+  noChannel: z.number().int().nonnegative(),
   skipped: z.number().int().nonnegative(),
   total: z.number().int().nonnegative(),
 });
@@ -235,6 +242,12 @@ export const BulkSignatureRequestResponseSchema = z.object({
   results: z.array(BulkSignatureResultSchema),
   summary: z.object({
     created: z.number().int().nonnegative(),
+    // Of the `created` rows, how many ACTUALLY reached a channel
+    // (`didAnyChannelDeliver`) vs. reached NONE (no email+phone / PII decrypt
+    // failed). created === delivered + noChannel. The FE reports `delivered`, not
+    // `created`, so a no-channel owner is never claimed as "sent".
+    delivered: z.number().int().nonnegative(),
+    noChannel: z.number().int().nonnegative(),
     skipped: z.number().int().nonnegative(),
     failed: z.number().int().nonnegative(),
   }),

@@ -131,7 +131,9 @@ export async function retrieveSignatureLink(id: string): Promise<SignatureReques
  * POST /projects/:id/signature-campaign — fan out ONE project document to ALL
  * active owners of the project (S5b). The server DERIVES the recipient list, so
  * the body only carries the document (+ optional expiry). Returns the rolled-up
- * tally `{ created, skipped, total }`. Idempotency-Key auto-minted so a double-
+ * tally `{ created, delivered, noChannel, skipped, total }` — the FE reports
+ * `delivered` (links that actually reached a channel), NOT `created`, so a
+ * no-channel owner is never claimed "sent". Idempotency-Key auto-minted so a double-
  * clicked "send to all owners" doesn't fire two fan-outs.
  */
 export async function createSignatureCampaign(

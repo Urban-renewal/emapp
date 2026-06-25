@@ -787,10 +787,22 @@ export class SignatureRequestsService {
       results.push(...chunkResults);
     }
 
+    const created = results.filter((r) => r.outcome === 'created');
     return {
       results,
       summary: {
-        created: results.filter((r) => r.outcome === 'created').length,
+        created: created.length,
+        // Honest delivery split over the SAME predicate the `remind` tally uses
+        // (`didAnyChannelDeliver`) — never re-implemented. A created row whose
+        // delivery report is absent (PII decrypt failed → no send attempted) or
+        // whose every channel was unavailable (no email+phone → no_channel)
+        // delivered NOTHING and is counted as `noChannel`, NOT `delivered`.
+        delivered: created.filter(
+          (r) => r.delivery !== undefined && didAnyChannelDeliver(r.delivery),
+        ).length,
+        noChannel: created.filter(
+          (r) => r.delivery === undefined || !didAnyChannelDeliver(r.delivery),
+        ).length,
         skipped: results.filter((r) => r.outcome === 'skipped_existing').length,
         failed: results.filter((r) => r.outcome === 'failed').length,
       },
@@ -913,22 +925,26 @@ export class SignatureRequestsService {
     const total = ownerIds.length;
     // No active owners → nothing to fan out (and createBulk's min-1 cap would
     // reject an empty list). Return the zeroed tally without calling createBulk.
-    if (total === 0) return { created: 0, skipped: 0, total: 0 };
+    if (total === 0) return { created: 0, delivered: 0, noChannel: 0, skipped: 0, total: 0 };
 
-    // (4) Fan out via createBulk, REUSING its #2 gate / #3 dedup / delivery.
-    // createBulk caps ownerIds at 200, so chunk the derived list into <=200
-    // batches and SUM the per-chunk summaries.
+    // (4) Fan out via createBulk, REUSING its #2 gate / #3 dedup / delivery +
+    // its honest delivered/noChannel split. createBulk caps ownerIds at 200, so
+    // chunk the derived list into <=200 batches and SUM the per-chunk summaries.
     const CHUNK = 200;
     let created = 0;
+    let delivered = 0;
+    let noChannel = 0;
     let skipped = 0;
     for (let i = 0; i < ownerIds.length; i += CHUNK) {
       const chunk = ownerIds.slice(i, i + CHUNK);
       const res = await this.createBulk(user, { documentId: input.documentId, ownerIds: chunk });
       created += res.summary.created;
+      delivered += res.summary.delivered;
+      noChannel += res.summary.noChannel;
       skipped += res.summary.skipped;
     }
 
-    return { created, skipped, total };
+    return { created, delivered, noChannel, skipped, total };
   }
 
   /** Is `doc` a PROJECT-scoped document of `projectId`? A campaign fans out to

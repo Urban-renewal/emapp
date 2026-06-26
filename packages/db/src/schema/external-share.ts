@@ -1,7 +1,24 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, uuid, text, timestamp, jsonb, boolean, index } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  text,
+  timestamp,
+  jsonb,
+  boolean,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
 
-import { externalSharePartyTypeEnum, externalShareScopeTypeEnum } from './_enums';
+import {
+  externalShareDeliveryChannelEnum,
+  externalSharePartyTypeEnum,
+  externalShareScopeTypeEnum,
+  partyRequestStatusEnum,
+} from './_enums';
+import { bytea } from './_types';
+import { documents } from './artifacts';
+import { projects } from './projects';
 import { organizations, users } from './tenancy';
 
 /**
@@ -56,6 +73,22 @@ export const externalShares = pgTable(
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     // Per-recipient watermark subject (X-S5 overlay). Free text, never PII-keyed.
     watermarkSubject: text('watermark_subject'),
+    // ── W-4.1 recipient capture (migration 0087, all-nullable/additive) ──────
+    // `recipientName` is a CONTACT LABEL (e.g. "עו״ד כהן") — not legally PII;
+    // it may appear in audit afterState. `recipientEmailEncrypted` /
+    // `recipientPhoneEncrypted` are pgcrypto-encrypted bytea (key
+    // PII_ENCRYPTION_KEY), mirroring owners.national_id_encrypted — the service
+    // NEVER returns the plaintext/ciphertext, only a MASKED projection.
+    recipientName: text('recipient_name'),
+    recipientEmailEncrypted: bytea('recipient_email_encrypted'),
+    recipientPhoneEncrypted: bytea('recipient_phone_encrypted'),
+    // How the invite is intended to reach the recipient. Default `manual_link`
+    // (the only safe + bridge-null-compatible channel). 4.1 never sends.
+    deliveryChannel: externalShareDeliveryChannelEnum('delivery_channel')
+      .notNull()
+      .default('manual_link'),
+    // Set ONLY by a real governed send (4.3). NULL until then ⇒ "טרם נשלח".
+    lastDeliveredAt: timestamp('last_delivered_at', { withTimezone: true }),
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id),
@@ -80,6 +113,76 @@ export type NewExternalShare = typeof externalShares.$inferInsert;
 
 export type ExternalSharePartyType = (typeof externalSharePartyTypeEnum.enumValues)[number];
 export type ExternalShareScopeType = (typeof externalShareScopeTypeEnum.enumValues)[number];
+export type ExternalShareDeliveryChannel =
+  (typeof externalShareDeliveryChannelEnum.enumValues)[number];
+
+/**
+ * W-4.1 — `party_request`: the WHO-OWES-WHAT obligation ledger. ONE live
+ * obligation per (project, binder party, requested doc type) — "the appraiser
+ * still owes the שומה for project X". PII-FREE by construction: it names a
+ * PROJECT + a binder PARTY (the 9 DOCUMENT_PARTY_VALUES, stored tolerant-text)
+ * + a requested doc type, never a person. The recipient's contact details live
+ * (encrypted) on the linked `external_share`, not here.
+ *
+ * Lifecycle (status): open → delivered (a real governed send, 4.3) → fulfilled
+ * (the awaited doc arrived); `cancelled` is the only termination. There is NO
+ * physical delete — DELETE is REVOKED from app_user at the grant layer (RLS +
+ * migration grants); cancel is a status transition.
+ *
+ * The `document_party` is intentionally `text` (not the pg enum) — it is written
+ * from the Zod-validated `DOCUMENT_PARTY_VALUES` at the edge + a belt-and-braces
+ * DB CHECK, mirroring the brief's "tolerant-text written from the validator".
+ */
+export const partyRequests = pgTable(
+  'party_request',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    // The project the obligation belongs to. CASCADE: deleting a project (only
+    // ever a hard provider-side op; orgs soft-delete) removes its obligations.
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    // One of the 9 DOCUMENT_PARTY_VALUES (binder axis). Tolerant text + CHECK.
+    documentParty: text('document_party').notNull(),
+    // The doc type still owed (tolerant text — the binder type vocabulary).
+    requestedDocType: text('requested_doc_type'),
+    status: partyRequestStatusEnum('status').notNull().default('open'),
+    // The grant minted to satisfy this obligation (4.2/4.3). SET NULL so
+    // revoking/removing a share never orphans the obligation row.
+    externalShareId: uuid('external_share_id').references(() => externalShares.id, {
+      onDelete: 'set null',
+    }),
+    // The document that fulfilled it (4.3 write-back). SET NULL on doc removal.
+    fulfilledDocumentId: uuid('fulfilled_document_id').references(() => documents.id, {
+      onDelete: 'set null',
+    }),
+    fulfilledAt: timestamp('fulfilled_at', { withTimezone: true }),
+    // Provenance — who/what created the obligation (manager id; system later).
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    // The who-owes board feed: live obligations per org, attention-first.
+    orgLiveIdx: index('idx_party_request_org_live')
+      .on(table.orgId, table.createdAt.desc(), table.id.desc())
+      .where(sql`status IN ('open','delivered')`),
+    // Per-project drill-down.
+    orgProjectIdx: index('idx_party_request_org_project').on(table.orgId, table.projectId),
+    // ONE live obligation per (org, project, party, doc-type). A fulfilled /
+    // cancelled row releases the slot so a fresh obligation can be opened.
+    liveUnique: uniqueIndex('party_request_live_unique')
+      .on(table.orgId, table.projectId, table.documentParty, table.requestedDocType)
+      .where(sql`status IN ('open','delivered')`),
+  }),
+);
+
+export type PartyRequest = typeof partyRequests.$inferSelect;
+export type NewPartyRequest = typeof partyRequests.$inferInsert;
+export type PartyRequestStatus = (typeof partyRequestStatusEnum.enumValues)[number];
 
 /**
  * The permission surface an external grant can expose. Mirrors the contractor

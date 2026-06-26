@@ -66,7 +66,18 @@ describe('ExternalSharesController — authz declaration (F1 defense-in-depth)',
     // surface — no in-catalog read permission exists for external shares, so it
     // carries @TenantScoped like list/update (NO_ENGINE_EQUIVALENT). RLS +
     // the resolver's fail-closed decision are the substantive gates.
-    for (const name of ['list', 'update', 'extend', 'resend', 'resolveDocumentAccess']) {
+    for (const name of [
+      'list',
+      'update',
+      'extend',
+      'resend',
+      'resolveDocumentAccess',
+      // W-4.1 — party_request handlers (manager-only WRITES enforced in the
+      // service via requireManager; no in-catalog party-request permission).
+      'listPartyRequests',
+      'createPartyRequest',
+      'cancelPartyRequest',
+    ]) {
       expect(isTenantScoped(name), `${name} tenant-scoped`).toBe(true);
       expect(permissionOf(name), `${name} has no @RequirePermission`).toBeUndefined();
     }
@@ -81,6 +92,9 @@ describe('ExternalSharesController — authz declaration (F1 defense-in-depth)',
       'resend',
       'revoke',
       'resolveDocumentAccess',
+      'listPartyRequests',
+      'createPartyRequest',
+      'cancelPartyRequest',
     ]) {
       const hasPerm = permissionOf(name) !== undefined;
       const tenant = isTenantScoped(name);

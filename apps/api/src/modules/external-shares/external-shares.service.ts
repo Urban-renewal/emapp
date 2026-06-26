@@ -3,8 +3,12 @@ import {
   AuditService,
   buildings,
   documents,
+  encryptRecipientField,
   externalShares,
   isOrgSuspended,
+  maskRecipientEmail,
+  maskRecipientPhone,
+  partyRequests,
   PARTY_PRESET_CEILINGS,
   projects,
   withTenant,
@@ -13,13 +17,18 @@ import {
   type ExternalSharePermissions,
   type ExternalShareScopeType,
   type PartyPresetCeiling,
+  type PartyRequest,
   type TenantTx,
 } from '@emapp/db';
-import type {
-  CreateExternalShare,
-  ExtendExternalShare,
-  ExternalShareView,
-  UpdateExternalShare,
+import {
+  partyTypeForDocumentParty,
+  type CreateExternalShare,
+  type CreatePartyRequest,
+  type ExtendExternalShare,
+  type ExternalShareView,
+  type ListPartyRequestsQueryDto,
+  type PartyRequestView,
+  type UpdateExternalShare,
 } from '@emapp/shared-types';
 import {
   BadRequestException,
@@ -49,6 +58,11 @@ export interface ExternalShareListPage {
   page: { limit: number; cursor: string | null; has_more: boolean };
 }
 
+export interface PartyRequestListPage {
+  data: PartyRequestView[];
+  page: { limit: number; cursor: string | null; has_more: boolean };
+}
+
 // No-oracle: a missing / cross-org / suspended grant is INDISTINGUISHABLE from
 // a non-existent one (generic 404). FORBIDDEN is only the manager-gate (a known
 // org member who simply lacks write rights) — never leaked for resource
@@ -62,7 +76,30 @@ const SCOPE_RANK: Record<ExternalShareScopeType, number> = {
   project: 2,
 };
 
-function toView(r: ExternalShare): ExternalShareView {
+/** True iff `e` is a Postgres unique-violation (SQLSTATE 23505), reading the
+ *  `code` off the error / its cause chain without an `any` cast. */
+function isUniqueViolation(e: unknown): boolean {
+  let cur: unknown = e;
+  for (let i = 0; i < 5 && cur !== null && typeof cur === 'object'; i++) {
+    const code = (cur as { code?: unknown }).code;
+    if (code === '23505') return true;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/**
+ * W-4.1 — masked view projection. The recipient email/phone ciphertext is
+ * DECRYPTED then MASKED (via the canonical recipient seam) so the wire NEVER
+ * carries the plaintext OR the ciphertext — only `na***@domain` / `••••••12`.
+ * `recipientName` (a contact LABEL, not legally PII) passes through. Async
+ * because masking requires a pgcrypto decrypt round-trip per non-null value.
+ */
+async function toViewMasked(tx: TenantTx, r: ExternalShare): Promise<ExternalShareView> {
+  const [recipientEmailMasked, recipientPhoneMasked] = await Promise.all([
+    maskRecipientEmail(tx, r.recipientEmailEncrypted),
+    maskRecipientPhone(tx, r.recipientPhoneEncrypted),
+  ]);
   return {
     id: r.id,
     orgId: r.orgId,
@@ -74,7 +111,29 @@ function toView(r: ExternalShare): ExternalShareView {
     otpRequired: r.otpRequired,
     expiresAt: r.expiresAt,
     watermarkSubject: r.watermarkSubject,
+    recipientName: r.recipientName,
+    recipientEmailMasked,
+    recipientPhoneMasked,
+    deliveryChannel: r.deliveryChannel,
+    lastDeliveredAt: r.lastDeliveredAt,
     revokedAt: r.revokedAt,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  };
+}
+
+/** Map a party_request row to its PII-free view. */
+function toPartyRequestView(r: PartyRequest): PartyRequestView {
+  return {
+    id: r.id,
+    orgId: r.orgId,
+    projectId: r.projectId,
+    documentParty: r.documentParty as PartyRequestView['documentParty'],
+    requestedDocType: r.requestedDocType,
+    status: r.status as PartyRequestView['status'],
+    externalShareId: r.externalShareId,
+    fulfilledDocumentId: r.fulfilledDocumentId,
+    fulfilledAt: r.fulfilledAt,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   };
@@ -203,6 +262,12 @@ export class ExternalSharesService {
       async (tx) => {
         if (await isOrgSuspended(tx, user.orgId)) throw NOT_FOUND;
         await this.assertScopeIdsValid(tx, input.scopeType, input.scopeIds);
+        // Encrypt recipient contact PII via the canonical pgcrypto seam BEFORE
+        // insert (raw value never persisted, never logged). null/absent → NULL.
+        const [recipientEmailEncrypted, recipientPhoneEncrypted] = await Promise.all([
+          encryptRecipientField(tx, input.recipientEmail),
+          encryptRecipientField(tx, input.recipientPhone),
+        ]);
         const [row] = await tx
           .insert(externalShares)
           .values({
@@ -215,17 +280,25 @@ export class ExternalSharesService {
             otpRequired: input.otpRequired,
             expiresAt,
             watermarkSubject: input.watermarkSubject ?? null,
+            recipientName: input.recipientName ?? null,
+            recipientEmailEncrypted,
+            recipientPhoneEncrypted,
+            // 4.1 captures intent only; an actual send is the gated 4.3 path.
+            deliveryChannel: input.deliveryChannel ?? 'manual_link',
             createdBy: user.sub,
           })
           .returning();
         if (!row) {
           throw new InternalServerErrorException({ error: { code: 'insert_no_row' } });
         }
+        // Audit afterState carries the LABEL + partyType ONLY — NEVER the
+        // recipient email/phone (the brief's masking-only invariant).
         await this.audit(tx, user, 'external_share.create', row.id, {
           partyType: row.partyType,
           scopeType: row.scopeType,
+          recipientName: row.recipientName,
         });
-        return toView(row);
+        return toViewMasked(tx, row);
       },
       { userId: user.sub },
     );
@@ -287,6 +360,18 @@ export class ExternalSharesService {
           }
         }
 
+        // Recipient PII: `undefined` ⇒ leave the existing ciphertext untouched;
+        // an explicit value (incl. null) ⇒ re-encrypt / clear. Encrypt via the
+        // canonical seam; raw value never persisted/logged.
+        const nextEmailEnc =
+          input.recipientEmail === undefined
+            ? before.recipientEmailEncrypted
+            : await encryptRecipientField(tx, input.recipientEmail);
+        const nextPhoneEnc =
+          input.recipientPhone === undefined
+            ? before.recipientPhoneEncrypted
+            : await encryptRecipientField(tx, input.recipientPhone);
+
         const [row] = await tx
           .update(externalShares)
           .set({
@@ -299,13 +384,18 @@ export class ExternalSharesService {
               input.watermarkSubject === undefined
                 ? before.watermarkSubject
                 : input.watermarkSubject,
+            recipientName:
+              input.recipientName === undefined ? before.recipientName : input.recipientName,
+            recipientEmailEncrypted: nextEmailEnc,
+            recipientPhoneEncrypted: nextPhoneEnc,
+            deliveryChannel: input.deliveryChannel ?? before.deliveryChannel,
             updatedAt: new Date(),
           })
           .where(eq(externalShares.id, id))
           .returning();
         if (!row) throw NOT_FOUND;
         await this.audit(tx, user, 'external_share.update', row.id);
-        return toView(row);
+        return toViewMasked(tx, row);
       },
       { userId: user.sub },
     );
@@ -405,7 +495,7 @@ export class ExternalSharesService {
           .returning();
         if (!row) throw NOT_FOUND;
         await this.audit(tx, user, 'external_share.extend', id);
-        return toView(row);
+        return toViewMasked(tx, row);
       },
       { userId: user.sub },
     );
@@ -431,7 +521,7 @@ export class ExternalSharesService {
           .returning();
         if (!row) throw NOT_FOUND;
         await this.audit(tx, user, 'external_share.resend', id);
-        return toView(row);
+        return toViewMasked(tx, row);
       },
       { userId: user.sub },
     );
@@ -572,16 +662,18 @@ export class ExternalSharesService {
     if (query.cursor && !cur) {
       throw new BadRequestException({ error: { code: 'invalid_cursor' } });
     }
-    const rows = await withTenant(
+    return withTenant(
       user.orgId,
       async (tx) => {
         // Suspended org → empty (inert), same no-oracle posture as the by-id
         // paths (they 404; a list simply yields nothing).
-        if (await isOrgSuspended(tx, user.orgId)) return [];
+        if (await isOrgSuspended(tx, user.orgId)) {
+          return { data: [], page: { limit, cursor: null, has_more: false } };
+        }
         const keyset: SQL | undefined = cur
           ? keysetCondition(externalShares.createdAt, externalShares.id, cur)
           : undefined;
-        return tx
+        const rows = await tx
           .select()
           .from(externalShares)
           .where(
@@ -593,16 +685,189 @@ export class ExternalSharesService {
           )
           .orderBy(...keysetOrderBy(externalShares.createdAt, externalShares.id))
           .limit(limit + 1);
+        const hasMore = rows.length > limit;
+        const pageRows = hasMore ? rows.slice(0, limit) : rows;
+        const last = pageRows[pageRows.length - 1];
+        // Mask recipient PII INSIDE the tenant tx (decrypt round-trips need the
+        // org context). Masked-only on the wire — never plaintext/ciphertext.
+        const data = await Promise.all(pageRows.map((r) => toViewMasked(tx, r)));
+        return {
+          data,
+          page: { limit, cursor: hasMore && last ? encodeCursor(last) : null, has_more: hasMore },
+        };
       },
       { userId: user.sub },
     );
-    const hasMore = rows.length > limit;
-    const pageRows = hasMore ? rows.slice(0, limit) : rows;
-    const last = pageRows[pageRows.length - 1];
-    return {
-      data: pageRows.map(toView),
-      page: { limit, cursor: hasMore && last ? encodeCursor(last) : null, has_more: hasMore },
-    };
+  }
+
+  // ══════════════════════ party_request (who-owes-what) ═════════════════════
+  //
+  // The obligation ledger CRUD. NO delivery/fulfill here (that is 4.3) — a
+  // request created here stays `open`; the linked grant's last_delivered_at
+  // stays NULL. Every op is withTenant + isOrgSuspended-gated + no-oracle 404.
+
+  /**
+   * Create a who-owes-what obligation. Manager-only. The partial-unique index
+   * enforces ONE live obligation per (org, project, party, doc-type) — a
+   * duplicate open ask is rejected (`duplicate_obligation`, fail-closed via the
+   * DB constraint, not a TOCTOU read). The bridge constraint is informational
+   * here (4.1 never mints); it is the 4.2/4.3 auto-mint paths that hard-reject a
+   * null-bridge party — we record the obligation regardless so who-owes is
+   * complete.
+   */
+  async createPartyRequest(
+    user: AccessTokenPayload,
+    input: CreatePartyRequest,
+  ): Promise<PartyRequestView> {
+    this.requireManager(user);
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        if (await isOrgSuspended(tx, user.orgId)) throw NOT_FOUND;
+        // The project must resolve live in-org (fail-closed; no cross-org oracle).
+        const [proj] = await tx
+          .select({ id: projects.id })
+          .from(projects)
+          .where(and(eq(projects.id, input.projectId), isNull(projects.archivedAt)))
+          .limit(1);
+        if (!proj) throw new BadRequestException({ error: { code: 'invalid_project' } });
+
+        // If a grant is linked, it must resolve live in-org too (RLS + explicit).
+        if (input.externalShareId) {
+          const [grant] = await tx
+            .select({ id: externalShares.id })
+            .from(externalShares)
+            .where(
+              and(eq(externalShares.id, input.externalShareId), isNull(externalShares.revokedAt)),
+            )
+            .limit(1);
+          if (!grant) throw new BadRequestException({ error: { code: 'invalid_share' } });
+        }
+
+        let row: PartyRequest | undefined;
+        try {
+          [row] = await tx
+            .insert(partyRequests)
+            .values({
+              orgId: user.orgId,
+              projectId: input.projectId,
+              documentParty: input.documentParty,
+              requestedDocType: input.requestedDocType ?? null,
+              externalShareId: input.externalShareId ?? null,
+              status: 'open',
+              createdBy: user.sub,
+            })
+            .returning();
+        } catch (e) {
+          // Partial-unique violation ⇒ a live obligation already exists. Map to a
+          // clean 400 (not a 500); never leak the constraint internals.
+          if (isUniqueViolation(e)) {
+            throw new BadRequestException({ error: { code: 'duplicate_obligation' } });
+          }
+          throw e;
+        }
+        if (!row) {
+          throw new InternalServerErrorException({ error: { code: 'insert_no_row' } });
+        }
+        await this.auditTarget(tx, user, 'party_request.create', 'party_request', row.id, {
+          projectId: row.projectId,
+          documentParty: row.documentParty,
+          requestedDocType: row.requestedDocType,
+          // Whether the binder party is auto-mintable (bridge non-null) — a
+          // PII-free hint the FE uses to gate the "invite" affordance.
+          autoMintable:
+            partyTypeForDocumentParty[
+              row.documentParty as keyof typeof partyTypeForDocumentParty
+            ] !== null,
+        });
+        return toPartyRequestView(row);
+      },
+      { userId: user.sub },
+    );
+  }
+
+  /** List LIVE (open/delivered) obligations — the who-owes-what feed. Keyset
+   *  paginated; optional project / party / status narrows. Suspended org →
+   *  empty (inert). */
+  async listOpenPartyRequests(
+    user: AccessTokenPayload,
+    query: ListPartyRequestsQueryDto,
+  ): Promise<PartyRequestListPage> {
+    const { limit } = query;
+    const cur = query.cursor ? decodeCursor(query.cursor) : null;
+    if (query.cursor && !cur) {
+      throw new BadRequestException({ error: { code: 'invalid_cursor' } });
+    }
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        if (await isOrgSuspended(tx, user.orgId)) {
+          return { data: [], page: { limit, cursor: null, has_more: false } };
+        }
+        const keyset: SQL | undefined = cur
+          ? keysetCondition(partyRequests.createdAt, partyRequests.id, cur)
+          : undefined;
+        // Default feed = live obligations (open/delivered). An explicit status
+        // narrows to exactly that status (incl. fulfilled/cancelled history).
+        const statusCond = query.status
+          ? eq(partyRequests.status, query.status)
+          : inArray(partyRequests.status, ['open', 'delivered']);
+        const rows = await tx
+          .select()
+          .from(partyRequests)
+          .where(
+            and(
+              statusCond,
+              query.projectId ? eq(partyRequests.projectId, query.projectId) : undefined,
+              query.documentParty
+                ? eq(partyRequests.documentParty, query.documentParty)
+                : undefined,
+              keyset,
+            ),
+          )
+          .orderBy(...keysetOrderBy(partyRequests.createdAt, partyRequests.id))
+          .limit(limit + 1);
+        const hasMore = rows.length > limit;
+        const pageRows = hasMore ? rows.slice(0, limit) : rows;
+        const last = pageRows[pageRows.length - 1];
+        return {
+          data: pageRows.map(toPartyRequestView),
+          page: { limit, cursor: hasMore && last ? encodeCursor(last) : null, has_more: hasMore },
+        };
+      },
+      { userId: user.sub },
+    );
+  }
+
+  /** Cancel an obligation — a STATUS transition to `cancelled` (DELETE is
+   *  revoked at the DB layer). Idempotent: cancelling an already-terminal
+   *  (cancelled/fulfilled) row is a no-op success. Suspended/missing → 404. */
+  async cancelPartyRequest(user: AccessTokenPayload, id: string): Promise<PartyRequestView> {
+    this.requireManager(user);
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        if (await isOrgSuspended(tx, user.orgId)) throw NOT_FOUND;
+        const [before] = await tx
+          .select()
+          .from(partyRequests)
+          .where(eq(partyRequests.id, id))
+          .limit(1);
+        if (!before) throw NOT_FOUND;
+        if (before.status === 'cancelled' || before.status === 'fulfilled') {
+          return toPartyRequestView(before); // idempotent no-op
+        }
+        const [row] = await tx
+          .update(partyRequests)
+          .set({ status: 'cancelled', updatedAt: new Date() })
+          .where(eq(partyRequests.id, id))
+          .returning();
+        if (!row) throw NOT_FOUND;
+        await this.auditTarget(tx, user, 'party_request.cancel', 'party_request', row.id);
+        return toPartyRequestView(row);
+      },
+      { userId: user.sub },
+    );
   }
 
   private async audit(
@@ -612,12 +877,23 @@ export class ExternalSharesService {
     targetId: string,
     afterState?: Record<string, unknown>,
   ): Promise<void> {
+    await this.auditTarget(tx, user, action, 'external_share', targetId, afterState);
+  }
+
+  private async auditTarget(
+    tx: TenantTx,
+    user: AccessTokenPayload,
+    action: string,
+    targetTable: string,
+    targetId: string,
+    afterState?: Record<string, unknown>,
+  ): Promise<void> {
     await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
       orgId: user.orgId,
       actorId: user.sub,
       actorType: 'user',
       action,
-      targetTable: 'external_share',
+      targetTable,
       targetId,
       afterState,
       sessionId: user.sid,

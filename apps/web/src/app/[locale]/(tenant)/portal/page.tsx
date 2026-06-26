@@ -25,6 +25,7 @@ import {
   useResendPortalSignature,
   useUpdatePortalContact,
 } from '@/hooks/use-portal';
+import { isAuthError } from '@/lib/api/errors';
 
 /**
  * V11 A.S14b — Tenant Portal screens.
@@ -119,41 +120,64 @@ export default function TenantPortalPage() {
   const sigsState = viewState(sigs);
   const progressState = viewState(progress);
 
-  // Manual-audit bug #5 fix — belt-and-suspenders auth bounce.
-  // The api-client's `emapp:unauthenticated` event + the layout's
-  // TenantAuthGuard listener should redirect on auth failure, but
-  // manual testing showed the listener occasionally misses the event
-  // (React Strict Mode double-mount, effect timing vs query resolution
-  // before the layout effect attaches).
+  // #36 — auth bounce is GATED ON A REAL 401, never on "everything errored".
   //
-  // Two cooperating fallbacks here:
+  // The canonical auth-failure path is the api-client's `emapp:unauthenticated`
+  // event (fired on any non-form 401) → the layout's `TenantAuthGuard` redirect
+  // to /tenant/login. This page only ADDS a belt-and-suspenders bounce for the
+  // case where the event is missed (Strict-Mode double-mount / effect-attach
+  // race) — but ONLY when a query error is genuinely AUTH-shaped.
   //
-  //  1. Inspect `me.error` directly. If it's an ApiClientError with an
-  //     auth-shaped code, redirect.
-  //  2. If TanStack's error didn't propagate (we observed cases where
-  //     the query lands with data=undefined / isError=false despite a
-  //     401), watch ALL FOUR query states. When every fetch settles
-  //     into an `error`-or-empty state at once, the failure is
-  //     org-wide (almost certainly auth) — redirect rather than show
-  //     four side-by-side "load failed" messages.
-  // If ALL FOUR queries reach the error state at once, the failure is
-  // org-wide (almost certainly an auth issue — expired or missing
-  // tenant_access_token). Redirect rather than showing four
-  // side-by-side "load failed" messages with no recovery affordance.
-  // Anti-redirect-loop: only fires when we're actually on `/portal`
-  // (i.e. layout already mounted) so this can't kick off a navigation
-  // chain.
+  // The previous logic bounced whenever ALL FOUR queries errored. That is WRONG:
+  // a 5xx / network outage ALSO makes all four error, and bouncing the resident
+  // to login on a transient server hiccup is a misdirected recovery — login
+  // won't fix an infra outage, and the resident is left confused at a login
+  // wall. We now inspect the actual error codes: bounce only if ANY query
+  // carries an auth code (`isAuthError`); a non-auth all-errored state renders
+  // an IN-PLACE retryable outage banner below instead.
+  const anyAuthError =
+    isAuthError(me.error) ||
+    isAuthError(apts.error) ||
+    isAuthError(docs.error) ||
+    isAuthError(sigs.error) ||
+    isAuthError(progress.error);
+  useEffect(() => {
+    if (!anyAuthError) return;
+    router.replace(`/${locale}/tenant/login`);
+  }, [anyAuthError, router, locale]);
+
+  // A transient outage (no auth error, but every section failed to load) →
+  // an in-place "couldn't load, try again" banner. NOT a login bounce.
   const allErrored =
     meState === 'error' && aptsState === 'error' && docsState === 'error' && sigsState === 'error';
-  useEffect(() => {
-    if (!allErrored) return;
-    router.replace(`/${locale}/tenant/login`);
-  }, [allErrored, router, locale]);
+  const isOutage = allErrored && !anyAuthError;
+  function retryAll(): void {
+    void me.refetch();
+    void apts.refetch();
+    void docs.refetch();
+    void sigs.refetch();
+    void progress.refetch();
+  }
 
   // Hero copy depends on the me-fetch + the first apartment's project
   // name. Both are independent; we render a placeholder until they
   // arrive (the rest of the page renders regardless).
   const firstApt = aptsState === 'ready' ? apts.data?.[0] : undefined;
+
+  // #36 — a transient infra outage (everything failed, NOT auth) renders an
+  // in-place, plain-Hebrew "couldn't load, try again" screen — NOT a bounce
+  // to login. The resident stays put and retries when the server recovers.
+  if (isOutage) {
+    return (
+      <div className="mx-auto flex max-w-5xl flex-col items-center gap-3 px-4 py-16 text-center">
+        <h1 className="text-lg font-semibold text-text">{t('outage.title')}</h1>
+        <p className="text-sm text-text-muted">{t('outage.body')}</p>
+        <Button variant="outline" size="sm" onClick={retryAll}>
+          {t('outage.retry')}
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">

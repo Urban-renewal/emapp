@@ -6,7 +6,10 @@
  *     project-wide /remind),
  *   - carries an `Idempotency-Key` header (postIdempotent — a double-tapped
  *     per-name remind re-delivers the same link once),
- *   - unwraps the `{ data: SignatureRequest }` envelope through the REAL schema,
+ *   - unwraps the FULL `{ data: { request, signUrl, delivery } }` create-response
+ *     envelope through the REAL schema — the `delivery` per-channel report is what
+ *     lets the holdout-chase toast be honest ("sent" only when a channel went;
+ *     delivery-outcome bug #2),
  *   - a 409 `signature_request_not_pending` + a 403 `forbidden` surface as
  *     `ApiClientError` carrying that exact code (the UI error-maps on the code).
  *
@@ -52,6 +55,19 @@ const REQUEST = {
   cancelledBy: null,
 };
 
+// The resend endpoint returns the FULL create-response shape — `{ request,
+// signUrl, delivery }`. `delivery` is the per-channel report the chase toast
+// runs `didAnyChannelDeliver` over; here email actually went out.
+const RESEND_RESPONSE = {
+  request: REQUEST,
+  signUrl: 'https://app.test/sign/jwt-token',
+  delivery: {
+    email: { available: true, status: 'sent', to: 'na***@x.test' },
+    sms: { available: false, reason: 'no_phone_on_file' },
+    whatsapp: { available: false, reason: 'no_phone_on_file' },
+  },
+};
+
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
@@ -65,7 +81,7 @@ afterEach(() => {
 
 describe('resendSignatureRequest — POST /:id/resend + idempotency + envelope', () => {
   it('1) POSTs to /signature-requests/:id/resend with an Idempotency-Key + empty body', async () => {
-    const fetchSpy = stubFetch(() => ({ status: 200, body: { data: REQUEST } }));
+    const fetchSpy = stubFetch(() => ({ status: 200, body: { data: RESEND_RESPONSE } }));
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
 
     const result = await resendSignatureRequest(REQUEST.id);
@@ -83,10 +99,13 @@ describe('resendSignatureRequest — POST /:id/resend + idempotency + envelope',
     const headers = new Headers(init?.headers as HeadersInit);
     expect(headers.get('Idempotency-Key')).toBeTruthy();
 
-    // Parsed through the REAL schema (expiresAt coerced to a Date proves it).
-    expect(result.id).toBe(REQUEST.id);
-    expect(result.status).toBe('pending');
-    expect(result.expiresAt).toBeInstanceOf(Date);
+    // Parsed through the REAL create-response schema (expiresAt coerced to a Date
+    // proves it). The FULL shape — request + the delivery report — is returned so
+    // the chase toast can run `didAnyChannelDeliver` and be honest.
+    expect(result.request.id).toBe(REQUEST.id);
+    expect(result.request.status).toBe('pending');
+    expect(result.request.expiresAt).toBeInstanceOf(Date);
+    expect(result.delivery.email.status).toBe('sent');
   });
 
   it('2) a 409 signature_request_not_pending surfaces as ApiClientError with that code', async () => {

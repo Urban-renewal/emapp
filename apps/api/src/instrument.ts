@@ -31,6 +31,9 @@ dns.setDefaultResultOrder('ipv4first');
 //     bearer secrets) — identical to the pino redactor
 //   - `event.request.cookies` (the SDK-PARSED cookie dict, a separate field
 //     from the header — holds access_token/refresh_token) → every value dropped
+//   - `event.request.data` (the CAPTURED REQUEST BODY — invite/reset token,
+//     password, owner national_id/phone) → sensitive leaf keys redacted (object)
+//     / opaque-redacted (raw string), mirroring the pino body-redaction policy
 //   - `event.message` + `event.transaction` (route name)
 //   - `event.exception.values[].value` (the #1 egress: a throw on `/sign/:token`
 //     interpolates the URL into the error message)
@@ -53,6 +56,14 @@ const REDACTED_HEADER = new Set(['authorization', 'cookie', 'referer', 'referrer
 // Span-data keys that hold a URL (OTel http spans) — scrubbed via the canonical
 // URL seam so a `/sign/<jwt>` outbound/inbound URL can't ride a transaction.
 const URL_SPAN_DATA_KEY = new Set(['url', 'http.url', 'http.target']);
+
+// Request-body leaf keys that are credentials/PII — redacted to match the pino
+// sink (`LOG_REDACT_PATHS`: req.body.password/token/national_id/phone/
+// signatureSvg). Sentry's default httpIntegration buffers the raw request body
+// into `event.request.data`, so `POST /auth/accept-invite { token, password }`,
+// login/reset bodies, and owner create/update PII would otherwise egress.
+// Keys are lowercased; matched case-insensitively against the body's keys.
+const SENSITIVE_BODY_KEY = new Set(['password', 'token', 'national_id', 'phone', 'signaturesvg']);
 
 export function scrubEventCredentials<T extends Event>(event: T): T {
   // Total + fail-OPEN on shape: a malformed event must never throw inside the
@@ -88,6 +99,24 @@ export function scrubEventCredentials<T extends Event>(event: T): T {
         for (const key of Object.keys(cookies)) {
           cookies[key] = '[REDACTED]';
         }
+      }
+      // `event.request.data` is the CAPTURED REQUEST BODY (Sentry's default
+      // httpIntegration buffers it). It carries the invite/reset token, the
+      // cleartext password, and owner PII (national_id/phone) on the auth +
+      // owner endpoints. The pino sink redacts exactly these leaf keys
+      // (LOG_REDACT_PATHS req.body.*); we mirror that here. An OBJECT body has
+      // its sensitive leaf VALUES redacted (route/shape kept for debugging); a
+      // STRING/raw body is opaque-redacted whole (the credential could be
+      // anywhere in it and a raw body is never observability we need).
+      const data = req.data;
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        for (const key of Object.keys(data as Record<string, unknown>)) {
+          if (SENSITIVE_BODY_KEY.has(key.toLowerCase())) {
+            (data as Record<string, unknown>)[key] = '[REDACTED]';
+          }
+        }
+      } else if (typeof data === 'string' && data.length > 0) {
+        req.data = '[REDACTED]';
       }
     }
 

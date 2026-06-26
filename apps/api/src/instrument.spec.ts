@@ -110,6 +110,42 @@ describe('scrubEventCredentials — SEC-TOKEN-SENTRY #9', () => {
     expect(JSON.stringify(out)).not.toContain(FAKE_JWT);
   });
 
+  it('redacts sensitive leaf keys in the captured request body (event.request.data)', () => {
+    // POST /api/v1/auth/accept-invite ships { token, password } as the body.
+    const event: Event = {
+      request: {
+        url: 'https://api.emapp.co.il/api/v1/auth/accept-invite',
+        data: { token: FAKE_JWT, password: 'hunter2', name: 'Dana' },
+      },
+    };
+    const out = scrubEventCredentials(event);
+    const body = out.request?.data as Record<string, unknown>;
+    expect(body['token']).toBe('[REDACTED]');
+    expect(body['password']).toBe('[REDACTED]');
+    // Non-sensitive field kept for debugging.
+    expect(body['name']).toBe('Dana');
+    expect(JSON.stringify(out)).not.toContain(FAKE_JWT);
+    expect(JSON.stringify(out)).not.toContain('hunter2');
+  });
+
+  it('redacts owner PII (national_id/phone) in a captured request body', () => {
+    const event: Event = {
+      request: { data: { national_id: '123456782', phone: '+972501234567', city: 'תל אביב' } },
+    };
+    const out = scrubEventCredentials(event);
+    const body = out.request?.data as Record<string, unknown>;
+    expect(body['national_id']).toBe('[REDACTED]');
+    expect(body['phone']).toBe('[REDACTED]');
+    expect(body['city']).toBe('תל אביב');
+  });
+
+  it('opaque-redacts a raw STRING request body (credential could be anywhere)', () => {
+    const event: Event = { request: { data: `token=${FAKE_JWT}&password=hunter2` } };
+    const out = scrubEventCredentials(event);
+    expect(out.request?.data).toBe('[REDACTED]');
+    expect(JSON.stringify(out)).not.toContain(FAKE_JWT);
+  });
+
   it('masks a /sign/<jwt> URL in event.exception.values[].value (the #1 egress)', () => {
     const event: Event = {
       exception: {

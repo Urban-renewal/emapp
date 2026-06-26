@@ -221,7 +221,10 @@ describe('documents taxonomy scope (DH1 / migration 0077)', () => {
   // ── backfill derivation correctness (the core gate) ──────────────────────
   it('3) BACKFILL: apartment_id present ⇒ scope=apartment, scope_id=apartment_id', async () => {
     const aptId = await seedApartment();
-    const docId = await seedLegacyDoc({ projectId, apartmentId: aptId });
+    // Apartment-scoped doc (project_id NULL — the apartment is the canonical
+    // parent per 0083 documents_parent_exclusive; it resolves the project via
+    // its building). Backfill must still derive scope=apartment.
+    const docId = await seedLegacyDoc({ projectId: null, apartmentId: aptId });
     // Legacy state before backfill: default scope 'org', no scope_id.
     const before = await readScope(docId);
     expect(before.doc_scope).toBe('org');
@@ -333,7 +336,7 @@ describe('documents taxonomy scope (DH1 / migration 0077)', () => {
 
   it('10) backfill is idempotent — re-running derives the identical (scope, scope_id)', async () => {
     const aptId = await seedApartment();
-    const docId = await seedLegacyDoc({ projectId, apartmentId: aptId });
+    const docId = await seedLegacyDoc({ projectId: null, apartmentId: aptId });
     await runBackfill();
     const first = await readScope(docId);
     await runBackfill(); // re-run

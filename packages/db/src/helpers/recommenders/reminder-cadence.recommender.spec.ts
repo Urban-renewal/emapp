@@ -97,7 +97,7 @@ async function seedRequest(opts: {
       (org_id, project_id, apartment_id, name, type, mime_type, size_bytes,
        r2_key, content_hash, uploaded_by)
     VALUES
-      (${orgA}, ${proj!.id}, ${apt!.id}, 'sig.pdf', 'other', 'application/pdf', 100,
+      (${orgA}, NULL, ${apt!.id}, 'sig.pdf', 'other', 'application/pdf', 100,
        ${`org/${orgA}/doc/${randomUUID()}`}, 'h', ${creatorA})
     RETURNING id
   `);

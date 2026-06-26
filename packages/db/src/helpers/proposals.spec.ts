@@ -108,7 +108,7 @@ async function seedSignatureRequest(opts: {
       (org_id, project_id, apartment_id, name, type, mime_type, size_bytes,
        r2_key, content_hash, uploaded_by)
     VALUES
-      (${opts.orgId}, ${proj!.id}, ${apt!.id}, 'sig.pdf', 'other', 'application/pdf', 100,
+      (${opts.orgId}, NULL, ${apt!.id}, 'sig.pdf', 'other', 'application/pdf', 100,
        ${`org/${opts.orgId}/doc/${randomUUID()}`}, 'h', ${opts.creatorId})
     RETURNING id
   `);

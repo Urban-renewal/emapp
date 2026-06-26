@@ -37,6 +37,10 @@ import type {
   ListSignatureRequestsQueryDto,
   ProposalApplyDelivery,
 } from '@emapp/shared-types';
+// Runtime (value) import — the CANONICAL delivery predicate. Reused here, NOT
+// re-implemented, so the BE tallies and the FE chase toast derive "delivered vs
+// no-channel" from ONE source that cannot drift.
+import { didAnyChannelDeliver } from '@emapp/shared-types';
 import {
   BadRequestException,
   ConflictException,
@@ -94,16 +98,6 @@ interface ResendDeliveryPayload {
   ownerEmail: string | null;
   ownerPhone: string | null;
   from: string;
-}
-
-/** Did at least one delivery channel actually go out? email/sms sent|queued, or
- *  a whatsapp deep-link became ready. Drives the HB-1 `reminded` tally — a
- *  request whose every channel was unavailable (no email + no phone) is re-minted
- *  but NOT counted as reminded. */
-function didAnyChannelDeliver(d: SignatureDeliveryReport): boolean {
-  const went = (c: { available: boolean; status?: string }): boolean =>
-    c.available && (c.status === 'sent' || c.status === 'queued' || c.status === 'ready');
-  return went(d.email) || went(d.sms) || went(d.whatsapp);
 }
 
 /**

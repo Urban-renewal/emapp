@@ -67,6 +67,54 @@
  */
 import { type NextRequest, NextResponse } from 'next/server';
 
+/**
+ * SEC #15 — the Pages Function operator log (`console.error` below) is a
+ * SECOND credential sink besides the API's pino redactor
+ * (apps/api/src/logging/log-redact.ts). It writes the full upstream URL,
+ * which carries the signing JWT in the `/sign/<jwt>` path segment and any
+ * `?token=` / `?otp=` / `?code=` query value. Logged in plaintext, those
+ * credentials would sit in Cloudflare Pages Function logs on every failed
+ * proxy fetch.
+ *
+ * `scrubUrlForLog` masks just the sensitive parts and KEEPS the route
+ * legible (do NOT blanket-redact — ops still needs to see which endpoint
+ * failed). It mirrors the API's `scrubUrlForLog` pattern (path mask +
+ * sensitive-query-value mask) but is self-contained on the web side so
+ * the proxy never cross-imports from apps/api.
+ *
+ * Exported for route.spec.ts.
+ */
+const SIGN_TOKEN_URL_REGEX = /\/sign\/[\w-]+\.[\w-]+\.[\w-]+/g;
+const SENSITIVE_QUERY_KEYS = new Set(['token', 'otp', 'code']);
+
+export function scrubUrlForLog(url: string): string {
+  // 1. Mask the `/sign/<header.payload.sig>` JWT path segment.
+  let scrubbed = url.replace(SIGN_TOKEN_URL_REGEX, '/sign/[REDACTED]');
+
+  // 2. Mask sensitive query VALUES while keeping keys + the rest of the
+  //    query string legible. Parse only the query portion so a malformed
+  //    URL still gets the path-level mask above (never throws).
+  const queryStart = scrubbed.indexOf('?');
+  if (queryStart !== -1) {
+    const base = scrubbed.slice(0, queryStart);
+    const query = scrubbed.slice(queryStart + 1);
+    const maskedQuery = query
+      .split('&')
+      .map((pair) => {
+        const eq = pair.indexOf('=');
+        const key = eq === -1 ? pair : pair.slice(0, eq);
+        if (eq !== -1 && SENSITIVE_QUERY_KEYS.has(key.toLowerCase())) {
+          return `${key}=[REDACTED]`;
+        }
+        return pair;
+      })
+      .join('&');
+    scrubbed = `${base}?${maskedQuery}`;
+  }
+
+  return scrubbed;
+}
+
 const HOP_BY_HOP = new Set([
   'connection',
   'keep-alive',
@@ -236,7 +284,9 @@ async function proxy(req: NextRequest, segments: string[]): Promise<Response> {
       // eslint-disable-next-line no-console -- operator-facing debug log; never reaches the browser
       const cause = (e as { cause?: { code?: string; message?: string } })?.cause;
       console.error('[proxy] upstream fetch threw', {
-        url,
+        // SEC #15 — scrub the signing JWT (/sign/<jwt>) + sensitive query
+        // values (?token=/?otp=/?code=) before this reaches Pages logs.
+        url: scrubUrlForLog(url),
         method: req.method,
         error: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
         // The real reason lives in `.cause` (undici wraps everything as a

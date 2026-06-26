@@ -134,19 +134,48 @@ export class OtpService {
       ip: ctx?.ip,
       userAgent: ctx?.userAgent,
     });
-    const smsResult = await this.sms.send(phone, `EMAPP: קוד האימות שלך ${code}. תקף ל-5 דקות.`);
-    // sec-review MED: a real SMS gateway can REJECT a send (bad creds, http
-    // error, outage). The OTP row is already written and the caller gets the
-    // SAME generic response either way (anti-enumeration), but a failed delivery
-    // must be DETECTABLE — otherwise a dead gateway silently locks every resident
-    // out. Observability only; PII-free (org/owner UUIDs + the provider's status,
-    // never the phone or the code).
-    if (smsResult.status !== 'sent') {
-      this.logger.warn(
-        `OTP SMS not delivered (provider status=${smsResult.status}) for org=${matched.orgId} ` +
-          `owner=${matched.id}: ${smsResult.error ?? 'unknown'}`,
-      );
-    }
+    // #8 (red-team) — anti-ENUMERATION timing oracle. Awaiting the SMS gateway
+    // round-trip INLINE before returning made a registered phone (real send,
+    // ~gateway RTT) measurably slower than an unknown phone (no send), leaking
+    // which phones exist. Decouple: dispatch the send WITHOUT blocking the
+    // caller, so `request()` returns in DB-bound time regardless of whether the
+    // phone resolved to an owner. The generic-response contract is unchanged —
+    // the method still resolves void either way and nothing about the send
+    // surfaces to the caller. Delivery observability (sec-review MED) is
+    // preserved inside the fire-and-forget path.
+    this.dispatchOtpSms(phone, code, matched.id, matched.orgId);
+  }
+
+  // #8 fix — fire-and-forget SMS dispatch. NOT awaited by `request()` so the
+  // HTTP response time is constant w.r.t. phone existence (no enumeration
+  // oracle). NEVER throws to the caller: a gateway failure is logged for ops
+  // (PII-free — org/owner UUIDs + provider status only, never the phone/code)
+  // exactly as the previous inline path did, but cannot affect the response.
+  private dispatchOtpSms(phone: string, code: string, ownerId: string, orgId: string): void {
+    void this.sms
+      .send(phone, `EMAPP: קוד האימות שלך ${code}. תקף ל-5 דקות.`)
+      .then((smsResult) => {
+        // sec-review MED: a real SMS gateway can REJECT a send (bad creds, http
+        // error, outage). The OTP row is already written and the caller got the
+        // SAME generic response either way (anti-enumeration), but a failed
+        // delivery must be DETECTABLE — otherwise a dead gateway silently locks
+        // every resident out. Observability only; PII-free (org/owner UUIDs +
+        // the provider's status, never the phone or the code).
+        if (smsResult.status !== 'sent') {
+          this.logger.warn(
+            `OTP SMS not delivered (provider status=${smsResult.status}) for org=${orgId} ` +
+              `owner=${ownerId}: ${smsResult.error ?? 'unknown'}`,
+          );
+        }
+      })
+      .catch((err: unknown) => {
+        // A thrown send (network/timeout) must never become an unhandled
+        // rejection. Same PII-free observability contract.
+        this.logger.warn(
+          `OTP SMS send threw for org=${orgId} owner=${ownerId}: ` +
+            `${err instanceof Error ? err.message : 'unknown'}`,
+        );
+      });
   }
 
   // Generic 401 on EVERY failure (unknown / expired / used / wrong code /
@@ -160,27 +189,80 @@ export class OtpService {
     if (!phone) throw invalid;
     const phoneHash = hashField(phone, dbEnv.PII_HASH_KEY as string);
 
-    const [row] = await db
-      .select()
-      .from(otpCodes)
-      .where(and(eq(otpCodes.phoneHash, phoneHash), isNull(otpCodes.usedAt)))
-      .orderBy(desc(otpCodes.createdAt))
-      .limit(1);
+    // #19/#41 (red-team) — ATOMIC brute-force lockout. The candidate row is
+    // SELECT…FOR UPDATE-locked and its attempts/usedAt UPDATE happens in the
+    // SAME transaction on the SAME connection, so concurrent wrong guesses
+    // SERIALIZE on the row lock: each one blocks until the prior tx commits,
+    // then re-reads the incremented `attempts`. Previously the SELECT and the
+    // UPDATE were two separate round-trips with no lock between them, so N
+    // simultaneous guesses all read attempts=k, all wrote attempts=k+1, and
+    // MAX_ATTEMPTS could be bypassed entirely. Drizzle `.for('update')` is the
+    // canonical row-lock idiom; `db.transaction(tx)` is the same single-conn
+    // tx wrapper used by auth.service login + refresh-rotation. The lock is
+    // held only for the read+update (no SMS/JWT inside) so it's sub-ms.
+    const result = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(otpCodes)
+        .where(and(eq(otpCodes.phoneHash, phoneHash), isNull(otpCodes.usedAt)))
+        .orderBy(desc(otpCodes.createdAt))
+        .limit(1)
+        .for('update');
 
-    if (!row || row.expiresAt.getTime() < Date.now() || row.attempts >= MAX_ATTEMPTS) {
-      // G1a: failure path. We CAN audit when a row exists with full org
+      if (!row || row.expiresAt.getTime() < Date.now() || row.attempts >= MAX_ATTEMPTS) {
+        // Failure (no usable row): nothing to mutate. Return the context the
+        // audit branch below needs; the lock (if a row was found) releases on
+        // COMMIT — no UPDATE so the row is untouched.
+        return {
+          outcome: 'invalid' as const,
+          orgId: row?.orgId ?? null,
+          ownerId: row?.ownerId ?? null,
+          reason: (row && row.attempts >= MAX_ATTEMPTS ? 'attempts_exhausted' : 'expired') as
+            | 'attempts_exhausted'
+            | 'expired',
+        };
+      }
+
+      const attempts = row.attempts + 1;
+      // Real HMAC compare, OR the fixed dev code when the (double-gated, prod-
+      // impossible) dev auth bypass is active — see common/dev-auth-bypass.ts.
+      const ok =
+        row.codeHash === hashField(code, dbEnv.PII_HASH_KEY as string) || isDevBypassCode(code);
+      // Mutate UNDER the lock — this is the write that the next concurrent
+      // guess will observe once we COMMIT.
+      await tx
+        .update(otpCodes)
+        .set({ attempts, usedAt: ok || attempts >= MAX_ATTEMPTS ? new Date() : null })
+        .where(eq(otpCodes.id, row.id));
+
+      if (!ok) {
+        return {
+          outcome: 'wrong_code' as const,
+          orgId: row.orgId,
+          ownerId: row.ownerId,
+          attempts,
+        };
+      }
+      return {
+        outcome: 'ok' as const,
+        orgId: row.orgId,
+        ownerId: row.ownerId,
+        expiresAt: row.expiresAt,
+      };
+    });
+
+    if (result.outcome === 'invalid') {
+      // G1a: failure path. We CAN audit when a row existed with full org
       // context (we always set both on insert; the null-narrowing is to
       // satisfy the optional column types); pure-no-row stays silent
       // (anti-enumeration — no org context anyway).
-      if (row?.orgId && row.ownerId) {
+      if (result.orgId && result.ownerId) {
         await this.writeAuditSafe({
-          orgId: row.orgId,
+          orgId: result.orgId,
           action: 'auth.tenant_login_failed',
           targetTable: 'owners',
-          targetId: row.ownerId,
-          afterState: {
-            reason: row.attempts >= MAX_ATTEMPTS ? 'attempts_exhausted' : 'expired',
-          },
+          targetId: result.ownerId,
+          afterState: { reason: result.reason },
           ip: ctx?.ip,
           userAgent: ctx?.userAgent,
         });
@@ -188,30 +270,24 @@ export class OtpService {
       throw invalid;
     }
 
-    const attempts = row.attempts + 1;
-    // Real HMAC compare, OR the fixed dev code when the (double-gated, prod-
-    // impossible) dev auth bypass is active — see common/dev-auth-bypass.ts.
-    const ok =
-      row.codeHash === hashField(code, dbEnv.PII_HASH_KEY as string) || isDevBypassCode(code);
-    await db
-      .update(otpCodes)
-      .set({ attempts, usedAt: ok || attempts >= MAX_ATTEMPTS ? new Date() : null })
-      .where(eq(otpCodes.id, row.id));
-    if (!ok) {
+    if (result.outcome === 'wrong_code') {
       // G1a: wrong-code failure audit. row.orgId+ownerId always set on insert.
-      if (row.orgId && row.ownerId) {
+      if (result.orgId && result.ownerId) {
         await this.writeAuditSafe({
-          orgId: row.orgId,
+          orgId: result.orgId,
           action: 'auth.tenant_login_failed',
           targetTable: 'owners',
-          targetId: row.ownerId,
-          afterState: { reason: 'wrong_code', attempts },
+          targetId: result.ownerId,
+          afterState: { reason: 'wrong_code', attempts: result.attempts },
           ip: ctx?.ip,
           userAgent: ctx?.userAgent,
         });
       }
       throw invalid;
     }
+
+    // outcome === 'ok' — bind the verified row context for the rest of the flow.
+    const row = { orgId: result.orgId, ownerId: result.ownerId };
 
     // Wave 4 M-1 — insert tenant_sessions row FIRST so we can embed its
     // id in the JWT `sid` claim. Pre-auth context (no app.organization_id

@@ -697,6 +697,20 @@ export class ProjectsService {
         WHERE b.project_id = ${projectId}
           AND a.archived_at IS NULL
       ),
+      -- PERF (login-nav-latency 2026-06-26): the project's signature-bearing
+      -- doc set was inlined THREE times below (the signed-share EXISTS + the two
+      -- signature counts), so the planner re-resolved the same documents⋈
+      -- apartments⋈buildings UNION three times per consent query — and this
+      -- consent query is itself fanned out once per project on the cold home
+      -- "signature-pulse" read. Materialising it ONCE as a CTE removes that
+      -- redundant re-execution. It STILL reuses the canonical
+      -- \`projectSignatureDocIdsSql\` (single source of truth — same doc-set
+      -- definition, same partial-index alignment, same archived-excluded
+      -- valid-consent rule); only the number of times the planner evaluates it
+      -- changes, never the rows it yields, so every count is byte-identical.
+      proj_doc_ids AS (
+        ${projectSignatureDocIdsSql(projectId)}
+      ),
       apt_consent AS (
         SELECT
           pa.id,
@@ -719,7 +733,7 @@ export class ProjectsService {
                  FROM signature_requests sr
                  WHERE sr.owner_id = o.owner_id
                    AND sr.status = 'signed'
-                   AND sr.document_id IN (${projectSignatureDocIdsSql(projectId)})
+                   AND sr.document_id IN (SELECT id FROM proj_doc_ids)
                )), 0) AS signed_share
         FROM proj_apartments pa
       ),
@@ -745,10 +759,10 @@ export class ProjectsService {
         COALESCE((SELECT SUM(contribution) FROM apt_contrib), 0) AS consented_weight,
         (SELECT COUNT(*)::int FROM signature_requests sr
            WHERE sr.status = 'signed'
-             AND sr.document_id IN (${projectSignatureDocIdsSql(projectId)})) AS signatures_signed,
+             AND sr.document_id IN (SELECT id FROM proj_doc_ids)) AS signatures_signed,
         (SELECT COUNT(*)::int FROM signature_requests sr
            WHERE sr.status = 'pending'
-             AND sr.document_id IN (${projectSignatureDocIdsSql(projectId)})) AS signatures_pending,
+             AND sr.document_id IN (SELECT id FROM proj_doc_ids)) AS signatures_pending,
         (SELECT target_signature_pct FROM projects WHERE id = ${projectId}) AS target_signature_pct
     `);
     const r = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
@@ -1401,12 +1415,30 @@ export class ProjectsService {
                      WHERE sr.status = 'pending'
                        AND sr.document_id IN (${projectSetSignatureDocIdsSql(sql`SELECT project_id FROM assigned`)})) AS signatures_pending
               `)
-            : await tx.execute(sql`
+            : // SINGLE-SOURCE (0.1) — manager/viewer now use the IDENTICAL doc-scoped,
+              // archived-excluded, project-scoped shape as the agent branch above and the
+              // signaturePulse/board. The old bare `COUNT(*) FROM signature_requests WHERE
+              // status=…` counted signatures on ARCHIVED/superseded documents and on requests
+              // unreachable through any non-archived project, so the home KPI did not reconcile
+              // to the sum of the per-project boards on the same screen (the "0 מתוך X" class).
+              // `visible` = the whole org's non-archived projects (the manager sees everything).
+              await tx.execute(sql`
+                WITH visible AS (
+                  SELECT id AS project_id FROM projects WHERE archived_at IS NULL
+                )
                 SELECT
-                  (SELECT COUNT(*)::int FROM projects WHERE archived_at IS NULL) AS active_projects,
-                  (SELECT COUNT(DISTINCT owner_id)::int FROM ownerships WHERE ended_at IS NULL) AS residents,
-                  (SELECT COUNT(*)::int FROM signature_requests WHERE status = 'signed') AS signatures_received,
-                  (SELECT COUNT(*)::int FROM signature_requests WHERE status = 'pending') AS signatures_pending
+                  (SELECT COUNT(*)::int FROM visible) AS active_projects,
+                  (SELECT COUNT(DISTINCT o.owner_id)::int FROM ownerships o
+                     INNER JOIN apartments a ON a.id = o.apartment_id
+                     INNER JOIN buildings b ON b.id = a.building_id
+                     WHERE o.ended_at IS NULL
+                       AND b.project_id IN (SELECT project_id FROM visible)) AS residents,
+                  (SELECT COUNT(*)::int FROM signature_requests sr
+                     WHERE sr.status = 'signed'
+                       AND sr.document_id IN (${projectSetSignatureDocIdsSql(sql`SELECT project_id FROM visible`)})) AS signatures_received,
+                  (SELECT COUNT(*)::int FROM signature_requests sr
+                     WHERE sr.status = 'pending'
+                       AND sr.document_id IN (${projectSetSignatureDocIdsSql(sql`SELECT project_id FROM visible`)})) AS signatures_pending
               `);
         const r = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
         return {

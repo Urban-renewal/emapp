@@ -44,13 +44,18 @@ export const serverEnv = createEnv({
     SHARE_TOKEN_SECRET: z.string().min(44).optional(),
     PII_ENCRYPTION_KEY: z.string().min(32).optional(),
     PII_HASH_KEY: z.string().min(32).optional(),
-    /** DEV-ONLY auth bypass opt-in. When '1' AND NODE_ENV==='development',
-     *  a fixed code ('000000') is accepted for tenant OTP + provider MFA so
-     *  local testing doesn't need a phone/authenticator. Double-gated (the
-     *  explicit flag is the real guard, since NODE_ENV defaults to
-     *  'development'); a conformance spec asserts the fixed code is REJECTED
-     *  whenever this is unset or NODE_ENV is not development. NEVER set in
-     *  staging/production. */
+    /** DEV-ONLY auth bypass opt-in. When '1' AND the RAW (undefaulted)
+     *  `process.env.NODE_ENV` is EXACTLY 'development' (or 'test'), a fixed code
+     *  ('000000') is accepted for tenant OTP + provider MFA so local testing
+     *  doesn't need a phone/authenticator. FAIL-CLOSED: `isDevAuthBypass` reads
+     *  the RAW NODE_ENV — an UNSET NODE_ENV does NOT enable it. (An earlier
+     *  version trusted serverEnv's 'development' default, which would have armed
+     *  the bypass in a deploy that set this flag but forgot NODE_ENV — closed in
+     *  dev-auth-bypass.ts.) `assertDevBypassNotInProduction` REFUSES to boot when
+     *  this is '1' and NODE_ENV isn't explicitly development/test. A conformance
+     *  spec asserts the fixed code is REJECTED whenever this is unset or NODE_ENV
+     *  is not development. NEVER set in staging/production; local dev MUST set
+     *  NODE_ENV=development. */
     DEV_AUTH_BYPASS: z.string().optional(),
     /** Public self-service signup gate (owner-approved, refines D.21). The
      *  active B2B onboarding path is provider-led (`POST /provider/tenants`

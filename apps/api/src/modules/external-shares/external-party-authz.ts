@@ -1,4 +1,8 @@
-import type { ExternalShare, ExternalShareScopeType } from '@emapp/db';
+import type { docScopeEnum, ExternalShare, ExternalShareScopeType } from '@emapp/db';
+
+/** The canonical document scope taxonomy (0077 DH1): org | project | apartment
+ *  | owner. Derived from the DB enum so it can never drift from the schema. */
+export type DocScope = (typeof docScopeEnum.enumValues)[number];
 
 /**
  * SEC-H1 — the ONE shared external-party authorization resolver.
@@ -162,17 +166,61 @@ export function decideExternalPartyAccess(
   };
 }
 
-/** Pure scope-membership predicate over the share's scope addressing + the
- *  doc's resolved locator (project/building/apartment). The DB caller resolves
- *  the doc's locator triple under RLS and calls this; kept pure so the
- *  membership matrix is unit-testable independent of the DB. */
+/**
+ * The doc's resolved scope locator. The DB caller resolves these under RLS and
+ * hands them to the pure predicate.
+ *
+ * `docScope` is the CANONICAL scope concept (0077 DH1): a doc is genuinely
+ * project-level ONLY when `docScope = 'project'`. The legacy `projectId` column
+ * is NON-NULL for an APARTMENT- or OWNER-scoped doc too (the apartment lives in
+ * the project), so `projectId` ALONE is NOT a project-scope signal — that was
+ * the leak (#11): a project-scope grant matched per-owner / per-apartment docs
+ * because their `project_id` chained up to the granted project.
+ */
+export interface DocScopeLocator {
+  /** Canonical scope taxonomy of the doc (0077). The authoritative axis. */
+  docScope: DocScope;
+  projectId: string | null;
+  buildingId: string | null;
+  apartmentId: string | null;
+  /**
+   * Per-owner attribution (0077 `documents.owner_id`). A doc ABOUT a specific
+   * owner (e.g. their נסח / ID extract) is owner-scoped data even if filed with
+   * a NULL apartment_id and a legacy `docScope='org'`. Forward-defense for #11:
+   * a project-scope grant must NEVER reach an owner-attributed doc, so the
+   * predicate excludes any `ownerId !== null` from a project scope — closing the
+   * future case where canonical owner-attribution is wired without an apartment
+   * binding. Null today for every live doc (the writer sets neither field). */
+  ownerId: string | null;
+}
+
+/**
+ * Pure scope-membership predicate. SCOPE-LEVEL DISJOINT + fail-closed:
+ *
+ *  - A `project`-scope grant matches ONLY a genuinely PROJECT-LEVEL doc — i.e.
+ *    one that is NOT bound to an apartment AND is NOT owner/apartment-scoped.
+ *    A per-owner agreement or per-apartment doc whose `project_id` chains up to
+ *    the granted project is EXCLUDED (#11): project-scope ≠ apartment-scope.
+ *  - A `building`-scope grant matches a doc whose apartment's building is in
+ *    scope (apartment/owner docs flow up through the building).
+ *  - An `apartment`-scope grant matches a doc bound to that apartment.
+ *
+ * Kept pure so the membership matrix is unit-testable independent of the DB.
+ */
 export function isDocInShareScope(
   scopeType: ExternalShareScopeType,
   scopeIds: readonly string[],
-  docLocator: { projectId: string | null; buildingId: string | null; apartmentId: string | null },
+  docLocator: DocScopeLocator,
 ): boolean {
   const ids = new Set(scopeIds);
   if (scopeType === 'project') {
+    // A project-scope grant reaches ONLY project-level docs. Exclude anything
+    // bound to an apartment, attributed to an owner, OR scoped to an apartment/
+    // owner (the canonical axis), even when its legacy project_id chains up to
+    // the granted project.
+    if (docLocator.apartmentId !== null) return false;
+    if (docLocator.ownerId !== null) return false;
+    if (docLocator.docScope === 'apartment' || docLocator.docScope === 'owner') return false;
     return docLocator.projectId !== null && ids.has(docLocator.projectId);
   }
   if (scopeType === 'building') {

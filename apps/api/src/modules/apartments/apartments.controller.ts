@@ -1,8 +1,10 @@
 import {
   CreateApartmentInput,
+  GenerateApartmentsInput,
   ListApartmentsQuery,
   UpdateApartmentInput,
   type CreateApartment,
+  type GenerateApartments,
   type ListApartmentsQueryDto,
   type UpdateApartment,
 } from '@emapp/shared-types';
@@ -60,6 +62,22 @@ export class ApartmentsController {
     @Body(new ZodValidationPipe(CreateApartmentInput)) body: CreateApartment,
   ) {
     return { data: await this.apartments.create(user, buildingId, body) };
+  }
+
+  // Slice 2.1 — bulk-GENERATE a building's apartments from its shape
+  // (floors × apartmentsPerFloor) in ONE manager-confirmed, atomic action.
+  // Literal action-suffix route `apartments:generate` — the `::` escapes the
+  // colon for find-my-way (a single `:` would parse as a path param). Same
+  // write permission (apartments.create) + agent fine gate as the single
+  // create; Idempotency-Key is honoured by the global interceptor.
+  @Post('buildings/:buildingId/apartments::generate')
+  @RequirePermission('apartments.create')
+  async generate(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('buildingId', UuidParam) buildingId: string,
+    @Body(new ZodValidationPipe(GenerateApartmentsInput)) body: GenerateApartments,
+  ) {
+    return { data: await this.apartments.generate(user, buildingId, body) };
   }
 
   @Get('apartments/:id')

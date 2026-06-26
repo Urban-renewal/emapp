@@ -172,6 +172,20 @@ NOT wave a slow interaction away as "compile" without re-measuring. Report the m
 per interaction in the walk evidence, not "felt fast". (Backup: memory
 `feedback_sub_second_interaction_budget`.)
 
+**EXPLICIT QA STEP — BROWSER RESPONSE-TIME CHECK + FIX (owner 2026-06-26, anchored).** The
+latency axis above is a MANDATORY, EXECUTED STEP of the QA pass — not a sentiment. For EVERY
+browser-observable slice, as part of the real-browser walk:
+
+1. **CHECK** — MEASURE the warm response time of every interaction the slice touches (page/route
+   load, EACH navigation, EACH click/submit) from the browser (Chrome Network timing; re-hit to
+   exclude the one cold webpack-compile). Record the ms per interaction.
+2. **FIX** — if ANY warm interaction is ≥1s it is a FAIL that BLOCKS merge. Root-cause it
+   (getMe/SSR self-hops, redundant/duplicate FE fetches, N+1 / sequential queries, dev→DB RTT →
+   `DB_TARGET=local`, host disk) and FIX it, then RE-MEASURE to prove <1s before merge. Never
+   merge a slice with a known ≥1s warm interaction.
+3. **EVIDENCE** — record the before/after ms in the PR. "Login takes too long" is the canonical
+   failure this step exists to catch. <1s is the CEILING; faster is better.
+
 **OUTCOME, NOT MECHANICS — acceptance is the real-world EFFECT, end-to-end (owner 2026-06-23,
 anchored).** A 2xx + optimistic UI update + a refetch is the ACTOR's MECHANICAL confirmation;
 it is NOT acceptance. For ANY state-changing action, the walk MUST verify the action's PURPOSE

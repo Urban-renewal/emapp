@@ -50,7 +50,12 @@ import type { AccessTokenPayload } from '../auth/auth.service';
 import { hashPassword } from '../auth/password';
 import { flushSessionCache } from '../auth/session-validity';
 
-import { EMAIL_PROVIDER, EXPOSE_INVITE_TOKEN, buildInviteEmail } from './invite-email';
+import {
+  EMAIL_PROVIDER,
+  EXPOSE_INVITE_TOKEN,
+  buildInviteEmail,
+  scrubInviteErrorForLog,
+} from './invite-email';
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
 const SELF = new BadRequestException({ error: { code: 'cannot_modify_self' } });
@@ -208,19 +213,28 @@ export class MembersService {
       });
       if (r.status === 'rejected') {
         // Non-PII operability signal (ISO A.12.4): membership id + provider
-        // error only. NEVER the token, the link, or the email body.
+        // error only. NEVER the token, the link, or the email body. The
+        // provider error string can embed the token-bearing invite URL, so it
+        // is scrubbed through the canonical seam before logging (SEC-TOKEN-LOG
+        // #39).
         this.logger.error(
-          `invite email rejected (membership=${membershipId}): ${r.error ?? 'unknown'}`,
+          `invite email rejected (membership=${membershipId}): ${scrubInviteErrorForLog(
+            r.error ?? 'unknown',
+            token,
+          )}`,
         );
       }
     } catch (mailErr) {
       // Best-effort: membership is committed; a transient send failure must
       // not 500 (the manager can re-invite). Record the FACT + cause (no
-      // token/body) so undelivered invites are detectable in the field.
+      // token/body) so undelivered invites are detectable in the field. The
+      // provider error message can embed the token-bearing invite URL, so it is
+      // scrubbed through the canonical seam before logging (SEC-TOKEN-LOG #39).
       this.logger.error(
-        `invite email send failed (membership=${membershipId}): ${
-          mailErr instanceof Error ? mailErr.message : 'unknown'
-        }`,
+        `invite email send failed (membership=${membershipId}): ${scrubInviteErrorForLog(
+          mailErr instanceof Error ? mailErr.message : 'unknown',
+          token,
+        )}`,
       );
     }
   }

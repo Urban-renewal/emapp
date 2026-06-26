@@ -8,11 +8,14 @@ import {
   type Apartment as ApartmentRow,
   type TenantTx,
 } from '@emapp/db';
-import type {
-  CreateApartment,
-  Apartment,
-  ApartmentStatus,
-  UpdateApartment,
+import {
+  buildApartmentNumbers,
+  type CreateApartment,
+  type Apartment,
+  type ApartmentStatus,
+  type GenerateApartments,
+  type GenerateApartmentsResult,
+  type UpdateApartment,
 } from '@emapp/shared-types';
 import {
   BadRequestException,
@@ -186,6 +189,59 @@ export class ApartmentsService {
     return toApartment(row);
   }
 
+  /**
+   * CANONICAL apartment insertion (the ONE write path). Both the single
+   * `create` and the bulk `generate` route through here so every apartment —
+   * however it was requested — gets the SAME column mapping, the `unitType`
+   * → 'apt' / `status` → 'pending' defaults, and an `apartment.create` audit
+   * row. Callers own the `withTenant` tx + the visibility/capability gates;
+   * this method is the insertion seam, never called outside a guarded tx.
+   */
+  private async insertApartment(
+    tx: TenantTx,
+    user: AccessTokenPayload,
+    buildingId: string,
+    input: CreateApartment,
+  ): Promise<Apartment> {
+    const [row] = await tx
+      .insert(apartments)
+      .values({
+        buildingId,
+        number: input.number,
+        floor: input.floor ?? null,
+        sizeSqm:
+          input.sizeSqm === undefined || input.sizeSqm === null ? null : String(input.sizeSqm),
+        rooms: input.rooms === undefined || input.rooms === null ? null : String(input.rooms),
+        status: input.status ?? 'pending',
+        notes: input.notes ?? null,
+        // D.39 — persist the unit_type. CreateApartmentInput defaults it
+        // to 'apt' (the column's own NOT NULL DEFAULT), so it is always a
+        // concrete value here; the fallback keeps the non-null invariant.
+        unitType: input.unitType ?? 'apt',
+      })
+      .returning();
+    if (!row)
+      throw new InternalServerErrorException({
+        error: { code: 'insert_no_row', message: 'unexpected db state' },
+      });
+    await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
+      orgId: user.orgId,
+      actorId: user.sub,
+      actorType: 'user',
+      action: 'apartment.create',
+      targetTable: 'apartments',
+      targetId: row.id,
+      afterState: {
+        buildingId,
+        number: row.number,
+        status: row.status,
+        unitType: row.unitType,
+      },
+      sessionId: user.sid,
+    });
+    return toApartment(row);
+  }
+
   async create(
     user: AccessTokenPayload,
     buildingId: string,
@@ -197,43 +253,60 @@ export class ApartmentsService {
         await this.assertBuildingVisible(tx, user, buildingId);
         // D.46 — fine gate: agent needs edit_project_data (manager passes).
         await requireAgentCapability(tx, user, 'edit_project_data');
-        const [row] = await tx
-          .insert(apartments)
-          .values({
-            buildingId,
-            number: input.number,
-            floor: input.floor ?? null,
-            sizeSqm:
-              input.sizeSqm === undefined || input.sizeSqm === null ? null : String(input.sizeSqm),
-            rooms: input.rooms === undefined || input.rooms === null ? null : String(input.rooms),
-            status: input.status ?? 'pending',
-            notes: input.notes ?? null,
-            // D.39 — persist the unit_type. CreateApartmentInput defaults it
-            // to 'apt' (the column's own NOT NULL DEFAULT), so it is always a
-            // concrete value here; the fallback keeps the non-null invariant.
-            unitType: input.unitType ?? 'apt',
-          })
-          .returning();
-        if (!row)
-          throw new InternalServerErrorException({
-            error: { code: 'insert_no_row', message: 'unexpected db state' },
+        return this.insertApartment(tx, user, buildingId, input);
+      },
+      { userId: user.sub },
+    );
+  }
+
+  /**
+   * Slice 2.1 — bulk-GENERATE a building's apartments from its shape
+   * (floors × apartmentsPerFloor) in ONE atomic, manager-confirmed action.
+   *
+   * Deterministic (NOT autonomy classify()): the manager named the shape and
+   * confirmed. Every row goes through the canonical `insertApartment` seam
+   * (one source of truth — same validation/defaults/audit as `create`),
+   * inside ONE `withTenant` transaction → all-or-nothing (a mid-loop failure
+   * rolls the whole batch back, never a half-generated building).
+   *
+   * Collision-safe + idempotent: numbers that already exist (active) in the
+   * building are SKIPPED, not failed — so re-running over a partly-populated
+   * building only fills the gaps (and a full network retry replays the cached
+   * response via the Idempotency-Key interceptor). Returns {created, skipped}.
+   */
+  async generate(
+    user: AccessTokenPayload,
+    buildingId: string,
+    input: GenerateApartments,
+  ): Promise<GenerateApartmentsResult> {
+    const numbers = buildApartmentNumbers(input);
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        await this.assertBuildingVisible(tx, user, buildingId);
+        // D.46 — same fine gate as create: agent needs edit_project_data.
+        await requireAgentCapability(tx, user, 'edit_project_data');
+
+        // Skip numbers already taken by an ACTIVE apartment (the partial
+        // unique index is `(building_id, number) WHERE archived_at IS NULL`),
+        // so a re-generate over an existing building fills gaps instead of
+        // colliding. One read, set-membership in memory — no per-row probe.
+        const existing = await tx
+          .select({ number: apartments.number })
+          .from(apartments)
+          .where(and(eq(apartments.buildingId, buildingId), isNull(apartments.archivedAt)));
+        const taken = new Set(existing.map((r) => r.number));
+
+        let created = 0;
+        for (const n of numbers) {
+          if (taken.has(n.number)) continue;
+          await this.insertApartment(tx, user, buildingId, {
+            number: n.number,
+            floor: n.floor,
           });
-        await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
-          orgId: user.orgId,
-          actorId: user.sub,
-          actorType: 'user',
-          action: 'apartment.create',
-          targetTable: 'apartments',
-          targetId: row.id,
-          afterState: {
-            buildingId,
-            number: row.number,
-            status: row.status,
-            unitType: row.unitType,
-          },
-          sessionId: user.sid,
-        });
-        return toApartment(row);
+          created += 1;
+        }
+        return { created, skipped: numbers.length - created };
       },
       { userId: user.sub },
     );

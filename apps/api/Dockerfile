@@ -34,6 +34,13 @@ RUN pnpm --filter @emapp/api build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
+# SEC (red-team #23, root of the env-fail-open class) — the API prod image MUST set
+# NODE_ENV=production (web + worker images already do). Without it the service runs
+# with NODE_ENV unset, and every "if (NODE_ENV !== 'production') <dev-lenient>" gate
+# silently fails OPEN in prod: SMS → NoopSMSProvider, OTP/MFA dev-bypass 000000 live,
+# invites → no-op FakeEmailProvider, throttler disabled. One line closes the class.
+ENV NODE_ENV=production
+
 # Copy workspace manifests + lockfile for production install
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages/config/package.json ./packages/config/

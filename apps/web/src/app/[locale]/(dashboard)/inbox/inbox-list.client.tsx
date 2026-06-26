@@ -112,9 +112,11 @@ export function InboxListClient() {
   // the list endpoint's `?kind`, so the feed resets + re-walks the filtered set.
   const [kindFilter, setKindFilter] = useState<string | null>(null);
 
-  // The HONEST org-wide pending total (constant-time endpoint). This is the lead
-  // line's source of truth — NOT the loaded page length.
-  const pending = useProposalsPendingCount();
+  // The HONEST pending total (constant-time endpoint), narrowed by the SAME
+  // `kindFilter` as the feed — so the lead-line + honesty-line + feed are ONE
+  // kind-aware source. NOT the loaded page length, and never an org-wide total
+  // mismatched against a kind-filtered feed ("X מתוך Y" stays consistent).
+  const pending = useProposalsPendingCount({ ...(kindFilter ? { kind: kindFilter } : {}) });
   const trueCount = pending.data?.count ?? 0;
 
   const feed = useInboxFeed({ ...(kindFilter ? { kind: kindFilter } : {}) });

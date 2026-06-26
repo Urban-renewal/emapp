@@ -1983,7 +1983,7 @@ _(no body)_
 ### GET /api/v1/org/signature-pulse
 
 - **Auth:** AuthGuard + TenantGuard (projects.read)
-- **Summary:** E2 Wave-2 B1 — org-wide signature-pulse feed for the board-first home: per-project attention rows (rankAttention-ordered), needsHuman bucket, header buckets. Agent → assigned projects only; manager/viewer → whole org. Single-source share-weighted consent (matches the board). No PII (counts/%/timestamps only).
+- **Summary:** E2 Wave-2 B1 — org-wide signature-pulse feed for the board-first home: per-project attention rows (rankAttention-ordered) + header buckets (incl. the needsHuman overlay count). Agent → assigned projects only; manager/viewer → whole org. Single-source share-weighted consent (matches the board). No PII (counts/%/timestamps only).
 
 **Request body**
 
@@ -2691,7 +2691,7 @@ _(no body)_
 **Response**
 
 ```json
-{ "data": { ...CampaignResult (created/skipped counts) } }
+{ "data": { "created", "delivered", "noChannel", "skipped", "total" } } — created = pending rows inserted; delivered = of those, how many reached a channel (didAnyChannelDeliver); noChannel = created-but-undeliverable (no email+phone); created === delivered + noChannel
 ```
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `document_not_in_project`, `missing_token`, `invalid_token`, `token_expired`, `429`
@@ -2997,7 +2997,7 @@ _(no body)_
 ### GET /api/v1/proposals/pending-count
 
 - **Auth:** AuthGuard + TenantGuard (Manager)
-- **Summary:** Constant-time count of the org's PENDING proposals — the inbox's HONEST lead line. Mirrors GET /notifications/unread-count (partial index idx_proposals_org_pending WHERE status='pending'; no full scan). Manager-only (service requireManager). RLS org isolation.
+- **Summary:** Constant-time count of the org's PENDING proposals — the inbox's HONEST lead line. Optional ?kind narrows IDENTICALLY to GET /proposals (so the count + feed are one kind-aware source; no "X of Y" drift under a facet). Mirrors GET /notifications/unread-count (partial index idx_proposals_org_pending WHERE status='pending'; no full scan). Manager-only (service requireManager). RLS org isolation.
 
 **Request body**
 

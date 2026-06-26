@@ -532,32 +532,6 @@ export const ProjectPulseRowSchema = z.object({
 });
 export type ProjectPulseRow = z.infer<typeof ProjectPulseRowSchema>;
 
-/**
- * E2 Wave-2 A8 — a "needs human" bucket entry: a project that has signals a
- * person should look at, with COUNTS only (never the offending owner's PII).
- * `reasons` enumerates which signals fired; `count` is the worst-case headcount
- * behind them (e.g. number of pending requests already past N reminders).
- *
- * MVP signals available WITHOUT new schema:
- *  - 'stalled'  — has signed before but no signature in STALLED_DAYS+ days.
- *  - 'expiring' — at least one pending request expiring within EXPIRING_SOON_DAYS.
- * Signals deferred to a follow-up slice (need columns we don't have yet):
- *  - 'no_phone' (owner contactability), 'objecting' (an objection flag),
- *    'past_reminders' (a per-request reminder counter). See the B1 PR note.
- */
-export const PulseNeedsHumanReasonEnum = z.enum(['stalled', 'expiring']);
-export type PulseNeedsHumanReason = z.infer<typeof PulseNeedsHumanReasonEnum>;
-
-export const PulseNeedsHumanRowSchema = z.object({
-  projectId: z.string().uuid(),
-  projectName: z.string(),
-  reasons: z.array(PulseNeedsHumanReasonEnum).min(1),
-  /** Worst-case count behind the reasons (pending-expiring requests). Counts
-   *  only — never PII. */
-  count: z.number().int().nonnegative(),
-});
-export type PulseNeedsHumanRow = z.infer<typeof PulseNeedsHumanRowSchema>;
-
 /** E2 Wave-2 B1 — summary bucket counts for the home header chips. Each project
  *  is classified into exactly one of stalled / expiringSoon / onTrack for these
  *  three (mutually exclusive, stalled wins over expiringSoon wins over onTrack);
@@ -573,13 +547,13 @@ export type PulseBuckets = z.infer<typeof PulseBucketsSchema>;
 /**
  * E2 Wave-2 B1 — the full `GET /api/v1/org/signature-pulse` payload (under
  * `data`). `attention` is the per-project feed ORDERED by `rankAttention`
- * (most-urgent first). `needsHuman` is the A8 bucket. `buckets` are the header
- * summary counts.
+ * (most-urgent first). `buckets` are the header summary counts (including the
+ * `needsHuman` overlay count — the per-project A8 row array was removed: it was
+ * fully derived from `attention` and never read by the FE).
  */
 export const SignaturePulseSchema = z.object({
   buckets: PulseBucketsSchema,
   attention: z.array(ProjectPulseRowSchema),
-  needsHuman: z.array(PulseNeedsHumanRowSchema),
   /** HB-1 — the N15 campaign-send KILL-SWITCH state, surfaced to the FE so the
    *  board can disable / explain the one-tap "remind pending" action instead of
    *  letting the manager tap into a 503. `true` = sends enabled (the default);

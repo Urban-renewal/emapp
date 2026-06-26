@@ -82,10 +82,13 @@ export function useProposalList(query: ListProposalsQuery = {}) {
  * lockstep with the list (one source of truth — the count + the feed move
  * together; no drift). 30s staleTime + window-focus refetch, like the list.
  */
-export function useProposalsPendingCount() {
+export function useProposalsPendingCount(opts: { kind?: string } = {}) {
+  const kind = opts.kind;
   return useQuery<{ count: number }, Error>({
-    queryKey: proposalsPendingCountQueryKey(),
-    queryFn: () => proposalsPendingCount(),
+    // `kind` mirrors the active list facet so the lead-line + honesty-line + feed
+    // all derive from ONE kind-aware source (no "X מתוך Y" drift under a filter).
+    queryKey: proposalsPendingCountQueryKey(kind ? { kind } : {}),
+    queryFn: () => proposalsPendingCount(kind ? { kind } : {}),
     staleTime: 30_000,
   });
 }

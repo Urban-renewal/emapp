@@ -278,7 +278,7 @@ async function installStubs(page: import('@playwright/test').Page): Promise<Chai
   // client island that fetches /org/signature-pulse on mount. The benign
   // catch-all above answers every GET with `{ data: [] }`, which FAILS the
   // home's SignaturePulseSchema parse (it expects { buckets, attention,
-  // needsHuman }) → the home would render its DataState error panel. Stub a
+  // sendEnabled }) → the home would render its DataState error panel. Stub a
   // valid (all-clear) pulse so the home renders its calm content cleanly and
   // the §P0-3 console guard stays green. attention:[] → the reward empty-state.
   await page.route('**/api/v1/org/signature-pulse', async (route) => {
@@ -293,7 +293,6 @@ async function installStubs(page: import('@playwright/test').Page): Promise<Chai
         data: {
           buckets: { stalled: 0, expiringSoon: 0, needsHuman: 0, onTrack: 0 },
           attention: [],
-          needsHuman: [],
           // HB-1 — kill-switch state; required by SignaturePulseSchema as of #470.
           sendEnabled: true,
         },
@@ -549,7 +548,9 @@ async function installStubs(page: import('@playwright/test').Page): Promise<Chai
     await route.fulfill({
       status: 201,
       contentType: 'application/json',
-      body: JSON.stringify({ data: { created: 1, skipped: 0, total: 1 } }),
+      body: JSON.stringify({
+        data: { created: 1, delivered: 1, noChannel: 0, skipped: 0, total: 1 },
+      }),
     });
   });
 
@@ -858,8 +859,9 @@ test.describe('§E-CP — critical-path chain (Phase-9 launch gate)', () => {
     expect(campaign).toEqual({ documentId: DOC_ID });
     expect(wire.campaignIdemKey()).toMatch(UUID_V4_RE);
 
-    // The S5b result toast (created/skipped tallies).
-    await expect(page.getByTestId('signature-campaign-toast')).toHaveText('1 נשלחו · 0 דולגו', {
+    // The S5b result toast — HONEST: reports DELIVERED links (not created rows).
+    // mock = {delivered:1, noChannel:0, skipped:0} → "קישור אחד נשלח".
+    await expect(page.getByTestId('signature-campaign-toast')).toHaveText('קישור אחד נשלח', {
       timeout: 15_000,
     });
 

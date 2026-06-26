@@ -10,6 +10,7 @@ import {
   PROJECT_TYPE_LABELS,
 } from '@/adapters/project';
 import { Button } from '@/components/ui/button';
+import { DataState } from '@/components/ui/data-state';
 import { NameDisplay } from '@/components/ui/name-display';
 import { StatusBadge } from '@/components/ui/status-badge';
 import {
@@ -109,30 +110,45 @@ export default function ContractorSharePage() {
         )}
       </div>
 
-      {/* Aggregate progress — counts only, never who. */}
-      {project.data?.permissions.signatures && progress.data && (
+      {/* Aggregate progress — counts only, never who. #33 — a FAILED progress
+          fetch no longer silently drops the whole section; it routes through
+          DataState so a 5xx/network shows an honest error + retry (a 403 →
+          access-denied), never a silent nothing. */}
+      {project.data?.permissions.signatures && (
         <section className="card card-pad space-y-2">
           <h2 className="text-base font-semibold">{t('progressSection')}</h2>
-          <div
-            className="relative h-2 w-full overflow-hidden rounded-full"
-            style={{ background: 'var(--navy-100)' }}
-            role="progressbar"
-            aria-valuenow={pct}
-            aria-valuemin={0}
-            aria-valuemax={100}
+          <DataState
+            isLoading={progress.isLoading}
+            isError={progress.isError}
+            error={progress.error}
+            onRetry={() => void progress.refetch()}
+            emptyTitle={t('progressError')}
           >
-            <div
-              className="absolute inset-y-0 start-0 rounded-full"
-              style={{ width: `${pct}%`, background: 'var(--navy-700)' }}
-            />
-          </div>
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            {t('progressSummary', {
-              signed: progress.data.signaturesSigned,
-              total: progress.data.signaturesTotal,
-              pct,
-            })}
-          </p>
+            {progress.data && (
+              <>
+                <div
+                  className="relative h-2 w-full overflow-hidden rounded-full"
+                  style={{ background: 'var(--navy-100)' }}
+                  role="progressbar"
+                  aria-valuenow={pct}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  <div
+                    className="absolute inset-y-0 start-0 rounded-full"
+                    style={{ width: `${pct}%`, background: 'var(--navy-700)' }}
+                  />
+                </div>
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                  {t('progressSummary', {
+                    signed: progress.data.signaturesSigned,
+                    total: progress.data.signaturesTotal,
+                    pct,
+                  })}
+                </p>
+              </>
+            )}
+          </DataState>
         </section>
       )}
 
@@ -165,31 +181,40 @@ export default function ContractorSharePage() {
         </section>
       )}
 
-      {/* Manager-shared documents. */}
+      {/* Manager-shared documents. #32 — a FAILED documents fetch no longer
+          masquerades as the "no shared documents" empty state; it routes
+          through DataState so a 5xx/network shows an honest error + retry
+          (a 403 → access-denied). The empty copy renders ONLY on a genuine
+          loaded-but-empty result. */}
       {project.data?.permissions.documents && (
         <section className="card card-pad space-y-2">
           <h2 className="text-base font-semibold">{t('documentsSection')}</h2>
-          {!docs.data || docs.data.length === 0 ? (
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-              {t('noDocuments')}
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {docs.data.map((d) => (
-                <li key={d.id} className="flex items-center justify-between gap-3 text-sm">
-                  <NameDisplay name={d.name} />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onDownload(d.id)}
-                  >
-                    {t('download')}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <DataState
+            isLoading={docs.isLoading}
+            isError={docs.isError}
+            error={docs.error}
+            isEmpty={Boolean(docs.data && docs.data.length === 0)}
+            onRetry={() => void docs.refetch()}
+            emptyTitle={t('noDocuments')}
+          >
+            {docs.data && docs.data.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {docs.data.map((d) => (
+                  <li key={d.id} className="flex items-center justify-between gap-3 text-sm">
+                    <NameDisplay name={d.name} />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onDownload(d.id)}
+                    >
+                      {t('download')}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </DataState>
           {downloadError && <p className="text-xs text-destructive">{downloadError}</p>}
         </section>
       )}

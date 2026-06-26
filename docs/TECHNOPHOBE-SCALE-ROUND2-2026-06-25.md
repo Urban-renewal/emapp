@@ -88,6 +88,10 @@ dotted-i18n-key bug (next-intl splits on `.`) caught by the WALK, not specs/G-RT
   the unbuilt party-token tier, and sending real outbound to real external parties is in the genuine-owner-gated set
   (P5) → owner decides delivery/timing. The SMALL X-2 honesty-copy fix (stop claiming "נשלח" when nothing ships) is
   buildable now and should land regardless.
-- **Cleanup (low):** delete `home-conversations.tsx` orphan; L2 `needsHuman[]` surface-or-document decision.
+- **Cleanup (low): DONE.** Deleted the `home-conversations.tsx` orphan (zero importers). L2 decided: the
+  `needsHuman[]` per-project array was **removed** from the wire contract — it was fully derived from
+  `attention` (the same stalled/expiring subset already surfaced as the home's ranked cards) and never read
+  by the FE, so surfacing it would only duplicate the attention feed. The `buckets.needsHuman` overlay COUNT
+  (which IS surfaced) is kept; BE now computes it directly (`= stalled + expiringSoon`).
 - **Owner-gated prepared (not performed):** #498 (sensitive-doc prod backfill, runbook ready, "DO NOT MERGE until
   backfill") · #512 (consent/opt-out registry — Gate-6 schema on the outbound path).

@@ -836,9 +836,16 @@ export const handlers = [
   // approve/reject state flips. PII-FREE by contract — the wire carries only the
   // kind + a PII-free evidence snapshot + ids/timestamps. The `pending-count`
   // STATIC path is declared BEFORE the `:id` approve/reject so it is not captured.
-  http.get(`${API}/proposals/pending-count`, () =>
-    HttpResponse.json(dataEnvelope({ count: SAMPLE_PROPOSALS.length })),
-  ),
+  http.get(`${API}/proposals/pending-count`, ({ request }) => {
+    // Narrow by the SAME `?kind` as the list below, so the offline count tracks
+    // the active facet — the lead-line + honesty-line + feed are one kind-aware
+    // source (offline mode can't show the "X מתוך Y" drift either).
+    const kind = new URL(request.url).searchParams.get('kind');
+    const count = kind
+      ? SAMPLE_PROPOSALS.filter((p) => p.kind === kind).length
+      : SAMPLE_PROPOSALS.length;
+    return HttpResponse.json(dataEnvelope({ count }));
+  }),
   http.get(`${API}/proposals`, ({ request }) => {
     const url = new URL(request.url);
     const kind = url.searchParams.get('kind');

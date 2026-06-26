@@ -132,6 +132,15 @@ export const ProjectStatusEnum = z.enum([
 export type ProjectStatus = z.infer<typeof ProjectStatusEnum>;
 
 /**
+ * wave-2.4 future-states — building-permit (היתר בנייה) lifecycle. Matches the
+ * `permit_status` pg enum (migration 0083). ORTHOGONAL + ADDITIVE to the LOCKED
+ * D.18 `ProjectStatusEnum` above — NOT a change to it. 'none' = no permit
+ * tracked yet (the default); 'approved' is when `permitExpiryAt` is meaningful.
+ */
+export const PermitStatusEnum = z.enum(['none', 'applied', 'approved', 'rejected', 'expired']);
+export type PermitStatus = z.infer<typeof PermitStatusEnum>;
+
+/**
  * E2 Wave-1 B5 — project status STATE MACHINE over the D.18 enum.
  *
  * The legal/business lifecycle is a DAG: status moves FORWARD through the
@@ -256,6 +265,19 @@ export const ProjectSchema = z.object({
   subparcel: z
     .string()
     .max(40)
+    .nullish()
+    .transform((v) => v ?? null),
+  // ── wave-2.4 future-states (migration 0083) — building-permit tracking ──
+  // `permitStatus` is always present on the wire (DB default 'none'); the two
+  // dates are nullable. `.nullish().transform` tolerates a BE that drops null
+  // keys on the write-response shape (same pattern as the P3 fields above).
+  permitStatus: PermitStatusEnum.nullish().transform((v) => v ?? 'none'),
+  permitAppliedAt: z.coerce
+    .date()
+    .nullish()
+    .transform((v) => v ?? null),
+  permitExpiryAt: z.coerce
+    .date()
     .nullish()
     .transform((v) => v ?? null),
   startedAt: z.coerce.date().nullable(),
@@ -599,6 +621,18 @@ const projectWriteShape = {
   parcel: z.string().max(40).nullable().optional(),
   subparcel: z.string().max(40).nullable().optional(),
   startedAt: z.coerce.date().nullable().optional(),
+  // ── wave-2.4 future-states (migration 0083) — building-permit tracking ──
+  // A manager sets the permit state + its dates via the existing project write
+  // path (capability-gated like every other project write). `permitStatus` is
+  // optional and NOT nullable — the DB column is NOT NULL with default 'none',
+  // so the "no permit" value is the enum member 'none', never null. The two
+  // dates are nullable+optional (set / clear / omit). Cross-field consistency
+  // (e.g. an expiry only with an approved permit) is left advisory for this
+  // first cut — the FE never offers an inconsistent combo, and the recommender
+  // only acts on the approved+expiry pair.
+  permitStatus: PermitStatusEnum.optional(),
+  permitAppliedAt: z.coerce.date().nullable().optional(),
+  permitExpiryAt: z.coerce.date().nullable().optional(),
 } as const;
 
 /**

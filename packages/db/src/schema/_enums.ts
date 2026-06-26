@@ -23,6 +23,20 @@ export const projectStatusEnum = pgEnum('project_status', [
   'cancelled',
 ]);
 
+// wave-2.4 future-states (migration 0083) — building-permit (היתר בנייה)
+// lifecycle. ORTHOGONAL + ADDITIVE to the LOCKED D.18 `project_status` above —
+// a project in any project_status may carry any permit_status. NOT a change to
+// the locked enum. 'none' = no permit tracked yet (the default for every
+// existing/untracked row); 'approved' is when `permit_expiry_at` is meaningful.
+// New permit states append here (additive only).
+export const permitStatusEnum = pgEnum('permit_status', [
+  'none',
+  'applied',
+  'approved',
+  'rejected',
+  'expired',
+]);
+
 export const apartmentStatusEnum = pgEnum('apartment_status', [
   'pending',
   'contacted',

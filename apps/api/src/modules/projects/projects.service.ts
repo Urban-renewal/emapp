@@ -96,6 +96,11 @@ function toProject(r: ProjectRow): Project {
     block: r.block,
     parcel: r.parcel,
     subparcel: r.subparcel,
+    // wave-2.4 (migration 0083) — building-permit tracking. Enum + two nullable
+    // timestamps ride the select as-is; permitStatus is never null (DB default).
+    permitStatus: r.permitStatus,
+    permitAppliedAt: r.permitAppliedAt,
+    permitExpiryAt: r.permitExpiryAt,
     startedAt: r.startedAt,
     createdBy: r.createdBy,
     createdAt: r.createdAt,
@@ -1955,6 +1960,13 @@ export class ProjectsService {
         if (input.parcel !== undefined) patch.parcel = input.parcel;
         if (input.subparcel !== undefined) patch.subparcel = input.subparcel;
         if (input.startedAt !== undefined) patch.startedAt = input.startedAt;
+        // wave-2.4 (migration 0083) — building-permit tracking. Each field is set
+        // ONLY when present in the body (undefined = leave unchanged). permitStatus
+        // is never null (DB NOT NULL default 'none'); the two dates accept explicit
+        // null to clear.
+        if (input.permitStatus !== undefined) patch.permitStatus = input.permitStatus;
+        if (input.permitAppliedAt !== undefined) patch.permitAppliedAt = input.permitAppliedAt;
+        if (input.permitExpiryAt !== undefined) patch.permitExpiryAt = input.permitExpiryAt;
 
         // E2 Wave-1 B5 — OPTIMISTIC CONCURRENCY. When the client supplies the
         // `updated_at` it last read, gate the UPDATE on it: a concurrent edit

@@ -24,6 +24,7 @@
  */
 import {
   createDocumentChaseRecommender,
+  createPermitExpiringRecommender,
   createReminderCadenceRecommender,
   createSignatureReissueRecommender,
   createTaskWatcherRecommender,
@@ -65,12 +66,17 @@ export class ProposalProducerHandler implements IJobHandler<ProposalProducerJobP
    *    - document-chase    (S5):      the SAME missing-required-doc gap → an
    *      OUTBOUND document.chase.send (chase the responsible party). Reuses the
    *      SHARED detectMissingRequiredDocs (no second query) + providerPartyForDocType;
-   *      APPROVE routes the send through governOutboundSend (consent-gated). */
+   *      APPROVE routes the send through governOutboundSend (consent-gated).
+   *    - permit-expiring   (wave-2.4): a live project whose APPROVED building
+   *      permit is within ~30 days of expiry (or already lapsed) → task.create
+   *      (internal, reversible; "היתר עומד לפוג — חידוש"). Reuses the SAME
+   *      task.create kind + the generic emit path; no new AutonomyActionKind. */
   private readonly recommenders: IRecommender[] = [
     createSignatureReissueRecommender(),
     createReminderCadenceRecommender(),
     createTaskWatcherRecommender(),
     createDocumentChaseRecommender(),
+    createPermitExpiringRecommender(),
   ];
 
   async handle(_payload: ProposalProducerJobPayload, ctx: JobContext): Promise<void> {

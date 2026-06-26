@@ -12,7 +12,12 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
-import { projectTypeEnum, projectStatusEnum, apartmentStatusEnum } from './_enums';
+import {
+  projectTypeEnum,
+  projectStatusEnum,
+  apartmentStatusEnum,
+  permitStatusEnum,
+} from './_enums';
 import { bytea, citext } from './_types';
 // Type-only at runtime via the lazy `.references(() => …)` callback — the
 // projects↔artifacts import cycle never dereferences during module eval.
@@ -73,6 +78,15 @@ export const projects = pgTable(
     parcel: text('parcel'),
     subparcel: text('subparcel'),
     startedAt: timestamp('started_at', { withTimezone: true }),
+    // ── wave-2.4 future-states (migration 0083) — building-permit tracking ──
+    // ORTHOGONAL + ADDITIVE to the LOCKED D.18 status; NOT a change to it. The
+    // permit lifecycle (none|applied|approved|rejected|expired) + its two key
+    // dates. `permitStatus` defaults to 'none' (existing rows read back 'none').
+    // `permitExpiryAt` is meaningful once `permitStatus='approved'`; the
+    // `permit-expiring` autonomy recommender scans it. No PII.
+    permitStatus: permitStatusEnum('permit_status').notNull().default('none'),
+    permitAppliedAt: timestamp('permit_applied_at', { withTimezone: true }),
+    permitExpiryAt: timestamp('permit_expiry_at', { withTimezone: true }),
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id),
@@ -85,6 +99,13 @@ export const projects = pgTable(
       .on(table.orgId, table.status)
       .where(sql`archived_at IS NULL`),
     orgTypeIdx: index('idx_projects_org_type').on(table.orgId, table.type),
+    // wave-2.4 (migration 0083) — backs the set-based `permit-expiring`
+    // recommender scan (approved permits with an expiry, non-archived).
+    permitExpiryIdx: index('idx_projects_permit_expiry')
+      .on(table.permitExpiryAt)
+      .where(
+        sql`permit_status = 'approved' AND permit_expiry_at IS NOT NULL AND archived_at IS NULL`,
+      ),
   }),
 );
 

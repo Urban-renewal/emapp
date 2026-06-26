@@ -677,6 +677,22 @@
       "parcelValue": "Block {block} / Parcel {parcel}",
       "subparcelSuffix": " / Sub-parcel {subparcel}",
       "empty": "No renewal details entered yet."
+    },
+    "permit": {
+      "sectionTitle": "Building permit",
+      "appliedAt": "Applied on",
+      "expiryAt": "Valid until",
+      "status": {
+        "none": "Not applied",
+        "applied": "In progress",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "expired": "Expired"
+      },
+      "warn": {
+        "soon": "The permit expires in {days} days — start the renewal.",
+        "expired": "The permit has expired — renewal required."
+      }
     }
   },
   "imports": {

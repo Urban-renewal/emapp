@@ -74,8 +74,20 @@ principle fire reflexively instead of being a rule you forget under pressure.
   tries to BYPASS it from every angle, loops until closed, and verifies each claim against the _real_ code (a
   red-team can also over-state — check it). Spawn a `security-reviewer` agent on the diff. The builder reports
   code-green; YOU close the gate.
+- **The LOOP is the mechanism, and it is STANDING — never a one-off (owner 2026-06-25, "תעדן... אסור לשכוח").**
+  A red-team is not one pass; it is a loop run UNTIL THE RED-TEAM ITSELF CONFIRMS CLEAN (loop-until-dry):
+  **(1) FIND** — fan out independent finders over EVERY angle (security, correctness, OUTCOME-honesty,
+  cross-entity authz, error/empty/loading states), looping until ~2 consecutive rounds surface nothing new;
+  **(2) FALSE-POSITIVE VERIFY** — every candidate is adversarially checked against the REAL code by ≥2 of 3
+  diverse lenses (default-to-not-real; a red-team over-states), so ONLY confirmed-real defects survive;
+  **(3) FIX** the confirmed defects (reuse the canonical seam, P1); **(4) RE-RUN from (1)** on the fixed code,
+  and keep looping until a full round yields ZERO confirmed-real. Orchestrate it as a multi-agent COUNCIL —
+  the **Workflow** tool: parallel finders → 3-lens majority verify → confirmed list — then YOU fix + re-run.
+  A crash/interrupt does NOT end the loop: **resume** it (`resumeFromRunId`, cached finds) and finish; NEVER
+  declare clean on a partial loop. (Precedent: the email/cross-entity loop — find phase completed, the
+  fragile host crashed mid-verify; the loop is owed a resume, not abandoned.)
 - **Decision question:** _"Who tried to BREAK this, independently of who built it? If only the builder — it's
-  not gated yet."_
+  not gated yet. And did the loop actually run to DRY, or did I stop at one pass / a crash?"_
 
 ### P4 — No flat/static surface anywhere; design for 100×
 

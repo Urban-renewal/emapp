@@ -1,6 +1,11 @@
 'use client';
 
-import type { Apartment, ApartmentStatus, CreateApartment } from '@emapp/shared-types';
+import type {
+  Apartment,
+  ApartmentStatus,
+  CreateApartment,
+  GenerateApartments,
+} from '@emapp/shared-types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
@@ -8,6 +13,7 @@ import { toApartmentViewModel, toApartmentViewModels } from '@/adapters/apartmen
 import {
   archiveApartment,
   createApartment,
+  generateApartments,
   getApartment,
   listApartments,
   updateApartmentStatus,
@@ -70,6 +76,21 @@ export function useCreateApartment(buildingId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateApartment) => createApartment(buildingId, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: APARTMENTS_KEY });
+    },
+  });
+}
+
+/**
+ * Slice 2.1 — bulk-generate a building's apartments. On success, invalidate
+ * the apartments cache so the just-generated rows appear in the list without a
+ * manual refresh (the building leads with this, then the list refetches).
+ */
+export function useGenerateApartments(buildingId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: GenerateApartments) => generateApartments(buildingId, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: APARTMENTS_KEY });
     },

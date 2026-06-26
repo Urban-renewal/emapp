@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { MessageSquare, Plus, Send } from 'lucide-react';
+import { MessageSquare, Plus, Search, Send } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -33,6 +33,13 @@ export default function MessagesPage() {
   const me = useSessionProfile().data;
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // find-at-scale (3.3) — client-side find over the LOADED conversation feed.
+  // Controlled input (no native submit → no GET-fallback class); filters the
+  // in-memory threads by resolved title (participant names / explicit title)
+  // OR last-message preview, so a manager reaches a thread among 100+ without
+  // scrolling. No new fetch — the feed is already loaded. Mirrors the
+  // projects/owners search idiom (Search icon inset-end, type="search").
+  const [threadQuery, setThreadQuery] = useState('');
   // Deep-link support: /messages?c=<conversationId> (the dashboard card links
   // here). Runs once per param change; user clicks override it after.
   useEffect(() => {
@@ -112,6 +119,19 @@ export default function MessagesPage() {
     [me?.id, nameOf, t],
   );
 
+  // find-at-scale (3.3) — the conversation list narrowed by the find box. A
+  // thread matches on its resolved title (participant names / explicit title)
+  // OR its last-message preview. Empty box → the full feed (no-op filter).
+  const visibleConversations = useMemo(() => {
+    const q = threadQuery.trim().toLowerCase();
+    if (!q) return conversations;
+    return conversations.filter((c) => {
+      if (titleOf(c).toLowerCase().includes(q)) return true;
+      const preview = c.lastMessage?.body;
+      return preview ? preview.toLowerCase().includes(q) : false;
+    });
+  }, [conversations, threadQuery, titleOf]);
+
   // Auto-scroll to the latest message — keyed on the NEWEST message id (and the
   // thread switch), NOT on messages.length: "load older" prepends history and
   // grows the length, but must NOT yank the reader back to the bottom.
@@ -185,6 +205,28 @@ export default function MessagesPage() {
             </div>
           </div>
 
+          {/* find-at-scale (3.3) — thread find box (renders once there's at
+              least one thread to find). Filters the loaded feed by title or
+              last-message preview; controlled input → no GET-fallback class. */}
+          {!convFeed.isLoading && !convFeed.isError && conversations.length > 0 && (
+            <div className="relative border-b px-3 py-2" style={{ borderColor: 'var(--border)' }}>
+              <Search
+                className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2"
+                style={{ color: 'var(--text-soft)', insetInlineEnd: 24 }}
+                aria-hidden="true"
+              />
+              <input
+                type="search"
+                value={threadQuery}
+                onChange={(e) => setThreadQuery(e.target.value)}
+                placeholder={t('searchThreadsPlaceholder')}
+                aria-label={t('searchThreadsPlaceholder')}
+                className="input w-full text-sm"
+                style={{ paddingInlineEnd: 34 }}
+              />
+            </div>
+          )}
+
           <div className="min-h-0 flex-1 overflow-auto">
             {convFeed.isLoading ? (
               <p className="p-4 text-sm" style={{ color: 'var(--text-muted)' }}>
@@ -208,9 +250,13 @@ export default function MessagesPage() {
                   {t('emptyHint')}
                 </p>
               </div>
+            ) : visibleConversations.length === 0 ? (
+              <p className="p-4 text-sm" style={{ color: 'var(--text-muted)' }} role="status">
+                {t('noThreadResults')}
+              </p>
             ) : (
               <ul>
-                {conversations.map((c) => {
+                {visibleConversations.map((c) => {
                   const active = c.id === selectedId;
                   return (
                     <li key={c.id}>

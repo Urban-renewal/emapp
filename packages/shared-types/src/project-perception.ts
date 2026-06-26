@@ -1,4 +1,4 @@
-import { AutonomyActionKindSchema, type AutonomyActionKind } from '@emapp/jobs';
+import type { AutonomyActionKind } from '@emapp/jobs';
 import { z } from 'zod';
 
 import { ConsentBasisEnum } from './project';
@@ -25,13 +25,15 @@ import { ConsentBasisEnum } from './project';
  * wired onto it in the NEXT slice — this file invents the substrate, it does not
  * yet replace any existing reader.
  *
- * IMPORT NOTE: this file imports `AutonomyActionKind` from `@emapp/jobs` (a leaf
- * package — zod only, no `@emapp/*` deps), needed for the typed
- * `attentionReasonToActionKind` map. `@emapp/jobs → @emapp/shared-types` does NOT
- * exist, so there is no import cycle. This is a deliberate, documented exception
- * to shared-types' "no `@emapp/*` imports" rule (whose intent is cycle-avoidance,
- * which is preserved) — it is what keeps the map SINGLE-SOURCE against the real
- * kind taxonomy instead of a string mirror that would drift.
+ * IMPORT NOTE: this file imports `AutonomyActionKind` from `@emapp/jobs` as a
+ * TYPE-ONLY import (`import type`), needed for the typed `attentionReasonToActionKind`
+ * map. Type-only is LOAD-BEARING: `@emapp/jobs` internally uses `node:crypto`
+ * (autonomy-policy / mapping-fingerprint), so a RUNTIME import would pull node:crypto
+ * into every FE bundle that imports shared-types and break the web webpack build
+ * (UnhandledSchemeError). `import type` is erased at compile time, so the type stays
+ * SINGLE-SOURCE against the real kind taxonomy with ZERO runtime bundle cost — never
+ * a string mirror that would drift. (`@emapp/jobs → @emapp/shared-types` does not
+ * exist either, so no import cycle.)
  */
 
 /**
@@ -227,11 +229,12 @@ export function actionKindForAttentionReason(reason: AttentionReason): AutonomyA
 }
 
 /** The mapped kinds (excluding the null perceive-only reasons) — a convenience
- *  for consumers that want the set of kinds the perception can drive. Each is
- *  asserted to be a REAL `AutonomyActionKind` (the schema membership check), so
- *  a typo in the map cannot leak a non-kind into this set. */
+ *  for consumers that want the set of kinds the perception can drive. The map's
+ *  value type `AutonomyActionKind | null` (compile-checked by the `Record<>`)
+ *  already guarantees every non-null value is a REAL kind — a typo is a compile
+ *  ERROR — so a null-filter suffices and NO runtime schema import is needed,
+ *  keeping the `@emapp/jobs` dependency type-only (see the IMPORT NOTE above: a
+ *  runtime import would drag node:crypto into the FE bundle). */
 export const ATTENTION_DRIVEN_ACTION_KINDS: readonly AutonomyActionKind[] = Object.values(
   attentionReasonToActionKind,
-).filter(
-  (k): k is AutonomyActionKind => k !== null && AutonomyActionKindSchema.options.includes(k),
-);
+).filter((k): k is AutonomyActionKind => k !== null);

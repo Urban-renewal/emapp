@@ -41,7 +41,27 @@ import { SignatureCanvas, type SignatureCanvasHandle } from './_signature-canvas
 const PreviewData = z.object({ data: PublicSignPreviewSchema });
 const SubmitData = z.object({ data: PublicSignSubmitResponseSchema });
 
-type Stage = 'loading' | 'preview' | 'submitting' | 'done' | 'invalid';
+type Stage = 'loading' | 'preview' | 'submitting' | 'done' | 'invalid' | 'retryable';
+
+/**
+ * #6 — split a TRANSIENT failure (5xx / 429 / 408 timeout / network) from
+ * the genuine TERMINAL invalid/expired/used token (401 / 404 / 410).
+ *
+ * Anti-enumeration is PRESERVED: 401/404/410 are NOT distinguished from one
+ * another — they all collapse to the single `'invalid'` terminal stage so an
+ * attacker can't tell expired vs cancelled vs forged vs already-signed apart.
+ * We only carve out the TRANSIENT class (server-side hiccup / connectivity),
+ * which is NOT an oracle: a 5xx says nothing about whether the token is valid,
+ * so offering "try again" leaks no token state. A non-technical resident hit
+ * by a momentary outage must get "try again", never a false "your link is
+ * dead" dead-end.
+ */
+export function isTransientStatus(status: number): boolean {
+  // 5xx (server fault), 429 (rate-limited), 408 (the api-client/native
+  // timeout sentinel — see rawFetch). Everything else (401/404/410/400…)
+  // is treated as terminal-invalid by the callers below.
+  return status >= 500 || status === 429 || status === 408;
+}
 
 export default function SignPage() {
   const t = useTranslations('sign');
@@ -60,6 +80,8 @@ export default function SignPage() {
   // outage / unsupported viewer) → fall back to the "open in new tab"
   // affordance so the resident can still READ before they sign.
   const [previewFailed, setPreviewFailed] = useState(false);
+  // #6 — bump to re-run the preview fetch from the retryable stage.
+  const [reloadKey, setReloadKey] = useState(0);
   const canvasHandleRef = useRef<SignatureCanvasHandle | null>(null);
 
   const setHandle = useCallback((h: SignatureCanvasHandle | null) => {
@@ -73,6 +95,8 @@ export default function SignPage() {
         setStage('invalid');
         return;
       }
+      // A retry re-enters this effect via reloadKey; show the spinner again.
+      if (!cancelled) setStage('loading');
       try {
         const res = await fetch(`/api/v1/sign/${encodeURIComponent(token)}`, {
           // No credentials — this is an unauthenticated endpoint and
@@ -82,7 +106,11 @@ export default function SignPage() {
           headers: { Accept: 'application/json' },
         });
         if (!res.ok) {
-          if (!cancelled) setStage('invalid');
+          // #6 — a transient server/network failure is RETRYABLE, not the
+          // terminal "link is dead" dead-end. 401/404/410 (and any other
+          // non-transient status) stay terminal-invalid (anti-enumeration:
+          // those three are NOT distinguished from each other).
+          if (!cancelled) setStage(isTransientStatus(res.status) ? 'retryable' : 'invalid');
           return;
         }
         const body = await res.json();
@@ -96,14 +124,17 @@ export default function SignPage() {
           setStage('preview');
         }
       } catch {
-        if (!cancelled) setStage('invalid');
+        // A thrown fetch is a network failure (DNS/offline/CORS/abort) — a
+        // transient connectivity problem, NOT a verdict on the token. Offer
+        // retry rather than falsely declaring the link dead.
+        if (!cancelled) setStage('retryable');
       }
     }
     load();
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, reloadKey]);
 
   // P0.C2 — when the org requires explicit consent, the resident must tick the
   // box before signing. Derived from the preview's `consentNotice`.
@@ -165,7 +196,10 @@ export default function SignPage() {
             return;
           }
         }
-        setStage('invalid');
+        // #6 — a transient submit failure (5xx/429/408) is RETRYABLE; the
+        // resident's signature wasn't lost to a dead link. Terminal statuses
+        // (401/404/410) keep the anti-enumeration "invalid" collapse.
+        setStage(isTransientStatus(res.status) ? 'retryable' : 'invalid');
         return;
       }
       const body = await res.json();
@@ -177,7 +211,8 @@ export default function SignPage() {
       setDoneAt(ok.data.data);
       setStage('done');
     } catch {
-      setStage('invalid');
+      // Network failure on submit — transient, retryable.
+      setStage('retryable');
     }
   }
 
@@ -211,6 +246,26 @@ export default function SignPage() {
           {t('invalidRecoveryCta')}
         </Link>
         <p className="mt-3 text-xs text-muted-foreground">{t('invalidContactManager')}</p>
+      </main>
+    );
+  }
+
+  if (stage === 'retryable') {
+    // #6 — TRANSIENT failure (5xx / 429 / timeout / network). NOT the
+    // terminal dead-end: the link may be perfectly valid, the server just
+    // hiccupped. Plain-Hebrew "what happened + what to do" + a retry button
+    // that re-fetches the preview (bumping reloadKey re-runs the effect).
+    return (
+      <main className="mx-auto max-w-2xl p-6">
+        <h1 className="text-2xl font-bold">{t('retryableTitle')}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{t('retryableBody')}</p>
+        <button
+          type="button"
+          onClick={() => setReloadKey((k) => k + 1)}
+          className="mt-4 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+        >
+          {t('retry')}
+        </button>
       </main>
     );
   }

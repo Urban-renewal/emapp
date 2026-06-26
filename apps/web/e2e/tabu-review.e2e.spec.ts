@@ -1,14 +1,16 @@
 /**
  * §E-7c-F3 — נסח-טאבו review flow REGRESSION net (track-d, post-merge).
  *
- * Codifies the MERGED 7c F3 behavior (apps/web/src/app/[locale]/(dashboard)/
- * apartments/[id]/_components/tabu-review-section.tsx): on the apartment
- * page a manager picks a FINALIZED apartment-scoped נסח → "צור חילוץ"
- * (POST /apartments/:id/tabu-extractions) → "הרץ פיענוח"
- * (POST /tabu-extractions/:id/extract, rowCount) → the review table renders
- * the decrypted rows (GET /tabu-extractions/:id/rows) → inline row edit
- * (PATCH …/rows/:rowId) → "אשר וכתוב בעלויות" (POST …/confirm) → the owners
- * list refetches (['ownerships'] invalidation).
+ * Codifies the 7c F3 behavior post slice-2.2 de-jargon reshape
+ * (apps/web/src/app/[locale]/(dashboard)/apartments/[id]/_components/
+ * tabu-review-section.tsx): on the apartment page a manager picks the
+ * apartment's FINALIZED נסח → ONE primary action "מלאו את הבעלים אוטומטית"
+ * (tabu-autofill) which runs create (POST /apartments/:id/tabu-extractions) →
+ * parse (POST /tabu-extractions/:id/extract) → load (GET …/rows) behind a
+ * single spinner → the review table renders the decrypted rows → inline row
+ * edit (PATCH …/rows/:rowId) → "אשרו והחליפו את הבעלים" (POST …/confirm) →
+ * the owners list refetches (['ownerships'] invalidation). Confidence shows as
+ * a PLAIN badge (no raw %); the share editor carries no מונה/מכנה jargon.
  *
  * Regression pins (the bugs this net exists to catch):
  *  - MASKED-ROUNDTRIP: a •-masked nationalId ('•••••••82', D.19/D.47
@@ -26,9 +28,9 @@
  * ledger, §P0-3 console fixture.
  *
  * 4-axis smoke:
- *   Network  — call ORDER: POST create → POST extract → GET rows → PATCH
- *              row → GET rows → POST confirm; strict bodies; zero stray
- *              writes (no direct PUT /ownerships bypass).
+ *   Network  — call ORDER: POST create → POST extract → GET rows (the single
+ *              autofill action) → PATCH row → GET rows → POST confirm; strict
+ *              bodies; zero stray writes (no direct PUT /ownerships bypass).
  *   URL      — stays on /he/apartments/:id; NO PII (clear national_id /
  *              names) ever rides a URL.
  *   Cookies  — access_token rides the create POST (auth-guarded routes).
@@ -390,7 +392,7 @@ async function openApartmentPage(page: import('@playwright/test').Page) {
 }
 
 test.describe('§E-7c-F3 — tabu review flow (extract → review → confirm)', () => {
-  test('1) create → extract → 2 rows render (masked READ-ONLY) → name edit PATCH carries NO bullets → confirm → owners refetch', async ({
+  test('1) autofill (create+extract+load in one action) → 2 rows render (masked READ-ONLY) → name edit PATCH carries NO bullets → confirm → owners refetch', async ({
     page,
     context,
     consoleErrors,
@@ -400,16 +402,18 @@ test.describe('§E-7c-F3 — tabu review flow (extract → review → confirm)',
 
     await openApartmentPage(page);
 
-    // Step 1 — pick the FINALIZED נסח and create the draft extraction.
+    // Step 1 — pick the FINALIZED נסח, then ONE primary action: the autofill
+    // button runs create → extract → load-rows behind a single spinner and
+    // lands on the review table (the 5-button gauntlet, collapsed).
     await page.getByTestId('tabu-source-doc-select').selectOption(SOURCE_DOC_ID);
     await Promise.all([
       page.waitForResponse(
         (r) =>
-          r.url().includes(`/api/v1/apartments/${APT_ID}/tabu-extractions`) &&
-          r.request().method() === 'POST',
+          r.url().endsWith(`/api/v1/tabu-extractions/${EXT_ID}/rows`) &&
+          r.request().method() === 'GET',
         { timeout: 15_000 },
       ),
-      page.getByTestId('tabu-create-extraction').click(),
+      page.getByTestId('tabu-autofill').click(),
     ]);
 
     // §AXIS-A — strict create body (CreateTabuExtractionInput) + the
@@ -418,22 +422,8 @@ test.describe('§E-7c-F3 — tabu review flow (extract → review → confirm)',
     expect(wire.createIdemKey(), 'create POST must carry an Idempotency-Key').toBeTruthy();
     expect(wire.createCookie() ?? '').toContain('access_token');
 
-    // Step 2 — run the parse; the rowCount notice + the auto-loaded table.
-    // success signal: the show-rows affordance unlocks; the table renders after
-    // clicking it (the rows fetch is behind the OTP gate — stubbed 200 here).
-    await page.getByTestId('tabu-show-rows').click();
-    await expect(page.getByTestId('tabu-review-table')).toBeVisible({ timeout: 10_000 });
-    await Promise.all([
-      page.waitForResponse(
-        (r) =>
-          r.url().endsWith(`/api/v1/tabu-extractions/${EXT_ID}/rows`) &&
-          r.request().method() === 'GET',
-        { timeout: 15_000 },
-      ),
-      page.getByTestId('tabu-run-extract').click(),
-    ]);
-
-    // Step 3 — the review table renders BOTH fidelity variants.
+    // Step 2/3 — the review table renders BOTH fidelity variants (the single
+    // action already created+parsed+loaded; no separate show-rows click).
     const table = page.getByTestId('tabu-review-table');
     await expect(table).toBeVisible({ timeout: 10_000 });
     await expect(table.getByText(CLEAR_NATIONAL_ID)).toBeVisible();
@@ -484,7 +474,7 @@ test.describe('§E-7c-F3 — tabu review flow (extract → review → confirm)',
       ),
       page.getByTestId('tabu-confirm').click(),
     ]);
-    await expect(page.getByTestId('tabu-notice-ok')).toHaveText('הבעלויות נכתבו בהצלחה.');
+    await expect(page.getByTestId('tabu-notice-ok')).toHaveText('הבעלים עודכנו בהצלחה.');
 
     // The ['ownerships'] invalidation refetched the owners list.
     await expect
@@ -498,7 +488,6 @@ test.describe('§E-7c-F3 — tabu review flow (extract → review → confirm)',
     // PUT /ownerships bypassing the audited confirm).
     expect(wire.callOrder).toEqual([
       'POST /tabu-extractions',
-      'GET /rows',
       'POST /extract',
       'GET /rows',
       'PATCH /rows/:rowId',
@@ -525,7 +514,8 @@ test.describe('§E-7c-F3 — tabu review flow (extract → review → confirm)',
 
     await openApartmentPage(page);
 
-    // A draft already exists → open the review rows directly.
+    // A draft already exists (re-entry) → ONE "המשיכו לסקירה" action re-opens
+    // the review rows (the create+parse already ran on a prior visit).
     await Promise.all([
       page.waitForResponse(
         (r) =>
@@ -533,7 +523,7 @@ test.describe('§E-7c-F3 — tabu review flow (extract → review → confirm)',
           r.request().method() === 'GET',
         { timeout: 15_000 },
       ),
-      page.getByTestId('tabu-show-rows').click(),
+      page.getByTestId('tabu-resume-review').click(),
     ]);
     await expect(page.getByTestId('tabu-review-table')).toBeVisible({ timeout: 10_000 });
 

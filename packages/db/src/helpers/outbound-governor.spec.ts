@@ -371,9 +371,16 @@ describe('OutboundGovernor — #506 H1 failed-send retryable without double-send
       governOutboundSend({ ...baseInput(succeed), recipientRef }),
     ]);
 
-    const results = [a.result, b.result].sort();
-    // Exactly one re-sent, the other was the exactly-once no-op.
-    expect(results).toEqual(['already_sent', 'sent']);
+    const results = [a.result, b.result];
+    // The INVARIANT under concurrency: EXACTLY ONE retry wins the atomic
+    // status-guarded re-claim and re-sends (`sent`); the other is a no-op that
+    // does NOT re-send. The loser's LABEL is race-dependent — it is `already_sent`
+    // if it observes the row already `sent`, or `blocked` if it observes the row
+    // mid-claim (`pending_send`, owned by the winner) — both are correct no-ops.
+    // Asserting one specific loser label made this test flaky; assert the real
+    // invariant (one send, no double-send) instead.
+    expect(results.filter((r) => r === 'sent')).toHaveLength(1);
+    expect(results.filter((r) => r === 'already_sent' || r === 'blocked')).toHaveLength(1);
     expect(sendCalls).toBe(1); // EXACTLY ONE re-send under concurrency — M1 preserved
 
     const after = await ledgerRow(orgA, key);

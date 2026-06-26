@@ -18,7 +18,25 @@
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { extname, join } from 'path';
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// --- mocks for the getMe behavioural tests (server-direct hop) -------------
+// `next/headers` is a server-only module; stub cookies() + headers() so the
+// Server Action runs in vitest. Each test seeds the return values.
+const cookieGet = vi.fn();
+const headerGet = vi.fn();
+
+vi.mock('next/headers', () => ({
+  cookies: vi.fn(async () => ({ get: cookieGet, delete: vi.fn() })),
+  headers: vi.fn(async () => ({ get: headerGet })),
+}));
+
+// React `cache()` is a pass-through in unit context (no request scope); make
+// it the identity so getMeCached is a plain memo-free async fn per test.
+vi.mock('react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react')>();
+  return { ...actual, cache: <T>(fn: T): T => fn };
+});
 
 const SRC_ROOT = join(__dirname, '..');
 
@@ -57,5 +75,115 @@ describe('Phase 4a S1 — env-var contract guard', () => {
   it('2) NEXT_PUBLIC_API_URL never appears in apps/web source', () => {
     const hits = findOccurrences(/NEXT_PUBLIC_API_URL/);
     expect(hits).toEqual([]);
+  });
+});
+
+/**
+ * getMe() server-direct-hop behaviour (§v9-M-9 reversed — latency).
+ * Proves the server fetch goes STRAIGHT to `${API_BACKEND_URL}/api/v1/me`
+ * (no Pages-Function self-hop), still forwards the access_token cookie, and
+ * preserves 401→null + return-shape. Falls back to the self-origin proxy
+ * only when `API_BACKEND_URL` is unset.
+ */
+describe('getMe — server-direct hop to API_BACKEND_URL', () => {
+  const VALID_PROFILE = {
+    id: '11111111-1111-1111-1111-111111111111',
+    name: 'מנהל בדיקה',
+    email: 'manager@alpha.dev',
+    role: 'manager',
+    avatarColor: null,
+    organization: {
+      id: '22222222-2222-2222-2222-222222222222',
+      name: 'Alpha',
+      slug: 'alpha',
+    },
+  };
+
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    cookieGet.mockReset();
+    headerGet.mockReset();
+    delete process.env['API_BACKEND_URL'];
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env['API_BACKEND_URL'];
+  });
+
+  function okResponse() {
+    return { ok: true, json: async () => ({ data: VALID_PROFILE }) } as Response;
+  }
+
+  // 20s per test: the first dynamic `import('./auth')` in a cold CI runner
+  // compiles the module + the mocked `react`/`next/headers` graph, which can
+  // exceed the 5s default; the fetch itself is fully mocked (no real I/O).
+  it(
+    'hits the API backend directly (NOT the self-origin proxy) and forwards the cookie',
+    { timeout: 20_000 },
+    async () => {
+      process.env['API_BACKEND_URL'] = 'https://api.internal.railway';
+      cookieGet.mockReturnValue({ value: 'tok-abc' });
+      // If the code ever consulted the Host, this would prove it didn't need to.
+      headerGet.mockReturnValue('app.emapp.io');
+      fetchMock.mockResolvedValue(okResponse());
+
+      const { getMe } = await import('./auth');
+      const profile = await getMe();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      // Direct to the backend base — the self-hop ${origin}/api/v1/me is gone.
+      expect(url).toBe('https://api.internal.railway/api/v1/me');
+      expect((init.headers as Record<string, string>).Cookie).toBe('access_token=tok-abc');
+      expect(init.cache).toBe('no-store');
+      expect(profile?.email).toBe('manager@alpha.dev');
+    },
+  );
+
+  it('trims a trailing slash on API_BACKEND_URL (no double slash)', async () => {
+    process.env['API_BACKEND_URL'] = 'https://api.internal.railway/';
+    cookieGet.mockReturnValue({ value: 'tok-abc' });
+    fetchMock.mockResolvedValue(okResponse());
+
+    const { getMe } = await import('./auth');
+    await getMe();
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('https://api.internal.railway/api/v1/me');
+  });
+
+  it('returns null without fetching when no access_token cookie', async () => {
+    process.env['API_BACKEND_URL'] = 'https://api.internal.railway';
+    cookieGet.mockReturnValue(undefined);
+
+    const { getMe } = await import('./auth');
+    expect(await getMe()).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('maps a 401 (or any non-ok) to null', async () => {
+    process.env['API_BACKEND_URL'] = 'https://api.internal.railway';
+    cookieGet.mockReturnValue({ value: 'tok-abc' });
+    fetchMock.mockResolvedValue({ ok: false, status: 401 } as Response);
+
+    const { getMe } = await import('./auth');
+    expect(await getMe()).toBeNull();
+  });
+
+  it('falls back to the §v9-H-1 self-origin proxy when API_BACKEND_URL is unset', async () => {
+    // No API_BACKEND_URL → proxy path. Host must be allowlisted.
+    cookieGet.mockReturnValue({ value: 'tok-abc' });
+    headerGet.mockImplementation((name: string) => (name === 'host' ? 'localhost:3001' : null));
+    fetchMock.mockResolvedValue(okResponse());
+
+    const { getMe } = await import('./auth');
+    await getMe();
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('http://localhost:3001/api/v1/me');
   });
 });

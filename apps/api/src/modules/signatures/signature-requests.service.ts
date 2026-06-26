@@ -71,6 +71,7 @@ import { notificationLink } from '../notifications/notification-links';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 import { StatsCacheService } from '../projects/stats-cache.service';
+import { resolveRecipientConsent } from '../proposals/recipient-consent';
 
 import { deliverSignatureLink } from './signature-link-delivery';
 import { SignatureTokenService } from './signature-token.service';
@@ -1150,11 +1151,12 @@ export class SignatureRequestsService {
    * The kill-switch is resolved here from `CAMPAIGN_SEND_ENABLED` (OPT-OUT:
    * enabled unless '0'/'false') and handed to the gate — the gate is the single
    * authoritative kill-switch check on this path (`resend` itself does not gate on
-   * it). Consent defaults to TRUE (there is no per-owner outbound opt-out registry
-   * yet — that is a documented seam the ConsentGate already accepts via the
-   * resolved snapshot; when the registry lands, resolve it here). The breaker is
-   * not yet wired to a live trip-source in Phase 2, so it defaults to NOT tripped;
-   * the gate is in the pipeline ready for the breach-loop (Phase 5).
+   * it). Consent is resolved through the ONE canonical `resolveRecipientConsent`
+   * seam (the same seam the reissue + chase executors use) — FAIL-CLOSED (`false`)
+   * until the per-owner opt-out registry (#512) lands, so the ConsentGate denies →
+   * `blocked` (no send) rather than firing to a possibly-opted-out owner. The
+   * breaker is not yet wired to a live trip-source in Phase 2, so it defaults to
+   * NOT tripped; the gate is in the pipeline ready for the breach-loop (Phase 5).
    *
    * Returns the governed outcome; the executor maps a non-`sent` outcome to an
    * exception so the proposal stays pending/actionable (per-item independence,
@@ -1180,9 +1182,11 @@ export class SignatureRequestsService {
       channel: 'email',
       recipientRef: input.signatureRequestId,
       cadenceStep: input.cadenceStep,
-      // Consent default — the documented seam for a future per-owner opt-out
-      // registry. ConsentGate denies when this is false.
-      recipientConsented: true,
+      // Consent via the ONE canonical seam (never hardcoded true — the #516
+      // bypass). Fail-closed until the per-owner opt-out registry (#512) lands →
+      // `false` → ConsentGate denies → `blocked` (no send). Same seam the reissue +
+      // chase executors use, so all three answer "may we send?" identically.
+      recipientConsented: resolveRecipientConsent(input.signatureRequestId),
       killSwitchEnabled,
       // No live breaker trip-source in Phase 2 — the gate is wired, ready.
       breakerTripped: false,
@@ -2022,11 +2026,12 @@ export class SignatureRequestsService {
    * A re-approve of the same proposal is impossible (the state machine flips it to
    * `applied`). So no double-send from any retry/double-approve path.
    *
-   * KILL-SWITCH / CONSENT: resolved here from `CAMPAIGN_SEND_ENABLED` (OPT-OUT)
-   * and handed to the gate — the same posture as `sendGovernedReminder`. A
-   * kill-switch-off / consent-withdrawn org gets `blocked` (NO send, NO ledger
-   * row); the re-mint already happened (reversible) and the manager retries when
-   * the condition lifts.
+   * KILL-SWITCH / CONSENT: kill-switch resolved from `CAMPAIGN_SEND_ENABLED`
+   * (OPT-OUT); consent resolved through the ONE canonical `resolveRecipientConsent`
+   * seam — the same posture as `sendGovernedReminder` + the chase executor. Consent
+   * is FAIL-CLOSED (`false`) until the opt-out registry (#512) lands, so a reissue
+   * `blocked`s at the ConsentGate (NO send, NO ledger row); the re-mint already
+   * happened (reversible) and the manager retries when consent can be confirmed.
    *
    * NOTIFICATION (legibility): after the send result is known, a best-effort
    * in-app notification fans out to the org's managers + the request's project
@@ -2063,9 +2068,11 @@ export class SignatureRequestsService {
       // retried same-approve collides → already_sent.
       recipientRef: input.proposalId,
       cadenceStep: REISSUE_SEND_CADENCE_STEP,
-      // Consent defaults TRUE — same documented seam as sendGovernedReminder (no
-      // per-owner outbound opt-out registry yet; ConsentGate denies when false).
-      recipientConsented: true,
+      // Consent via the ONE canonical seam (never hardcoded true — THIS method was
+      // the #516 bypass). Fail-closed until the per-owner opt-out registry (#512)
+      // lands → `false` → ConsentGate denies → `blocked`. The re-mint above still
+      // stands (reversible); only the governed DELIVERY is consent-gated.
+      recipientConsented: resolveRecipientConsent(input.proposalId),
       killSwitchEnabled,
       breakerTripped: false,
       now: new Date(),

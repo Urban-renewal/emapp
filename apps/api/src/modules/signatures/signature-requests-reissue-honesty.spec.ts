@@ -1,26 +1,33 @@
 /**
- * DELIVERY-OUTCOME HONESTY for the proposal-approve REISSUE executor (#16) —
- * adversarial, deterministic real-DB spec authored as the test author (does NOT
- * touch the impl).
+ * DELIVERY-OUTCOME HONESTY for the proposal-approve REISSUE executor (#16) +
+ * CONSENT FAIL-CLOSED (the #516 bypass) — adversarial, deterministic real-DB spec
+ * authored as the test author (does NOT touch the impl).
  *
  * Feature under test: SignatureRequestsService.reissueAndDeliver(user, input) —
  * the executor behind `signature_request.reissue` proposal approval. It re-mints
- * an EXPIRED request's link AND governed-sends it, THEN — for LEGIBILITY — fires
- * an in-app "owner re-notified" (`signature_received`) notification.
+ * an EXPIRED request's link AND governed-sends it (through the canonical
+ * `governOutboundSend`), THEN — only on a real delivery — fires an in-app "owner
+ * re-notified" (`signature_received`) notification.
  *
- * THE BUG (#16): a reissue whose send actually FAILED (the owner has NO email AND
- * NO phone, so NO channel can carry the link) must NOT be laundered into a false
- * "delivered" + a false "received" notification. The notification is the
- * recipient-facing claim "the owner got it"; firing it on a non-send is a lie.
+ * THE #516 BYPASS (now closed): `reissueAndDeliver` used to HARDCODE
+ * `recipientConsented: true` into `governOutboundSend`, so the ConsentGate could
+ * never deny → an opted-out owner was still emailed/SMS'd. The fix routes consent
+ * through the ONE shared `resolveRecipientConsent` seam, which is FAIL-CLOSED
+ * (`false`) until the per-owner opt-out registry (#512) lands. So EVERY reissue
+ * `blocked`s at the ConsentGate today: the re-mint stands (reversible) but NOTHING
+ * is delivered and NO "received" notification fires — the consent-SAFE posture.
  *
- * The contract this pins (the canonical `didAnyChannelDeliver` gate):
- *  - DELIVERED (email actually went) → `delivered:true`, `state:'sent'`, AND the
- *    `signature_received` notification fires (the manager legitimately sees
- *    "owner re-notified").
- *  - NO-CHANNEL (no email + no phone → nothing sent) → `delivered:false`, a
- *    non-`sent` state, AND the notification does NOT fire. The link was still
- *    re-minted (the row flips expired→pending) so the manager can deliver it
- *    manually — but the system never claims it reached the owner.
+ * The contract this pins:
+ *  - CONSENT FAIL-CLOSED (any owner, with or without a channel): the governed send
+ *    `blocked`s → `delivered:false`, `state:'blocked'`, NO outbound ledger `sent`
+ *    row, AND the `signature_received` notification does NOT fire. The link was
+ *    still re-minted (expired→pending) so the manager can deliver it manually — but
+ *    the system never claims it reached the owner. (When #512 lands and consent is
+ *    confirmed, an owner-with-a-channel will deliver; that is a follow-up, gated on
+ *    the registry — NOT a hardcoded `true`.)
+ *  - The #16 no-channel honesty still holds underneath: even if consent were
+ *    confirmed, a no-channel owner would be `delivered:false` (never laundered into
+ *    a false "delivered"/"received").
  *
  * Seeding mirrors signature-requests-resend.spec.ts. The notifications producer
  * is a SPY (records emitMany) so "did the false-received notification fire?" is a
@@ -232,8 +239,8 @@ beforeEach(() => {
   (notificationsSpy.emitMany as ReturnType<typeof vi.fn>).mockClear();
 });
 
-describe('reissueAndDeliver — DELIVERED owner (control: the honest path still notifies)', () => {
-  it('REH-1) owner WITH email → delivered:true, state sent, AND the "owner re-notified" notification fires', async () => {
+describe('reissueAndDeliver — CONSENT FAIL-CLOSED (#516: even a channel-on-file owner is NOT delivered until #512)', () => {
+  it('REH-1) owner WITH email → BLOCKED at the ConsentGate: delivered:false, state blocked, NO send, NO notification', async () => {
     const owner = await seedOwner(org.id, true);
     const reqId = await seedExpiredRequest(org.id, doc, owner);
     const proposalId = await seedProposal(org.id, reqId);
@@ -243,17 +250,23 @@ describe('reissueAndDeliver — DELIVERED owner (control: the honest path still 
       proposalId,
     });
 
-    expect(delivery.delivered).toBe(true);
-    expect(delivery.state).toBe('sent');
-    // The link was revived: expired → pending.
+    // THE #516 GUARD: consent is fail-closed via the shared seam → the ConsentGate
+    // DENIES → the governed send is `blocked`. The owner HAS an email, yet NOTHING
+    // is sent — exactly the bypass that hardcoded `recipientConsented:true` allowed.
+    expect(delivery.delivered).toBe(false);
+    expect(delivery.state).toBe('blocked');
+    // The link was still revived: expired → pending (the re-mint is reversible and
+    // unaffected; only the governed DELIVERY is consent-gated). The manager can
+    // deliver it manually until #512 lands.
     expect(await readStatus(reqId)).toBe('pending');
-    // The legibility notification fired — and it is the signature_received type.
-    expect(emitManyCalls).toHaveLength(1);
-    expect(emitManyCalls[0]!.type).toBe('signature_received');
+    // HONESTY: no real delivery → the "owner re-notified" notification must NOT
+    // fire (it would falsely claim the owner received the link).
+    expect(notificationsSpy.emitMany).not.toHaveBeenCalled();
+    expect(emitManyCalls).toHaveLength(0);
   }, 30_000);
 });
 
-describe('reissueAndDeliver — NO-CHANNEL owner (#16: a failed send must NOT claim delivered / received)', () => {
+describe('reissueAndDeliver — NO-CHANNEL owner (#16 honesty holds underneath the consent gate)', () => {
   it('REH-2) owner with NO email AND NO phone → delivered:false, state NOT sent, and NO notification fires', async () => {
     const owner = await seedOwner(org.id, false);
     const reqId = await seedExpiredRequest(org.id, doc, owner);
@@ -264,7 +277,9 @@ describe('reissueAndDeliver — NO-CHANNEL owner (#16: a failed send must NOT cl
       proposalId,
     });
 
-    // HONESTY: nothing reached the owner — never report a delivery.
+    // HONESTY: nothing reached the owner — never report a delivery. Today the
+    // ConsentGate blocks first (fail-closed #516); even if consent were confirmed,
+    // a no-channel owner is still a non-delivery (#16). Either way: not delivered.
     expect(delivery.delivered).toBe(false);
     expect(delivery.state).not.toBe('sent');
     // The re-mint still stands (the row is pending again) so the manager can

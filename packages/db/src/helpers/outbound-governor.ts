@@ -93,8 +93,10 @@ export interface GovernedSendInput {
   /** NON-PII recipient discriminator (the signature_request id). */
   recipientRef: string;
   cadenceStep: number;
-  /** Whether the recipient is consented (resolved by the caller from the owner
-   *  record / future opt-out registry). Absent registry → true. */
+  /** Whether the recipient is consented. Resolved by the caller through the ONE
+   *  canonical `resolveRecipientConsent` seam — FAIL-CLOSED (`false`) until the
+   *  per-owner opt-out registry (#512) lands. NEVER hardcoded `true` (the #516
+   *  bypass); `false` makes the ConsentGate DENY. */
   recipientConsented: boolean;
   /** The CAMPAIGN_SEND_ENABLED kill-switch state (resolved from env by caller). */
   killSwitchEnabled: boolean;

@@ -87,6 +87,7 @@
         "remindAria": "Send a reminder to {name}",
         "remindSent": "Reminder sent",
         "requestSent": "Signature request sent to {name}",
+        "requestNotDelivered": "The request for {name} is ready, but there's no way to reach them (no email or phone) — send the link manually.",
         "remindNonePending": "No pending signature request for this owner — the board may be out of date.",
         "startCampaignAria": "Start collecting signatures in apartment {number}"
       },
@@ -1362,7 +1363,10 @@
     "consentSectionTitle": "Privacy & data-processing notice",
     "consentCheckboxLabel": "I have read the privacy notice and consent to the processing of my personal data.",
     "consentImplicitLine": "By signing, you acknowledge that you have read the privacy notice above.",
-    "consentRequired": "You must acknowledge the privacy notice before signing."
+    "consentRequired": "You must acknowledge the privacy notice before signing.",
+    "retryableTitle": "Temporary error",
+    "retryableBody": "We couldn't load the document right now. This may be a temporary network issue. Please try again in a moment.",
+    "retry": "Try again"
   },
   "provider": {
     "nav": {
@@ -1859,6 +1863,11 @@
       "resending": "Sending...",
       "resentHint": "A fresh link was sent to your phone.",
       "resendError": "Couldn't send. Try again in a few minutes."
+    },
+    "outage": {
+      "title": "We couldn't load your data",
+      "body": "This may be a temporary problem. Your details are safe. Please try again in a moment.",
+      "retry": "Try again"
     }
   },
   "settings": {
@@ -2214,7 +2223,8 @@
     "documentsSection": "Shared documents",
     "noDocuments": "No shared documents.",
     "download": "Download",
-    "downloadFailed": "Download failed. Try again."
+    "downloadFailed": "Download failed. Try again.",
+    "progressError": "We couldn't load the signature progress."
   },
   "messages": {
     "title": "Messages",

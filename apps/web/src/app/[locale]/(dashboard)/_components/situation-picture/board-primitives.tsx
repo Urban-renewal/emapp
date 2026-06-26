@@ -18,7 +18,7 @@ import {
 import {
   HOLDOUT_NONE_PENDING_CODE,
   useChaseHoldout,
-  type HoldoutChaseAction,
+  type HoldoutChaseResult,
 } from '@/hooks/use-signature-requests';
 import { apiClient, isOk } from '@/lib/api-client';
 import type { ApartmentHoldoutViewModel } from '@/models/apartment-signature-progress.vm';
@@ -509,7 +509,20 @@ export function HoldoutRow({
               chase.mutate(
                 { ownerId: holdout.ownerId, signableDocumentId },
                 {
-                  onSuccess: (action: HoldoutChaseAction) => {
+                  onSuccess: ({ action, delivered }: HoldoutChaseResult) => {
+                    // HONEST OUTCOME (delivery-outcome bug #2): the request always
+                    // exists now, but the toast claims "sent" ONLY when a channel
+                    // actually carried the link. A no-channel owner (no email AND
+                    // no phone, or PII decrypt failed) gets a calm "created but not
+                    // delivered — send the link manually" line + assertive tone, so
+                    // the manager never believes a silent non-send went out.
+                    if (!delivered) {
+                      toast.show({
+                        message: t('holdouts.requestNotDelivered', { name: ownerLabel }),
+                        variant: 'assertive',
+                      });
+                      return;
+                    }
                     toast.show({
                       message:
                         action === 'created'

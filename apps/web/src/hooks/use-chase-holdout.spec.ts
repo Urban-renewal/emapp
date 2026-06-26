@@ -69,6 +69,22 @@ interface ChaseHook {
 // The per-apartment signable doc the create targets (this holdout's OWN apt doc).
 const APT_DOC = '33333333-3333-4333-8333-333333333333';
 
+// A delivery report where a channel ACTUALLY went out (email sent) → delivered.
+const DELIVERED_REPORT = {
+  email: { available: true, status: 'sent' as const, to: 'na***@x.test' },
+  sms: { available: false, reason: 'no_phone_on_file' },
+  whatsapp: { available: false, reason: 'no_phone_on_file' },
+};
+// A delivery report where NO channel went out (owner has no email AND no phone, or
+// PII decrypt failed) → the request exists but NOTHING was sent (`didAnyChannelDeliver`
+// is false). The toast MUST NOT claim "sent".
+const NO_CHANNEL_REPORT = {
+  email: { available: false, reason: 'no_email_on_file' },
+  sms: { available: false, reason: 'no_phone_on_file' },
+  whatsapp: { available: false, reason: 'no_phone_on_file' },
+};
+const SIGN_URL = 'https://app.test/sign/jwt-token';
+
 const PENDING_ROW = {
   id: 'req-99',
   organizationId: '22222222-2222-4222-8222-222222222222',
@@ -101,15 +117,19 @@ async function loadHook(): Promise<ChaseHook> {
 }
 
 describe('useChaseHoldout — state-aware chase', () => {
-  it('1) pending exists → resends THAT request id, returns "resent", never creates', async () => {
+  it('1) pending exists + channel delivered → resends THAT request id, returns {resent, delivered:true}, never creates', async () => {
     listSignatureRequests.mockResolvedValue({
       items: [PENDING_ROW],
       page: { limit: 1, cursor: null, has_more: false },
     });
-    resendSignatureRequest.mockResolvedValue(PENDING_ROW);
+    resendSignatureRequest.mockResolvedValue({
+      request: PENDING_ROW,
+      signUrl: SIGN_URL,
+      delivery: DELIVERED_REPORT,
+    });
 
     const hook = await loadHook();
-    const action = await hook.mutationFn({ ownerId: 'owner-7', signableDocumentId: APT_DOC });
+    const result = await hook.mutationFn({ ownerId: 'owner-7', signableDocumentId: APT_DOC });
 
     // Resolve: scoped to the owner + pending only (never widens to all rows).
     expect(listSignatureRequests).toHaveBeenCalledWith({
@@ -122,18 +142,25 @@ describe('useChaseHoldout — state-aware chase', () => {
     expect(resendSignatureRequest).not.toHaveBeenCalledWith('owner-7');
     // No CREATE when a live pending request already exists.
     expect(createSignatureRequest).not.toHaveBeenCalled();
-    expect(action).toBe('resent');
-  });
+    // A channel actually carried the link → delivered:true (the path is 'resent').
+    expect(result).toEqual({ action: 'resent', delivered: true });
+    // Generous timeout: this is the first test to pull the real shared-types
+    // `didAnyChannelDeliver` into the graph (cold transform), not a slow test.
+  }, 30_000);
 
-  it('2) no pending BUT a per-apartment signable doc → creates {documentId, ownerId}, returns "created", never resends', async () => {
+  it('2) no pending BUT a per-apartment signable doc + delivered → creates {documentId, ownerId}, returns {created, delivered:true}, never resends', async () => {
     listSignatureRequests.mockResolvedValue({
       items: [],
       page: { limit: 1, cursor: null, has_more: false },
     });
-    createSignatureRequest.mockResolvedValue({ request: PENDING_ROW });
+    createSignatureRequest.mockResolvedValue({
+      request: PENDING_ROW,
+      signUrl: SIGN_URL,
+      delivery: DELIVERED_REPORT,
+    });
 
     const hook = await loadHook();
-    const action = await hook.mutationFn({ ownerId: 'owner-7', signableDocumentId: APT_DOC });
+    const result = await hook.mutationFn({ ownerId: 'owner-7', signableDocumentId: APT_DOC });
 
     // CREATE against THIS holdout's per-apartment signable doc, keyed by the owner
     // (HB-5 fix — the apartment's own agreement, so an associated owner is 201).
@@ -143,7 +170,45 @@ describe('useChaseHoldout — state-aware chase', () => {
     });
     // No resend when there was nothing pending.
     expect(resendSignatureRequest).not.toHaveBeenCalled();
-    expect(action).toBe('created');
+    expect(result).toEqual({ action: 'created', delivered: true });
+  });
+
+  // ── delivery-outcome honesty (#2): the path taken is NOT proof a channel went ──
+  it('2a) CREATE whose delivery reached NO channel → {created, delivered:false} (must NOT be reported as sent)', async () => {
+    listSignatureRequests.mockResolvedValue({
+      items: [],
+      page: { limit: 1, cursor: null, has_more: false },
+    });
+    // Created the row, but the owner has no email AND no phone → nothing was sent.
+    createSignatureRequest.mockResolvedValue({
+      request: PENDING_ROW,
+      signUrl: SIGN_URL,
+      delivery: NO_CHANNEL_REPORT,
+    });
+
+    const hook = await loadHook();
+    const result = await hook.mutationFn({ ownerId: 'owner-7', signableDocumentId: APT_DOC });
+
+    // The request EXISTS (path 'created') but delivered:false — the toast layer
+    // shows "send manually", never "sent".
+    expect(result).toEqual({ action: 'created', delivered: false });
+  });
+
+  it('2b) RESEND whose every channel was unavailable → {resent, delivered:false} (re-minted but nothing sent)', async () => {
+    listSignatureRequests.mockResolvedValue({
+      items: [PENDING_ROW],
+      page: { limit: 1, cursor: null, has_more: false },
+    });
+    resendSignatureRequest.mockResolvedValue({
+      request: PENDING_ROW,
+      signUrl: SIGN_URL,
+      delivery: NO_CHANNEL_REPORT,
+    });
+
+    const hook = await loadHook();
+    const result = await hook.mutationFn({ ownerId: 'owner-7', signableDocumentId: APT_DOC });
+
+    expect(result).toEqual({ action: 'resent', delivered: false });
   });
 
   it('3) no pending AND no signable doc → typed holdout_none_pending; neither resend nor create', async () => {

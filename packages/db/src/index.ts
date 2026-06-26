@@ -122,6 +122,14 @@ export {
   type PurgeImportBytesOpts,
   type PurgeLogger,
 } from './helpers/import-bytes';
+export {
+  encryptRecipientField,
+  decryptRecipientField,
+  maskRecipientEmail,
+  maskRecipientPhone,
+  maskEmail as maskRecipientEmailPure,
+  maskPhone as maskRecipientPhonePure,
+} from './helpers/external-share-recipient';
 export type { IEncryptionService } from './providers/encryption/encryption.interface';
 export { PgcryptoEncryptionService } from './providers/encryption/pgcrypto.provider';
 export { FakeEncryptionService } from './providers/encryption/fake.provider';

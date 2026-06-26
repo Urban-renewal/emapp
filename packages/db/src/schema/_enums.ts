@@ -79,6 +79,27 @@ export const externalShareScopeTypeEnum = pgEnum('external_share_scope_type', [
   'building',
   'apartment',
 ]);
+// W-4.1 (migration 0087) — how a grant's invite reaches the recipient.
+// `manual_link` is the safe default + the ONLY channel allowed when the
+// binder→share bridge yields null (track-only party). An actual send is the
+// gated 4.3 path; 4.1 never sends.
+export const externalShareDeliveryChannelEnum = pgEnum('external_share_delivery_channel', [
+  'email',
+  'sms',
+  'manual_link',
+]);
+
+// W-4.1 (migration 0087) — the who-owes-what obligation lifecycle. open →
+// delivered (real governed send, 4.3) → fulfilled (awaited doc arrived);
+// cancelled is the only termination (DELETE is REVOKED — cancel is a status
+// transition, never a physical delete).
+export const partyRequestStatusEnum = pgEnum('party_request_status', [
+  'open',
+  'delivered',
+  'fulfilled',
+  'cancelled',
+]);
+
 // DH1 (migration 0077) — the closed document-taxonomy SCOPE enum. A document
 // hangs off exactly one scope: the org as a whole, a project, an apartment, or
 // (new) a single owner. Paired with `documents.doc_scope_id` (the typed target

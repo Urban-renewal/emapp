@@ -28,9 +28,11 @@ import {
   CreateProjectInput,
   CreateShareInput,
   CreateExternalShareInput,
+  CreatePartyRequestInput,
   ExtendExternalShareInput,
   ExternalPartyAccessQuery,
   ListExternalSharesQuery,
+  ListPartyRequestsQuery,
   UpdateExternalShareInput,
   ListProposalsQuery,
   CreateTaskInput,
@@ -872,6 +874,55 @@ const ENDPOINTS: Endpoint[] = [
     response:
       '{ "data": { "allow": true, "constraints": { "requiresDecryptStream": bool, "watermarkSubject": "string|null" } } | { "allow": false, "reason": "share_revoked|share_expired|documents_not_granted|download_not_granted|out_of_scope|sensitive_not_allowed|otp_required|document_not_servable" } }',
     errors: ['validation_error', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  // W-4.1 — party_request (who-owes-what) obligation ledger. Manager-only
+  // writes (service requireManager). No delivery here (4.3). Recipient PII on
+  // the linked external_share is masked-only on the wire.
+  {
+    method: 'GET',
+    path: '/api/v1/party-requests',
+    auth: 'AuthGuard + TenantGuard',
+    summary:
+      'List LIVE (open/delivered) cross-party obligations — the who-owes-what feed. Cursor-paginated. Optional ?projectId / ?documentParty / ?status narrows. PII-free (project + binder party + doc-type, never a person). Suspended org → empty.',
+    request: ListPartyRequestsQuery,
+    response:
+      '{ "data": [ {PartyRequest} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }',
+    errors: [
+      'validation_error',
+      'invalid_cursor',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/party-requests',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'Create a who-owes-what obligation (one LIVE obligation per project/party/doc-type — partial-unique enforced; duplicate → duplicate_obligation). project_id + any linked external_share_id must resolve live in-org. No send.',
+    request: CreatePartyRequestInput,
+    response: '{ "data": { ...PartyRequest } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'invalid_project',
+      'invalid_share',
+      'duplicate_obligation',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/party-requests/:id/cancel',
+    auth: 'AuthGuard + TenantGuard (Manager)',
+    summary:
+      'Cancel an obligation — a STATUS transition to cancelled (DELETE is revoked at the DB layer). Idempotent on already-terminal rows. Suspended/missing → 404.',
+    response: '{ "data": { ...PartyRequest } }',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
   // Autonomous Master Plan, Phase 1 — Approval-Inbox (proposals). Manager-only
   // (service requireManager). Phase-1 kind = signature_request.reissue.

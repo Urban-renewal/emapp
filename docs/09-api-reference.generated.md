@@ -1254,10 +1254,14 @@ _(no body)_
 | field | type | required | constraints |
 |---|---|---|---|
 | `allowSensitive` | boolean | no | — |
+| `deliveryChannel` | string | no | enum=["email","sms","manual_link"] |
 | `expiresAt` | unknown | no | — |
 | `otpRequired` | boolean | no | — |
 | `partyType` | string | yes | enum=["developer","tenant_lawyer","developer_lawyer","bank","supervisor","appraiser","surveyor","committee","special_admin"] |
 | `permissions` | object | yes | — |
+| `recipientEmail` | unknown | no | — |
+| `recipientName` | unknown | no | — |
+| `recipientPhone` | unknown | no | — |
 | `scopeIds` | array | yes | — |
 | `scopeType` | string | yes | enum=["project","building","apartment"] |
 | `watermarkSubject` | string | no | maxLength=200 |
@@ -1298,8 +1302,12 @@ _(no body)_
 | field | type | required | constraints |
 |---|---|---|---|
 | `allowSensitive` | boolean | no | — |
+| `deliveryChannel` | string | no | enum=["email","sms","manual_link"] |
 | `otpRequired` | boolean | no | — |
 | `permissions` | object | no | — |
+| `recipientEmail` | unknown | no | — |
+| `recipientName` | unknown | no | — |
+| `recipientPhone` | unknown | no | — |
 | `scopeIds` | array | no | — |
 | `scopeType` | string | no | enum=["project","building","apartment"] |
 | `watermarkSubject` | unknown | no | — |
@@ -2373,6 +2381,70 @@ _(no body)_
 ```
 
 **Errors:** `validation_error`, `forbidden`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/party-requests
+
+- **Auth:** AuthGuard + TenantGuard
+- **Summary:** List LIVE (open/delivered) cross-party obligations — the who-owes-what feed. Cursor-paginated. Optional ?projectId / ?documentParty / ?status narrows. PII-free (project + binder party + doc-type, never a person). Suspended org → empty.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `cursor` | string | no | minLength=1 |
+| `documentParty` | string | no | enum=["owner","appraiser","architect","municipality","contractor","lawyer","supervisor","surveyor","other"] |
+| `limit` | integer | no | minimum=1, maximum=100 |
+| `projectId` | string | no | format="uuid" |
+| `status` | string | no | enum=["open","delivered","fulfilled","cancelled"] |
+
+
+**Response**
+
+```json
+{ "data": [ {PartyRequest} ], "page": { "limit": int, "cursor": "string|null", "has_more": bool } }
+```
+
+**Errors:** `validation_error`, `invalid_cursor`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/party-requests
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Create a who-owes-what obligation (one LIVE obligation per project/party/doc-type — partial-unique enforced; duplicate → duplicate_obligation). project_id + any linked external_share_id must resolve live in-org. No send.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `documentParty` | string | yes | enum=["owner","appraiser","architect","municipality","contractor","lawyer","supervisor","surveyor","other"] |
+| `externalShareId` | unknown | no | — |
+| `projectId` | string | yes | format="uuid" |
+| `requestedDocType` | unknown | no | — |
+
+
+**Response**
+
+```json
+{ "data": { ...PartyRequest } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `invalid_project`, `invalid_share`, `duplicate_obligation`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/party-requests/:id/cancel
+
+- **Auth:** AuthGuard + TenantGuard (Manager)
+- **Summary:** Cancel an obligation — a STATUS transition to cancelled (DELETE is revoked at the DB layer). Idempotent on already-terminal rows. Suspended/missing → 404.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...PartyRequest } }
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/portal/apartment
 

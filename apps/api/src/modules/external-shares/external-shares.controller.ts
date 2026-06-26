@@ -1,13 +1,17 @@
 import {
   CreateExternalShareInput,
+  CreatePartyRequestInput,
   ExtendExternalShareInput,
   ExternalPartyAccessQuery,
   ListExternalSharesQuery,
+  ListPartyRequestsQuery,
   UpdateExternalShareInput,
   type CreateExternalShare,
+  type CreatePartyRequest,
   type ExtendExternalShare,
   type ExternalPartyAccessQueryDto,
   type ListExternalSharesQueryDto,
+  type ListPartyRequestsQueryDto,
   type UpdateExternalShare,
 } from '@emapp/shared-types';
 import {
@@ -128,5 +132,39 @@ export class ExternalSharesController {
   @RequirePermission('shares.revoke')
   async revoke(@CurrentUser() user: AccessTokenPayload, @Param('id', UuidParam) id: string) {
     await this.externalShares.revoke(user, id);
+  }
+
+  // ══════════════════════ party_request (who-owes-what) ═════════════════════
+  // The cross-party obligation ledger. Manager-only WRITES (enforced in the
+  // service via requireManager); @TenantScoped is the coarse authenticated-
+  // org-member gate (same convention as list/update above — there is no
+  // separate party-request permission in the catalog; a share/obligation is a
+  // delivery concern, not a separately-listed read resource). No delivery here.
+
+  @Get('party-requests')
+  @TenantScoped()
+  async listPartyRequests(
+    @CurrentUser() user: AccessTokenPayload,
+    @Query(new ZodValidationPipe(ListPartyRequestsQuery)) query: ListPartyRequestsQueryDto,
+  ) {
+    return this.externalShares.listOpenPartyRequests(user, query);
+  }
+
+  @Post('party-requests')
+  @TenantScoped()
+  async createPartyRequest(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body(new ZodValidationPipe(CreatePartyRequestInput)) body: CreatePartyRequest,
+  ) {
+    return { data: await this.externalShares.createPartyRequest(user, body) };
+  }
+
+  @Post('party-requests/:id/cancel')
+  @TenantScoped()
+  async cancelPartyRequest(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', UuidParam) id: string,
+  ) {
+    return { data: await this.externalShares.cancelPartyRequest(user, id) };
   }
 }

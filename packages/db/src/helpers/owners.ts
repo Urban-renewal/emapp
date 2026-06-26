@@ -5,7 +5,7 @@ import { sql } from 'drizzle-orm';
 import type { Database } from '../client';
 import { env } from '../env';
 
-function requirePiiKeys(): { encKey: string; hashKey: string } {
+export function requirePiiKeys(): { encKey: string; hashKey: string } {
   const encKey = env.PII_ENCRYPTION_KEY;
   const hashKey = env.PII_HASH_KEY;
   if (!encKey || !hashKey) {

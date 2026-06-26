@@ -8,7 +8,12 @@
 import { FakeEmailProvider } from '@emapp/db';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { EXPOSE_INVITE_TOKEN, buildInviteEmail, emailProviderFactory } from './invite-email';
+import {
+  EXPOSE_INVITE_TOKEN,
+  buildInviteEmail,
+  emailProviderFactory,
+  scrubInviteErrorForLog,
+} from './invite-email';
 
 describe('D.27 · invite-email', () => {
   const prevEnv = process.env['NODE_ENV'];
@@ -86,5 +91,43 @@ describe('D.27 · invite-email', () => {
     process.env['APP_BASE_URL'] = 'https://app.example.co.il///';
     const m = buildInviteEmail({ to: 'x@y.z', name: 'X', token: 'abc' });
     expect(m.html).toContain('https://app.example.co.il/he/accept-invite/abc');
+  });
+
+  describe('SEC-TOKEN-LOG #39 · scrubInviteErrorForLog', () => {
+    // Placeholder credential shape — NOT a realistic JWT literal (GitGuardian).
+    const TOKEN = 'HEADERseg.PAYLOADseg.SIGseg';
+
+    it('removes the raw token from a provider error message before logging', () => {
+      const msg = `send failed for https://app.emapp.co.il/he/accept-invite/${TOKEN} (502)`;
+      const out = scrubInviteErrorForLog(msg, TOKEN);
+      expect(out).not.toContain(TOKEN);
+      expect(out).toContain('[REDACTED]');
+      // The operability context (the fact + status) survives for ops.
+      expect(out).toContain('send failed');
+      expect(out).toContain('(502)');
+    });
+
+    it('removes the URL-encoded token form (the shape that appears in inviteUrl)', () => {
+      const encoded = encodeURIComponent(TOKEN);
+      const msg = `provider rejected: .../accept-invite/${encoded}`;
+      const out = scrubInviteErrorForLog(msg, TOKEN);
+      expect(out).not.toContain(encoded);
+      expect(out).not.toContain(TOKEN);
+      expect(out).toContain('[REDACTED]');
+    });
+
+    it('also masks a /sign/<jwt> URL embedded in the message (canonical seam)', () => {
+      const otherJwt = 'AAseg.BBseg.CCseg';
+      const msg = `downstream error at https://api.emapp.co.il/api/v1/sign/${otherJwt}`;
+      const out = scrubInviteErrorForLog(msg, TOKEN);
+      expect(out).not.toContain(otherJwt);
+      expect(out).toContain('/sign/[REDACTED]');
+    });
+
+    it('a blank token never blanks the whole message (no empty-string replace)', () => {
+      const msg = 'connection refused';
+      expect(scrubInviteErrorForLog(msg, '')).toBe('connection refused');
+      expect(scrubInviteErrorForLog(msg, '   ')).toBe('connection refused');
+    });
   });
 });

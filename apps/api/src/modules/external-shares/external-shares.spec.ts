@@ -405,6 +405,7 @@ describe('ExternalSharesService.resolveDocumentAccess — DB-backed (SEC-H1)', (
   let plainDocAId: string; // org A, project-level, non-sensitive, servable
   let sensitiveDocAId: string; // org A, project-level, sensitive + encrypted, servable
   let ghostDocAId: string; // org A, never finalized (uploaded_at NULL)
+  let apartmentDocAId: string; // org A, APARTMENT-level (project_id chains up to P) — #11
   let shareAId: string; // org A grant: developer, project-scope, sensitive, otp off
 
   async function seedDoc(
@@ -416,6 +417,10 @@ describe('ExternalSharesService.resolveDocumentAccess — DB-backed (SEC-H1)', (
       uploaded?: boolean;
       scan?: 'clean' | 'pending';
       apartmentId?: string | null;
+      // 0077 canonical scope. Defaults to 'org' (CHECK requires doc_scope_id
+      // NULL); for an apartment/owner doc pass the scope + its target id.
+      docScope?: 'org' | 'project' | 'apartment' | 'owner';
+      docScopeId?: string | null;
     } = {},
   ): Promise<string> {
     const c = await providerPool.connect();
@@ -423,8 +428,9 @@ describe('ExternalSharesService.resolveDocumentAccess — DB-backed (SEC-H1)', (
       const r = await c.query(
         `INSERT INTO documents
            (org_id, project_id, apartment_id, name, type, mime_type, size_bytes, r2_key,
-            content_hash, uploaded_by, uploaded_at, scan_status, sensitive, bytes_encrypted)
-         VALUES ($1,$2,$3,'doc','other','application/pdf',10,$4,'h',$5,$6,$7,$8,$9)
+            content_hash, uploaded_by, uploaded_at, scan_status, sensitive, bytes_encrypted,
+            doc_scope, doc_scope_id)
+         VALUES ($1,$2,$3,'doc','other','application/pdf',10,$4,'h',$5,$6,$7,$8,$9,$10,$11)
          RETURNING id`,
         [
           orgId,
@@ -436,9 +442,23 @@ describe('ExternalSharesService.resolveDocumentAccess — DB-backed (SEC-H1)', (
           opts.scan ?? 'clean',
           opts.sensitive ?? false,
           opts.bytesEncrypted ?? false,
+          opts.docScope ?? 'org',
+          opts.docScopeId ?? null,
         ],
       );
       return r.rows[0].id as string;
+    } finally {
+      c.release();
+    }
+  }
+
+  async function setProjectArchived(projectId: string, archived: boolean): Promise<void> {
+    const c = await providerPool.connect();
+    try {
+      await c.query(
+        `UPDATE projects SET archived_at = ${archived ? 'now()' : 'NULL'} WHERE id = $1`,
+        [projectId],
+      );
     } finally {
       c.release();
     }
@@ -466,6 +486,14 @@ describe('ExternalSharesService.resolveDocumentAccess — DB-backed (SEC-H1)', (
       bytesEncrypted: true,
     });
     ghostDocAId = await seedDoc(orgA.id, projectAId, { uploaded: false });
+    // #11 — an APARTMENT-level, non-sensitive, servable doc whose project_id
+    // STILL chains up to projectAId (the apartment lives in the project). A
+    // project-scope grant must NOT reach it.
+    apartmentDocAId = await seedDoc(orgA.id, projectAId, {
+      apartmentId: apartmentAId,
+      docScope: 'apartment',
+      docScopeId: apartmentAId,
+    });
 
     const share = await svc.create(manager(orgA), {
       partyType: 'developer',
@@ -543,5 +571,38 @@ describe('ExternalSharesService.resolveDocumentAccess — DB-backed (SEC-H1)', (
     await svc.revoke(manager(orgA), s.id);
     const d = await svc.resolveDocumentAccess(manager(orgA), s.id, plainDocAId);
     expect(d).toEqual({ allow: false, reason: 'share_revoked' });
+  });
+
+  // ===== #11 — project-scope grant must NOT leak apartment/owner-level docs =====
+  it('#11: a PROJECT-scope grant DENIES an apartment-level doc whose project_id chains up to the granted project (out_of_scope)', async () => {
+    // shareAId is a project-scope grant over projectAId. apartmentDocAId is an
+    // apartment-level doc IN that project — its project_id = projectAId — but it
+    // is a per-apartment doc, NOT a project-level doc. The leak: before the fix
+    // this returned ALLOW (project_id matched). Now: out_of_scope.
+    const d = await svc.resolveDocumentAccess(manager(orgA), shareAId, apartmentDocAId);
+    expect(d).toEqual({ allow: false, reason: 'out_of_scope' });
+  });
+
+  it('#11 happy path preserved: the SAME project-scope grant still ALLOWS a genuine project-level doc', async () => {
+    const d = await svc.resolveDocumentAccess(manager(orgA), shareAId, plainDocAId);
+    expect(d.allow).toBe(true);
+  });
+
+  // ===== #5 — archiving a project cuts external doc access LIVE =====
+  it('#5: archiving the project makes its project-level doc NON-servable via the share (document_not_servable)', async () => {
+    try {
+      await setProjectArchived(projectAId, true);
+      const d = await svc.resolveDocumentAccess(manager(orgA), shareAId, plainDocAId);
+      expect(d).toEqual({ allow: false, reason: 'document_not_servable' });
+    } finally {
+      // restore so later tests / other describes see an active project
+      await setProjectArchived(projectAId, false);
+    }
+  });
+
+  it('#5: un-archiving the project restores access (the cut is LIVE, not a one-way revoke)', async () => {
+    await setProjectArchived(projectAId, false);
+    const d = await svc.resolveDocumentAccess(manager(orgA), shareAId, plainDocAId);
+    expect(d.allow).toBe(true);
   });
 });

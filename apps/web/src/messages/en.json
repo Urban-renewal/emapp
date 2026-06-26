@@ -1181,6 +1181,27 @@
       "shop": "Shop / retail",
       "office": "Office",
       "mixed": "Mixed-use"
+    },
+    "generate": {
+      "title": "Quickly fill the building's apartments",
+      "hint": "Instead of adding one apartment at a time — describe the building's shape and the system creates every apartment at once.",
+      "floors": "Number of floors",
+      "apartmentsPerFloor": "Apartments per floor",
+      "schemeLabel": "Apartment numbering",
+      "scheme": {
+        "sequential": "Sequential (1, 2, 3 …)",
+        "floorBased": "By floor (101, 102, 201 …)"
+      },
+      "preview": "{count} apartments will be created. First: {first} · Last: {last}.",
+      "previewOne": "One apartment will be created: {first}.",
+      "submit": "Create {count} apartments",
+      "submitting": "Creating apartments…",
+      "successCreated": "Created {created} apartments.",
+      "successWithSkipped": "Created {created} apartments · {skipped} already existed and were skipped.",
+      "noneCreated": "Every apartment in this shape already exists in the building — none were created.",
+      "failed": "Failed to create the apartments. Please try again.",
+      "manualTitle": "Need a single apartment with full details?",
+      "manualLink": "Add a single apartment"
     }
   },
   "stepUp": {

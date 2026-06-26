@@ -537,6 +537,29 @@ _(no body)_
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
+### POST /api/v1/buildings/:buildingId/apartments:generate
+
+- **Auth:** AuthGuard + TenantGuard (apartments.create; agent fine gate edit_project_data)
+- **Summary:** Bulk-generate a building’s apartments from its shape (floors × apartmentsPerFloor) in ONE atomic, manager-confirmed action. Loops the canonical apartment-create path inside one withTenant tx (all-or-nothing). Numbering: sequential (1..N) | floorBased (floor*100+unit). Numbers already taken by an active apartment are SKIPPED. Idempotency-Key honoured. Returns { created, skipped }.
+
+**Request body**
+
+| field | type | required | constraints |
+|---|---|---|---|
+| `apartmentsPerFloor` | integer | yes | minimum=1, maximum=40 |
+| `floors` | integer | yes | minimum=1, maximum=80 |
+| `scheme` | string | no | enum=["sequential","floorBased"] |
+| `startFloor` | integer | no | minimum=0, maximum=200 |
+
+
+**Response**
+
+```json
+{ "data": { "created": number, "skipped": number } }
+```
+
+**Errors:** `validation_error`, `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
 ### DELETE /api/v1/buildings/:id
 
 - **Auth:** AuthGuard + TenantGuard (Manager)

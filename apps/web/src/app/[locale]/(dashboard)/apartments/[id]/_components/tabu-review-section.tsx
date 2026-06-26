@@ -1,27 +1,39 @@
 'use client';
 
 /**
- * 7c F3 — the נסח-טאבו review flow on the APARTMENT page (D-P5.1: AI parse +
- * MANDATORY human confirm).
+ * 7c F3 (slice 2.2 de-jargon reshape) — the נסח-טאבו autofill flow on the
+ * APARTMENT page (D-P5.1: AI parse + MANDATORY human confirm).
  *
- * Flow (each step a separate, visible affordance):
- *   1. No draft extraction → pick a FINALIZED apartment-scoped doc (the
- *      uploaded נסח) → "צור חילוץ" (POST /apartments/:id/tabu-extractions).
- *   2. Draft exists → "הרץ פיענוח" (POST /tabu-extractions/:id/extract —
- *      stub engine, zero egress).
- *   3. Review table (GET /tabu-extractions/:id/rows — decrypted PII, so it
- *      sits behind the per-session step-up unlock; the F1 modal opens on
- *      403 `pii_step_up_required` and the fetch retries on verify).
+ * The technophobe collapse: the old surface exposed the raw 5-step parser
+ * gauntlet (צור חילוץ → הרץ פיענוח → הצג שורות → review → אשר). It is now ONE
+ * primary action — "מלאו את הבעלים אוטומטית" — that runs create→extract→load
+ * behind a single spinner and lands the user on the review step. The BE flow
+ * is UNCHANGED: this still routes through the canonical tabu seam
+ * (createTabuExtraction → runTabuExtraction → confirm), and the MANDATORY
+ * human confirm before the legal ownership write is preserved (§7 humanOnly
+ * floor — we NEVER auto-commit ownerships).
+ *
+ * Flow:
+ *   1. No draft → pick the apartment's נסח → ONE action `onAutofill`:
+ *      POST /apartments/:id/tabu-extractions (create draft) →
+ *      POST /tabu-extractions/:id/extract (stub engine, zero egress) →
+ *      GET /tabu-extractions/:id/rows — all behind one progress label.
+ *   2. Draft already exists (re-entry) → ONE "המשיכו לסקירה" action → load
+ *      the rows (the create+extract already ran on a prior visit).
+ *   3. Review table (GET …/rows — decrypted PII behind the per-session
+ *      step-up unlock; the F1 modal opens on 403 `pii_step_up_required` and
+ *      the fetch retries on verify). Confidence is shown as a PLAIN badge
+ *      (high → "זוהה בוודאות גבוהה" / low → "כדאי לבדוק"), never a raw %;
+ *      the share is a plain "X מתוך Y" fraction, never מונה/מכנה.
  *   4. Inline row edit (PATCH …/rows/:rowId).
  *      SECURITY: when `nationalId` arrives MASKED (contains '•', D.19/D.47
  *      role-fidelity), the ת.ז. field is READ-ONLY — a masked actor must
  *      never round-trip bullets into the PATCH (it would overwrite the real
  *      encrypted value with '•••••••NN'). Name/shares stay editable.
- *   5. "אשר וכתוב בעלויות" (POST …/confirm) — preceded by the summary line
- *      ("יחליף את בעלי הדירה הנוכחיים — N בעלים…"). On 200 the owners list
- *      refreshes (ownerships query invalidation); on 409
- *      `tabu_extraction_not_draft` we show "כבר אושר" (the idempotency
- *      contract — an INFO, not an error).
+ *   5. "אשרו והחליפו את הבעלים" (POST …/confirm) — preceded by the plain
+ *      summary line. On 200 the owners list refreshes (ownerships query
+ *      invalidation); on 409 `tabu_extraction_not_draft` we show "כבר אושר"
+ *      (the idempotency contract — an INFO, not an error).
  *
  * Mount contract: the PAGE renders this section only for actors holding
  * `apartments.update` (create/extract/edit/confirm are writes; the BE
@@ -54,6 +66,18 @@ import { stripBidiOverrides } from '@/lib/bidi';
 /** A •-masked national id (D.19/D.47 role-fidelity masking). */
 export function isMaskedNationalId(value: string | null): boolean {
   return value !== null && value.includes('•');
+}
+
+/** Confidence threshold (≥80% counts as "high"). The raw % is a parser
+ *  internal — a technophobe never sees it; only a plain "high / worth
+ *  checking" badge. `confidence` arrives 0–1 (fraction) or 0–100 (legacy). */
+const HIGH_CONFIDENCE = 0.8;
+
+/** true ⇔ the row was detected with high confidence (plain-badge input). */
+export function isHighConfidence(confidence: number | null): boolean {
+  if (confidence === null) return false;
+  const fraction = confidence <= 1 ? confidence : confidence / 100;
+  return fraction >= HIGH_CONFIDENCE;
 }
 
 /** Exact fraction sum of the parsed shares (reduced), or null when any row
@@ -146,28 +170,35 @@ export function TabuReviewSection({ apartmentId }: { apartmentId: string }) {
     }
   }
 
-  async function onCreate() {
-    if (!selectedDocId || create.isPending) return;
+  // The single primary action (the 5-button gauntlet, collapsed): create the
+  // draft envelope → run the parse → load the review rows, all behind ONE
+  // progress label. Reuses the canonical tabu seam unchanged; the user lands
+  // on the review step. We drive create→extract→load off the CREATE response
+  // id directly (the `draft` derived from the list query is not yet refreshed
+  // synchronously after create).
+  const autofilling = create.isPending || run.isPending;
+  async function onAutofill() {
+    if (!selectedDocId || autofilling) return;
     setNotice(null);
     try {
-      await create.mutateAsync(selectedDocId);
-      setRows(null);
-      setRowsState('idle');
-    } catch {
-      setNotice({ kind: 'error', text: t('createFailed') });
+      const created = await create.mutateAsync(selectedDocId);
+      await run.mutateAsync(created.id);
+      await loadRows(created.id);
+    } catch (e) {
+      if (isStepUpCancelled(e)) {
+        // The unlock modal was dismissed at the rows step — the draft+parse
+        // already succeeded; offer the plain resume affordance, not an error.
+        setRowsState('idle');
+        return;
+      }
+      setNotice({ kind: 'error', text: t('autofillFailed') });
     }
   }
 
-  async function onRunExtract() {
-    if (!draft || run.isPending) return;
-    setNotice(null);
-    try {
-      const result = await run.mutateAsync(draft.id);
-      setNotice({ kind: 'ok', text: t('extractOk', { count: result.rowCount }) });
-      await loadRows(draft.id);
-    } catch {
-      setNotice({ kind: 'error', text: t('extractFailed') });
-    }
+  // Re-entry: a draft from a prior visit already has the parse; one action
+  // re-opens the review rows (behind the same step-up unlock).
+  function onResumeReview() {
+    if (draft) void loadRows(draft.id);
   }
 
   function startEdit(row: TabuExtractionReviewRow) {
@@ -273,7 +304,8 @@ export function TabuReviewSection({ apartmentId }: { apartmentId: string }) {
 
       {listLoading && <p className="mt-3 text-sm text-muted-foreground">{t('loading')}</p>}
 
-      {/* Step 1 — no draft: pick a source נסח and create the extraction. */}
+      {/* Step 1 — no draft: pick the apartment's נסח, then ONE primary action
+          (create→parse→load behind a single spinner). */}
       {!listLoading && !draft && (
         <div className="mt-3 space-y-2">
           {docs && docs.items.length === 0 ? (
@@ -293,7 +325,7 @@ export function TabuReviewSection({ apartmentId }: { apartmentId: string }) {
                 className="rounded-md border bg-background px-3 py-2 text-sm"
                 value={selectedDocId}
                 onChange={(e) => setSelectedDocId(e.target.value)}
-                disabled={create.isPending}
+                disabled={autofilling}
                 data-testid="tabu-source-doc-select"
               >
                 <option value="">{t('pickDocPlaceholder')}</option>
@@ -308,43 +340,34 @@ export function TabuReviewSection({ apartmentId }: { apartmentId: string }) {
               </select>
               <Button
                 size="sm"
-                onClick={onCreate}
-                disabled={!selectedDocId || create.isPending}
-                data-testid="tabu-create-extraction"
+                onClick={onAutofill}
+                disabled={!selectedDocId || autofilling}
+                aria-busy={autofilling}
+                data-testid="tabu-autofill"
               >
-                {create.isPending ? t('creating') : t('createExtraction')}
+                {autofilling ? t('autofillRunning') : t('autofillCta')}
               </Button>
             </div>
+          )}
+          {autofilling && (
+            <p className="text-sm text-muted-foreground" data-testid="tabu-autofill-progress">
+              {t('autofillRunning')}
+            </p>
           )}
         </div>
       )}
 
-      {/* Steps 2-5 — a draft extraction exists. */}
+      {/* Steps 2-5 — a draft extraction exists (this visit, or a prior one). */}
       {!listLoading && draft && (
         <div className="mt-3 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="badge badge-warning">{t('draftBadge')}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onRunExtract}
-              disabled={run.isPending}
-              aria-busy={run.isPending}
-              data-testid="tabu-run-extract"
-            >
-              {run.isPending ? t('running') : t('runExtract')}
-            </Button>
-            {rowsState === 'idle' && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => loadRows(draft.id)}
-                data-testid="tabu-show-rows"
-              >
-                {t('showRows')}
+          {(rowsState === 'idle' || rowsState === 'error') && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="badge badge-warning">{t('draftBadge')}</span>
+              <Button size="sm" onClick={onResumeReview} data-testid="tabu-resume-review">
+                {t('resumeReview')}
               </Button>
-            )}
-          </div>
+            </div>
+          )}
 
           {rowsState === 'loading' && (
             <p className="text-sm text-muted-foreground">{t('loadingRows')}</p>
@@ -356,6 +379,10 @@ export function TabuReviewSection({ apartmentId }: { apartmentId: string }) {
 
           {rowsState === 'ready' && rows && rows.length > 0 && (
             <>
+              <div>
+                <h3 className="text-sm font-semibold">{t('reviewTitle')}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">{t('reviewHint')}</p>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm" data-testid="tabu-review-table">
                   <thead>
@@ -424,11 +451,11 @@ export function TabuReviewSection({ apartmentId }: { apartmentId: string }) {
                                   onChange={(e) =>
                                     setEditDraft({ ...editDraft, shareNumerator: e.target.value })
                                   }
-                                  aria-label={t('shareNumeratorLabel')}
+                                  aria-label={t('sharePartLabel')}
                                   className="w-16 rounded-md border bg-background px-2 py-1"
                                   data-testid="tabu-edit-share-num"
                                 />
-                                <span>/</span>
+                                <span>{t('shareSeparator')}</span>
                                 <input
                                   type="number"
                                   min={1}
@@ -440,7 +467,7 @@ export function TabuReviewSection({ apartmentId }: { apartmentId: string }) {
                                       shareDenominator: e.target.value,
                                     })
                                   }
-                                  aria-label={t('shareDenominatorLabel')}
+                                  aria-label={t('shareWholeLabel')}
                                   className="w-16 rounded-md border bg-background px-2 py-1"
                                   data-testid="tabu-edit-share-den"
                                 />
@@ -454,11 +481,17 @@ export function TabuReviewSection({ apartmentId }: { apartmentId: string }) {
                             )}
                           </td>
                           <td className="px-2 py-1.5">
-                            {row.confidence !== null
-                              ? row.confidence <= 1
-                                ? `${Math.round(row.confidence * 100)}%`
-                                : String(row.confidence)
-                              : '—'}
+                            {row.confidence === null ? (
+                              '—'
+                            ) : isHighConfidence(row.confidence) ? (
+                              <span className="badge badge-success" data-testid="tabu-confidence">
+                                {t('confidenceHigh')}
+                              </span>
+                            ) : (
+                              <span className="badge badge-warning" data-testid="tabu-confidence">
+                                {t('confidenceLow')}
+                              </span>
+                            )}
                           </td>
                           <td className="px-2 py-1.5">{row.edited ? t('editedYes') : '—'}</td>
                           <td className="px-2 py-1.5 text-end">

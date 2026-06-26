@@ -16,6 +16,7 @@ import { CalendarModule } from './modules/calendar/calendar.module';
 import { CalendarEmailModule } from './modules/calendar-email/calendar-email.module';
 import { ContractorPortalModule } from './modules/contractor-portal/contractor-portal.module';
 import { ContractorsModule } from './modules/contractors/contractors.module';
+import { DevModule } from './modules/dev/dev.module';
 import { DiscoveryModule } from './modules/discovery/discovery.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { ExportModule } from './modules/export/export.module';
@@ -145,6 +146,11 @@ import { QueueModule } from './queue/queue.module';
     // input from a withTenant read; B.S9 will add the sibling PDF
     // service on the same input shape.
     ExportModule,
+    // DEV-ONLY — email outbox inspector (FakeEmail "platform"). Registered
+    // ONLY outside production so the `/api/v1/dev/*` token-bearing routes do
+    // not exist in a deployed environment (handlers ALSO 404 unless
+    // isDevAuthBypass, and the dev outbox is null in prod). Triple fail-closed.
+    ...(process.env['NODE_ENV'] === 'production' ? [] : [DevModule]),
   ],
   controllers: [HealthController],
   // Rate limiting ENFORCED globally; the configurable guard adds a

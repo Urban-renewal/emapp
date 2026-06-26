@@ -40,6 +40,26 @@ export const EXPOSE_INVITE_TOKEN =
  * `RESEND_API_KEY` in Infisical (Gate-4 SECRETS LAW), then construct
  * `new ResendEmailProvider(new Resend(key), from)` here.
  */
+/**
+ * DEV-ONLY shared outbox. In non-prod the factory hands EVERY email sender
+ * (auth, members, signatures, calendar, provider — all five wire
+ * `emailProviderFactory`) the SAME FakeEmailProvider instance, so the dev outbox
+ * inspector (`GET /api/v1/dev/outbox`) can show the exact message + link that
+ * WOULD be sent, across all senders, before the Resend cutover. It stays `null`
+ * in production: the factory THROWS there before this is ever assigned, so the
+ * inspector has nothing to read — and it 404s regardless (double-gated on
+ * `isDevAuthBypass`). The shared instance is safe: FakeEmailProvider is a
+ * stateless in-memory capture (no client, no connection), the same reason the
+ * prod ResendEmailProvider can be shared.
+ */
+let devEmailOutbox: FakeEmailProvider | null = null;
+
+/** The shared dev FakeEmailProvider, or `null` (production, or before any sender
+ *  has been constructed). The dev outbox controller reads its captured `sent`. */
+export function getDevEmailOutbox(): FakeEmailProvider | null {
+  return devEmailOutbox;
+}
+
 export function emailProviderFactory(): IEmailProvider {
   if (process.env['NODE_ENV'] === 'production') {
     throw new Error(
@@ -50,7 +70,10 @@ export function emailProviderFactory(): IEmailProvider {
         'emailProviderFactory before deploying. See GATES Gate-5 / DECISIONS D.27.',
     );
   }
-  return new FakeEmailProvider();
+  // Non-prod: ONE shared Fake instance so the dev outbox captures every sender's
+  // mail (each module calls this factory; without sharing they'd each get a
+  // private capture the inspector couldn't see).
+  return (devEmailOutbox ??= new FakeEmailProvider());
 }
 
 /** HIGH-1 fix — entity-escape any user-controlled value before it is

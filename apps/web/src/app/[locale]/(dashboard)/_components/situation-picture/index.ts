@@ -10,6 +10,7 @@
 export {
   ActionCard,
   AllClearBadge,
+  AttentionCard,
   buildFleetTag,
   buildGreeting,
   buildHoldoutRemindErrorMessage,
@@ -18,10 +19,13 @@ export {
   buildRemindResultMessage,
   buildTag,
   buildWhy,
+  CompletenessTile,
+  FleetGrid,
   FleetSection,
   FleetTile,
   HoldoutApartment,
   HoldoutExpander,
   HoldoutRow,
+  PulseSentence,
   RemindButton,
 } from './board-primitives';

@@ -361,6 +361,15 @@ describe('ProposalsService.approve', () => {
     expect(task!.title).toContain('נסח טאבו');
     expect(task!.title.toLowerCase()).not.toContain('national');
 
+    // The approving manager is AUTO-ASSIGNED the task (pre-extraction parity — the
+    // task he approved is "his", shows as assigned to me).
+    const assignee = await providerDb.execute<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM task_assignees ta
+            JOIN tasks t ON t.id = ta.task_id
+           WHERE t.org_id = ${orgA.id} AND t.origin_ref = ${dedupKey} AND ta.user_id = ${m.sub}`,
+    );
+    expect(assignee.rows[0]?.n).toBe(1);
+
     // System-attributed audit rows: the task.create effect-audit AND the
     // proposal.approve transition audit (every autonomous act is audited).
     const taskAudit = await providerDb.execute<{ n: number }>(

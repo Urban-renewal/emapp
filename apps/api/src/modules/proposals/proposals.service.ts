@@ -3,6 +3,7 @@ import {
   AUTO_EXECUTE_SAFE_KINDS,
   AuditService,
   proposals,
+  taskAssignees,
   withTenant,
   type GovernedSendOutcome,
   type Proposal,
@@ -289,6 +290,15 @@ export class ProposalsService {
    *      manager outbound-approve flow is behaviorally identical, including the
    *      `delivery` outcome surfaced for reissue).
    *
+   * BEHAVIORAL PARITY NOTE (task.create): the auto-safe arm reproduces the
+   * pre-extraction effects EXCEPT the `task_assigned` in-app notification that the
+   * old `tasks.create` fired to other managers. That bell is INTENTIONALLY dropped for
+   * a SYSTEM-origin task: a system task is surfaced through the autonomy/inbox path
+   * (the proposal the manager just approved), not a peer "a task was assigned to you"
+   * alert — consistent with the producer auto-execute path, which also does not
+   * notify. The load-bearing visibility behavior (auto-assigning the approving manager
+   * so the task is "his") IS preserved via `deps.onRowCreated`.
+   *
    * Flow:
    *   1. Load the proposal (must be pending; a non-pending one 409s).
    *   2. RE-ASSERT `classify(kind)` at execute time (boundary re-checked, fail-closed
@@ -365,8 +375,11 @@ export class ProposalsService {
    * internal kind, flip `pending→applied`, and audit — ALL in ONE tx so the effect and
    * the flip are atomic (a lost flip rolls the effect back; the effect's own
    * idempotency makes a producer↔approve race a no-op). `deps` carries the
-   * human actor-context (the approving manager as `createdBy` + audit forensics);
-   * the producer supplies a NULL system actor-context for the SAME effect.
+   * human actor-context (the approving manager as `createdBy` + audit forensics +
+   * `onRowCreated` auto-assigning the approving manager so the task he approved is
+   * "his" exactly as the pre-extraction `tasks.create` did); the producer supplies a
+   * NULL system actor-context with NO auto-assign for the SAME effect (an autonomous
+   * task has no human to assign — it surfaces via the autonomy/inbox path).
    */
   private async applyAutoSafeEffectAndFlip(
     user: AccessTokenPayload,
@@ -380,6 +393,16 @@ export class ProposalsService {
         ip: user.ip,
         userAgent: user.userAgent,
         sessionId: user.sid,
+      },
+      // Restore the pre-extraction behavior: the approving manager is auto-assigned
+      // the created system task (so it shows as "assigned to me"), in the SAME tx as
+      // the insert. Idempotent on the task_assignees (task_id,user_id) unique. Skipped
+      // for the producer auto-execute path (no human actor → deps.onRowCreated unset).
+      onRowCreated: async (tx, taskId) => {
+        await tx
+          .insert(taskAssignees)
+          .values({ taskId, userId: user.sub, assignedBy: user.sub })
+          .onConflictDoNothing({ target: [taskAssignees.taskId, taskAssignees.userId] });
       },
     };
     return withTenant(

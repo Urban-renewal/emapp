@@ -52,6 +52,11 @@ export * from './signature-request';
 // Autonomous Master Plan, Phase 1 — Approval-Inbox proposal wire shapes
 // (pending list + approve/reject). PII-free evidence by contract.
 export * from './proposal';
+// Autonomous Managing System, wave 1.1 — the PII-FREE `ProjectPerception`
+// read-model contract + the `AttentionReason` taxonomy + the
+// `attentionReasonToActionKind` (→ `AutonomyActionKind | null`) DECIDE→ACT map.
+// The ONE substrate the home KPI / boards / recommenders / cross-party view read.
+export * from './project-perception';
 // Autonomous Master Plan — PARKED-OUTBOUND ops surface (#509 observability gap).
 // Manager-facing read over outbound_ledger + a manager-RESOLVE action for the
 // maybe-sent (ambiguous) / never-settled (stale) rows. PII-free by contract.

@@ -1441,11 +1441,37 @@ export class ProjectsService {
                        AND sr.document_id IN (${projectSetSignatureDocIdsSql(sql`SELECT project_id FROM visible`)})) AS signatures_pending
               `);
         const r = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
+
+        // Slice 2.7 — the PII-FREE apartment legal/life-state situation-picture facet.
+        // COUNTS ONLY (apartment_states has no PII columns at all): the SINGLE source
+        // is the `apartment_states` table itself, read here under the SAME withTenant
+        // tx (org_id RLS-isolated). Apartment-states are ORG-scoped facts — an agent
+        // and a manager see the same org-wide legal-state picture (RLS owns the org
+        // boundary).
+        const asResult = await tx.execute(sql`
+          SELECT
+            COUNT(DISTINCT apartment_id)::int                       AS apartments_with_active,
+            COUNT(*) FILTER (WHERE kind = 'eviction')::int          AS eviction_count,
+            COUNT(*) FILTER (WHERE kind = 'dispute')::int           AS dispute_count,
+            COUNT(*) FILTER (WHERE kind = 'repairs')::int           AS repairs_count,
+            COUNT(*) FILTER (WHERE kind = 'rights_transfer')::int   AS rights_transfer_count
+          FROM apartment_states
+          WHERE status = 'active' AND archived_at IS NULL
+        `);
+        const as = (asResult as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
+
         return {
           activeProjects: Number(r['active_projects'] ?? 0),
           residents: Number(r['residents'] ?? 0),
           signaturesReceived: Number(r['signatures_received'] ?? 0),
           signaturesPending: Number(r['signatures_pending'] ?? 0),
+          apartmentStates: {
+            apartmentsWithLegalState: Number(as['apartments_with_active'] ?? 0),
+            evictionCount: Number(as['eviction_count'] ?? 0),
+            disputeCount: Number(as['dispute_count'] ?? 0),
+            repairsCount: Number(as['repairs_count'] ?? 0),
+            rightsTransferCount: Number(as['rights_transfer_count'] ?? 0),
+          },
         };
       },
       { userId: user.sub },

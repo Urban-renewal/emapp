@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
 import { APARTMENT_STATUS_LABELS_EN, APARTMENT_STATUS_LABELS_HE } from '@/adapters/apartment';
+import { ApartmentStatesSection } from '@/components/apartments/apartment-states-section';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
@@ -191,6 +192,12 @@ export default function ApartmentDetailPage() {
           </Button>
         </div>
       </div>
+
+      {/* Slice 2.7 — apartment legal/life states (deceased/dispute/poa/eviction/
+       *  repairs/rights-transfer). Active states as legible badges (blocking ones
+       *  flagged), one-click add/resolve for managers. PII-FREE — no person/contact
+       *  fields. The BE re-asserts manager-tier on writes; reads are any-org-role. */}
+      <ApartmentStatesSection apartmentId={data.id} canManage={canUpdate} />
 
       {/* 7c F3 — נסח-טאבו extraction review + confirm. Write-flow: mounted
           only for actors holding apartments.update (mirrors the BE gate, so

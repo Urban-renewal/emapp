@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
+import { ApartmentStatesSummary } from '@/components/apartments/apartment-states-summary';
 import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -111,6 +112,10 @@ export default function ApartmentsPage() {
           </p>
         </div>
       )}
+
+      {/* Slice 2.7 — the apartment legal/life-state situation-picture strip. PII-FREE
+          counts (renders nothing when the org has zero active states). */}
+      <ApartmentStatesSummary />
 
       {filterChips}
 

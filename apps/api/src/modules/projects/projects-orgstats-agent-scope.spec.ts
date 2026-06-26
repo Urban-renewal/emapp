@@ -425,6 +425,20 @@ describe('orgStats — agent with ZERO assignments sees nothing', () => {
       residents: 0,
       signaturesReceived: 0,
       signaturesPending: 0,
+      // Slice 2.7 — the additive PII-FREE apartment-state facet is always present;
+      // an agent with zero scope sees the org-wide legal-state counts (RLS-scoped to
+      // their org). In THIS spec's seeded org there are no apartment_states, so every
+      // count is 0 — the exact-shape assertion stays honest (no leakage of a 5th key
+      // with non-zero data). Note: orgStats apartmentStates is ORG-wide (not agent-
+      // scoped), so a stray cross-spec row in the same test DB could perturb this; the
+      // seeded org here is isolated by org_id.
+      apartmentStates: {
+        apartmentsWithLegalState: 0,
+        evictionCount: 0,
+        disputeCount: 0,
+        repairsCount: 0,
+        rightsTransferCount: 0,
+      },
     });
   });
 });

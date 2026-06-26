@@ -1,7 +1,10 @@
 import { z } from 'zod';
 
+import { ApartmentStateCountsSchema } from './apartment-state';
+
 // Canonical Project contract (Doc 11 source of truth; Phase 3 Slice 1).
 // FE/BE both import this. Pure Zod — no @emapp/* imports (no circular deps).
+// (intra-package import of the apartment-state counts is fine — same package, no cycle.)
 //
 // NOTE (locked-schema alignment): the `projects` table (Phase 1, Gate-2
 // locked) has NO address/city/metadata columns — address/city live on
@@ -467,6 +470,12 @@ export const OrgStatsSchema = z.object({
   residents: z.number().int().nonnegative(),
   signaturesReceived: z.number().int().nonnegative(),
   signaturesPending: z.number().int().nonnegative(),
+  // Slice 2.7 — the apartment legal/life-state situation-picture facet. PII-FREE
+  // COUNTS ONLY (the ApartmentStateCounts `.strict()` schema is the structural guard
+  // that nothing identity-shaped can ride this shape). Single-sourced with the
+  // canonical apartment-state read in `computeOrgStats`. OPTIONAL so existing
+  // consumers / fixtures that predate it stay valid (additive, backfill-safe).
+  apartmentStates: ApartmentStateCountsSchema.optional(),
 });
 export type OrgStats = z.infer<typeof OrgStatsSchema>;
 

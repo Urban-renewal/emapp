@@ -469,6 +469,36 @@ const ENDPOINTS: Endpoint[] = [
     response: '(204 No Content)',
     errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
+
+  // — Apartment legal/life states (Slice 2.7) — PII-FREE (no person/contact cols) —
+  {
+    method: 'GET',
+    path: '/api/v1/apartments/:apartmentId/states',
+    auth: 'AuthGuard + TenantGuard (apartments.read)',
+    summary:
+      'Slice 2.7 — the ACTIVE legal/life states on an apartment (deceased/dispute/poa/eviction/repairs/rights_transfer). PII-FREE — no person/contact fields.',
+    response: '{ "data": [ {ApartmentStateView} ] }',
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/apartments/:apartmentId/states',
+    auth: 'AuthGuard + TenantGuard (apartments.update; FINE manager-tier gate in service)',
+    summary:
+      'Slice 2.7 — record a legal/life state on an apartment. Manager-gated; PII-free audit. subKind/note are bounded non-PII labels.',
+    response: '{ "data": { ...ApartmentStateView } }',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/apartment-states/:id/resolve',
+    auth: 'AuthGuard + TenantGuard (apartments.update; FINE manager-tier gate in service)',
+    summary:
+      'Slice 2.7 — resolve a legal/life state (status transition active→resolved, NOT a delete). Manager-gated, idempotent; PII-free audit.',
+    response: '{ "data": { ...ApartmentStateView } }',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+
   {
     method: 'GET',
     path: '/api/v1/owners',

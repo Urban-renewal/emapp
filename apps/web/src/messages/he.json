@@ -1026,6 +1026,8 @@
       "scopeLabel": "שיוך",
       "scanStatus": "סריקה",
       "clear": "נקה סינון",
+      "moreParties": "עוד {count}",
+      "fewerParties": "הצג פחות",
       "scope": {
         "project": "פרויקט",
         "apartment": "דירה",

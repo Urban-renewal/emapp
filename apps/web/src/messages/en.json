@@ -1026,6 +1026,8 @@
       "scopeLabel": "Scope",
       "scanStatus": "Scan",
       "clear": "Clear filters",
+      "moreParties": "+{count} more",
+      "fewerParties": "Show fewer",
       "scope": {
         "project": "Project",
         "apartment": "Apartment",

@@ -92,6 +92,9 @@ export * from './helpers/recommenders/document-chase.recommender';
 export * from './helpers/recommenders/signature-activity.detect';
 export * from './helpers/recommenders/signature-stalled.recommender';
 export * from './helpers/recommenders/signature-expiring.recommender';
+// Slice 2.5 — owner blocking-state (competency/dispute) counted in a project's
+// consent threshold → propose a task.create (NO new autonomy kind). PII-free.
+export * from './helpers/recommenders/ownership-mismatch.recommender';
 export * from './helpers/outbound-governor';
 export * from './helpers/org-suspension';
 export * from './helpers/notifications';

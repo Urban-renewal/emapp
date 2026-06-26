@@ -80,6 +80,28 @@ export const handlers = [
     HttpResponse.json(dataEnvelope(SAMPLE_SIGNATURE_PULSE)),
   ),
 
+  // Slice 2.5 — org situation-picture stats (incl. the PII-FREE owner legal/life-
+  // state counts). The owners list fetches this for the legal-states summary strip;
+  // without a handler the offline owners page + the console guard would 404.
+  http.get(`${API}/org/stats`, () =>
+    HttpResponse.json(
+      dataEnvelope({
+        activeProjects: SAMPLE_PROJECTS.length,
+        residents: SAMPLE_OWNERS.length,
+        signaturesReceived: 0,
+        signaturesPending: 0,
+        ownerStates: {
+          ownersWithActiveLegalState: 0,
+          deceasedCount: 0,
+          disputedCount: 0,
+          lienCount: 0,
+          unverifiedCount: 0,
+          consentWithdrawnCount: 0,
+        },
+      }),
+    ),
+  ),
+
   // projects
   http.get(`${API}/projects`, () => HttpResponse.json(listEnvelope(SAMPLE_PROJECTS))),
   http.post(`${API}/projects`, async ({ request }) => {
@@ -365,6 +387,45 @@ export const handlers = [
       dataEnvelope(
         SAMPLE_PROJECTS.map((p) => ({ id: p.id, name: p.name, type: p.type, status: p.status })),
       ),
+    ),
+  ),
+  // Slice 2.5 — owner legal/life states (masked guardian). Empty list by default;
+  // create/resolve echo a masked view. Registered BEFORE `/owners/:id` (more-
+  // specific path wins). Guardian PII is never echoed cleartext (masked only).
+  http.get(`${API}/owners/:id/states`, () => HttpResponse.json(dataEnvelope([] as unknown[]))),
+  http.post(`${API}/owners/:id/states`, async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const kind = typeof body['kind'] === 'string' ? (body['kind'] as string) : 'verify';
+    const blocking = kind === 'competency' || kind === 'dispute';
+    return HttpResponse.json(
+      dataEnvelope({
+        id: 'state-mock-1',
+        ownerId: 'owner-mock',
+        kind,
+        subKind: (body['subKind'] as string) ?? null,
+        status: 'active',
+        guardianNameMasked: body['guardianName'] ? 'מ•••' : null,
+        hasGuardianContact: Boolean(body['guardianPhone']),
+        isBlocking: blocking,
+        createdAt: new Date().toISOString(),
+        resolvedAt: null,
+      }),
+    );
+  }),
+  http.post(`${API}/owner-states/:stateId/resolve`, ({ params }) =>
+    HttpResponse.json(
+      dataEnvelope({
+        id: String(params['stateId']),
+        ownerId: 'owner-mock',
+        kind: 'verify',
+        subKind: null,
+        status: 'resolved',
+        guardianNameMasked: null,
+        hasGuardianContact: false,
+        isBlocking: false,
+        createdAt: new Date().toISOString(),
+        resolvedAt: new Date().toISOString(),
+      }),
     ),
   ),
   http.get(`${API}/owners/:id`, ({ params }) => {

@@ -41,3 +41,27 @@ export function composeMissingDocTask(docType: string): ComposedTaskCopy {
     description: `מסמך מסוג "${label}" חסר בפרויקט שנמצא באיסוף חתימות. מומלץ להשלים אותו כדי לקדם את הפרויקט.`,
   };
 }
+
+/** Slice 2.5 — Hebrew labels for the BLOCKING owner-state kinds the
+ *  ownership-mismatch recommender flags. Taxonomy only — NOT PII. */
+const BLOCKING_STATE_LABEL_HE: Readonly<Record<string, string>> = {
+  competency: 'כשירות משפטית (אפוטרופסות)',
+  dispute: 'סכסוך בעלות',
+};
+
+/**
+ * Slice 2.5 — compose the system task's title + body for a project owner flagged
+ * with a BLOCKING legal state (competency / dispute) that is still counted in the
+ * consent threshold. User-framed (the situation + a proposed action). PII-FREE:
+ * the copy interpolates ONLY the state-kind label (taxonomy) — never the owner's
+ * name / national_id / phone, and never the guardian PII. The owner is referred to
+ * generically ("בעלים בפרויקט"); the manager opens the task and resolves it on the
+ * owner record itself (where the masked badge lives).
+ */
+export function composeOwnershipMismatchTask(stateKind: string): ComposedTaskCopy {
+  const label = BLOCKING_STATE_LABEL_HE[stateKind] ?? stateKind;
+  return {
+    title: `בעלים חסום לחתימה: ${label}`,
+    description: `בעלים בפרויקט שנמצא באיסוף חתימות מסומן במצב משפטי חוסם (${label}) ועדיין נספר בסף ההסכמה. מומלץ לפתוח משימה לבירור והסדרת החתימה.`,
+  };
+}

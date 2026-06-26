@@ -2411,6 +2411,35 @@ const ENDPOINTS: Endpoint[] = [
     errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
   },
 
+  // — Owner legal/life states (Slice 2.5) — guardian PII encrypted + masked —
+  {
+    method: 'GET',
+    path: '/api/v1/owners/:ownerId/states',
+    auth: 'AuthGuard + TenantGuard (owners.read)',
+    summary:
+      'Slice 2.5 — the ACTIVE legal/life states on an owner (competency/dispute/transfer/lien/verify/consent_withdrawal). Guardian identity is MASKED (guardianNameMasked + hasGuardianContact) — NEVER cleartext.',
+    response: '{ "data": [ {OwnerStateView — masked guardian} ] }',
+    errors: ['not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/owners/:ownerId/states',
+    auth: 'AuthGuard + TenantGuard (owners.update; FINE manager-tier gate in service)',
+    summary:
+      'Slice 2.5 — record a legal/life state on an owner. Guardian PII (when supplied for a competency) is pgcrypto-encrypted at rest; the response is MASKED. Manager-gated; PII-free audit.',
+    response: '{ "data": { ...OwnerStateView (masked guardian) } }',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/owner-states/:id/resolve',
+    auth: 'AuthGuard + TenantGuard (owners.update; FINE manager-tier gate in service)',
+    summary:
+      'Slice 2.5 — resolve a legal/life state (status transition active→resolved, NOT a delete). Manager-gated, idempotent; PII-free audit.',
+    response: '{ "data": { ...OwnerStateView (masked guardian) } }',
+    errors: ['forbidden', 'not_found', 'missing_token', 'invalid_token', 'token_expired'],
+  },
+
   // — Tenant Portal (D.40 / V11 B.S4) — own-record-only, SMS-OTP tier —
   {
     method: 'GET',

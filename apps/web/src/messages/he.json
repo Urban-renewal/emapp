@@ -1044,6 +1044,22 @@
       "downloadAria": "הורדת {name}",
       "archiveAria": "ארכוב {name}"
     },
+    "states": {
+      "badge": {
+        "rejected": "נדחה",
+        "expired": "פג תוקף",
+        "expiringSoon": "עומד לפוג",
+        "superseded": "הוחלף",
+        "awaitingNotary": "ממתין לאימות נוטריוני"
+      },
+      "counts": {
+        "section": "מצב משפטי של מסמכים",
+        "heading": "מסמכים הדורשים טיפול:",
+        "expiringSoon": "עומדים לפוג",
+        "rejected": "נדחו",
+        "awaitingNotary": "ממתינים לאימות נוטריוני"
+      }
+    },
     "loadMore": "טען עוד",
     "loadingMore": "טוען עוד…",
     "resetPage": "חזרה לדף הראשון",

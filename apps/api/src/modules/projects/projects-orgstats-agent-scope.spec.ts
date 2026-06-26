@@ -425,6 +425,16 @@ describe('orgStats — agent with ZERO assignments sees nothing', () => {
       residents: 0,
       signaturesReceived: 0,
       signaturesPending: 0,
+      // 2.6 — the additive PII-FREE document future-state facet is always
+      // present. In this seeded org no documents carry a future-state value
+      // (every col NULL), so every count is 0 — the exact-shape assertion stays
+      // honest. documentStates is ORG-wide (RLS-scoped), single-sourced in
+      // computeOrgStats under the same withTenant tx.
+      documentStates: {
+        docsExpiringSoon: 0,
+        docsRejected: 0,
+        docsAwaitingNotary: 0,
+      },
     });
   });
 });

@@ -99,6 +99,8 @@ function vm(overrides: Partial<DocumentViewModel>): DocumentViewModel {
     isScanClean: true,
     projectName: 'מתחם הרצל',
     apartmentName: null,
+    stateBadges: [],
+    validUntil: null,
     ...overrides,
   };
 }

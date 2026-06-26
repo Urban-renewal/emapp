@@ -1045,8 +1045,15 @@ _(no body)_
 
 | field | type | required | constraints |
 |---|---|---|---|
+| `legalStatus` | unknown | no | — |
 | `name` | string | no | minLength=1, maxLength=255 |
+| `notarizedAt` | unknown | no | — |
+| `notaryStatus` | unknown | no | — |
+| `relevantPhase` | unknown | no | — |
+| `supersededByDocumentId` | unknown | no | — |
 | `type` | string | no | enum=["agreement","land_registry","blueprint","regulation","survey","survey_map","guarantee","municipal_approval","schedule","legal_opinion","inspection_report","power_of_attorney","contract","permit","id_document","floor_plan","financial","other"] |
+| `validUntil` | unknown | no | — |
+| `versionState` | unknown | no | — |
 
 
 **Response**

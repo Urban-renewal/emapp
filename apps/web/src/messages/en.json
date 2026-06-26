@@ -1044,6 +1044,22 @@
       "downloadAria": "Download {name}",
       "archiveAria": "Archive {name}"
     },
+    "states": {
+      "badge": {
+        "rejected": "Rejected",
+        "expired": "Expired",
+        "expiringSoon": "Expiring soon",
+        "superseded": "Superseded",
+        "awaitingNotary": "Awaiting notarisation"
+      },
+      "counts": {
+        "section": "Document legal status",
+        "heading": "Documents needing attention:",
+        "expiringSoon": "Expiring soon",
+        "rejected": "Rejected",
+        "awaitingNotary": "Awaiting notarisation"
+      }
+    },
     "loadMore": "Load more",
     "loadingMore": "Loading more…",
     "resetPage": "Back to first page",

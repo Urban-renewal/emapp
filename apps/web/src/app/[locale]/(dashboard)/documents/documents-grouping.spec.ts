@@ -35,6 +35,8 @@ function doc(p: Partial<DocumentViewModel> & { id: string }): DocumentViewModel 
     isScanClean: true,
     projectName: null,
     apartmentName: null,
+    stateBadges: [],
+    validUntil: null,
     ...p,
   };
 }

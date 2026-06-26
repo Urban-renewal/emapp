@@ -35,7 +35,7 @@ import { SignatureRequestsService } from '../signatures/signature-requests.servi
 import { TasksService } from '../tasks/tasks.service';
 
 import { executeDocumentChase } from './document-chase-executor';
-import { composeMissingDocTask } from './task-watcher-copy';
+import { composeDocExpiryTask, composeMissingDocTask } from './task-watcher-copy';
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
 const FORBIDDEN = new ForbiddenException({ error: { code: 'forbidden' } });
@@ -54,6 +54,26 @@ const MissingDocTaskEvidence = z.object({
   projectId: z.string().uuid(),
   missingDocType: z.string().min(1).max(50),
 });
+
+/** 2.6 — the shape of a `doc_expiry` (DocExpiryWarn) `task.create` evidence
+ *  snapshot. PII-FREE by contract: project + document ids (opaque uuids) +
+ *  doc-type taxonomy + the validUntil timestamp ONLY. */
+const DocExpiryTaskEvidence = z.object({
+  condition: z.literal('doc_expiry'),
+  projectId: z.string().uuid(),
+  documentId: z.string().uuid(),
+  docType: z.string().min(1).max(50),
+  validUntil: z.string().datetime(),
+});
+
+/** Discriminated union over the `task.create` evidence conditions. A
+ *  `task.create` proposal is EITHER a missing-required-doc gap (G1) OR a
+ *  doc-expiry warning (2.6); the discriminator is `condition`. Fail-closed: an
+ *  unknown condition throws at execute, so no mis-typed task is ever created. */
+const TaskCreateEvidence = z.discriminatedUnion('condition', [
+  MissingDocTaskEvidence,
+  DocExpiryTaskEvidence,
+]);
 
 export interface ProposalListPage {
   data: ProposalView[];
@@ -162,8 +182,14 @@ export class ProposalsService {
       // (`tasks_system_origin_open_unique`) independently prevents a duplicate open
       // system task for the same gap.
       'task.create': async (user, proposal) => {
-        const ev = MissingDocTaskEvidence.parse(proposal.evidence);
-        const { title, description } = composeMissingDocTask(ev.missingDocType);
+        // A task.create proposal is EITHER a missing-required-doc gap (G1) OR a
+        // doc-expiry warning (2.6). The discriminated union resolves which by its
+        // `condition`; an unknown condition fails closed (no mis-typed task).
+        const ev = TaskCreateEvidence.parse(proposal.evidence);
+        const { title, description } =
+          ev.condition === 'missing_required_doc'
+            ? composeMissingDocTask(ev.missingDocType)
+            : composeDocExpiryTask(ev.docType, ev.validUntil);
         await this.tasks.create(
           user,
           {

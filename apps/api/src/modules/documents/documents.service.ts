@@ -5,6 +5,7 @@ import {
   AuditService,
   apartments,
   buildings,
+  docSatisfiesRequirementPredicate,
   documents,
   env,
   projectAssignments,
@@ -375,6 +376,15 @@ function toDocument(r: DocumentRow, parents: ResolvedParentNames = {}): Document
     // Phase 1 — non-PII processing flags straight off the row.
     sensitive: r.sensitive,
     scanStatus: r.scanStatus as Document['scanStatus'],
+    // 2.6 future-states — the document legal/life-cycle fields straight off the
+    // row (nullable; NULL = not-classified). PII-FREE taxonomy + timestamps.
+    legalStatus: r.legalStatus,
+    versionState: r.versionState,
+    supersededByDocumentId: r.supersededByDocumentId,
+    validUntil: r.validUntil,
+    notaryStatus: r.notaryStatus,
+    notarizedAt: r.notarizedAt,
+    relevantPhase: r.relevantPhase,
     // Phase 1 — resolved parent labels (only when the mapper joined them).
     ...(parents.projectName !== undefined ? { projectName: parents.projectName } : {}),
     ...(parents.apartmentName !== undefined ? { apartmentName: parents.apartmentName } : {}),
@@ -2268,6 +2278,18 @@ export class DocumentsService {
                 and(
                   isNull(documents.archivedAt),
                   inArray(documents.type, [...requiredUnion] as string[]),
+                  // 2.6 future-states — the SAME canonical "doc satisfies its
+                  // required-doc requirement" predicate the recommender detect CTE
+                  // consumes (single source of truth: a doc marked legally
+                  // rejected / superseded / expired no longer counts as "received",
+                  // so the board and the recommender path CANNOT drift). NULL on
+                  // every clause is not-invalidating, so all pre-2.6 rows behave
+                  // byte-identically to before.
+                  docSatisfiesRequirementPredicate(
+                    sql`${documents.legalStatus}`,
+                    sql`${documents.versionState}`,
+                    sql`${documents.validUntil}`,
+                  ),
                   or(
                     and(
                       eq(documents.docScope, 'project'),
@@ -2455,6 +2477,31 @@ export class DocumentsService {
           // bypass the step-up gate). Never turns sensitive OFF.
           if (SENSITIVE_DOC_TYPES.has(input.type)) patch.sensitive = true;
         }
+        // 2.6 future-states — manager-gated set/clear of the legal life-cycle
+        // fields. ABSENT (undefined) leaves the column untouched; an explicit
+        // null CLEARS it (back to not-classified). All taxonomy / timestamps —
+        // PII-FREE. The `manage_documents` capability gate above is the tier gate
+        // (managers pass; agents need the explicit capability).
+        if (input.legalStatus !== undefined) patch.legalStatus = input.legalStatus;
+        if (input.versionState !== undefined) patch.versionState = input.versionState;
+        if (input.supersededByDocumentId !== undefined) {
+          // X-org referential guard: the self-FK `documents.superseded_by_document_id`
+          // references documents(id) GLOBALLY, and the FK check bypasses the
+          // writer's RLS — so without this an actor could point a doc at a
+          // FOREIGN-org document's id. Validate the target is visible to THIS
+          // actor via the canonical `loadVisible` seam (RLS-scoped, same
+          // visibility rules the rest of the service uses); a non-visible target
+          // throws the clean no-oracle 404 instead of persisting a cross-org FK.
+          // (A null CLEARS the pointer — no target to validate.)
+          if (input.supersededByDocumentId !== null) {
+            await this.loadVisible(tx, user, input.supersededByDocumentId);
+          }
+          patch.supersededByDocumentId = input.supersededByDocumentId;
+        }
+        if (input.validUntil !== undefined) patch.validUntil = input.validUntil;
+        if (input.notaryStatus !== undefined) patch.notaryStatus = input.notaryStatus;
+        if (input.notarizedAt !== undefined) patch.notarizedAt = input.notarizedAt;
+        if (input.relevantPhase !== undefined) patch.relevantPhase = input.relevantPhase;
         const [row] = await tx.update(documents).set(patch).where(eq(documents.id, id)).returning();
         if (!row) throw NOT_FOUND;
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
@@ -2464,8 +2511,24 @@ export class DocumentsService {
           action: 'document.update',
           targetTable: 'documents',
           targetId: row.id,
-          beforeState: { name: before.name, type: before.type },
-          afterState: { name: row.name, type: row.type },
+          // PII-FREE audit — names + taxonomy/lifecycle states only (the doc-state
+          // fields are never PII).
+          beforeState: {
+            name: before.name,
+            type: before.type,
+            legalStatus: before.legalStatus,
+            versionState: before.versionState,
+            notaryStatus: before.notaryStatus,
+            relevantPhase: before.relevantPhase,
+          },
+          afterState: {
+            name: row.name,
+            type: row.type,
+            legalStatus: row.legalStatus,
+            versionState: row.versionState,
+            notaryStatus: row.notaryStatus,
+            relevantPhase: row.relevantPhase,
+          },
           sessionId: user.sid,
         });
         return toDocument(row);

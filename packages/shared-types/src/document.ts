@@ -178,6 +178,25 @@ export const DOCUMENT_TYPE_MISMATCH_CODE = 'document_type_mismatch' as const;
 export const DocumentScanStatusEnum = z.enum(['pending', 'clean', 'infected', 'error']);
 export type DocumentScanStatus = z.infer<typeof DocumentScanStatusEnum>;
 
+// ── 2.6 future-states — the document legal/life-cycle enums (migration 0085).
+// ALL nullable on the wire: NULL = not-yet-classified, which keeps the exact
+// pre-2.6 semantics (the sharpened required-doc detection treats NULL as
+// not-invalidating). PII-FREE taxonomy.
+export const DocumentLegalStatusEnum = z.enum(['draft', 'reviewed', 'approved', 'rejected']);
+export type DocumentLegalStatus = z.infer<typeof DocumentLegalStatusEnum>;
+export const DocumentVersionStateEnum = z.enum(['current', 'superseded']);
+export type DocumentVersionState = z.infer<typeof DocumentVersionStateEnum>;
+export const DocumentNotaryStatusEnum = z.enum(['none', 'required', 'notarized']);
+export type DocumentNotaryStatus = z.infer<typeof DocumentNotaryStatusEnum>;
+export const DocumentRelevantPhaseEnum = z.enum([
+  'planning',
+  'signatures',
+  'permit',
+  'construction',
+  'completion',
+]);
+export type DocumentRelevantPhase = z.infer<typeof DocumentRelevantPhaseEnum>;
+
 /** Wire representation — NEVER includes r2Key. */
 export const DocumentSchema = z.object({
   id: z.string().uuid(),
@@ -218,6 +237,18 @@ export const DocumentSchema = z.object({
   scanStatus: DocumentScanStatusEnum.catch('pending').default('pending'),
   projectName: z.string().min(1).max(255).nullable().optional(),
   apartmentName: z.string().min(1).max(255).nullable().optional(),
+  // ── 2.6 future-states — the document legal/life-cycle fields (migration
+  // 0085). ALL nullable (NULL = not-yet-classified). `.catch(null)` on the
+  // enums so a future/unknown stored value degrades to null instead of throwing
+  // the whole list `.parse` (the same DV-MGR-DOCS posture as `type`/`scanStatus`).
+  // PII-FREE — every field is taxonomy or a lifecycle timestamp about the FILE.
+  legalStatus: DocumentLegalStatusEnum.nullable().catch(null).optional(),
+  versionState: DocumentVersionStateEnum.nullable().catch(null).optional(),
+  supersededByDocumentId: z.string().uuid().nullable().optional(),
+  validUntil: z.coerce.date().nullable().optional(),
+  notaryStatus: DocumentNotaryStatusEnum.nullable().catch(null).optional(),
+  notarizedAt: z.coerce.date().nullable().optional(),
+  relevantPhase: DocumentRelevantPhaseEnum.nullable().catch(null).optional(),
 });
 export type Document = z.infer<typeof DocumentSchema>;
 
@@ -244,12 +275,25 @@ const documentWriteShape = {
 export const CreateDocumentInput = z.object(documentWriteShape).strict();
 export type CreateDocument = z.infer<typeof CreateDocumentInput>;
 
-/** PATCH /documents/:id — rename / re-categorise only. Storage pointer,
- * hash, size and parent are immutable post-create (integrity). */
+/** PATCH /documents/:id — rename / re-categorise + (2.6) set/clear the legal
+ * life-cycle state fields. Storage pointer, hash, size and parent stay immutable
+ * post-create (integrity).
+ *
+ * 2.6 future-states: every state field is `.nullable().optional()` — ABSENT
+ * leaves the column untouched; an explicit `null` CLEARS it (back to
+ * not-classified). The BE re-asserts the manager-tier `manage_documents` gate
+ * (same as rename/retype). PII-FREE — all taxonomy / lifecycle timestamps. */
 export const UpdateDocumentInput = z
   .object({
     name: z.string().min(1).max(255).optional(),
     type: DocumentTypeEnum.optional(),
+    legalStatus: DocumentLegalStatusEnum.nullable().optional(),
+    versionState: DocumentVersionStateEnum.nullable().optional(),
+    supersededByDocumentId: z.string().uuid().nullable().optional(),
+    validUntil: z.coerce.date().nullable().optional(),
+    notaryStatus: DocumentNotaryStatusEnum.nullable().optional(),
+    notarizedAt: z.coerce.date().nullable().optional(),
+    relevantPhase: DocumentRelevantPhaseEnum.nullable().optional(),
   })
   .strict();
 export type UpdateDocument = z.infer<typeof UpdateDocumentInput>;

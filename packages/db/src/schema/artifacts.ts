@@ -16,7 +16,13 @@ import {
   unique,
 } from 'drizzle-orm/pg-core';
 
-import { docScopeEnum } from './_enums';
+import {
+  docScopeEnum,
+  documentLegalStatusEnum,
+  documentNotaryStatusEnum,
+  documentRelevantPhaseEnum,
+  documentVersionStateEnum,
+} from './_enums';
 import { bytea, inet } from './_types';
 import { apartments, owners, projects } from './projects';
 import { organizations, users } from './tenancy';
@@ -86,6 +92,30 @@ export const documents = pgTable(
      *  doc survives, de-linked. Distinct from doc_scope_id: a doc may be
      *  apartment-scoped yet still owner-attributed. */
     ownerId: uuid('owner_id').references(() => owners.id, { onDelete: 'set null' }),
+    /** 0085 (2.6 future-states) — the doc's legal-review lifecycle. NULLABLE,
+     *  NO DEFAULT: NULL = not-yet-classified (every pre-2.6 row). The sharpened
+     *  `detectMissingRequiredDocs` treats a NULL legal_status as "not rejected"
+     *  (it can still satisfy a required-doc requirement), so existing rows keep
+     *  their exact pre-2.6 semantics. NOT PII (taxonomy). */
+    legalStatus: documentLegalStatusEnum('legal_status'),
+    /** 0085 (2.6) — current vs superseded. NULL ⇒ treated as 'current'. A
+     *  superseded doc no longer satisfies a requirement. */
+    versionState: documentVersionStateEnum('version_state'),
+    /** 0085 (2.6) — when superseded, the replacement doc. Self-FK ON DELETE SET
+     *  NULL: deleting the replacement clears the pointer, never destroys/blocks
+     *  this row. */
+    supersededByDocumentId: uuid('superseded_by_document_id'),
+    /** 0085 (2.6) — legal validity horizon (e.g. a שומה/permit that lapses).
+     *  NULL = no known expiry. UTC stored, Asia/Jerusalem displayed. An expired
+     *  required doc (valid_until < now) no longer satisfies the requirement and
+     *  is what `doc-expiry-warn` flags as it approaches. */
+    validUntil: timestamp('valid_until', { withTimezone: true }),
+    /** 0085 (2.6) — notarisation lifecycle (אימות נוטריוני). NULL = N/A. */
+    notaryStatus: documentNotaryStatusEnum('notary_status'),
+    /** 0085 (2.6) — when notarised. */
+    notarizedAt: timestamp('notarized_at', { withTimezone: true }),
+    /** 0085 (2.6) — which renewal phase the doc belongs to. NULL = unassigned. */
+    relevantPhase: documentRelevantPhaseEnum('relevant_phase'),
   },
   (table) => ({
     r2KeyUnique: uniqueIndex('documents_r2_key_unique').on(table.r2Key),
@@ -103,6 +133,11 @@ export const documents = pgTable(
     scopeIdx: index('idx_documents_scope')
       .on(table.docScope, table.docScopeId)
       .where(sql`doc_scope_id IS NOT NULL AND archived_at IS NULL`),
+    // 0085 (2.6) — the approved/non-archived working set the doc-expiry-warn
+    // recommender + perception counts scan (mirrors the migration's partial idx).
+    legalApprovedIdx: index('idx_documents_legal_approved')
+      .on(table.orgId, table.validUntil)
+      .where(sql`legal_status = 'approved' AND archived_at IS NULL`),
     // 0077 (DH1) — scope/scope_id consistency: org ⇒ no target id; any non-org
     // scope ⇒ a target id is required.
     docScopeIdConsistent: check(

@@ -1,5 +1,18 @@
 import type { DocumentScanStatus } from '@emapp/shared-types';
 
+/** 2.6 future-states — one legal/life-cycle badge derived for a document row.
+ *  PII-FREE: an i18n `labelKey` (under `documents.states.badge.*`) + a semantic
+ *  intent. The adapter computes WHICH badges apply; the component renders them
+ *  via the `documents.states.badge` next-intl namespace (adapter stays pure /
+ *  locale-light). */
+export interface DocumentStateBadgeViewModel {
+  /** Stable key (also the i18n key suffix): rejected | expired | expiringSoon |
+   *  superseded | awaitingNotary. */
+  key: 'rejected' | 'expired' | 'expiringSoon' | 'superseded' | 'awaitingNotary';
+  /** Semantic intent for the StatusBadge. */
+  intent: 'danger' | 'warning' | 'neutral';
+}
+
 export interface DocumentViewModel {
   id: string;
   name: string;
@@ -32,4 +45,10 @@ export interface DocumentViewModel {
   projectName: string | null;
   /** Resolved parent apartment NUMBER (org-internal label), or null. */
   apartmentName: string | null;
+  // ── 2.6 future-states — derived legal/life-cycle badges (PII-FREE). Empty
+  // array when the doc carries no future-state (every pre-2.6 / unset doc), so a
+  // calm row stays calm.
+  stateBadges: DocumentStateBadgeViewModel[];
+  /** approved-doc legal validity horizon (ISO), or null. Drives a tooltip/sort. */
+  validUntil: string | null;
 }

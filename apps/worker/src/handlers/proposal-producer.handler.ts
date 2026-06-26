@@ -23,6 +23,7 @@
  * reaper/retention/expiry no-PII convention).
  */
 import {
+  createDocExpiryWarnRecommender,
   createDocumentChaseRecommender,
   createReminderCadenceRecommender,
   createSignatureExpiringRecommender,
@@ -75,7 +76,13 @@ export class ProposalProducerHandler implements IJobHandler<ProposalProducerJobP
    *    - signature-expiring (1.3):    a NON-TERMINAL project whose next pending
    *      request lapses in <7d → signature_request.reissue (anticipate the lapse).
    *      READS the perception's nextExpiryAt; PROPOSE-AND-CONFIRM (the executor
-   *      re-mints on APPROVE — never auto-executed, never re-split). */
+   *      re-mints on APPROVE — never auto-executed, never re-split).
+   *    - doc-expiry-warn   (2.6):     an APPROVED, CURRENT required doc on a
+   *      gathering-signatures project whose valid_until lapses within 30d →
+   *      task.create (the SAME internal kind; the executor's doc_expiry arm opens
+   *      a system task). Anticipatory: warns BEFORE the doc expires and re-opens
+   *      a requirement gap. PII-FREE evidence (project/document ids + type +
+   *      validUntil). autonomy-policy.ts untouched (reuses task.create). */
   private readonly recommenders: IRecommender[] = [
     createSignatureReissueRecommender(),
     createReminderCadenceRecommender(),
@@ -83,6 +90,7 @@ export class ProposalProducerHandler implements IJobHandler<ProposalProducerJobP
     createDocumentChaseRecommender(),
     createSignatureStalledRecommender(),
     createSignatureExpiringRecommender(),
+    createDocExpiryWarnRecommender(),
   ];
 
   async handle(_payload: ProposalProducerJobPayload, ctx: JobContext): Promise<void> {

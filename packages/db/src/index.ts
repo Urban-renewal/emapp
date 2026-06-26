@@ -79,6 +79,10 @@ export * from './helpers/signature-expiry-sweep';
 export * from './helpers/proposals';
 export * from './helpers/proposal-producer';
 export * from './helpers/recommenders/missing-required-doc.detect';
+// The ONE canonical "doc satisfies its required-doc requirement" predicate —
+// shared by the recommender detect CTE AND DocumentsService.boardCompleteness
+// so the two surfaces cannot drift (single source of truth).
+export * from './helpers/recommenders/doc-satisfies-requirement.predicate';
 // Autonomous Managing System, wave 1.1 — the PII-FREE, set-based ProjectPerception
 // assembler (composes the canonical signature/consent/missing-doc/terminal seams).
 export * from './helpers/perception/project-lifecycle.detect';
@@ -86,6 +90,9 @@ export * from './helpers/recommenders/signature-reissue.recommender';
 export * from './helpers/recommenders/reminder-cadence.recommender';
 export * from './helpers/recommenders/task-watcher.recommender';
 export * from './helpers/recommenders/document-chase.recommender';
+// 2.6 future-states — anticipatory expiry warning on an approved required doc
+// (reuses the EXISTING task.create kind; autonomy-policy.ts untouched).
+export * from './helpers/recommenders/doc-expiry-warn.recommender';
 // Autonomous Managing System, wave 1.3 — perception-driven, PROPOSE-ONLY signature
 // recommenders (stalled-collection reminder + expiring-soon reissue) reading the
 // canonical signature-activity projection of the ProjectPerception read-model.

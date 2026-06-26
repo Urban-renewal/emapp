@@ -2,7 +2,33 @@ import type { Document } from '@emapp/shared-types';
 
 import { stripBidiOverrides } from '@/lib/bidi';
 import { formatRelative } from '@/lib/format';
-import type { DocumentViewModel } from '@/models/document.vm';
+import type { DocumentStateBadgeViewModel, DocumentViewModel } from '@/models/document.vm';
+
+/** 2.6 — the expiry-warning window (must match the BE doc-expiry-warn window /
+ *  the org-stats docsExpiringSoon filter: 30 days). */
+const EXPIRY_WARN_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * 2.6 future-states — derive the PII-FREE legal/life-cycle badges for a row.
+ * Pure + locale-independent (intents + keys only; the component localises). With
+ * every future-state field null (every pre-2.6 / unset doc) this returns [] so a
+ * calm row stays calm. Order = severity (rejected/expired first).
+ */
+function deriveStateBadges(d: Document, now: number): DocumentStateBadgeViewModel[] {
+  const badges: DocumentStateBadgeViewModel[] = [];
+  if (d.legalStatus === 'rejected') badges.push({ key: 'rejected', intent: 'danger' });
+  if (d.validUntil) {
+    const until = new Date(d.validUntil).getTime();
+    if (!Number.isNaN(until)) {
+      if (until < now) badges.push({ key: 'expired', intent: 'danger' });
+      else if (until - now <= EXPIRY_WARN_WINDOW_MS)
+        badges.push({ key: 'expiringSoon', intent: 'warning' });
+    }
+  }
+  if (d.versionState === 'superseded') badges.push({ key: 'superseded', intent: 'neutral' });
+  if (d.notaryStatus === 'required') badges.push({ key: 'awaitingNotary', intent: 'warning' });
+  return badges;
+}
 
 // `Document['type']` is FREE TEXT (tolerant read) — the label map covers the
 // curated `DocumentTypeEnum` types AND legacy generic ones for display, with a
@@ -108,6 +134,9 @@ export function toDocumentViewModel(d: Document, locale: 'he' | 'en' = 'he'): Do
     isScanClean: d.scanStatus === 'clean',
     projectName: parentLabel(d.projectName),
     apartmentName: parentLabel(d.apartmentName),
+    // 2.6 — derived legal/life-cycle badges (PII-FREE; [] for an unset doc).
+    stateBadges: deriveStateBadges(d, Date.now()),
+    validUntil: d.validUntil ? new Date(d.validUntil).toISOString() : null,
   };
 }
 

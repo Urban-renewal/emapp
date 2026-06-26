@@ -16,6 +16,8 @@
  * null for a pure auto-execute) — mirroring the audit the gated create wrote inline
  * before this was factored out. NO PII (project/doc-type ids + a taxonomy title only).
  */
+import { sql } from 'drizzle-orm';
+
 import { AuditService } from '../../audit/audit.service';
 import { tasks } from '../../schema/collaboration';
 import type { TenantTx } from '../../wrappers/with-tenant';
@@ -59,7 +61,14 @@ export async function insertSystemTask(
       originRef: input.originRef,
       createdBy: input.createdBy,
     })
-    .onConflictDoNothing({ target: [tasks.orgId, tasks.originRef] })
+    .onConflictDoNothing({
+      target: [tasks.orgId, tasks.originRef],
+      // Match the PARTIAL unique index `tasks_system_origin_open_unique`
+      // (WHERE source='system' AND origin_ref IS NOT NULL AND archived_at IS NULL).
+      // Drizzle needs the predicate to infer the partial arbiter index (same pattern
+      // as emitProposal's partial-unique). Without it Postgres throws 42P10.
+      where: sql`source = 'system' AND origin_ref IS NOT NULL AND archived_at IS NULL`,
+    })
     .returning({ id: tasks.id });
 
   // Dedup no-op: don't audit a create that didn't happen.

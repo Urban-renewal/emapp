@@ -74,8 +74,20 @@ principle fire reflexively instead of being a rule you forget under pressure.
   tries to BYPASS it from every angle, loops until closed, and verifies each claim against the _real_ code (a
   red-team can also over-state — check it). Spawn a `security-reviewer` agent on the diff. The builder reports
   code-green; YOU close the gate.
+- **The LOOP is the mechanism, and it is STANDING — never a one-off (owner 2026-06-25, "תעדן... אסור לשכוח").**
+  A red-team is not one pass; it is a loop run UNTIL THE RED-TEAM ITSELF CONFIRMS CLEAN (loop-until-dry):
+  **(1) FIND** — fan out independent finders over EVERY angle (security, correctness, OUTCOME-honesty,
+  cross-entity authz, error/empty/loading states), looping until ~2 consecutive rounds surface nothing new;
+  **(2) FALSE-POSITIVE VERIFY** — every candidate is adversarially checked against the REAL code by ≥2 of 3
+  diverse lenses (default-to-not-real; a red-team over-states), so ONLY confirmed-real defects survive;
+  **(3) FIX** the confirmed defects (reuse the canonical seam, P1); **(4) RE-RUN from (1)** on the fixed code,
+  and keep looping until a full round yields ZERO confirmed-real. Orchestrate it as a multi-agent COUNCIL —
+  the **Workflow** tool: parallel finders → 3-lens majority verify → confirmed list — then YOU fix + re-run.
+  A crash/interrupt does NOT end the loop: **resume** it (`resumeFromRunId`, cached finds) and finish; NEVER
+  declare clean on a partial loop. (Precedent: the email/cross-entity loop — find phase completed, the
+  fragile host crashed mid-verify; the loop is owed a resume, not abandoned.)
 - **Decision question:** _"Who tried to BREAK this, independently of who built it? If only the builder — it's
-  not gated yet."_
+  not gated yet. And did the loop actually run to DRY, or did I stop at one pass / a crash?"_
 
 ### P4 — No flat/static surface anywhere; design for 100×
 
@@ -177,6 +189,8 @@ The catalog of how things bite _in this project_. An experienced lead carries th
 | inline-color ratchet trips on a CI-green diff that added no colour                                                                                                            | `app-no-new-inline-colors` "INCREASED"; the flagged file is one you only commented                                                                                     | a `#NNN` PR-ref in a `.tsx` comment matches the hex regex `#[0-9a-fA-F]{3,6}` (e.g. `#535` reads as 3-digit hex) — write PR refs WITHOUT the `#` in source comments (`535`, `PR 535`), `#NNN` is fine in commit/PR bodies                                                                                                                                                                                                                                                                                                   |
 | node procs creep toward the crash threshold over a long parallel session                                                                                                      | preflight `node processes ≥ 22`; `tsc`/`pnpm` workers pile up (a dozen tsc workers held ~4.6GB once)                                                                   | your own repeated `typecheck`/`lint`/`vitest` runs + builder workers leave STALE procs that never exit. Periodically targeted-reap by command signature (`vitest\|tsc\|eslint\|esbuild\|pnpm\\bin\|fork-ts-checker`) KEEPING the two live dev-server PIDs (the :3000/:3001 listeners). Frees the RAM → pagefile shrinks → proc count drops. NOT a blind `-Name node` mass-kill (classifier-blocked) — exclude the live listeners by PID                                                                                     |
 | "walked at scale, merged" but a count/filter-aware bug shipped (the #545 inbox `pending-count` was org-wide while the feed was kind-filtered → "X מתוך Y" lied under a facet) | the walk evidence lives in the ledger/chat, not ON the PR; the count was eyeballed in the render, never curl'd from the DB — and NEVER re-checked WITH a filter active | **un-gated merge.** For any sensitive change (security/PII/authz/outbound/**count**), the gate is BOTH: (a) a SEPARATE `security-reviewer` agent verdict POSTED AS A PR COMMENT (not just the ledger), and (b) a deep-walk EVIDENCE comment ON THE PR — numbers verified against the DB (curl/SQL), **including with EACH filter active** (the X-מתוך-Y divergence class), latency ms, and OUTCOME. code-green + "walked at scale" WITHOUT DB-verified numbers on the PR = NOT gated. The ledger is never the gate (P2/P3). |
+
+| An agent reports "done / walked at scale" after merging a wave | the merged PRs have 0 independent-red-team comments + bodies that say "walked"/"at scale" with NO numbers-vs-DB or latency evidence | un-gated merge — code-green ≠ acceptance. Retroactively run the independent red-team + a Probe-1 deep re-walk; it WILL surface what the claimed walk missed (it caught a kind-filtered "X מתוך Y" count-divergence in #545 the agent shipped — while 0 security-CRITICAL slipped, i.e. lucky-not-safe). For a security-sensitive change the independent-red-team VERDICT and the numbers-vs-DB walk evidence MUST be ON the PR before merge. The builder's self-review is necessary-never-sufficient. Correct + re-probe the agent; don't promote it. |
 
 (Whenever a NEW failure-mode bites, ADD a row here AND a memory file — see §5.)
 

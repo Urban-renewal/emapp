@@ -462,12 +462,36 @@ export type ProjectLeverage = z.infer<typeof ProjectLeverageSchema>;
  * the same share basis and carry the same `basis` label (OD-1/OD-3 still gate
  * the exact statutory %).
  */
-export const OrgStatsSchema = z.object({
-  activeProjects: z.number().int().nonnegative(),
-  residents: z.number().int().nonnegative(),
-  signaturesReceived: z.number().int().nonnegative(),
-  signaturesPending: z.number().int().nonnegative(),
-});
+/**
+ * 2.6 future-states — the PII-FREE document legal/life-cycle situation-picture
+ * facet of OrgStats. COUNTS ONLY (the `documents` future-state columns carry no
+ * PII): how many active (non-archived) docs are expiring soon, legally rejected,
+ * or awaiting notarisation. `.strict()` is the structural guard that no 5th
+ * (PII-bearing) key can ever slip onto this shape.
+ */
+export const DocumentStatesStatsSchema = z
+  .object({
+    /** Approved, current docs whose valid_until lapses within the warn window. */
+    docsExpiringSoon: z.number().int().nonnegative(),
+    /** Docs explicitly marked legal_status='rejected'. */
+    docsRejected: z.number().int().nonnegative(),
+    /** Docs with notary_status='required' (notarisation outstanding). */
+    docsAwaitingNotary: z.number().int().nonnegative(),
+  })
+  .strict();
+export type DocumentStatesStats = z.infer<typeof DocumentStatesStatsSchema>;
+
+export const OrgStatsSchema = z
+  .object({
+    activeProjects: z.number().int().nonnegative(),
+    residents: z.number().int().nonnegative(),
+    signaturesReceived: z.number().int().nonnegative(),
+    signaturesPending: z.number().int().nonnegative(),
+    // 2.6 — additive PII-FREE document future-state counts. Always present (the
+    // computeOrgStats source single-sources it under the same withTenant tx).
+    documentStates: DocumentStatesStatsSchema,
+  })
+  .strict();
 export type OrgStats = z.infer<typeof OrgStatsSchema>;
 
 /**

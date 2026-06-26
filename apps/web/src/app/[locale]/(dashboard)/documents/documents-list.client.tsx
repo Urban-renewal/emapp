@@ -35,6 +35,7 @@ import {
   FleetGrid,
   PulseSentence,
 } from '@/app/[locale]/(dashboard)/_components/situation-picture';
+import { DocumentStatesSummary } from '@/components/documents/document-states-summary';
 import { isStepUpCancelled, useStepUpUnlock } from '@/components/step-up-unlock';
 import { useToast } from '@/components/ui/action-toast';
 import { Button } from '@/components/ui/button';
@@ -212,6 +213,11 @@ export function DocumentsListClient() {
           </Link>
         )}
       </div>
+
+      {/* 2.6 future-states — the document legal/life-cycle situation-picture strip
+          (PII-FREE counts: expiring-soon / rejected / awaiting-notary). Renders
+          nothing when the org has zero — never noise on a clean board. */}
+      <DocumentStatesSummary />
 
       {/* A non-empty search takes over the surface with the grouped+faceted shell
           (server search results, grouped by project→party — NOT a flat list). */}
@@ -1518,6 +1524,13 @@ function DocumentRow({
           {!doc.isScanClean && (
             <span className="badge badge-neutral shrink-0">{doc.scanStatusLabel}</span>
           )}
+          {/* 2.6 future-states — legal/life-cycle badges (rejected/expired/
+              expiring/superseded/awaiting-notary). PII-FREE; [] for an unset doc. */}
+          {doc.stateBadges.map((b) => (
+            <span key={b.key} className={`badge badge-${b.intent} shrink-0`}>
+              {t(`states.badge.${b.key}`)}
+            </span>
+          ))}
         </span>
       </Link>
       <span className="hidden shrink-0 text-[11px] text-text-soft sm:inline" dir="ltr">

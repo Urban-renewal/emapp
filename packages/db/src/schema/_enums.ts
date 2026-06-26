@@ -86,3 +86,27 @@ export const externalShareScopeTypeEnum = pgEnum('external_share_scope_type', [
 // SUPERSEDES the ad-hoc project_id/apartment_id nullable columns as the
 // canonical scope concept; those columns are retained for back-compat.
 export const docScopeEnum = pgEnum('doc_scope', ['org', 'project', 'apartment', 'owner']);
+
+// 2.6 (migration 0085) — document FUTURE-STATE enums (legal/version/notary/
+// phase lifecycle on `documents`). ALL columns nullable, NO default — a NULL
+// value is "not-yet-classified / not-invalidating" so existing rows keep their
+// exact pre-2.6 semantics. PII-FREE taxonomy only.
+export const documentLegalStatusEnum = pgEnum('document_legal_status', [
+  'draft',
+  'reviewed',
+  'approved',
+  'rejected',
+]);
+export const documentVersionStateEnum = pgEnum('document_version_state', ['current', 'superseded']);
+export const documentNotaryStatusEnum = pgEnum('document_notary_status', [
+  'none',
+  'required',
+  'notarized',
+]);
+export const documentRelevantPhaseEnum = pgEnum('document_relevant_phase', [
+  'planning',
+  'signatures',
+  'permit',
+  'construction',
+  'completion',
+]);

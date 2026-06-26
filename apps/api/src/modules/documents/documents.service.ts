@@ -375,6 +375,15 @@ function toDocument(r: DocumentRow, parents: ResolvedParentNames = {}): Document
     // Phase 1 — non-PII processing flags straight off the row.
     sensitive: r.sensitive,
     scanStatus: r.scanStatus as Document['scanStatus'],
+    // 2.6 future-states — the document legal/life-cycle fields straight off the
+    // row (nullable; NULL = not-classified). PII-FREE taxonomy + timestamps.
+    legalStatus: r.legalStatus,
+    versionState: r.versionState,
+    supersededByDocumentId: r.supersededByDocumentId,
+    validUntil: r.validUntil,
+    notaryStatus: r.notaryStatus,
+    notarizedAt: r.notarizedAt,
+    relevantPhase: r.relevantPhase,
     // Phase 1 — resolved parent labels (only when the mapper joined them).
     ...(parents.projectName !== undefined ? { projectName: parents.projectName } : {}),
     ...(parents.apartmentName !== undefined ? { apartmentName: parents.apartmentName } : {}),
@@ -2455,6 +2464,19 @@ export class DocumentsService {
           // bypass the step-up gate). Never turns sensitive OFF.
           if (SENSITIVE_DOC_TYPES.has(input.type)) patch.sensitive = true;
         }
+        // 2.6 future-states — manager-gated set/clear of the legal life-cycle
+        // fields. ABSENT (undefined) leaves the column untouched; an explicit
+        // null CLEARS it (back to not-classified). All taxonomy / timestamps —
+        // PII-FREE. The `manage_documents` capability gate above is the tier gate
+        // (managers pass; agents need the explicit capability).
+        if (input.legalStatus !== undefined) patch.legalStatus = input.legalStatus;
+        if (input.versionState !== undefined) patch.versionState = input.versionState;
+        if (input.supersededByDocumentId !== undefined)
+          patch.supersededByDocumentId = input.supersededByDocumentId;
+        if (input.validUntil !== undefined) patch.validUntil = input.validUntil;
+        if (input.notaryStatus !== undefined) patch.notaryStatus = input.notaryStatus;
+        if (input.notarizedAt !== undefined) patch.notarizedAt = input.notarizedAt;
+        if (input.relevantPhase !== undefined) patch.relevantPhase = input.relevantPhase;
         const [row] = await tx.update(documents).set(patch).where(eq(documents.id, id)).returning();
         if (!row) throw NOT_FOUND;
         await new AuditService(tx, { ip: user.ip, userAgent: user.userAgent }).log({
@@ -2464,8 +2486,24 @@ export class DocumentsService {
           action: 'document.update',
           targetTable: 'documents',
           targetId: row.id,
-          beforeState: { name: before.name, type: before.type },
-          afterState: { name: row.name, type: row.type },
+          // PII-FREE audit — names + taxonomy/lifecycle states only (the doc-state
+          // fields are never PII).
+          beforeState: {
+            name: before.name,
+            type: before.type,
+            legalStatus: before.legalStatus,
+            versionState: before.versionState,
+            notaryStatus: before.notaryStatus,
+            relevantPhase: before.relevantPhase,
+          },
+          afterState: {
+            name: row.name,
+            type: row.type,
+            legalStatus: row.legalStatus,
+            versionState: row.versionState,
+            notaryStatus: row.notaryStatus,
+            relevantPhase: row.relevantPhase,
+          },
           sessionId: user.sid,
         });
         return toDocument(row);

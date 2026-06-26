@@ -41,3 +41,31 @@ export function composeMissingDocTask(docType: string): ComposedTaskCopy {
     description: `מסמך מסוג "${label}" חסר בפרויקט שנמצא באיסוף חתימות. מומלץ להשלים אותו כדי לקדם את הפרויקט.`,
   };
 }
+
+/**
+ * 2.6 — compose the system task's title + body for an APPROVED required document
+ * that is APPROACHING its legal-validity expiry (valid_until ≤ 30d) on a
+ * gathering-signatures project. User-framed (the situation + a proposed action),
+ * PII-free: interpolates ONLY the doc-type label (taxonomy) + the formatted
+ * expiry DATE (a date, not PII). The date is rendered in Asia/Jerusalem for the
+ * Hebrew UI; an unparseable timestamp degrades to the raw doc-type warning
+ * without a date (never throws on bad input).
+ */
+export function composeDocExpiryTask(docType: string, validUntilIso: string): ComposedTaskCopy {
+  const label = DOC_TYPE_LABEL_HE[docType] ?? docType;
+  const parsed = new Date(validUntilIso);
+  const dateText = Number.isNaN(parsed.getTime())
+    ? null
+    : new Intl.DateTimeFormat('he-IL', {
+        timeZone: 'Asia/Jerusalem',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(parsed);
+  return {
+    title: `מסמך עומד לפוג: ${label}`,
+    description: dateText
+      ? `תוקפו של מסמך מסוג "${label}" בפרויקט שנמצא באיסוף חתימות יפוג בתאריך ${dateText}. מומלץ לפתוח משימה ולחדש אותו לפני שיפוג כדי לא לעכב את הפרויקט.`
+      : `תוקפו של מסמך מסוג "${label}" בפרויקט שנמצא באיסוף חתימות עומד לפוג בקרוב. מומלץ לחדש אותו כדי לא לעכב את הפרויקט.`,
+  };
+}

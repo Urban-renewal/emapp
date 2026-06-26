@@ -30,6 +30,23 @@
  * (`doc_scope='project'` AND `doc_scope_id=project.id`) OR the legacy
  * (`project_id=project.id`) linkage matches.
  *
+ * ── 2.6 future-states SHARPENING (PURELY ADDITIVE — no regression) ──────────
+ * A required doc that EXISTS but is legally INVALID no longer counts as
+ * satisfying the requirement: a doc satisfies a type only when it is ALSO
+ *   (legal_status IS DISTINCT FROM 'rejected')  -- not legally rejected
+ *   AND (version_state IS DISTINCT FROM 'superseded')  -- the current version
+ *   AND (valid_until IS NULL OR valid_until >= now())  -- not expired
+ * These three predicates are phrased so that a NULL value (every pre-2.6 row,
+ * and any doc that never sets a 2.6 state) is "not invalidating":
+ *   • legal_status NULL  → IS DISTINCT FROM 'rejected' is TRUE
+ *   • version_state NULL → IS DISTINCT FROM 'superseded' is TRUE
+ *   • valid_until NULL   → the OR short-circuits TRUE
+ * So with every 2.6 column NULL (the state of all existing data) the join is
+ * BYTE-IDENTICAL to before the sharpening — the only docs newly EXCLUDED are
+ * ones a manager has EXPLICITLY marked rejected / superseded / expired. This is
+ * the single canonical CTE (not forked); both TaskWatcher (G1) and DocumentChase
+ * (S5) inherit the sharpening automatically.
+ *
  * NO PII: every returned column is a project id / org id / project type / track /
  * doc-type key — never an owner national_id/phone/name. Document TYPE keys
  * ('land_registry', …) are taxonomy, not PII.
@@ -111,6 +128,13 @@ export async function detectMissingRequiredDocs(): Promise<MissingRequiredDocRow
           (d.doc_scope = 'project' AND d.doc_scope_id = proj.project_id)
        OR d.project_id = proj.project_id
      )
+     -- 2.6 future-states sharpening (ADDITIVE — NULL is not-invalidating, so
+     -- every pre-2.6 / unset doc still satisfies, byte-identical to before):
+     -- a doc satisfies a required type only when it is not legally rejected,
+     -- not superseded, and not expired.
+     AND d.legal_status IS DISTINCT FROM 'rejected'
+     AND d.version_state IS DISTINCT FROM 'superseded'
+     AND (d.valid_until IS NULL OR d.valid_until >= now())
     WHERE d.id IS NULL
     ORDER BY proj.org_id, proj.project_id, required.doc_type
     LIMIT ${MISSING_REQUIRED_DOC_DETECT_LIMIT}
@@ -118,11 +142,13 @@ export async function detectMissingRequiredDocs(): Promise<MissingRequiredDocRow
 
   const rows = (result as unknown as { rows: Array<Record<string, unknown>> }).rows;
 
-  return rows.map((row): MissingRequiredDocRow => ({
-    orgId: String(row['org_id']),
-    projectId: String(row['project_id']),
-    projectType: String(row['project_type']),
-    track: String(row['track']),
-    missingDocType: String(row['doc_type']),
-  }));
+  return rows.map(
+    (row): MissingRequiredDocRow => ({
+      orgId: String(row['org_id']),
+      projectId: String(row['project_id']),
+      projectType: String(row['project_type']),
+      track: String(row['track']),
+      missingDocType: String(row['doc_type']),
+    }),
+  );
 }

@@ -1441,11 +1441,41 @@ export class ProjectsService {
                        AND sr.document_id IN (${projectSetSignatureDocIdsSql(sql`SELECT project_id FROM visible`)})) AS signatures_pending
               `);
         const r = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
+
+        // 2.6 — the PII-FREE document future-state situation-picture facet.
+        // COUNTS ONLY (the `documents` future-state columns carry no PII): the
+        // SINGLE source is the `documents` table itself, read here under the SAME
+        // withTenant tx (org_id RLS-isolated). Document future-states are ORG-wide
+        // facts — an agent and a manager see the same org-wide legal-state picture
+        // (RLS owns the org boundary). `docsExpiringSoon` mirrors the
+        // doc-expiry-warn recommender window EXACTLY (approved ∧ current ∧
+        // valid_until within [now, now+30d]) so the strip and the proposals agree.
+        const dsResult = await tx.execute(sql`
+          SELECT
+            COUNT(*) FILTER (
+              WHERE legal_status = 'approved'
+                AND version_state IS DISTINCT FROM 'superseded'
+                AND valid_until IS NOT NULL
+                AND valid_until >= now()
+                AND valid_until <= now() + interval '30 days'
+            )::int AS docs_expiring_soon,
+            COUNT(*) FILTER (WHERE legal_status = 'rejected')::int       AS docs_rejected,
+            COUNT(*) FILTER (WHERE notary_status = 'required')::int      AS docs_awaiting_notary
+          FROM documents
+          WHERE archived_at IS NULL
+        `);
+        const ds = (dsResult as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
+
         return {
           activeProjects: Number(r['active_projects'] ?? 0),
           residents: Number(r['residents'] ?? 0),
           signaturesReceived: Number(r['signatures_received'] ?? 0),
           signaturesPending: Number(r['signatures_pending'] ?? 0),
+          documentStates: {
+            docsExpiringSoon: Number(ds['docs_expiring_soon'] ?? 0),
+            docsRejected: Number(ds['docs_rejected'] ?? 0),
+            docsAwaitingNotary: Number(ds['docs_awaiting_notary'] ?? 0),
+          },
         };
       },
       { userId: user.sub },

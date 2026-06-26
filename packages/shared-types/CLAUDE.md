@@ -25,6 +25,14 @@ D.21 over "Better Auth"; recorded here to keep docs↔code in sync.)
 - The schemas here are the source of truth. BE DTOs RE-EXPORT from here
   (thin files); never redefine a schema in the app.
 - No imports from other `@emapp/*` packages (avoid circular deps).
+  - DOCUMENTED EXCEPTION (1, narrow): `project-perception.ts` imports
+    `AutonomyActionKind` from `@emapp/jobs` for the typed
+    `attentionReasonToActionKind` map. `@emapp/jobs` is a LEAF (zod-only, no
+    `@emapp/*` deps), so `jobs → shared-types` does not exist and there is NO
+    import cycle — the rule's intent (cycle-avoidance) is preserved. This keeps
+    the DECIDE→ACT map SINGLE-SOURCE against the real kind taxonomy instead of a
+    string mirror that would drift. Do not add further `@emapp/*` deps without
+    confirming the target is also a leaf.
 - A change here is a breaking change for BOTH apps — coordinate; the
   `gen-api-docs` §1.4 gate + the CI conformance job will catch drift.
 - Keep schemas pure (no Nest/env/Node-only imports) so FE can import them.

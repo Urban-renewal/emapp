@@ -55,6 +55,8 @@ import { sql } from 'drizzle-orm';
 
 import { providerDb } from '../../client';
 
+import { docSatisfiesRequirementPredicate } from './doc-satisfies-requirement.predicate';
+
 /** One detected missing-required-doc gap. PII-FREE: ids + taxonomy keys only. */
 export interface MissingRequiredDocRow {
   /** The org the gap belongs to (the producer writes per-tenant). */
@@ -131,10 +133,14 @@ export async function detectMissingRequiredDocs(): Promise<MissingRequiredDocRow
      -- 2.6 future-states sharpening (ADDITIVE — NULL is not-invalidating, so
      -- every pre-2.6 / unset doc still satisfies, byte-identical to before):
      -- a doc satisfies a required type only when it is not legally rejected,
-     -- not superseded, and not expired.
-     AND d.legal_status IS DISTINCT FROM 'rejected'
-     AND d.version_state IS DISTINCT FROM 'superseded'
-     AND (d.valid_until IS NULL OR d.valid_until >= now())
+     -- not superseded, and not expired. This is the ONE canonical predicate
+     -- shared with DocumentsService.boardCompleteness — single source of truth,
+     -- so the recommender path and the cockpit board CANNOT drift.
+     AND ${docSatisfiesRequirementPredicate(
+       sql.raw('d.legal_status'),
+       sql.raw('d.version_state'),
+       sql.raw('d.valid_until'),
+     )}
     WHERE d.id IS NULL
     ORDER BY proj.org_id, proj.project_id, required.doc_type
     LIMIT ${MISSING_REQUIRED_DOC_DETECT_LIMIT}

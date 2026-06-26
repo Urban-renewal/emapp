@@ -34,6 +34,7 @@ import { randomUUID } from 'node:crypto';
 
 import {
   db,
+  detectMissingRequiredDocs,
   documents,
   memberships,
   projectAssignments,
@@ -117,7 +118,16 @@ async function seedDoc(
   createdBy: string,
   projectId: string,
   type: string,
-  opts: { archived?: boolean; legacyOnly?: boolean } = {},
+  opts: {
+    archived?: boolean;
+    legacyOnly?: boolean;
+    // 2.6 future-states — let a test seed a doc that EXISTS + is non-archived but
+    // is legally INVALID (rejected / superseded / expired) so the shared
+    // "doc-satisfies-requirement" predicate excludes it from "received".
+    legalStatus?: 'draft' | 'reviewed' | 'approved' | 'rejected';
+    versionState?: 'current' | 'superseded';
+    validUntil?: Date;
+  } = {},
 ): Promise<void> {
   const docScope = opts.legacyOnly ? 'org' : 'project';
   const docScopeId = opts.legacyOnly ? null : projectId;
@@ -137,6 +147,9 @@ async function seedDoc(
       uploadedAt: new Date(),
       scanStatus: 'clean',
       archivedAt: opts.archived ? new Date() : null,
+      ...(opts.legalStatus ? { legalStatus: opts.legalStatus } : {}),
+      ...(opts.versionState ? { versionState: opts.versionState } : {}),
+      ...(opts.validUntil ? { validUntil: opts.validUntil } : {}),
     });
   });
 }
@@ -614,6 +627,101 @@ describe('boardCompleteness — S2 projectsBehind (project-attention axis)', () 
     expect(agBehindIds).not.toContain(unassigned);
     // The agent's denominator counts ONLY the assigned project (1).
     expect(agRes.projectsWithRequirement).toBe(1);
+  });
+});
+
+// ── F1 — SINGLE SOURCE OF TRUTH: the board + the recommender AGREE on validity ─
+// The 2.6 sharpening (a required doc that is legally rejected / superseded /
+// expired no longer SATISFIES its requirement) lives in ONE shared predicate
+// (`docSatisfiesRequirementPredicate`) consumed by BOTH the recommender
+// `detectMissingRequiredDocs` CTE AND `boardCompleteness`'s "received" query.
+// Before the fix the board decided "received" on type+scope+archived ONLY, so
+// the instant a manager marked a required doc rejected/expired the two surfaces
+// DRIFTED (the board still showed "complete" while the recommender said
+// "missing"). These tests prove they now agree — mirroring the recommender's
+// A2 (rejected/superseded) / A4 (expired) cases.
+describe('boardCompleteness — F1 2.6 validity (shared predicate; agrees with the recommender)', () => {
+  it('a REJECTED required doc is NOT counted as received (mirrors recommender A2)', async () => {
+    const org = await createTestOrg(`F1Rejected-${TAG}`);
+    const mgrId = org.users[0]!.id;
+    const mgr = manager(org.id, mgrId);
+    // The project must be gathering_signatures so the recommender CTE scopes it.
+    const p = await seedProject(org.id, mgrId, 'tama38_1', 'gathering_signatures');
+    // owner's only required type = land_registry. Seed exactly one — but REJECTED.
+    await seedDoc(org.id, mgrId, p, 'land_registry', { legalStatus: 'rejected' });
+
+    const res = await svc.boardCompleteness(mgr);
+    const owner = party(res, 'owner');
+    // The rejected doc exists + is non-archived, yet does NOT satisfy the slot.
+    expect(owner.received).toBe(0);
+    expect(owner.missingTypes).toEqual([{ type: 'land_registry' }]);
+
+    // SINGLE SOURCE OF TRUTH: the recommender path AGREES — it reports
+    // land_registry as a missing required type for THIS project.
+    const gaps = await detectMissingRequiredDocs();
+    const projGaps = gaps.filter((g) => g.projectId === p).map((g) => g.missingDocType);
+    expect(projGaps).toContain('land_registry');
+  });
+
+  it('a SUPERSEDED required doc is NOT counted as received', async () => {
+    const org = await createTestOrg(`F1Superseded-${TAG}`);
+    const mgrId = org.users[0]!.id;
+    const mgr = manager(org.id, mgrId);
+    const p = await seedProject(org.id, mgrId, 'tama38_1', 'gathering_signatures');
+    await seedDoc(org.id, mgrId, p, 'land_registry', { versionState: 'superseded' });
+
+    const res = await svc.boardCompleteness(mgr);
+    expect(party(res, 'owner').received).toBe(0);
+
+    const gaps = await detectMissingRequiredDocs();
+    expect(gaps.filter((g) => g.projectId === p).map((g) => g.missingDocType)).toContain(
+      'land_registry',
+    );
+  });
+
+  it('an EXPIRED (valid_until < now) required doc is NOT counted as received (mirrors recommender A4)', async () => {
+    const org = await createTestOrg(`F1Expired-${TAG}`);
+    const mgrId = org.users[0]!.id;
+    const mgr = manager(org.id, mgrId);
+    const p = await seedProject(org.id, mgrId, 'tama38_1', 'gathering_signatures');
+    // valid_until one day in the PAST → expired → must not satisfy.
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await seedDoc(org.id, mgrId, p, 'land_registry', { validUntil: yesterday });
+
+    const res = await svc.boardCompleteness(mgr);
+    expect(party(res, 'owner').received).toBe(0);
+
+    const gaps = await detectMissingRequiredDocs();
+    expect(gaps.filter((g) => g.projectId === p).map((g) => g.missingDocType)).toContain(
+      'land_registry',
+    );
+  });
+
+  it('the all-NULL invariant holds: a plain valid doc (every 2.6 column NULL) STILL satisfies (byte-identical to pre-2.6)', async () => {
+    const org = await createTestOrg(`F1Valid-${TAG}`);
+    const mgrId = org.users[0]!.id;
+    const mgr = manager(org.id, mgrId);
+    const p = await seedProject(org.id, mgrId, 'tama38_1', 'gathering_signatures');
+    // No 2.6 fields set → all NULL → the predicate is "not-invalidating".
+    await seedDoc(org.id, mgrId, p, 'land_registry');
+    // A still-VALID future expiry + approved/current also satisfies.
+    const future = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    await seedDoc(org.id, mgrId, p, 'agreement', {
+      legalStatus: 'approved',
+      versionState: 'current',
+      validUntil: future,
+    });
+
+    const res = await svc.boardCompleteness(mgr);
+    // owner (land_registry) + contractor (agreement) both satisfied on p.
+    expect(party(res, 'owner').received).toBeGreaterThanOrEqual(1);
+    expect(party(res, 'contractor').received).toBeGreaterThanOrEqual(1);
+
+    // The recommender AGREES — neither land_registry nor agreement is missing for p.
+    const gaps = await detectMissingRequiredDocs();
+    const projGaps = gaps.filter((g) => g.projectId === p).map((g) => g.missingDocType);
+    expect(projGaps).not.toContain('land_registry');
+    expect(projGaps).not.toContain('agreement');
   });
 });
 

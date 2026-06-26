@@ -5,6 +5,7 @@ import {
   AuditService,
   apartments,
   buildings,
+  docSatisfiesRequirementPredicate,
   documents,
   env,
   projectAssignments,
@@ -2277,6 +2278,18 @@ export class DocumentsService {
                 and(
                   isNull(documents.archivedAt),
                   inArray(documents.type, [...requiredUnion] as string[]),
+                  // 2.6 future-states — the SAME canonical "doc satisfies its
+                  // required-doc requirement" predicate the recommender detect CTE
+                  // consumes (single source of truth: a doc marked legally
+                  // rejected / superseded / expired no longer counts as "received",
+                  // so the board and the recommender path CANNOT drift). NULL on
+                  // every clause is not-invalidating, so all pre-2.6 rows behave
+                  // byte-identically to before.
+                  docSatisfiesRequirementPredicate(
+                    sql`${documents.legalStatus}`,
+                    sql`${documents.versionState}`,
+                    sql`${documents.validUntil}`,
+                  ),
                   or(
                     and(
                       eq(documents.docScope, 'project'),
@@ -2471,8 +2484,20 @@ export class DocumentsService {
         // (managers pass; agents need the explicit capability).
         if (input.legalStatus !== undefined) patch.legalStatus = input.legalStatus;
         if (input.versionState !== undefined) patch.versionState = input.versionState;
-        if (input.supersededByDocumentId !== undefined)
+        if (input.supersededByDocumentId !== undefined) {
+          // X-org referential guard: the self-FK `documents.superseded_by_document_id`
+          // references documents(id) GLOBALLY, and the FK check bypasses the
+          // writer's RLS — so without this an actor could point a doc at a
+          // FOREIGN-org document's id. Validate the target is visible to THIS
+          // actor via the canonical `loadVisible` seam (RLS-scoped, same
+          // visibility rules the rest of the service uses); a non-visible target
+          // throws the clean no-oracle 404 instead of persisting a cross-org FK.
+          // (A null CLEARS the pointer — no target to validate.)
+          if (input.supersededByDocumentId !== null) {
+            await this.loadVisible(tx, user, input.supersededByDocumentId);
+          }
           patch.supersededByDocumentId = input.supersededByDocumentId;
+        }
         if (input.validUntil !== undefined) patch.validUntil = input.validUntil;
         if (input.notaryStatus !== undefined) patch.notaryStatus = input.notaryStatus;
         if (input.notarizedAt !== undefined) patch.notarizedAt = input.notarizedAt;

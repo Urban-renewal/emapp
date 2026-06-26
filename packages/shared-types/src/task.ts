@@ -30,7 +30,10 @@ export const TaskSchema = z.object({
   location: z.string().max(500).nullable(),
   completedAt: z.coerce.date().nullable(),
   completedBy: z.string().uuid().nullable(),
-  createdBy: z.string().uuid(),
+  // NULLABLE since wave 1.2 (Autonomous Master Plan): a task AUTO-EXECUTED by the
+  // proposal producer has NO human author (`source='system'` + createdBy null). A
+  // human-authored task always carries a real uuid.
+  createdBy: z.string().uuid().nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
   archivedAt: z.coerce.date().nullable(),

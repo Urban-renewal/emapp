@@ -111,9 +111,11 @@ export const tasks = pgTable(
     location: text('location'),
     completedAt: timestamp('completed_at', { withTimezone: true }),
     completedBy: uuid('completed_by').references(() => users.id),
-    createdBy: uuid('created_by')
-      .notNull()
-      .references(() => users.id),
+    // NULLABLE since migration 0083 (Autonomous Master Plan wave 1.2): a task
+    // AUTO-EXECUTED by the proposal producer has NO human author, so `created_by`
+    // is NULL paired with `source='system'`. The human create path always writes a
+    // real user id; only the system-auto path may write NULL.
+    createdBy: uuid('created_by').references(() => users.id),
     // G1 (Autonomous Master Plan, TaskWatcher) — the SYSTEM-OWNED task namespace.
     // 'user' (default) = a human authored it through the normal UI; 'system' = the
     // autonomy engine created it on a manager's APPROVE of a `task.create` proposal.

@@ -1,9 +1,12 @@
 import {
+  applyProposalEffect,
+  AUTO_EXECUTE_SAFE_KINDS,
   AuditService,
   proposals,
   withTenant,
   type GovernedSendOutcome,
   type Proposal,
+  type ProposalEffectDeps,
   type TenantTx,
 } from '@emapp/db';
 import { classify, type AutonomyActionKind } from '@emapp/jobs/autonomy-policy';
@@ -32,10 +35,8 @@ import {
 } from '../../common/keyset-cursor';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import { SignatureRequestsService } from '../signatures/signature-requests.service';
-import { TasksService } from '../tasks/tasks.service';
 
 import { executeDocumentChase } from './document-chase-executor';
-import { composeMissingDocTask } from './task-watcher-copy';
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
 const FORBIDDEN = new ForbiddenException({ error: { code: 'forbidden' } });
@@ -45,29 +46,20 @@ const FORBIDDEN = new ForbiddenException({ error: { code: 'forbidden' } });
  *  evidence blob fails closed rather than sending with a default step. */
 const ReminderEvidence = z.object({ cadenceStep: z.number().int().min(0) });
 
-/** The shape of a `task.create` (G1 TaskWatcher) proposal's evidence snapshot we
- *  depend on at execute time. Zod-parsed (no raw `unknown`) — a malformed evidence
- *  blob fails closed rather than creating a mis-titled task. PII-FREE by contract:
- *  project + doc-type taxonomy + track only. */
-const MissingDocTaskEvidence = z.object({
-  condition: z.literal('missing_required_doc'),
-  projectId: z.string().uuid(),
-  missingDocType: z.string().min(1).max(50),
-});
-
 export interface ProposalListPage {
   data: ProposalView[];
   page: { limit: number; cursor: string | null; has_more: boolean };
 }
 
 /**
- * A per-kind executor: APPROVE replays the EXISTING gated domain method for the
- * proposal's `kind`. The map is the structural form of "re-evaluate at execute"
- * (design correction): the executor is ONE method that (a) re-runs
- * `classify(kind)` to re-assert the boundary, then (b) dispatches to the
- * kind-registered replay. A kind with NO registered executor cannot be approved
- * (fail-closed) — so a proposal can never apply something the engine has no
- * gated path for.
+ * A per-kind OUTBOUND executor: APPROVE replays the EXISTING gated GOVERNED-SEND
+ * domain method for the proposal's `kind`. These kinds are `proposeConfirm`
+ * (outbound + consent) by THE ONE BOUNDARY — they can NEVER auto-execute, so they
+ * stay API-resident (they need Nest-injected email/SMS providers + PII decrypt) and
+ * run ONLY on a human's APPROVE. The internal AUTO-SAFE effects (`task.create`, …)
+ * do NOT live here — they route through the DI-free `applyProposalEffect` shared by
+ * the producer's auto-execute path (wave 1.2 extraction). A kind with NO registered
+ * outbound executor AND no auto-safe effect cannot be approved (fail-closed).
  */
 type KindExecutor = (
   user: AccessTokenPayload,
@@ -94,15 +86,14 @@ type KindExecutor = (
  */
 @Injectable()
 export class ProposalsService {
-  /** kind → gated replay. Adding an autonomous behavior registers its executor
-   *  here (drop-in), so the apply path is generic, not special-cased per kind. */
-  private readonly executors: Partial<Record<AutonomyActionKind, KindExecutor>>;
+  /** kind → gated GOVERNED-SEND replay for the OUTBOUND (proposeConfirm) kinds only.
+   *  These can never auto-execute (the boundary forbids outbound auto), so they stay
+   *  here and run only on APPROVE. The internal AUTO-SAFE effects route through the
+   *  DI-free `applyProposalEffect` (shared with the producer) — NOT this map. */
+  private readonly outboundExecutors: Partial<Record<AutonomyActionKind, KindExecutor>>;
 
-  constructor(
-    private readonly signatureRequests: SignatureRequestsService,
-    private readonly tasks: TasksService,
-  ) {
-    this.executors = {
+  constructor(private readonly signatureRequests: SignatureRequestsService) {
+    this.outboundExecutors = {
       // Phase-1 first producer: reissue an EXPIRED signature request AND
       // re-deliver the renewed signing link to the apartment owner. The old
       // executor called `reissueExpired` (internal re-mint ONLY, NO send), so the
@@ -151,30 +142,10 @@ export class ProposalsService {
         // SAME canonical outcome mapping as the reminder executor.
         this.assertGovernedSent(outcome);
       },
-      // G1 TaskWatcher: APPROVE opens a SYSTEM-OWNED task for a detected work
-      // condition (a gathering-signatures project missing a required doc type).
-      // Replays the EXISTING gated `tasks.create` VERBATIM (manager-tier + agent
-      // capability + RLS + auto-assign + audit all run unchanged); the only delta is
-      // the internal system-origin stamp ({source:'system', originRef:<dedupKey>}),
-      // which the FE DTO cannot reach. The title/body is system-composed, PII-FREE,
-      // and user-framed ("חסר נסח טאבו בפרויקט — מוצע לפתוח משימה"). The dedup key
-      // is reused as origin_ref so the tasks partial-unique
-      // (`tasks_system_origin_open_unique`) independently prevents a duplicate open
-      // system task for the same gap.
-      'task.create': async (user, proposal) => {
-        const ev = MissingDocTaskEvidence.parse(proposal.evidence);
-        const { title, description } = composeMissingDocTask(ev.missingDocType);
-        await this.tasks.create(
-          user,
-          {
-            projectId: ev.projectId,
-            title,
-            description,
-            type: 'document_followup',
-          },
-          { source: 'system', originRef: proposal.dedupKey },
-        );
-      },
+      // NOTE: `task.create` (G1 TaskWatcher) is NO LONGER here. It is an INTERNAL
+      // auto-safe effect — it routes through the DI-free `applyProposalEffect`
+      // (wave 1.2), the SAME path the producer's auto-execute uses, so the manager-
+      // approve mutation and the autonomous mutation are ONE implementation.
     };
   }
 
@@ -302,28 +273,36 @@ export class ProposalsService {
   }
 
   /**
-   * APPROVE — re-assert the boundary, replay the gated method, flip → applied.
+   * APPROVE — re-assert the boundary, apply the ONE effect for the kind, flip →
+   * applied. TWO dispatch arms, each single-sourced:
+   *
+   *   A) AUTO-SAFE INTERNAL kinds (`task.create`, …): route through the DI-free
+   *      `applyProposalEffect` — the SAME path the producer's auto-execute uses. The
+   *      effect + the `pending→applied` flip + the transition audit run in ONE tx
+   *      (atomic: a lost flip rolls the effect back, so no half-apply). The effect's
+   *      own idempotency (the system-task partial-unique) makes a producer↔approve
+   *      race a no-op, not a double-apply.
+   *   B) OUTBOUND (proposeConfirm) kinds (`reminder.send`, `signature_request.reissue`,
+   *      `document.chase.send`): replay the EXISTING gated governed-send executor
+   *      (it cannot run inside the flip tx — the send is its own withTenant + I/O),
+   *      THEN flip → applied + audit. Unchanged from before this extraction (so the
+   *      manager outbound-approve flow is behaviorally identical, including the
+   *      `delivery` outcome surfaced for reissue).
    *
    * Flow:
-   *   1. Load the proposal (must be pending; a non-pending one 409s — it was
-   *      already actioned/expired).
-   *   2. RE-EVALUATE `classify(kind)` at execute time. A kind that became
-   *      unclassifiable (taxonomy changed) throws — the boundary is re-checked,
-   *      never trusted from emit.
-   *   3. Dispatch to the kind executor (the EXISTING gated domain method). If no
-   *      executor is registered for the kind, fail-closed (cannot apply).
-   *   4. On success, flip → applied + appliedAt + a `system`-attributed audit row
-   *      carrying the proposal id (every autonomous act is audited).
-   *
-   * The gated method runs under ITS OWN withTenant/RLS + capability checks, so a
-   * stale or out-of-scope proposal cannot apply something the manager couldn't do
-   * by hand. A gated-method failure (e.g. the request is no longer expired) leaves
-   * the proposal pending (it surfaces a 409) so it can be retried or dismissed.
+   *   1. Load the proposal (must be pending; a non-pending one 409s).
+   *   2. RE-ASSERT `classify(kind)` at execute time (boundary re-checked, fail-closed
+   *      on an unknown kind). `applyProposalEffect` ALSO re-asserts internally — the
+   *      non-bypassable backstop.
+   *   3. Dispatch on the kind's arm (auto-safe effect vs outbound executor;
+   *      fail-closed if the kind has neither).
+   *   4. Flip → applied (race-safe `WHERE status='pending'`) + a `system`-attributed
+   *      transition audit carrying the proposal id.
    */
   async approve(user: AccessTokenPayload, id: string): Promise<ProposalApproveResponse> {
     this.requireManager(user);
 
-    // Load + lock the pending proposal first (RLS-scoped).
+    // (1) Load + lock the pending proposal first (RLS-scoped).
     const proposal = await withTenant(
       user.orgId,
       async (tx) => {
@@ -337,22 +316,26 @@ export class ProposalsService {
       { userId: user.sub },
     );
 
-    // (2) RE-ASSERT the boundary at execute time. classify throws on an unknown
-    // kind (fail-closed). We do not auto-execute here regardless of the decision
-    // — the human already approved; we replay the gated path.
-    classify({ kind: proposal.kind as AutonomyActionKind });
+    // (2) RE-ASSERT the boundary at execute time (fail-closed on unknown kind).
+    const kind = proposal.kind as AutonomyActionKind;
+    classify({ kind });
 
-    // (3) Dispatch to the registered gated replay (fail-closed if none).
-    const executor = this.executors[proposal.kind as AutonomyActionKind];
+    // (3-A) AUTO-SAFE INTERNAL arm — the effect + flip + audit in ONE atomic tx.
+    if ((AUTO_EXECUTE_SAFE_KINDS as readonly string[]).includes(kind)) {
+      const updated = await this.applyAutoSafeEffectAndFlip(user, kind, proposal);
+      return { ...this.toView(updated), delivery: undefined };
+    }
+
+    // (3-B) OUTBOUND arm — the gated governed-send executor (fail-closed if none).
+    const executor = this.outboundExecutors[kind];
     if (!executor) {
       throw new BadRequestException({ error: { code: 'proposal_kind_not_executable' } });
     }
-    // The gated method enforces its own RLS + capability + state checks. A
-    // failure (e.g. signature_request_not_reissuable) propagates as its own
-    // status code; the proposal stays pending. A contact-producing kind
-    // (signature_request.reissue) returns the outbound delivery OUTCOME so the
-    // approve response can surface "owner re-notified" (channel + masked
-    // recipient); an internal-only kind returns void → no `delivery` on the wire.
+    // The gated method enforces its own RLS + capability + state checks. A failure
+    // (e.g. signature_request_not_reissuable) propagates as its own status code; the
+    // proposal stays pending. A contact-producing kind (signature_request.reissue)
+    // returns the outbound delivery OUTCOME so the approve response can surface "owner
+    // re-notified" (channel + masked recipient); an internal-only kind returns void.
     const delivery = (await executor(user, proposal)) ?? undefined;
 
     // (4) Flip → applied (only if STILL pending — race-safe) + system audit.
@@ -375,6 +358,60 @@ export class ProposalsService {
       { userId: user.sub },
     );
     return { ...this.toView(updated), delivery };
+  }
+
+  /**
+   * The AUTO-SAFE arm of approve (arm A): run the DI-free `applyProposalEffect` for an
+   * internal kind, flip `pending→applied`, and audit — ALL in ONE tx so the effect and
+   * the flip are atomic (a lost flip rolls the effect back; the effect's own
+   * idempotency makes a producer↔approve race a no-op). `deps` carries the
+   * human actor-context (the approving manager as `createdBy` + audit forensics);
+   * the producer supplies a NULL system actor-context for the SAME effect.
+   */
+  private async applyAutoSafeEffectAndFlip(
+    user: AccessTokenPayload,
+    kind: AutonomyActionKind,
+    proposal: Proposal,
+  ): Promise<Proposal> {
+    const deps: ProposalEffectDeps = {
+      createdBy: user.sub,
+      audit: {
+        actorId: user.sub,
+        ip: user.ip,
+        userAgent: user.userAgent,
+        sessionId: user.sid,
+      },
+    };
+    return withTenant(
+      user.orgId,
+      async (tx) => {
+        // Re-read pending inside the tx so the effect + flip see one consistent state.
+        const [current] = await tx
+          .select({ status: proposals.status })
+          .from(proposals)
+          .where(eq(proposals.id, proposal.id))
+          .limit(1);
+        if (!current || current.status !== 'pending') {
+          throw new ConflictException({ error: { code: 'proposal_not_pending' } });
+        }
+        // The effect (idempotent; re-asserts the boundary internally — fail-closed on
+        // any non-autoExecute kind). Mutates inside THIS tx (RLS-scoped).
+        await applyProposalEffect(tx, kind, proposal, deps);
+        // Flip → applied (race-safe). If we lost the race, the whole tx rolls back
+        // (including the effect) and we 409.
+        const [row] = await tx
+          .update(proposals)
+          .set({ status: 'applied', appliedAt: new Date() })
+          .where(and(eq(proposals.id, proposal.id), eq(proposals.status, 'pending')))
+          .returning();
+        if (!row) {
+          throw new ConflictException({ error: { code: 'proposal_not_pending' } });
+        }
+        await this.audit(tx, user, 'proposal.approve', row.id, row.kind);
+        return row;
+      },
+      { userId: user.sub },
+    );
   }
 
   /** REJECT — flip → rejected + audit. Idempotent-ish: a non-pending proposal

@@ -422,7 +422,7 @@ const ENDPOINTS: Endpoint[] = [
   },
   {
     method: 'POST',
-    path: '/api/v1/buildings/:buildingId/apartments:generate',
+    path: '/api/v1/buildings/:buildingId/apartments::generate',
     auth: 'AuthGuard + TenantGuard (apartments.create; agent fine gate edit_project_data)',
     summary:
       'Bulk-generate a building’s apartments from its shape (floors × apartmentsPerFloor) in ONE atomic, manager-confirmed action. Loops the canonical apartment-create path inside one withTenant tx (all-or-nothing). Numbering: sequential (1..N) | floorBased (floor*100+unit). Numbers already taken by an active apartment are SKIPPED. Idempotency-Key honoured. Returns { created, skipped }.',

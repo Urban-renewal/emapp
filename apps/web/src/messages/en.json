@@ -2026,7 +2026,35 @@
     "forbiddenCreate": "You are not allowed to create tasks.",
     "loading": "Loading...",
     "empty": "No tasks to show.",
+    "emptyHint": "When a task is created it appears here, sorted by due date.",
     "loadFailed": "Failed to load tasks",
+    "loadMore": "Show more",
+    "loadingMore": "Loading more...",
+    "loadedAll": "{count} tasks — all loaded.",
+    "loadedPartial": "{count} tasks loaded so far. “Show more” loads the rest.",
+    "loadedFiltered": "Showing {shown} of {loaded} loaded.",
+    "noMatch": "No tasks match the current filter.",
+    "clearFilter": "Clear filter",
+    "pulse": {
+      "overdue": "{count} overdue",
+      "today": "{count} today",
+      "week": "{count} this week",
+      "later": "{count} later",
+      "none": "No tasks to show right now."
+    },
+    "bucket": {
+      "overdue": "Overdue",
+      "today": "Today",
+      "week": "This week",
+      "later": "Later",
+      "count": "{count}"
+    },
+    "filter": {
+      "statusLabel": "Filter by status",
+      "priorityLabel": "Filter by priority",
+      "all": "All",
+      "allPriorities": "All priorities"
+    },
     "notFound": "Task not found",
     "backToList": "Back to list",
     "cancel": "Cancel",

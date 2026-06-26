@@ -87,6 +87,7 @@
         "remindAria": "Send a reminder to {name}",
         "remindSent": "Reminder sent",
         "requestSent": "Signature request sent to {name}",
+        "requestNotDelivered": "The request for {name} is ready, but there's no way to reach them (no email or phone) — send the link manually.",
         "remindNonePending": "No pending signature request for this owner — the board may be out of date.",
         "startCampaignAria": "Start collecting signatures in apartment {number}"
       },

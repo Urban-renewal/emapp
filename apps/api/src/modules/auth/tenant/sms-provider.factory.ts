@@ -27,13 +27,20 @@ export function smsProviderFactory(): ISMSProvider {
     return new InforuSmsProvider({ apiUrl, user, token, sender });
   }
 
-  if (process.env['NODE_ENV'] === 'production') {
+  // FAIL-CLOSED (red-team #14) — NoopSMSProvider is dev/test ONLY. Production, an
+  // UNSET NODE_ENV (a deployed image that forgot `ENV NODE_ENV=production`), or a
+  // typo'd value must NOT silently no-op OTP/signature SMS — that would lock every
+  // resident out and make phone-only owners un-reachable. Only an EXPLICIT
+  // development/test env gets Noop; everything else fails fast at boot. Mirrors the
+  // step-up allowlist + the dev-auth-bypass raw-NODE_ENV fail-closed pattern.
+  const rawNodeEnv = process.env['NODE_ENV'];
+  if (rawNodeEnv !== 'development' && rawNodeEnv !== 'test') {
     throw new Error(
-      'SMS_PROVIDER: refusing to boot — production requires a real SMS provider ' +
-        '(D.20). NoopSMSProvider would make Tenant OTP login AND signature-link ' +
-        'SMS silently undeliverable. Provision SMS_PROVIDER_USER / SMS_PROVIDER_TOKEN ' +
-        '/ SMS_PROVIDER_SENDER in Infisical and confirm the Inforu (or 019) API shape ' +
-        'in inforu.provider.ts before deploying. See DECISIONS D.20.',
+      `SMS_PROVIDER: refusing to boot — no real SMS provider configured and NODE_ENV is ` +
+        `"${rawNodeEnv ?? '(unset)'}" (not development/test). NoopSMSProvider would make ` +
+        'Tenant OTP login AND signature-link SMS silently undeliverable. Provision ' +
+        'SMS_PROVIDER_USER / SMS_PROVIDER_TOKEN / SMS_PROVIDER_SENDER in Infisical (D.20), ' +
+        'or set NODE_ENV=development for local dev. See DECISIONS D.20.',
     );
   }
 

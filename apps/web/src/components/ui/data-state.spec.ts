@@ -48,6 +48,8 @@ vi.mock('./button', () => ({
   },
 }));
 
+import { ApiClientError } from '@/lib/api/errors';
+
 import { DataState } from './data-state';
 
 const CHILD = createElement('p', null, 'happy-path-body');
@@ -126,6 +128,32 @@ describe('<DataState> — the four non-happy states + happy path', () => {
     );
     expect(html).toContain('לא הצלחנו לטעון את הנתונים'); // error, not forbidden
     expect(html).not.toContain('אין לך גישה');
+  });
+
+  it('2e) 0.S6 #38 — a real ApiClientError(403) passed through derives the access-denied panel', () => {
+    // The documents cockpit + completeness board used to hard-code
+    // `error={undefined}`, so a 403 fell through to the retry treatment
+    // (telling the user to "try again" on something a retry can't fix). Now
+    // they pass the real query `error` through — proving that the ACTUAL
+    // ApiClientError the board hooks throw on a 403 lands in the forbidden
+    // branch (legible access-denied), not the retry branch.
+    const forbidden = new ApiClientError({ code: 'forbidden', message: 'no access' });
+    const html = renderToStaticMarkup(
+      createElement(
+        DataState,
+        {
+          isError: true,
+          isLoading: false,
+          error: forbidden,
+          emptyTitle: 'x',
+          onRetry: vi.fn(),
+        },
+        CHILD,
+      ),
+    );
+    expect(html).toContain('אין לך גישה'); // forbidden, NOT the retry error
+    expect(html).not.toContain('לא הצלחנו לטעון את הנתונים');
+    expect(html).not.toContain('<button'); // forbidden is terminal — no retry
   });
 
   it('3) loading → skeleton (the .skeleton shimmer primitive)', () => {

@@ -6,8 +6,8 @@
  * Proves, against the REAL local DB + the REAL `governOutboundSend` seam (NOT a
  * mock — the actual gate pipeline + ledger):
  *   - FAIL-CLOSED CONSENT: with no opt-out registry / party-recipient resolver
- *     merged, `resolveChaseRecipientConsent` returns `false`, so the ConsentGate
- *     DENIES → the governed outcome is `blocked`, NO outbound_ledger row is claimed,
+ *     merged, the shared `resolveRecipientConsent` seam returns `false`, so the
+ *     ConsentGate DENIES → the governed outcome is `blocked`, NO ledger row is claimed,
  *     and NOTHING is sent. An opted-out (or unconfirmable-consent) party gets NOTHING.
  *   - the executor routes through the CANONICAL governOutboundSend seam (it returns a
  *     governed outcome shape), never a parallel send path.
@@ -35,8 +35,8 @@ import {
   DocumentChaseEvidence,
   chasePartyForEvidence,
   executeDocumentChase,
-  resolveChaseRecipientConsent,
 } from './document-chase-executor';
+import { resolveRecipientConsent } from './recipient-consent';
 
 let orgA: TestOrg;
 
@@ -101,16 +101,14 @@ afterAll(async () => {
     .catch(() => undefined);
 });
 
-describe('resolveChaseRecipientConsent — fail-closed (no hardcoded true)', () => {
-  it('returns FALSE: consent cannot be confirmed without the opt-out registry / party-recipient resolver', () => {
-    const evidence = DocumentChaseEvidence.parse({
-      condition: 'missing_required_doc',
-      projectId: PROJECT_ID,
-      missingDocType: 'survey',
-    });
-    // The #516 lesson: consent is NEVER hardcoded true. Until the registry lands it
-    // is structurally false (unconfirmable → fail closed).
-    expect(resolveChaseRecipientConsent(evidence)).toBe(false);
+describe('resolveRecipientConsent — the ONE shared seam, fail-closed (no hardcoded true)', () => {
+  it('returns FALSE for any recipientRef: consent cannot be confirmed without the opt-out registry (#512)', () => {
+    // The #516 lesson: consent is NEVER hardcoded true. The SAME seam all three
+    // governed-send executors use (reminder/reissue/chase) is structurally false
+    // until the opt-out registry lands (unconfirmable → fail closed).
+    expect(resolveRecipientConsent(`${PROJECT_ID}:survey`)).toBe(false);
+    expect(resolveRecipientConsent('any-signature-request-id')).toBe(false);
+    expect(resolveRecipientConsent('any-proposal-id')).toBe(false);
   });
 });
 

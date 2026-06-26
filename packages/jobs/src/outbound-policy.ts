@@ -67,8 +67,10 @@ export interface OutboundSnapshot {
   /** The CAMPAIGN_SEND_ENABLED kill-switch state (resolved from env). */
   killSwitchEnabled: boolean;
   /** Whether the recipient is consented (NOT opted-out) for outbound on this
-   *  channel. Resolved by the Governor; absent opt-out registry → true (the
-   *  documented seam for a future per-owner opt-out table). */
+   *  channel. Resolved by each executor through the ONE canonical
+   *  `resolveRecipientConsent` seam — FAIL-CLOSED (`false`) until the per-owner
+   *  opt-out registry (#512) lands. NEVER hardcoded `true` (the #516 bypass);
+   *  `false` here makes the ConsentGate DENY. */
   recipientConsented: boolean;
   /** Count of sends to THIS recipient within the per-recipient window. */
   recipientSendsInWindow: number;

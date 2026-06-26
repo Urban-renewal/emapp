@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, BellRing, CheckCircle2, Send, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 
 import { useToast } from '@/components/ui/action-toast';
 import { NameDisplay } from '@/components/ui/name-display';
@@ -48,7 +48,189 @@ import type {
  * default palette. RTL-first via logical props. PII (holdout names) loads ONLY
  * on demand through the gated + audited B4 endpoint; every name is wrapped in
  * <NameDisplay> (bidi-spoof defence, §v9-H-3).
+ *
+ * ── DOMAIN-AGNOSTIC STRUCTURAL SHELLS (the ONE source of truth) ──────────────
+ * The shells below (`PulseSentence`, `AttentionCard`, `FleetGrid`,
+ * `CompletenessTile`) own the board-first LAYOUT only — no domain (no consent,
+ * no doc-completeness, no copy namespace, no destination URL). The SIGNATURE
+ * primitives (`ActionCard` / `FleetSection` / `FleetTile`) and the DOCUMENTS
+ * cockpit BOTH compose these shells, so the card/grid/tile structure has exactly
+ * ONE implementation. This kills the "every board re-codes the same shell"
+ * divergence (the class behind the recurring "two unaligned implementations of
+ * the same thing" bugs) while letting each surface keep its own domain skin
+ * (its own copy, its own action, its own zoom-in target) — the SOLID seam, not
+ * a forced one-size-fits-all VM.
  */
+
+// ── Domain-agnostic structural shells ───────────────────────────────────────
+
+/**
+ * The ONE calm pulse-sentence shell — a `role="status"` paragraph carrying a
+ * single already-resolved plain-language line. Each surface owns its OWN copy
+ * (the signatures board builds it from `buildPulseSentence`; the documents
+ * cockpit builds its own projects-behind line) — this shell just renders it
+ * with the canonical calm typography, so no surface re-codes the wrapper.
+ */
+export function PulseSentence({ text }: { text: string }) {
+  return (
+    <p className="text-sm text-text-muted" role="status">
+      {text}
+    </p>
+  );
+}
+
+/**
+ * The ONE attention-card shell — `<article class="card card-pad">` laying out
+ * a status badge + entity name, an optional plain-language "why" line, a thin
+ * at-a-glance sliver, an actions cluster, and optional drill-down `children`.
+ * Presentational only: the caller passes already-resolved badge/why/actions for
+ * its OWN domain (signatures → consent + holdout chase; documents → missing-doc
+ * slot + one-click upload). The card geometry has a single implementation.
+ */
+export function AttentionCard({
+  badge,
+  name,
+  why,
+  sliver,
+  actions,
+  children,
+}: {
+  /** The status chip (already domain-resolved, e.g. `<StatusBadge>…`). */
+  badge: ReactNode;
+  /** The entity name — caller wraps it in <NameDisplay> for bidi-safety. */
+  name: ReactNode;
+  /** Optional plain-language "why this surfaced" line(s). */
+  why?: ReactNode;
+  /** The thin at-a-glance progress sliver (e.g. <ThresholdSliver>). */
+  sliver: ReactNode;
+  /** The action cluster (open / one-click primary action). */
+  actions: ReactNode;
+  /** Optional drill-down panel rendered below a divider (e.g. holdout expander). */
+  children?: ReactNode;
+}) {
+  return (
+    <article className="card card-pad flex flex-col gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <div className="flex items-center gap-2">
+            {badge}
+            <span className="truncate text-sm font-medium text-foreground">{name}</span>
+          </div>
+          {why}
+          {sliver}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+      </div>
+      {children}
+    </article>
+  );
+}
+
+/**
+ * The ONE fleet-grid shell — a calm responsive grid with a heading + an
+ * optional "show all" escape-hatch when the fleet is capped. The caller passes
+ * the resolved heading text, the escape-hatch href/label, and the tiles. Both
+ * boards (signatures → /projects tiles; documents → in-page zoom-in tiles)
+ * render through the SAME grid geometry + cap affordance.
+ */
+export function FleetGrid({
+  heading,
+  headingId,
+  showAll,
+  children,
+}: {
+  heading: string;
+  headingId: string;
+  /** When the fleet is capped, the calm "show all" affordance (href + label). */
+  showAll?: { href: string; label: string };
+  /** The tile `<li>` elements. */
+  children: ReactNode;
+}) {
+  return (
+    <section aria-labelledby={headingId} className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 id={headingId} className="text-sm font-semibold text-foreground">
+          {heading}
+        </h2>
+        {showAll && (
+          <Link
+            href={showAll.href}
+            className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-foreground"
+          >
+            <span>{showAll.label}</span>
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+          </Link>
+        )}
+      </div>
+
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {children}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * The ONE compact completeness-tile shell — a calm card with the entity name, a
+ * status chip, and a thin sliver. The caller decides whether it is a navigation
+ * <Link> (signatures → /projects/:id) or an in-page zoom-in <button> (documents)
+ * by passing `as`/`href`/`onClick`; the geometry is shared. Optional `footer`
+ * for a per-tile trailing note (e.g. the signatures "במעקב" mark).
+ */
+export function CompletenessTile({
+  name,
+  badge,
+  sliver,
+  footer,
+  ariaLabel,
+  href,
+  onClick,
+}: {
+  name: ReactNode;
+  badge: ReactNode;
+  sliver: ReactNode;
+  footer?: ReactNode;
+  ariaLabel: string;
+  /** Navigation tile — renders a <Link>. Mutually exclusive with `onClick`. */
+  href?: string;
+  /** Zoom-in tile — renders a <button>. Mutually exclusive with `href`. */
+  onClick?: () => void;
+}) {
+  const body = (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-sm font-medium text-foreground">{name}</span>
+        {badge}
+      </div>
+      {sliver}
+      {footer}
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="card card-pad flex flex-col gap-2 transition-colors hover:bg-surface-subtle"
+        aria-label={ariaLabel}
+      >
+        {body}
+      </Link>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="card card-pad flex w-full flex-col gap-2 text-start transition-colors hover:bg-surface-subtle focus:outline-none focus-visible:bg-surface-subtle"
+      style={{ cursor: 'pointer' }}
+      aria-label={ariaLabel}
+    >
+      {body}
+    </button>
+  );
+}
 
 // ── Tier-2 fleet ────────────────────────────────────────────────────────────
 
@@ -80,32 +262,19 @@ export function FleetSection({
   const t = useTranslations('home.pulse');
 
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <h2 id={headingId} className="text-sm font-semibold text-foreground">
-          {t('fleet.heading', { count: totalInScope })}
-        </h2>
-        {/* Scale escape-hatch — when the fleet is capped, the full list lives on
-            the projects page (this surface stays calm-at-a-glance). */}
-        {fleetCapped && (
-          <Link
-            href="/projects"
-            className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-foreground"
-          >
-            <span>{t('fleet.showAll')}</span>
-            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-          </Link>
-        )}
-      </div>
-
-      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {fleet.map((p) => (
-          <li key={p.projectId}>
-            <FleetTile tile={p} t={t} />
-          </li>
-        ))}
-      </ul>
-    </section>
+    <FleetGrid
+      heading={t('fleet.heading', { count: totalInScope })}
+      headingId={headingId}
+      // Scale escape-hatch — when the fleet is capped, the full list lives on
+      // the projects page (this surface stays calm-at-a-glance).
+      showAll={fleetCapped ? { href: '/projects', label: t('fleet.showAll') } : undefined}
+    >
+      {fleet.map((p) => (
+        <li key={p.projectId}>
+          <FleetTile tile={p} t={t} />
+        </li>
+      ))}
+    </FleetGrid>
   );
 }
 
@@ -120,32 +289,28 @@ export function FleetTile({
   t: ReturnType<typeof useTranslations>;
 }) {
   return (
-    <Link
+    <CompletenessTile
       href={`/projects/${tile.projectId}`}
-      className="card card-pad flex flex-col gap-2 transition-colors hover:bg-surface-subtle"
-      aria-label={t('fleet.openAria', { name: tile.projectName })}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-sm font-medium text-foreground">
-          <NameDisplay name={tile.projectName} />
-        </span>
+      ariaLabel={t('fleet.openAria', { name: tile.projectName })}
+      name={<NameDisplay name={tile.projectName} />}
+      badge={
         <StatusBadge intent={tile.intent} className="shrink-0">
           {buildFleetTag(t, tile.state)}
         </StatusBadge>
-      </div>
-
-      {/* The thin consent sliver — at-a-glance progress, reusing HB-4's primitive. */}
-      <ThresholdSliver consentedPct={tile.consentedPct} metThreshold={tile.metThreshold} />
-
-      <div className="flex items-center justify-between gap-2">
-        <span className="tabular text-xs text-text-muted" dir="ltr">
-          {t('consentPct', { pct: tile.consentedPct })}
-        </span>
-        {/* A project also on the attention board above is quietly marked here —
-            never hidden (the whole fleet stays visible). */}
-        {tile.isOnBoard && <span className="text-xs text-text-muted">{t('fleet.onBoard')}</span>}
-      </div>
-    </Link>
+      }
+      // The thin consent sliver — at-a-glance progress, reusing HB-4's primitive.
+      sliver={<ThresholdSliver consentedPct={tile.consentedPct} metThreshold={tile.metThreshold} />}
+      footer={
+        <div className="flex items-center justify-between gap-2">
+          <span className="tabular text-xs text-text-muted" dir="ltr">
+            {t('consentPct', { pct: tile.consentedPct })}
+          </span>
+          {/* A project also on the attention board above is quietly marked here —
+              never hidden (the whole fleet stays visible). */}
+          {tile.isOnBoard && <span className="text-xs text-text-muted">{t('fleet.onBoard')}</span>}
+        </div>
+      }
+    />
   );
 }
 
@@ -190,15 +355,11 @@ export function ActionCard({
   basisLabel: string;
 }) {
   return (
-    <article className="card card-pad flex flex-col gap-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <div className="flex items-center gap-2">
-            <StatusBadge intent={card.intent}>{buildTag(t, card)}</StatusBadge>
-            <span className="truncate text-sm font-medium text-foreground">
-              <NameDisplay name={card.projectName} />
-            </span>
-          </div>
+    <AttentionCard
+      badge={<StatusBadge intent={card.intent}>{buildTag(t, card)}</StatusBadge>}
+      name={<NameDisplay name={card.projectName} />}
+      why={
+        <>
           {/* The plain-Hebrew "why" — the system reporting what it found. */}
           <p className="text-sm text-text-muted">{buildWhy(t, card)}</p>
           {/* Consent % ALWAYS carries the basis label — never a bare legal %. */}
@@ -208,14 +369,14 @@ export function ActionCard({
             </span>
             <span className="ms-1">· {basisLabel}</span>
           </p>
-          {/* HB-4 — the compact at-a-glance consent sliver. A thin, calm fill
-              under the % text (success once the line is crossed, amber otherwise),
-              reusing the board's ThresholdProgress tokens. The card has no full
-              bar today; this adds the visual-at-a-glance the % text alone can't. */}
-          <ThresholdSliver consentedPct={card.consentedPct} metThreshold={card.metThreshold} />
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2">
+        </>
+      }
+      // HB-4 — the compact at-a-glance consent sliver. A thin, calm fill under
+      // the % text (success once the line is crossed, amber otherwise), reusing
+      // the board's ThresholdProgress tokens.
+      sliver={<ThresholdSliver consentedPct={card.consentedPct} metThreshold={card.metThreshold} />}
+      actions={
+        <>
           {/* Primary action: open the project (read-navigation — always safe). */}
           <Link
             href={`/projects/${card.projectId}`}
@@ -247,9 +408,9 @@ export function ActionCard({
                 <span>{t('action.startCampaign')}</span>
               </Link>
             ))}
-        </div>
-      </div>
-
+        </>
+      }
+    >
       {/* HB-3/HB-5 — the inline "מי תקוע?" holdout-name expander. Collapsed by
           default; its NAMES (PII) load ON DEMAND from the gated + audited B4
           endpoint only when opened — the same gate/mask contract as the
@@ -257,7 +418,7 @@ export function ActionCard({
           state-aware (resend/create-against-the-apartment-doc vs start-campaign)
           and gated on `canRemind` + the holdout's own per-apartment signable doc. */}
       <HoldoutExpander projectId={card.projectId} canRemind={canRemind} sendEnabled={sendEnabled} />
-    </article>
+    </AttentionCard>
   );
 }
 

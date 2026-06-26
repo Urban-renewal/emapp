@@ -51,6 +51,66 @@ click**. A local Postgres drops the RTT to ~1 ms, so `/me` goes from ~1.4 s to
 ~0.2 s. The slowness you may have heard about was the DB, **not** the FE proxy
 (that hop costs single-digit ms — see `apps/web/src/app/api/[...path]/route.ts`).
 
+## The IPv6 `localhost` tax (the #2 perf lever — browser feels slow)
+
+If pages feel sluggish in the **browser** even though the API logs say each request
+is ~40 ms, you are almost certainly paying the **IPv6 `localhost` tax** (diagnosed in
+PR #581). It is a host/OS networking quirk, **not** an app defect.
+
+**Mechanism.** Windows resolves `localhost` to **both** addresses and hands them out
+**IPv6-first**:
+
+```
+localhost -> [ { address: '::1', family: 6 },        <- tried FIRST
+              { address: '127.0.0.1', family: 4 } ]
+```
+
+So any client opening `http://localhost:3001` tries `[::1]` (IPv6 loopback) before
+`127.0.0.1`. On this host the IPv6 loopback is **flaky** — a connect to `[::1]` can
+stall ~200 ms (and a connect to an *unbound* `[::1]` port can hang 1–2 s instead of
+returning a fast RST). Multiply that across a page's requests and every click is >1 s.
+
+**The two independent levers (both in `start-dev-local.ps1`, no admin needed):**
+
+1. `NODE_OPTIONS=--dns-result-order=ipv4first` — flips Node's resolver to IPv4-first.
+   Fixes **server→server** hops only (SSR `getMe`, the `/api` proxy). Does **not** touch
+   Chrome — Chrome has its own resolver.
+2. `DEV_WEB_IPV4=1` — tells the web `dev` script (`apps/web/scripts/dev.mjs`) to launch
+   `next dev --hostname 127.0.0.1`, i.e. **IPv4-only, no `[::1]` listener**. The browser's
+   IPv6 attempt is then refused/abandoned instantly (Chrome's Happy-Eyeballs) and it uses
+   `127.0.0.1`. This is the **browser** lever.
+
+It is **opt-in** on purpose: binding IPv4-only is not free for a *serial* client (curl's
+default, Node's `http.get`) that waits on the refused `[::1]` for 1–2 s. CI + Playwright
+use exactly such serial `localhost` probes, so the shared `pnpm dev` / `turbo dev` default
+stays dual-stack `0.0.0.0`; only the owner's local browser flow opts in.
+
+**Measured warm `time_total` for `GET /` (this host, Next.js 15 dev, web only):**
+
+| client / address                              | dual-stack `0.0.0.0` (default) | IPv4-only bound (`DEV_WEB_IPV4=1`) |
+| --------------------------------------------- | ------------------------------ | ---------------------------------- |
+| `127.0.0.1:3001` (direct)                     | ~8 ms                          | ~8 ms                              |
+| **`localhost:3001` — Chrome (Happy-Eyeballs)**| ~8 ms *(when IPv6 healthy)* / **~200 ms when IPv6 degraded** | **~7 ms** ✅ |
+| `localhost:3001` — curl/Node serial (CI)      | ~8 ms                          | ~215 ms ⚠️ (why the default stays dual-stack) |
+| `[::1]:3001` direct                           | ~6 ms (accepts)                | refused, instant                   |
+
+Net: with `DEV_WEB_IPV4=1`, **Chrome's `localhost` browsing no longer pays the IPv6 tax**
+even when the host's IPv6 loopback is degraded.
+
+### Definitive host-wide fix (OWNER-GATED — needs admin, do once)
+
+The per-server bind above only helps Happy-Eyeballs clients. The **complete** fix is to
+make `localhost` resolve straight to IPv4 for *every* client (Chrome, curl, Node) by adding
+one line to the Windows hosts file — run **once** in an **Administrator** PowerShell:
+
+```powershell
+Add-Content -Path "$env:WINDIR\System32\drivers\etc\hosts" -Value "`r`n127.0.0.1`tlocalhost"
+```
+
+After that, `localhost` never offers `[::1]` at all, the tax is gone for everything, and you
+can drop both `DEV_WEB_IPV4=1` and `--dns-result-order=ipv4first`. This is owner-gated only
+because editing the hosts file needs admin — it is otherwise the cleanest fix.
+
 ## The launcher scripts (gitignored — they hold the local DB password)
 
 These live at the repo root and are in `.gitignore`. Re-create them if missing:
@@ -67,6 +127,8 @@ if ($Inner) {
   $env:DB_TARGET = 'local'
   $env:LOCAL_DATABASE_URL = 'postgresql://postgres:1234@localhost:5432/emapp?sslmode=disable'
   $env:DEV_AUTH_BYPASS = '1'      # enables the fixed dev code 000000 (see below)
+  $env:NODE_OPTIONS = '--dns-result-order=ipv4first'  # Node server->server hops (see tax below)
+  $env:DEV_WEB_IPV4 = '1'         # bind the WEB dev server IPv4-only for the browser (see tax below)
   pnpm dev
 } else {
   infisical run --env dev -- powershell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -Inner

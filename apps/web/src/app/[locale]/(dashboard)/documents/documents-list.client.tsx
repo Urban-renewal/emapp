@@ -29,6 +29,12 @@ import { type ComponentType, useEffect, useMemo, useState } from 'react';
 import { DOCUMENT_TYPE_LABELS_EN, DOCUMENT_TYPE_LABELS_HE } from '@/adapters/document';
 import { ShareActivityPanel } from '@/app/[locale]/(dashboard)/_components/share-activity-panel';
 import { useShareSheet } from '@/app/[locale]/(dashboard)/_components/share-sheet';
+import {
+  AttentionCard,
+  CompletenessTile,
+  FleetGrid,
+  PulseSentence,
+} from '@/app/[locale]/(dashboard)/_components/situation-picture';
 import { isStepUpCancelled, useStepUpUnlock } from '@/components/step-up-unlock';
 import { useToast } from '@/components/ui/action-toast';
 import { Button } from '@/components/ui/button';
@@ -340,11 +346,9 @@ function CockpitPulse({ vm }: { vm: DocumentsBoardViewModel | undefined }) {
       total: vm.projectsWithRequirement,
     });
   })();
-  return (
-    <p className="text-sm text-text-muted" role="status">
-      {body}
-    </p>
-  );
+  // Reuse the canonical pulse-sentence shell — the documents cockpit owns its
+  // OWN copy (the projects-behind line above), the shell owns the calm wrapper.
+  return <PulseSentence text={body} />;
 }
 
 /**
@@ -380,25 +384,20 @@ function ProjectAttentionCard({
   })();
 
   return (
-    <article className="card card-pad flex flex-col gap-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <div className="flex items-center gap-2">
-            <StatusBadge intent="warning">
-              {t('cockpit.card.core', {
-                received: project.coreReceived,
-                required: project.coreRequired,
-              })}
-            </StatusBadge>
-            <span className="truncate text-sm font-medium text-foreground">
-              <NameDisplay name={project.projectName} />
-            </span>
-          </div>
-          {whyLine && <p className="text-sm text-text-muted">{whyLine}</p>}
-          <ThresholdSliver consentedPct={project.completionPct} metThreshold={false} />
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2">
+    <AttentionCard
+      badge={
+        <StatusBadge intent="warning">
+          {t('cockpit.card.core', {
+            received: project.coreReceived,
+            required: project.coreRequired,
+          })}
+        </StatusBadge>
+      }
+      name={<NameDisplay name={project.projectName} />}
+      why={whyLine && <p className="text-sm text-text-muted">{whyLine}</p>}
+      sliver={<ThresholdSliver consentedPct={project.completionPct} metThreshold={false} />}
+      actions={
+        <>
           <button
             type="button"
             onClick={onOpen}
@@ -421,9 +420,9 @@ function ProjectAttentionCard({
               <span>{t('board.uploadMissing', { type: first.typeLabel })}</span>
             </Link>
           )}
-        </div>
-      </div>
-    </article>
+        </>
+      }
+    />
   );
 }
 
@@ -450,47 +449,43 @@ function CockpitFleet({
   const metCount = Math.max(0, vm.projectsWithRequirement - vm.projectsBehindCount);
 
   return (
-    <section aria-labelledby="documents-cockpit-fleet" className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <h2 id="documents-cockpit-fleet" className="text-sm font-semibold text-foreground">
-          {t('cockpit.fleet.heading', { count: vm.projectsWithRequirement })}
-        </h2>
-        {vm.projectsBehindCapped && (
-          <Link
-            href="/projects"
-            className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-foreground"
-          >
-            <span>{t('cockpit.fleet.showAll')}</span>
-            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-          </Link>
-        )}
-      </div>
-
-      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {tiles.map((tile) => (
-          <li key={tile.projectId}>
-            <FleetCompletenessTile tile={tile} onOpen={() => onOpen(tile)} />
-          </li>
-        ))}
-      </ul>
-
-      {/* Calm tail: the met projects + a "+N more behind" note when capped. */}
-      <div className="flex flex-col gap-0.5">
-        {metCount > 0 && (
-          <p className="text-xs text-text-muted" role="status">
-            {t('cockpit.fleet.metTail', { count: metCount })}
-          </p>
-        )}
-        {vm.projectsBehindCapped && (
-          <p className="text-xs text-text-muted" role="status">
-            {/* The REAL overflow (true behind − shown), never a hard-coded "12+". */}
-            {t('cockpit.fleet.moreBehind', {
-              count: vm.projectsBehindCount - vm.projectsBehindShown,
-            })}
-          </p>
-        )}
-      </div>
-    </section>
+    // Reuse the canonical fleet-grid shell; the documents fleet keeps its own
+    // copy + an in-page zoom-in tile (not a /projects link) via the tiles below.
+    <FleetGrid
+      heading={t('cockpit.fleet.heading', { count: vm.projectsWithRequirement })}
+      headingId="documents-cockpit-fleet"
+      showAll={
+        vm.projectsBehindCapped
+          ? { href: '/projects', label: t('cockpit.fleet.showAll') }
+          : undefined
+      }
+    >
+      {tiles.map((tile) => (
+        <li key={tile.projectId}>
+          <FleetCompletenessTile tile={tile} onOpen={() => onOpen(tile)} />
+        </li>
+      ))}
+      {/* Calm tail: the met projects + a "+N more behind" note when capped.
+          Rendered as a full-width list item so it sits inside the grid's <ul>
+          without breaking the shared shell's single-<ul> contract. */}
+      {(metCount > 0 || vm.projectsBehindCapped) && (
+        <li className="col-span-full flex flex-col gap-0.5">
+          {metCount > 0 && (
+            <p className="text-xs text-text-muted" role="status">
+              {t('cockpit.fleet.metTail', { count: metCount })}
+            </p>
+          )}
+          {vm.projectsBehindCapped && (
+            <p className="text-xs text-text-muted" role="status">
+              {/* The REAL overflow (true behind − shown), never a hard-coded "12+". */}
+              {t('cockpit.fleet.moreBehind', {
+                count: vm.projectsBehindCount - vm.projectsBehindShown,
+              })}
+            </p>
+          )}
+        </li>
+      )}
+    </FleetGrid>
   );
 }
 
@@ -505,18 +500,15 @@ function FleetCompletenessTile({
 }) {
   const t = useTranslations('documents');
   return (
-    <button
-      type="button"
+    // The in-page zoom-in tile reuses the canonical CompletenessTile shell in
+    // its `onClick` (button) mode — same geometry as the signatures fleet tile,
+    // but opening the documents project zoom-in instead of navigating away.
+    <CompletenessTile
       onClick={onOpen}
-      className="card card-pad flex w-full flex-col gap-2 text-start transition-colors hover:bg-surface-subtle focus:outline-none focus-visible:bg-surface-subtle"
-      style={{ cursor: 'pointer' }}
-      aria-label={t('cockpit.card.openAria', { name: tile.projectName })}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-sm font-medium text-foreground">
-          <NameDisplay name={tile.projectName} />
-        </span>
-        {tile.isComplete ? (
+      ariaLabel={t('cockpit.card.openAria', { name: tile.projectName })}
+      name={<NameDisplay name={tile.projectName} />}
+      badge={
+        tile.isComplete ? (
           <StatusBadge intent="success" className="shrink-0">
             {t('cockpit.fleet.complete')}
           </StatusBadge>
@@ -524,10 +516,10 @@ function FleetCompletenessTile({
           <StatusBadge intent="warning" className="shrink-0">
             {t('cockpit.card.core', { received: tile.coreReceived, required: tile.coreRequired })}
           </StatusBadge>
-        )}
-      </div>
-      <ThresholdSliver consentedPct={tile.completionPct} metThreshold={tile.isComplete} />
-    </button>
+        )
+      }
+      sliver={<ThresholdSliver consentedPct={tile.completionPct} metThreshold={tile.isComplete} />}
+    />
   );
 }
 
@@ -1029,8 +1021,17 @@ function GroupedAllDocuments({
   );
 }
 
+/** How many party chips stay visible before the rail collapses into a "+N more"
+ *  tail. Bounds the scroll-heavy rail at scale (9 parties) into a calm, capped
+ *  set + a one-click reveal — never a flat horizontal wall of every chip. The
+ *  ACTIVE party (if beyond the cap) is always pulled into the visible set so a
+ *  selected facet is never hidden behind the tail. */
+const PARTY_FACET_VISIBLE_CAP = 5;
+
 /** The facet rail — party + scope chips. The header search box is the third
- *  facet. Calm chips; selecting toggles the facet. */
+ *  facet. Calm chips; selecting toggles the facet. The party row is CAPPED at
+ *  `PARTY_FACET_VISIBLE_CAP` with a "+N more" disclosure so the rail stays
+ *  bounded + attention-first at scale rather than a long horizontal scroll. */
 function FacetRail({
   partyFacet,
   scopeFacet,
@@ -1045,6 +1046,17 @@ function FacetRail({
   const t = useTranslations('documents');
   const tParty = useTranslations('documents.party');
   const scopes: ScopeFacet[] = ['project', 'apartment', 'org'];
+  const [expanded, setExpanded] = useState(false);
+
+  // Keep the SELECTED party visible even when it falls past the cap — a hidden
+  // active facet would confuse a non-technical user ("why is nothing filtered?").
+  const visibleParties = useMemo(() => {
+    if (expanded) return DOCUMENT_PARTIES;
+    const head = DOCUMENT_PARTIES.slice(0, PARTY_FACET_VISIBLE_CAP);
+    if (partyFacet && !head.includes(partyFacet)) return [...head, partyFacet];
+    return head;
+  }, [expanded, partyFacet]);
+  const hiddenCount = DOCUMENT_PARTIES.length - visibleParties.length;
 
   return (
     <div className="flex flex-col gap-2" aria-label={t('facet.label')}>
@@ -1055,7 +1067,7 @@ function FacetRail({
           onClick={() => onParty(null)}
           label={t('facet.all')}
         />
-        {DOCUMENT_PARTIES.map((p) => (
+        {visibleParties.map((p) => (
           <FacetChip
             key={p}
             active={partyFacet === p}
@@ -1063,6 +1075,30 @@ function FacetRail({
             label={tParty(p)}
           />
         ))}
+        {/* The "+N more" tail — reveals the remaining party chips on demand; the
+            "show fewer" collapses back so the rail never stays a flat wall. */}
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded(true)}
+            className="rounded-full px-2.5 py-0.5 text-xs font-medium text-text-muted transition-colors hover:text-foreground"
+            style={{ border: '1px solid var(--border)', cursor: 'pointer' }}
+          >
+            {t('facet.moreParties', { count: hiddenCount })}
+          </button>
+        )}
+        {expanded && (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded(false)}
+            className="rounded-full px-2.5 py-0.5 text-xs font-medium text-text-muted transition-colors hover:text-foreground"
+            style={{ border: '1px solid var(--border)', cursor: 'pointer' }}
+          >
+            {t('facet.fewerParties')}
+          </button>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-xs font-medium text-text-muted">{t('facet.scopeLabel')}:</span>

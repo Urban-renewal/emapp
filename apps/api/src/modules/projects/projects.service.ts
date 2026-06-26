@@ -712,6 +712,20 @@ export class ProjectsService {
         WHERE b.project_id = ${projectId}
           AND a.archived_at IS NULL
       ),
+      -- PERF (login-nav-latency 2026-06-26): the project's signature-bearing
+      -- doc set was inlined THREE times below (the signed-share EXISTS + the two
+      -- signature counts), so the planner re-resolved the same documents⋈
+      -- apartments⋈buildings UNION three times per consent query — and this
+      -- consent query is itself fanned out once per project on the cold home
+      -- "signature-pulse" read. Materialising it ONCE as a CTE removes that
+      -- redundant re-execution. It STILL reuses the canonical
+      -- \`projectSignatureDocIdsSql\` (single source of truth — same doc-set
+      -- definition, same partial-index alignment, same archived-excluded
+      -- valid-consent rule); only the number of times the planner evaluates it
+      -- changes, never the rows it yields, so every count is byte-identical.
+      proj_doc_ids AS (
+        ${projectSignatureDocIdsSql(projectId)}
+      ),
       apt_consent AS (
         SELECT
           pa.id,
@@ -734,7 +748,7 @@ export class ProjectsService {
                  FROM signature_requests sr
                  WHERE sr.owner_id = o.owner_id
                    AND sr.status = 'signed'
-                   AND sr.document_id IN (${projectSignatureDocIdsSql(projectId)})
+                   AND sr.document_id IN (SELECT id FROM proj_doc_ids)
                )), 0) AS signed_share
         FROM proj_apartments pa
       ),
@@ -760,10 +774,10 @@ export class ProjectsService {
         COALESCE((SELECT SUM(contribution) FROM apt_contrib), 0) AS consented_weight,
         (SELECT COUNT(*)::int FROM signature_requests sr
            WHERE sr.status = 'signed'
-             AND sr.document_id IN (${projectSignatureDocIdsSql(projectId)})) AS signatures_signed,
+             AND sr.document_id IN (SELECT id FROM proj_doc_ids)) AS signatures_signed,
         (SELECT COUNT(*)::int FROM signature_requests sr
            WHERE sr.status = 'pending'
-             AND sr.document_id IN (${projectSignatureDocIdsSql(projectId)})) AS signatures_pending,
+             AND sr.document_id IN (SELECT id FROM proj_doc_ids)) AS signatures_pending,
         (SELECT target_signature_pct FROM projects WHERE id = ${projectId}) AS target_signature_pct
     `);
     const r = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};

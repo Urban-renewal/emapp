@@ -25,7 +25,9 @@
 import {
   createDocumentChaseRecommender,
   createReminderCadenceRecommender,
+  createSignatureExpiringRecommender,
   createSignatureReissueRecommender,
+  createSignatureStalledRecommender,
   createTaskWatcherRecommender,
   runProposalProducerTickGuarded,
 } from '@emapp/db';
@@ -65,12 +67,22 @@ export class ProposalProducerHandler implements IJobHandler<ProposalProducerJobP
    *    - document-chase    (S5):      the SAME missing-required-doc gap → an
    *      OUTBOUND document.chase.send (chase the responsible party). Reuses the
    *      SHARED detectMissingRequiredDocs (no second query) + providerPartyForDocType;
-   *      APPROVE routes the send through governOutboundSend (consent-gated). */
+   *      APPROVE routes the send through governOutboundSend (consent-gated).
+   *    - signature-stalled (1.3):     a NON-TERMINAL project that has gone QUIET
+   *      (pending > 0 ∧ oldest-pending age ≥ threshold) → reminder.send at the
+   *      PROJECT scope. READS the canonical ProjectPerception (no second query);
+   *      PROPOSE-ONLY (the executor sends on APPROVE via governOutboundSend).
+   *    - signature-expiring (1.3):    a NON-TERMINAL project whose next pending
+   *      request lapses in <7d → signature_request.reissue (anticipate the lapse).
+   *      READS the perception's nextExpiryAt; PROPOSE-AND-CONFIRM (the executor
+   *      re-mints on APPROVE — never auto-executed, never re-split). */
   private readonly recommenders: IRecommender[] = [
     createSignatureReissueRecommender(),
     createReminderCadenceRecommender(),
     createTaskWatcherRecommender(),
     createDocumentChaseRecommender(),
+    createSignatureStalledRecommender(),
+    createSignatureExpiringRecommender(),
   ];
 
   async handle(_payload: ProposalProducerJobPayload, ctx: JobContext): Promise<void> {

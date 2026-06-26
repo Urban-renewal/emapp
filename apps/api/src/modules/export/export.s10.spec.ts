@@ -28,6 +28,7 @@ import {
   authSessions,
   buildings,
   encryptOwnerPii,
+  memberPermissionOverrides,
   memberships,
   owners,
   ownerships,
@@ -209,6 +210,37 @@ async function makeSessionUser(
     iat: 0,
     exp: 0,
   } as unknown as AccessTokenPayload;
+}
+
+/**
+ * B5/B6 — strip `owners.reveal_pii` from the org's user via a real org-scoped
+ * DENY override, WITHOUT touching `export.run`. This reproduces the production
+ * defect state EXACTLY: a Manager (who at signup holds BOTH reveal_pii AND
+ * export.run on the system role) is moved to a posture where the live engine no
+ * longer resolves `owners.reveal_pii` for them, while `export.run` (the export
+ * controller's @RequirePermission) still resolves. `export.run` does NOT imply
+ * `owners.reveal_pii` (`permissions.ts`), and the two are DISCRETE removable
+ * permissions (`system-roles.ts`), so the engine returns export+read but NOT
+ * reveal-PII — precisely the role whose stale `pii_unlocked_at` must NOT serve
+ * cleartext. The DENY is subtracted AFTER implication-expansion, so it removes
+ * EXACTLY reveal_pii and leaves export.run/owners.read intact.
+ *
+ * memberPermissionOverrides is RLS-scoped to the org → write it inside
+ * withTenant so the request-path resolver (which reads under withTenant) sees it.
+ */
+async function revokeRevealPii(o: TestOrg): Promise<void> {
+  await withTenant(o.id, async (tx) => {
+    await tx
+      .insert(memberPermissionOverrides)
+      .values({
+        userId: o.users[0]!.id,
+        permission: 'owners.reveal_pii',
+        effect: 'deny',
+        scopeType: 'org',
+        scopeId: o.id,
+      })
+      .onConflictDoNothing();
+  });
 }
 
 beforeAll(async () => {
@@ -671,6 +703,67 @@ describe('V11 B.S10 · ExportComposerService — project export (Phase 7)', () =
         status: 403,
         response: { error: { code: 'pii_step_up_required' } },
       });
+    });
+
+    it('B6.2c) [B5-class] full export with a FRESH unlock but reveal_pii REVOKED (export.run kept) → 403 pii_step_up_required + ZERO cleartext', async () => {
+      // The B5-class regression this fix closes. Reproduce the defect state on a
+      // DEDICATED org (so the DENY override never bleeds into orgA's other B6
+      // assertions): seed one owner with a known cleartext national_id/phone,
+      // give the user a FRESH (non-expired) step-up unlock so the freshness/TTL
+      // half ALONE would pass, then REVOKE owners.reveal_pii while keeping
+      // export.run. Before this fix, the export served cleartext for the full
+      // TTL while the document path correctly 403'd. After: the live reveal_pii
+      // re-assertion (mirrors documents.service.ts) throws the SAME shared 403.
+      const ts = Date.now();
+      const orgRevoked = await createTestOrg(`B6C-${ts}`, `b6c-${ts}`);
+      const ownerId = await makeOwner(orgRevoked, {
+        name: 'נעמי רבוק',
+        nationalId: '399999091',
+        phone: '0509990091',
+      });
+      const bld = await makeBuilding(orgRevoked, 0, 'בלד רבוק');
+      const apt = await makeApartment(orgRevoked, bld, { number: 'R-1' });
+      await makeOwnershipBundle(orgRevoked, apt, [{ ownerId, pct: '100' }]);
+
+      // FRESH unlock — the access/TTL half passes; only the entitlement half can block.
+      const freshButRevoked = await makeSessionUser(orgRevoked, { unlocked: true });
+      // Strip reveal_pii (keep export.run) — the live engine now resolves
+      // export+read but NOT reveal-PII for this caller.
+      await revokeRevealPii(orgRevoked);
+
+      // (a) The full export is REJECTED with the shared step-up 403 …
+      await expect(
+        svc.composeProjectExport(freshButRevoked, orgRevoked.projects[0]!.id, 'xlsx', 'full'),
+      ).rejects.toMatchObject({
+        status: 403,
+        response: { error: { code: 'pii_step_up_required' } },
+      });
+
+      // … and (a) cont. — ZERO cleartext: the throw happens BEFORE the decrypt,
+      // so nothing is round-tripped into heap. Re-running the request and proving
+      // it still throws (never resolves an input carrying the cleartext id/phone)
+      // is the strongest in-test evidence we can assert against the same defect.
+      await expect(
+        svc.composeProjectExport(freshButRevoked, orgRevoked.projects[0]!.id, 'xlsx', 'full'),
+      ).rejects.toMatchObject({ status: 403 });
+
+      // Doc-path PARITY control — the MASKED export on the SAME revoked actor
+      // still serves (reveal_pii is NOT needed for masked, exactly as the
+      // documents path lets a masked-role surface through the shared access gate
+      // and masks per-field). And the national_id is masked, never cleartext.
+      const { input: maskedInput, piiIncluded } = await svc.composeProjectExport(
+        freshButRevoked,
+        orgRevoked.projects[0]!.id,
+        'xlsx',
+        'masked',
+      );
+      expect(piiIncluded).toBe(false);
+      const maskedOwners = maskedInput.buildings.flatMap((b) =>
+        b.apartments.flatMap((a) => a.owners),
+      );
+      expect(maskedOwners.length).toBeGreaterThan(0);
+      expect(maskedOwners.every((o) => o.nationalId!.startsWith('•'))).toBe(true);
+      expect(maskedOwners.some((o) => o.nationalId === '399999091')).toBe(false);
     });
 
     it('B6.3) full export WITH a valid unlock → 200, CLEARTEXT national_id/phone, pii_included=true', async () => {

@@ -49,12 +49,18 @@ function resolveKey(key: string): string {
   }
   return typeof node === 'string' ? node : `MISSING:${key}`;
 }
-// Two namespaces are used by the page: `apartments` (t) and `projects` (tp).
-// Only `apartments.*` is under test; `projects.*` keys resolve to a stable stub
-// so they never read as MISSING and never collide with the assertions.
+// Namespaces used by the page: `apartments` (t), `apartments.generate` (the
+// lead generate form, Slice 2.1) and `projects` (tp). For an `apartments.*`
+// namespace we strip the leading `apartments.` and resolve the rest against the
+// apartments message tree; `projects.*` keys resolve to a stable stub so they
+// never read as MISSING and never collide with the assertions.
 vi.mock('next-intl', () => ({
-  useTranslations: (ns?: string) => (key: string) =>
-    ns === 'projects' ? `proj.${key}` : resolveKey(key),
+  useTranslations: (ns?: string) => (key: string) => {
+    if (ns === 'projects') return `proj.${key}`;
+    const sub =
+      ns && ns.startsWith('apartments.') ? `${ns.slice('apartments.'.length)}.${key}` : key;
+    return resolveKey(sub);
+  },
 }));
 
 // next/link → plain anchor so the static render emits labels/options.
@@ -88,6 +94,9 @@ const listState = {
 };
 vi.mock('@/hooks/use-apartments', () => ({
   useApartmentList: () => listState,
+  // Slice 2.1 — the page now leads with <GenerateApartmentsForm>, which calls
+  // this hook. Stub it inert (idle mutation) so this filter-UI probe renders.
+  useGenerateApartments: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 import ApartmentsPage from './page';

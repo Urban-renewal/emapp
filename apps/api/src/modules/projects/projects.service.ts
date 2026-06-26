@@ -1401,12 +1401,30 @@ export class ProjectsService {
                      WHERE sr.status = 'pending'
                        AND sr.document_id IN (${projectSetSignatureDocIdsSql(sql`SELECT project_id FROM assigned`)})) AS signatures_pending
               `)
-            : await tx.execute(sql`
+            : // SINGLE-SOURCE (0.1) — manager/viewer now use the IDENTICAL doc-scoped,
+              // archived-excluded, project-scoped shape as the agent branch above and the
+              // signaturePulse/board. The old bare `COUNT(*) FROM signature_requests WHERE
+              // status=…` counted signatures on ARCHIVED/superseded documents and on requests
+              // unreachable through any non-archived project, so the home KPI did not reconcile
+              // to the sum of the per-project boards on the same screen (the "0 מתוך X" class).
+              // `visible` = the whole org's non-archived projects (the manager sees everything).
+              await tx.execute(sql`
+                WITH visible AS (
+                  SELECT id AS project_id FROM projects WHERE archived_at IS NULL
+                )
                 SELECT
-                  (SELECT COUNT(*)::int FROM projects WHERE archived_at IS NULL) AS active_projects,
-                  (SELECT COUNT(DISTINCT owner_id)::int FROM ownerships WHERE ended_at IS NULL) AS residents,
-                  (SELECT COUNT(*)::int FROM signature_requests WHERE status = 'signed') AS signatures_received,
-                  (SELECT COUNT(*)::int FROM signature_requests WHERE status = 'pending') AS signatures_pending
+                  (SELECT COUNT(*)::int FROM visible) AS active_projects,
+                  (SELECT COUNT(DISTINCT o.owner_id)::int FROM ownerships o
+                     INNER JOIN apartments a ON a.id = o.apartment_id
+                     INNER JOIN buildings b ON b.id = a.building_id
+                     WHERE o.ended_at IS NULL
+                       AND b.project_id IN (SELECT project_id FROM visible)) AS residents,
+                  (SELECT COUNT(*)::int FROM signature_requests sr
+                     WHERE sr.status = 'signed'
+                       AND sr.document_id IN (${projectSetSignatureDocIdsSql(sql`SELECT project_id FROM visible`)})) AS signatures_received,
+                  (SELECT COUNT(*)::int FROM signature_requests sr
+                     WHERE sr.status = 'pending'
+                       AND sr.document_id IN (${projectSetSignatureDocIdsSql(sql`SELECT project_id FROM visible`)})) AS signatures_pending
               `);
         const r = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
         return {

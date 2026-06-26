@@ -62,6 +62,28 @@ async function setOrgSuspended(suspended: boolean): Promise<void> {
     c.release();
   }
 }
+async function setContractorArchived(archived: boolean): Promise<void> {
+  const c = await providerPool.connect();
+  try {
+    await c.query(
+      `UPDATE contractors SET archived_at = ${archived ? 'now()' : 'NULL'} WHERE id = $1`,
+      [contractorId],
+    );
+  } finally {
+    c.release();
+  }
+}
+async function setProjectArchived(archived: boolean): Promise<void> {
+  const c = await providerPool.connect();
+  try {
+    await c.query(
+      `UPDATE projects SET archived_at = ${archived ? 'now()' : 'NULL'} WHERE id = $1`,
+      [projectId],
+    );
+  } finally {
+    c.release();
+  }
+}
 
 beforeAll(async () => {
   await setupTestDatabase();
@@ -97,6 +119,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await setOrgSuspended(false);
   await setShareRevoked(false);
+  await setContractorArchived(false);
+  await setProjectArchived(false);
 });
 
 function freshToken(): string {
@@ -270,5 +294,61 @@ describe('ContractorAuthGuard — share expiry on retrieval', () => {
     // exp 1 hour in the FUTURE, active + non-suspended → guard allows.
     const future = tokenWithExp(Math.floor(Date.now() / 1000) + 3600);
     await expect(guard.canActivate(mockCtx(future) as never)).resolves.toBe(true);
+  });
+});
+
+/**
+ * CROSS-ENTITY AUTHZ — archiving cuts external read access LIVE (#4 + #5).
+ *
+ * The share's `revoked_at` is the explicit kill switch, but offboarding a
+ * contractor (archiving it) or archiving a project must ALSO cut access even
+ * while the share is unrevoked — otherwise an offboarded partner keeps reading
+ * project docs until the token TTL (up to 30 days). The guard re-reads the
+ * bound `contractors` + `projects` rows LIVE each request and fails closed
+ * (generic 401, no oracle) the instant either is archived.
+ */
+describe('ContractorAuthGuard — archive cuts access (#4 contractor, #5 project)', () => {
+  it('#4: archiving the CONTRACTOR → 401 even with a valid, unrevoked share + in-window token', async () => {
+    await setShareRevoked(false);
+    await setOrgSuspended(false);
+    await setProjectArchived(false);
+    await setContractorArchived(true);
+    try {
+      await expect(guard.canActivate(mockCtx(freshToken()) as never)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    } finally {
+      await setContractorArchived(false);
+    }
+  });
+
+  it('#4: un-archiving the contractor restores access (the cut is LIVE)', async () => {
+    await setContractorArchived(false);
+    await setShareRevoked(false);
+    await setOrgSuspended(false);
+    await setProjectArchived(false);
+    await expect(guard.canActivate(mockCtx(freshToken()) as never)).resolves.toBe(true);
+  });
+
+  it('#5: archiving the PROJECT → 401 even with a valid, unrevoked share + in-window token', async () => {
+    await setShareRevoked(false);
+    await setOrgSuspended(false);
+    await setContractorArchived(false);
+    await setProjectArchived(true);
+    try {
+      await expect(guard.canActivate(mockCtx(freshToken()) as never)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    } finally {
+      await setProjectArchived(false);
+    }
+  });
+
+  it('#5: un-archiving the project restores access (the cut is LIVE)', async () => {
+    await setProjectArchived(false);
+    await setContractorArchived(false);
+    await setShareRevoked(false);
+    await setOrgSuspended(false);
+    await expect(guard.canActivate(mockCtx(freshToken()) as never)).resolves.toBe(true);
   });
 });

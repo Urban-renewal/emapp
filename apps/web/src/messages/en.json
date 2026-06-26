@@ -1182,6 +1182,27 @@
       "shop": "Shop / retail",
       "office": "Office",
       "mixed": "Mixed-use"
+    },
+    "generate": {
+      "title": "Quickly fill the building's apartments",
+      "hint": "Instead of adding one apartment at a time — describe the building's shape and the system creates every apartment at once.",
+      "floors": "Number of floors",
+      "apartmentsPerFloor": "Apartments per floor",
+      "schemeLabel": "Apartment numbering",
+      "scheme": {
+        "sequential": "Sequential (1, 2, 3 …)",
+        "floorBased": "By floor (101, 102, 201 …)"
+      },
+      "preview": "{count} apartments will be created. First: {first} · Last: {last}.",
+      "previewOne": "One apartment will be created: {first}.",
+      "submit": "Create {count} apartments",
+      "submitting": "Creating apartments…",
+      "successCreated": "Created {created} apartments.",
+      "successWithSkipped": "Created {created} apartments · {skipped} already existed and were skipped.",
+      "noneCreated": "Every apartment in this shape already exists in the building — none were created.",
+      "failed": "Failed to create the apartments. Please try again.",
+      "manualTitle": "Need a single apartment with full details?",
+      "manualLink": "Add a single apartment"
     }
   },
   "stepUp": {
@@ -2005,7 +2026,35 @@
     "forbiddenCreate": "You are not allowed to create tasks.",
     "loading": "Loading...",
     "empty": "No tasks to show.",
+    "emptyHint": "When a task is created it appears here, sorted by due date.",
     "loadFailed": "Failed to load tasks",
+    "loadMore": "Show more",
+    "loadingMore": "Loading more...",
+    "loadedAll": "{count} tasks — all loaded.",
+    "loadedPartial": "{count} tasks loaded so far. “Show more” loads the rest.",
+    "loadedFiltered": "Showing {shown} of {loaded} loaded.",
+    "noMatch": "No tasks match the current filter.",
+    "clearFilter": "Clear filter",
+    "pulse": {
+      "overdue": "{count} overdue",
+      "today": "{count} today",
+      "week": "{count} this week",
+      "later": "{count} later",
+      "none": "No tasks to show right now."
+    },
+    "bucket": {
+      "overdue": "Overdue",
+      "today": "Today",
+      "week": "This week",
+      "later": "Later",
+      "count": "{count}"
+    },
+    "filter": {
+      "statusLabel": "Filter by status",
+      "priorityLabel": "Filter by priority",
+      "all": "All",
+      "allPriorities": "All priorities"
+    },
     "notFound": "Task not found",
     "backToList": "Back to list",
     "cancel": "Cancel",

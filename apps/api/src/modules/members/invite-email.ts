@@ -1,5 +1,7 @@
 import { FakeEmailProvider, type IEmailProvider } from '@emapp/db';
 
+import { scrubUrlForLog } from '../../logging/log-redact';
+
 /**
  * D.27 closure — the member-invite token is delivered via IEmailProvider,
  * NOT returned in the API response in production.
@@ -147,4 +149,40 @@ export function buildInviteEmail(input: InviteEmailInput): {
     `<p style="color:#666;font-size:12px">אם לא ציפית להזמנה זו, ניתן להתעלם מהודעה זו.</p>` +
     `</div>`;
   return { to: input.to, subject, html, text, tags: { kind: 'org_invite' } };
+}
+
+/**
+ * SEC-TOKEN-LOG (red-team 2026-06-25, HIGH — defect #39): when the email
+ * provider rejects/throws, the caller logs `mailErr.message`. A provider can
+ * embed the request it was given — including the invite URL
+ * `…/he/accept-invite/<token>` — in that error string, so a raw
+ * `logger.error(... mailErr.message ...)` would leak the single-use invite
+ * credential into the logs (the same class as the signing-JWT-in-`req.url`
+ * leak the pino redactor closes).
+ *
+ * This is the canonical scrubber for ANY invite-flow error string before it is
+ * logged. It is BELT-AND-SUSPENDERS:
+ *  1. The exact `token` (and its `encodeURIComponent` form — the shape that
+ *     actually appears in `inviteUrl`) is replaced with `[REDACTED]`. This is
+ *     deterministic and shape-independent: even if a provider reformats the URL
+ *     we still strip the credential.
+ *  2. The result is then passed through the CANONICAL `scrubUrlForLog` seam
+ *     (single source of truth shared with the pino request-logger), which masks
+ *     a `/sign/<jwt>` segment + sensitive `?token=…` query values for any OTHER
+ *     credential-bearing URL the provider error might carry.
+ *
+ * An empty/whitespace token is ignored (no global empty-string replace) so a
+ * malformed call can never blank the whole message.
+ */
+export function scrubInviteErrorForLog(message: string, token: string): string {
+  let out = message;
+  const candidates = new Set<string>();
+  if (token.trim().length > 0) {
+    candidates.add(token);
+    candidates.add(encodeURIComponent(token));
+  }
+  for (const c of candidates) {
+    out = out.split(c).join('[REDACTED]');
+  }
+  return scrubUrlForLog(out);
 }

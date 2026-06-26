@@ -87,6 +87,7 @@
         "remindAria": "שלח תזכורת ל{name}",
         "remindSent": "התזכורת נשלחה",
         "requestSent": "בקשת חתימה נשלחה ל{name}",
+        "requestNotDelivered": "הבקשה ל{name} מוכנה, אך אין דרך ליצור קשר (אין אימייל או טלפון) — שלח/י את הקישור ידנית.",
         "remindNonePending": "אין בקשת חתימה ממתינה לבעל דירה זה — ייתכן שהלוח אינו מעודכן.",
         "startCampaignAria": "התחל איסוף חתימות בדירה {number}"
       },

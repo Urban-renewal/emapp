@@ -1,5 +1,9 @@
 'use client';
 
+// Value import — the CANONICAL delivery predicate (single source of truth,
+// shared with the BE tallies). Reused, never re-implemented, so "delivered vs
+// no-channel" cannot drift between the server tally and this client toast.
+import { didAnyChannelDeliver } from '@emapp/shared-types';
 import type {
   CreateSignatureRequest,
   ListSignatureRequestsQueryDto,
@@ -139,9 +143,20 @@ export function useCancelSignatureRequest() {
  *  copy rather than the generic retry line. */
 export const HOLDOUT_NONE_PENDING_CODE = 'holdout_none_pending';
 
-/** The outcome of a one-click holdout chase — surfaced so the caller's toast can
- *  read "reminder sent" vs "signature request sent". */
-export type HoldoutChaseAction = 'resent' | 'created';
+/** The outcome of a one-click holdout chase — surfaced so the caller's toast is
+ *  HONEST on TWO axes:
+ *    • `action` — was an EXISTING pending request re-sent (`resent`) or a NEW one
+ *      created (`created`)? (drives "reminder sent" vs "signature request sent").
+ *    • `delivered` — did a channel ACTUALLY carry the link (`didAnyChannelDeliver`
+ *      over the create/resend `delivery` report)? `false` ⇒ the request exists but
+ *      reached NO channel (owner has no email AND no phone, or PII decrypt failed)
+ *      — nothing was sent, so the toast MUST say "send manually", NEVER "sent".
+ *  Splitting these is the delivery-outcome-honesty fix (#2): the path taken is NOT
+ *  evidence of delivery. */
+export interface HoldoutChaseResult {
+  action: 'resent' | 'created';
+  delivered: boolean;
+}
 
 /** Input to {@link useChaseHoldout}: the holdout owner + the document the create
  *  targets (null when there is no signable doc for this holdout — then a
@@ -186,8 +201,8 @@ export interface ChaseHoldoutInput {
  */
 export function useChaseHoldout() {
   const qc = useQueryClient();
-  return useMutation<HoldoutChaseAction, Error, ChaseHoldoutInput>({
-    mutationFn: async ({ ownerId, signableDocumentId }): Promise<HoldoutChaseAction> => {
+  return useMutation<HoldoutChaseResult, Error, ChaseHoldoutInput>({
+    mutationFn: async ({ ownerId, signableDocumentId }): Promise<HoldoutChaseResult> => {
       // Resolve the owner's single live pending request. `status: 'pending'`
       // already excludes signed/cancelled/expired rows; we take the first
       // (an owner has at most one live pending request per project document,
@@ -195,16 +210,19 @@ export function useChaseHoldout() {
       const pending = await listSignatureRequests({ ownerId, status: 'pending', limit: 1 });
       const target = pending.items[0];
       if (target) {
-        await resendSignatureRequest(target.id);
-        return 'resent';
+        // resend returns the FULL `{ request, signUrl, delivery }`. Honesty axis:
+        // a re-mint that reached NO channel (no email+phone / PII decrypt failed)
+        // is NOT a send — derive it from the CANONICAL predicate, never the path.
+        const res = await resendSignatureRequest(target.id);
+        return { action: 'resent', delivered: didAnyChannelDeliver(res.delivery) };
       }
       // No live pending request — CREATE one against THIS holdout's per-apartment
       // signable doc (the BE enforces association/visibility/PII delivery +
       // idempotency). Using the apartment's own agreement is what makes an
       // associated owner 201 rather than 409 `recipient_not_associated`.
       if (signableDocumentId) {
-        await createSignatureRequest({ documentId: signableDocumentId, ownerId });
-        return 'created';
+        const res = await createSignatureRequest({ documentId: signableDocumentId, ownerId });
+        return { action: 'created', delivered: didAnyChannelDeliver(res.delivery) };
       }
       // Nothing to (re)chase and no campaign to create against — calm dead-end.
       throw new ApiClientError({ code: HOLDOUT_NONE_PENDING_CODE });

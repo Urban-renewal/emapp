@@ -225,39 +225,92 @@ describe('isDocInShareScope — set-based membership matrix (SEC-H1)', () => {
   const A = '33333333-3333-3333-3333-333333333333';
   const OTHER = '99999999-9999-9999-9999-999999999999';
 
-  it('project scope: doc whose projectId ∈ scopeIds → in scope', () => {
-    expect(isDocInShareScope('project', [P], { projectId: P, buildingId: B, apartmentId: A })).toBe(
-      true,
-    );
+  const O = '44444444-4444-4444-4444-444444444444';
+  /** A genuinely PROJECT-LEVEL doc locator (docScope='project', no apartment). */
+  const projectLevel = {
+    docScope: 'project' as const,
+    ownerId: null,
+    projectId: P,
+    buildingId: null,
+    apartmentId: null,
+  };
+  /** An APARTMENT-LEVEL doc whose project_id STILL chains up to project P. */
+  const apartmentLevel = {
+    docScope: 'apartment' as const,
+    ownerId: null,
+    projectId: P,
+    buildingId: B,
+    apartmentId: A,
+  };
+  /** An OWNER-scoped doc that is apartment-bound (per-owner agreement) under P. */
+  const ownerLevel = {
+    docScope: 'owner' as const,
+    ownerId: O,
+    projectId: P,
+    buildingId: B,
+    apartmentId: A,
+  };
+
+  it('project scope: a genuinely project-level doc whose projectId ∈ scopeIds → in scope', () => {
+    expect(isDocInShareScope('project', [P], projectLevel)).toBe(true);
   });
 
-  it('project scope: doc of a DIFFERENT project → out of scope', () => {
+  it('project scope: a project-level doc of a DIFFERENT project → out of scope', () => {
+    // The doc is genuinely project-level for project P, but the grant only
+    // covers OTHER → the P doc is out of that grant's scope.
+    expect(isDocInShareScope('project', [OTHER], projectLevel)).toBe(false);
+  });
+
+  // #11 — the LEAK: a project-scope grant must NOT reach per-apartment / per-owner
+  // docs even though their project_id chains up to the granted project.
+  it('#11 project scope: an APARTMENT-level doc (apartment_id set) → OUT of scope, even though project_id ∈ scopeIds', () => {
+    expect(isDocInShareScope('project', [P], apartmentLevel)).toBe(false);
+  });
+
+  it('#11 project scope: an OWNER-scoped doc under the project → OUT of scope (project-scope ≠ owner-scope)', () => {
+    expect(isDocInShareScope('project', [P], ownerLevel)).toBe(false);
+  });
+
+  it('#11 project scope: a doc canonically docScope=apartment but with apartmentId null is STILL excluded (canonical axis, fail-closed)', () => {
     expect(
-      isDocInShareScope('project', [OTHER], { projectId: P, buildingId: B, apartmentId: A }),
+      isDocInShareScope('project', [P], {
+        docScope: 'apartment',
+        ownerId: null,
+        projectId: P,
+        buildingId: null,
+        apartmentId: null,
+      }),
+    ).toBe(false);
+  });
+
+  it('#11 forward-defense: an OWNER-attributed doc with NULL apartment + legacy docScope=org → STILL excluded from a project grant (owner_id axis)', () => {
+    // The vector the red-team flagged: if canonical owner-attribution is ever
+    // wired with apartment_id NULL + docScope still 'org', the owner_id axis
+    // must keep it out of a project-scope grant. Fail-closed today.
+    expect(
+      isDocInShareScope('project', [P], {
+        docScope: 'org',
+        ownerId: O,
+        projectId: P,
+        buildingId: null,
+        apartmentId: null,
+      }),
     ).toBe(false);
   });
 
   it('building scope: doc whose apartment building ∈ scopeIds → in scope', () => {
-    expect(
-      isDocInShareScope('building', [B], { projectId: P, buildingId: B, apartmentId: A }),
-    ).toBe(true);
+    expect(isDocInShareScope('building', [B], apartmentLevel)).toBe(true);
   });
 
   it('building scope: a PROJECT-level doc (no apartment → no building) → out of scope', () => {
-    expect(
-      isDocInShareScope('building', [B], { projectId: P, buildingId: null, apartmentId: null }),
-    ).toBe(false);
+    expect(isDocInShareScope('building', [B], projectLevel)).toBe(false);
   });
 
   it('apartment scope: doc whose apartmentId ∈ scopeIds → in scope', () => {
-    expect(
-      isDocInShareScope('apartment', [A], { projectId: P, buildingId: B, apartmentId: A }),
-    ).toBe(true);
+    expect(isDocInShareScope('apartment', [A], apartmentLevel)).toBe(true);
   });
 
   it('apartment scope: a project-level doc (apartmentId null) → out of scope (fail-closed)', () => {
-    expect(
-      isDocInShareScope('apartment', [A], { projectId: P, buildingId: B, apartmentId: null }),
-    ).toBe(false);
+    expect(isDocInShareScope('apartment', [A], projectLevel)).toBe(false);
   });
 });

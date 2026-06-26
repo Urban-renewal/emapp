@@ -24,6 +24,7 @@
  */
 import {
   createDocumentChaseRecommender,
+  createOwnershipMismatchRecommender,
   createReminderCadenceRecommender,
   createSignatureExpiringRecommender,
   createSignatureReissueRecommender,
@@ -75,7 +76,11 @@ export class ProposalProducerHandler implements IJobHandler<ProposalProducerJobP
    *    - signature-expiring (1.3):    a NON-TERMINAL project whose next pending
    *      request lapses in <7d → signature_request.reissue (anticipate the lapse).
    *      READS the perception's nextExpiryAt; PROPOSE-AND-CONFIRM (the executor
-   *      re-mints on APPROVE — never auto-executed, never re-split). */
+   *      re-mints on APPROVE — never auto-executed, never re-split).
+   *    - ownership-mismatch (2.5):    a gathering-signatures project with an active
+   *      owner who carries a BLOCKING owner-state (competency/dispute) yet is still
+   *      counted in the consent threshold → task.create (NO new autonomy kind).
+   *      PII-FREE evidence (ownerId + stateKind only); APPROVE opens a SYSTEM task. */
   private readonly recommenders: IRecommender[] = [
     createSignatureReissueRecommender(),
     createReminderCadenceRecommender(),
@@ -83,6 +88,7 @@ export class ProposalProducerHandler implements IJobHandler<ProposalProducerJobP
     createDocumentChaseRecommender(),
     createSignatureStalledRecommender(),
     createSignatureExpiringRecommender(),
+    createOwnershipMismatchRecommender(),
   ];
 
   async handle(_payload: ProposalProducerJobPayload, ctx: JobContext): Promise<void> {

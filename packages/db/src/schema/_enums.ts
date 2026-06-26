@@ -79,6 +79,25 @@ export const externalShareScopeTypeEnum = pgEnum('external_share_scope_type', [
   'building',
   'apartment',
 ]);
+// Slice 2.5 (migration 0084) — owner legal/life-state taxonomy. The KIND of a
+// standing legal/life condition recorded ON an owner (NOT their identity). Closed
+// set; the Zod `OwnerStateKindEnum` at the API edge + this pg enum are belt-and-
+// suspenders. ADDITIVE: a new kind appends here. `competency` carries guardian PII
+// (encrypted; see owner-states.ts).
+export const ownerStateKindEnum = pgEnum('owner_state_kind', [
+  'competency',
+  'dispute',
+  'transfer',
+  'lien',
+  'verify',
+  'consent_withdrawal',
+]);
+
+// Slice 2.5 (migration 0084) — owner-state lifecycle. `active` while it bears on
+// the process; `resolved` once the matter closes (resolve is a status transition,
+// never a hard delete — REVOKE DELETE on app_user).
+export const ownerStateStatusEnum = pgEnum('owner_state_status', ['active', 'resolved']);
+
 // DH1 (migration 0077) — the closed document-taxonomy SCOPE enum. A document
 // hangs off exactly one scope: the org as a whole, a project, an apartment, or
 // (new) a single owner. Paired with `documents.doc_scope_id` (the typed target

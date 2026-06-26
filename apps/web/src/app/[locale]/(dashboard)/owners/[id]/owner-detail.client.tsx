@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { OwnerPiiReveal } from '@/components/owners/owner-pii-reveal';
+import { OwnerStatesSection } from '@/components/owners/owner-states-section';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
@@ -75,6 +76,10 @@ export function OwnerDetailClient() {
   const canReveal = profile?.view_owner_pii === true;
   // Archive is a write — gate the "ארכוב" button on `owners.archive`.
   const canArchive = useHasPermission('owners.archive');
+  // Slice 2.5 — managing legal/life states is a manager-tier write (the BE
+  // re-asserts manager). Gate the add/resolve controls on `owners.update`
+  // (the coarse permission the BE owner-state writes carry).
+  const canManageStates = useHasPermission('owners.update');
 
   if (isLoading) return <ListSkeleton withRows={false} />;
   if (isError) {
@@ -268,6 +273,12 @@ export function OwnerDetailClient() {
           </ul>
         </section>
       )}
+
+      {/* Slice 2.5 — owner legal/life states (competency/dispute/transfer/lien/
+       *  verify/consent-withdrawal). Active states as legible badges (blocking
+       *  ones flagged), masked guardian identity only, one-click add/resolve for
+       *  managers. The BE re-asserts manager-tier; guardian PII is encrypted. */}
+      {id && <OwnerStatesSection ownerId={id} canManage={canManageStates} />}
 
       {/* IAM slice 5b — the owner quick-actions row (WhatsApp / send-for-
        *  signature / add-note / create-task) was a placeholder: all four were

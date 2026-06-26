@@ -6,6 +6,10 @@ export * from './project';
 export * from './building';
 export * from './apartment';
 export * from './owner';
+// Slice 2.5 — owner legal/life states (competency/dispute/transfer/lien/verify/
+// consent-withdrawal). Guardian PII encrypted at rest, masked on the wire; the
+// perception counts are PII-FREE (.strict()).
+export * from './owner-state';
 export * from './ownership';
 // S3c — discovery_records ("renter → discovery-source"). Apartment-attached
 // discovery source (occupant), replacing the retired ownerships 'renter'.

@@ -877,6 +877,58 @@
         "needsAttention": "{count, plural, =0 {No owners with pending signatures} one {1 owner with pending signatures} other {# owners with pending signatures}}",
         "search": "{count, plural, =0 {No results for “{term}”} one {1 result for “{term}”} other {# results for “{term}”}}"
       }
+    },
+    "states": {
+      "section": "Legal & status",
+      "sectionHint": "Legal or personal states that affect this owner's signature collection.",
+      "none": "No active legal states.",
+      "loadFailed": "We couldn't load the legal status.",
+      "add": "Add state",
+      "adding": "Adding...",
+      "addFailed": "We couldn't add the state. Please try again.",
+      "resolve": "Mark resolved",
+      "resolving": "Updating...",
+      "resolveFailed": "We couldn't update the state. Please try again.",
+      "blockingBadge": "Blocks signature",
+      "guardianLabel": "Guardian",
+      "guardianContactOnFile": "Guardian contact on file",
+      "guardianMaskedNote": "Guardian details are encrypted and shown masked only.",
+      "kind": {
+        "competency": "Legal capacity (guardianship)",
+        "dispute": "Ownership dispute",
+        "transfer": "Rights transfer",
+        "lien": "Lien / attachment",
+        "verify": "Identity verification needed",
+        "consent_withdrawal": "Consent withdrawn"
+      },
+      "kindHint": {
+        "competency": "The owner acts through a guardian.",
+        "dispute": "An ownership dispute is open.",
+        "transfer": "A rights transfer is in progress.",
+        "lien": "A lien or attachment encumbers the rights.",
+        "verify": "The owner's identity must be verified before signing.",
+        "consent_withdrawal": "The owner withdrew their consent."
+      },
+      "form": {
+        "kindLabel": "State type",
+        "subKindLabel": "Detail / reference (optional)",
+        "subKindPlaceholder": "e.g. court case number",
+        "guardianNameLabel": "Guardian name (optional)",
+        "guardianPhoneLabel": "Guardian phone (optional)",
+        "guardianNationalIdLabel": "Guardian national ID (optional)",
+        "guardianHint": "Guardian details are encrypted on save and never shown in full again.",
+        "cancel": "Cancel",
+        "submit": "Save state"
+      },
+      "counts": {
+        "section": "Active legal states",
+        "withState": "{count, plural, =0 {No owners with an active legal state} one {One owner with an active legal state} other {# owners with an active legal state}}",
+        "competency": "Capacity/guardianship",
+        "disputed": "Ownership disputes",
+        "lien": "Liens",
+        "unverified": "Awaiting verification",
+        "consentWithdrawn": "Consent withdrawals"
+      }
     }
   },
   "dataState": {

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
+import { OwnerStatesSummary } from '@/components/owners/owner-states-summary';
 import { Button } from '@/components/ui/button';
 import { ListPageShell } from '@/components/ui/list-page-shell';
 import { NameDisplay } from '@/components/ui/name-display';
@@ -100,6 +101,10 @@ export function OwnersListClient() {
           </Button>
         )}
       </div>
+
+      {/* Slice 2.5 — the owner legal/life-state situation-picture strip. PII-FREE
+          counts (renders nothing when the org has zero active states). */}
+      <OwnerStatesSummary />
 
       {/* B1 — debounced NAME search box. Controlled input (no native submit →
           no GET-fallback credential-leak class). When it has a term the data

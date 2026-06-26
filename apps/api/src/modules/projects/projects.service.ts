@@ -1441,11 +1441,41 @@ export class ProjectsService {
                        AND sr.document_id IN (${projectSetSignatureDocIdsSql(sql`SELECT project_id FROM visible`)})) AS signatures_pending
               `);
         const r = (result as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
+
+        // Slice 2.5 — the PII-FREE owner legal/life-state situation-picture facet.
+        // COUNTS ONLY (no names, no guardian PII): the SINGLE source is the
+        // `owner_states` table itself, read here under the SAME withTenant tx (RLS
+        // org-isolated). Owner-states are ORG-scoped facts (not project-assignment
+        // scoped) — an agent and a manager see the same org-wide legal-state picture
+        // (RLS owns the org boundary). `deceasedCount` maps to active `competency`
+        // (the closest modelled "owner can no longer sign for themselves" kind; the
+        // field name is the generic perception-contract label per the brief).
+        const osResult = await tx.execute(sql`
+          SELECT
+            COUNT(DISTINCT owner_id)::int AS owners_with_active,
+            COUNT(*) FILTER (WHERE kind = 'competency')::int         AS competency_count,
+            COUNT(*) FILTER (WHERE kind = 'dispute')::int            AS dispute_count,
+            COUNT(*) FILTER (WHERE kind = 'lien')::int               AS lien_count,
+            COUNT(*) FILTER (WHERE kind = 'verify')::int             AS verify_count,
+            COUNT(*) FILTER (WHERE kind = 'consent_withdrawal')::int AS consent_withdrawn_count
+          FROM owner_states
+          WHERE status = 'active' AND archived_at IS NULL
+        `);
+        const os = (osResult as unknown as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
+
         return {
           activeProjects: Number(r['active_projects'] ?? 0),
           residents: Number(r['residents'] ?? 0),
           signaturesReceived: Number(r['signatures_received'] ?? 0),
           signaturesPending: Number(r['signatures_pending'] ?? 0),
+          ownerStates: {
+            ownersWithActiveLegalState: Number(os['owners_with_active'] ?? 0),
+            deceasedCount: Number(os['competency_count'] ?? 0),
+            disputedCount: Number(os['dispute_count'] ?? 0),
+            lienCount: Number(os['lien_count'] ?? 0),
+            unverifiedCount: Number(os['verify_count'] ?? 0),
+            consentWithdrawnCount: Number(os['consent_withdrawn_count'] ?? 0),
+          },
         };
       },
       { userId: user.sub },

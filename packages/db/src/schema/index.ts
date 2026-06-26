@@ -6,6 +6,8 @@ export * from './provider';
 export * from './projects';
 export * from './collaboration';
 export * from './external-share';
+// Slice 2.5 — owner legal/life states (guardian PII encrypted at rest).
+export * from './owner-states';
 export * from './proposals';
 export * from './outbound-ledger';
 export * from './artifacts';

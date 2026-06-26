@@ -1,4 +1,4 @@
-import { AutonomyActionKindSchema, type AutonomyActionKind } from '@emapp/jobs';
+import { AutonomyActionKindSchema, type AutonomyActionKind } from '@emapp/jobs/autonomy-policy';
 import { z } from 'zod';
 
 import { ConsentBasisEnum } from './project';
@@ -25,13 +25,16 @@ import { ConsentBasisEnum } from './project';
  * wired onto it in the NEXT slice — this file invents the substrate, it does not
  * yet replace any existing reader.
  *
- * IMPORT NOTE: this file imports `AutonomyActionKind` from `@emapp/jobs` (a leaf
- * package — zod only, no `@emapp/*` deps), needed for the typed
- * `attentionReasonToActionKind` map. `@emapp/jobs → @emapp/shared-types` does NOT
- * exist, so there is no import cycle. This is a deliberate, documented exception
- * to shared-types' "no `@emapp/*` imports" rule (whose intent is cycle-avoidance,
- * which is preserved) — it is what keeps the map SINGLE-SOURCE against the real
- * kind taxonomy instead of a string mirror that would drift.
+ * IMPORT NOTE: this file imports `AutonomyActionKind` from the FE-SAFE subpath
+ * `@emapp/jobs/autonomy-policy` (zod-only — it does NOT pull the `@emapp/jobs`
+ * barrel, which re-exports `mapping-fingerprint` → `node:crypto` and would break
+ * the next.js browser bundle that consumes shared-types). It is needed for the
+ * typed `attentionReasonToActionKind` map. `@emapp/jobs → @emapp/shared-types`
+ * does NOT exist, so there is no import cycle. This is a deliberate, documented
+ * exception to shared-types' "no `@emapp/*` imports" rule (whose intent is
+ * cycle-avoidance, which is preserved) — it keeps the map SINGLE-SOURCE against
+ * the real kind taxonomy instead of a string mirror that would drift. ALWAYS use
+ * the subpath here, never the barrel.
  */
 
 /**

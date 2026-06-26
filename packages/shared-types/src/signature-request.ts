@@ -123,6 +123,27 @@ export const SignatureDeliveryReportSchema = z.object({
 });
 export type SignatureDeliveryReport = z.infer<typeof SignatureDeliveryReportSchema>;
 
+/**
+ * THE CANONICAL delivery predicate — the SINGLE SOURCE OF TRUTH for "did at
+ * least one channel ACTUALLY carry the signing link?" (owner: one-source-of-
+ * truth / reuse-not-reimplement). A channel "went" iff it is `available` AND its
+ * status is a real send (`sent`/`queued` for email/sms, `ready` for the WhatsApp
+ * deep-link). A request whose every channel is unavailable (owner has no email
+ * AND no phone, or PII decrypt failed) is created/re-minted but delivered
+ * NOTHING — this returns `false` and that outcome MUST NEVER be reported as
+ * "sent" on ANY surface.
+ *
+ * Lives in shared-types so the BE tallies (`bulk`/`campaign`/`remind` summaries,
+ * `reissueAndDeliver`) AND the FE per-name holdout chase toast derive their
+ * delivered-vs-no-channel honesty from ONE definition that cannot drift. Pure +
+ * FE-safe (no Node/Nest imports).
+ */
+export function didAnyChannelDeliver(d: SignatureDeliveryReport): boolean {
+  const went = (c: SignatureDeliveryChannelResult): boolean =>
+    c.available && (c.status === 'sent' || c.status === 'queued' || c.status === 'ready');
+  return went(d.email) || went(d.sms) || went(d.whatsapp);
+}
+
 /** POST /signature-requests response. `signUrl` contains the JWT and is
  * a bearer credential — short TTL (7d), single-use, never logged. */
 export const SignatureRequestCreateResponseSchema = z.object({

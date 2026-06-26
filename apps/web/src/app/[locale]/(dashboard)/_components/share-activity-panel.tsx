@@ -35,7 +35,10 @@ const COUNTDOWN_TICK_MS = 1000;
 
 export function ShareActivityPanel({ enabled = true }: { enabled?: boolean } = {}) {
   const t = useTranslations('externalShare');
-  const { data, isLoading, isError, refetch } = useExternalShareList({ limit: 50 }, { enabled });
+  const { data, isLoading, isError, error, refetch } = useExternalShareList(
+    { limit: 50 },
+    { enabled },
+  );
 
   // One ticking clock for the whole panel (avoids N intervals).
   const [now, setNow] = useState(() => Date.now());
@@ -61,7 +64,7 @@ export function ShareActivityPanel({ enabled = true }: { enabled?: boolean } = {
     <DataState
       isLoading={isLoading}
       isError={isError}
-      error={undefined}
+      error={error}
       isEmpty={Boolean(data && rows.length === 0)}
       onRetry={() => void refetch()}
       skeleton="list"

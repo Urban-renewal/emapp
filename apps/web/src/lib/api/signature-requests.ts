@@ -131,7 +131,9 @@ export async function retrieveSignatureLink(id: string): Promise<SignatureReques
  * POST /projects/:id/signature-campaign — fan out ONE project document to ALL
  * active owners of the project (S5b). The server DERIVES the recipient list, so
  * the body only carries the document (+ optional expiry). Returns the rolled-up
- * tally `{ created, skipped, total }`. Idempotency-Key auto-minted so a double-
+ * tally `{ created, delivered, noChannel, skipped, total }` — the FE reports
+ * `delivered` (links that actually reached a channel), NOT `created`, so a
+ * no-channel owner is never claimed "sent". Idempotency-Key auto-minted so a double-
  * clicked "send to all owners" doesn't fire two fan-outs.
  */
 export async function createSignatureCampaign(
@@ -163,9 +165,16 @@ export async function cancelSignatureRequest(id: string): Promise<SignatureReque
  * remind`). Coarse `signature_requests.send` + fine `manage_signatures` gate on
  * the BE; a 403 surfaces as `forbidden`, a 409 as `signature_request_not_pending`
  * (the row is no longer pending — the board is stale). Idempotency-Key auto-
- * minted so a double-tapped per-name remind re-delivers the same link once. */
-export async function resendSignatureRequest(id: string): Promise<SignatureRequest> {
+ * minted so a double-tapped per-name remind re-delivers the same link once.
+ *
+ * Returns the FULL create-response shape — `{ request, signUrl, delivery }` — NOT
+ * just the request row. The `delivery` per-channel report is what lets the caller
+ * honestly distinguish a link that ACTUALLY went out from a re-mint that reached
+ * NO channel (`didAnyChannelDeliver`): a no-channel resend must never be toasted
+ * as "sent". (Earlier this discarded `delivery`, so the holdout-chase toast
+ * claimed "sent" even when nothing was delivered — delivery-outcome bug #2.) */
+export async function resendSignatureRequest(id: string): Promise<SignatureRequestCreateResponse> {
   const res = await apiClient.postIdempotent<unknown>(`/signature-requests/${id}/resend`, {});
   if (!isOk(res)) throw new ApiClientError(res.error);
-  return SignatureRequestDataSchema.parse({ data: res.data }).data;
+  return CreateResponseDataSchema.parse({ data: res.data }).data;
 }

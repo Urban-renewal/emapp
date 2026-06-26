@@ -349,13 +349,13 @@ function installDefaultHandlers(): void {
     body: { data: { count: 0 } },
   }));
 
-  // Team messaging (Slice 3) — the dashboard "Recent conversations" card
-  // (HomeConversations island) polls /api/v1/conversations and side-loads
-  // /api/v1/members on every dashboard render. Like the notifications bell
-  // above, without these handlers /he/ navigation 404s on every E2E test and
-  // the §P0-3 console guardrail fires. Empty lists — the FE state (empty card)
-  // is the same whether the lists are empty or populated. Per-test page.route()
-  // stubs still override these for the messaging-specific specs.
+  // Team messaging (Slice 3) — the messages surface (/messages page) and the
+  // sidebar conversations badge poll /api/v1/conversations and side-load
+  // /api/v1/members. Like the notifications bell above, without these handlers
+  // /he/ navigation 404s on every E2E test and the §P0-3 console guardrail fires.
+  // Empty lists — the FE state (empty list) is the same whether the lists are
+  // empty or populated. Per-test page.route() stubs still override these for the
+  // messaging-specific specs.
   setMockHandler('GET', '/api/v1/conversations', () => ({
     status: 200,
     body: {
@@ -400,7 +400,6 @@ function installDefaultHandlers(): void {
       data: {
         buckets: { stalled: 0, expiringSoon: 0, needsHuman: 0, onTrack: 0 },
         attention: [],
-        needsHuman: [],
         // HB-1 — the campaign-send kill-switch state (required by the schema as
         // of #470). Default-on so the board renders the live remind action.
         sendEnabled: true,

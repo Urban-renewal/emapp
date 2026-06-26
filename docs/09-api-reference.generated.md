@@ -7,6 +7,23 @@
 
 ## Endpoints
 
+### POST /api/v1/apartment-states/:id/resolve
+
+- **Auth:** AuthGuard + TenantGuard (apartments.update; FINE manager-tier gate in service)
+- **Summary:** Slice 2.7 — resolve a legal/life state (status transition active→resolved, NOT a delete). Manager-gated, idempotent; PII-free audit.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...ApartmentStateView } }
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
 ### GET /api/v1/apartments/:apartmentId/discovery-records
 
 - **Auth:** AuthGuard + TenantGuard (apartments.read)
@@ -110,6 +127,40 @@
 ```
 
 **Errors:** `validation_error`, `forbidden`, `not_found`, `ownership_sum_invalid`, `missing_token`, `invalid_token`, `token_expired`
+
+### GET /api/v1/apartments/:apartmentId/states
+
+- **Auth:** AuthGuard + TenantGuard (apartments.read)
+- **Summary:** Slice 2.7 — the ACTIVE legal/life states on an apartment (deceased/dispute/poa/eviction/repairs/rights_transfer). PII-FREE — no person/contact fields.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": [ {ApartmentStateView} ] }
+```
+
+**Errors:** `not_found`, `missing_token`, `invalid_token`, `token_expired`
+
+### POST /api/v1/apartments/:apartmentId/states
+
+- **Auth:** AuthGuard + TenantGuard (apartments.update; FINE manager-tier gate in service)
+- **Summary:** Slice 2.7 — record a legal/life state on an apartment. Manager-gated; PII-free audit. subKind/note are bounded non-PII labels.
+
+**Request body**
+
+_(no body)_
+
+**Response**
+
+```json
+{ "data": { ...ApartmentStateView } }
+```
+
+**Errors:** `forbidden`, `not_found`, `missing_token`, `invalid_token`, `token_expired`
 
 ### GET /api/v1/apartments/:apartmentId/tabu-extractions
 

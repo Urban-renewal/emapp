@@ -41,3 +41,27 @@ export function composeMissingDocTask(docType: string): ComposedTaskCopy {
     description: `מסמך מסוג "${label}" חסר בפרויקט שנמצא באיסוף חתימות. מומלץ להשלים אותו כדי לקדם את הפרויקט.`,
   };
 }
+
+/** Slice 2.7 — Hebrew labels for the BLOCKING apartment-state kinds the
+ *  apartment-blocker recommender flags. Taxonomy only — NOT PII. */
+const BLOCKING_APARTMENT_STATE_LABEL_HE: Readonly<Record<string, string>> = {
+  deceased: 'בעלים רשום נפטר',
+  dispute: 'סכסוך בעלות',
+  eviction: 'הליך פינוי',
+};
+
+/**
+ * Slice 2.7 — compose the system task's title + body for an apartment flagged with a
+ * BLOCKING legal state (deceased / dispute / eviction) in a gathering-signatures
+ * project. User-framed (the situation + a proposed action). PII-FREE: the copy
+ * interpolates ONLY the state-kind label (taxonomy) — apartment_states has no PII.
+ * The apartment is referred to generically ("דירה בפרויקט"); the manager opens the
+ * task and resolves it on the apartment dossier (where the state badge lives).
+ */
+export function composeApartmentBlockerTask(stateKind: string): ComposedTaskCopy {
+  const label = BLOCKING_APARTMENT_STATE_LABEL_HE[stateKind] ?? stateKind;
+  return {
+    title: `דירה חסומה: ${label}`,
+    description: `דירה בפרויקט שנמצא באיסוף חתימות מסומנת במצב משפטי חוסם (${label}). מומלץ לפתוח משימה לבירור והסדרת ההליך לפני המשך איסוף החתימות.`,
+  };
+}

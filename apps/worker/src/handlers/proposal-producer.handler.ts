@@ -23,6 +23,7 @@
  * reaper/retention/expiry no-PII convention).
  */
 import {
+  createApartmentBlockerRecommender,
   createDocumentChaseRecommender,
   createReminderCadenceRecommender,
   createSignatureExpiringRecommender,
@@ -75,7 +76,11 @@ export class ProposalProducerHandler implements IJobHandler<ProposalProducerJobP
    *    - signature-expiring (1.3):    a NON-TERMINAL project whose next pending
    *      request lapses in <7d → signature_request.reissue (anticipate the lapse).
    *      READS the perception's nextExpiryAt; PROPOSE-AND-CONFIRM (the executor
-   *      re-mints on APPROVE — never auto-executed, never re-split). */
+   *      re-mints on APPROVE — never auto-executed, never re-split).
+   *    - apartment-blocker (2.7):     a gathering-signatures project with a non-
+   *      archived apartment carrying a BLOCKING apartment-state (deceased/dispute/
+   *      eviction) → task.create (NO new autonomy kind). PII-FREE evidence
+   *      (apartmentId + stateKind only); APPROVE opens a SYSTEM task. */
   private readonly recommenders: IRecommender[] = [
     createSignatureReissueRecommender(),
     createReminderCadenceRecommender(),
@@ -83,6 +88,7 @@ export class ProposalProducerHandler implements IJobHandler<ProposalProducerJobP
     createDocumentChaseRecommender(),
     createSignatureStalledRecommender(),
     createSignatureExpiringRecommender(),
+    createApartmentBlockerRecommender(),
   ];
 
   async handle(_payload: ProposalProducerJobPayload, ctx: JobContext): Promise<void> {

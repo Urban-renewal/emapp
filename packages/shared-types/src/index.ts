@@ -5,6 +5,10 @@ export * from './auth.schemas';
 export * from './project';
 export * from './building';
 export * from './apartment';
+// Slice 2.7 — apartment legal/life states (deceased/dispute/poa/eviction/repairs/
+// rights-transfer). PII-FREE throughout — no person/contact fields; the perception
+// counts are COUNTS ONLY (.strict()).
+export * from './apartment-state';
 export * from './owner';
 export * from './ownership';
 // S3c — discovery_records ("renter → discovery-source"). Apartment-attached

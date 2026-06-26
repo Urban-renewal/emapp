@@ -80,6 +80,28 @@ export const handlers = [
     HttpResponse.json(dataEnvelope(SAMPLE_SIGNATURE_PULSE)),
   ),
 
+  // Slice 2.7 — org situation-picture stats (incl. the PII-FREE apartment legal/
+  // life-state counts). The building apartments list fetches this for the legal-
+  // states summary strip; without a handler the offline page + the console guard
+  // would 404.
+  http.get(`${API}/org/stats`, () =>
+    HttpResponse.json(
+      dataEnvelope({
+        activeProjects: SAMPLE_PROJECTS.length,
+        residents: SAMPLE_OWNERS.length,
+        signaturesReceived: 0,
+        signaturesPending: 0,
+        apartmentStates: {
+          apartmentsWithLegalState: 0,
+          evictionCount: 0,
+          disputeCount: 0,
+          repairsCount: 0,
+          rightsTransferCount: 0,
+        },
+      }),
+    ),
+  ),
+
   // projects
   http.get(`${API}/projects`, () => HttpResponse.json(listEnvelope(SAMPLE_PROJECTS))),
   http.post(`${API}/projects`, async ({ request }) => {
@@ -301,6 +323,45 @@ export const handlers = [
     });
     return HttpResponse.json(dataEnvelope(a), { status: 201 });
   }),
+  // Slice 2.7 — apartment legal/life states (PII-FREE). Empty list by default;
+  // create/resolve echo a view. Registered BEFORE `/apartments/:id` (more-specific
+  // path wins).
+  http.get(`${API}/apartments/:apartmentId/states`, () =>
+    HttpResponse.json(dataEnvelope([] as unknown[])),
+  ),
+  http.post(`${API}/apartments/:apartmentId/states`, async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const kind = typeof body['kind'] === 'string' ? (body['kind'] as string) : 'repairs';
+    const blocking = kind === 'deceased' || kind === 'dispute' || kind === 'eviction';
+    return HttpResponse.json(
+      dataEnvelope({
+        id: 'apt-state-mock-1',
+        apartmentId: 'apartment-mock',
+        kind,
+        subKind: (body['subKind'] as string) ?? null,
+        note: (body['note'] as string) ?? null,
+        status: 'active',
+        isBlocking: blocking,
+        createdAt: new Date().toISOString(),
+        resolvedAt: null,
+      }),
+    );
+  }),
+  http.post(`${API}/apartment-states/:stateId/resolve`, ({ params }) =>
+    HttpResponse.json(
+      dataEnvelope({
+        id: String(params['stateId']),
+        apartmentId: 'apartment-mock',
+        kind: 'repairs',
+        subKind: null,
+        note: null,
+        status: 'resolved',
+        isBlocking: false,
+        createdAt: new Date().toISOString(),
+        resolvedAt: new Date().toISOString(),
+      }),
+    ),
+  ),
   http.get(`${API}/apartments/:id`, ({ params }) => {
     const a = SAMPLE_APARTMENTS.find((x) => x.id === params['id']);
     return a ? HttpResponse.json(dataEnvelope(a)) : errorEnvelope('not_found', 404);

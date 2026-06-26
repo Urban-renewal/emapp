@@ -35,7 +35,7 @@ import { SignatureRequestsService } from '../signatures/signature-requests.servi
 import { TasksService } from '../tasks/tasks.service';
 
 import { executeDocumentChase } from './document-chase-executor';
-import { composeMissingDocTask } from './task-watcher-copy';
+import { composeApartmentBlockerTask, composeMissingDocTask } from './task-watcher-copy';
 
 const NOT_FOUND = new NotFoundException({ error: { code: 'not_found' } });
 const FORBIDDEN = new ForbiddenException({ error: { code: 'forbidden' } });
@@ -54,6 +54,26 @@ const MissingDocTaskEvidence = z.object({
   projectId: z.string().uuid(),
   missingDocType: z.string().min(1).max(50),
 });
+
+/** Slice 2.7 — the shape of an `apartment_blocker` `task.create` evidence snapshot.
+ *  PII-FREE by contract: project + apartment id (opaque uuid) + blocking state-kind
+ *  taxonomy ONLY (apartment_states has no PII columns). The closed `stateKind` set is
+ *  the SAME blocking set the recommender keys off. */
+const ApartmentBlockerTaskEvidence = z.object({
+  condition: z.literal('apartment_blocker'),
+  projectId: z.string().uuid(),
+  apartmentId: z.string().uuid(),
+  stateKind: z.enum(['deceased', 'dispute', 'eviction']),
+});
+
+/** Discriminated union over the `task.create` evidence conditions. A `task.create`
+ *  proposal is EITHER a missing-required-doc gap (G1) OR an apartment-blocker block
+ *  (2.7); the discriminator is `condition`. Fail-closed: an unknown condition throws
+ *  at execute (no mis-typed task is ever created). */
+const TaskCreateEvidence = z.discriminatedUnion('condition', [
+  MissingDocTaskEvidence,
+  ApartmentBlockerTaskEvidence,
+]);
 
 export interface ProposalListPage {
   data: ProposalView[];
@@ -162,15 +182,22 @@ export class ProposalsService {
       // (`tasks_system_origin_open_unique`) independently prevents a duplicate open
       // system task for the same gap.
       'task.create': async (user, proposal) => {
-        const ev = MissingDocTaskEvidence.parse(proposal.evidence);
-        const { title, description } = composeMissingDocTask(ev.missingDocType);
+        // A task.create proposal is EITHER a missing-required-doc gap (G1) OR an
+        // apartment-blocker block (2.7). The discriminated union resolves which by
+        // its `condition`; an unknown condition fails closed (no mis-typed task).
+        const ev = TaskCreateEvidence.parse(proposal.evidence);
+        const { title, description } =
+          ev.condition === 'missing_required_doc'
+            ? composeMissingDocTask(ev.missingDocType)
+            : composeApartmentBlockerTask(ev.stateKind);
         await this.tasks.create(
           user,
           {
             projectId: ev.projectId,
             title,
             description,
-            type: 'document_followup',
+            type:
+              ev.condition === 'missing_required_doc' ? 'document_followup' : 'apartment_followup',
           },
           { source: 'system', originRef: proposal.dedupKey },
         );

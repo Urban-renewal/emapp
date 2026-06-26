@@ -99,6 +99,13 @@ vi.mock('@/hooks/use-apartments', () => ({
   useGenerateApartments: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
+// Slice 2.7 — the page now renders <ApartmentStatesSummary>, which reads
+// `useOrgStats` (TanStack). Stub it inert (no apartmentStates) so the summary
+// renders nothing and this filter-UI probe stays a pure status-filter render.
+vi.mock('@/hooks/use-org-stats', () => ({
+  useOrgStats: () => ({ data: undefined }),
+}));
+
 import ApartmentsPage from './page';
 
 afterEach(() => {

@@ -1223,6 +1223,53 @@
       "failed": "Failed to create the apartments. Please try again.",
       "manualTitle": "Need a single apartment with full details?",
       "manualLink": "Add a single apartment"
+    },
+    "states": {
+      "section": "Legal & status",
+      "sectionHint": "Legal or personal states that affect this apartment's path to a binding signature.",
+      "none": "No active legal states.",
+      "loadFailed": "We couldn't load the legal status.",
+      "add": "Add state",
+      "adding": "Adding...",
+      "addFailed": "We couldn't add the state. Please try again.",
+      "resolve": "Mark resolved",
+      "resolving": "Updating...",
+      "resolveFailed": "We couldn't update the state. Please try again.",
+      "blockingBadge": "Blocks signature",
+      "kind": {
+        "deceased": "Registered owner deceased",
+        "dispute": "Ownership dispute",
+        "poa": "Power of attorney",
+        "eviction": "Eviction process",
+        "repairs": "Defects / repairs",
+        "rights_transfer": "Rights transfer"
+      },
+      "kindHint": {
+        "deceased": "A registered owner is deceased; rights pass to heirs before a binding signature.",
+        "dispute": "An ownership or boundary dispute is open over the unit.",
+        "poa": "The unit is acted on under a power of attorney.",
+        "eviction": "An eviction process is in progress for the unit.",
+        "repairs": "Structural defects or outstanding repairs affect the unit.",
+        "rights_transfer": "A transfer of rights in the unit is in progress."
+      },
+      "form": {
+        "kindLabel": "State type",
+        "subKindLabel": "Detail / reference (optional)",
+        "subKindPlaceholder": "e.g. court case number",
+        "noteLabel": "Note (optional)",
+        "notePlaceholder": "A short description of the matter",
+        "noteHint": "A short, non-identifying note — do not enter personal details.",
+        "cancel": "Cancel",
+        "submit": "Save state"
+      },
+      "counts": {
+        "section": "Active apartment legal states",
+        "withState": "{count, plural, =0 {No apartments with an active legal state} one {One apartment with an active legal state} other {# apartments with an active legal state}}",
+        "eviction": "Evictions",
+        "disputed": "Ownership disputes",
+        "repairs": "Defects",
+        "rightsTransfer": "Rights transfers"
+      }
     }
   },
   "stepUp": {

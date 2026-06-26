@@ -537,6 +537,16 @@ export class DocumentsService {
     // A notification must NEVER fail the upload, so resolution self-guards to [].
     let notifyRecipientIds: string[] = [];
 
+    // PARENT EXCLUSIVITY (defense-in-depth — the CreateDocumentInput refine is the
+    // single source, this guards any internal caller that bypasses the DTO). A doc
+    // hangs off AT MOST one parent; both-parent makes it reachable from two
+    // projects (project_id AND the apartment's building's project) and breaks the
+    // home-KPI ↔ per-project-board reconciliation (single-source invariant).
+    if (input.projectId && input.apartmentId) {
+      throw new BadRequestException({
+        error: { code: 'document_parent_exclusive' },
+      });
+    }
     const row = await withTenant(
       user.orgId,
       async (tx) => {
@@ -2250,39 +2260,59 @@ export class DocumentsService {
 
           // 2) RECEIVED: distinct (resolved project, type) pairs for non-archived
           //    docs whose type is in the required union AND whose project is in
-          //    scope. `resolvedProjectId` mirrors the DH2 scope resolution: the
-          //    canonical doc_scope='project' id when set, else the legacy
-          //    project_id column. RLS already org-scopes; the IN-list bounds it to
-          //    the visible projects (so an agent's docs from non-assigned projects
-          //    — there are none under RLS+assignment anyway — cannot leak in).
+          //    scope. Resolution mirrors the CANONICAL doc→project resolution
+          //    (signature-progress.ts): the project leg (DH2 canonical
+          //    doc_scope='project' id, else legacy project_id) UNION the APARTMENT
+          //    leg (apartment → building → project). The apartment leg is
+          //    load-bearing: an apartment-scoped required-type doc (e.g. a per-
+          //    apartment agreement, project_id NULL under parent-exclusivity) must
+          //    still roll up to its project — without it the cockpit would diverge
+          //    from the signaturePulse/KPI which DO resolve the apartment leg
+          //    (the "0 מתוך X" single-source class). RLS org-scopes; the IN-lists
+          //    bound to the visible projects (no cross-project/agent leak).
           const receivedByProject = new Map<string, Set<string>>();
           if (requiredUnion.size > 0) {
-            const resolvedProjectId = sql<string>`COALESCE(
-              CASE WHEN ${documents.docScope} = 'project' THEN ${documents.docScopeId} END,
-              ${documents.projectId}
-            )`;
-            const recvRows = await tx
-              .selectDistinct({ projectId: resolvedProjectId, type: documents.type })
-              .from(documents)
-              .where(
-                and(
-                  isNull(documents.archivedAt),
-                  inArray(documents.type, [...requiredUnion] as string[]),
-                  or(
-                    and(
-                      eq(documents.docScope, 'project'),
-                      inArray(documents.docScopeId, projectIds),
-                    ),
-                    inArray(documents.projectId, projectIds),
-                  ),
-                ),
-              );
-            for (const r of recvRows) {
-              if (!r.projectId) continue;
-              let set = receivedByProject.get(r.projectId);
+            const reqTypesList = sql.join(
+              [...requiredUnion].map((t) => sql`${t}`),
+              sql`, `,
+            );
+            const projectIdsList = sql.join(
+              projectIds.map((p) => sql`${p}`),
+              sql`, `,
+            );
+            const recvResult = await tx.execute<{ project_id: string; type: string }>(sql`
+              SELECT DISTINCT project_id, type FROM (
+                -- project leg: canonical doc_scope='project' id, else legacy project_id
+                SELECT
+                  COALESCE(
+                    CASE WHEN d.doc_scope = 'project' THEN d.doc_scope_id END,
+                    d.project_id
+                  ) AS project_id,
+                  d.type AS type
+                FROM documents d
+                WHERE d.archived_at IS NULL
+                  AND d.type IN (${reqTypesList})
+                  AND (
+                    (d.doc_scope = 'project' AND d.doc_scope_id IN (${projectIdsList}))
+                    OR d.project_id IN (${projectIdsList})
+                  )
+                UNION
+                -- apartment leg: apartment → building → project
+                SELECT bc_b.project_id AS project_id, d.type AS type
+                FROM documents d
+                  INNER JOIN apartments bc_a ON bc_a.id = d.apartment_id
+                  INNER JOIN buildings bc_b ON bc_b.id = bc_a.building_id
+                WHERE d.archived_at IS NULL
+                  AND d.type IN (${reqTypesList})
+                  AND bc_b.project_id IN (${projectIdsList})
+              ) resolved
+            `);
+            for (const r of recvResult.rows) {
+              if (!r.project_id) continue;
+              let set = receivedByProject.get(r.project_id);
               if (!set) {
                 set = new Set<string>();
-                receivedByProject.set(r.projectId, set);
+                receivedByProject.set(r.project_id, set);
               }
               set.add(r.type);
             }

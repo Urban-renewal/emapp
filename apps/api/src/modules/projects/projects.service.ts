@@ -563,6 +563,21 @@ export class ProjectsService {
                 or(
                   and(eq(documents.docScope, 'project'), eq(documents.docScopeId, projectId)),
                   eq(documents.projectId, projectId),
+                  // SINGLE-SOURCE with signature-progress (the canonical doc→project
+                  // resolution): an APARTMENT-scoped doc resolves to its project via
+                  // apartment → building → project. Without this leg, an apartment
+                  // agreement (project_id NULL — the parent-exclusivity invariant)
+                  // would not count toward the project's checklist, diverging from
+                  // the signaturePulse/KPI which DO resolve the apartment leg.
+                  inArray(
+                    documents.id,
+                    sql`(
+                      SELECT d2.id FROM documents d2
+                        INNER JOIN apartments dc_a ON dc_a.id = d2.apartment_id
+                        INNER JOIN buildings dc_b ON dc_b.id = dc_a.building_id
+                        WHERE dc_b.project_id = ${projectId}
+                    )`,
+                  ),
                 ),
               ),
             );

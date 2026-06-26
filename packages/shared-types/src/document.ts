@@ -240,8 +240,27 @@ const documentWriteShape = {
 } as const;
 
 /** POST /documents — declares metadata; server generates the key and
- * returns a presigned PUT. Client never supplies the storage key. */
-export const CreateDocumentInput = z.object(documentWriteShape).strict();
+ * returns a presigned PUT. Client never supplies the storage key.
+ *
+ * PARENT EXCLUSIVITY (single-source invariant — at-scale reconciliation fix):
+ * a document hangs off AT MOST ONE parent — a project, an apartment, or neither
+ * (org-level). Setting BOTH `projectId` AND `apartmentId` is rejected: the
+ * apartment ALREADY resolves to a project (its building's project), so a
+ * both-parent doc is reachable from TWO projects at once via the canonical
+ * signature-doc resolution (project-level ∪ apartment-level UNION in
+ * `signature-progress.ts`). The whole-org home KPI counts that doc ONCE
+ * (UNION over the whole set), while the per-project board counts it under BOTH
+ * projects (the UNION runs per project) — so the home KPI and the per-project
+ * boards rendered on the SAME screen could not reconcile (the "0 מתוך X"
+ * divergence class). One parent = one project the doc belongs to = the
+ * boards and the KPI derive from one fact. */
+export const CreateDocumentInput = z
+  .object(documentWriteShape)
+  .strict()
+  .refine((v) => !(v.projectId != null && v.apartmentId != null), {
+    message: 'a document hangs off a project OR an apartment, never both',
+    path: ['apartmentId'],
+  });
 export type CreateDocument = z.infer<typeof CreateDocumentInput>;
 
 /** PATCH /documents/:id — rename / re-categorise only. Storage pointer,

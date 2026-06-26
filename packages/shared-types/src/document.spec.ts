@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CreateDocumentInput,
   DOCUMENT_PARTY_VALUES,
   DocumentPartyEnum,
   DocumentTypeEnum,
@@ -71,6 +72,42 @@ describe('providerPartyForDocType — S4-taxonomy party-gap closure', () => {
     for (const party of DOCUMENT_PARTY_VALUES) {
       expect(DocumentPartyEnum.options).toContain(party);
       expect(reached, `party '${party}' has no curated doc_type`).toContain(party);
+    }
+  });
+});
+
+describe('CreateDocumentInput — parent exclusivity (single-source reconciliation)', () => {
+  const base = {
+    name: 'הסכם דייר.pdf',
+    type: 'agreement' as const,
+    mimeType: 'application/pdf' as const,
+    sizeBytes: 1024,
+    contentHash: 'a'.repeat(64),
+  };
+  const project = '11111111-1111-1111-1111-111111111111';
+  const apartment = '22222222-2222-2222-2222-222222222222';
+
+  it('accepts a project-only parent', () => {
+    expect(CreateDocumentInput.safeParse({ ...base, projectId: project }).success).toBe(true);
+  });
+
+  it('accepts an apartment-only parent', () => {
+    expect(CreateDocumentInput.safeParse({ ...base, apartmentId: apartment }).success).toBe(true);
+  });
+
+  it('accepts an org-level doc (no parent)', () => {
+    expect(CreateDocumentInput.safeParse(base).success).toBe(true);
+  });
+
+  it('REJECTS both a project AND an apartment parent (would double-count across two projects)', () => {
+    const res = CreateDocumentInput.safeParse({
+      ...base,
+      projectId: project,
+      apartmentId: apartment,
+    });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues.some((i) => i.path.includes('apartmentId'))).toBe(true);
     }
   });
 });

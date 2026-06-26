@@ -33,6 +33,8 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  apartments,
+  buildings,
   db,
   documents,
   memberships,
@@ -137,6 +139,47 @@ async function seedDoc(
       uploadedAt: new Date(),
       scanStatus: 'clean',
       archivedAt: opts.archived ? new Date() : null,
+    });
+  });
+}
+
+/** Seed an APARTMENT-scoped document of `type` — a building + apartment under
+ *  `projectId`, then a doc with apartment_id set and project_id NULL (the
+ *  parent-exclusivity shape: an apartment doc resolves to its project via
+ *  apartment → building → project, NOT via project_id). Proves the board's
+ *  apartment leg rolls it up to the project (single-source with signaturePulse). */
+async function seedApartmentDoc(
+  orgId: string,
+  createdBy: string,
+  projectId: string,
+  type: string,
+): Promise<void> {
+  await withTenant(orgId, async (tx) => {
+    const [b] = await tx
+      .insert(buildings)
+      .values({ projectId, address: `St-${randomUUID().slice(0, 6)}`, city: 'תל אביב' })
+      .returning({ id: buildings.id });
+    const [a] = await tx
+      .insert(apartments)
+      .values({ buildingId: b!.id, number: `${Math.floor(Math.random() * 900) + 100}` })
+      .returning({ id: apartments.id });
+    await tx.insert(documents).values({
+      orgId,
+      // PARENT EXCLUSIVITY: apartment-scoped doc → project_id NULL.
+      projectId: null,
+      apartmentId: a!.id,
+      docScope: 'apartment',
+      docScopeId: a!.id,
+      name: `AptDoc-${TAG}-${randomUUID().slice(0, 6)}`,
+      type,
+      mimeType: 'application/pdf',
+      sizeBytes: 100,
+      r2Key: `org/${orgId}/doc/${randomUUID()}`,
+      contentHash: (randomUUID() + randomUUID()).replace(/-/g, '').slice(0, 64),
+      uploadedBy: createdBy,
+      uploadedAt: new Date(),
+      scanStatus: 'clean',
+      archivedAt: null,
     });
   });
 }
@@ -271,6 +314,32 @@ describe('boardCompleteness — per-party received rules', () => {
     const res = await svc.boardCompleteness(mgr);
     // The legacy-only doc (project_id set, doc_scope='org') counts for owner on p.
     expect(party(res, 'owner').received).toBeGreaterThanOrEqual(1);
+  });
+
+  it('apartment-scoped required doc (project_id NULL) resolves to its project via the apartment leg', async () => {
+    // Red-team regression (parent-exclusivity): an apartment-scoped agreement
+    // (project_id NULL) MUST still satisfy the project's owner-party agreement
+    // slot — the board apartment leg (apartment → building → project) keeps it
+    // single-source with signaturePulse, which already resolves the apartment
+    // leg. Without the leg this doc would silently drop (present → missing).
+    const org = await createTestOrg(`AptLeg-${TAG}`);
+    const mgrId = org.users[0]!.id;
+    const mgr = manager(org.id, mgrId);
+    const p = await seedProject(org.id, mgrId, 'tama38_1');
+
+    // Baseline: project p has NO agreement yet → contractor.received reflects only
+    // factory orgs. agreement maps to the CONTRACTOR party.
+    const before = await svc.boardCompleteness(mgr);
+    const beforeReceived = party(before, 'contractor').received;
+
+    // Seed the agreement ONLY as an apartment doc (project_id NULL).
+    await seedApartmentDoc(org.id, mgrId, p, 'agreement');
+
+    const res = await svc.boardCompleteness(mgr);
+    // The apartment agreement flips p's contractor agreement slot → received +1,
+    // proving the apartment leg resolves the doc to project p even with project_id
+    // NULL. Without the leg received stays flat (the red-team regression).
+    expect(party(res, 'contractor').received).toBe(beforeReceived + 1);
   });
 
   it('pinui_binui adds the lawyer (regulation) requirement', async () => {

@@ -731,10 +731,18 @@ async function runDocuments(orgId: string): Promise<void> {
       const aptId =
         d.scope === 'apt' && d.aptNumber ? (aptIdByNumber.get(d.aptNumber) ?? null) : null;
 
+      // PARENT EXCLUSIVITY — a doc hangs off ONE parent. An apartment-scoped doc
+      // resolves to its project via the apartment's building, so it MUST NOT also
+      // carry projectId (both-parent makes the doc reachable from two projects and
+      // breaks the home-KPI ↔ per-project-board reconciliation). Mirrors the
+      // CreateDocumentInput refine + the production write path (apartment doc →
+      // project_id NULL). Project-scoped docs keep projectId; apartment-scoped get null.
+      const docProjectId = aptId ? null : projectId;
+
       await tx.insert(documents).values({
         id: randomUUID(),
         orgId,
-        projectId,
+        projectId: docProjectId,
         apartmentId: aptId,
         name: d.name,
         type: d.type,

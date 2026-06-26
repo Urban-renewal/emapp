@@ -104,6 +104,37 @@ async function seedArchivedDoc(orgId: string, projectId: string, type: string): 
   }
 }
 
+/** Seed an APARTMENT-scoped doc (project_id NULL) of `type`: a building +
+ *  apartment under `projectId`, then a doc with apartment_id set and project_id
+ *  NULL (the parent-exclusivity shape). Proves the checklist apartment leg
+ *  (apartment → building → project) ticks the slot, single-source with
+ *  signaturePulse which already resolves the apartment leg. */
+async function seedApartmentDoc(orgId: string, projectId: string, type: string): Promise<void> {
+  const c = await providerPool.connect();
+  try {
+    const bId = randomUUID();
+    const aId = randomUUID();
+    await c.query(
+      `INSERT INTO buildings (id, project_id, address, city) VALUES ($1, $2, $3, 'תל אביב')`,
+      [bId, projectId, `St-${randomUUID().slice(0, 6)}`],
+    );
+    await c.query(`INSERT INTO apartments (id, building_id, number) VALUES ($1, $2, $3)`, [
+      aId,
+      bId,
+      `${Math.floor(Math.random() * 900) + 100}`,
+    ]);
+    await c.query(
+      `INSERT INTO documents
+         (org_id, apartment_id, name, type, mime_type, size_bytes, r2_key, content_hash,
+          uploaded_by, uploaded_at, doc_scope, doc_scope_id)
+       VALUES ($1, $2, $3, $4, 'application/pdf', 100, $5, 'h', $6, now(), 'apartment', $2)`,
+      [orgId, aId, `${type}.pdf`, type, `org/${orgId}/doc/${randomUUID()}`, managerId],
+    );
+  } finally {
+    c.release();
+  }
+}
+
 async function readProjectStatus(projectId: string): Promise<string> {
   const c = await providerPool.connect();
   try {
@@ -220,6 +251,34 @@ describe('document-checklist — auto-tick present/missing + completeness', () =
     expect(result.presentCount).toBe(3);
     expect(result.completionPct).toBe(100);
     expect(result.items.every((i) => i.present)).toBe(true);
+  }, 30_000);
+
+  it('an APARTMENT-scoped required doc (project_id NULL) ticks the slot via the apartment leg', async () => {
+    // Red-team regression (parent-exclusivity): an apartment-scoped agreement
+    // (project_id NULL, apartment → building → project) MUST tick the project's
+    // agreement slot. The checklist apartment leg keeps it single-source with
+    // signaturePulse; without the leg the doc would silently read "missing".
+    // Seed a FRESH project (no docs) so the assertion is unpolluted.
+    const projectId = randomUUID();
+    const c = await providerPool.connect();
+    try {
+      await c.query(
+        `INSERT INTO projects (id, org_id, name, type, created_by, status)
+         VALUES ($1, $2, $3, 'tama38_1', $4, 'planning')`,
+        [projectId, org.id, `AptLeg-${randomUUID().slice(0, 6)}`, managerId],
+      );
+    } finally {
+      c.release();
+    }
+
+    const before = await svc.documentChecklist(manager(), projectId);
+    expect(before.items.find((i) => i.type === 'agreement')?.present).toBe(false);
+
+    await seedApartmentDoc(org.id, projectId, 'agreement');
+
+    const after = await svc.documentChecklist(manager(), projectId);
+    expect(after.items.find((i) => i.type === 'agreement')?.present).toBe(true);
+    expect(after.presentCount).toBe(before.presentCount + 1);
   }, 30_000);
 });
 

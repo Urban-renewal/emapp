@@ -465,10 +465,16 @@ async function main(): Promise<number> {
       const r2Key = `documents/${orgId}/demo-${opts.key}.pdf`;
       docsForBytes.push({ r2Key, name: opts.name });
       const contentHash = createHash('sha256').update(`seed-demo-${r2Key}`).digest('hex');
+      // PARENT EXCLUSIVITY — an apartment-scoped doc resolves to its project via
+      // the apartment's building; it MUST NOT also carry projectId (both-parent
+      // double-counts across two projects and breaks the home-KPI ↔ per-project-
+      // board reconciliation). Apartment wins → projectId null. Mirrors the
+      // CreateDocumentInput refine + production write path.
+      const docProjectId = opts.apartmentId ? null : opts.projectId;
       await tx.insert(documents).values({
         id,
         orgId,
-        projectId: opts.projectId,
+        projectId: docProjectId,
         apartmentId: opts.apartmentId,
         name: opts.name,
         type: opts.type,

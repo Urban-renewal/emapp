@@ -41,6 +41,12 @@ const ALLOWLIST = new Set<string>([
   // Prometheus scrape target (P0.B2) — network-restricted at the ingress
   // layer; text/plain gauge dump, not a product endpoint.
   'GET /api/v1/metrics',
+  // DEV-ONLY email outbox inspector (FakeEmail "platform", D.27). The DevModule
+  // is registered ONLY when NODE_ENV !== 'production', and each handler 404s
+  // unless isDevAuthBypass — so these routes do NOT exist in a deployed env and
+  // are intentionally absent from the product API reference.
+  'GET /api/v1/dev/outbox',
+  'DELETE /api/v1/dev/outbox',
 ]);
 
 /**

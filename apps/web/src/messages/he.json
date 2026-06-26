@@ -2004,7 +2004,35 @@
     "forbiddenCreate": "אין הרשאה ליצור משימה.",
     "loading": "טוען...",
     "empty": "אין משימות להציג.",
+    "emptyHint": "כשתיווצר משימה היא תופיע כאן, מסודרת לפי מועד היעד.",
     "loadFailed": "טעינת המשימות נכשלה",
+    "loadMore": "הצג עוד",
+    "loadingMore": "טוען עוד...",
+    "loadedAll": "{count} משימות — כולן נטענו.",
+    "loadedPartial": "{count} משימות נטענו עד כה. ״הצג עוד״ יטען את השאר.",
+    "loadedFiltered": "מוצגות {shown} מתוך {loaded} שנטענו.",
+    "noMatch": "אין משימות שתואמות את הסינון הנוכחי.",
+    "clearFilter": "נקה סינון",
+    "pulse": {
+      "overdue": "{count} שחלפו",
+      "today": "{count} היום",
+      "week": "{count} השבוע",
+      "later": "{count} בהמשך",
+      "none": "אין משימות להציג כרגע."
+    },
+    "bucket": {
+      "overdue": "חלף המועד",
+      "today": "להיום",
+      "week": "השבוע",
+      "later": "בהמשך",
+      "count": "{count}"
+    },
+    "filter": {
+      "statusLabel": "סינון לפי סטטוס",
+      "priorityLabel": "סינון לפי עדיפות",
+      "all": "הכל",
+      "allPriorities": "כל העדיפויות"
+    },
     "notFound": "המשימה לא נמצאה",
     "backToList": "חזרה לרשימה",
     "cancel": "ביטול",

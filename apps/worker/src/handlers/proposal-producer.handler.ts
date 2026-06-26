@@ -22,7 +22,9 @@
  * NO PII / row content in logs: only integer per-recommender counts (the
  * reaper/retention/expiry no-PII convention).
  */
+import { serverEnv } from '@emapp/config';
 import {
+  autoExecutePolicyFromEnv,
   createDocumentChaseRecommender,
   createReminderCadenceRecommender,
   createSignatureExpiringRecommender,
@@ -86,7 +88,16 @@ export class ProposalProducerHandler implements IJobHandler<ProposalProducerJobP
   ];
 
   async handle(_payload: ProposalProducerJobPayload, ctx: JobContext): Promise<void> {
-    ctx.log.info('proposal producer tick: drafting proposals (no send, no auto-apply)');
+    // AUTO-EXECUTE GRADUATION (wave 1.2) — the per-kind opt-in allowlist, default OFF.
+    // With AUTO_EXECUTE_ENABLED_KINDS unset/empty NOTHING graduates: every proposal
+    // still goes to the Approval Inbox (behaviour identical to before wave 1.2).
+    const autoExecute = autoExecutePolicyFromEnv(serverEnv.AUTO_EXECUTE_ENABLED_KINDS);
+    const autoExecuteOn = autoExecute.enabledKinds.size > 0;
+    ctx.log.info(
+      autoExecuteOn
+        ? 'proposal producer tick: drafting proposals (auto-execute ON for safe kinds)'
+        : 'proposal producer tick: drafting proposals (no send, no auto-apply)',
+    );
 
     // TICK NON-REENTRANCY (design correction): a session advisory lock makes an
     // overlapping tick a clean SKIP rather than a double-draft (which would race
@@ -96,6 +107,7 @@ export class ProposalProducerHandler implements IJobHandler<ProposalProducerJobP
       this.recommenders,
       { now: new Date() },
       ctx.log,
+      autoExecute,
     );
 
     if (!ran || !result) {
@@ -106,11 +118,14 @@ export class ProposalProducerHandler implements IJobHandler<ProposalProducerJobP
     // Counts only — no org/request/proposal ids, no PII.
     ctx.log.info('proposal producer tick complete', {
       totalEmitted: result.totalEmitted,
+      totalAutoApplied: result.totalAutoApplied,
       recommenders: result.results.map((r) => ({
         id: r.recommenderId,
         emitted: r.emitted,
         deduped: r.deduped,
         failed: r.failed,
+        autoApplied: r.autoApplied,
+        autoApplyFailed: r.autoApplyFailed,
         detectFailed: r.detectFailed,
       })),
     });

@@ -27,11 +27,69 @@
  * metric per tick — a missed/failed recommender is diagnosable, not silent.
  */
 import type { DetectedCondition, IRecommender, RecommenderContext } from '@emapp/jobs';
+import { classify, type AutonomyActionKind } from '@emapp/jobs/autonomy-policy';
+import { and, eq } from 'drizzle-orm';
 
+import { AuditService } from '../audit/audit.service';
 import { providerPool } from '../client';
+import { proposals, type Proposal } from '../schema/proposals';
+import type { TenantTx } from '../wrappers/with-tenant';
 import { withTenant } from '../wrappers/with-tenant';
 
+import {
+  applyProposalEffect,
+  AUTO_EXECUTE_SAFE_KINDS,
+} from './proposal-effects/apply-proposal-effect';
 import { emitProposal } from './proposals';
+
+/**
+ * The AUTO-EXECUTE GRADUATION policy handed to a producer tick (Autonomous Master
+ * Plan wave 1.2). `enabledKinds` is the per-kind OPT-IN allowlist (default EMPTY =
+ * OFF: nothing auto-executes, every proposal still goes to the inbox — behaviour
+ * identical to before wave 1.2). The worker handler resolves it from
+ * `AUTO_EXECUTE_ENABLED_KINDS`; tests inject it directly. A kind auto-executes ONLY
+ * if it is in BOTH `enabledKinds` AND the hard `AUTO_EXECUTE_SAFE_KINDS` allowlist
+ * AND classify()==='autoExecute' (re-asserted by `applyProposalEffect` at execute) —
+ * three independent gates, so listing an outbound/PII/floor kind here can never
+ * promote it. */
+export interface AutoExecutePolicy {
+  enabledKinds: ReadonlySet<string>;
+}
+
+/** Default policy: OFF — nothing graduates. */
+const AUTO_EXECUTE_OFF: AutoExecutePolicy = { enabledKinds: new Set<string>() };
+
+/** Parse the `AUTO_EXECUTE_ENABLED_KINDS` comma-separated env value into a policy.
+ *  Trims + drops empties so '' / ' ' / 'a, ,b' are handled. Default OFF. */
+export function autoExecutePolicyFromEnv(raw: string | undefined): AutoExecutePolicy {
+  const kinds = (raw ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return { enabledKinds: new Set(kinds) };
+}
+
+/**
+ * Decide whether a freshly-emitted proposal of `kind` is eligible to AUTO-EXECUTE.
+ * THREE independent gates, ALL required (defense in depth):
+ *   1. the per-kind OPT-IN flag is ON for this kind (default OFF), AND
+ *   2. the kind is in the hard `AUTO_EXECUTE_SAFE_KINDS` allowlist (it has a
+ *      registered DI-free auto-safe effect), AND
+ *   3. classify(kind).decision === 'autoExecute' (the boundary — re-asserted here
+ *      AND again inside `applyProposalEffect`, the non-bypassable backstop).
+ * Any outbound/PII/floor kind fails gate 2 and gate 3 even if mis-listed in the flag.
+ */
+export function isAutoExecuteEligible(kind: string, policy: AutoExecutePolicy): boolean {
+  if (!policy.enabledKinds.has(kind)) return false;
+  if (!(AUTO_EXECUTE_SAFE_KINDS as readonly string[]).includes(kind)) return false;
+  let decision: string;
+  try {
+    decision = classify({ kind: kind as AutonomyActionKind }).decision;
+  } catch {
+    return false; // unknown kind → fail closed
+  }
+  return decision === 'autoExecute';
+}
 
 /**
  * A stable, arbitrary 64-bit key for the producer's TICK NON-REENTRANCY advisory
@@ -62,6 +120,7 @@ export async function runProposalProducerTickGuarded(
   recommenders: IRecommender[],
   ctx: RecommenderContext,
   log: ProducerLogger = NOOP_LOGGER,
+  autoExecute: AutoExecutePolicy = AUTO_EXECUTE_OFF,
 ): Promise<GuardedTickResult> {
   const client = await providerPool.connect();
   try {
@@ -74,7 +133,7 @@ export async function runProposalProducerTickGuarded(
       return { ran: false };
     }
     try {
-      const result = await runProposalProducerTick(recommenders, ctx, log);
+      const result = await runProposalProducerTick(recommenders, ctx, log, autoExecute);
       return { ran: true, result };
     } finally {
       await client
@@ -101,6 +160,12 @@ export interface RecommenderRunResult {
   deduped: number;
   /** Conditions whose emit threw (per-condition isolation within a recommender). */
   failed: number;
+  /** NEW proposals that were AUTO-EXECUTED this tick (graduated: flag-on +
+   *  autoExecute-safe). Subset of `emitted`. 0 when the flag is OFF (default). */
+  autoApplied: number;
+  /** Emitted proposals eligible for auto-execute whose auto-apply threw (the proposal
+   *  stays PENDING in the inbox — fail-safe, the graduation never blocks the draft). */
+  autoApplyFailed: number;
   /** true when `detect()` itself threw — the whole recommender was skipped. */
   detectFailed: boolean;
 }
@@ -109,6 +174,8 @@ export interface ProposalProducerTickResult {
   results: RecommenderRunResult[];
   /** Total NEW proposals across all recommenders this tick. */
   totalEmitted: number;
+  /** Total proposals AUTO-EXECUTED this tick (0 when the flag is OFF). */
+  totalAutoApplied: number;
 }
 
 const NOOP_LOGGER: ProducerLogger = {
@@ -126,6 +193,7 @@ export async function runProposalProducerTick(
   recommenders: IRecommender[],
   ctx: RecommenderContext,
   log: ProducerLogger = NOOP_LOGGER,
+  autoExecute: AutoExecutePolicy = AUTO_EXECUTE_OFF,
 ): Promise<ProposalProducerTickResult> {
   const results: RecommenderRunResult[] = [];
 
@@ -135,6 +203,8 @@ export async function runProposalProducerTick(
       emitted: 0,
       deduped: 0,
       failed: 0,
+      autoApplied: 0,
+      autoApplyFailed: 0,
       detectFailed: false,
     };
 
@@ -154,10 +224,15 @@ export async function runProposalProducerTick(
     }
 
     for (const condition of conditions) {
+      // Whether this kind may graduate is decided ONCE, up front (cheap, no DB):
+      // flag-on ∧ in AUTO_EXECUTE_SAFE_KINDS ∧ classify==='autoExecute'.
+      const eligible = isAutoExecuteEligible(condition.kind, autoExecute);
       try {
-        // Per-tenant emit — the only necessarily-scoped step. RLS-isolated.
-        const { inserted } = await withTenant(condition.orgId, (tx) =>
-          emitProposal(tx, {
+        // Per-tenant emit + (eligible) auto-apply — the ONLY necessarily-scoped step.
+        // Emit and graduation share ONE withTenant tx so the insert + effect + flip
+        // are ATOMIC (a failed flip rolls back the effect; no half-apply).
+        const { inserted, autoApplied } = await withTenant(condition.orgId, async (tx) => {
+          const emit = await emitProposal(tx, {
             orgId: condition.orgId,
             kind: condition.kind,
             scopeType: condition.scopeType,
@@ -165,16 +240,33 @@ export async function runProposalProducerTick(
             evidence: condition.evidence,
             dedupKey: condition.dedupKey,
             expiresAt: condition.expiresAt ?? null,
-          }),
-        );
+          });
+          // Graduate ONLY a freshly-INSERTED eligible proposal (never a dedup no-op —
+          // that proposal already exists and may already be applied/pending).
+          if (emit.inserted && emit.proposal && eligible) {
+            await autoApplyGraduatedProposal(
+              tx,
+              condition.kind as AutonomyActionKind,
+              emit.proposal,
+            );
+            return { inserted: true, autoApplied: true };
+          }
+          return { inserted: emit.inserted, autoApplied: false };
+        });
         if (inserted) result.emitted += 1;
         else result.deduped += 1;
+        if (autoApplied) result.autoApplied += 1;
       } catch (err) {
-        // Per-condition isolation: one bad emit doesn't drop the rest.
+        // Per-condition isolation: one bad emit/auto-apply doesn't drop the rest. An
+        // auto-apply failure rolls back the WHOLE tx (the proposal is NOT inserted
+        // either), so the next tick re-detects + re-emits the condition as a normal
+        // pending proposal (fail-safe: graduation never silently loses the draft).
         result.failed += 1;
-        log.error('proposal emit failed', {
+        if (eligible) result.autoApplyFailed += 1;
+        log.error('proposal emit/auto-apply failed', {
           recommenderId: recommender.id,
           kind: condition.kind,
+          eligible,
           err: err instanceof Error ? err.message : 'unknown',
         });
       }
@@ -185,10 +277,65 @@ export async function runProposalProducerTick(
       emitted: result.emitted,
       deduped: result.deduped,
       failed: result.failed,
+      autoApplied: result.autoApplied,
+      autoApplyFailed: result.autoApplyFailed,
     });
     results.push(result);
   }
 
   const totalEmitted = results.reduce((sum, r) => sum + r.emitted, 0);
-  return { results, totalEmitted };
+  const totalAutoApplied = results.reduce((sum, r) => sum + r.autoApplied, 0);
+  return { results, totalEmitted, totalAutoApplied };
+}
+
+/**
+ * AUTO-EXECUTE a freshly-emitted, eligible proposal — the graduation. MIRRORS the
+ * manager-approve step exactly (proposals.service.ts `applyAutoSafeEffectAndFlip`),
+ * minus the human: the SAME DI-free `applyProposalEffect` runs, then the proposal
+ * flips `pending→applied`, then a `system`-attributed transition audit row is written
+ * — all in the caller's ONE tx (so effect + flip are atomic).
+ *
+ * The actor-context is PURE SYSTEM: `createdBy: null` (an autonomous task has no human
+ * author) + a null-actor audit context (no request ip/ua/session). `AuditService`
+ * treats a null actor as a system action. NO PII — only ids + a taxonomy title reach
+ * the row + audit.
+ *
+ * SECURITY: `applyProposalEffect` re-asserts the boundary internally (throws on any
+ * non-autoExecute kind), so even if `isAutoExecuteEligible` were ever bypassed, no
+ * outbound/PII/floor kind can mutate here. The effect's idempotency (the system-task
+ * partial-unique) makes a producer↔approve race a no-op, not a double-apply.
+ */
+export async function autoApplyGraduatedProposal(
+  tx: TenantTx,
+  kind: AutonomyActionKind,
+  proposal: Proposal,
+): Promise<void> {
+  // The effect — re-asserts the boundary (fail-closed on any non-autoExecute kind).
+  // Pure-system actor-context: no human author, no request forensics.
+  await applyProposalEffect(tx, kind, proposal, {
+    createdBy: null,
+    audit: { actorId: null },
+  });
+
+  // Flip → applied (race-safe `WHERE status='pending'`). On a lost race the whole tx
+  // rolls back (effect included) and the condition re-emits next tick.
+  const [row] = await tx
+    .update(proposals)
+    .set({ status: 'applied', appliedAt: new Date() })
+    .where(and(eq(proposals.id, proposal.id), eq(proposals.status, 'pending')))
+    .returning({ id: proposals.id, kind: proposals.kind });
+  if (!row) {
+    throw new Error('proposal_not_pending_at_auto_apply');
+  }
+
+  // System-attributed transition audit (actorId null = pure-system act) carrying the
+  // proposal id + kind — every autonomous act is audited, exactly like approve.
+  await new AuditService(tx).log({
+    orgId: proposal.orgId,
+    actorType: 'system',
+    action: 'proposal.auto_execute',
+    targetTable: 'proposals',
+    targetId: row.id,
+    metadata: { kind: row.kind, trigger: 'producer_auto_execute' },
+  });
 }

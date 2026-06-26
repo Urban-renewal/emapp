@@ -78,6 +78,11 @@ export * from './helpers/audit-retention';
 export * from './helpers/signature-expiry-sweep';
 export * from './helpers/proposals';
 export * from './helpers/proposal-producer';
+export * from './helpers/proposal-effects/apply-proposal-effect';
+export * from './helpers/proposal-effects/task-create.effect';
+export * from './helpers/proposal-effects/insert-system-task';
+export * from './helpers/proposal-effects/task-create-copy';
+export * from './helpers/proposal-effects/types';
 export * from './helpers/recommenders/missing-required-doc.detect';
 // Autonomous Managing System, wave 1.1 — the PII-FREE, set-based ProjectPerception
 // assembler (composes the canonical signature/consent/missing-doc/terminal seams).

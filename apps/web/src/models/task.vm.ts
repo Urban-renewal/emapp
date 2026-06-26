@@ -45,7 +45,9 @@ export interface TaskViewModel {
   completedAtIso: string | null;
   completedRelative: string | null;
   completedBy: string | null;
-  createdBy: string;
+  // Nullable since wave 1.2: a SYSTEM-AUTHORED task (auto-executed by the autonomy
+  // engine) has no human author.
+  createdBy: string | null;
   createdAtIso: string;
   createdRelative: string;
   isOverdue: boolean;

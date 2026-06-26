@@ -1,0 +1,32 @@
+-- 0083: tasks.created_by nullable — autonomous (no-human-author) system tasks
+-- (Autonomous Master Plan, wave 1.2 — auto-execute graduation of `task.create`).
+--
+-- WHY: wave 1.2 lets the proposal PRODUCER (the worker-layer engine, NO authenticated
+-- user) AUTO-EXECUTE a `task.create` proposal when its kind is autoExecute-eligible AND
+-- a per-kind org-opt-in flag is ON (default OFF). On the MANAGER-APPROVE path a human
+-- clicked, so `created_by = <approving manager>`. On the AUTO-EXECUTE path there is NO
+-- human actor — the engine created the task on its own. `created_by` was `NOT NULL` with
+-- an FK to `users.id`, so the engine could neither pass NULL nor a synthetic sentinel
+-- (the FK would reject a fake user row — a worse smell). The honest model for an
+-- autonomously-created task is `created_by = NULL` paired with the EXISTING
+-- `source = 'system'` discriminator (migration 0082): "created by the engine, no human
+-- author." A human-authored task keeps a non-null `created_by` exactly as before.
+--
+-- ADDITIVE + BACKWARD-COMPATIBLE: this only DROPS a NOT NULL constraint. Every existing
+-- row already has a non-null `created_by`; no data changes. The human create path
+-- (`tasks.create` with a real user) still always writes `created_by = user.sub`, so its
+-- behaviour is unchanged. Only the new system-auto path may write NULL — and only for
+-- `source = 'system'` rows (enforced in the application effect, not at the DB level, to
+-- avoid coupling a CHECK across two independently-evolving columns).
+--
+-- NO PII. RLS: unchanged (`tasks` stays org-isolated under FORCE RLS; relaxing a column
+-- nullability does not touch any policy or grant).
+--
+-- Reversibility: HIGH. Re-adding NOT NULL is a one-liner; it would only fail if a
+-- system-auto task with NULL `created_by` exists — i.e. only after the (default-OFF)
+-- graduation flag has been turned on AND fired, which is itself owner-gated.
+-- Idempotent for the concurrent test-worker migrate() (DROP NOT NULL is a no-op if
+-- already dropped).
+
+ALTER TABLE tasks
+  ALTER COLUMN created_by DROP NOT NULL;

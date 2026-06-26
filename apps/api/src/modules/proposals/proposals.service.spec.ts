@@ -22,7 +22,6 @@
 import { randomUUID } from 'node:crypto';
 
 import { proposals, providerDb } from '@emapp/db';
-import type { CreateTask } from '@emapp/shared-types';
 import { ForbiddenException } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -31,7 +30,6 @@ import { createTestOrg, type TestOrg } from '../../../../../packages/db/test/fac
 import { setupTestDatabase } from '../../../../../packages/db/test/setup';
 import type { AccessTokenPayload } from '../auth/auth.service';
 import type { SignatureRequestsService } from '../signatures/signature-requests.service';
-import type { TaskOrigin, TasksService } from '../tasks/tasks.service';
 
 import { ProposalsService } from './proposals.service';
 
@@ -64,21 +62,6 @@ const fakeSignatures = {
     };
   },
 } as unknown as SignatureRequestsService;
-
-/** Fake TasksService — records create(user, input, origin) calls for the G1
- *  `task.create` executor. Proves the proposals layer replays the gated method
- *  with the system-origin stamp + the PII-free composed copy. */
-const taskCreateCalls: Array<{
-  orgId: string;
-  input: CreateTask;
-  origin?: TaskOrigin;
-}> = [];
-const fakeTasks = {
-  create: async (user: AccessTokenPayload, input: CreateTask, origin?: TaskOrigin) => {
-    taskCreateCalls.push({ orgId: user.orgId, input, origin });
-    return { id: randomUUID() } as never;
-  },
-} as unknown as TasksService;
 
 function manager(org: TestOrg): AccessTokenPayload {
   return {
@@ -119,6 +102,29 @@ async function seedProposal(opts: {
   return row!.id;
 }
 
+/** Seed a real project (BYPASSRLS) so the `task.create` effect's REAL system-task
+ *  insert (tasks.project_id FK → projects) has a valid parent. Returns its id. */
+async function seedProject(org: TestOrg): Promise<string> {
+  const r = await providerDb.execute<{ id: string }>(
+    sql`INSERT INTO projects (org_id, name, type, status, created_by)
+        VALUES (${org.id}, 'effect-test', 'tama38_1', 'gathering_signatures', ${org.users[0]!.id})
+        RETURNING id`,
+  );
+  return r.rows[0]!.id;
+}
+
+/** Read the system task created for a proposal's dedup key (the effect's row). */
+async function readSystemTaskByOrigin(
+  orgId: string,
+  originRef: string,
+): Promise<{ title: string; source: string; created_by: string | null } | null> {
+  const r = await providerDb.execute<{ title: string; source: string; created_by: string | null }>(
+    sql`SELECT title, source, created_by FROM tasks
+          WHERE org_id = ${orgId} AND origin_ref = ${originRef} AND source = 'system' LIMIT 1`,
+  );
+  return r.rows[0] ?? null;
+}
+
 async function readStatus(id: string): Promise<string | null> {
   const r = await providerDb.execute<{ status: string }>(
     sql`SELECT status FROM proposals WHERE id = ${id} LIMIT 1`,
@@ -128,18 +134,20 @@ async function readStatus(id: string): Promise<string | null> {
 
 beforeAll(async () => {
   await setupTestDatabase();
-  svc = new ProposalsService(fakeSignatures, fakeTasks);
+  svc = new ProposalsService(fakeSignatures);
   orgA = await createTestOrg(`propa-${Date.now()}`, `propa-${Date.now()}`);
   orgB = await createTestOrg(`propb-${Date.now()}`, `propb-${Date.now()}`);
 }, 120_000);
 
 afterAll(async () => {
-  await providerDb
-    .execute(sql`DELETE FROM proposals WHERE org_id = ${orgA.id}`)
-    .catch(() => undefined);
-  await providerDb
-    .execute(sql`DELETE FROM proposals WHERE org_id = ${orgB.id}`)
-    .catch(() => undefined);
+  // Tasks (FK → projects) then projects then proposals, both orgs.
+  for (const id of [orgA.id, orgB.id]) {
+    await providerDb.execute(sql`DELETE FROM tasks WHERE org_id = ${id}`).catch(() => undefined);
+    await providerDb.execute(sql`DELETE FROM projects WHERE org_id = ${id}`).catch(() => undefined);
+    await providerDb
+      .execute(sql`DELETE FROM proposals WHERE org_id = ${id}`)
+      .catch(() => undefined);
+  }
 });
 
 describe('ProposalsService.list', () => {
@@ -316,9 +324,8 @@ describe('ProposalsService.approve', () => {
     await expect(svc.approve(manager(orgA), id)).rejects.toThrow();
   });
 
-  it('G1 task.create: replays gated tasks.create with the system-origin stamp + PII-free composed copy', async () => {
-    taskCreateCalls.length = 0;
-    const projectId = randomUUID();
+  it('G1 task.create: applies the DI-free effect — a REAL system task with the origin stamp + PII-free composed copy + manager as author', async () => {
+    const projectId = await seedProject(orgA);
     const dedupKey = `task.create:missing-doc:${projectId}:land_registry`;
     const id = await seedProposal({
       orgId: orgA.id,
@@ -335,23 +342,41 @@ describe('ProposalsService.approve', () => {
       },
     });
 
-    const view = await svc.approve(manager(orgA), id);
+    const m = manager(orgA);
+    const view = await svc.approve(m, id);
     expect(view.status).toBe('applied');
+    // An internal effect produces NO delivery outcome (only outbound kinds do).
+    expect(view.delivery).toBeUndefined();
     expect(await readStatus(id)).toBe('applied');
 
-    // The EXISTING gated tasks.create was replayed exactly once, scoped to the
-    // project, with the SYSTEM-OWNED origin stamp carrying the dedup key.
-    expect(taskCreateCalls).toHaveLength(1);
-    const call = taskCreateCalls[0]!;
-    expect(call.orgId).toBe(orgA.id);
-    expect(call.input.projectId).toBe(projectId);
-    expect(call.origin).toEqual({ source: 'system', originRef: dedupKey });
-    // The composed title/body is PII-free + user-framed (the doc-type label only,
-    // never an owner identity); it carries the נסח-טאבו Hebrew label.
-    expect(call.input.title).toContain('נסח טאבו');
-    expect(call.input.title.toLowerCase()).not.toContain('national');
+    // A REAL system-owned task was created (the extracted effect, shared with the
+    // producer's auto-execute), stamped source='system' + origin_ref=dedupKey, with
+    // the APPROVING MANAGER as author (a human clicked APPROVE).
+    const task = await readSystemTaskByOrigin(orgA.id, dedupKey);
+    expect(task).not.toBeNull();
+    expect(task!.source).toBe('system');
+    expect(task!.created_by).toBe(m.sub);
+    // The composed title is PII-free + user-framed (doc-type label only, never an
+    // owner identity); it carries the נסח-טאבו Hebrew label.
+    expect(task!.title).toContain('נסח טאבו');
+    expect(task!.title.toLowerCase()).not.toContain('national');
 
-    // System-attributed audit row for the approve transition.
+    // The approving manager is AUTO-ASSIGNED the task (pre-extraction parity — the
+    // task he approved is "his", shows as assigned to me).
+    const assignee = await providerDb.execute<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM task_assignees ta
+            JOIN tasks t ON t.id = ta.task_id
+           WHERE t.org_id = ${orgA.id} AND t.origin_ref = ${dedupKey} AND ta.user_id = ${m.sub}`,
+    );
+    expect(assignee.rows[0]?.n).toBe(1);
+
+    // System-attributed audit rows: the task.create effect-audit AND the
+    // proposal.approve transition audit (every autonomous act is audited).
+    const taskAudit = await providerDb.execute<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM audit_log
+            WHERE org_id = ${orgA.id} AND actor_type = 'system' AND action = 'task.create'`,
+    );
+    expect(taskAudit.rows[0]?.n).toBeGreaterThanOrEqual(1);
     const audit = await providerDb.execute<{ n: number }>(
       sql`SELECT count(*)::int AS n FROM audit_log
             WHERE org_id = ${orgA.id} AND actor_type = 'system'
@@ -360,20 +385,24 @@ describe('ProposalsService.approve', () => {
     expect(audit.rows[0]?.n).toBe(1);
   });
 
-  it('G1 task.create: a non-manager is FORBIDDEN', async () => {
+  it('G1 task.create: a non-manager is FORBIDDEN (no task, no apply)', async () => {
+    const projectId = await seedProject(orgA);
     const id = await seedProposal({
       orgId: orgA.id,
       kind: 'task.create',
       scopeType: 'project',
+      scopeId: projectId,
+      dedupKey: `task.create:missing-doc:${projectId}:agreement`,
       evidence: {
         condition: 'missing_required_doc',
-        projectId: randomUUID(),
+        projectId,
         projectType: 'tama38_1',
         track: 'tama38',
         missingDocType: 'agreement',
       },
     });
     await expect(svc.approve(viewer(orgA), id)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(await readStatus(id)).toBe('pending'); // untouched
   });
 
   it('FAIL-CLOSED: a kind with no registered executor cannot apply', async () => {

@@ -137,6 +137,13 @@ export class CalendarEmailService {
         // `tasks` table but doesn't go on the WeekCalendar.)
         return { kind: 'skip', counts: { sent: 0, skipped: 1, failed: 0 } };
       }
+      if (!task.createdBy) {
+        // A SYSTEM-AUTHORED task (wave 1.2 auto-execute: createdBy null) has no
+        // human organizer for the ICS event. A `task.create` system task never sets
+        // scheduledAt (so we'd have returned above), but guard explicitly: no human
+        // author → no calendar invite.
+        return { kind: 'skip', counts: { sent: 0, skipped: 1, failed: 0 } };
+      }
 
       // 2. Load organizer (the user who created the task) — name + email.
       const [organizer] = await tx

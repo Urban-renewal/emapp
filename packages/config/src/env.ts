@@ -70,6 +70,20 @@ export const serverEnv = createEnv({
      *  fan-out is ENABLED by default; set to '0' or 'false' to disable the
      *  project-wide signature-campaign send (operational lever, no redeploy). */
     CAMPAIGN_SEND_ENABLED: z.string().default('1'),
+    /** Autonomous-managing wave 1.2 — the per-kind AUTO-EXECUTE graduation
+     *  kill-switch. A comma-separated allowlist of `AutonomyActionKind`s the
+     *  proposal producer may auto-apply WITHOUT a human approve, e.g.
+     *  'task.create'. OPT-IN + default OFF (empty): with this unset/empty NOTHING
+     *  auto-executes — every proposal still goes to the Approval Inbox, behaviour
+     *  identical to before wave 1.2. A kind is auto-executed ONLY if it is BOTH in
+     *  this allowlist AND classify()==='autoExecute' AND has a registered auto-safe
+     *  effect (the AUTO_EXECUTE_SAFE_KINDS / applyProposalEffect backstop re-asserts
+     *  the boundary at execute, so listing an outbound/PII/floor kind here can NEVER
+     *  promote it — the worst case is a no-op refusal). DISTINCT from
+     *  CAMPAIGN_SEND_ENABLED (that gates OUTBOUND sends; this gates INTERNAL auto-
+     *  execution — different concepts, never share a switch). Owner enables a kind
+     *  here only once the undo/inspect ledger gives him a one-click reverse. */
+    AUTO_EXECUTE_ENABLED_KINDS: z.string().default(''),
     PORT_API: z.coerce.number().default(3000),
     PORT_WEB: z.coerce.number().default(3001),
   },

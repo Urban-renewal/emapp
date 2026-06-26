@@ -492,29 +492,49 @@ export class ExternalSharesService {
         //     apartment→building chain resolves the building locator (documents
         //     hang off project_id / apartment_id only). A foreign-org or unknown
         //     doc is invisible under RLS → out-of-scope.
+        //
+        //     #5 (archived-project revocation): a doc whose owning project is
+        //     ARCHIVED is treated as NON-servable here — archiving a project
+        //     cuts external read access to its docs LIVE, even while the grant
+        //     itself is unrevoked. The effective project is the doc's direct
+        //     project_id OR, for an apartment doc, the apartment→building→
+        //     project chain (COALESCE). A NULL effective project (org-level
+        //     doc) is not project-gated. The project is joined on that
+        //     coalesced id and its archived_at re-checked LIVE.
+        const effectiveProjectId = sql`COALESCE(${documents.projectId}, ${buildings.projectId})`;
         const [doc] = await tx
           .select({
             sensitive: documents.sensitive,
             bytesEncrypted: documents.bytesEncrypted,
+            docScope: documents.docScope,
+            ownerId: documents.ownerId,
             projectId: documents.projectId,
             apartmentId: documents.apartmentId,
             buildingId: apartments.buildingId,
-            // Servable iff finalized (uploaded) + scan-clean + not archived —
-            // exactly the org/contractor serve predicate, computed in-SQL so the
-            // resolver gets a single boolean.
+            // Servable iff finalized (uploaded) + scan-clean + not archived AND
+            // its owning project is not archived (#5) — exactly the org/
+            // contractor serve predicate, computed in-SQL so the resolver gets a
+            // single boolean. `projects.archived_at IS NOT NULL` is false when
+            // there is no effective project (LEFT JOIN miss → NULL), so an
+            // org-level doc is never project-gated.
             servable: sql<boolean>`(
               ${documents.uploadedAt} IS NOT NULL
               AND ${documents.scanStatus} = 'clean'
               AND ${documents.archivedAt} IS NULL
+              AND ${projects.archivedAt} IS NULL
             )`,
           })
           .from(documents)
           .leftJoin(apartments, eq(apartments.id, documents.apartmentId))
+          .leftJoin(buildings, eq(buildings.id, apartments.buildingId))
+          .leftJoin(projects, eq(projects.id, effectiveProjectId))
           .where(eq(documents.id, documentId))
           .limit(1);
         if (!doc) return { allow: false, reason: 'out_of_scope' };
 
         const inScope = isDocInShareScope(share.scopeType, share.scopeIds, {
+          docScope: doc.docScope,
+          ownerId: doc.ownerId,
           projectId: doc.projectId,
           buildingId: doc.buildingId,
           apartmentId: doc.apartmentId,

@@ -98,8 +98,11 @@ export class ProviderTenantDetailService {
               WHERE j.org_id = o.id
             ) AS "importJobsCount",
             (
+              -- SINGLE-SOURCE (0.1) — count only LIVE requests, the same
+              -- ('signed','pending') definition every other signature surface uses;
+              -- bare COUNT(*) inflated the figure with cancelled/expired rows.
               SELECT COUNT(*)::int FROM signature_requests s
-              WHERE s.org_id = o.id
+              WHERE s.org_id = o.id AND s.status IN ('signed', 'pending')
             ) AS "signatureRequestsCount"
           FROM ${organizations} o
           WHERE o.id = ${tenantId}

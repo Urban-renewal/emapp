@@ -31,15 +31,27 @@
  * these recommenders do not need; running all of it across every org every tick
  * is needless work, so this focuses on the signature facts via the SAME seam).
  *
- * ── Set-based + scalable (design correction H-runtime) ───────────────────────
+ * ── Set-based + scalable, on the CANONICAL seam (design correction H-runtime) ─
  * ONE query across ALL orgs via the BYPASSRLS pool (`providerDb`) — like every
- * other recommender detection (`detectMissingRequiredDocs`, reminder-cadence). The
- * query is PENDING-FIRST: it starts from the bounded set of `pending`
- * signature_requests, resolves each to its project via the SAME two doc-paths
- * `projectSignatureDocIdsSql` uses (`documents.project_id` OR the apartment→building
- * chain; non-archived doc), filters to non-terminal/non-archived projects, and
- * aggregates per project. Starting from the pending set (not from every project)
- * keeps the working set small and the query fast at fleet scale.
+ * other recommender detection (`detectMissingRequiredDocs`, reminder-cadence). It
+ * is PROJECT-FIRST: it starts from the bounded set of non-terminal, non-archived
+ * projects, then resolves each project's signature-bearing documents through the
+ * CANONICAL doc-scope seam `projectSetSignatureDocIdsSql` (in `signature-progress.ts`)
+ * — the SAME UNION (project-level docs ∪ apartment→building docs, non-archived) the
+ * wave-1.1 assembler's `sigs` CTE consumes via `projectSignatureDocIdsSql`. There is
+ * NO hand-rolled `COALESCE(d.project_id, b.project_id)` doc→project resolution here:
+ * that was a divergent parallel implementation of the seam, and it DROPPED a document
+ * linked to BOTH a project P (`project_id`) AND an apartment whose building is in a
+ * project Q≠P from Q's count (the COALESCE picked P only), whereas the canonical UNION
+ * attributes it to BOTH. Reusing the seam makes this projection IDENTICAL to the
+ * assembler's per-project attribution — ONE source of truth, so a future seam change
+ * (a 3rd doc-path, a D.57 rule change) flows here for free and cannot drift.
+ *
+ * SCALABILITY is preserved: a single set-based aggregate joins the project set to its
+ * canonical doc scope (`projectSetSignatureDocIdsSql` over the WHOLE live-project set
+ * at once — no per-project N+1, no statement_timeout) and to the bounded pending
+ * signature_requests, then aggregates per project. The doc-scope resolution rides the
+ * seam's partial-index path, so this stays fast at fleet scale.
  *
  * NO PII: every returned column is a project id / org id / count / timestamp —
  * never an owner national_id/phone/name.
@@ -47,6 +59,7 @@
 import { sql } from 'drizzle-orm';
 
 import { providerDb } from '../../client';
+import { projectSetSignatureDocIdsSql } from '../signature-progress';
 
 /** One project's pending-signature activity. PII-FREE: ids + counts + timestamps. */
 export interface ProjectSignatureActivityRow {
@@ -78,36 +91,41 @@ export async function detectProjectSignatureActivity(
   now: Date,
 ): Promise<ProjectSignatureActivityRow[]> {
   const result = await providerDb.execute(sql`
-    -- PENDING-FIRST: start from the bounded pending set, resolve project via the
-    -- SAME two doc-paths projectSignatureDocIdsSql uses (project_id OR the
-    -- apartment→building chain; non-archived doc) — single source of truth for
-    -- "which project does this signature belong to".
-    WITH sr_project AS (
-      SELECT
-        sr.org_id,
-        sr.created_at,
-        sr.expires_at,
-        COALESCE(d.project_id, b.project_id) AS project_id
-      FROM signature_requests sr
-      JOIN documents d ON d.id = sr.document_id AND d.archived_at IS NULL
-      LEFT JOIN apartments a ON a.id = d.apartment_id
-      LEFT JOIN buildings b ON b.id = a.building_id
-      WHERE sr.status = 'pending'
+    -- PROJECT-FIRST: start from the bounded set of non-terminal, non-archived
+    -- projects, then resolve each project's signature-bearing documents through the
+    -- CANONICAL doc-scope seam (projectSetSignatureDocIdsSql) — the SAME UNION the
+    -- assembler uses. A doc linked to BOTH a project (project_id) AND an apartment
+    -- whose building is in ANOTHER project is attributed to BOTH, exactly as the
+    -- seam defines it — no hand-rolled COALESCE, single source of truth.
+    WITH live_projects AS (
+      SELECT p.id, p.org_id
+      FROM projects p
+      WHERE p.archived_at IS NULL
+        AND p.status NOT IN ('completed', 'cancelled')
+    ),
+    -- (project_id, document_id) pairs via the canonical seam, scoped per project
+    -- through a LATERAL correlated single-project subquery. Because the seam is a
+    -- UNION over the two doc-paths, a dual-linked doc surfaces under every project
+    -- whose scope claims it — the attribution the assembler's sigs CTE produces.
+    project_docs AS (
+      SELECT lp.id AS project_id, lp.org_id, scope.id AS document_id
+      FROM live_projects lp
+      JOIN LATERAL (
+        ${projectSetSignatureDocIdsSql(sql`SELECT lp.id`)}
+      ) AS scope(id) ON TRUE
     )
     SELECT
-      srp.project_id,
-      srp.org_id,
+      pd.project_id,
+      pd.org_id,
       COUNT(*)::int        AS pending,
-      MIN(srp.created_at)  AS oldest_pending_at,
-      MIN(srp.expires_at)  AS next_expiry_at
-    FROM sr_project srp
-    JOIN projects p
-      ON p.id = srp.project_id
-     AND p.archived_at IS NULL
-     AND p.status NOT IN ('completed', 'cancelled')
-    WHERE srp.project_id IS NOT NULL
-    GROUP BY srp.project_id, srp.org_id
-    ORDER BY srp.org_id, srp.project_id
+      MIN(sr.created_at)   AS oldest_pending_at,
+      MIN(sr.expires_at)   AS next_expiry_at
+    FROM project_docs pd
+    JOIN signature_requests sr
+      ON sr.document_id = pd.document_id
+     AND sr.status = 'pending'
+    GROUP BY pd.project_id, pd.org_id
+    ORDER BY pd.org_id, pd.project_id
     LIMIT ${SIGNATURE_ACTIVITY_DETECT_LIMIT}
   `);
 

@@ -14,6 +14,8 @@ import { useHasPermission } from '@/hooks/use-permissions';
 import { formatApartmentLabel } from '@/lib/apartment-label';
 import { useDisplayLocale } from '@/lib/locale';
 
+import { GenerateApartmentsForm } from './_components/generate-apartments-form';
+
 // At a real תמ"א-38 building's scale (100-200 apartments) a flat scroll is a
 // wall. The status chips let the manager filter SERVER-SIDE to "which need
 // attention" (pending) in one click — mirrors the signatures list status-chip
@@ -33,6 +35,7 @@ const STATUS_FILTERS: ApartmentStatusFilter[] = [
 
 export default function ApartmentsPage() {
   const t = useTranslations('apartments');
+  const tg = useTranslations('apartments.generate');
   const tp = useTranslations('projects');
   const params = useParams<{ id: string }>();
   const buildingId = params?.id;
@@ -85,20 +88,29 @@ export default function ApartmentsPage() {
   // disappear under him). Only the result REGION below swaps state.
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
-        {canCreate && (
-          <Button asChild>
-            <Link href={`/buildings/${buildingId}/apartments/new`}>{t('create')}</Link>
-          </Button>
-        )}
-      </div>
+      <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
 
       <p className="text-sm">
         <Link href={`/buildings/${buildingId}`} className="underline">
           {tp('backToList')}
         </Link>
       </p>
+
+      {/* Slice 2.1 — bulk generate LEADS the surface (the technophobe data-in
+          wall: a 40-apartment building is no longer hand-typed one form at a
+          time). The single-apartment form is demoted to a secondary link
+          below. Both gated on apartments.create. */}
+      {canCreate && buildingId && (
+        <div className="space-y-2">
+          <GenerateApartmentsForm buildingId={buildingId} />
+          <p className="text-xs text-muted-foreground">
+            {tg('manualTitle')}{' '}
+            <Link href={`/buildings/${buildingId}/apartments/new`} className="underline">
+              {tg('manualLink')}
+            </Link>
+          </p>
+        </div>
+      )}
 
       {filterChips}
 

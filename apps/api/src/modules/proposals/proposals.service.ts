@@ -11,6 +11,7 @@ import type {
   ListProposalsQueryDto,
   ProposalApplyDelivery,
   ProposalApproveResponse,
+  ProposalPendingCountQueryDto,
   ProposalView,
 } from '@emapp/shared-types';
 import {
@@ -237,7 +238,10 @@ export class ProposalsService {
    * `idx_proposals_org_pending` (WHERE status = 'pending') — no full scan, no
    * N+1. Manager-only (every proposals op is `requireManager`); RLS org-isolates.
    */
-  async pendingCount(user: AccessTokenPayload): Promise<{ count: number }> {
+  async pendingCount(
+    user: AccessTokenPayload,
+    query: ProposalPendingCountQueryDto = {},
+  ): Promise<{ count: number }> {
     this.requireManager(user);
     const result = await withTenant(
       user.orgId,
@@ -245,7 +249,14 @@ export class ProposalsService {
         tx
           .select({ count: sql<number>`count(*)::int` })
           .from(proposals)
-          .where(eq(proposals.status, 'pending')),
+          // SAME predicate as `list` (kind narrows identically) so the count and
+          // the feed derive from ONE kind-aware filter — no "X מתוך Y" drift.
+          .where(
+            and(
+              eq(proposals.status, 'pending'),
+              query.kind ? eq(proposals.kind, query.kind) : undefined,
+            ),
+          ),
       { userId: user.sub },
     );
     return { count: result[0]?.count ?? 0 };

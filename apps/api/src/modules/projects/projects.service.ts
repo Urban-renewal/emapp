@@ -33,7 +33,6 @@ import type {
   ProjectSegment,
   ProjectStats,
   ProjectStatus,
-  PulseNeedsHumanRow,
   SignaturePulse,
   SignatureProgress,
   UpdateProject,
@@ -1447,7 +1446,7 @@ export class ProjectsService {
    * Every projected field is a count, a derived %, a timestamp, or the project's
    * own id/name. The signature-activity query touches signature_requests +
    * documents but selects only aggregates; no owner id/name/national_id/phone is
-   * ever read. `needsHuman` carries projectId + counts, never PII.
+   * ever read.
    */
   async signaturePulse(user: AccessTokenPayload): Promise<SignaturePulse> {
     // 1) Resolve the visible projects + their PII-free signature-activity facts
@@ -1643,14 +1642,18 @@ export class ProjectsService {
     // 3) Order most-urgent-first via the pure A2 scorer.
     const attention = rankAttention(rows);
 
-    // 4) A8 needsHuman + header buckets, derived from the SAME rows (no new
-    //    query). Each project is classified into exactly one of
-    //    stalled/expiringSoon/onTrack (stalled wins, then expiringSoon);
-    //    needsHuman is a separate overlay.
+    // 4) Header buckets, derived from the SAME rows (no new query). Each project
+    //    is classified into exactly one of stalled/expiringSoon/onTrack (stalled
+    //    wins, then expiringSoon); `needsHuman` is a SEPARATE overlay count of the
+    //    projects carrying a human-actionable signal (stalled OR expiring — a
+    //    stalled project may also be expiring). The per-project A8 row array was
+    //    removed: it was fully derived from `attention` (the same stalled/expiring
+    //    subset, already surfaced as the home's ranked cards) and never read by
+    //    the FE — keeping it was dead, divergence-prone wire weight.
     let stalled = 0;
     let expiringSoonCount = 0;
     let onTrack = 0;
-    const needsHuman: PulseNeedsHumanRow[] = [];
+    let needsHuman = 0;
 
     for (const r of attention) {
       const isStalled = r.stalledDays !== null && r.stalledDays >= PULSE_STALLED_DAYS;
@@ -1658,20 +1661,7 @@ export class ProjectsService {
       else if (r.expiringSoon) expiringSoonCount += 1;
       else onTrack += 1;
 
-      const reasons: PulseNeedsHumanRow['reasons'] = [];
-      if (isStalled) reasons.push('stalled');
-      if (r.expiringSoon) reasons.push('expiring');
-      if (reasons.length > 0) {
-        needsHuman.push({
-          projectId: r.projectId,
-          projectName: r.projectName,
-          reasons,
-          // Worst-case headcount behind the signals available without new
-          // schema: the pending-expiring requests. `signedThisWeek` is activity,
-          // not a backlog, so it is NOT counted here.
-          count: r.expiringSoon ? 1 : 0,
-        });
-      }
+      if (isStalled || r.expiringSoon) needsHuman += 1;
     }
 
     // HB-1 — surface the N15 send KILL-SWITCH to the FE so the board can
@@ -1684,9 +1674,8 @@ export class ProjectsService {
     const sendEnabled = !(sendFlag === '0' || sendFlag === 'false');
 
     return {
-      buckets: { stalled, expiringSoon: expiringSoonCount, needsHuman: needsHuman.length, onTrack },
+      buckets: { stalled, expiringSoon: expiringSoonCount, needsHuman, onTrack },
       attention,
-      needsHuman,
       sendEnabled,
     };
   }

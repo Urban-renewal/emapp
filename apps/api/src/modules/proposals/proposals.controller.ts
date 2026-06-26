@@ -1,4 +1,9 @@
-import { ListProposalsQuery, type ListProposalsQueryDto } from '@emapp/shared-types';
+import {
+  ListProposalsQuery,
+  ProposalPendingCountQuery,
+  type ListProposalsQueryDto,
+  type ProposalPendingCountQueryDto,
+} from '@emapp/shared-types';
 import { Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
 
@@ -50,14 +55,19 @@ export class ProposalsController {
 
   // Constant-time pending-count for the inbox's HONEST lead line — MIRRORS
   // `GET /notifications/unread-count`. The FE polls this so the "N החלטות
-  // ממתינות לך" header states the TRUE org-wide total, never the ≤25 page size.
-  // Declared as a STATIC `pending-count` segment (no `:id` GET exists on this
-  // controller, so no capture conflict). Read-class gate (a count is a read);
-  // the service additionally enforces `requireManager`.
+  // ממתינות לך" header states the TRUE total, never the ≤25 page size. The
+  // optional `?kind` narrows IDENTICALLY to `list` so the count tracks the active
+  // facet (lead-line + honesty-line + feed = one kind-aware source; no "X מתוך Y"
+  // drift). Declared as a STATIC `pending-count` segment (no `:id` GET exists on
+  // this controller, so no capture conflict). Read-class gate (a count is a
+  // read); the service additionally enforces `requireManager`.
   @Get('pending-count')
   @RequirePermission('signature_requests.read')
-  async pendingCount(@CurrentUser() user: AccessTokenPayload) {
-    return { data: await this.proposals.pendingCount(user) };
+  async pendingCount(
+    @CurrentUser() user: AccessTokenPayload,
+    @Query(new ZodValidationPipe(ProposalPendingCountQuery)) query: ProposalPendingCountQueryDto,
+  ) {
+    return { data: await this.proposals.pendingCount(user, query) };
   }
 
   @Post(':id/approve')

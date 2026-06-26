@@ -71,14 +71,6 @@ export const SAMPLE_SIGNATURE_PULSE: SignaturePulse = {
       hasCampaign: false,
     },
   ],
-  needsHuman: [
-    {
-      projectId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1',
-      projectName: 'Tama 38/2 — Pilot',
-      reasons: ['stalled'],
-      count: 4,
-    },
-  ],
   // HB-1 — kill-switch ON in the default fixture (the one-tap remind action is
   // live offline).
   sendEnabled: true,
@@ -89,6 +81,5 @@ export const SAMPLE_SIGNATURE_PULSE: SignaturePulse = {
 export const SAMPLE_SIGNATURE_PULSE_ALL_CLEAR: SignaturePulse = {
   buckets: { stalled: 0, expiringSoon: 0, needsHuman: 0, onTrack: 4 },
   attention: [],
-  needsHuman: [],
   sendEnabled: true,
 };

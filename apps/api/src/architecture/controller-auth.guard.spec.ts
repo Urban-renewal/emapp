@@ -29,6 +29,13 @@ const PUBLIC_ALLOWLIST = new Set<string>([
   'members/accept-invite.controller.ts',
   'observability/metrics.controller.ts',
   'signatures/public-sign.controller.ts',
+  // DEV-ONLY email-outbox inspector. `@Public()` (developer tool, cross-org by
+  // nature) but EACH handler hard-gates on `isDevAuthBypass()` (NODE_ENV===
+  // 'development' AND DEV_AUTH_BYPASS==='1') and returns 404 when off, so the
+  // route is INVISIBLE in prod (mirrors the /dev-login posture). Belt-and-braces:
+  // `getDevEmailOutbox()` is null in prod and `assertDevBypassNotInProduction()`
+  // fails boot — so even a gate regression reads nothing. See the controller doc.
+  'dev/dev-outbox.controller.ts',
 ]);
 
 describe('architecture: controller-auth guard (every domain controller is authenticated)', () => {

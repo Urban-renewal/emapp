@@ -1,4 +1,4 @@
-import { isOrgSuspended, shares, withTenant } from '@emapp/db';
+import { contractors, isOrgSuspended, projects, shares, withTenant } from '@emapp/db';
 import type { SharePermissions } from '@emapp/shared-types';
 import {
   CanActivate,
@@ -31,12 +31,23 @@ const LAST_ACCESS_THROTTLE_MS = 5 * 60 * 1000;
  *      not merely on listing (red-team blocker: a long-lived JWT must NOT
  *      outlive the share's intended lifetime),
  *   4. loads the bound `shares` row under the token's org RLS and refuses
- *      if it is missing / REVOKED (revoked_at), or the org is SUSPENDED
- *      (D.49) — every one of these is a generic 401 (no oracle),
+ *      if it is missing / REVOKED (revoked_at), the bound CONTRACTOR is
+ *      ARCHIVED (contractors.archived_at — #4), the bound PROJECT is ARCHIVED
+ *      (projects.archived_at — #5), or the org is SUSPENDED (D.49) — every one
+ *      of these is a generic 401 (no oracle),
  *   5. attaches `req.contractor` = { the token + the live `permissions` }.
  *
  * Revocation is immediate: `shares.revoked_at` is checked on EVERY request,
  * so the token TTL never outlives a manager's revoke.
+ *
+ * ARCHIVE-CUTS-ACCESS (#4 + #5, cross-entity authz): a share whose `revoked_at`
+ * is still NULL must NOT keep granting access once the partner is OFFBOARDED
+ * (contractor archived) or the project is ARCHIVED. The legacy `shares` table
+ * carries no archive column of its own, so the live re-check joins the bound
+ * `contractors` + `projects` rows and FAILS CLOSED if either is archived —
+ * exactly where revocation + suspension are already enforced (one seam, not a
+ * second access path). A manager who archives a contractor or a project cuts
+ * external read access on the VERY NEXT request, not after the token TTL.
  *
  * EXPIRY (SECURITY, share-expiry-on-retrieval): `ShareTokenService.verify()`
  * already throws on an expired JWT, but the legacy `shares` table has NO
@@ -98,12 +109,19 @@ export class ContractorAuthGuard implements CanActivate {
       const [row] = await tx
         .select({ permissions: shares.permissions, lastAccessedAt: shares.lastAccessedAt })
         .from(shares)
+        // #4 + #5 — archiving the contractor OR the project cuts access LIVE.
+        // INNER joins + `archived_at IS NULL` make an archived contractor/
+        // project drop the row → generic 401 (no oracle), same as revoked.
+        .innerJoin(contractors, eq(contractors.id, shares.contractorId))
+        .innerJoin(projects, eq(projects.id, shares.projectId))
         .where(
           and(
             eq(shares.id, payload.shareId),
             eq(shares.projectId, payload.projectId),
             eq(shares.contractorId, payload.sub),
             isNull(shares.revokedAt),
+            isNull(contractors.archivedAt), // #4 offboarded contractor → denied
+            isNull(projects.archivedAt), // #5 archived project → denied
           ),
         )
         .limit(1);

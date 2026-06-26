@@ -1182,6 +1182,27 @@
       "shop": "מסחר/חנות",
       "office": "משרד",
       "mixed": "מעורב"
+    },
+    "generate": {
+      "title": "מילוי מהיר של דירות הבניין",
+      "hint": "במקום להוסיף דירה אחת בכל פעם — מלאו את צורת הבניין והמערכת תיצור את כל הדירות בבת אחת.",
+      "floors": "מספר קומות",
+      "apartmentsPerFloor": "דירות בכל קומה",
+      "schemeLabel": "מספור הדירות",
+      "scheme": {
+        "sequential": "רץ (1, 2, 3 …)",
+        "floorBased": "לפי קומה (101, 102, 201 …)"
+      },
+      "preview": "ייווצרו {count} דירות. הראשונה: {first} · האחרונה: {last}.",
+      "previewOne": "תיווצר דירה אחת: {first}.",
+      "submit": "צור {count} דירות",
+      "submitting": "יוצר דירות…",
+      "successCreated": "נוצרו {created} דירות.",
+      "successWithSkipped": "נוצרו {created} דירות · {skipped} כבר היו קיימות ולכן דולגו.",
+      "noneCreated": "כל הדירות בצורה הזו כבר קיימות בבניין — לא נוצרה דירה חדשה.",
+      "failed": "יצירת הדירות נכשלה. נסו שוב.",
+      "manualTitle": "צריכים דירה אחת עם פרטים מלאים?",
+      "manualLink": "הוספת דירה בודדת"
     }
   },
   "stepUp": {
@@ -2005,7 +2026,35 @@
     "forbiddenCreate": "אין הרשאה ליצור משימה.",
     "loading": "טוען...",
     "empty": "אין משימות להציג.",
+    "emptyHint": "כשתיווצר משימה היא תופיע כאן, מסודרת לפי מועד היעד.",
     "loadFailed": "טעינת המשימות נכשלה",
+    "loadMore": "הצג עוד",
+    "loadingMore": "טוען עוד...",
+    "loadedAll": "{count} משימות — כולן נטענו.",
+    "loadedPartial": "{count} משימות נטענו עד כה. ״הצג עוד״ יטען את השאר.",
+    "loadedFiltered": "מוצגות {shown} מתוך {loaded} שנטענו.",
+    "noMatch": "אין משימות שתואמות את הסינון הנוכחי.",
+    "clearFilter": "נקה סינון",
+    "pulse": {
+      "overdue": "{count} שחלפו",
+      "today": "{count} היום",
+      "week": "{count} השבוע",
+      "later": "{count} בהמשך",
+      "none": "אין משימות להציג כרגע."
+    },
+    "bucket": {
+      "overdue": "חלף המועד",
+      "today": "להיום",
+      "week": "השבוע",
+      "later": "בהמשך",
+      "count": "{count}"
+    },
+    "filter": {
+      "statusLabel": "סינון לפי סטטוס",
+      "priorityLabel": "סינון לפי עדיפות",
+      "all": "הכל",
+      "allPriorities": "כל העדיפויות"
+    },
     "notFound": "המשימה לא נמצאה",
     "backToList": "חזרה לרשימה",
     "cancel": "ביטול",

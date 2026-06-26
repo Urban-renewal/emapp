@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import {
   AcceptInviteInput,
   CreateApartmentInput,
+  GenerateApartmentsInput,
   CreateBuildingInput,
   CreateMemberInput,
   ListMembersQuery,
@@ -410,6 +411,23 @@ const ENDPOINTS: Endpoint[] = [
     summary: 'Create an apartment under a building. Manager only; buildingId from the URL.',
     request: CreateApartmentInput,
     response: '{ "data": { ...Apartment } }',
+    errors: [
+      'validation_error',
+      'forbidden',
+      'not_found',
+      'missing_token',
+      'invalid_token',
+      'token_expired',
+    ],
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/buildings/:buildingId/apartments::generate',
+    auth: 'AuthGuard + TenantGuard (apartments.create; agent fine gate edit_project_data)',
+    summary:
+      'Bulk-generate a building’s apartments from its shape (floors × apartmentsPerFloor) in ONE atomic, manager-confirmed action. Loops the canonical apartment-create path inside one withTenant tx (all-or-nothing). Numbering: sequential (1..N) | floorBased (floor*100+unit). Numbers already taken by an active apartment are SKIPPED. Idempotency-Key honoured. Returns { created, skipped }.',
+    request: GenerateApartmentsInput,
+    response: '{ "data": { "created": number, "skipped": number } }',
     errors: [
       'validation_error',
       'forbidden',

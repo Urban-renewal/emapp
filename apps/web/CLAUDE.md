@@ -50,13 +50,13 @@ MSW intercepts every `/api/v1/*` call and returns the SAMPLE\_\* fixtures in `sr
 
 ## Trade-offs (documented per v9 audit closures)
 
-### Server-side `getMe()` double-hop (§v9-M-9 — accepted)
+### Server-side `getMe()` double-hop (§v9-M-9 — REVERSED 2026-06-26, latency)
 
-`apps/web/src/lib/auth.ts:getMe()` is a Server Action that fetches `${origin}/api/v1/me` — i.e. it goes BROWSER → Pages Function → Railway, even though we're on the server. This adds ~5-15ms per Server Component render vs a direct server→Railway call.
+**Now: direct server→API hop.** `apps/web/src/lib/auth.ts:getMe()` fetches `${API_BACKEND_URL}/api/v1/me` DIRECTLY on the server, skipping the self-hop through the `/api/[...path]` Pages-Function proxy. The old path went SERVER → its own proxy route → Railway — a redundant round-trip back through the web server on every authenticated SSR render (~0.39s measured warm). Warm authed pages must be <1s (hard latency budget), so the self-hop was removed.
 
-**Why we accept it:** single env-var contract (only `API_BACKEND_URL` matters; never `API_URL`). Routing through the proxy means any FE-side defense (header stripping, CF-Connecting-IP rewriting, Set-Cookie passthrough) applies uniformly. A direct server→Railway call would need its own header-strip logic.
+**What's preserved:** cookie forwarding (the `access_token` is still sent as an explicit `Cookie` header — a server `fetch` attaches no browser cookies), 401→null (unauthenticated) handling, the `AbortSignal.timeout(15_000)` hung-backend defense, `cache: 'no-store'`, and the exact return shape. `API_BACKEND_URL` is the SAME single env var the proxy reads (`route.ts:getBackendBase()`); the upstream path (`/api/v1/me`) is byte-for-byte what the proxy emits — the backend contract is unchanged, and `API_URL`/`NEXT_PUBLIC_API_URL` are still banned by `auth.spec.ts`.
 
-**Reversibility:** trivial — `auth.ts` could read `process.env['API_BACKEND_URL']` directly server-side and bypass the proxy. The Server Action env-var unification guard (`auth.spec.ts`) would need updating to allow `process.env['API_BACKEND_URL']` reads (currently it just bans `API_URL`).
+**Fallback:** if `API_BACKEND_URL` is unset (bare unit env), `getMe` falls back to the §v9-H-1-allowlisted self-origin proxy path so behaviour is never silently broken. `logout()` still routes through the proxy (one-shot action, not per-render — not a latency hotspot).
 
 ### Server Components vs `'use client'` pages (§v9-M-1 — pending refactor)
 

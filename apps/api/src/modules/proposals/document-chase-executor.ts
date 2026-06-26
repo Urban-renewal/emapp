@@ -11,13 +11,17 @@
  * ── CRITICAL SECURITY CONSTRAINT — consent is resolved, NEVER hardcoded ──────
  * The #516 consent-bypass was `reissueAndDeliver` passing `recipientConsented:true`
  * to `governOutboundSend`, so an OPTED-OUT party still got the message. We do NOT
- * repeat it. Two registries this chase depends on are NOT yet merged on main:
+ * repeat it. Consent is resolved through the ONE canonical seam shared by ALL
+ * governed-send executors — `resolveRecipientConsent` (`./recipient-consent`) — the
+ * same seam the reminder + reissue executors now use (no executor hardcodes a
+ * consent boolean). Two registries this chase ALSO depends on are NOT yet merged:
  *   1. the recipient opt-out registry (#512) — the source of a party's REAL
- *      consent state; and
+ *      consent state (the shared seam's fail-closed default flips to a real read
+ *      here when it lands); and
  *   2. a party-recipient RESOLVER — "the שמאי's email" for a project's appraiser
  *      party (the X-S6 collaboration / external_share recipient-identity work).
- * Until BOTH land, consent CANNOT be affirmatively confirmed for the chased party.
- * So we FAIL CLOSED:
+ * Until the opt-out registry lands, the shared seam CANNOT affirmatively confirm
+ * consent. So we FAIL CLOSED:
  *   - `recipientConsented: false` → the pure ConsentGate DENIES the send →
  *     `governOutboundSend` returns `blocked` with NO ledger claim and NO send. The
  *     proposal stays PENDING (actionable) — nothing leaves the system.
@@ -30,9 +34,9 @@
  * dispatch is gated behind the two pending registries.
  *
  * TODO (S6 / #512): when the opt-out registry + the party-recipient resolver land,
- * resolve the REAL per-party consent here (read the opt-out table for the resolved
- * party recipient) and wire the `send` thunk to mint an `external_share` upload
- * link + deliver it via the existing share-delivery path — STILL through this
+ * the shared `resolveRecipientConsent` becomes a real read of the opt-out table,
+ * and this executor wires the `send` thunk to mint an `external_share` upload link +
+ * deliver it via the existing share-delivery path — STILL through this
  * `governOutboundSend` call (the seam does not change; only the resolved consent +
  * the send thunk's body do).
  *
@@ -44,6 +48,8 @@ import { serverEnv } from '@emapp/config';
 import { governOutboundSend, type GovernedSendOutcome, type Proposal } from '@emapp/db';
 import { providerPartyForDocType, type DocumentParty } from '@emapp/shared-types';
 import { z } from 'zod';
+
+import { resolveRecipientConsent } from './recipient-consent';
 
 /** The PII-free `document.chase.send` evidence shape we depend on at execute time.
  *  Zod-parsed (no raw `unknown` access, per CLAUDE.md) — a malformed evidence blob
@@ -66,21 +72,6 @@ export function chasePartyForEvidence(evidence: DocumentChaseEvidenceDto): Docum
 }
 
 /**
- * Resolve whether the chased party's consent can be AFFIRMATIVELY confirmed.
- *
- * Fail-closed: with no opt-out registry (#512) AND no party-recipient resolver
- * merged, consent CANNOT be confirmed → `false`. This is a deliberate seam: when
- * those land, this becomes a real read of the resolved party recipient's opt-out
- * state. It is a pure function (no I/O today) so the executor + tests pin the
- * fail-closed behavior without a DB round-trip.
- */
-export function resolveChaseRecipientConsent(_evidence: DocumentChaseEvidenceDto): boolean {
-  // TODO (#512): read the recipient opt-out registry for the resolved party
-  // recipient. Until then we CANNOT confirm consent → fail closed (never true).
-  return false;
-}
-
-/**
  * Execute a `document.chase.send` proposal: route the chase through the canonical
  * governed-outbound seam with the REAL (fail-closed) consent state. Returns the
  * governed outcome so the caller (ProposalsService) can map a non-`sent` outcome
@@ -97,16 +88,16 @@ export async function executeDocumentChase(
   const sendFlag = serverEnv.CAMPAIGN_SEND_ENABLED;
   const killSwitchEnabled = sendFlag !== '0' && sendFlag !== 'false';
 
-  // Resolve consent FAIL-CLOSED (never hardcoded true — the #516 lesson). With no
-  // opt-out registry + no party-recipient resolver yet, this is `false` → the
-  // ConsentGate denies → `blocked`, nothing is sent, the proposal stays pending.
-  const recipientConsented = resolveChaseRecipientConsent(evidence);
-
   // NON-PII recipient discriminator: the chase target is "this project's missing
   // <type>" — keyed on (projectId:type) so a re-proposal of the SAME gap collides
   // on the M1 ledger key (no double-send), exactly like the reminder path keys on
   // (signatureRequestId:step). NOT a contact detail.
   const recipientRef = `${evidence.projectId}:${evidence.missingDocType}`;
+
+  // Resolve consent through the ONE canonical seam (never hardcoded true — the #516
+  // lesson). Fail-closed until the opt-out registry (#512) lands → `false` → the
+  // ConsentGate denies → `blocked`, nothing is sent, the proposal stays pending.
+  const recipientConsented = resolveRecipientConsent(recipientRef);
 
   return governOutboundSend({
     orgId,

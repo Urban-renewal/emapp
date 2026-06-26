@@ -40,7 +40,11 @@ import type {
 // Runtime (value) import — the CANONICAL delivery predicate. Reused here, NOT
 // re-implemented, so the BE tallies and the FE chase toast derive "delivered vs
 // no-channel" from ONE source that cannot drift.
-import { didAnyChannelDeliver } from '@emapp/shared-types';
+// PROJECT_TERMINAL_STATUSES — the CANONICAL set of terminal project statuses
+// (derived from the state-machine transitions). Reused here so the "no signing
+// on a dead deal" guard cannot drift from the cockpit / board-completeness
+// rollups that gate on the SAME source.
+import { didAnyChannelDeliver, PROJECT_TERMINAL_STATUSES } from '@emapp/shared-types';
 import {
   BadRequestException,
   ConflictException,
@@ -414,6 +418,58 @@ export class SignatureRequestsService {
     return new Set(rows.map((r) => r.ownerId));
   }
 
+  /** TERMINAL-PROJECT GATE (red-team round-4 LOW).
+   *
+   *  A signing link must NOT be issued against a document whose parent project
+   *  is in a TERMINAL status (`cancelled` / `completed`, per the canonical
+   *  `PROJECT_TERMINAL_STATUSES` derived from the state machine) or is archived —
+   *  that would chase a dead deal. Same terminal-status-divergence class the
+   *  cockpit / board-completeness rollups already guard; reuse the ONE canonical
+   *  source so the gate cannot drift.
+   *
+   *  Project resolution mirrors `resolveAssociatedOwners`:
+   *    - project-scoped document (`project_id`) → that project directly.
+   *    - else apartment-scoped document (`apartment_id`) → apartment → building →
+   *      project chain.
+   *  The read is RLS-scoped via the caller's withTenant tx. If the project row is
+   *  not visible (foreign/never-existed) the SELECT returns 0 rows and the gate is
+   *  a no-op here — the earlier visibility/association gates already 404 that case;
+   *  this guard's sole job is the active-vs-terminal decision for a visible doc.
+   *
+   *  A terminal/archived project rejects the WHOLE create (single AND bulk): a
+   *  document carries exactly one project, so every recipient under it would be
+   *  chasing the same dead deal — fail-closed at the gate, never per-owner. */
+  private async assertProjectActiveForDoc(
+    tx: TenantTx,
+    doc: { apartmentId: string | null; projectId: string | null },
+  ): Promise<void> {
+    let row: { status: string; archivedAt: Date | null } | undefined;
+    if (doc.projectId) {
+      [row] = await tx
+        .select({ status: projects.status, archivedAt: projects.archivedAt })
+        .from(projects)
+        .where(eq(projects.id, doc.projectId))
+        .limit(1);
+    } else if (doc.apartmentId) {
+      [row] = await tx
+        .select({ status: projects.status, archivedAt: projects.archivedAt })
+        .from(projects)
+        .innerJoin(buildings, eq(buildings.projectId, projects.id))
+        .innerJoin(apartments, eq(apartments.buildingId, buildings.id))
+        .where(eq(apartments.id, doc.apartmentId))
+        .limit(1);
+    }
+    // No visible project row → leave the decision to the visibility/association
+    // gates (which already 404). This guard only rejects a RESOLVED-terminal one.
+    if (!row) return;
+    const isTerminal = (PROJECT_TERMINAL_STATUSES as readonly string[]).includes(row.status);
+    if (isTerminal || row.archivedAt) {
+      throw new ConflictException({
+        error: { code: 'signature_request_project_terminal' },
+      });
+    }
+  }
+
   /** Create a signature request and mint its JWT token.
    *
    *  Flow:
@@ -478,6 +534,12 @@ export class SignatureRequestsService {
         if (!(await this.resolveAssociatedOwners(tx, doc, [input.ownerId])).has(input.ownerId)) {
           throw new ConflictException({ error: { code: 'recipient_not_associated' } });
         }
+
+        // TERMINAL-PROJECT GATE — no signing link against a dead deal (project
+        // cancelled/completed/archived). Reuses the canonical PROJECT_TERMINAL_STATUSES.
+        // Runs BEFORE PII decrypt (defense-in-depth: a dead-deal request must not
+        // trigger national_id/phone decryption).
+        await this.assertProjectActiveForDoc(tx, doc);
 
         const own = await this.loadOwnerWithPii(tx, input.ownerId);
 
@@ -615,6 +677,13 @@ export class SignatureRequestsService {
         const doc = await this.loadVisibleDocument(tx, input.documentId);
         if (user.role === 'agent') await this.assertDocVisibleForAgent(tx, user, input.documentId);
         await requireAgentCapability(tx, user, 'manage_signatures');
+
+        // TERMINAL-PROJECT GATE — a document carries exactly one project, so a
+        // terminal/archived project means EVERY owner under it would be chasing a
+        // dead deal. Fail-closed at the gate (whole batch), same posture as the
+        // document-visibility gate above. Covers campaigns too (createCampaign fans
+        // out through here). Reuses the canonical PROJECT_TERMINAL_STATUSES.
+        await this.assertProjectActiveForDoc(tx, doc);
 
         // Owners that already have a LIVE pending request for this doc → skip
         // (1 query). Slice-1 #3: an EXPIRED-but-still-'pending' row (pre-sweep)

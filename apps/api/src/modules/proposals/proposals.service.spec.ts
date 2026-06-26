@@ -234,6 +234,31 @@ describe('ProposalsService.pendingCount', () => {
       .catch(() => undefined);
   });
 
+  it('narrows by ?kind IDENTICALLY to list — count tracks the facet (no "X מתוך Y" drift)', async () => {
+    const org = await createTestOrg(`propk-${Date.now()}`, `propk-${Date.now()}`);
+    // 3 of kind A, 2 of kind B → org-wide total 5.
+    for (let i = 0; i < 3; i++) {
+      await seedProposal({ orgId: org.id, kind: 'signature_request.reissue' });
+    }
+    for (let i = 0; i < 2; i++) {
+      await seedProposal({ orgId: org.id, kind: 'document.chase.send' });
+    }
+    // Unfiltered → the org-wide total.
+    expect((await svc.pendingCount(manager(org))).count).toBe(5);
+    // Filtered → the count EQUALS the kind-filtered feed length (one kind-aware
+    // source: the inbox lead-line + honesty-line + feed can never diverge under a
+    // facet — the #545 regression this closes had an org-wide count over a
+    // kind-filtered feed → "X מתוך Y" lied).
+    const kindA = { kind: 'signature_request.reissue' };
+    const feedA = await svc.list(manager(org), { limit: 25, ...kindA });
+    expect(feedA.data).toHaveLength(3);
+    expect((await svc.pendingCount(manager(org), kindA)).count).toBe(feedA.data.length);
+    expect((await svc.pendingCount(manager(org), { kind: 'document.chase.send' })).count).toBe(2);
+    await providerDb
+      .execute(sql`DELETE FROM proposals WHERE org_id = ${org.id}`)
+      .catch(() => undefined);
+  });
+
   it('decrements when a proposal leaves pending (approve / reject)', async () => {
     const org = await createTestOrg(`prope-${Date.now()}`, `prope-${Date.now()}`);
     const a = await seedProposal({ orgId: org.id, kind: 'signature_request.reissue' });

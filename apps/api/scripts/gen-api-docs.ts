@@ -880,7 +880,7 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/proposals/pending-count',
     auth: 'AuthGuard + TenantGuard (Manager)',
     summary:
-      "Constant-time count of the org's PENDING proposals — the inbox's HONEST lead line. Mirrors GET /notifications/unread-count (partial index idx_proposals_org_pending WHERE status='pending'; no full scan). Manager-only (service requireManager). RLS org isolation.",
+      "Constant-time count of the org's PENDING proposals — the inbox's HONEST lead line. Optional ?kind narrows IDENTICALLY to GET /proposals (so the count + feed are one kind-aware source; no \"X of Y\" drift under a facet). Mirrors GET /notifications/unread-count (partial index idx_proposals_org_pending WHERE status='pending'; no full scan). Manager-only (service requireManager). RLS org isolation.",
     response: '{ "data": { "count": int } }',
     errors: ['forbidden', 'missing_token', 'invalid_token', 'token_expired'],
   },
@@ -1629,7 +1629,7 @@ const ENDPOINTS: Endpoint[] = [
     path: '/api/v1/org/signature-pulse',
     auth: 'AuthGuard + TenantGuard (projects.read)',
     summary:
-      'E2 Wave-2 B1 — org-wide signature-pulse feed for the board-first home: per-project attention rows (rankAttention-ordered), needsHuman bucket, header buckets. Agent → assigned projects only; manager/viewer → whole org. Single-source share-weighted consent (matches the board). No PII (counts/%/timestamps only).',
+      'E2 Wave-2 B1 — org-wide signature-pulse feed for the board-first home: per-project attention rows (rankAttention-ordered) + header buckets (incl. the needsHuman overlay count). Agent → assigned projects only; manager/viewer → whole org. Single-source share-weighted consent (matches the board). No PII (counts/%/timestamps only).',
     response: '{ "data": { ...SignaturePulse } }',
     errors: ['missing_token', 'invalid_token', 'token_expired'],
   },
@@ -1716,7 +1716,8 @@ const ENDPOINTS: Endpoint[] = [
     summary:
       'S5b — fan out ONE project document to ALL active owners of the project (reuses bulk-send: gate + dedup + delivery). 10/min throttle (email-bomb defense); doc-belongs-to-project enforced.',
     request: SignatureCampaignInput,
-    response: '{ "data": { ...CampaignResult (created/skipped counts) } }',
+    response:
+      '{ "data": { "created", "delivered", "noChannel", "skipped", "total" } } — created = pending rows inserted; delivered = of those, how many reached a channel (didAnyChannelDeliver); noChannel = created-but-undeliverable (no email+phone); created === delivered + noChannel',
     errors: [
       'validation_error',
       'forbidden',

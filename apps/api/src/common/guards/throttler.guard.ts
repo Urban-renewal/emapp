@@ -5,12 +5,15 @@ import type { FastifyRequest } from 'fastify';
 /**
  * ThrottlerGuard with a PROD-SAFE, env-gated per-request bypass.
  *
- * The capability is OFF unless `THROTTLE_TEST_BYPASS` is set AND
- * NODE_ENV !== 'production' (audit-pass III F1 — the doc said "never in
- * production" but the code did not enforce it. An ops typo putting the
- * env var in prod would have silently defeated every rate limit for
- * anyone who knew the value. Now blocked structurally even if the env
- * is set.). Bypass also requires `x-throttle-bypass: <that exact value>`
+ * The capability is OFF unless `THROTTLE_TEST_BYPASS` is set AND NODE_ENV is
+ * EXPLICITLY `development`/`test` (audit-pass III F1 + red-team #14 fail-closed:
+ * the doc said "never in production" but the gate was a positive `=== 'production'`
+ * check — so an UNSET or typo'd NODE_ENV (a deployed image that forgot
+ * `ENV NODE_ENV=production`) did NOT block the bypass. An ops typo putting the env
+ * var in such an environment would have silently defeated every rate limit for
+ * anyone who knew the value. Now an ALLOWLIST: anything other than an explicit
+ * dev/test env throttles normally, fail-closed). Bypass also requires
+ * `x-throttle-bypass: <that exact value>`
  * header. This lets the black-box conformance suite exercise functional
  * flows without its own burst tripping the limiter, while requests
  * WITHOUT the header (e.g. the brute-force clause) are still throttled
@@ -19,8 +22,12 @@ import type { FastifyRequest } from 'fastify';
 @Injectable()
 export class ConfigurableThrottlerGuard extends ThrottlerGuard {
   protected override async shouldSkip(context: ExecutionContext): Promise<boolean> {
-    // Hard refuse in production — fail-closed even on env misconfig.
-    if (process.env['NODE_ENV'] === 'production') return super.shouldSkip(context);
+    // FAIL-CLOSED allowlist (red-team #14) — the test bypass is permitted ONLY in an
+    // EXPLICIT development/test env. Production, an UNSET NODE_ENV (image that forgot
+    // `ENV NODE_ENV=production`), or a typo throttles normally even if THROTTLE_TEST_
+    // BYPASS is mistakenly set in that environment.
+    const nodeEnv = process.env['NODE_ENV'];
+    if (nodeEnv !== 'development' && nodeEnv !== 'test') return super.shouldSkip(context);
     const secret = process.env['THROTTLE_TEST_BYPASS'];
     if (secret) {
       const req = context.switchToHttp().getRequest<FastifyRequest>();

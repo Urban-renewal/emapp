@@ -255,7 +255,7 @@ export function DocumentsListClient() {
  */
 function CockpitView({ archived, canCreate }: { archived: boolean; canCreate: boolean }) {
   const t = useTranslations('documents');
-  const { data: vm, isLoading, isError, refetch } = useDocumentsBoard();
+  const { data: vm, isLoading, isError, error, refetch } = useDocumentsBoard();
   const [activeProject, setActiveProject] = useState<ProjectRef | null>(null);
   useEffect(() => setActiveProject(null), [archived]);
 
@@ -282,7 +282,7 @@ function CockpitView({ archived, canCreate }: { archived: boolean; canCreate: bo
       <DataState
         isLoading={isLoading}
         isError={isError}
-        error={undefined}
+        error={error}
         isEmpty={Boolean(vm && vm.attention.length === 0)}
         onRetry={() => void refetch()}
         skeleton="list"
@@ -542,7 +542,7 @@ function FleetCompletenessTile({
 function PartyBoard({ archived, canCreate }: { archived: boolean; canCreate: boolean }) {
   const t = useTranslations('documents');
   const tParty = useTranslations('documents.party');
-  const { data, isLoading, isError, refetch } = useBoardCompleteness();
+  const { data, isLoading, isError, error, refetch } = useBoardCompleteness();
   const [activeParty, setActiveParty] = useState<DocumentParty | null>(null);
   useEffect(() => setActiveParty(null), [archived]);
 
@@ -574,7 +574,7 @@ function PartyBoard({ archived, canCreate }: { archived: boolean; canCreate: boo
     <DataState
       isLoading={isLoading}
       isError={isError}
-      error={undefined}
+      error={error}
       isEmpty={Boolean(data && ranked.every((c) => c.total === 0 && !c.hasRequirement))}
       onRetry={() => void refetch()}
       skeleton="list"

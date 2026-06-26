@@ -391,7 +391,7 @@ describe('#2 recipient-association gate — bulk partial association (batch not 
       ownerIds: [associated, stranger],
     });
 
-    expect(res.summary).toEqual({ created: 1, skipped: 0, failed: 1 });
+    expect(res.summary).toEqual({ created: 1, delivered: 1, noChannel: 0, skipped: 0, failed: 1 });
 
     const okRes = res.results.find((r) => r.ownerId === associated)!;
     const failRes = res.results.find((r) => r.ownerId === stranger)!;

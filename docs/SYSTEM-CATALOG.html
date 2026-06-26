@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EMAPP — קטלוג המערכת המלא + תכנית השכבה החכמה</title>
+<style>
+:root{
+  --bg:#faf9f7; --surface:#f1efe8; --card:#ffffff; --border:rgba(0,0,0,.12); --border2:rgba(0,0,0,.22);
+  --text:#1b1b19; --muted:#5f5e5a; --hint:#8a897f;
+  --ok:#0f6e56; --ok-bg:#e1f5ee; --add:#854f0b; --add-bg:#faeeda;
+  --info:#0c447c; --info-bg:#e6f1fb; --warn:#854f0b; --warn-bg:#faeeda;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#16150f; --surface:#23211a; --card:#1e1c16; --border:rgba(255,255,255,.14); --border2:rgba(255,255,255,.26);
+    --text:#ece9df; --muted:#b4b2a9; --hint:#888780;
+    --ok:#5dcaa5; --ok-bg:#085041; --add:#fac775; --add-bg:#633806;
+    --info:#85b7eb; --info-bg:#0c447c; --warn:#fac775; --warn-bg:#633806;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI",Arial,"Helvetica Neue",sans-serif;line-height:1.6;}
+.wrap{max-width:1120px;margin:0 auto;padding:2rem 1.25rem 4rem;}
+header.top{border-bottom:1px solid var(--border);padding-bottom:1.2rem;margin-bottom:1.5rem;}
+h1{font-size:24px;font-weight:600;margin:0 0 .4rem;}
+.sub{color:var(--muted);font-size:15px;max-width:80ch;margin:0;}
+h2.sec{font-size:19px;font-weight:600;margin:2.2rem 0 .9rem;padding-top:1rem;border-top:1px solid var(--border);}
+h2.sec:first-of-type{border-top:none;}
+p.lead{color:var(--muted);font-size:14px;margin:0 0 1rem;max-width:90ch;}
+.legend{display:flex;gap:18px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--muted);margin:.6rem 0 0;}
+.ok{color:var(--ok);font-weight:600;}
+.add{color:var(--add);font-weight:600;}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:.9rem 1.1rem;}
+.card.feat{border:2px solid var(--info);}
+.card-h{display:flex;align-items:center;gap:8px;font-size:15.5px;font-weight:600;margin:0 0 .7rem;padding-bottom:.55rem;border-bottom:1px solid var(--border);}
+.tag{margin-inline-start:auto;font-size:11px;background:var(--info-bg);color:var(--info);border-radius:6px;padding:2px 8px;font-weight:600;}
+.f{margin:.5rem 0;font-size:13px;}
+.fl{display:inline-block;min-width:64px;color:var(--hint);font-weight:600;vertical-align:top;}
+.ft{color:var(--muted);}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:.4rem 0 1.2rem;}
+.mc{background:var(--surface);border-radius:10px;padding:.9rem;text-align:center;}
+.mc b{display:block;font-size:26px;font-weight:600;}
+.mc span{font-size:12.5px;color:var(--muted);}
+table.ex{width:100%;border-collapse:collapse;font-size:13px;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+table.ex th,table.ex td{text-align:right;padding:.6rem .8rem;border-bottom:1px solid var(--border);vertical-align:top;}
+table.ex th{background:var(--surface);font-weight:600;}
+table.ex tr:last-child td{border-bottom:none;}
+.pill{display:inline-block;background:var(--info-bg);color:var(--info);border-radius:7px;padding:2px 10px;font-size:12.5px;font-weight:600;white-space:nowrap;}
+.lyr{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:.75rem 1rem;margin-bottom:9px;}
+.lyr-n{flex:0 0 32px;height:32px;border-radius:50%;background:var(--info-bg);color:var(--info);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:15px;}
+.lyr-t{font-size:14.5px;font-weight:600;margin:0 0 2px;}
+.lyr-d{font-size:13px;color:var(--muted);}
+.callout{background:var(--warn-bg);border-radius:12px;padding:.9rem 1.1rem;margin-top:8px;}
+.callout .ct{font-size:14.5px;font-weight:600;color:var(--warn);margin:0 0 .4rem;}
+.callout .cd{font-size:13px;color:var(--warn);line-height:1.7;}
+.steps .f .fl{min-width:88px;color:var(--info);}
+.foot{font-size:13px;color:var(--muted);border-top:1px solid var(--border);padding-top:1rem;margin-top:1.6rem;}
+code{background:var(--surface);padding:1px 5px;border-radius:5px;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+<h1>EMAPP — קטלוג המערכת המלא + תכנית השכבה החכמה</h1>
+<p class="sub">לכל טאב ולכל משתמש: כל הסטטוסים, כל הפעולות וכל התהליכים החכמים — קיים מול נדרש. נבנה מקריאת הקוד האמיתי (6 ביקורות-קוד מקבילות) ונבחן דרך עדשה רב-צדדית של התחדשות עירונית (בעלים · עו״ד · קבלן/יזם · שמאי · מודד · אדריכל · עירייה · מפקח · בנק) כדי לחשוף גם את המצבים שיתרחשו בעתיד, לא רק את אלו של היום.</p>
+<div class="legend"><span><span class="ok">✓</span> קיים היום</span><span><span class="add">➕</span> נדרש (מצב/פעולה/אוטומציה אמיתי בהתחדשות עירונית — עדיין לא במערכת)</span></div>
+</header>
+
+<h2 class="sec">העיקרון: כל מסך = מודל-מצב אחד</h2>
+<p class="lead">המערכת מחשבת את <b>כל המצב</b> של הישות, גוזרת ממנו את <b>הפעולה הנכונה הבאה</b>, ושתיהן — התמונה והכפתור — מוצגות מאותו מקור (לעולם לא סותרות). כל פעולה בלחיצה נושאת פירוט מדויק (מה · למה · מה תעשה) כדי שתחליט במבט אחד, בלי לחקור בעצמך.</p>
+<table class="ex">
+<tr><th style="width:30%">המצב (מהמודל)</th><th style="width:20%">הפעולה התואמת</th><th>הפירוט שמוצג</th></tr>
+<tr><td>חתימה פגה, הבעלים לא חתם</td><td><span class="pill">חדש חתימה</span></td><td>הקישור פג לפני 3 ימים · לחיצה שולחת קישור חדש ל-7 ימים בדוא״ל ל-da***@…</td></tr>
+<tr><td>חסר נסח טאבו בפרויקט</td><td><span class="pill">בקש מהשמאי</span></td><td>האחראי: שמאי · לחיצה שולחת בקשת העלאה לשמאי הפרויקט</td></tr>
+<tr><td>סרבן שחוסם את הרף</td><td><span class="pill">טפל בסרבן</span></td><td>אם יחתום — הפרויקט עובר 66% · בעל המניה הגדול שטרם חתם</td></tr>
+<tr><td>נחצה הרף, סטטוס עדיין באיסוף</td><td><span class="pill">אשר פרויקט</span></td><td>68% ≥ 66% · מקדם ל'מאושר' (החלטה משפטית — אישור אנושי)</td></tr>
+<tr><td>תזכורת בשלה (+7י, 2 מ-3)</td><td><span class="pill">שלח תזכורת</span></td><td>תזכורת 2 מתוך 3 · בכפוף לשעות שקט + הסכמה</td></tr>
+</table>
+
+<h2 class="sec">הקטלוג — כל טאב × כל משתמש</h2>
+<div class="grid">
+
+<div class="card"><div class="card-h">בית · תמונת מצב</div>
+<div class="f"><span class="fl">סטטוסים</span><span class="ft"><span class="ok">✓</span> אחוז-הסכמה · רף-הושג · תקוע · פג-בקרוב · דירוג. <span class="add">➕</span> בריאות רב-צירית (מסמכים+משימות+חסימות, לא רק חתימות).</span></div>
+<div class="f"><span class="fl">פעולות</span><span class="ft"><span class="ok">✓</span> פתיחה · קפיצה לדחוף. <span class="add">➕</span> פעולה תואמת בלחיצה לכל כרטיס + פירוט.</span></div>
+<div class="f"><span class="fl">חכם</span><span class="ft"><span class="ok">✓</span> דירוג-תשומת-לב · פיד דופק · תקרה+זנב כן. <span class="add">➕</span> גלגול כל הצירים ל"מה דורש אותי".</span></div>
+<div class="f"><span class="fl">תפקידים</span><span class="ft">מנהל→הכל · סוכן→מוקצים · צופה→קריאה.</span></div></div>
+
+<div class="card"><div class="card-h">פרויקטים</div>
+<div class="f"><span class="fl">סטטוסים</span><span class="ft"><span class="ok">✓</span> תכנון·איסוף·מאושר·בבנייה·הושלם·בוטל + מסלול. <span class="add">➕</span> התנגדויות·היתר·מימון·השהיה·ביקורת-סופית.</span></div>
+<div class="f"><span class="fl">פעולות</span><span class="ft"><span class="ok">✓</span> יצירה·עריכה·מעבר-סטטוס(+רף)·ארכוב·קמפיין·תזכורת-לכולם·אבני-דרך. <span class="add">➕</span> CTA "שלב הבא" תואם; דגל התנגדות/היתר/מימון.</span></div>
+<div class="f"><span class="fl">חכם</span><span class="ft"><span class="ok">✓</span> דופק·מנוף/סרבנים·צ׳קליסט·חידוש+תזכורות. <span class="add">➕</span> מוכנות-לאישור·הסלמת-תקוע·אזהרת-פקיעת-היתר.</span></div>
+<div class="f"><span class="fl">תפקידים</span><span class="ft">מנהל→כתיבה · סוכן→מוקצים · צופה→קריאה · קבלן→מבני.</span></div></div>
+
+<div class="card"><div class="card-h">חתימות</div>
+<div class="f"><span class="fl">סטטוסים</span><span class="ft"><span class="ok">✓</span> ממתין·נחתם·בוטל·פג. <span class="add">➕</span> ביטול-הסכמה·נכשל-מסירה·חודש·מותנה·עד·סבבים·חלון-ביטול.</span></div>
+<div class="f"><span class="fl">פעולות</span><span class="ft"><span class="ok">✓</span> בקשה·מרובה(≤200)·קמפיין·תזכורת·ביטול·קישור-ידני·הורדת-PDF·חתימה-ציבורית. <span class="add">➕</span> פעולה תואמת לכל סטטוס; שמירת סיבת-ביטול.</span></div>
+<div class="f"><span class="fl">חכם</span><span class="ft"><span class="ok">✓</span> טאטוא-פקיעה·חידוש+תזכורות(3,שקט,פעם-אחת)·דוח-מסירה·שורת-יושר. <span class="add">➕</span> הוכחת-מסירה·מעורבות·הסלמת-אין-ערוץ.</span></div>
+<div class="f"><span class="fl">תפקידים</span><span class="ft">מנהל→הכל · סוכן→PII-לפי-יכולת · צופה→ממוסך · דייר→חתימה.</span></div></div>
+
+<div class="card"><div class="card-h">בניינים ודירות</div>
+<div class="f"><span class="fl">סטטוסים</span><span class="ft"><span class="ok">✓</span> דירה: ממתין·נוצר-קשר·פגישה·נחתם·סירב·לא-זמין; בניין פעיל/ארכוב. <span class="add">➕</span> נפטר·מחלוקת/ייפוי-כוח·פינוי·תיקונים·העברת-זכויות.</span></div>
+<div class="f"><span class="fl">פעולות</span><span class="ft"><span class="ok">✓</span> יצירה/עדכון/סטטוס/ארכוב; התקדמות+סרבנים לדירה. <span class="add">➕</span> פעולה תואמת (רדיפה/פגישה/דגל-נפטר); מעקב-מגע-אחרון.</span></div>
+<div class="f"><span class="fl">חכם</span><span class="ft"><span class="ok">✓</span> חותמת-שינוי · גלגול-הסכמה · ספירת-דירות. <span class="add">➕</span> אוטומציית-פינוי · שער-תיקונים · צ׳קליסט-לדירה.</span></div>
+<div class="f"><span class="fl">תפקידים</span><span class="ft">מנהל/סוכן→כתיבה · צופה→קריאה · קבלן→מבני · דייר→דירתו.</span></div></div>
+
+<div class="card"><div class="card-h">בעלים ובעלויות</div>
+<div class="f"><span class="fl">סטטוסים</span><span class="ft"><span class="ok">✓</span> פעיל/ארכוב/נמחק · שלד · בעלות+חלק-מדויק(סכום=1) · גילוי-בשטח. <span class="add">➕</span> כשירות(נפטר/קטין/פסול)+אפוטרופוס·מחלוקת·העברה·שיעבוד·אימות·ביטול-הסכמה.</span></div>
+<div class="f"><span class="fl">פעולות</span><span class="ft"><span class="ok">✓</span> יצירה·חיפוש(PII+שם)·עדכון·ארכוב·חשיפת-PII·ייצוא-DSAR·מחיקה-RTBF·קביעת-בעלויות. <span class="add">➕</span> סימון-נפטר·רישום-מחלוקת·ייפוי-כוח·ביטול-הסכמה·מיזוג·אימות; פעולות-מהירות (מושבתות).</span></div>
+<div class="f"><span class="fl">חכם</span><span class="ft"><span class="ok">✓</span> אימות-סכום·נגזרת-חלק·חיפוש-HMAC·פענוח-בתוך-SQL·מיסוך·היקף-סוכן·תיעוד-חשיפה·ספירת-סרבן. <span class="add">➕</span> אי-התאמת-בעלות·זיהוי-כפילות·דגל-נפטר·ניקוד-מנוף·זיהוי-רף.</span></div>
+<div class="f"><span class="fl">תפקידים</span><span class="ft">מנהל→מלא+PII · סוכן→מוקצים+יכולות · צופה→ממוסך · קבלן→אין · דייר→רשומתו.</span></div></div>
+
+<div class="card feat"><div class="card-h">מסמכים <span class="tag">הדוגמה שלך</span></div>
+<div class="f"><span class="fl">סטטוסים</span><span class="ft"><span class="ok">✓</span> סוג(18)·סריקה(ממתין/נקי/נגוע/שגיאה)·רגיש·מוצפן·היקף(ארגון/פרויקט/דירה/בעלים)·צד(9,נגזר)·פעיל/ארכוב. <span class="add">➕</span> סטטוס-משפטי(טיוטה/נבדק/אושר/נדחה)·גרסאות(נוכחי/מוחלף)·תוקף(תקף/פג)·נוטריון·שלב-רלוונטי.</span></div>
+<div class="f"><span class="fl">פעולות</span><span class="ft"><span class="ok">✓</span> רישום·העלאה·סגירה·סיווג·בדיקת-כפילות·עריכה·ארכוב·הורדה·שיתוף-לצד. <span class="add">➕</span> בקשה-מצד·אישור/דחייה·גרסה-חדשה·קביעת-תוקף·הצפנה-מחדש·"העלה את החסר".</span></div>
+<div class="f"><span class="fl">חכם</span><span class="ft"><span class="ok">✓</span> סיווג-אוטו·זיהוי-כפילות·רגישות-אוטו·סריקת-וירוס·שלמות-לפי-צד·צ׳קליסט·רדיפת-צד-לחסר·משימה-לחסר. <span class="add">➕</span> תיוק-אוטו·אזהרת-פקיעה·אי-התאמה-מנסח·גרסה-אוטו·שומר-שיתוף-רגיש·הזמנת-צד-אחראי.</span></div>
+<div class="f"><span class="fl">תפקידים</span><span class="ft">מנהל→הכל · סוכן→יכולת(רגיש=אימות) · צופה→קריאה · קבלן→לא-רגיש בלבד (אין העלאה) · דייר→דירתו (אין הורדה) · ספק→ביקורת.</span></div></div>
+
+<div class="card"><div class="card-h">קבלנים וגורמים (שיתוף)</div>
+<div class="f"><span class="fl">סטטוסים</span><span class="ft"><span class="ok">✓</span> קבלן(התמחות,ארכוב); שיתוף פעיל/פג/בוטל + סוג-צד(9) + היקף + הרשאות + רגיש + OTP + תוקף + תקרות. <span class="add">➕</span> הקפאה·סיבת-ביטול·תוקף-לפי-מסמך·יומן-גישה · צדדים-חסרים אמיתיים (רשות-תכנון·מהנדס-שיפוצים·רו״ח·ביטוח) — <b>בנק ומפקח כבר קיימים</b> בין 9 סוגי-הצד.</span></div>
+<div class="f"><span class="fl">פעולות</span><span class="ft"><span class="ok">✓</span> קבלן CRUD; שיתוף יצירה/עדכון/הארכה/שליחה/ביטול. <span class="add">➕</span> מסירה-אמיתית (כיום לא נשלח כלום)·הזמנת-צד·בקשה-מצד·העלאת-קבלן·סימן-מים.</span></div>
+<div class="f"><span class="fl">חכם</span><span class="ft"><span class="ok">✓</span> רדיפת-מסמך·מנגנון-גישה-אחיד. <span class="add">➕</span> פותר-קשר-צד·שומר-שיתוף-רגיש·תזכורות-דדליין·הזמנה-אוטו.</span></div>
+<div class="f"><span class="fl">תפקידים</span><span class="ft">מנהל→כתיבה · סוכן/צופה→קריאה · קבלן→פורטל · ספק→השעיית-ארגון. <span class="add">➕</span> השיתוף בנוי-למחצה (לא מוסר) — עיצוב מלא בשער-בעלים.</span></div></div>
+
+<div class="card"><div class="card-h">משימות · הערות · לו״ז</div>
+<div class="f"><span class="fl">סטטוסים</span><span class="ft"><span class="ok">✓</span> משימה ממתין/בתהליך/הושלם/בוטל · מקור משתמש/מערכת · עדיפות · תאריך; מוזמני-ICS חיצוניים (task_external_attendees · icsSentAt/icsCancelledAt); הערה פעיל/ארכוב/נעוץ. <span class="add">➕</span> תלות·חזרתיות·תת-משימה·הסלמה·קטגוריית-תוצאה.</span></div>
+<div class="f"><span class="fl">פעולות</span><span class="ft"><span class="ok">✓</span> CRUD·שיוך·הערות; הזמנת-ICS. <span class="add">➕</span> הסלמה·שיוך-לפי-עומס·סגירה-עם-תוצאה·פתיחה-מחדש·תזכורת-דדליין.</span></div>
+<div class="f"><span class="fl">חכם</span><span class="ft"><span class="ok">✓</span> שיוך-יוצר·חותמת-סיום·משימות-מערכת·התראות·ICS. <span class="add">➕</span> הסלמת-איחור·חזרתיות·תזכורות·שיוך-חכם·חסימת-תלות·סגירה-אוטו.</span></div>
+<div class="f"><span class="fl">תפקידים</span><span class="ft">מנהל→הכל · סוכן→מוקצות · צופה→קריאה · דייר→מוזמן ל-ICS.</span></div></div>
+
+<div class="card"><div class="card-h">תיבת-נכנס (הצעות)</div>
+<div class="f"><span class="fl">סטטוסים</span><span class="ft"><span class="ok">✓</span> ממתין·אושר·נדחה·פג·בוצע; סוגים: חידוש·תזכורת·משימה·רדיפת-מסמך. <span class="add">➕</span> ודאות·הנמקה·קיבוץ/מרובה·תזמון·תנאים.</span></div>
+<div class="f"><span class="fl">פעולות</span><span class="ft"><span class="ok">✓</span> אישור(מאמת-גבול,מריץ,מחזיר-תוצאה)·דחייה·ספירה-כנה+קיבוץ-לפי-סוג. <span class="add">➕</span> התאמה/דחייה·אישור-קבוצתי·פירוט-תואם.</span></div>
+<div class="f"><span class="fl">חכם</span><span class="ft"><span class="ok">✓</span> מפיק-שעתי(:45)·פעם-אחת·מיפוי-תוצאה-קנוני. <span class="add">➕</span> 10 הממליצים החסרים (ראה למטה).</span></div>
+<div class="f"><span class="fl">תפקידים</span><span class="ft">מנהל בלבד.</span></div></div>
+
+<div class="card"><div class="card-h">התראות והודעות</div>
+<div class="f"><span class="fl">סטטוסים</span><span class="ft"><span class="ok">✓</span> נקרא/לא-נקרא (יומן) · סוגים; הודעות-צוות (בנוי-חלקית). <span class="add">➕</span> מראת-מסירה(דוא״ל/SMS)·העדפות.</span></div>
+<div class="f"><span class="fl">פעולות</span><span class="ft"><span class="ok">✓</span> רשימה·ספירה-אמיתית·סימון·הכל; שיחות+ספירה-ארגונית. <span class="add">➕</span> התראות-ניתנות-לפעולה (קישור-לפעולה).</span></div>
+<div class="f"><span class="fl">חכם</span><span class="ft"><span class="ok">✓</span> פתרון-נמענים·ספירה-קבועה·תגי-ניווט. <span class="add">➕</span> דייג׳סט·הסלמה-בדחוף.</span></div>
+<div class="f"><span class="fl">תפקידים</span><span class="ft">עצמי לכולם; תגים בטוחים-לתפקיד.</span></div></div>
+
+<div class="card"><div class="card-h">ייבוא וטאבו</div>
+<div class="f"><span class="fl">סטטוסים</span><span class="ft"><span class="ok">✓</span> בתור·ניתוח·אימות·ממתין-מיפוי·ממתין-אישור·שמירה·הושלם·נכשל·בוטל · שגיאות-שורה · הרצה-יבשה. <span class="add">➕</span> הצלחה-חלקית·ביטול·אסטרטגיית-קונפליקט·שושלת.</span></div>
+<div class="f"><span class="fl">פעולות</span><span class="ft"><span class="ok">✓</span> העלאה·התחלה·מיפוי·ביטול·שגיאות·SSE·אישור. <span class="add">➕</span> ניתוח-נסח→טיוטה→אישור-אנושי·ביטול.</span></div>
+<div class="f"><span class="fl">חכם</span><span class="ft"><span class="ok">✓</span> פעם-אחת·אימות-יבש·תקציר-שינוי. <span class="add">➕</span> דגל-אי-התאמה·זיהוי-כפילות·מיפוי-אוטו.</span></div>
+<div class="f"><span class="fl">תפקידים</span><span class="ft">מנהל/סוכן(יכולת); צופה→לא.</span></div></div>
+
+<div class="card"><div class="card-h">חברים · תפקידים · הגדרות</div>
+<div class="f"><span class="fl">סטטוסים</span><span class="ft"><span class="ok">✓</span> הוזמן/פעיל/בוטל · תפקיד · 7-יכולות+תבניות · ראשי; RBAC-מערכת (6 תפקידי-מערכת: owner/admin/manager/agent/viewer/external_read — בנוי, לא-אכוף) + עקיפות-חבר. <span class="add">➕</span> פעילות-אחרונה·UI-עקיפות·ברירות-מחדל-ארגוניות·השבתה-אוטו.</span></div>
+<div class="f"><span class="fl">פעולות</span><span class="ft"><span class="ok">✓</span> הזמנה·שליחה(5/דק)·שינוי-תפקיד·יכולות·תבנית·הסרה (שמירות); תפקידים+הקצאות, הגדרות-ארגון. <span class="add">➕</span> חיווט-עקיפות·תצוגה-עצמית.</span></div>
+<div class="f"><span class="fl">חכם</span><span class="ft"><span class="ok">✓</span> מנקה-סשנים·שמירת-ביקורת·שומר-מנהל-אחרון·תוקף-הזמנה. <span class="add">➕</span> שיוך-לפי-עומס·זיהוי-חריג·התראת-מנהל-יחיד.</span></div>
+<div class="f"><span class="fl">תפקידים</span><span class="ft">מנהל בלבד.</span></div></div>
+
+<div class="card"><div class="card-h">ביקורת (Audit)</div>
+<div class="f"><span class="fl">סטטוסים</span><span class="ft"><span class="ok">✓</span> יומן-מוסף-בלבד (שחקן/פעולה/יעד · ללא-PII · היקף-ארגון); יומן-ספק (חוצה-ארגונים · סיבה-חובה). <span class="add">➕</span> שמירה-לפי-טבלה·דגל-מניעה.</span></div>
+<div class="f"><span class="fl">פעולות</span><span class="ft"><span class="ok">✓</span> רשימה(מנהל); חיפוש-ספק(מוגבל)+עצמי. <span class="add">➕</span> מסך "מי חשף PII ומתי".</span></div>
+<div class="f"><span class="fl">חכם</span><span class="ft"><span class="ok">✓</span> כתיבה-אוטו·סינון-PII·טאטוא·שומר-הקרנה(CI). <span class="add">➕</span> התראת-חריגה.</span></div>
+<div class="f"><span class="fl">תפקידים</span><span class="ft">מנהל→ארגונו · ספק→חוצה (ללא PII).</span></div></div>
+
+<div class="card"><div class="card-h">פורטל-קבלן (חיצוני)</div>
+<div class="f"><span class="fl">סטטוסים</span><span class="ft"><span class="ok">✓</span> טוקן→פרויקט-יחיד · קריאה; מבני+חתימות-מצרפי+מסמכים-לא-רגישים. <span class="add">➕</span> זהות/צי(רב-פרויקט)·העלאה-דו-כיוונית·מסירה-אמיתית.</span></div>
+<div class="f"><span class="fl">פעולות</span><span class="ft"><span class="ok">✓</span> צפייה+הורדה (אם הותר). <span class="add">➕</span> העלאת-מסמכים·"מה חסר ממך".</span></div>
+<div class="f"><span class="fl">חכם</span><span class="ft"><span class="ok">✓</span> פותר-גישה fail-closed · תוקף-טוקן. <span class="add">➕</span> פעולת "העלה את החסר".</span></div>
+<div class="f"><span class="fl">תפקידים</span><span class="ft">קבלן בלבד (תלוי בעיצוב-השיתוף, שער-בעלים).</span></div></div>
+
+<div class="card"><div class="card-h">פורטל-דייר (חיצוני)</div>
+<div class="f"><span class="fl">סטטוסים</span><span class="ft"><span class="ok">✓</span> סשן-OTP; דירותיו+מסמכיו+חתימותיו. <span class="add">➕</span> חתימה-מהפורטל (כיום קבורה)·רב-פרויקט·הורדה.</span></div>
+<div class="f"><span class="fl">פעולות</span><span class="ft"><span class="ok">✓</span> צפייה+חתימה-בקישור (כולל resend-לבעלים). <span class="add">➕</span> חתימה-בלחיצה·הורדה·יצירת-קשר-אמיתי.</span></div>
+<div class="f"><span class="fl">חכם</span><span class="ft"><span class="ok">✓</span> טעינה/שגיאה/ריק לכל מקטע. <span class="add">➕</span> כותרת-כנה·הבלטת "יש לך מסמך לחתום".</span></div>
+<div class="f"><span class="fl">תפקידים</span><span class="ft">דייר בלבד · רשומתו (אבטחה תקינה).</span></div></div>
+
+<div class="card"><div class="card-h">ניהול-ספק (חוצה-ארגונים)</div>
+<div class="f"><span class="fl">סטטוסים</span><span class="ft"><span class="ok">✓</span> MFA-חובה·נעילה·השבתה · סשנים-מסתובבים · ארגון מושעה/פעיל. <span class="add">➕</span> ניתוק-סשנים-בהשעיה·האטה-הדרגתית.</span></div>
+<div class="f"><span class="fl">פעולות</span><span class="ft"><span class="ok">✓</span> רשימת/פרטי-ארגון(ממוסך)·משתמשי-ארגון·הקמה+הזמנה·השעיה/הפעלה·חיפוש-ביקורת+עצמי·בריאות-מערכת.</span></div>
+<div class="f"><span class="fl">חכם</span><span class="ft"><span class="ok">✓</span> ביקורת-קודם·רשימת-היתר-PII(CI)·נעילת-כניסה·מנקה. <span class="add">➕</span> התראת-סף.</span></div>
+<div class="f"><span class="fl">תפקידים</span><span class="ft">ספק בלבד (MFA + סיבה-חובה לכל בקשה).</span></div></div>
+
+</div>
+
+<h2 class="sec">התהליכים האוטומטיים — קיים מול נדרש</h2>
+<p class="lead">החוק: ביצוע-אוטומטי רק כאשר פנימי ∧ הפיך ∧ ללא-PII ∧ ללא-יוצא; כל השאר = הצעה לאישור בלחיצה; ורצפות אנושיות-בלבד (מעבר-ל'מאושר', אישור-טאבו, ייצוא/מחיקת-PII, הדלקת-רגישות, מתן-תפקיד, הקפאת-ספק, הצפנה-מחדש).</p>
+<div class="card">
+<div class="f"><span class="fl"><span class="ok">✓</span> קיים</span><span class="ft">4 ממליצים (חידוש-חתימה · תזכורות · משימה-לחסר · רדיפת-מסמך) · 4 עבודות-רקע מתוזמנות (מנקה :00 · פקיעת-חתימה :30 · מפיק-הצעות :45 · שמירת-ביקורת 03:15) · ייבוא (תור על-פי-דרישה, לא מתוזמן) · מושל-יוצא (5 שערים: מתג-חירום · הסכמה · מפסק · שעות-שקט · תקרת-קצב) + יומן-פעם-אחת · מסווג-הגבול.</span></div>
+<div class="f"><span class="fl"><span class="add">➕</span> נדרש</span><span class="ft">פותר-קשר-צד · הסלמת-פרויקט-תקוע · הצעת-מוכנות-לאישור · אזהרת-מסמך/היתר-פג · תזכורות-דדליין-לגורמים · דגל-אי-התאמת-בעלות · קיבוץ-פעולות · בדיקת-תקינות-קישור · שיוך-משימה-חכם · שומר-שיתוף-רגיש. (כל אחד = ממליץ חדש על אותו מנוע — בלי חלק-מנוע חדש.)</span></div>
+</div>
+
+<h2 class="sec">אימות כיסוי לפי שכבות (מלמטה למעלה — אין יתום)</h2>
+<p class="lead">אומת מול הבקרים האמיתיים (סריקת כל <code>*.controller.ts</code>): 49 בקרים, ~200 נתיבים. כל שכבה ממופה במלואה; כל פריט מתחקה לקטלוג.</p>
+<div class="metrics">
+<div class="mc"><b>49</b><span>בקרים</span></div>
+<div class="mc"><b>~200</b><span>נתיבים</span></div>
+<div class="mc"><b>7</b><span>שכבות</span></div>
+<div class="mc"><b>16</b><span>מסכים</span></div>
+</div>
+
+<div class="lyr"><div class="lyr-n">7</div><div><div class="lyr-t">תהליכים אוטומטיים <span class="ok">✓</span></div><div class="lyr-d">4 ממליצים · 4 עבודות-רקע מתוזמנות (+ייבוא על-פי-דרישה) · מושל-יוצא · מסווג-הגבול — + 10 הנדרשים.</div></div></div>
+<div class="lyr"><div class="lyr-n">6</div><div><div class="lyr-t">תפרים קנוניים (שימוש-חוזר) <span class="ok">✓</span></div><div class="lyr-d">withTenant/withProvider · governOutboundSend+מושל+יומן · providerPartyForDocType · detectMissingRequiredDocs · decideExternalPartyAccess · signaturePulse/boardCompleteness/rankAttention · keysetCondition.</div></div></div>
+<div class="lyr"><div class="lyr-n">5</div><div><div class="lyr-t">נתונים + enums (מרחב-המצבים) <span class="ok">✓</span></div><div class="lyr-d">כל טבלה + כל סטטוס: פרויקט·חתימה·דירה·סריקה/היקף/צד/רגישות·הצעה·יומן-יוצא·ייבוא·גילוי·משימה·שיתוף·חברות/יכולות·ספק. (ה-✓ בקטלוג; ה-➕ הם התוספות.)</div></div></div>
+<div class="lyr"><div class="lyr-n">4</div><div><div class="lyr-t">שירות / דומיין <span class="ok">✓</span></div><div class="lyr-d">שירות אחד לכל מודול; כל קריאה/כתיבה דרך withTenant/withProvider (db.query ישיר אסור).</div></div></div>
+<div class="lyr"><div class="lyr-n">3</div><div><div class="lyr-t">הרשאה <span class="ok">✓</span></div><div class="lyr-d">5 דרגות-טוקן (ארגון · דייר-OTP · קבלן-שיתוף · ספק-MFA · חתימה-ציבורית) · מטריצת תפקיד×משאב×פעולה · 7 יכולות-סוכן + תבניות + עקיפות · RLS FORCE · אימות-PII · סיבת-גישה לספק.</div></div></div>
+<div class="lyr"><div class="lyr-n">2</div><div><div class="lyr-t">אימות DTO (Zod) <span class="ok">✓</span></div><div class="lyr-d">לכל נתיב יש DTO מאומת ב-Zod (חוק קשיח — אין גישה ל-body.x גולמי).</div></div></div>
+<div class="lyr"><div class="lyr-n">1</div><div><div class="lyr-t">אנדפוינטים — השכבה התחתונה <span class="ok">✓</span></div><div class="lyr-d">~200 נתיבים: זהות 16 · פרויקטים 12 · בניינים 5 · דירות 5 · בעלים 11 · בעלויות 3 · גילוי 3 · חתימות 12 · מסמכים 13 · קבלנים 5 · שיתופים 7+5 · משימות 8 · הערות 5 · הצעות 4 · התראות 4 · שיחות 7 · ייבוא 9 · טאבו 7 · חלקה 5 · יוצא-תקוע 3 · ייצוא 1 · ביקורת 1 · חברים/תפקידים/הגדרות 23 · פורטל-דייר 8 · פורטל-קבלן 4 · ספק 9 · תשתית 3.</div></div></div>
+
+<div class="callout">
+<div class="ct">מה שהבדיקה תפסה — מסכים שהקטלוג קיפל, עכשיו מפורשים בכיסוי</div>
+<div class="cd"><b>ייצוא</b> (projects/:id/export) · <b>יוצא-תקוע</b> (תור הכרעה אנושית לשליחות דו-משמעיות — חלק מעמוד-השדרה של בטיחות-היוצא) · <b>הקמת-חלקה</b> (GovMap, שלב 3) · <b>שיוך-פרויקטים</b> (סוכן↔פרויקט) · <b>תפקידים + עקיפות-חבר + הגדרות-ארגון</b> (תת-שכבת IAM תחת "חברים") · <b>רשומות-גילוי</b> (תחת "בעלים"). כולם נוספו לכיסוי — כך אף נתיב אינו יתום.</div>
+</div>
+
+<h2 class="sec">איך נדע שזה שלם — לתמיד</h2>
+<div class="grid">
+<div class="card"><div class="f"><span style="font-weight:600">הקטלוג = מקור-האמת.</span> נשמר ב-docs; שומר-CI יפיל את ה-PR אם enum/endpoint/ממליץ סוטה ממנו.</div></div>
+<div class="card"><div class="f"><span style="font-weight:600">מועצה רב-צדדית.</span> מריצים אותה לכל תהליך לפני בנייה — היא מוסיפה את מצבי-העתיד מראש.</div></div>
+<div class="card"><div class="f"><span style="font-weight:600">מודל-מצב.</span> מציג תמונה+פעולה מאותו קטלוג — שלמות הופכת לניתנת-להוכחה.</div></div>
+<div class="card"><div class="f"><span style="font-weight:600">הגדרת-מושלם (C1–C12).</span> נמדדת מול הקטלוג ע״י כלי-הביקורת — חוזרים עד ירוק-מלא.</div></div>
+</div>
+
+<h2 class="sec">סדר הבנייה</h2>
+<div class="card steps">
+<div class="f"><span class="fl">שלב 0 (עכשיו)</span><span class="ft">נעילת הקטלוג הזה כ-<code>docs/SYSTEM-CATALOG</code> + שומר-הסחיפה. זה ה"מנגנון לדעת שזה שלם" שביקשת.</span></div>
+<div class="f"><span class="fl">שלב 1</span><span class="ft">מודל-מצב לפרויקט+בעלים+מסמך → תמונה מלאה + פעולה תואמת בבית/פרויקט/בעלים/מסמכים; סגירת 3 פערי-אוטונומיה מובילים.</span></div>
+<div class="f"><span class="fl">שלב 2</span><span class="ft">מילוי המצבים ה-➕ שלב-אחר-שלב (היתר/התנגדות/מימון; כשירות/מחלוקת/העברה; משפטי/תוקף/גרסאות) + פעולות + ממליצים.</span></div>
+<div class="f"><span class="fl">שלב 3</span><span class="ft">המודל בכל מסך × כל תפקיד (כולל קבלן/דייר/סוכן + מסירת-שיתוף בשער-בעלים); ביקורת חוזרת עד ירוק-מלא.</span></div>
+</div>
+
+<p class="foot"><b>הצהרת כיסוי:</b> כל אחד מ-~200 הנתיבים שייך למסך אחד בקטלוג; כל סטטוס/פעולה/תהליך-חכם של מסך מתחקה מטה לטבלה (שכבה 5), לאנדפוינט (שכבה 1) או לממליץ (שכבה 7). שומר-הסחיפה (CI) יפיל PR שמוסיף נתיב/enum/ממליץ שלא רשום בקטלוג — כך השלמות נשמרת אוטומטית. &nbsp;·&nbsp; נוצר 2026-06-25 · גרסת-מקור: <code>docs/SYSTEM-CATALOG.md</code> + תכנית <code>silly-weaving-pie.md</code>.</p>
+
+</div>
+</body>
+</html>

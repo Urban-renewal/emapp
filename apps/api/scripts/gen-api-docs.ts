@@ -1716,7 +1716,8 @@ const ENDPOINTS: Endpoint[] = [
     summary:
       'S5b — fan out ONE project document to ALL active owners of the project (reuses bulk-send: gate + dedup + delivery). 10/min throttle (email-bomb defense); doc-belongs-to-project enforced.',
     request: SignatureCampaignInput,
-    response: '{ "data": { ...CampaignResult (created/skipped counts) } }',
+    response:
+      '{ "data": { "created", "delivered", "noChannel", "skipped", "total" } } — created = pending rows inserted; delivered = of those, how many reached a channel (didAnyChannelDeliver); noChannel = created-but-undeliverable (no email+phone); created === delivered + noChannel',
     errors: [
       'validation_error',
       'forbidden',

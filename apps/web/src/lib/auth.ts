@@ -5,18 +5,29 @@ import { cookies, headers } from 'next/headers';
 import { cache } from 'react';
 
 /**
- * Server-side `/me` fetch. Routes through the same Pages Function
- * reverse-proxy that the browser uses (D.35) — single env var
- * (`API_BACKEND_URL`), one place where the backend hostname lives.
+ * Server-side `/me` fetch.
  *
- * Closes §v9-H-1 — Host-header SSRF / token-exfiltration vector.
- * `selfOrigin()` no longer trusts the client-supplied Host verbatim;
- * an allowlist (`SELF_ORIGIN_ALLOWLIST`) drops anything not on the
- * known-good list. If a non-allowlisted Host arrives, the helper
- * returns null and the call is refused (getMe returns null, logout
- * performs only the local cookie-clear). This is defense-in-depth
- * on top of Cloudflare Pages' Host normalization — a future CF
- * misconfiguration cannot weaponize the Server Action.
+ * PERF (§v9-M-9 reversed, 2026-06-26 — latency budget): on the server we
+ * fetch the API backend DIRECTLY (`${API_BACKEND_URL}/api/v1/me`), skipping
+ * the browser → Pages-Function self-hop. The old path went SERVER → its own
+ * `/api/[...path]` proxy route → Railway, a redundant round-trip back through
+ * the web server on every authenticated SSR render (~0.39s measured warm).
+ * Warm authed pages must be <1s, so the self-hop is removed.
+ *
+ * Cookie forwarding, 401→unauthenticated handling, the timeout defense, and
+ * the return shape are PRESERVED EXACTLY — only the upstream URL changes.
+ * `API_BACKEND_URL` is the SAME single env var the proxy reads
+ * (`route.ts:getBackendBase()`); we reuse it rather than introduce a new knob,
+ * and the upstream path (`/api/v1/me`) is byte-for-byte what the proxy emits
+ * (`buildUpstreamUrl` → `${base}/api/v1/me`), so the backend contract is
+ * unchanged. If `API_BACKEND_URL` is absent (e.g. a bare unit env), we fall
+ * back to the §v9-H-1-allowlisted self-origin proxy path so behaviour is never
+ * silently broken.
+ *
+ * §v9-H-1 (Host-header SSRF / token-exfiltration) is unaffected for the direct
+ * path: `API_BACKEND_URL` is a trusted server-side env value, NOT a
+ * client-supplied Host, so there is nothing to allowlist. The proxy fallback
+ * still goes through `selfOrigin()`'s allowlist.
  */
 /**
  * PERF (2026-06-14): request-memoized with React `cache()`. A single dashboard
@@ -34,11 +45,11 @@ const getMeCached = cache(async (): Promise<UserProfile | null> => {
   const accessToken = cookieStore.get('access_token')?.value;
   if (!accessToken) return null;
 
-  const origin = await selfOrigin();
-  if (!origin) return null;
+  const target = await meEndpoint();
+  if (!target) return null;
 
   try {
-    const res = await fetch(`${origin}/api/v1/me`, {
+    const res = await fetch(target, {
       headers: { Cookie: `access_token=${accessToken}` },
       cache: 'no-store',
       // Defense against a hung backend (closes a server-side variant
@@ -53,6 +64,27 @@ const getMeCached = cache(async (): Promise<UserProfile | null> => {
     return null;
   }
 });
+
+/**
+ * Resolve the absolute `/me` URL for the server fetch.
+ *
+ * Primary: the API backend directly (`${API_BACKEND_URL}/api/v1/me`) — no
+ * self-hop. `API_BACKEND_URL` is the trusted backend base (the proxy's
+ * `getBackendBase()` reads the same var); we trim a trailing slash so a
+ * configured `…/` doesn't yield `//api`.
+ *
+ * Fallback: the §v9-H-1-allowlisted self-origin proxy path, used only when
+ * `API_BACKEND_URL` is unset. Returns null when neither is resolvable (caller
+ * treats null as unauthenticated / failed, same as before).
+ */
+async function meEndpoint(): Promise<string | null> {
+  const backend = process.env['API_BACKEND_URL'];
+  if (backend) return `${backend.replace(/\/$/, '')}/api/v1/me`;
+
+  const origin = await selfOrigin();
+  if (!origin) return null;
+  return `${origin}/api/v1/me`;
+}
 
 export async function getMe(): Promise<UserProfile | null> {
   return getMeCached();

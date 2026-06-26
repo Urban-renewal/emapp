@@ -1,6 +1,7 @@
 import type {
   ApartmentHoldout,
   ApartmentSignatureProgress,
+  PermitStatus,
   Project,
   ProjectLeverage,
   ProjectListItem,
@@ -63,12 +64,87 @@ const STATUS_INTENTS: Record<ProjectStatus, ProjectViewModel['intent']> = {
   cancelled: 'danger',
 };
 
+// wave-2.4 future-states — base badge intent per permit status. Approved=success,
+// applied (in-process)=info, rejected/expired=danger, none=neutral. OVERRIDDEN
+// below to warning/danger when an APPROVED permit is near/past its expiry — the
+// at-a-glance "היתר עומד לפוג" signal. (The Hebrew labels live in i18n, like
+// relocationType: it is a small open product set, not the locked D.18 enum.)
+const PERMIT_BASE_INTENTS: Record<PermitStatus, ProjectViewModel['permitIntent']> = {
+  none: 'neutral',
+  applied: 'info',
+  approved: 'success',
+  rejected: 'danger',
+  expired: 'danger',
+};
+
+/** The warning window (days) for an approved permit's expiry — mirrors the
+ *  backend `permit-expiring` recommender's default so the FE flag and the
+ *  proposal it produces stay consistent. */
+const PERMIT_EXPIRY_WARN_DAYS = 30;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * Compute the permit display fields (adapter-owned, single seam). For an APPROVED
+ * permit with an expiry, derive the urgency relative to `now`:
+ *   - past expiry            → state 'expired', intent 'danger'
+ *   - within the warn window → state 'soon',    intent 'warning'
+ *   - further out            → state 'ok',      intent base ('success')
+ * For any other status, the base intent applies and the expiry state is null.
+ */
+function computePermit(
+  p: Project | ProjectListItem,
+  now: Date,
+): Pick<
+  ProjectViewModel,
+  'permitStatus' | 'permitIntent' | 'permitExpiryState' | 'permitDaysToExpiry'
+> {
+  const status = p.permitStatus;
+  const baseIntent = PERMIT_BASE_INTENTS[status];
+
+  if (status !== 'approved' || p.permitExpiryAt === null) {
+    return {
+      permitStatus: status,
+      permitIntent: baseIntent,
+      permitExpiryState: null,
+      permitDaysToExpiry: null,
+    };
+  }
+
+  const expiry = p.permitExpiryAt instanceof Date ? p.permitExpiryAt : new Date(p.permitExpiryAt);
+  // Whole days until expiry; negative when already past. Math.ceil so "in a few
+  // hours" still reads as "1 day", and an instant just past reads as 0/-… not 0.
+  const daysToExpiry = Math.ceil((expiry.getTime() - now.getTime()) / MS_PER_DAY);
+
+  let expiryState: ProjectViewModel['permitExpiryState'];
+  let intent: ProjectViewModel['permitIntent'];
+  if (expiry.getTime() <= now.getTime()) {
+    expiryState = 'expired';
+    intent = 'danger';
+  } else if (daysToExpiry <= PERMIT_EXPIRY_WARN_DAYS) {
+    expiryState = 'soon';
+    intent = 'warning';
+  } else {
+    expiryState = 'ok';
+    intent = baseIntent;
+  }
+
+  return {
+    permitStatus: status,
+    permitIntent: intent,
+    permitExpiryState: expiryState,
+    permitDaysToExpiry: daysToExpiry,
+  };
+}
+
 export function toProjectViewModel(
   p: Project | ProjectListItem,
   locale: 'he' | 'en' = 'he',
 ): ProjectViewModel {
   const isListItem = (x: Project | ProjectListItem): x is ProjectListItem =>
     'buildingsCount' in x && typeof (x as ProjectListItem).buildingsCount === 'number';
+  // wave-2.4 — permit display is computed once, here (single seam). `now` is the
+  // adapt instant; the urgency is relative to it (recomputed on every refetch).
+  const permit = computePermit(p, new Date());
   return {
     id: p.id,
     // §SEC-M4 — strip bidi codepoints. Project name is shown in
@@ -105,6 +181,23 @@ export function toProjectViewModel(
     block: p.block ? stripBidiOverrides(p.block) : null,
     parcel: p.parcel ? stripBidiOverrides(p.parcel) : null,
     subparcel: p.subparcel ? stripBidiOverrides(p.subparcel) : null,
+    // wave-2.4 future-states — building-permit tracking (computed once, above).
+    permitStatus: permit.permitStatus,
+    permitIntent: permit.permitIntent,
+    permitExpiryState: permit.permitExpiryState,
+    permitDaysToExpiry: permit.permitDaysToExpiry,
+    permitExpiryAtIso:
+      p.permitExpiryAt === null
+        ? null
+        : p.permitExpiryAt instanceof Date
+          ? p.permitExpiryAt.toISOString()
+          : String(p.permitExpiryAt),
+    permitAppliedAtIso:
+      p.permitAppliedAt === null
+        ? null
+        : p.permitAppliedAt instanceof Date
+          ? p.permitAppliedAt.toISOString()
+          : String(p.permitAppliedAt),
     isArchived: p.archivedAt !== null,
     createdRelative: formatRelative(p.createdAt, locale),
     createdAtIso: p.createdAt instanceof Date ? p.createdAt.toISOString() : String(p.createdAt),

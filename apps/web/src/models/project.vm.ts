@@ -1,4 +1,5 @@
 import type {
+  PermitStatus,
   ProjectStatus,
   ProjectType,
   RelocationType,
@@ -64,6 +65,25 @@ export interface ProjectViewModel {
   block: string | null;
   parcel: string | null;
   subparcel: string | null;
+  /** wave-2.4 future-states — building-permit (היתר בנייה) tracking. Raw status
+   *  (the Hebrew label is resolved in the component via i18n — small open set,
+   *  like relocationType). 'none' = nothing tracked yet. */
+  permitStatus: PermitStatus;
+  /** Permit expiry instant (ISO) when an approved permit has one; null otherwise. */
+  permitExpiryAtIso: string | null;
+  /** Permit application instant (ISO) when set; null otherwise. */
+  permitAppliedAtIso: string | null;
+  /** Computed (adapter-owned, single seam): the badge intent for the permit
+   *  status — approved=success, applied=info, rejected/expired=danger,
+   *  none=neutral. OVERRIDDEN to warning/danger when an approved permit is near
+   *  or past expiry (see permitExpiryState). */
+  permitIntent: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
+  /** Computed expiry urgency for an APPROVED permit, relative to "now" at adapt
+   *  time: 'expired' (past), 'soon' (<=30 days), 'ok' (further out), or null
+   *  (no approved permit / no expiry date). Drives the at-a-glance warning. */
+  permitExpiryState: 'expired' | 'soon' | 'ok' | null;
+  /** Whole days until expiry (negative if already past); null when no expiry. */
+  permitDaysToExpiry: number | null;
   /** D.07 — UI verb is "ארכוב" (archive), not "מחיקה". */
   isArchived: boolean;
   /** Relative timestamp (Hebrew: "לפני 3 ימים"). Falls back to ISO date past 30 days. */

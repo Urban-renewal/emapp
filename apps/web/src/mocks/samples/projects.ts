@@ -25,6 +25,11 @@ export const SAMPLE_PROJECTS: ProjectListItem[] = [
     block: '6638',
     parcel: '142',
     subparcel: '3',
+    // wave-2.4 future-states (migration 0083) — an approved permit nearing expiry,
+    // so the FE "permit expiring soon" warning path is exercised in offline dev.
+    permitStatus: 'approved',
+    permitAppliedAt: new Date('2026-01-10T00:00:00Z'),
+    permitExpiryAt: new Date('2026-07-10T00:00:00Z'),
     startedAt: new Date('2026-04-01T00:00:00Z'),
     createdBy: '11111111-1111-1111-1111-111111111111',
     createdAt: new Date('2026-04-01T10:00:00Z'),
@@ -58,6 +63,11 @@ export const SAMPLE_PROJECTS: ProjectListItem[] = [
     block: null,
     parcel: null,
     subparcel: null,
+    // wave-2.4 (migration 0083) — no permit tracked yet (the default), so the
+    // FE "permit section hidden" path is exercised.
+    permitStatus: 'none',
+    permitAppliedAt: null,
+    permitExpiryAt: null,
     startedAt: null,
     createdBy: '11111111-1111-1111-1111-111111111111',
     createdAt: new Date('2026-05-20T10:00:00Z'),

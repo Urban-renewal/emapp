@@ -677,6 +677,22 @@
       "parcelValue": "גוש {block} / חלקה {parcel}",
       "subparcelSuffix": " / תת-חלקה {subparcel}",
       "empty": "טרם הוזנו פרטי התחדשות."
+    },
+    "permit": {
+      "sectionTitle": "היתר בנייה",
+      "appliedAt": "תאריך הגשה",
+      "expiryAt": "תוקף עד",
+      "status": {
+        "none": "לא הוגש",
+        "applied": "בתהליך",
+        "approved": "אושר",
+        "rejected": "נדחה",
+        "expired": "פג תוקף"
+      },
+      "warn": {
+        "soon": "ההיתר עומד לפוג בעוד {days} ימים — מומלץ להתחיל בחידוש.",
+        "expired": "ההיתר פג תוקף — נדרש חידוש."
+      }
     }
   },
   "imports": {

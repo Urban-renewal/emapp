@@ -3,7 +3,7 @@
 import { Building2, FileSignature, ListChecks } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { useHasPermission } from '@/hooks/use-permissions';
 import { useArchiveProject, useProject } from '@/hooks/use-projects';
 import { ApiClientError } from '@/lib/api/errors';
+import { formatJerusalem } from '@/lib/format';
 import type { ProjectViewModel } from '@/models/project.vm';
 
 import { ExportXlsxButton } from './_components/export-xlsx-button';
@@ -412,6 +413,13 @@ export function ProjectDetailClient() {
                 </section>
               )}
 
+              {/* wave-2.4 future-states — building-permit (היתר בנייה) status +
+               *  at-a-glance expiry warning. Rendered only when a permit is
+               *  actually tracked (status !== 'none') so untracked projects stay
+               *  clean. Placed ABOVE renewal details: a permit about to lapse is
+               *  attention-first. */}
+              <PermitSection data={data} />
+
               {/* P3 create-form enrichment (migration 0062) — renewal details:
                *  developer (יזם), תמורה ratio, relocation (פינוי), parcel
                *  provenance (גוש-חלקה). Rendered only when at least one field
@@ -523,6 +531,80 @@ function TabEmptyCta({
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * wave-2.4 future-states — read-only building-permit (היתר בנייה) panel on the
+ * project dashboard tab. Renders only when a permit is tracked (status !==
+ * 'none'). Surfaces, in plain Hebrew: the permit status as a coloured badge, the
+ * expiry date, and an at-a-glance warning line when an approved permit is near
+ * (<=30 days) or past its expiry. All copy is via i18n (he+en parity); the
+ * intent + urgency are pre-computed in the adapter (single seam) — this is a
+ * pure presenter.
+ */
+function PermitSection({ data }: { data: ProjectViewModel }) {
+  // Dotted namespace (skipped by the i18n-key-coverage scanner, like the
+  // renewal-detail's `trd`/`trel` aliases). MUST NOT be `t` (collides with the
+  // page-level `useTranslations('projects')`).
+  const tp = useTranslations('projects.permit');
+  const locale = useLocale() === 'en' ? 'en' : 'he';
+
+  // Nothing tracked yet → render nothing (untracked projects stay clean).
+  if (data.permitStatus === 'none') return null;
+
+  // The warning line is shown only for an approved permit that is near/past expiry.
+  const warn = data.permitExpiryState; // 'expired' | 'soon' | 'ok' | null
+  const days = data.permitDaysToExpiry;
+
+  return (
+    <section className="rounded-md border bg-card p-4" aria-labelledby="proj-permit-h">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="proj-permit-h" className="text-sm font-semibold">
+          {tp('sectionTitle')}
+        </h2>
+        <StatusBadge intent={data.permitIntent}>{tp(`status.${data.permitStatus}`)}</StatusBadge>
+      </div>
+
+      <dl className="mt-2 grid grid-cols-[140px_1fr] gap-y-1.5 text-sm">
+        {data.permitAppliedAtIso !== null && (
+          <>
+            <dt style={{ color: 'var(--text-muted)' }}>{tp('appliedAt')}</dt>
+            <dd className="tabular" dir="ltr">
+              {formatJerusalem(data.permitAppliedAtIso, locale)}
+            </dd>
+          </>
+        )}
+        {data.permitExpiryAtIso !== null && (
+          <>
+            <dt style={{ color: 'var(--text-muted)' }}>{tp('expiryAt')}</dt>
+            <dd className="tabular" dir="ltr">
+              {formatJerusalem(data.permitExpiryAtIso, locale)}
+            </dd>
+          </>
+        )}
+      </dl>
+
+      {/* At-a-glance warning — only for an approved permit near/past expiry. */}
+      {warn === 'expired' && (
+        <p
+          className="mt-3 rounded-md px-3 py-2 text-sm font-medium"
+          style={{ background: 'var(--danger-50)', color: 'var(--danger-700)' }}
+          role="status"
+        >
+          {tp('warn.expired')}
+        </p>
+      )}
+      {warn === 'soon' && days !== null && (
+        <p
+          className="mt-3 rounded-md px-3 py-2 text-sm font-medium"
+          style={{ background: 'var(--warning-50)', color: 'var(--warning-700)' }}
+          role="status"
+        >
+          {tp('warn.soon', { days })}
+        </p>
+      )}
+    </section>
   );
 }
 

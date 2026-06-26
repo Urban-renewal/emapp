@@ -86,6 +86,9 @@ export * from './helpers/recommenders/signature-reissue.recommender';
 export * from './helpers/recommenders/reminder-cadence.recommender';
 export * from './helpers/recommenders/task-watcher.recommender';
 export * from './helpers/recommenders/document-chase.recommender';
+// wave-2.4 future-states — building-permit expiry recommender (propose-only).
+export * from './helpers/recommenders/permit-expiring.detect';
+export * from './helpers/recommenders/permit-expiring.recommender';
 export * from './helpers/outbound-governor';
 export * from './helpers/org-suspension';
 export * from './helpers/notifications';

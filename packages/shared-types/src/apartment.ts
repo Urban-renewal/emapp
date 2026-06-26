@@ -96,6 +96,99 @@ export const UpdateApartmentInput = z.object(apartmentWriteShape).partial().stri
 export type UpdateApartment = z.infer<typeof UpdateApartmentInput>;
 
 /**
+ * Slice 2.1 — bulk APARTMENT GENERATION (the technophobe "data-in wall": a
+ * 40-apartment building is hand-typed one form at a time today).
+ *
+ * A manager describes the building's SHAPE — "כמה קומות × דירות" — and the
+ * system materialises every apartment in ONE confirmed action. This is a
+ * DETERMINISTIC, manager-confirmed write (it does NOT route through the
+ * autonomy classify() engine); the server LOOPS the existing apartment-create
+ * path so every generated row gets the same validation / defaults
+ * (`unitType` → 'apt', `status` → 'pending').
+ *
+ * Numbering schemes:
+ *  - `sequential`   → 1, 2, 3 … floors×perFloor (a single rising run).
+ *  - `floorBased`   → floor×100 + unit-on-floor: 101,102 / 201,202 …
+ *                     (the common Israeli convention; `startFloor` lets a
+ *                     building that starts on floor 0/קרקע or a higher floor
+ *                     number its apartments correctly).
+ *
+ * Bounds keep one request from materialising an absurd building (and bound the
+ * single-tx cost): 1–80 floors × 1–40 per floor, ≤ 500 apartments total.
+ */
+export const ApartmentNumberingSchemeEnum = z.enum(['sequential', 'floorBased']);
+export type ApartmentNumberingScheme = z.infer<typeof ApartmentNumberingSchemeEnum>;
+
+export const GenerateApartmentsInput = z
+  .object({
+    floors: z.number().int().min(1).max(80),
+    apartmentsPerFloor: z.number().int().min(1).max(40),
+    // `floorBased` numbers each floor's apartments as floor*100+unit; the
+    // first floor defaults to 1 (→ 101…). For a ground-floor-zero building a
+    // manager can pass 0 (→ 1,2… on floor 0). Ignored by `sequential`.
+    startFloor: z.number().int().min(0).max(200).optional(),
+    scheme: ApartmentNumberingSchemeEnum.default('sequential'),
+  })
+  .strict()
+  .refine((v) => v.floors * v.apartmentsPerFloor <= 500, {
+    message: 'total apartments must not exceed 500',
+    path: ['apartmentsPerFloor'],
+  });
+export type GenerateApartments = z.infer<typeof GenerateApartmentsInput>;
+
+/** Bulk-generate response — the count actually created (collisions skipped). */
+export const GenerateApartmentsResultSchema = z.object({
+  created: z.number().int().min(0),
+  skipped: z.number().int().min(0),
+});
+export type GenerateApartmentsResult = z.infer<typeof GenerateApartmentsResultSchema>;
+
+/** One generated apartment's natural number + the floor it sits on. */
+export interface GeneratedApartmentNumber {
+  number: string;
+  floor: number;
+}
+
+/**
+ * PURE numbering generator — the ONE source of truth shared by the BE (which
+ * loops it to insert rows inside the tx) and the FE (which previews "first /
+ * last / count" before the manager confirms). Keeping it here guarantees the
+ * preview the manager sees is EXACTLY what gets created — never a second,
+ * drifting implementation. Deterministic + ordered (floor-major, then unit),
+ * which is also how `apartments.number` reads back.
+ *
+ *  - `sequential` → 1, 2, 3 … floors×perFloor across the whole building.
+ *  - `floorBased` → floor*100 + unit-on-floor (101,102 / 201,202 …). `startFloor`
+ *    (default 1) is the first floor's number; pass 0 for a קרקע/ground building.
+ */
+export function buildApartmentNumbers(input: GenerateApartments): GeneratedApartmentNumber[] {
+  const { floors, apartmentsPerFloor, scheme } = input;
+  const startFloor = input.startFloor ?? 1;
+  const out: GeneratedApartmentNumber[] = [];
+
+  if (scheme === 'floorBased') {
+    for (let f = 0; f < floors; f += 1) {
+      const floorNo = startFloor + f;
+      for (let u = 1; u <= apartmentsPerFloor; u += 1) {
+        out.push({ number: String(floorNo * 100 + u), floor: floorNo });
+      }
+    }
+    return out;
+  }
+
+  // sequential
+  let seq = 1;
+  for (let f = 0; f < floors; f += 1) {
+    const floorNo = startFloor + f;
+    for (let u = 1; u <= apartmentsPerFloor; u += 1) {
+      out.push({ number: String(seq), floor: floorNo });
+      seq += 1;
+    }
+  }
+  return out;
+}
+
+/**
  * GET list query — cursor pagination only (D.16; never offset).
  *
  * Additive server-side `status` filter (mirrors the NS1 `ListProjectsQuery`

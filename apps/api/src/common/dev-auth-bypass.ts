@@ -10,7 +10,16 @@ export { DEV_FIXED_AUTH_CODE } from './dev-auth-bypass.gate';
  * doesn't need a phone / authenticator. Double-gated; impossible in prod.
  */
 export function isDevAuthBypass(): boolean {
-  return computeDevAuthBypass(serverEnv.NODE_ENV, serverEnv.DEV_AUTH_BYPASS);
+  // FAIL-CLOSED: read the RAW `process.env.NODE_ENV`, NOT `serverEnv.NODE_ENV`.
+  // serverEnv `.default('development')`, so an UNSET NODE_ENV resolves to
+  // 'development' there — which would OPEN this auth bypass in a deployed env
+  // that merely forgot to set NODE_ENV while DEV_AUTH_BYPASS leaked on (the exact
+  // misconfig the boot guard exists to catch). The pure gate already fail-closes
+  // on `undefined` (computeDevAuthBypass(undefined,'1') === false); handing it the
+  // undefaulted raw value is what makes that protection actually take effect, and
+  // keeps this gate consistent with the raw-`process.env` checks the dev outbox
+  // module-registration + email factory already use.
+  return computeDevAuthBypass(process.env['NODE_ENV'], serverEnv.DEV_AUTH_BYPASS);
 }
 
 /** True iff the bypass is active AND the presented code is the fixed dev code. */
@@ -25,10 +34,18 @@ export function isDevBypassCode(code: string): boolean {
  * into a LOUD boot crash. Call once at bootstrap.
  */
 export function assertDevBypassNotInProduction(): void {
-  if (serverEnv.NODE_ENV === 'production' && serverEnv.DEV_AUTH_BYPASS === '1') {
+  // Fail-fast on a LOUD boot crash rather than run with a dormant-but-armed auth
+  // bypass. The flag is set, so the env MUST be an explicit dev/test — anything
+  // else (production, a typo, OR an UNSET NODE_ENV that would silently default to
+  // 'development') means the bypass leaked into a deployed environment. Uses the
+  // RAW NODE_ENV (unset counts as "not dev"), matching `isDevAuthBypass`.
+  const rawNodeEnv = process.env['NODE_ENV'];
+  if (serverEnv.DEV_AUTH_BYPASS === '1' && rawNodeEnv !== 'development' && rawNodeEnv !== 'test') {
     throw new Error(
-      'DEV_AUTH_BYPASS=1 is set with NODE_ENV=production — refusing to start. ' +
-        'This dev-only auth bypass must never be enabled in a deployed environment.',
+      `DEV_AUTH_BYPASS=1 requires an explicit NODE_ENV=development (or test); got ` +
+        `NODE_ENV=${rawNodeEnv ?? '<unset>'} — refusing to start. This dev-only auth ` +
+        `bypass must never be armed in a deployed environment. Unset DEV_AUTH_BYPASS, ` +
+        `or set NODE_ENV=development for local dev.`,
     );
   }
 }

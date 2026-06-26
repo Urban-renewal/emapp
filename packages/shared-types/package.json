@@ -6,6 +6,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@emapp/jobs": "workspace:*",
     "zod": "^3.23.0"
   },
   "scripts": {

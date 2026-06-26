@@ -307,6 +307,17 @@ beforeAll(async () => {
     ]);
   });
 
+  // ----- 0.1 SINGLE-SOURCE POISON: an ARCHIVED project doc on P1 carrying a signed
+  // + a pending sig. The OLD manager/viewer KPI used a bare `COUNT(*) FROM
+  // signature_requests WHERE status=…` that COUNTED these (archived-inclusive,
+  // doc-scope-blind), so the home KPI did not reconcile to the per-project boards
+  // (which exclude archived docs via projectSetSignatureDocIdsSql). The fixed KPI
+  // MUST exclude them — leaving the org-wide tallies below UNCHANGED (6 signed / 4
+  // pending), while the raw bare count is strictly higher (asserted in OS-11/OS-12).
+  const p1ArchivedDoc = await seedProjectDoc(P.p1, true);
+  await seedSig(p1ArchivedDoc, p1ownerA, 'signed');
+  await seedSig(p1ArchivedDoc, p1ownerB, 'pending');
+
   // ----- Compute expected tallies (single source of truth).
   // Agent residents = distinct owners reachable via P1+P2 apartments:
   //   P1: p1ownerA, p1ownerB, sharedOwner (via sharedApt1)  → 3
@@ -378,6 +389,30 @@ describe('orgStats — MANAGER stays ORG-WIDE (only agents are scoped)', () => {
   it('OS-8) manager signatures are org-wide (signed + pending, cancelled excluded)', async () => {
     const s = await svc.orgStats(manager());
     expect(s.signaturesReceived).toBe(expected.manager.signaturesReceived);
+    expect(s.signaturesPending).toBe(expected.manager.signaturesPending);
+  });
+
+  // 0.1 SINGLE-SOURCE — the manager KPI is DOC-SCOPED + archived-excluded, the same
+  // definition the per-project boards/pulse use, so the home numbers reconcile to the
+  // boards. The raw un-scoped count (the OLD bug) is strictly higher because it counts
+  // the archived-doc poison. These FAIL on the pre-fix bare-COUNT(*) code.
+  it('OS-11) manager.signaturesReceived EXCLUDES archived-doc signed sigs (raw bare count is higher)', async () => {
+    const s = await svc.orgStats(manager());
+    const raw = await withTenant(org.id, (tx) =>
+      tx.execute(sql`SELECT COUNT(*)::int AS c FROM signature_requests WHERE status = 'signed'`),
+    );
+    const rawSigned = Number((raw as unknown as { rows: Array<{ c: number }> }).rows[0]!.c);
+    expect(rawSigned).toBeGreaterThan(s.signaturesReceived); // archived poison is in raw, NOT the KPI
+    expect(s.signaturesReceived).toBe(expected.manager.signaturesReceived); // still the doc-scoped 6
+  });
+
+  it('OS-12) manager.signaturesPending EXCLUDES archived-doc pending sigs (raw bare count is higher)', async () => {
+    const s = await svc.orgStats(manager());
+    const raw = await withTenant(org.id, (tx) =>
+      tx.execute(sql`SELECT COUNT(*)::int AS c FROM signature_requests WHERE status = 'pending'`),
+    );
+    const rawPending = Number((raw as unknown as { rows: Array<{ c: number }> }).rows[0]!.c);
+    expect(rawPending).toBeGreaterThan(s.signaturesPending);
     expect(s.signaturesPending).toBe(expected.manager.signaturesPending);
   });
 });

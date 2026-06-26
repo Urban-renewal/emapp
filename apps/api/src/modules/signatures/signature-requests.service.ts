@@ -40,7 +40,11 @@ import type {
 // Runtime (value) import — the CANONICAL delivery predicate. Reused here, NOT
 // re-implemented, so the BE tallies and the FE chase toast derive "delivered vs
 // no-channel" from ONE source that cannot drift.
-import { didAnyChannelDeliver } from '@emapp/shared-types';
+// PROJECT_TERMINAL_STATUSES — the CANONICAL set of terminal project statuses
+// (derived from the state-machine transitions). Reused here so the "no signing
+// on a dead deal" guard cannot drift from the cockpit / board-completeness
+// rollups that gate on the SAME source.
+import { didAnyChannelDeliver, PROJECT_TERMINAL_STATUSES } from '@emapp/shared-types';
 import {
   BadRequestException,
   ConflictException,
@@ -71,6 +75,7 @@ import { notificationLink } from '../notifications/notification-links';
 import { resolveNotificationRecipients } from '../notifications/notification-recipients';
 import { NotificationsProducerService } from '../notifications/notifications-producer.service';
 import { StatsCacheService } from '../projects/stats-cache.service';
+import { resolveRecipientConsent } from '../proposals/recipient-consent';
 
 import { deliverSignatureLink } from './signature-link-delivery';
 import { SignatureTokenService } from './signature-token.service';
@@ -413,6 +418,58 @@ export class SignatureRequestsService {
     return new Set(rows.map((r) => r.ownerId));
   }
 
+  /** TERMINAL-PROJECT GATE (red-team round-4 LOW).
+   *
+   *  A signing link must NOT be issued against a document whose parent project
+   *  is in a TERMINAL status (`cancelled` / `completed`, per the canonical
+   *  `PROJECT_TERMINAL_STATUSES` derived from the state machine) or is archived —
+   *  that would chase a dead deal. Same terminal-status-divergence class the
+   *  cockpit / board-completeness rollups already guard; reuse the ONE canonical
+   *  source so the gate cannot drift.
+   *
+   *  Project resolution mirrors `resolveAssociatedOwners`:
+   *    - project-scoped document (`project_id`) → that project directly.
+   *    - else apartment-scoped document (`apartment_id`) → apartment → building →
+   *      project chain.
+   *  The read is RLS-scoped via the caller's withTenant tx. If the project row is
+   *  not visible (foreign/never-existed) the SELECT returns 0 rows and the gate is
+   *  a no-op here — the earlier visibility/association gates already 404 that case;
+   *  this guard's sole job is the active-vs-terminal decision for a visible doc.
+   *
+   *  A terminal/archived project rejects the WHOLE create (single AND bulk): a
+   *  document carries exactly one project, so every recipient under it would be
+   *  chasing the same dead deal — fail-closed at the gate, never per-owner. */
+  private async assertProjectActiveForDoc(
+    tx: TenantTx,
+    doc: { apartmentId: string | null; projectId: string | null },
+  ): Promise<void> {
+    let row: { status: string; archivedAt: Date | null } | undefined;
+    if (doc.projectId) {
+      [row] = await tx
+        .select({ status: projects.status, archivedAt: projects.archivedAt })
+        .from(projects)
+        .where(eq(projects.id, doc.projectId))
+        .limit(1);
+    } else if (doc.apartmentId) {
+      [row] = await tx
+        .select({ status: projects.status, archivedAt: projects.archivedAt })
+        .from(projects)
+        .innerJoin(buildings, eq(buildings.projectId, projects.id))
+        .innerJoin(apartments, eq(apartments.buildingId, buildings.id))
+        .where(eq(apartments.id, doc.apartmentId))
+        .limit(1);
+    }
+    // No visible project row → leave the decision to the visibility/association
+    // gates (which already 404). This guard only rejects a RESOLVED-terminal one.
+    if (!row) return;
+    const isTerminal = (PROJECT_TERMINAL_STATUSES as readonly string[]).includes(row.status);
+    if (isTerminal || row.archivedAt) {
+      throw new ConflictException({
+        error: { code: 'signature_request_project_terminal' },
+      });
+    }
+  }
+
   /** Create a signature request and mint its JWT token.
    *
    *  Flow:
@@ -477,6 +534,12 @@ export class SignatureRequestsService {
         if (!(await this.resolveAssociatedOwners(tx, doc, [input.ownerId])).has(input.ownerId)) {
           throw new ConflictException({ error: { code: 'recipient_not_associated' } });
         }
+
+        // TERMINAL-PROJECT GATE — no signing link against a dead deal (project
+        // cancelled/completed/archived). Reuses the canonical PROJECT_TERMINAL_STATUSES.
+        // Runs BEFORE PII decrypt (defense-in-depth: a dead-deal request must not
+        // trigger national_id/phone decryption).
+        await this.assertProjectActiveForDoc(tx, doc);
 
         const own = await this.loadOwnerWithPii(tx, input.ownerId);
 
@@ -614,6 +677,13 @@ export class SignatureRequestsService {
         const doc = await this.loadVisibleDocument(tx, input.documentId);
         if (user.role === 'agent') await this.assertDocVisibleForAgent(tx, user, input.documentId);
         await requireAgentCapability(tx, user, 'manage_signatures');
+
+        // TERMINAL-PROJECT GATE — a document carries exactly one project, so a
+        // terminal/archived project means EVERY owner under it would be chasing a
+        // dead deal. Fail-closed at the gate (whole batch), same posture as the
+        // document-visibility gate above. Covers campaigns too (createCampaign fans
+        // out through here). Reuses the canonical PROJECT_TERMINAL_STATUSES.
+        await this.assertProjectActiveForDoc(tx, doc);
 
         // Owners that already have a LIVE pending request for this doc → skip
         // (1 query). Slice-1 #3: an EXPIRED-but-still-'pending' row (pre-sweep)
@@ -1055,6 +1125,18 @@ export class SignatureRequestsService {
         // agent-loosened write endpoint.
         await requireAgentCapability(tx, user, 'manage_signatures');
 
+        // (1b-2) TERMINAL-PROJECT GATE — a remind is scoped to ONE project, so a
+        // terminal/archived project is a WHOLE-BATCH fact, not a per-owner one: NO
+        // signing link is re-delivered against a dead deal (cancelled/completed/
+        // archived). Reuses the SAME canonical `assertProjectActiveForDoc` seam as
+        // the create + resend paths — a project-scoped pseudo-doc carries the
+        // verdict for the whole fan-out. Throws `signature_request_project_terminal`
+        // (409), matching this path's existing WHOLE-BATCH reject convention (404
+        // not-visible / 403 capability / 503 kill-switch all fail the whole call).
+        // Runs BEFORE the kill-switch + BEFORE deriving recipients/PII (no
+        // dead-deal PII decrypt; no oracle — authorization already resolved above).
+        await this.assertProjectActiveForDoc(tx, { apartmentId: null, projectId });
+
         // (1c) Global send kill-switch (E2 Wave-0 N15) — LAST gate, strictly
         // AFTER authorization so an unauthorized caller never learns the switch
         // state (no oracle). OPT-OUT: enabled unless explicitly '0'/'false'.
@@ -1150,11 +1232,12 @@ export class SignatureRequestsService {
    * The kill-switch is resolved here from `CAMPAIGN_SEND_ENABLED` (OPT-OUT:
    * enabled unless '0'/'false') and handed to the gate — the gate is the single
    * authoritative kill-switch check on this path (`resend` itself does not gate on
-   * it). Consent defaults to TRUE (there is no per-owner outbound opt-out registry
-   * yet — that is a documented seam the ConsentGate already accepts via the
-   * resolved snapshot; when the registry lands, resolve it here). The breaker is
-   * not yet wired to a live trip-source in Phase 2, so it defaults to NOT tripped;
-   * the gate is in the pipeline ready for the breach-loop (Phase 5).
+   * it). Consent is resolved through the ONE canonical `resolveRecipientConsent`
+   * seam (the same seam the reissue + chase executors use) — FAIL-CLOSED (`false`)
+   * until the per-owner opt-out registry (#512) lands, so the ConsentGate denies →
+   * `blocked` (no send) rather than firing to a possibly-opted-out owner. The
+   * breaker is not yet wired to a live trip-source in Phase 2, so it defaults to
+   * NOT tripped; the gate is in the pipeline ready for the breach-loop (Phase 5).
    *
    * Returns the governed outcome; the executor maps a non-`sent` outcome to an
    * exception so the proposal stays pending/actionable (per-item independence,
@@ -1180,9 +1263,11 @@ export class SignatureRequestsService {
       channel: 'email',
       recipientRef: input.signatureRequestId,
       cadenceStep: input.cadenceStep,
-      // Consent default — the documented seam for a future per-owner opt-out
-      // registry. ConsentGate denies when this is false.
-      recipientConsented: true,
+      // Consent via the ONE canonical seam (never hardcoded true — the #516
+      // bypass). Fail-closed until the per-owner opt-out registry (#512) lands →
+      // `false` → ConsentGate denies → `blocked` (no send). Same seam the reissue +
+      // chase executors use, so all three answer "may we send?" identically.
+      recipientConsented: resolveRecipientConsent(input.signatureRequestId),
       killSwitchEnabled,
       // No live breaker trip-source in Phase 2 — the gate is wired, ready.
       breakerTripped: false,
@@ -1218,6 +1303,21 @@ export class SignatureRequestsService {
     req: { id: string; documentId: string; ownerId: string },
     opts: { throwIfNotPending: boolean },
   ): Promise<ResendDeliveryPayload | null> {
+    // TERMINAL-PROJECT GATE — symmetry with the CREATE path: no RE-DELIVERY of a
+    // signing link against a dead deal (project cancelled/completed/archived). This
+    // CORE backs single resend, bulk remind, AND the reissue delivery, so the ONE
+    // canonical `assertProjectActiveForDoc` seam closes every re-delivery path in
+    // one place (no divergent re-implementation). Runs FIRST — BEFORE the re-mint
+    // (no fresh 7-day token for a dead deal) and BEFORE owner PII decrypt
+    // (defense-in-depth: a dead-deal re-send must not trigger national_id/phone
+    // decryption). A terminal project is a HARD reject for BOTH callers — NOT a
+    // lost-pending race — so it throws regardless of `throwIfNotPending`. The bulk
+    // remind path additionally gates the WHOLE batch upfront (one project → one
+    // verdict), so for that caller this throw is defense-in-depth that never fires
+    // mid-fan-out.
+    const doc = await this.loadVisibleDocument(tx, req.documentId);
+    await this.assertProjectActiveForDoc(tx, doc);
+
     // Re-mint a fresh token for the SAME request (new jti + new expiry).
     const { token, jti, expiresAt } = this.tokenService.sign({
       sub: req.id,
@@ -1249,7 +1349,6 @@ export class SignatureRequestsService {
     });
 
     const own = await this.loadOwnerWithPii(tx, req.ownerId);
-    const doc = await this.loadVisibleDocument(tx, req.documentId);
     const from = await this.resolveFromForOrg(tx, user.orgId);
     return {
       row,
@@ -1325,6 +1424,17 @@ export class SignatureRequestsService {
           throw new ConflictException({ error: { code: 'signature_request_not_pending' } });
         }
 
+        // TERMINAL-PROJECT GATE — getLink re-mints a fresh BEARER signing-link
+        // credential for out-of-band delivery, so it is a RE-DELIVERY path exactly
+        // like resend (the controller comment notes it "matches the send path").
+        // Cancelling/archiving a project does NOT flip a pending request to
+        // expired, so without this a manager could still pull a live link for a
+        // dead deal. Reuses the SAME canonical `assertProjectActiveForDoc` seam +
+        // posture as create/resend (409 `signature_request_project_terminal`).
+        // Runs BEFORE the re-mint so no fresh credential is issued for a dead deal.
+        const linkDoc = await this.loadVisibleDocument(tx, req.documentId);
+        await this.assertProjectActiveForDoc(tx, linkDoc);
+
         // Re-mint a fresh token for the SAME request (new jti + new expiry).
         const { token, jti, expiresAt } = this.tokenService.sign({
           sub: req.id,
@@ -1395,6 +1505,26 @@ export class SignatureRequestsService {
       // No-oracle: not-found / not-this-owner's / not-pending all → 404.
       if (!req || req.status !== 'pending') throw NOT_FOUND;
 
+      // TERMINAL-PROJECT GATE — a resident must not be able to re-deliver THEIR
+      // own pending link against a dead deal (project cancelled/completed/archived;
+      // cancelling does NOT flip pending→expired). Reuses the SAME canonical
+      // `assertProjectActiveForDoc` seam, but loads the doc + gates HERE — BEFORE
+      // the re-mint and BEFORE owner-PII decrypt (defense-in-depth: a dead-deal
+      // self-resend must not refresh the token nor decrypt national_id/phone).
+      // POSTURE: this own-record path is no-oracle (not-found / not-this-owner /
+      // not-pending ALL → 404), so a terminal/archived project maps to the SAME
+      // 404 — a resident never learns the project's status as an oracle, and the
+      // dead-deal link simply reads as "gone" (consistent with not-pending).
+      const doc = await this.loadVisibleDocument(tx, req.documentId);
+      try {
+        await this.assertProjectActiveForDoc(tx, doc);
+      } catch (e: unknown) {
+        // Map ONLY the terminal-project verdict to the path's no-oracle 404; never
+        // mask an unrelated (infra/DB) error — rethrow those untouched.
+        if (e instanceof ConflictException) throw NOT_FOUND;
+        throw e;
+      }
+
       const { token, jti, expiresAt } = this.tokenService.sign({
         sub: req.id,
         orgId,
@@ -1427,7 +1557,6 @@ export class SignatureRequestsService {
       });
 
       const own = await this.loadOwnerWithPii(tx, ownerId);
-      const doc = await this.loadVisibleDocument(tx, req.documentId);
       const from = await this.resolveFromForOrg(tx, orgId);
       return {
         token,
@@ -1938,6 +2067,18 @@ export class SignatureRequestsService {
           await this.assertDocVisibleForAgent(tx, user, existing.documentId);
         await requireAgentCapability(tx, user, 'manage_signatures');
 
+        // TERMINAL-PROJECT GATE — no REISSUE of a signing link against a dead deal
+        // (project cancelled/completed/archived). Reuses the SAME canonical
+        // `assertProjectActiveForDoc` seam as create + resend (single source of
+        // truth, no divergence). Runs BEFORE the expired→pending flip + re-mint: a
+        // reissue must not even REVIVE a dead-deal request into the pending pool,
+        // and — since `reissueAndDeliver` calls this FIRST — the governed re-send it
+        // wraps never fires either. Throws `signature_request_project_terminal`
+        // (409), matching create/resend's single-action reject posture. The doc is
+        // loaded only for the gate's project resolution (no PII).
+        const doc = await this.loadVisibleDocument(tx, existing.documentId);
+        await this.assertProjectActiveForDoc(tx, doc);
+
         if (existing.status !== 'expired') {
           throw new ConflictException({
             error: { code: 'signature_request_not_reissuable' },
@@ -2022,11 +2163,12 @@ export class SignatureRequestsService {
    * A re-approve of the same proposal is impossible (the state machine flips it to
    * `applied`). So no double-send from any retry/double-approve path.
    *
-   * KILL-SWITCH / CONSENT: resolved here from `CAMPAIGN_SEND_ENABLED` (OPT-OUT)
-   * and handed to the gate — the same posture as `sendGovernedReminder`. A
-   * kill-switch-off / consent-withdrawn org gets `blocked` (NO send, NO ledger
-   * row); the re-mint already happened (reversible) and the manager retries when
-   * the condition lifts.
+   * KILL-SWITCH / CONSENT: kill-switch resolved from `CAMPAIGN_SEND_ENABLED`
+   * (OPT-OUT); consent resolved through the ONE canonical `resolveRecipientConsent`
+   * seam — the same posture as `sendGovernedReminder` + the chase executor. Consent
+   * is FAIL-CLOSED (`false`) until the opt-out registry (#512) lands, so a reissue
+   * `blocked`s at the ConsentGate (NO send, NO ledger row); the re-mint already
+   * happened (reversible) and the manager retries when consent can be confirmed.
    *
    * NOTIFICATION (legibility): after the send result is known, a best-effort
    * in-app notification fans out to the org's managers + the request's project
@@ -2063,9 +2205,11 @@ export class SignatureRequestsService {
       // retried same-approve collides → already_sent.
       recipientRef: input.proposalId,
       cadenceStep: REISSUE_SEND_CADENCE_STEP,
-      // Consent defaults TRUE — same documented seam as sendGovernedReminder (no
-      // per-owner outbound opt-out registry yet; ConsentGate denies when false).
-      recipientConsented: true,
+      // Consent via the ONE canonical seam (never hardcoded true — THIS method was
+      // the #516 bypass). Fail-closed until the per-owner opt-out registry (#512)
+      // lands → `false` → ConsentGate denies → `blocked`. The re-mint above still
+      // stands (reversible); only the governed DELIVERY is consent-gated.
+      recipientConsented: resolveRecipientConsent(input.proposalId),
       killSwitchEnabled,
       breakerTripped: false,
       now: new Date(),

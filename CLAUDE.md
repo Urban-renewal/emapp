@@ -172,6 +172,20 @@ NOT wave a slow interaction away as "compile" without re-measuring. Report the m
 per interaction in the walk evidence, not "felt fast". (Backup: memory
 `feedback_sub_second_interaction_budget`.)
 
+**EXPLICIT QA STEP — BROWSER RESPONSE-TIME CHECK + FIX (owner 2026-06-26, anchored).** The
+latency axis above is a MANDATORY, EXECUTED STEP of the QA pass — not a sentiment. For EVERY
+browser-observable slice, as part of the real-browser walk:
+
+1. **CHECK** — MEASURE the warm response time of every interaction the slice touches (page/route
+   load, EACH navigation, EACH click/submit) from the browser (Chrome Network timing; re-hit to
+   exclude the one cold webpack-compile). Record the ms per interaction.
+2. **FIX** — if ANY warm interaction is ≥1s it is a FAIL that BLOCKS merge. Root-cause it
+   (getMe/SSR self-hops, redundant/duplicate FE fetches, N+1 / sequential queries, dev→DB RTT →
+   `DB_TARGET=local`, host disk) and FIX it, then RE-MEASURE to prove <1s before merge. Never
+   merge a slice with a known ≥1s warm interaction.
+3. **EVIDENCE** — record the before/after ms in the PR. "Login takes too long" is the canonical
+   failure this step exists to catch. <1s is the CEILING; faster is better.
+
 **OUTCOME, NOT MECHANICS — acceptance is the real-world EFFECT, end-to-end (owner 2026-06-23,
 anchored).** A 2xx + optimistic UI update + a refetch is the ACTOR's MECHANICAL confirmation;
 it is NOT acceptance. For ANY state-changing action, the walk MUST verify the action's PURPOSE
@@ -362,6 +376,31 @@ memory) so no agent — including future ones — re-derives or forgets it:
   else): real migrations on live data · real outbound to real recipients · prod deploy · secrets/KMS/R2
   · legal/DPO. These do NOT stop the pipeline.
   Backup memory: [[feedback_run_to_completion_never_wait]] + [[feedback_execution_posture_build_dont_park]].
+
+### 🎯 FINAL ACCEPTANCE BAR + AWAY-MODE RULES (owner 2026-06-26, HARD ANCHOR — every agent reads this)
+
+The FINISHED system is judged by a TECHNOPHOBE using it at SCALE from EVERY role (manager · agent ·
+viewer · contractor · tenant/owner · provider). "Done" means ALL of these are true — else it is REDONE:
+
+1. **One clean, BEAUTIFUL situation-picture at a glance** per surface AND per role, at 100s of projects —
+   what's fine / what needs ME / what's next, in one look. Never a flat wall, never cluttered, never "where do I look".
+2. **Every action ONE-click + fully legible** — what/why/what-it-does in plain Hebrew, zero jargon, no multi-step.
+3. **SMART + MANAGING, not thin (רזה)** — perceives / proposes / auto-files / chases; the technophobe FEELS it is simple. Mandatory.
+4. **<1s warm on EVERY interaction** — the owner reports the whole site feels slow; that is a BLOCKER. The dev
+   localhost→IPv6 ~200ms tax → bind dev to 127.0.0.1 / ipv4first; the hosts-file `127.0.0.1 localhost` is the
+   admin-gated DEFINITIVE fix (prepare + document, don't perform).
+   Build TOWARD this bar AND VERIFY against it (a multi-role, at-scale, technophobe browser walk) before "finished".
+
+**AWAY-MODE (owner is gone — never contact him for ANY reason):**
+
+- **NO PR left unmerged.** Sweep `gh pr list` EVERY turn; drive ALL open PRs to terminal (merge / fix-then-merge
+  / close). No open ends. Don't be lazy. Independent thinking — don't wait to be told.
+- **FEWER, COARSER PRs** — each merge is a full CI cascade that wastes scarce wall-clock. Batch cohesive work
+  (BE+FE on one branch) into the FEWEST PRs; combine parallel builders' output. Gates stay per-change.
+- **DON'T CRASH THE HOST** — limited memory/disk, no one to recover. Cap worktree builders (~3-6), kill dev
+  servers after measuring, watch disk. Over-spawning has crashed it = total loss.
+- **DOCUMENT-AND-SKIP, never wait.** A truly owner-gated need → document a prepared one-click + SKIP forward.
+  Never block, never idle. Never stop, never contact him, never wait for "nothing left to do".
 
 1. **BIAS HARD TO ACTION.** If something is built + gate-passed (G-RT CLOSED + CI green + G-QA
    where applicable), MERGE it — do not park it for "final approval." A red-team-CLOSED, CI-green

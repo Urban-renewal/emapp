@@ -1,7 +1,6 @@
 import {
   AuditService,
   apartments,
-  authSessions,
   buildings,
   decryptOwnerPiiBatch,
   owners,
@@ -13,7 +12,6 @@ import {
   type TenantTx,
 } from '@emapp/db';
 import {
-  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -23,7 +21,11 @@ import {
 import { and, eq, isNull, inArray } from 'drizzle-orm';
 
 import { canViewOwners } from '../../common/authz/agent-capabilities';
-import { getOrgSettings } from '../../common/org-settings.resolver';
+import {
+  PermissionResolutionCache,
+  PermissionService,
+} from '../../common/authz/permission.service';
+import { assertSessionPiiUnlocked, PII_STEP_UP_REQUIRED } from '../../common/authz/pii-step-up';
 import type { AccessTokenPayload } from '../auth/auth.service';
 
 import type {
@@ -32,26 +34,6 @@ import type {
   ProjectExportInput,
   ProjectExportOwner,
 } from './export.service';
-
-/**
- * B6 (DOCUMENT-SECURITY-AUDIT) — a FULL-PII export (cleartext national_id +
- * phone for every owner) is the single biggest PII surface in the product, so
- * it must clear the SAME step-up gate that guards a single sensitive document
- * download. This mirrors the documents path's DISTINCT, actionable 403
- * (`documents.service.ts` `PII_STEP_UP_REQUIRED`) verbatim — same code, same
- * shape — so the FE opens the step-up OTP dialog on this `pii_step_up_required`
- * code regardless of which surface raised it. It is thrown only AFTER project
- * visibility + owner-read scope are established, so it is never an existence
- * oracle.
- *
- * Composition note: B5 (parallel PR) gates the step-up UNLOCK itself on
- * `owners.reveal_pii`; the two compose — a full-PII export needs BOTH
- * `export.run` (controller @RequirePermission) AND a `reveal_pii`-gated valid
- * unlock on the caller's current session.
- */
-const PII_STEP_UP_REQUIRED = new ForbiddenException({
-  error: { code: 'pii_step_up_required', message: 'נדרש אימות נוסף לייצוא נתונים רגישים' },
-});
 
 /** Export PII fidelity. `masked` (default) is the D.54 reveal-on-demand
  *  posture — national_id/phone are masked for everyone, no step-up. `full`
@@ -95,32 +77,73 @@ export type ExportPiiMode = 'masked' | 'full';
 export class ExportComposerService {
   private readonly logger = new Logger(ExportComposerService.name);
 
+  // B5/B6 — engine-backed permission resolution for the full-PII export gate's
+  // defence-in-depth reveal-PII re-assertion. The engine is dependency-free (it
+  // takes the request tx + a per-call cache), so we own one instance here
+  // exactly like `DocumentsService` does for its sensitive-doc gate — no
+  // DI/constructor churn (the export composer is constructed with no providers).
+  private readonly permissions = new PermissionService();
+
   // Wave 6 E-H2 + EXP-M1: hard ceiling on apartments per export. Far
   // above any realistic SMB project (partner's largest ~300); purely
   // a DoS/OOM guard. Exposed for the spec.
   static readonly MAX_EXPORT_APARTMENTS = 5000;
 
   /**
-   * B6 — the step-up gate, identical to `documents.service.ts`
-   * `assertPiiUnlocked`: a FULL-PII export is served ONLY when the caller's
-   * CURRENT session (`user.sid`) holds a VALID unlock — `pii_unlocked_at` NOT
-   * NULL and younger than the org's `security.piiUnlockTtlMinutes` (default
-   * 60). `auth_sessions` is auth-infra (no RLS; app_user has SELECT); an
-   * unknown/ghost sid finds no row → locked (fail-closed). MUST be called only
-   * AFTER project visibility + owner-read scope (never an existence oracle).
+   * B6 (DOCUMENT-SECURITY-AUDIT) — the FULL-PII export step-up gate. A full-PII
+   * export (cleartext national_id + phone for every owner) is the single biggest
+   * PII surface in the product, so it MUST clear the SAME gate as a single
+   * sensitive-document download. This mirrors `documents.service.ts`
+   * `assertPiiUnlocked` (the B5 fix) EXACTLY — same two layers, same shared 403
+   * code — so the gate can never silently drift between the two cleartext-PII
+   * surfaces. Called only AFTER project visibility + owner-read scope (never an
+   * existence oracle).
+   *
+   * CLEARTEXT CONTRACT — a full-PII export emits cleartext national_id/phone for
+   * EVERY owner, all-or-nothing, with no per-field mask (exactly like a sensitive
+   * document serves a whole file). So, identical to the documents path, it
+   * layers TWO checks:
+   *
+   *   1. ENTITLEMENT (B5 defence-in-depth) — re-resolve `owners.reveal_pii` from
+   *      the LIVE engine, not trusted from the token. The step-up UNLOCK is the
+   *      cleartext-PII gate, so honoring an unlock requires the caller to ACTUALLY
+   *      hold reveal-PII NOW. `export.run` (the controller @RequirePermission)
+   *      does NOT imply `owners.reveal_pii` (`permissions.ts`), and the two are
+   *      DISCRETE removable permissions (`system-roles.ts`), and `pii_unlocked_at`
+   *      is only ever SET, never cleared on role-change (`step-up.service.ts`).
+   *      Without this re-assertion, a Manager who unlocked PII then moved to a
+   *      custom role with `export.run` but WITHOUT `owners.reveal_pii` would keep
+   *      serving cleartext via export for the whole TTL — while the document path
+   *      correctly 403s. This closes that B5-class window for export too.
+   *
+   *   2. ACCESS (freshness/TTL) — delegated to the SHARED `assertSessionPiiUnlocked`
+   *      (the single source of truth): the caller's CURRENT session (`user.sid`)
+   *      must hold a VALID unlock — `pii_unlocked_at` NOT NULL and younger than the
+   *      org's `security.piiUnlockTtlMinutes`. Fail-closed: an unknown/ghost sid
+   *      finds no row → 403.
+   *
+   * BOTH must pass; either failing throws the shared `pii_step_up_required` 403,
+   * so the FE opens the same step-up OTP dialog regardless of which surface
+   * raised it, and ZERO cleartext is ever round-tripped into heap.
    */
   private async assertPiiUnlocked(tx: TenantTx, user: AccessTokenPayload): Promise<void> {
-    const { security } = await getOrgSettings(tx, user.orgId);
-    const ttlMs = security.piiUnlockTtlMinutes * 60_000;
-    const [sess] = await tx
-      .select({ piiUnlockedAt: authSessions.piiUnlockedAt })
-      .from(authSessions)
-      .where(eq(authSessions.id, user.sid))
-      .limit(1);
-    const unlockedAt = sess?.piiUnlockedAt ?? null;
-    if (!unlockedAt || unlockedAt.getTime() + ttlMs <= Date.now()) {
+    // 1. ENTITLEMENT — re-resolve reveal-PII from the live engine (mirrors
+    //    `documents.service.ts:1453-1480`). A stale/forged unlock can NEVER be
+    //    leveraged by a role that does not currently hold reveal-PII.
+    const cache = new PermissionResolutionCache();
+    const effective = await this.permissions.effectivePermissions(
+      { id: user.sub, orgId: user.orgId },
+      { type: 'org', id: user.orgId },
+      tx,
+      cache,
+    );
+    if (!effective.has('owners.reveal_pii')) {
       throw PII_STEP_UP_REQUIRED;
     }
+
+    // 2. ACCESS — session pii_unlock freshness/TTL via the shared helper (the
+    //    SAME fail-closed check the tabu + documents paths use).
+    await assertSessionPiiUnlocked(tx, user);
   }
 
   async composeProjectExport(

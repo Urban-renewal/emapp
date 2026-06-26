@@ -91,6 +91,12 @@ export * from './helpers/recommenders/signature-reissue.recommender';
 export * from './helpers/recommenders/reminder-cadence.recommender';
 export * from './helpers/recommenders/task-watcher.recommender';
 export * from './helpers/recommenders/document-chase.recommender';
+// Autonomous Managing System, wave 1.3 — perception-driven, PROPOSE-ONLY signature
+// recommenders (stalled-collection reminder + expiring-soon reissue) reading the
+// canonical signature-activity projection of the ProjectPerception read-model.
+export * from './helpers/recommenders/signature-activity.detect';
+export * from './helpers/recommenders/signature-stalled.recommender';
+export * from './helpers/recommenders/signature-expiring.recommender';
 export * from './helpers/outbound-governor';
 export * from './helpers/org-suspension';
 export * from './helpers/notifications';

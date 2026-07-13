@@ -48,19 +48,19 @@
     "zod-to-json-schema": "^3.23.5"
   },
   "devDependencies": {
-    "@nestjs/cli": "^11.0.23",
+    "@nestjs/cli": "^11.0.24",
     "@nestjs/schematics": "^11.0.0",
-    "@nestjs/testing": "^11.1.26",
+    "@nestjs/testing": "^11.1.28",
     "@types/adm-zip": "^0.5.8",
     "@types/node": "^20.19.43",
     "@types/webpack-node-externals": "^3.0.4",
-    "adm-zip": "^0.5.17",
+    "adm-zip": "^0.6.0",
     "cross-env": "^10.1.0",
-    "fastify": "^5.0.0",
-    "ts-loader": "^9.6.0",
+    "fastify": "^5.10.0",
+    "ts-loader": "^9.6.2",
     "ts-node": "^10.9.0",
-    "tsx": "^4.22.4",
-    "vitest": "^4.1.0",
+    "tsx": "^4.23.1",
+    "vitest": "^4.1.10",
     "webpack-node-externals": "^3.0.0"
   }
 }
